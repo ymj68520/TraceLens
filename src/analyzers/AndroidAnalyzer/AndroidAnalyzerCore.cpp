@@ -5,12 +5,16 @@
 #include "LogicalDirExtractor.h"
 #include "ZipArchiveExtractor.h"
 #include "MiuiBackupExtractor.h"
+#include "ArchiveFileExtractor.h"
+#include "FilesystemEvidenceSource.h"
 #include "MiuiBackupManifest.h"
 #include "MiuiArtifactParsers.h"
 #include "MiuiBakProtoParsers.h"
 #include "MiuiSecureTemp.h"
 #include "AndroidLLMAnalysisService.h"
 #include "ConfigManager/ConfigManager.h"
+#include <openssl/crypto.h>
+#include <chrono>
 
 namespace fs = std::filesystem;
 
@@ -53,6 +57,7 @@ AndroidAnalyzer::AndroidAnalyzer(const std::string& imagePath, DatabaseManager* 
 
 AndroidAnalyzer::~AndroidAnalyzer() {
     fileExtractor_.reset();
+    if (!backupPassword_.empty()) OPENSSL_cleanse(backupPassword_.data(), backupPassword_.size());
     if (!secureTemporaryRoot_.empty()) {
         std::error_code error;
         fs::remove_all(secureTemporaryRoot_, error);
@@ -60,6 +65,7 @@ AndroidAnalyzer::~AndroidAnalyzer() {
 }
 
 bool AndroidAnalyzer::initialize() {
+    sourceError_.clear();
     // Auto-promote a generic directory source to MIUI backup mode when the
     // folder is in fact a MIUI backup (descript.xml + .bak files). This keeps
     // analysis correct regardless of which source the user picked in the UI —
@@ -89,6 +95,22 @@ bool AndroidAnalyzer::initialize() {
         case AndroidSourceMode::Zip:
             fileExtractor_ = std::make_unique<ZipArchiveExtractor>(imagePath_);
             break;
+        case AndroidSourceMode::Tar:
+            fileExtractor_ = std::make_unique<TarArchiveExtractor>(imagePath_);
+            break;
+        case AndroidSourceMode::SevenZip:
+            fileExtractor_ = std::make_unique<SevenZipArchiveExtractor>(imagePath_, backupPassword_);
+            break;
+        case AndroidSourceMode::AndroidBackup:
+            fileExtractor_ = std::make_unique<AndroidBackupExtractor>(imagePath_, backupPassword_);
+            break;
+        case AndroidSourceMode::FilesystemImage: {
+            auto image = std::make_unique<FilesystemEvidenceFileExtractor>(
+                imagePath_, expectedPartitionOffset_);
+            image->setSourceHash(sourceImageSha256_);
+            fileExtractor_ = std::move(image);
+            break;
+        }
         case AndroidSourceMode::TSK:
         default:
             // Legacy path: requires a populated _raw.db produced by the TSK
@@ -102,10 +124,17 @@ bool AndroidAnalyzer::initialize() {
     }
 
     if (!fileExtractor_->initialize()) {
+        if (auto* archive = dynamic_cast<ArchiveFileExtractor*>(fileExtractor_.get()))
+            sourceError_ = archive->errorCode();
+        if (auto* image = dynamic_cast<FilesystemEvidenceFileExtractor*>(fileExtractor_.get()))
+            sourceError_ = image->errorCode();
         std::cerr << "Failed to initialize file extractor (source mode "
                   << (sourceMode_ == AndroidSourceMode::TSK ? "TSK" :
                       sourceMode_ == AndroidSourceMode::LogicalDir ? "dir" :
-                      sourceMode_ == AndroidSourceMode::Zip ? "zip" : "miui-backup")
+                      sourceMode_ == AndroidSourceMode::Zip ? "zip" :
+                      sourceMode_ == AndroidSourceMode::Tar ? "tar" :
+                      sourceMode_ == AndroidSourceMode::SevenZip ? "seven-zip" :
+                      sourceMode_ == AndroidSourceMode::AndroidBackup ? "android-backup" : "miui-backup")
                   << ")" << std::endl;
         AuditLog::instance().log("SYSTEM", "ANDROID_INIT_FAILED", "Failed to initialize Android analyzer for: " + imagePath_);
         return false;
@@ -149,6 +178,7 @@ bool AndroidAnalyzer::initialize() {
 }
 
 void AndroidAnalyzer::analyzeAndroidData() {
+    const auto analysisStarted = std::chrono::steady_clock::now();
     std::cout << "Starting Android data analysis..." << std::endl;
     AuditLog::instance().log("SYSTEM", "ANDROID_ANALYSIS_START", "Starting Android data analysis: " + imagePath_);
 
@@ -167,14 +197,25 @@ void AndroidAnalyzer::analyzeAndroidData() {
     parseWifiConfig("data/misc/wifi/WifiConfigStore.xml") ||
     parseWifiConfig("data/misc/wifi/wpa_supplicant.conf");
 
-    // Analyze SMS/MMS
-    extractAndParseDB("data/data/com.android.providers.telephony/databases/mmssms.db", "parseSMS");
+    // A successful stage does not imply that the parser decoded every record.
+    // Preserve this distinction for unfamiliar/mobile-vendor extractions.
+    auto stageKnownDatabase = [&](const std::string& kind, const std::string& source,
+                                  const std::string& parser) {
+        const bool staged = extractAndParseDB(source, parser);
+        const auto* image = dynamic_cast<FilesystemEvidenceFileExtractor*>(fileExtractor_.get());
+        const bool encrypted = !staged && image && image->errorCode() == "ENCRYPTED_FILE";
+        const std::string lockReason = image && image->sourceMetadata().filesystemType == "ext4"
+            ? "EXT4_PER_FILE_ENCRYPTION" : "F2FS_PER_FILE_ENCRYPTION";
+        androidDb_->recordSourceCoverage(kind, source,
+            staged ? "staged_for_parser" : encrypted ? "LOCKED" : "not_found_or_unreadable",
+            staged ? "Source bytes staged; check parsed table counts separately"
+                   : encrypted ? lockReason
+                               : "Expected path absent or could not be opened; not evidence of absence");
+    };
 
-    // Analyze Contacts
-    extractAndParseDB("data/data/com.android.providers.contacts/databases/contacts2.db", "parseContacts");
-
-    // Analyze Call Logs
-    extractAndParseDB("data/data/com.android.providers.contacts/databases/calllog.db", "parseCallLog");
+    stageKnownDatabase("sms", "data/data/com.android.providers.telephony/databases/mmssms.db", "parseSMS");
+    stageKnownDatabase("contacts", "data/data/com.android.providers.contacts/databases/contacts2.db", "parseContacts");
+    stageKnownDatabase("calls", "data/data/com.android.providers.contacts/databases/calllog.db", "parseCallLog");
 
     // MIUI offline backups do not include the system provider databases under
     // data/data/com.android.providers.*; contacts and call logs ride along as
@@ -186,10 +227,10 @@ void AndroidAnalyzer::analyzeAndroidData() {
     }
 
     // Analyze WhatsApp
-    extractAndParseDB("data/data/com.whatsapp/databases/msgstore.db", "parseWhatsApp");
+    stageKnownDatabase("whatsapp", "data/data/com.whatsapp/databases/msgstore.db", "parseWhatsApp");
 
     // Analyze Telegram
-    extractAndParseDB("data/data/org.telegram.messenger/files/cache4.db", "parseTelegram");
+    stageKnownDatabase("telegram", "data/data/org.telegram.messenger/files/cache4.db", "parseTelegram");
 
     // Analyze WeChat (enhanced parsing with decryption support)
     if (sourceMode_ == AndroidSourceMode::MiuiBackup) {
@@ -209,6 +250,8 @@ void AndroidAnalyzer::analyzeAndroidData() {
         std::sort(wechatMembers.begin(), wechatMembers.end());
         if (wechatMembers.empty()) {
             std::cout << "WeChat database not present in MIUI backup" << std::endl;
+            androidDb_->recordSourceCoverage("wechat", "<miui-backup>", "no_candidate_path",
+                "No WeChat main database member found in this backup");
         }
         for (const std::string& memberName : wechatMembers) {
             const std::string tempPath = makeAnalysisTempPath(memberName);
@@ -224,28 +267,49 @@ void AndroidAnalyzer::analyzeAndroidData() {
                         stagedPaths.push_back(sidecarPath);
                     }
                 }
-                parseWeChatEnhanced(tempPath, wechatPassword_);
+                const bool parsed = parseWeChatEnhanced(tempPath, wechatPassword_, memberName);
+                androidDb_->recordSourceCoverage("wechat", memberName,
+                    parsed ? "parsed" : "locked_or_unsupported",
+                    parsed ? "Message query completed; verify result counts"
+                           : "Database could not be decrypted or message schema was unsupported");
             } else {
                 std::cout << "Failed to extract WeChat database member: " << memberName << std::endl;
+                androidDb_->recordSourceCoverage("wechat", memberName, "extract_failed");
             }
             for (const std::string& path : stagedPaths) std::filesystem::remove(path);
         }
     } else {
-        const std::string wechatDbPath = "data/data/com.tencent.mm/MicroMsg/testuser/EnMicroMsg.db";
-        const std::string tempPath = makeAnalysisTempPath(wechatDbPath);
-        std::vector<std::string> stagedPaths;
-        if (stageSqliteBundle(wechatDbPath, tempPath, stagedPaths)) {
-            parseWeChatEnhanced(tempPath, wechatPassword_);
-        } else {
-            std::cout << "Failed to extract WeChat database: " << wechatDbPath << std::endl;
+        auto wechatPaths = fileExtractor_->findPathsByFilename("EnMicroMsg.db", 200);
+        wechatPaths.erase(std::remove_if(wechatPaths.begin(), wechatPaths.end(),
+            [](const std::string& path) {
+                std::string normalized = path;
+                std::replace(normalized.begin(), normalized.end(), '\\', '/');
+                return normalized.find("com.tencent.mm/") == std::string::npos;
+            }), wechatPaths.end());
+        std::sort(wechatPaths.begin(), wechatPaths.end());
+        wechatPaths.erase(std::unique(wechatPaths.begin(), wechatPaths.end()), wechatPaths.end());
+        if (wechatPaths.empty()) {
+            androidDb_->recordSourceCoverage("wechat", "<source-index>", "no_candidate_path",
+                "No EnMicroMsg.db path found; source may be partial or unsupported");
         }
-        for (const std::string& path : stagedPaths) {
-            std::filesystem::remove(path);
+        for (const auto& wechatDbPath : wechatPaths) {
+            const std::string tempPath = makeAnalysisTempPath(wechatDbPath);
+            std::vector<std::string> stagedPaths;
+            if (stageSqliteBundle(wechatDbPath, tempPath, stagedPaths)) {
+                const bool parsed = parseWeChatEnhanced(tempPath, wechatPassword_, wechatDbPath);
+                androidDb_->recordSourceCoverage("wechat", wechatDbPath,
+                    parsed ? "parsed" : "locked_or_unsupported",
+                    parsed ? "Message query completed; verify result counts"
+                           : "Database could not be decrypted or message schema was unsupported");
+            } else {
+                androidDb_->recordSourceCoverage("wechat", wechatDbPath, "extract_failed");
+            }
+            for (const std::string& path : stagedPaths) std::filesystem::remove(path);
         }
     }
 
     // Analyze Chrome History
-    extractAndParseDB("data/data/com.android.chrome/app_chrome/Default/History", "parseChromeHistory");
+    stageKnownDatabase("chrome", "data/data/com.android.chrome/app_chrome/Default/History", "parseChromeHistory");
 
     // Analyze System Logs
     analyzeSystemLogs();
@@ -262,6 +326,68 @@ void AndroidAnalyzer::analyzeAndroidData() {
     // final phase of LinuxFilesAnalyzer / WindowsFilesAnalyzer. Auto-skipped
     // when no LLM endpoint is configured or skipAI_ is set.
     analyzeWithLLM();
+
+    if (auto* image = dynamic_cast<FilesystemEvidenceFileExtractor*>(fileExtractor_.get())) {
+        const auto meta = image->sourceMetadata();
+        for (const auto& source : image->usedSourceProvenance())
+            androidDb_->insertSourceProvenance(source);
+        for (const auto& entry : image->entries()) {
+            if (!entry.encrypted && !entry.compressed) continue;
+            const std::string path = entry.nameState == "encrypted_or_unavailable"
+                ? "<inode:" + std::to_string(entry.objectId) + ">" : entry.path;
+            androidDb_->recordSourceCoverage("filesystem_file", path,
+                entry.encrypted ? "LOCKED" : "UNSUPPORTED",
+                entry.nameState == "encrypted_or_unavailable"
+                    ? meta.filesystemType + "_ENCRYPTED_OR_UNAVAILABLE_NAME; name_state=encrypted_or_unavailable"
+                    : entry.encrypted ? meta.filesystemType + "_PER_FILE_ENCRYPTION" : "F2FS_COMPRESSION_UNSUPPORTED");
+        }
+        androidDb_->insertFilesystemMetrics(imagePath_, meta.filesystemType,
+            meta.reader + " " + meta.readerVersion,
+            meta.walkMilliseconds, meta.indexedFiles, meta.extractedFiles, meta.bytesRead,
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - analysisStarted).count());
+    }
+
+    if (auto* archive = dynamic_cast<ArchiveFileExtractor*>(fileExtractor_.get())) {
+        const auto& root = archive->rootMapping();
+        const std::string adapter = sourceMode_ == AndroidSourceMode::Tar ? "tar" :
+            sourceMode_ == AndroidSourceMode::SevenZip ? "seven-zip" : "android-backup";
+        androidDb_->recordContainerCoverage(imagePath_, "<root>", adapter, "FOUND",
+            "root_mapping=" + root.rootMapping + "; confidence=" + root.confidence +
+            "; reason=" + root.reason + "; nested_container_detected=" +
+            std::to_string(root.nestedContainerCount) + "; password_supplied=" +
+            (archive->passwordSupplied() ? "true" : "false"));
+        androidDb_->recordSourceCoverage("container_root:" + adapter, imagePath_,
+            "FOUND", "root_mapping=" + root.rootMapping + "; confidence=" + root.confidence);
+        for (const auto& source : archive->usedSourceProvenance()) {
+            androidDb_->insertSourceProvenance(source);
+        }
+        for (const auto& event : archive->coverageEvents()) {
+            std::string status = event.status;
+            std::string reason = event.reason;
+            if (status == "FOUND") {
+                std::string table;
+                if (event.normalizedPath == "data/data/com.android.providers.telephony/databases/mmssms.db")
+                    table = "sms_messages";
+                else if (event.normalizedPath == "data/data/com.android.providers.contacts/databases/contacts2.db")
+                    table = "contacts";
+                else if (event.normalizedPath == "data/system/packages.xml")
+                    table = "installed_packages";
+                else if (event.normalizedPath == "data/misc/wifi/WifiConfigStore.xml" ||
+                         event.normalizedPath == "data/misc/wifi/wpa_supplicant.conf")
+                    table = "wifi_networks";
+                if (!table.empty() && androidDb_->artifactRowCount(table) > 0) {
+                    status = "PARSED";
+                    reason = "nonzero parsed artifact rows in " + table;
+                }
+            }
+            androidDb_->recordContainerCoverage(event.sourcePath,
+                event.normalizedPath, adapter, status, reason);
+            androidDb_->recordSourceCoverage("container:" + adapter,
+                event.normalizedPath, status,
+                "source_member=" + event.sourcePath + "; " + reason);
+        }
+    }
 
     std::cout << "Android data analysis completed." << std::endl;
     AuditLog::instance().log("SYSTEM", "ANDROID_ANALYSIS_COMPLETE", "Android data analysis completed for: " + imagePath_);

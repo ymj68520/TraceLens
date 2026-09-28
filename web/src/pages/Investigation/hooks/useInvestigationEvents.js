@@ -17,7 +17,7 @@ export default function useInvestigationEvents(taskId) {
     setError(null);
     try {
       let nextOverview = await getOverview(taskId);
-      if (!nextOverview.initialized) {
+      if (!nextOverview.initialized && !nextOverview.read_only) {
         nextOverview = await bootstrapInvestigation(taskId);
       }
       const response = await getInvestigationEvents(taskId);

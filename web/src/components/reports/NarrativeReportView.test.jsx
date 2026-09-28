@@ -45,6 +45,24 @@ function deferred() {
 }
 
 describe('NarrativeReportView', () => {
+    test('Android citation previews the frozen row and links to exact result version', async () => {
+        const key = `android_artifact:v1:t1:${'a'.repeat(64)}:sms:7`;
+        const report = { ...NARRATIVE, prompt_version: 'final-report:v3',
+            sections: [{ heading: '短信证据', content: '该短信支持分析。', citation_ids: ['c001'] }],
+            citations: [{ citation_id: 'c001', evidence_key: key, analysis_id: 'sa_1',
+                claim_id: null, evidence_captured_at: 1000, analysis_version: 1, claim_type: null }] };
+        const fetchSnapshot = vi.fn().mockResolvedValue({ evidence_type: 'android_artifact',
+            payload: { evidence_type: 'android_artifact', artifact_kind: 'sms', record_id: 7,
+                record_fields: { body: '合成短信正文' }, provenance: { input_file: 'candidate_only' } } });
+        render(<NarrativeReportView taskId="t1" reportId="rep-1"
+            fetchNarrative={vi.fn().mockResolvedValue(report)} fetchSnapshot={fetchSnapshot} />);
+        const marker = await screen.findByTestId('citation-chip-c001');
+        fireEvent.mouseEnter(marker.parentElement);
+        expect(await screen.findByTestId('citation-tooltip-c001')).toHaveTextContent('合成短信正文');
+        expect(screen.getByTestId('citation-tooltip-c001')).toHaveTextContent('candidate_only');
+        expect(screen.getByTestId('citation-timeline-link-c001')).toHaveAttribute('href',
+            `/investigation?task_id=t1&evidence_key=${encodeURIComponent(key)}&report_id=rep-1&citation_id=c001`);
+    });
     test('renders persisted sections, audit metadata, and exact manifest citations', async () => {
         const fetchNarrative = vi.fn().mockResolvedValue(NARRATIVE);
         render(<NarrativeReportView taskId="t1" reportId="rep-1" fetchNarrative={fetchNarrative} />);
@@ -74,6 +92,46 @@ describe('NarrativeReportView', () => {
         expect(props.citation).toEqual(NARRATIVE.citations[0]);
         expect(props.taskId).toBe('t1');
         expect(props.reportId).toBe('rep-1');
+    });
+
+    test('unique filename gets an inline superscript with lazy hover summary and scroll target', async () => {
+        const report = {
+            ...NARRATIVE,
+            sections: [{ heading: 'Overview', content: 'Recovered a.txt from the device.', citation_ids: ['cit-a'] }],
+        };
+        const fetchSnapshot = vi.fn().mockResolvedValue({ payload: {
+            name: 'a.txt', initial_summary: 'Short evidence introduction', initial_description: 'Detailed captured description',
+        } });
+        const TracebackPanel = vi.fn(() => <div data-testid="stub-panel" />);
+        render(<NarrativeReportView taskId="t1" reportId="rep-1" fetchNarrative={vi.fn().mockResolvedValue(report)} fetchSnapshot={fetchSnapshot} TracebackPanel={TracebackPanel} />);
+
+        const marker = await screen.findByTestId('citation-chip-cit-a');
+        expect(marker.closest('sup') || marker.parentElement).toBeInTheDocument();
+        expect(marker.parentElement.parentElement.textContent).toContain('a.txtcit-a');
+        fireEvent.mouseEnter(marker.parentElement);
+        expect(await screen.findByTestId('citation-tooltip-cit-a')).toHaveTextContent('Short evidence introduction');
+        expect(screen.getByTestId('citation-tooltip-cit-a')).toHaveTextContent('Detailed captured description');
+        expect(screen.getByTestId('citation-timeline-link-cit-a')).toHaveAttribute('href', '/investigation?task_id=t1&file=%2Fcase%2Fa.txt&report_id=rep-1&citation_id=cit-a');
+        expect(fetchSnapshot).toHaveBeenCalledWith('t1', 'file:/case/a.txt');
+
+        fireEvent.click(marker);
+        await waitFor(() => expect(TracebackPanel).toHaveBeenCalled());
+        expect(screen.getByTestId('citation-evidence-target')).toHaveAttribute('id', 'citation-evidence-cit-a');
+        expect(screen.getByRole('dialog', { name: /引用 cit-a 的证据溯源/ })).toBeInTheDocument();
+        fireEvent.keyDown(window, { key: 'Escape' });
+        expect(screen.queryByTestId('citation-overlay')).not.toBeInTheDocument();
+    });
+
+    test('timeline citation deep link highlights the exact report citation', async () => {
+        const report = {
+            ...NARRATIVE,
+            sections: [{ heading: 'Overview', content: 'Recovered a.txt.', citation_ids: ['cit-a'] }],
+        };
+        render(<NarrativeReportView taskId="t1" reportId="rep-1" focusCitationId="cit-a" fetchNarrative={vi.fn().mockResolvedValue(report)} />);
+
+        const marker = await screen.findByTestId('citation-chip-cit-a');
+        expect(marker).toHaveAttribute('id', 'report-citation-cit-a');
+        expect(marker.className).toContain('ring-amber-400');
     });
 
     test('unknown citation id in a corrupted payload fails safely without guessing (§27-9)', async () => {

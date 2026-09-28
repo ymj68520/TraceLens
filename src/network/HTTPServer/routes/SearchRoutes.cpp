@@ -34,7 +34,7 @@ static bool fts_path_within_allowed_root(const std::string& p, std::string& allo
     return !rel.empty() && (*rel.begin()) != "..";
 }
 
-SearchRoutes::SearchRoutes(crow::App<>& app) {
+SearchRoutes::SearchRoutes(HttpApp& app) {
     CROW_ROUTE(app, "/api/search/fulltext").methods("GET"_method)([this](const crow::request& req) {
         return handle_fulltext_search(req);
     });

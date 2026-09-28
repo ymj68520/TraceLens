@@ -26,7 +26,7 @@ test.each([
 test.each([
   ['task_id=t1', '/case-intelligence?task_id=t1'],
   ['taskId=t2', '/case-intelligence?task_id=t2'],
-  ['case_id=c1', '/case-intelligence?case_id=c1'],
+  ['case_id=c1', '/case-intelligence?case_id=c1&tab=cross-image'],
   ['', '/tasks'],
 ])('getReportTarget resolves %s to %s', (query, expected) => {
   expect(getReportTarget(new URLSearchParams(query))).toBe(expected);

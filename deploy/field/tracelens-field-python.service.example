@@ -1,0 +1,28 @@
+[Unit]
+Description=TraceLens field Python service (loopback, restricted egress)
+After=network.target tracelens-field-cpp.service
+
+[Service]
+Type=simple
+User=tracelens
+Group=tracelens
+WorkingDirectory=/opt/tracelens
+EnvironmentFile=/etc/tracelens/field.env
+Environment=TRACELENS_REQUIRE_FIELD_AUTH=1
+ExecStart=/opt/tracelens/python_service/.venv/bin/python -m httpserver.main
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+ReadWritePaths=/srv/tracelens-field/data
+IPAddressDeny=any
+IPAddressAllow=localhost
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

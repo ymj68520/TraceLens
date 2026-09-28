@@ -20,7 +20,7 @@ std::string OSSRoutes::generate_job_id() {
     return ss.str();
 }
 
-OSSRoutes::OSSRoutes(crow::App<>& app) : task_manager_(TaskManager::instance()) {
+OSSRoutes::OSSRoutes(HttpApp& app) : task_manager_(TaskManager::instance()) {
     // Delegate to modular route handlers
     OSSAnalysisRoutes analysis_routes(app);
     OSSQueryRoutes query_routes(app);

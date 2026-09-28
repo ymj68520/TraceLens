@@ -6,6 +6,8 @@ import {
   CS_API_BASE_URL,
   SERVICE_TIMEOUTS,
 } from '../config/runtime';
+import { FIELD_AUTH_ENABLED } from '../config/runtime';
+import { clearFieldSession, getFieldToken } from './fieldSession';
 
 // C++ 后端 API 客户端
 const api = axios.create({
@@ -23,9 +25,8 @@ const pythonApi = axios.create({
 
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('auth_token');
+    const token = FIELD_AUTH_ENABLED ? getFieldToken() : localStorage.getItem('auth_token');
     if (token) config.headers.Authorization = `Bearer ${token}`;
-    console.log('API Request:', config.method?.toUpperCase(), config.url, config.data);
     return config;
   },
   (error) => Promise.reject(error)
@@ -35,7 +36,8 @@ api.interceptors.response.use(
   (response) => response.data,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('auth_token');
+      clearFieldSession();
+      localStorage.removeItem('auth_token'); // clear pre-field mock credentials
       localStorage.removeItem('auth_user');
       window.location.href = '/login';
     }
@@ -43,15 +45,14 @@ api.interceptors.response.use(
       message: error.message,
       status: error.response?.status,
       statusText: error.response?.statusText,
-      data: error.response?.data,
-      config: error.config,
+      data: FIELD_AUTH_ENABLED ? { detail: 'Request failed' } : error.response?.data,
     });
   }
 );
 
 pythonApi.interceptors.request.use(
   (config) => {
-    console.log('Python API Request:', config.method?.toUpperCase(), config.url, config.data);
+    if (FIELD_AUTH_ENABLED && getFieldToken()) config.headers.Authorization = `Bearer ${getFieldToken()}`;
     return config;
   },
   (error) => Promise.reject(error)
@@ -59,13 +60,19 @@ pythonApi.interceptors.request.use(
 
 pythonApi.interceptors.response.use(
   (response) => response.data,
-  (error) => Promise.reject({
-    message: error.message,
-    status: error.response?.status,
-    statusText: error.response?.statusText,
-    data: error.response?.data,
-    config: error.config,
-  })
+  (error) => {
+    if (FIELD_AUTH_ENABLED && error.response?.status === 401 &&
+        !error.config?.url?.includes('/api/field-auth/login')) {
+      clearFieldSession();
+      window.location.href = '/login';
+    }
+    return Promise.reject({
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: FIELD_AUTH_ENABLED ? { detail: 'Request failed' } : error.response?.data,
+    });
+  }
 );
 
 // Distributed C/S service (python_service/server).
@@ -79,7 +86,6 @@ csApi.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('cs_auth_token');
     if (token) config.headers.Authorization = `Bearer ${token}`;
-    console.log('CS API Request:', config.method?.toUpperCase(), config.url, config.data);
     return config;
   },
   (error) => Promise.reject(error)
@@ -93,8 +99,7 @@ csApi.interceptors.response.use(
       message: error.message,
       status: error.response?.status,
       statusText: error.response?.statusText,
-      data: error.response?.data,
-      config: error.config,
+      data: FIELD_AUTH_ENABLED ? { detail: 'Request failed' } : error.response?.data,
     });
   }
 );

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { expect, test, vi } from 'vitest';
 import InvestigationTimeline from './InvestigationTimeline';
 import { formatDatetimeLocal } from '../utils/investigationConstants';
@@ -88,6 +89,28 @@ test('节点以文件为核心：名称在标签上，展开卡片展示 MACB �
   // 再点节点：收起
   fireEvent.click(screen.getByTestId('file-node-/case/report.doc'));
   expect(screen.queryByTestId('file-card-/case/report.doc')).not.toBeInTheDocument();
+});
+
+test('report-scoped timeline deep link expands the cited file and links to its exact report citation', () => {
+  render(
+    <MemoryRouter>
+      <InvestigationTimeline
+        taskId="t1" reportId="rep-1" citationIdsByPath={{ '/case/a.txt': ['c001', 'c002'] }}
+        files={[mkFile('/case/a.txt', T0, { llm_summary: 'Long description '.repeat(30) })]} events={[]} selectedFileKey="/case/a.txt" focusFileKey="/case/a.txt"
+        onSelectFile={vi.fn()} onSelectEvent={vi.fn()} loading={false}
+      />
+    </MemoryRouter>,
+  );
+
+  expect(screen.getByTestId('timeline-report-scope')).toHaveTextContent('1 文件');
+  expect(screen.getByTestId('file-card-/case/a.txt')).toBeInTheDocument();
+  expect(screen.getByTestId('report-citation-link-c001')).toHaveAttribute(
+    'href', '/case-intelligence?task_id=t1&tab=forensic&report_id=rep-1&citation_id=c001',
+  );
+  expect(screen.getByTestId('report-citation-link-c002')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '展开文件摘要' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '展开文件摘要' }));
+  expect(screen.getByRole('button', { name: '收起文件摘要' })).toBeInTheDocument();
 });
 
 test('文件圆点颜色随报告证据判定状态：正文紫、附件蓝、已排除灰、未判定琥珀', () => {

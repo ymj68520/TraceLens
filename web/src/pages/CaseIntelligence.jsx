@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { ArrowLeft } from 'lucide-react';
 import IntelligenceReportReader from '../components/case-intelligence/report-reader/IntelligenceReportReader';
+import CrossImageReport from '../components/case-intelligence/CrossImageReport';
 import ForensicReportPage from './ForensicReportPage';
 import { getCase } from '../services/caseGroupService';
 
@@ -23,14 +24,16 @@ const CaseIntelligence = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const caseId = searchParams.get('case_id');
     const urlTaskId = searchParams.get('taskId') || searchParams.get('task_id');
+    const requestedReportId = searchParams.get('report_id');
+    const focusCitationId = searchParams.get('citation_id');
     const activeContextId = caseId || urlTaskId;
     const { tasks: allTasks } = useSelector((state) => state.tasks);
 
-    // Tab 切换：'intelligence' 历史兼容报告 | 'forensic' 当前取证/叙事报告。
-    // 当前报告工作流默认使用 R2；历史 Chain B 内容必须通过显式 query 查看。
-    const [reportTab, setReportTab] = useState(
-        () => (searchParams.get('tab') === 'intelligence' ? 'intelligence' : 'forensic'),
-    );
+    // 案件默认读取跨镜像报告；单任务默认进入当前版本化取证报告。
+    const requestedTab = searchParams.get('tab');
+    const reportTab = requestedTab === 'intelligence' || requestedTab === 'forensic' || (caseId && requestedTab === 'cross-image')
+        ? requestedTab
+        : (caseId ? 'cross-image' : 'forensic');
 
     // case 上下文：案件记录 + 当前选中的案件任务（历史研判报告按任务读取）。
     const [caseInfo, setCaseInfo] = useState(null);
@@ -71,10 +74,16 @@ const CaseIntelligence = () => {
     const readerTaskId = caseId ? selectedCaseTask : urlTaskId;
 
     const switchTab = (tab) => {
-        setReportTab(tab);
         // tab 写回 URL：深链/刷新/回退都停留在当前视图。
         const next = new URLSearchParams(searchParams);
         next.set('tab', tab);
+        setSearchParams(next, { replace: true });
+    };
+
+    const selectReportVersion = (reportId) => {
+        const next = new URLSearchParams(searchParams);
+        next.set('report_id', reportId);
+        next.delete('citation_id');
         setSearchParams(next, { replace: true });
     };
 
@@ -145,6 +154,16 @@ const CaseIntelligence = () => {
         <div className="max-w-[1600px] mx-auto space-y-6">
             {/* 报告视图切换 Tab */}
             <div className="flex flex-wrap items-center gap-2 p-1.5 bg-slate-100 dark:bg-slate-800/50 rounded-xl">
+                {caseId && (
+                    <button
+                        onClick={() => switchTab('cross-image')}
+                        className={`px-4 py-2 text-sm font-bold rounded-lg transition-all flex items-center gap-2 whitespace-nowrap ${reportTab === 'cross-image'
+                            ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700 dark:text-slate-300'}`}
+                    >
+                        📚 跨镜像报告
+                    </button>
+                )}
                 <button
                     onClick={() => switchTab('intelligence')}
                     className={`px-4 py-2 text-sm font-bold rounded-lg transition-all flex items-center gap-2 whitespace-nowrap ${
@@ -168,7 +187,7 @@ const CaseIntelligence = () => {
                 {/* R2d：task 上下文时返回调查工作台（同一全局 TaskSelector task）。 */}
                 {urlTaskId && (
                     <Link
-                        to={`/investigation?taskId=${encodeURIComponent(urlTaskId)}`}
+                        to={`/investigation?task_id=${encodeURIComponent(urlTaskId)}${requestedReportId ? `&report_id=${encodeURIComponent(requestedReportId)}` : ''}`}
                         data-testid="back-to-investigation"
                         className="ml-auto inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
                     >
@@ -178,11 +197,14 @@ const CaseIntelligence = () => {
                 )}
             </div>
 
-            {reportTab === 'intelligence' ? renderIntelligence() : (
+            {reportTab === 'cross-image' && caseId ? <CrossImageReport key={caseId} caseId={caseId} /> : reportTab === 'intelligence' ? renderIntelligence() : (
                 <ForensicReportPage
                     key={`${forensicScopeType}-${forensicScopeId}`}
                     scopeType={forensicScopeType}
                     scopeId={forensicScopeId}
+                    requestedReportId={requestedReportId}
+                    focusCitationId={focusCitationId}
+                    onVersionChange={selectReportVersion}
                 />
             )}
         </div>

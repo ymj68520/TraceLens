@@ -3,8 +3,18 @@
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include <cstdlib>
 
 namespace forensics {
+
+namespace {
+void configure_field_client(httplib::Client& client) {
+    const char* mode = std::getenv("TRACELENS_FIELD_AUTH");
+    if (!mode || std::string(mode) != "enabled") return;
+    const char* token = std::getenv("FIELD_CPP_TO_PYTHON_TOKEN");
+    client.set_default_headers({{"X-TraceLens-Service-Token", token ? token : ""}});
+}
+}
 
 LLMPythonProxy::LLMPythonProxy(const std::string& python_service_url)
     : python_service_url_(python_service_url) {}
@@ -12,6 +22,7 @@ LLMPythonProxy::LLMPythonProxy(const std::string& python_service_url)
 bool LLMPythonProxy::isServiceAvailable() {
     try {
         httplib::Client cli(python_service_url_);
+        configure_field_client(cli);
         cli.set_connection_timeout(5);
         cli.set_read_timeout(5);
 
@@ -32,6 +43,7 @@ bool LLMPythonProxy::recordFileAnalysisResult(
     const std::string& model_used) {
     try {
         httplib::Client cli(python_service_url_);
+        configure_field_client(cli);
         cli.set_connection_timeout(5);
         // Descriptions can be long; the server-side write itself is a local
         // SQLite three-write (WAL, milliseconds).
@@ -60,11 +72,10 @@ bool LLMPythonProxy::recordFileAnalysisResult(
         }
         if (res) {
             std::cerr << "LLMPythonProxy::recordFileAnalysisResult failed: HTTP "
-                      << res->status << " - " << res->body << std::endl;
+                      << res->status << std::endl;
         }
-    } catch (const std::exception& e) {
-        std::cerr << "LLMPythonProxy::recordFileAnalysisResult exception: "
-                  << e.what() << std::endl;
+    } catch (const std::exception&) {
+        std::cerr << "LLMPythonProxy::recordFileAnalysisResult exception" << std::endl;
     }
     return false;
 }
@@ -72,6 +83,7 @@ bool LLMPythonProxy::recordFileAnalysisResult(
 bool LLMPythonProxy::deleteGraphitiData(const std::string& task_id) {
     try {
         httplib::Client cli(python_service_url_);
+        configure_field_client(cli);
         cli.set_connection_timeout(5);
         cli.set_read_timeout(10);
 
@@ -99,6 +111,7 @@ std::string LLMPythonProxy::async_ingest(
 {
     try {
         httplib::Client cli(python_service_url_);
+        configure_field_client(cli);
         cli.set_connection_timeout(10);
         cli.set_read_timeout(30);
 
@@ -121,12 +134,12 @@ std::string LLMPythonProxy::async_ingest(
 
         if (res) {
             std::cerr << "LLMPythonProxy::async_ingest failed: HTTP "
-                      << res->status << " - " << res->body << std::endl;
+                      << res->status << std::endl;
         } else {
             std::cerr << "LLMPythonProxy::async_ingest failed: connection error" << std::endl;
         }
-    } catch (const std::exception& e) {
-        std::cerr << "LLMPythonProxy::async_ingest exception: " << e.what() << std::endl;
+    } catch (const std::exception&) {
+        std::cerr << "LLMPythonProxy::async_ingest exception" << std::endl;
     }
 
     return "";
@@ -139,6 +152,7 @@ std::string LLMPythonProxy::async_ingest_file(
 {
     try {
         httplib::Client cli(python_service_url_);
+        configure_field_client(cli);
         cli.set_connection_timeout(10);
         cli.set_read_timeout(30);
 
@@ -159,10 +173,10 @@ std::string LLMPythonProxy::async_ingest_file(
 
         if (res) {
             std::cerr << "LLMPythonProxy::async_ingest_file failed: HTTP "
-                      << res->status << " - " << res->body << std::endl;
+                      << res->status << std::endl;
         }
-    } catch (const std::exception& e) {
-        std::cerr << "LLMPythonProxy::async_ingest_file exception: " << e.what() << std::endl;
+    } catch (const std::exception&) {
+        std::cerr << "LLMPythonProxy::async_ingest_file exception" << std::endl;
     }
 
     return "";
@@ -174,6 +188,7 @@ std::string LLMPythonProxy::async_ingest_events(
 {
     try {
         httplib::Client cli(python_service_url_);
+        configure_field_client(cli);
         cli.set_connection_timeout(10);
         cli.set_read_timeout(30);
 
@@ -193,10 +208,10 @@ std::string LLMPythonProxy::async_ingest_events(
 
         if (res) {
             std::cerr << "LLMPythonProxy::async_ingest_events failed: HTTP "
-                      << res->status << " - " << res->body << std::endl;
+                      << res->status << std::endl;
         }
-    } catch (const std::exception& e) {
-        std::cerr << "LLMPythonProxy::async_ingest_events exception: " << e.what() << std::endl;
+    } catch (const std::exception&) {
+        std::cerr << "LLMPythonProxy::async_ingest_events exception" << std::endl;
     }
 
     return "";
@@ -211,6 +226,7 @@ JobStatus LLMPythonProxy::get_job_status(const std::string& job_id) {
 
     try {
         httplib::Client cli(python_service_url_);
+        configure_field_client(cli);
         cli.set_connection_timeout(5);
         cli.set_read_timeout(10);
 
@@ -238,10 +254,10 @@ JobStatus LLMPythonProxy::get_job_status(const std::string& job_id) {
         } else {
             status.status = "not_found";
         }
-    } catch (const std::exception& e) {
-        std::cerr << "LLMPythonProxy::get_job_status exception: " << e.what() << std::endl;
+    } catch (const std::exception&) {
+        std::cerr << "LLMPythonProxy::get_job_status exception" << std::endl;
         status.status = "error";
-        status.error = e.what();
+        status.error = "backend_exception";
     }
 
     return status;
@@ -250,6 +266,7 @@ JobStatus LLMPythonProxy::get_job_status(const std::string& job_id) {
 bool LLMPythonProxy::cancel_job(const std::string& job_id) {
     try {
         httplib::Client cli(python_service_url_);
+        configure_field_client(cli);
         cli.set_connection_timeout(5);
         cli.set_read_timeout(10);
 
@@ -263,8 +280,8 @@ bool LLMPythonProxy::cancel_job(const std::string& job_id) {
                 return false; // Job not found
             }
         }
-    } catch (const std::exception& e) {
-        std::cerr << "LLMPythonProxy::cancel_job exception: " << e.what() << std::endl;
+    } catch (const std::exception&) {
+        std::cerr << "LLMPythonProxy::cancel_job exception" << std::endl;
     }
 
     return false;
@@ -296,7 +313,7 @@ bool LLMPythonProxy::wait_for_job_completion(
             return true;
         } else if (status.status == "FAILED" || status.status == "CANCELLED" || status.status == "not_found") {
             if (!status.error.empty()) {
-                std::cerr << "LLMPythonProxy: Job failed - " << status.error << std::endl;
+                std::cerr << "LLMPythonProxy: Job failed" << std::endl;
             }
             return false;
         }

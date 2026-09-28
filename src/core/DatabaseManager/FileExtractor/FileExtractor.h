@@ -75,6 +75,8 @@ public:
     int extractDeleted(const std::string& outputDir, bool overwrite = false, int* skippedCount = nullptr, ExtractionLimits* limits = nullptr);
     bool extractFileByInode(int64_t inode, const std::string& outputPath, int partitionNum = -1);
     bool extractFileByPath(const std::string& filePath, const std::string& outputPath) override;
+    std::vector<std::string> findPathsByFilename(
+        const std::string& filename, std::size_t limit = 200) const override;
 
     static std::vector<FileRecord> queryRegularFilesOrdered(sqlite3* db,
                                                             std::string* error = nullptr);

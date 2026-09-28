@@ -321,6 +321,16 @@ class EnvelopeEvidenceItemV1(BaseModel):
         return self
 
 
+class EnvelopeSnapshotV3(EnvelopeSnapshotV1):
+    """Versioned Android extension; V1/V2 refuse the new evidence type."""
+
+    evidence_type: Literal["file", "cluster", "android_artifact"]
+
+
+class EnvelopeEvidenceItemV3(EnvelopeEvidenceItemV1):
+    snapshot: EnvelopeSnapshotV3
+
+
 class ReportGenerationEnvelopeV1(BaseModel):
     """Frozen LLM-generation input assembled from R1 Report Evidence (R2b).
 
@@ -387,6 +397,12 @@ class ReportGenerationEnvelopeV2(BaseModel):
         return self
 
 
+class ReportGenerationEnvelopeV3(ReportGenerationEnvelopeV2):
+    schema_version: Literal[3] = 3
+    main_evidence: tuple[EnvelopeEvidenceItemV3, ...] = ()
+    appendix_evidence: tuple[EnvelopeEvidenceItemV3, ...] = ()
+
+
 def _validate_envelope_determinism(
     *,
     task_id: str,
@@ -441,6 +457,7 @@ def parse_generation_envelope(raw: str) -> "ReportGenerationEnvelopeV1 | ReportG
     model = {
         1: ReportGenerationEnvelopeV1,
         2: ReportGenerationEnvelopeV2,
+        3: ReportGenerationEnvelopeV3,
     }.get(version)
     if model is None:
         raise ValueError(f"unsupported envelope schema_version: {version!r}")
@@ -569,8 +586,8 @@ class StructuredSectionResponse(BaseModel):
     """Strict structured LLM output for one v2 section.
 
     ``analysis_id``/``claim_id`` stay structurally possible (same citation
-    identity as the assembled report) but the v2 section prompts never
-    provide frozen analyses, and the executor rejects any non-null value.
+    identity as the assembled report). V2 rejects non-null derived IDs; V3
+    may emit an ID only when the frozen item has that exact accepted binding.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

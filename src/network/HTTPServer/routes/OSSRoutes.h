@@ -1,6 +1,7 @@
 #pragma once
 
 #include <crow.h>
+#include "../FieldApp.h"
 #include <nlohmann/json.hpp>
 #include "../TaskManager.h"
 #include "OSSAnalyzer/OSSAnalyzer.h"
@@ -42,7 +43,7 @@ struct OSSAnalysisJob {
  */
 class OSSRoutes {
 public:
-    explicit OSSRoutes(crow::App<>& app);
+    explicit OSSRoutes(HttpApp& app);
     
 private:
     TaskManager& task_manager_;

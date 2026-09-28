@@ -33,13 +33,9 @@ export const getClusterRelatedFiles = async (taskId, cluster, limit = 100) => {
       limit
     });
 
-    console.log('[associationService] Response received:', response);
     return response;
   } catch (error) {
-    console.error('[associationService] Request failed:', error);
-    console.error('[associationService] Error response:', error.response);
-    console.error('[associationService] Error status:', error.response?.status);
-    console.error('[associationService] Error data:', error.response?.data);
+    console.error('[associationService] Request failed with status:', error.response?.status);
     throw error;
   }
 };

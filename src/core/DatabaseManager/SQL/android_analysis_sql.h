@@ -85,6 +85,7 @@ inline constexpr const char* CREATE_ALL_TABLES = R"(
     );
     CREATE TABLE IF NOT EXISTS wechat_messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_path TEXT,
         sender TEXT,
         receiver TEXT,
         content TEXT,
@@ -348,6 +349,48 @@ inline constexpr const char* CREATE_ANALYSIS_PROGRESS =
     "CREATE TABLE IF NOT EXISTS android_analysis_progress ("
     "  task_id TEXT, table_name TEXT, total_artifacts INTEGER, completed_artifacts INTEGER,"
     "  started_at INTEGER, last_updated INTEGER, status TEXT"
+    ");";
+
+inline constexpr const char* CREATE_SOURCE_COVERAGE =
+    "CREATE TABLE IF NOT EXISTS android_source_coverage ("
+    "  artifact_kind TEXT NOT NULL, source_path TEXT NOT NULL, status TEXT NOT NULL,"
+    "  detail TEXT, updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),"
+    "  PRIMARY KEY (artifact_kind, source_path)"
+    ");";
+
+// Container-only provenance; original Android artifact tables are unchanged.
+inline constexpr const char* CREATE_CONTAINER_PROVENANCE =
+    "CREATE TABLE IF NOT EXISTS android_source_provenance ("
+    "  source_container TEXT NOT NULL, source_container_sha256 TEXT NOT NULL,"
+    "  source_member_path TEXT NOT NULL, normalized_android_path TEXT NOT NULL,"
+    "  member_size INTEGER NOT NULL, member_sha256 TEXT NOT NULL,"
+    "  adapter_type TEXT NOT NULL, adapter_version TEXT NOT NULL,"
+    "  PRIMARY KEY (normalized_android_path, source_member_path)"
+    ");"
+    "CREATE TABLE IF NOT EXISTS android_container_coverage ("
+    "  source_path TEXT NOT NULL, normalized_path TEXT NOT NULL, adapter TEXT NOT NULL,"
+    "  status TEXT NOT NULL CHECK(status IN ('FOUND','PARSED','NOT_FOUND','EXTRACT_FAILED','LOCKED','UNSUPPORTED','MALFORMED')),"
+    "  reason TEXT, PRIMARY KEY(source_path, normalized_path, adapter)"
+    ");";
+
+// Image-derived paths are separate from archive members. Existing artifact
+// parser tables remain unchanged; every staged file has partition/inode proof.
+inline constexpr const char* CREATE_FILESYSTEM_PROVENANCE =
+    "CREATE TABLE IF NOT EXISTS android_filesystem_provenance ("
+    "  source_evidence_id TEXT NOT NULL, source_image_sha256 TEXT NOT NULL,"
+    "  container_type TEXT NOT NULL, partition_number INTEGER NOT NULL,"
+    "  partition_name TEXT NOT NULL, partition_start_offset INTEGER NOT NULL,"
+    "  filesystem_type TEXT NOT NULL, filesystem_object_id TEXT NOT NULL,"
+    "  filesystem_path TEXT NOT NULL, normalized_android_path TEXT NOT NULL,"
+    "  file_size INTEGER NOT NULL, file_sha256 TEXT NOT NULL,"
+    "  reader TEXT NOT NULL, reader_version TEXT NOT NULL,"
+    "  PRIMARY KEY(source_evidence_id,partition_start_offset,filesystem_object_id,normalized_android_path)"
+    ");"
+    "CREATE TABLE IF NOT EXISTS android_filesystem_metrics ("
+    "  source_image TEXT PRIMARY KEY, filesystem_type TEXT NOT NULL,"
+    "  reader TEXT NOT NULL, walk_milliseconds INTEGER NOT NULL,"
+    "  indexed_file_count INTEGER NOT NULL, extracted_member_count INTEGER NOT NULL,"
+    "  bytes_read INTEGER NOT NULL, analysis_milliseconds INTEGER NOT NULL"
     ");";
 
 } // namespace AndroidAnalysisSQL

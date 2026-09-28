@@ -9,7 +9,7 @@ namespace forensics {
 
 using json = nlohmann::json;
 
-AndroidForensicsRoutes::AndroidForensicsRoutes(crow::App<>& app) {
+AndroidForensicsRoutes::AndroidForensicsRoutes(HttpApp& app) {
     CROW_ROUTE(app, "/api/forensics/android/communication-summary").methods("GET"_method)([this](const crow::request& req) {
         return handle_android_communication_summary(req);
     });

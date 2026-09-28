@@ -1,0 +1,24 @@
+# Optional A-profile same-origin gateway, bound only to local loopback.
+# Install only after approving the exact local port and release version.
+server {
+    listen 127.0.0.1:8668;
+    server_name localhost;
+    access_log off;
+    client_max_body_size 32m;
+    location /python/ {
+        proxy_pass http://127.0.0.1:8090/;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-TraceLens-Service-Token "";
+        proxy_set_header X-User "";
+        proxy_set_header X-Forwarded-User "";
+        proxy_redirect off;
+    }
+    location / {
+        proxy_pass http://127.0.0.1:8666;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-TraceLens-Service-Token "";
+        proxy_set_header X-User "";
+        proxy_set_header X-Forwarded-User "";
+        proxy_redirect off;
+    }
+}

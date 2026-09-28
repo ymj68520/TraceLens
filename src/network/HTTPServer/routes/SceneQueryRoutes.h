@@ -1,6 +1,7 @@
 #pragma once
 
 #include <crow.h>
+#include "../FieldApp.h"
 #include <nlohmann/json.hpp>
 
 namespace forensics {
@@ -15,7 +16,7 @@ namespace forensics {
  */
 class SceneQueryRoutes {
 public:
-    explicit SceneQueryRoutes(crow::App<>& app);
+    explicit SceneQueryRoutes(HttpApp& app);
 
 private:
     crow::response handle_get_scene_stats(const crow::request& req, const std::string& task_id);

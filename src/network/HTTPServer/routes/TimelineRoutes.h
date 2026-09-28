@@ -1,6 +1,7 @@
 #pragma once
 
 #include <crow.h>
+#include "../FieldApp.h"
 #include <nlohmann/json.hpp>
 #include <string>
 
@@ -12,7 +13,7 @@ namespace forensics {
  */
 class TimelineRoutes {
 public:
-    explicit TimelineRoutes(crow::App<>& app);
+    explicit TimelineRoutes(HttpApp& app);
     
 private:
     crow::response handle_timeline_comprehensive(const crow::request& req);

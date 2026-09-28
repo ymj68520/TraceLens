@@ -29,7 +29,7 @@ const MACB_CHIPS = [
  * Investigation Events（点击选中，驱动右栏分析工作台）；下半部分保留
  * 原有关联证据面板（当前选中事件的证据、Claim 引用追踪）。
  */
-export default function FileEventPanel({ file, events, selectedEventId, onSelectEvent, evidencePanel }) {
+export default function FileEventPanel({ file, events, taskEventCount = 0, selectedEventId, onSelectEvent, evidencePanel }) {
   const ordered = [...(events || [])].sort(
     (a, b) => (toUnix(a.start_time) ?? Infinity) - (toUnix(b.start_time) ?? Infinity)
   );
@@ -37,7 +37,7 @@ export default function FileEventPanel({ file, events, selectedEventId, onSelect
   return (
     <div className="h-full flex flex-col min-h-0" data-testid="file-event-panel">
       <div className="shrink-0 border-b border-slate-200/60 p-3 dark:border-slate-700/50">
-        <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">文件关联事件 <span className="text-slate-400 font-normal">{ordered.length}</span></div>
+        <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">文件关联调查事件 <span className="text-slate-400 font-normal">{ordered.length}</span></div>
         {file ? (
           <>
             <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-200">
@@ -57,7 +57,7 @@ export default function FileEventPanel({ file, events, selectedEventId, onSelect
           <p className="mt-1 text-xs text-slate-400">在中间时间线选择一个文件节点</p>
         )}
       </div>
-      <div className="max-h-[38%] shrink-0 overflow-y-auto p-3" data-testid="file-event-list">
+      <div className={ordered.length ? 'max-h-[38%] shrink-0 overflow-y-auto p-3' : 'min-h-0 flex-1 overflow-y-auto p-3 flex items-center justify-center'} data-testid="file-event-list">
         {ordered.length ? (
           <div className="space-y-1">
             {ordered.map((event) => {
@@ -86,18 +86,21 @@ export default function FileEventPanel({ file, events, selectedEventId, onSelect
             })}
           </div>
         ) : (
-          <div className="py-6 text-center text-xs text-slate-500">
-            {file ? '该文件暂无关联事件' : '暂无文件'}
+          <div className="max-w-xs rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-5 text-center text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/50">
+            <p className="font-medium text-slate-700 dark:text-slate-200">
+              {!file ? '请在时间线中选择文件' : taskEventCount === 0 ? '当前任务尚未生成调查事件' : '该文件尚未关联调查事件'}
+            </p>
+            {file && <p className="mt-2 leading-5">上方展示的是文件时间戳；原始文件活动记录不等同于已建立关联的调查事件。</p>}
           </div>
         )}
       </div>
-      <div className="min-h-0 flex-1">
+      {(ordered.length > 0 || evidencePanel) && <div className="min-h-0 flex-1">
         {evidencePanel || (
           <div className="h-full flex items-center justify-center p-4 text-center text-xs text-slate-400">
             在上方选择一个关联事件，查看它的佐证证据与 Claim 引用。
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

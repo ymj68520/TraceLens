@@ -55,6 +55,25 @@ bool FileExtractor::initialize() {
     return true;
 }
 
+std::vector<std::string> FileExtractor::findPathsByFilename(
+    const std::string& filename, std::size_t limit) const {
+    std::vector<std::string> found;
+    if (!dbManager_ || !dbManager_->getDb() || filename.empty() || limit == 0) return found;
+    sqlite3_stmt* statement = nullptr;
+    const char* query = "SELECT DISTINCT path FROM files WHERE name = ? AND path IS NOT NULL "
+                        "AND COALESCE(is_deleted, 0) = 0 ORDER BY path LIMIT ?";
+    if (sqlite3_prepare_v2(dbManager_->getDb(), query, -1, &statement, nullptr) != SQLITE_OK)
+        return found;
+    sqlite3_bind_text(statement, 1, filename.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(statement, 2, static_cast<sqlite3_int64>(std::min<std::size_t>(limit, 1000)));
+    while (sqlite3_step(statement) == SQLITE_ROW) {
+        const char* value = reinterpret_cast<const char*>(sqlite3_column_text(statement, 0));
+        if (value) found.emplace_back(value);
+    }
+    sqlite3_finalize(statement);
+    return found;
+}
+
 bool FileExtractor::openImage() {
     TSK_IMG_TYPE_ENUM imgType = TSK_IMG_TYPE_DETECT;
 

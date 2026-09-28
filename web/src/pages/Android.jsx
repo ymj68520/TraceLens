@@ -8,6 +8,9 @@ import { Search, Smartphone, Package, HardDrive, Calendar, FolderInput, ShieldCh
 import Card from '../components/common/Card';
 import Badge from '../components/common/Badge';
 import Spinner from '../components/common/Spinner';
+import AndroidReportImports from './AndroidReportImports';
+import AndroidCoverageCard from '../components/AndroidCoverageCard';
+import AndroidArtifactsCard from '../components/AndroidArtifactsCard';
 import {
   getMiuiOverview,
   getMiuiInstalledApps,
@@ -70,6 +73,7 @@ const STATUS_BAR = {
 const Android = () => {
   const [searchParams] = useSearchParams();
   const taskId = searchParams.get('task_id');
+  const reportMode = searchParams.get('mode') === 'report' || Boolean(searchParams.get('import_id'));
   const { tasks } = useSelector((state) => state.tasks);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -82,7 +86,7 @@ const Android = () => {
   const currentTask = tasks.find((task) => task.id === taskId);
 
   useEffect(() => {
-    if (!taskId) return;
+    if (!taskId || reportMode) return;
     const fetchData = async () => {
       setLoading(true);
       setError(null);
@@ -99,12 +103,26 @@ const Android = () => {
           getMiuiQqntOverview(taskId),
           getMiuiWechatOverview(taskId),
         ]);
-        if (ov.status === 'fulfilled') setOverview(ov.value);
-        if (ap.status === 'fulfilled') setApps(ap.value);
-        if (inv.status === 'fulfilled') setDbInventory(inv.value);
-        if (qqnt.status === 'fulfilled') setQqntOverview(qqnt.value);
-        if (wx.status === 'fulfilled') setWechatOverview(wx.value);
-        if (![ov, ap, inv, qqnt, wx].some((result) => result.status === 'fulfilled' && result.value)) {
+        const results = [ov, ap, inv, qqnt, wx];
+        const payloads = results.map((result) => (
+          result.status === 'fulfilled' && result.value && !result.value.error
+            ? result.value
+            : null
+        ));
+        const errors = results.flatMap((result) => {
+          if (result.status === 'rejected') {
+            return [result.reason?.data?.error || result.reason?.message || String(result.reason)];
+          }
+          return result.value?.error ? [result.value.error] : [];
+        });
+        if (payloads[0]) setOverview(payloads[0]);
+        if (payloads[1]) setApps(payloads[1]);
+        if (payloads[2]) setDbInventory(payloads[2]);
+        if (payloads[3]) setQqntOverview(payloads[3]);
+        if (payloads[4]) setWechatOverview(payloads[4]);
+        if (errors.length) {
+          setError(`加载 MIUI 备份数据失败：${[...new Set(errors)].join('；')}`);
+        } else if (!payloads.some(Boolean)) {
           setError('未找到 MIUI 备份数据。请确认该任务使用了 MIUI 备份来源（android_source=miui-backup）。');
         }
       } catch (err) {
@@ -115,7 +133,9 @@ const Android = () => {
       }
     };
     fetchData();
-  }, [taskId]);
+  }, [taskId, reportMode]);
+
+  if (reportMode) return <AndroidReportImports />;
 
   if (!taskId) {
     return (
@@ -127,6 +147,10 @@ const Android = () => {
         <Card title="选择任务">
           <p className="text-slate-500">请从 <a href="/tasks" className="text-primary-600 hover:text-blue-800">任务页面</a> 选择一个已完成 MIUI 备份分析的任务，或使用顶部任务选择器。</p>
         </Card>
+        <Card title="已有离线取证报告">
+          <p className="mb-3 text-sm text-slate-600">如果手中只有第三方工具导出的 HTML 报告包，可独立导入并分析，不必创建 MIUI 备份任务。</p>
+          <Link to="/android?mode=report" className="font-semibold text-primary-600 hover:underline">打开离线报告分析 →</Link>
+        </Card>
       </div>
     );
   }
@@ -137,6 +161,7 @@ const Android = () => {
         <div>
           <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="text-3xl font-bold text-slate-900">MIUI 备份分析</motion.h1>
           <p className="mt-2 text-slate-600">任务: {currentTask?.image_path || taskId}</p>
+          <Link to={`/android?mode=report&task_id=${encodeURIComponent(taskId)}`} className="mt-2 inline-block text-sm font-semibold text-primary-600 hover:underline">打开已有离线取证报告 →</Link>
         </div>
         <Card><div className="flex items-center justify-center h-64"><Spinner size="lg" /><span className="ml-4 text-slate-600">加载 MIUI 备份数据...</span></div></Card>
       </div>
@@ -173,9 +198,12 @@ const Android = () => {
       <div>
         <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="text-3xl font-bold text-slate-900">MIUI 备份分析</motion.h1>
         <p className="mt-2 text-slate-600">任务: {currentTask?.image_path || taskId}</p>
+        <Link to={`/android?mode=report&task_id=${encodeURIComponent(taskId)}`} className="mt-2 inline-block text-sm font-semibold text-primary-600 hover:underline">查看或导入离线取证报告 →</Link>
         {currentTask && <div className="mt-2 flex items-center gap-2 flex-wrap"><Badge variant="blue">{currentTask.status}</Badge>{manifest.device && <Badge variant="purple">{manifest.device}</Badge>}{manifest.miui_version && <Badge variant="gray">{manifest.miui_version}</Badge>}</div>}
       </div>
       {error && <Card title="错误"><div className="p-4 bg-red-50 border border-red-200 rounded-xl"><p className="text-red-800">{error}</p></div></Card>}
+      <AndroidCoverageCard taskId={taskId} />
+      <AndroidArtifactsCard taskId={taskId} />
       <div className="border-b border-slate-200 overflow-x-auto">
         <nav className="-mb-px flex space-x-8 min-w-max" aria-label="Tabs">
           {[

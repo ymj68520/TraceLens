@@ -22,7 +22,7 @@ std::string OSSAnalysisRoutes::generate_job_id() {
     return ss.str();
 }
 
-OSSAnalysisRoutes::OSSAnalysisRoutes(crow::App<>& app) : task_manager_(TaskManager::instance()) {
+OSSAnalysisRoutes::OSSAnalysisRoutes(HttpApp& app) : task_manager_(TaskManager::instance()) {
     CROW_ROUTE(app, "/api/forensics/oss/analyze").methods("POST"_method, "OPTIONS"_method)([this](const crow::request& req) {
         if (req.method == "OPTIONS"_method) {
             crow::response res;

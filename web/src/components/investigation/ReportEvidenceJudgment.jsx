@@ -63,7 +63,7 @@ export default function ReportEvidenceJudgment({ taskId, evidenceKey, status = n
       toast.success(`已判定为「${REPORT_JUDGMENT_LABELS[next]}」`);
       onChanged?.(next);
     } catch (err) {
-      const detail = err?.response?.data?.detail || err?.message || String(err);
+      const detail = err?.data?.detail || err?.response?.data?.detail || err?.message || String(err);
       toast.error('判定失败: ' + detail);
     } finally {
       setSaving(false);
@@ -101,7 +101,7 @@ export default function ReportEvidenceJudgment({ taskId, evidenceKey, status = n
       </button>
     );
   }
-  if (current !== 'excluded') {
+  if (status && current !== 'excluded') {
     judgeButtons.push(
       <button
         key="excluded"

@@ -19,10 +19,13 @@ const formatFileSize = (bytes) => {
 const ExtensionAnalysisTab = ({ extensionAnalysis }) => {
   if (!extensionAnalysis) return null;
 
-  const hasData = extensionAnalysis.extension_analysis && extensionAnalysis.extension_analysis.length > 0;
+  const rows = Array.isArray(extensionAnalysis.extension_analysis)
+    ? extensionAnalysis.extension_analysis
+    : [];
+  const hasData = rows.length > 0;
   const totalCount =
     extensionAnalysis.total_count ||
-    extensionAnalysis.extension_analysis.reduce((sum, e) => sum + (e.file_count || 0), 0);
+    rows.reduce((sum, e) => sum + (e.file_count || 0), 0);
 
   return (
     <Card title="按扩展名分布">
@@ -38,7 +41,7 @@ const ExtensionAnalysisTab = ({ extensionAnalysis }) => {
               </tr>
             </thead>
             <tbody className="bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
-              {extensionAnalysis.extension_analysis
+              {[...rows]
                 .sort((a, b) => (b.file_count || 0) - (a.file_count || 0))
                 .map((ext, index) => {
                   const percentage = totalCount > 0 ? ((ext.file_count || 0) / totalCount * 100).toFixed(1) : '0.0';

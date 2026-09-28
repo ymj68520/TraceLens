@@ -3,6 +3,7 @@ import json
 import multiprocessing
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -335,7 +336,7 @@ def test_windows_claim_fallback_rejects_live_and_recovers_dead_owner(
     tmp_path: Path, monkeypatch
 ):
     monkeypatch.setattr(snapshot_writer, "fcntl", None)
-    monkeypatch.setattr(snapshot_writer.os, "name", "nt")
+    monkeypatch.setattr(snapshot_writer, "os", SimpleNamespace(**{**vars(os), "name": "nt"}))
     claim = snapshot_writer._ReportClaim(tmp_path, "r1")
     claim.path.parent.mkdir(parents=True)
     claim.path.write_text("101", "utf-8")
@@ -354,7 +355,7 @@ def test_windows_claim_fallback_preserves_lock_when_owner_access_is_denied(
     tmp_path: Path, monkeypatch
 ):
     monkeypatch.setattr(snapshot_writer, "fcntl", None)
-    monkeypatch.setattr(snapshot_writer.os, "name", "nt")
+    monkeypatch.setattr(snapshot_writer, "os", SimpleNamespace(**{**vars(os), "name": "nt"}))
     claim = snapshot_writer._ReportClaim(tmp_path, "r1")
     claim.path.parent.mkdir(parents=True)
     claim.path.write_text("101", "utf-8")
@@ -369,7 +370,7 @@ def test_windows_claim_fallback_preserves_lock_when_owner_access_is_denied(
 
 
 def test_windows_process_state_uses_win32_result_contract(monkeypatch):
-    monkeypatch.setattr(snapshot_writer.os, "name", "nt")
+    monkeypatch.setattr(snapshot_writer, "os", SimpleNamespace(**{**vars(os), "name": "nt"}))
     monkeypatch.setattr(snapshot_writer, "_win32_process_exit_code", lambda pid: "alive")
     assert snapshot_writer._process_state(101) == "alive"
     monkeypatch.setattr(snapshot_writer, "_win32_process_exit_code", lambda pid: "dead")

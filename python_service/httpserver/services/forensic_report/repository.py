@@ -5,6 +5,7 @@ import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 from .models import (
     AdapterWarning,
@@ -18,13 +19,23 @@ from .models import (
 class ReportRepository:
     """SQLite-backed metadata storage for immutable report versions."""
 
-    def __init__(self, db_path: Path):
+    def __init__(self, db_path: Path, *, readonly: bool = False):
         self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._ensure_schema()
+        self.readonly = readonly
+        if readonly:
+            if self.db_path.is_symlink() or not self.db_path.is_file():
+                raise FileNotFoundError("report store is not an existing regular file")
+        else:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            self._ensure_schema()
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path, timeout=30)
+        if self.readonly:
+            conn = sqlite3.connect(f"file:{quote(str(self.db_path.resolve()), safe='/')}?mode=ro",
+                                   uri=True, timeout=30)
+            conn.execute("PRAGMA query_only=ON")
+        else:
+            conn = sqlite3.connect(self.db_path, timeout=30)
         conn.row_factory = sqlite3.Row
         return conn
 

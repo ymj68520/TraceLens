@@ -18,7 +18,9 @@ from urllib.parse import quote
 
 from ..evidence.exceptions import EvidenceNotFoundError, EvidenceStoreError
 from ..evidence.models import ResolvedEvidence
-from .models import ClusterSnapshotPayload, FileSnapshotPayload, SnapshotCandidate
+from ..android_artifact_reader import artifact_detail_from_database
+from ..android_field_package import _hash
+from .models import AndroidArtifactSnapshotPayload, ClusterSnapshotPayload, FileSnapshotPayload, SnapshotCandidate
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +134,67 @@ def _acquire_cluster(resolved: ResolvedEvidence) -> ClusterSnapshotPayload:
     )
 
 
+def _acquire_android_artifact(resolved: ResolvedEvidence) -> AndroidArtifactSnapshotPayload:
+    manifest = resolved.result_manifest
+    database = Path(resolved.source_db)
+    if not database.is_file() or database.is_symlink() or _hash(database) != manifest.get("snapshot_sha256"):
+        raise EvidenceStoreError("frozen Android result set changed before capture")
+    detail = artifact_detail_from_database(
+        database, resolved.task_id, resolved.artifact_kind, resolved.artifact_record_id,
+    )
+    fields = detail["record"]  # Wi-Fi credentials stay redacted in snapshots/reports.
+    normalized_names = {
+        "sms": ("address", "body", "date", "type"),
+        "contacts": ("display_name", "phone_number", "email", "account_name"),
+        "apps": ("package_name", "version", "installer"),
+        "wifi": ("ssid", "key_mgmt", "last_connected"),
+    }[resolved.artifact_kind]
+    source = detail.get("source")
+    coverage = manifest.get("coverage") or {}
+    source_items = [item for item in coverage.get("sources", [])
+                    if item.get("artifact_kind") == {"apps": "installed_apps"}.get(
+                        resolved.artifact_kind, resolved.artifact_kind)]
+    provenance = {
+        "derived_result_record": "exact",
+        # A unique candidate with a file hash is still not proof that this
+        # *row* came from that file. The old parser has no row-level binding.
+        "input_file": "candidate_only" if detail.get("source_candidates") else "unknown",
+        "candidate_file_hash_available": bool(source and source.get("original_path") and source.get("sha256")),
+        "original_database_record": "unknown",
+        "original_table": None,
+        "original_primary_key": None,
+        "disk_offset": None,
+        "wal_frame": None,
+        "source": source,
+        "source_candidates": detail.get("source_candidates", []),
+    }
+    warnings = list(coverage.get("warnings") or [])
+    warnings.append(detail["warning"])
+    return AndroidArtifactSnapshotPayload(
+        task_id=resolved.task_id,
+        result_set_id=resolved.result_set_id,
+        artifact_kind=resolved.artifact_kind,
+        record_id=resolved.artifact_record_id,
+        snapshot_sha256=manifest["snapshot_sha256"],
+        source_revision=manifest["source_revision"],
+        record_hash=detail["record_hash"],
+        record_fields=fields,
+        redacted_fields=("pre_shared_key",) if resolved.artifact_kind == "wifi" and "pre_shared_key" in fields else (),
+        normalized_fields={name: fields.get(name) for name in normalized_names if name in fields},
+        raw_timestamp=fields.get("date") if resolved.artifact_kind == "sms" else
+                      fields.get("last_connected") if resolved.artifact_kind == "wifi" else None,
+        timestamp_unit=None, timestamp_timezone=None, timestamp_basis=None,
+        parser_name=manifest.get("parser_name") or "AndroidAnalyzer",
+        parser_version=manifest.get("parser_version"),
+        android_user=None,
+        account=fields.get("account_name") if resolved.artifact_kind == "contacts" else None,
+        provenance=provenance,
+        coverage={"artifact_counts": coverage.get("artifact_counts", {}),
+                  "relevant_sources": source_items},
+        warnings=tuple(str(warning) for warning in warnings),
+    )
+
+
 def build_snapshot_candidate(resolved: ResolvedEvidence) -> SnapshotCandidate:
     """Acquire current source state and build a complete, immutable candidate."""
     if resolved.evidence_type == "file":
@@ -143,6 +206,12 @@ def build_snapshot_candidate(resolved: ResolvedEvidence) -> SnapshotCandidate:
             captured_at=int(time.time()),
             payload=payload,
             normalized_path=payload.normalized_path,
+        )
+    if resolved.evidence_type == "android_artifact":
+        payload = _acquire_android_artifact(resolved)
+        return SnapshotCandidate(
+            task_id=resolved.task_id, evidence_key=resolved.evidence_key,
+            evidence_type="android_artifact", captured_at=int(time.time()), payload=payload,
         )
     payload = _acquire_cluster(resolved)
     return SnapshotCandidate(

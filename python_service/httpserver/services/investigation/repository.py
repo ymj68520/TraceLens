@@ -54,6 +54,8 @@ from .models import (
     AnalysisClaim,
     AnalysisGroundingStatus,
     AnalysisInputEnvelopeV2,
+    AnalysisInputEnvelopeV3,
+    AndroidArtifactSnapshotPayload,
     AnalysisReviewDecision,
     ClaimCandidate,
     ClaimGroundingStatus,
@@ -98,12 +100,17 @@ class AnalysisBindingConflictError(RuntimeError):
     """The analysis cannot be bound to this report evidence (wrong evidence
     or not accepted) -- the triple check (R1 §7) failed."""
 
+
+class InvestigationMigrationRequiredError(EvidenceStoreError):
+    """A historical v7 Task is readable but cannot be written before cutover."""
+
 logger = logging.getLogger(__name__)
 
-SUPPORTED_SCHEMA_VERSION = 7
+SUPPORTED_SCHEMA_VERSION = 8
+READABLE_SCHEMA_VERSIONS = frozenset({7, 8})
 
 # ---------------------------------------------------------------------------
-# DDL: evidence_snapshots (v1, unchanged)
+# DDL: historical v1-v7 snapshot table and explicit v8 identity extension
 # ---------------------------------------------------------------------------
 
 _CREATE_EVIDENCE_SNAPSHOTS_SQL = """
@@ -131,6 +138,39 @@ CREATE TABLE IF NOT EXISTS evidence_snapshots (
     )
 )
 """
+_CREATE_EVIDENCE_SNAPSHOTS_V8_SQL = """
+CREATE TABLE evidence_snapshots_v8 (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT NOT NULL,
+    evidence_key TEXT NOT NULL,
+    evidence_type TEXT NOT NULL CHECK(evidence_type IN ('file', 'cluster', 'android_artifact')),
+    normalized_path TEXT,
+    unix_minute INTEGER,
+    event_type TEXT,
+    snapshot_json TEXT NOT NULL,
+    captured_at INTEGER NOT NULL,
+    UNIQUE(task_id, evidence_key),
+    CHECK (
+        (evidence_type = 'file'
+            AND normalized_path IS NOT NULL
+            AND unix_minute IS NULL
+            AND event_type IS NULL)
+        OR
+        (evidence_type = 'cluster'
+            AND normalized_path IS NULL
+            AND unix_minute IS NOT NULL
+            AND event_type IS NOT NULL)
+        OR
+        (evidence_type = 'android_artifact'
+            AND normalized_path IS NULL
+            AND unix_minute IS NULL
+            AND event_type IS NULL)
+    )
+)
+"""
+_CREATE_EVIDENCE_SNAPSHOTS_FRESH_V8_SQL = _CREATE_EVIDENCE_SNAPSHOTS_V8_SQL.replace(
+    "CREATE TABLE evidence_snapshots_v8", "CREATE TABLE IF NOT EXISTS evidence_snapshots"
+)
 _INDEX_PATH_SQL = "CREATE INDEX IF NOT EXISTS idx_evsnap_path ON evidence_snapshots(normalized_path)"
 _INDEX_CLUSTER_SQL = "CREATE INDEX IF NOT EXISTS idx_evsnap_cluster ON evidence_snapshots(unix_minute, event_type)"
 _INDEX_TASK_SQL = "CREATE INDEX IF NOT EXISTS idx_evsnap_task ON evidence_snapshots(task_id)"
@@ -700,9 +740,10 @@ class InvestigationRepository:
     user_version contention / duplicate migration paths).
     """
 
-    def __init__(self, investigation_db_path, task_id: str):
+    def __init__(self, investigation_db_path, task_id: str, *, allow_v7_upgrade: bool = False):
         self.db_path = Path(investigation_db_path)
         self.task_id = task_id
+        self.allow_v7_upgrade = allow_v7_upgrade
         # D4b: when True, every connection opens SQLite mode=rw so a vanished
         # store is an error instead of a silently recreated file.
         self.existing_only = False
@@ -741,6 +782,7 @@ class InvestigationRepository:
             )
         try:
             repo._validate_v7_schema()
+            repo._validate_v8_snapshot_constraint()
         except (sqlite3.DatabaseError, ValueError, EvidenceStoreError) as exc:
             raise EvidenceStoreError("investigation store schema is invalid") from exc
         return repo
@@ -765,8 +807,9 @@ class InvestigationRepository:
         with self._connect() as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version == 0:
-            self._initialize_v7_atomically()
+            self._initialize_v8_atomically()
             self._validate_v7_schema()
+            self._validate_v8_snapshot_constraint()
         elif version == 1:
             self._migrate_v1_to_v4()
             self._migrate_v4_to_v5()
@@ -799,12 +842,32 @@ class InvestigationRepository:
             self._validate_v7_schema()
         elif version == SUPPORTED_SCHEMA_VERSION:
             self._validate_v7_schema()
+            self._validate_v8_snapshot_constraint()
             self._ensure_v7_auxiliary_objects()
+        elif version == 7:
+            if not self.allow_v7_upgrade:
+                raise InvestigationMigrationRequiredError(
+                    "MIGRATION_REQUIRED: 历史 v7 调查库仅可读；请先备份并完成受控 v8 迁移")
+            self._migrate_v7_to_v8()
+            self._validate_v7_schema()
+            self._validate_v8_snapshot_constraint()
         else:
             raise EvidenceStoreError(
                 f"unsupported investigation.db schema version: {version} "
                 f"(supported: {SUPPORTED_SCHEMA_VERSION})"
             )
+        if 1 <= version <= 6:
+            self._migrate_v7_to_v8()
+            self._validate_v7_schema()
+            self._validate_v8_snapshot_constraint()
+
+    def _validate_v8_snapshot_constraint(self) -> None:
+        with self._connect() as conn:
+            ddl = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='evidence_snapshots'"
+            ).fetchone()
+            if ddl is None or "evidence_type = 'android_artifact'" not in ddl[0]:
+                raise EvidenceStoreError("v8 snapshot identity constraint is missing")
 
     def _build_all_secondary_objects(self, conn: sqlite3.Connection) -> None:
         """Create all secondary_analyses + claims tables, indexes, triggers."""
@@ -864,10 +927,17 @@ class InvestigationRepository:
         conn.execute(_TRIGGER_REPORT_EVIDENCE_NO_DELETE_SQL)
 
     def _initialize_v7_atomically(self) -> None:
-        """New database: build everything + version=7 in one tx."""
+        """Retained to construct historical v7 fixtures; not used for new Tasks."""
+        self._initialize_schema_atomically(_CREATE_EVIDENCE_SNAPSHOTS_SQL, 7)
+
+    def _initialize_v8_atomically(self) -> None:
+        self._initialize_schema_atomically(_CREATE_EVIDENCE_SNAPSHOTS_FRESH_V8_SQL, 8)
+
+    def _initialize_schema_atomically(self, snapshot_sql: str, version: int) -> None:
+        """Fresh task schema is published with one atomic user_version bump."""
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
-            conn.execute(_CREATE_EVIDENCE_SNAPSHOTS_SQL)
+            conn.execute(snapshot_sql)
             conn.execute(_INDEX_PATH_SQL)
             conn.execute(_INDEX_CLUSTER_SQL)
             conn.execute(_INDEX_TASK_SQL)
@@ -876,8 +946,50 @@ class InvestigationRepository:
             self._build_all_event_objects(conn)
             self._build_all_refresh_objects(conn)
             self._build_all_report_evidence_objects(conn)
-            conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
+            conn.execute(f"PRAGMA user_version = {version}")
             conn.commit()
+
+    def _migrate_v7_to_v8(self) -> None:
+        """Controlled identity-preserving extension of the snapshot CHECK.
+
+        The table is rebuilt without renaming the old parent: SQLite child FK
+        targets therefore continue to name ``evidence_snapshots``. Foreign-key
+        checks and exact row equality run before commit; a failure rolls back.
+        This method is reached by a writer only, never by read-only graph APIs.
+        """
+        conn = self._connect()
+        try:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.execute("BEGIN IMMEDIATE")
+            locked_version = conn.execute("PRAGMA user_version").fetchone()[0]
+            if locked_version == 8:
+                conn.rollback()  # another writer completed the same migration
+                return
+            if locked_version != 7:
+                raise EvidenceStoreError("v7 migration source version changed")
+            columns = "id,task_id,evidence_key,evidence_type,normalized_path,unix_minute,event_type,snapshot_json,captured_at"
+            for snapshot_row in conn.execute("SELECT * FROM evidence_snapshots ORDER BY id"):
+                self._row_to_snapshot(snapshot_row)
+            before = [tuple(row) for row in conn.execute(f"SELECT {columns} FROM evidence_snapshots ORDER BY id")]
+            conn.execute(_CREATE_EVIDENCE_SNAPSHOTS_V8_SQL)
+            conn.execute(f"INSERT INTO evidence_snapshots_v8 ({columns}) SELECT {columns} FROM evidence_snapshots")
+            conn.execute("DROP TABLE evidence_snapshots")
+            conn.execute("ALTER TABLE evidence_snapshots_v8 RENAME TO evidence_snapshots")
+            conn.execute(_INDEX_PATH_SQL)
+            conn.execute(_INDEX_CLUSTER_SQL)
+            conn.execute(_INDEX_TASK_SQL)
+            conn.execute(_TRIGGER_EVSNAP_NO_UPDATE_SQL)
+            after = [tuple(row) for row in conn.execute(f"SELECT {columns} FROM evidence_snapshots ORDER BY id")]
+            if before != after or conn.execute("PRAGMA foreign_key_check").fetchone():
+                raise EvidenceStoreError("v8 migration integrity check failed")
+            conn.execute("PRAGMA user_version = 8")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.execute("PRAGMA foreign_keys = ON")
+            conn.close()
 
     def _migrate_v1_to_v4(self) -> None:
         """v1 database: add secondary + claims + all triggers → v4 (frozen)."""
@@ -1456,6 +1568,16 @@ class InvestigationRepository:
             payload = ClusterSnapshotPayload.model_validate(data)
             if payload.unix_minute != row["unix_minute"] or payload.event_type != row["event_type"]:
                 raise EvidenceStoreError("snapshot identity mismatch (cluster)")
+        elif evidence_type == "android_artifact":
+            from ..evidence.keys import parse_evidence_key
+            parsed = parse_evidence_key(row["evidence_key"])
+            payload = AndroidArtifactSnapshotPayload.model_validate(data)
+            if (parsed.evidence_type != "android_artifact" or
+                (payload.task_id, payload.result_set_id, payload.artifact_kind, payload.record_id) !=
+                (parsed.artifact_task_id, parsed.result_set_id, parsed.artifact_kind, parsed.artifact_record_id) or
+                payload.task_id != row["task_id"] or
+                any(row[field] is not None for field in ("normalized_path", "unix_minute", "event_type"))):
+                raise EvidenceStoreError("snapshot identity mismatch (android_artifact)")
         else:
             raise EvidenceStoreError(f"unknown evidence_type in row: {evidence_type!r}")
         return EvidenceSnapshot(
@@ -1588,7 +1710,14 @@ class InvestigationRepository:
 
             # A7/A8/A11: build V2 envelope from DB-trusted snapshots.
             # model_dump(mode="json") excludes snapshot_id (Field exclude=True, A12).
-            envelope = AnalysisInputEnvelopeV2(
+            has_android = (trusted_snapshot.evidence_type == "android_artifact" or
+                           any(entry.snapshot.get("evidence_type") == "android_artifact" for entry in related_entries))
+            if has_android and prompt_version not in (None, "investigation-evidence-analysis:v4"):
+                raise ValueError("Android evidence requires analysis prompt v4")
+            if has_android and prompt_version is None:
+                prompt_version = "investigation-evidence-analysis:v4"
+            envelope_cls = AnalysisInputEnvelopeV3 if has_android else AnalysisInputEnvelopeV2
+            envelope = envelope_cls(
                 evidence_snapshot=trusted_snapshot.model_dump(mode="json"),
                 analyst_note=analyst_note,
                 case_context=case_context,

@@ -6,7 +6,7 @@
 
 namespace forensics {
 
-TaskRoutes::TaskRoutes(crow::App<>& app)
+TaskRoutes::TaskRoutes(HttpApp& app)
     : task_manager_(TaskManager::instance()),
       monitoring_routes_(app),
       crud_routes_(app),
@@ -17,7 +17,7 @@ TaskRoutes::TaskRoutes(crow::App<>& app)
     // Route handlers are registered by the sub-route constructors
 }
 
-void TaskRoutes::register_cors_handlers(crow::App<>& app) {
+void TaskRoutes::register_cors_handlers(HttpApp& app) {
     // CORS OPTIONS handlers for /api/tasks routes
     // （任务 API 只保留 /api 前缀路径，与 SPA 的 /tasks 页面路径不冲突）
     CROW_ROUTE(app, "/api/tasks/<string>/results").methods("OPTIONS"_method)([](const crow::request& req, const std::string& task_id){

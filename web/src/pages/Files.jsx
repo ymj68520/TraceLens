@@ -30,6 +30,13 @@ const FILE_SUBTABS = [
 ];
 const FILE_PAGE_SIZE = 100;
 
+const getFileRows = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.largest_files)) return payload.largest_files;
+  if (Array.isArray(payload?.files)) return payload.files;
+  return [];
+};
+
 const Files = () => {
   const [searchParams] = useSearchParams();
   const taskId = searchParams.get('task_id');
@@ -247,7 +254,7 @@ const Files = () => {
           maxSize: filterMaxSize,
         });
         if (cancelled) return;
-        const rows = data.files || [];
+        const rows = Array.isArray(data?.files) ? data.files : [];
         setPagedFiles(rows);
         setPagedTotal(data.total || 0);
         const tp = Math.max(data.total_pages || 1, 1);
@@ -480,7 +487,6 @@ const Files = () => {
               recommendations: analysis.recommendations
             };
 
-            console.log('Setting DLL analysis result for', filePath, ':', descData);
 
             setLlmResults(prev => ({
               ...prev,
@@ -554,7 +560,6 @@ ${detail}`;
             timestamp: result.timestamp || new Date().toISOString()
           };
 
-          console.log('Setting LLM result for', filePath, ':', descData);
 
           setLlmResults(prev => ({
             ...prev,
@@ -776,7 +781,7 @@ ${detail}
                 // Also refresh the file data from backend to get latest database values
                 try {
                   const refreshedData = await getLargestFiles(taskId, 100);
-                  setLargestFiles(refreshedData.largest_files || refreshedData.files || refreshedData || []);
+                  setLargestFiles(getFileRows(refreshedData));
                   setPagedRefreshKey(k => k + 1);
                 } catch (err) {
                   console.error('Failed to refresh file data:', err);
@@ -979,7 +984,7 @@ ${detail}
           extensionData = null;
         }
 
-        setLargestFiles(largestData.largest_files || largestData.files || largestData || []);
+        setLargestFiles(getFileRows(largestData));
         setExtensionAnalysis(extensionData);
       } catch (err) {
         console.error('Failed to fetch file data:', err);

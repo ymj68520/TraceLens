@@ -1,6 +1,7 @@
 #pragma once
 
 #include <crow.h>
+#include "../FieldApp.h"
 #include <nlohmann/json.hpp>
 #include "../TaskManager.h"
 #include "../HTTPServerDataTypes.h"
@@ -15,7 +16,7 @@ namespace forensics {
 
 class OSSAnalysisRoutes {
 public:
-    explicit OSSAnalysisRoutes(crow::App<>& app);
+    explicit OSSAnalysisRoutes(HttpApp& app);
 
 private:
     TaskManager& task_manager_;

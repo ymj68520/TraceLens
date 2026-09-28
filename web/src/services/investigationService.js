@@ -118,6 +118,11 @@ export const updateReportEvidenceStatus = (taskId, evidenceKey, reportStatus, up
         report_status: reportStatus,
         updated_by: updatedBy,
     });
+export const bindReportEvidenceAnalysis = (taskId, evidenceKey, analysisId) =>
+    pythonApi.put('/api/reports/evidence', {
+        task_id: taskId, evidence_key: evidenceKey, analysis_id: analysisId,
+        updated_by: 'workbench',
+    });
 
 const workbenchBase = (taskId) => `/api/investigation/workbench/${encodeURIComponent(taskId)}`;
 
@@ -140,6 +145,8 @@ export const linkEventEvidence = (taskId, eventId, payload) =>
     pythonApi.post(`${workbenchBase(taskId)}/events/${encodeURIComponent(eventId)}/evidence/link`, payload);
 export const getEvidenceDetail = (taskId, evidenceKey) =>
     pythonApi.get(`${workbenchBase(taskId)}/evidence/detail`, { params: { evidence_key: evidenceKey } });
+export const translateInitialAnalysis = (taskId, evidenceKey) =>
+    pythonApi.post(`${workbenchBase(taskId)}/evidence/initial-analysis/translate`, { evidence_key: evidenceKey });
 export const getAnalystNote = (taskId, targetType, targetKey) =>
     pythonApi.get(`${workbenchBase(taskId)}/notes`, { params: { target_type: targetType, target_key: targetKey } });
 export const saveAnalystNote = (taskId, targetType, targetKey, content, author = null) =>
@@ -224,6 +231,7 @@ export default {
     getEventEvidence,
     linkEventEvidence,
     getEvidenceDetail,
+    translateInitialAnalysis,
     getAnalystNote,
     saveAnalystNote,
     startEvidenceAnalysis,
@@ -241,6 +249,7 @@ export default {
     getEffectiveEventClaims,
     reviewInvestigationEvent,
     setReportEvidence,
+    bindReportEvidenceAnalysis,
     removeReportEvidence,
     getReportEvidence,
     getLocalGraph,

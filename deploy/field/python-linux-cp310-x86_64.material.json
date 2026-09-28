@@ -1,0 +1,2698 @@
+{
+  "architecture": "x86_64",
+  "artifacts": [
+    {
+      "filename": "alembic-1.20.0-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "name": "alembic",
+      "requires_dist": [
+        "SQLAlchemy>=2.0",
+        "Mako",
+        "typing-extensions>=4.12",
+        "tomli; python_version < \"3.11\"",
+        "tzdata; extra == \"tz\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "77eb101048d95f982c0353e9233404889dcd7a6fc244c107836c0e2fc9cf7d9d",
+      "version": "1.20.0"
+    },
+    {
+      "filename": "annotated_doc-0.0.5-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "name": "annotated-doc",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "117bac03a25ede5df5440e855b32d556049ca169ead221505badf432fed4b101",
+      "version": "0.0.5"
+    },
+    {
+      "filename": "annotated_types-0.8.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": "MIT",
+      "name": "annotated-types",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "f072f4d804ea359e4eaf198b1af7a8b0943881a87f31bb764f8bf219bb9419e0",
+      "version": "0.8.0"
+    },
+    {
+      "filename": "anyio-4.15.1-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "name": "anyio",
+      "requires_dist": [
+        "exceptiongroup>=1.0.2; python_version < \"3.11\"",
+        "idna>=2.8",
+        "typing_extensions>=4.16.0; python_version < \"3.15\"",
+        "trio>=0.32.0; extra == \"trio\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "6152fdbbf9a77fdec97731721bebf7c4c44f7c29b424b0065826173efc7ed101",
+      "version": "4.15.1"
+    },
+    {
+      "filename": "async_timeout-5.0.1-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: Apache Software License"
+      ],
+      "license_expression": null,
+      "name": "async-timeout",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c",
+      "version": "5.0.1"
+    },
+    {
+      "filename": "azure_ai_contentunderstanding-1.2.0b3-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "name": "azure-ai-contentunderstanding",
+      "requires_dist": [
+        "isodate>=0.6.1",
+        "azure-core>=1.37.0",
+        "typing-extensions>=4.6.0"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "a2554333b39d68d523f6ad165215232026f605c9fb77eedb5e136b87187657a8",
+      "version": "1.2.0b3"
+    },
+    {
+      "filename": "azure_ai_documentintelligence-1.0.2-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "azure-ai-documentintelligence",
+      "requires_dist": [
+        "isodate>=0.6.1",
+        "azure-core>=1.30.0",
+        "typing-extensions>=4.6.0"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "e1fb446abbdeccc9759d897898a0fe13141ed29f9ad11fc705f951925822ed59",
+      "version": "1.0.2"
+    },
+    {
+      "filename": "azure_core-1.41.0-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "name": "azure-core",
+      "requires_dist": [
+        "requests>=2.21.0",
+        "typing-extensions>=4.6.0",
+        "aiohttp>=3.0; extra == \"aio\"",
+        "opentelemetry-api~=1.26; extra == \"tracing\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "522b4011e8180b1a3dcd2024396a4e7fe9ac37fb8597db47163d230b5efe892d",
+      "version": "1.41.0"
+    },
+    {
+      "filename": "azure_identity-1.25.3-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "name": "azure-identity",
+      "requires_dist": [
+        "azure-core>=1.31.0",
+        "cryptography>=2.5",
+        "msal>=1.35.1",
+        "msal-extensions>=1.2.0",
+        "typing-extensions>=4.0.0"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "f4d0b956a8146f30333e071374171f3cfa7bdb8073adb8c3814b65567aa7447c",
+      "version": "1.25.3"
+    },
+    {
+      "filename": "backoff-2.2.1-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "backoff",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "63579f9a0628e06278f7e47b7d7d5b6ce20dc65c5e96a6f3ca99a6adca0396e8",
+      "version": "2.2.1"
+    },
+    {
+      "filename": "backports_asyncio_runner-1.2.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: Python Software Foundation License"
+      ],
+      "license_expression": null,
+      "name": "backports-asyncio-runner",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "0da0a936a8aeb554eccb426dc55af3ba63bcdc69fa1a600b5bb305413a4477b5",
+      "version": "1.2.0"
+    },
+    {
+      "filename": "bcrypt-4.0.1-cp36-abi3-manylinux_2_28_x86_64.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: Apache Software License"
+      ],
+      "license_expression": null,
+      "name": "bcrypt",
+      "requires_dist": [
+        "pytest (!=3.3.0,>=3.2.1) ; extra == 'tests'",
+        "mypy ; extra == 'typecheck'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "ca3204d00d3cb2dfed07f2d74a25f12fc12f73e606fcaa6975d1f7ae69cacbb2",
+      "version": "4.0.1"
+    },
+    {
+      "filename": "beautifulsoup4-4.15.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "beautifulsoup4",
+      "requires_dist": [
+        "soupsieve>=1.6.1",
+        "typing-extensions>=4.0.0",
+        "cchardet; extra == 'cchardet'",
+        "chardet; extra == 'chardet'",
+        "charset-normalizer; extra == 'charset-normalizer'",
+        "html5lib; extra == 'html5lib'",
+        "lxml; extra == 'lxml'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "d6f88de62e1d4e38ecb1077eb9724cd0eff29d2a08ca16a401e9b9e93f117cf9",
+      "version": "4.15.0"
+    },
+    {
+      "filename": "certifi-2026.7.22-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)"
+      ],
+      "license_expression": null,
+      "name": "certifi",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775",
+      "version": "2026.7.22"
+    },
+    {
+      "filename": "cffi-2.1.1-cp310-cp310-manylinux_2_17_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT-0",
+      "name": "cffi",
+      "requires_dist": [
+        "pycparser; implementation_name != \"PyPy\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "194cffa889098ced9976c3fc6340305e43f6303657d298da55366907c05c22d6",
+      "version": "2.1.1"
+    },
+    {
+      "filename": "charset_normalizer-3.5.1-cp310-cp310-manylinux_2_17_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": null,
+      "name": "charset-normalizer",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "96eefc178f8636b9c760c5829345307fd81cfae9ab1e80997dbddeb0f54ee9a3",
+      "version": "3.5.1"
+    },
+    {
+      "filename": "click-8.5.0-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "BSD-3-Clause",
+      "name": "click",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360",
+      "version": "8.5.0"
+    },
+    {
+      "filename": "cobble-0.1.4-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "name": "cobble",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "36c91b1655e599fd428e2b95fdd5f0da1ca2e9f1abb0bc871dec21a0e78a2b44",
+      "version": "0.1.4"
+    },
+    {
+      "filename": "coloredlogs-15.0.1-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "coloredlogs",
+      "requires_dist": [
+        "humanfriendly (>=9.1)",
+        "capturer (>=2.4) ; extra == 'cron'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "612ee75c546f53e92e70049c9dbfcc18c935a2b9a53b66085ce9ef6a6e5c0934",
+      "version": "15.0.1"
+    },
+    {
+      "filename": "coverage-7.16.1-cp310-cp310-manylinux_2_5_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": null,
+      "name": "coverage",
+      "requires_dist": [
+        "tomli; python_full_version <= \"3.11.0a6\" and extra == \"toml\""
+      ],
+      "role": "test_build",
+      "sha256": "bb462d59146656e278d1e8ed913ce374d0ba68a4e081acde1867f6d3377fc881",
+      "version": "7.16.1"
+    },
+    {
+      "filename": "cryptography-50.0.1-cp39-abi3-manylinux_2_34_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": "Apache-2.0 OR BSD-3-Clause",
+      "name": "cryptography",
+      "requires_dist": [
+        "cffi>=2.0.0 ; platform_python_implementation != 'PyPy'",
+        "typing-extensions>=4.13.2 ; python_full_version < '3.11'",
+        "bcrypt>=3.1.5 ; extra == 'ssh'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "9dde0a357190eb3b1da1bb9ab750e9c85cba82ca5977aa0836cbb94e92611239",
+      "version": "50.0.1"
+    },
+    {
+      "filename": "ctranslate2-4.8.2-cp310-cp310-manylinux_2_27_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": null,
+      "name": "ctranslate2",
+      "requires_dist": [
+        "numpy",
+        "pyyaml<7,>=5.3"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "43adddac06f387b12ec921bcdd8fb50525eae4f43672fe64e15ebeea9854b040",
+      "version": "4.8.2"
+    },
+    {
+      "filename": "defusedxml-0.7.1-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: Python Software Foundation License"
+      ],
+      "license_expression": null,
+      "name": "defusedxml",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "a352e7e428770286cc899e2542b6cdaedb2b4953ff269a210103ec58f6198a61",
+      "version": "0.7.1"
+    },
+    {
+      "filename": "distro-1.9.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: Apache Software License"
+      ],
+      "license_expression": null,
+      "name": "distro",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "7bffd925d65168f85027d8da9af6bddab658135b840670a223589bc0c8ef02b2",
+      "version": "1.9.0"
+    },
+    {
+      "filename": "dnspython-2.8.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: ISC License (ISCL)"
+      ],
+      "license_expression": null,
+      "name": "dnspython",
+      "requires_dist": [
+        "black>=25.1.0; extra == 'dev'",
+        "coverage>=7.0; extra == 'dev'",
+        "flake8>=7; extra == 'dev'",
+        "hypercorn>=0.17.0; extra == 'dev'",
+        "mypy>=1.17; extra == 'dev'",
+        "pylint>=3; extra == 'dev'",
+        "pytest-cov>=6.2.0; extra == 'dev'",
+        "pytest>=8.4; extra == 'dev'",
+        "quart-trio>=0.12.0; extra == 'dev'",
+        "sphinx-rtd-theme>=3.0.0; extra == 'dev'",
+        "sphinx>=8.2.0; extra == 'dev'",
+        "twine>=6.1.0; extra == 'dev'",
+        "wheel>=0.45.0; extra == 'dev'",
+        "cryptography>=45; extra == 'dnssec'",
+        "h2>=4.2.0; extra == 'doh'",
+        "httpcore>=1.0.0; extra == 'doh'",
+        "httpx>=0.28.0; extra == 'doh'",
+        "aioquic>=1.2.0; extra == 'doq'",
+        "idna>=3.10; extra == 'idna'",
+        "trio>=0.30; extra == 'trio'",
+        "wmi>=1.5.1; (platform_system == 'Windows') and extra == 'wmi'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "01d9bbc4a2d76bf0db7c1f729812ded6d912bd318d3b1cf81d30c0f845dbf3af",
+      "version": "2.8.0"
+    },
+    {
+      "filename": "ecdsa-0.19.2-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": null,
+      "name": "ecdsa",
+      "requires_dist": [
+        "six>=1.9.0",
+        "gmpy; extra == \"gmpy\"",
+        "gmpy2; extra == \"gmpy2\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "840f5dc5e375c68f36c1a7a5b9caad28f95daa65185c9253c0c08dd952bb7399",
+      "version": "0.19.2"
+    },
+    {
+      "filename": "email_validator-2.3.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: The Unlicense (Unlicense)"
+      ],
+      "license_expression": null,
+      "name": "email-validator",
+      "requires_dist": [
+        "dnspython>=2.0.0",
+        "idna>=2.0.0"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "80f13f623413e6b197ae73bb10bf4eb0908faf509ad8362c5edeb0be7fd450b4",
+      "version": "2.3.0"
+    },
+    {
+      "filename": "enum_compat-0.0.3-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": null,
+      "name": "enum-compat",
+      "requires_dist": [
+        "enum34; python_version < \"3.4\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "88091b617c7fc3bbbceae50db5958023c48dc40b50520005aa3bf27f8f7ea157",
+      "version": "0.0.3"
+    },
+    {
+      "filename": "et_xmlfile-2.0.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "et-xmlfile",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa",
+      "version": "2.0.0"
+    },
+    {
+      "filename": "exceptiongroup-1.3.1-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "exceptiongroup",
+      "requires_dist": [
+        "typing-extensions >= 4.6.0; python_version < '3.13'",
+        "pytest >= 6 ; extra == \"test\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "a7a39a3bd276781e98394987d3a5701d0c4edffb633bb7a5144577f82c773598",
+      "version": "1.3.1"
+    },
+    {
+      "filename": "fastapi-0.141.1-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "name": "fastapi",
+      "requires_dist": [
+        "starlette>=0.46.0",
+        "pydantic>=2.9.0",
+        "typing-extensions>=4.8.0",
+        "typing-inspection>=0.4.2",
+        "annotated-doc>=0.0.2",
+        "fastapi-cli[standard]>=0.0.32; extra == \"standard\"",
+        "fastar>=0.9.0; extra == \"standard\"",
+        "httpx<1.0.0,>=0.23.0; extra == \"standard\"",
+        "jinja2>=3.1.5; extra == \"standard\"",
+        "python-multipart>=0.0.18; extra == \"standard\"",
+        "email-validator>=2.0.0; extra == \"standard\"",
+        "uvicorn[standard]>=0.12.0; extra == \"standard\"",
+        "pydantic-settings>=2.0.0; extra == \"standard\"",
+        "pydantic-extra-types>=2.0.0; extra == \"standard\"",
+        "fastapi-cli[standard-no-fastapi-cloud-cli]>=0.0.32; extra == \"standard-no-fastapi-cloud-cli\"",
+        "httpx<1.0.0,>=0.23.0; extra == \"standard-no-fastapi-cloud-cli\"",
+        "jinja2>=3.1.5; extra == \"standard-no-fastapi-cloud-cli\"",
+        "python-multipart>=0.0.18; extra == \"standard-no-fastapi-cloud-cli\"",
+        "email-validator>=2.0.0; extra == \"standard-no-fastapi-cloud-cli\"",
+        "uvicorn[standard]>=0.12.0; extra == \"standard-no-fastapi-cloud-cli\"",
+        "pydantic-settings>=2.0.0; extra == \"standard-no-fastapi-cloud-cli\"",
+        "pydantic-extra-types>=2.0.0; extra == \"standard-no-fastapi-cloud-cli\"",
+        "fastapi-cli[standard]>=0.0.32; extra == \"all\"",
+        "httpx<1.0.0,>=0.23.0; extra == \"all\"",
+        "jinja2>=3.1.5; extra == \"all\"",
+        "python-multipart>=0.0.18; extra == \"all\"",
+        "itsdangerous>=1.1.0; extra == \"all\"",
+        "pyyaml>=5.3.1; extra == \"all\"",
+        "email-validator>=2.0.0; extra == \"all\"",
+        "uvicorn[standard]>=0.12.0; extra == \"all\"",
+        "pydantic-settings>=2.0.0; extra == \"all\"",
+        "pydantic-extra-types>=2.0.0; extra == \"all\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "bfb91aa2d334c61cb35ba9a116fc123b3d3df31640b801cf57a7a78ec3f603b3",
+      "version": "0.141.1"
+    },
+    {
+      "filename": "flatbuffers-25.12.19-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: Apache Software License"
+      ],
+      "license_expression": null,
+      "name": "flatbuffers",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4",
+      "version": "25.12.19"
+    },
+    {
+      "filename": "fonttools-4.65.0-cp310-cp310-manylinux_2_17_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": null,
+      "name": "fonttools",
+      "requires_dist": [
+        "lxml>=4.0; extra == \"lxml\"",
+        "brotli>=1.0.1; platform_python_implementation == \"CPython\" and extra == \"woff\"",
+        "brotlicffi>=0.8.0; platform_python_implementation != \"CPython\" and extra == \"woff\"",
+        "zopfli>=0.1.4; extra == \"woff\"",
+        "unicodedata2>=17.0.0; python_version <= \"3.14\" and extra == \"unicode\"",
+        "lz4>=1.7.4.2; extra == \"graphite\"",
+        "scipy; platform_python_implementation != \"PyPy\" and extra == \"interpolatable\"",
+        "munkres; platform_python_implementation == \"PyPy\" and extra == \"interpolatable\"",
+        "pycairo; extra == \"interpolatable\"",
+        "matplotlib; extra == \"plot\"",
+        "sympy; extra == \"symfont\"",
+        "xattr; sys_platform == \"darwin\" and extra == \"type1\"",
+        "skia-pathops>=0.5.0; extra == \"pathops\"",
+        "uharfbuzz>=0.45.0; extra == \"repacker\"",
+        "lxml>=4.0; extra == \"all\"",
+        "brotli>=1.0.1; platform_python_implementation == \"CPython\" and extra == \"all\"",
+        "brotlicffi>=0.8.0; platform_python_implementation != \"CPython\" and extra == \"all\"",
+        "zopfli>=0.1.4; extra == \"all\"",
+        "unicodedata2>=17.0.0; python_version <= \"3.14\" and extra == \"all\"",
+        "lz4>=1.7.4.2; extra == \"all\"",
+        "scipy; platform_python_implementation != \"PyPy\" and extra == \"all\"",
+        "munkres; platform_python_implementation == \"PyPy\" and extra == \"all\"",
+        "pycairo; extra == \"all\"",
+        "matplotlib; extra == \"all\"",
+        "sympy; extra == \"all\"",
+        "xattr; sys_platform == \"darwin\" and extra == \"all\"",
+        "skia-pathops>=0.5.0; extra == \"all\"",
+        "uharfbuzz>=0.45.0; extra == \"all\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "fb53892b570f7f1f0055e75fc4de32673e32f749c4c8a606b63d5c436650e634",
+      "version": "4.65.0"
+    },
+    {
+      "filename": "graphiti_core-0.30.2-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "Apache-2.0",
+      "name": "graphiti-core",
+      "requires_dist": [
+        "neo4j>=5.26.0",
+        "numpy>=1.0.0",
+        "openai>=1.91.0",
+        "posthog>=3.0.0",
+        "pydantic>=2.11.5",
+        "python-dotenv>=1.0.1",
+        "tenacity>=9.0.0",
+        "anthropic>=0.49.0; extra == 'anthropic'",
+        "anthropic>=0.49.0; extra == 'dev'",
+        "boto3>=1.39.16; extra == 'dev'",
+        "falkordb<2.0.0,>=1.1.2; extra == 'dev'",
+        "google-genai>=1.8.0; extra == 'dev'",
+        "groq>=0.2.0; extra == 'dev'",
+        "ipykernel>=6.29.5; extra == 'dev'",
+        "jupyterlab>=4.2.4; extra == 'dev'",
+        "kuzu>=0.11.3; extra == 'dev'",
+        "langchain-anthropic>=0.2.4; extra == 'dev'",
+        "langchain-aws>=0.2.29; extra == 'dev'",
+        "langchain-openai>=0.2.6; extra == 'dev'",
+        "langgraph>=1.0.10; extra == 'dev'",
+        "langsmith>=0.1.108; extra == 'dev'",
+        "opensearch-py>=3.0.0; extra == 'dev'",
+        "opentelemetry-sdk>=1.20.0; extra == 'dev'",
+        "pyright>=1.1.404; extra == 'dev'",
+        "pytest-asyncio>=0.24.0; extra == 'dev'",
+        "pytest-xdist>=3.6.1; extra == 'dev'",
+        "pytest>=8.3.3; extra == 'dev'",
+        "ruff>=0.7.1; extra == 'dev'",
+        "sentence-transformers>=3.2.1; extra == 'dev'",
+        "transformers>=4.45.2; extra == 'dev'",
+        "voyageai>=0.2.3; extra == 'dev'",
+        "falkordb<2.0.0,>=1.1.2; extra == 'falkordb'",
+        "falkordblite>=0.5.0; (python_version >= '3.12') and extra == 'falkordblite'",
+        "redis<9; (python_version >= '3.12') and extra == 'falkordblite'",
+        "gliner2>=1.2.0; (python_version >= '3.11') and extra == 'gliner2'",
+        "google-genai>=1.62.0; extra == 'google-genai'",
+        "groq>=0.2.0; extra == 'groq'",
+        "kuzu>=0.11.3; extra == 'kuzu'",
+        "boto3>=1.39.16; extra == 'neo4j-opensearch'",
+        "opensearch-py>=3.0.0; extra == 'neo4j-opensearch'",
+        "boto3>=1.39.16; extra == 'neptune'",
+        "langchain-aws>=0.2.29; extra == 'neptune'",
+        "opensearch-py>=3.0.0; extra == 'neptune'",
+        "sentence-transformers>=3.2.1; extra == 'sentence-transformers'",
+        "opentelemetry-api>=1.20.0; extra == 'tracing'",
+        "opentelemetry-sdk>=1.20.0; extra == 'tracing'",
+        "voyageai>=0.2.3; extra == 'voyageai'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "97674a49514130db175faecf23221ce9338240be3cbe13a7e23e5a5033892b9f",
+      "version": "0.30.2"
+    },
+    {
+      "filename": "greenlet-3.5.6-cp310-cp310-manylinux_2_24_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT AND PSF-2.0",
+      "name": "greenlet",
+      "requires_dist": [
+        "Sphinx; extra == \"docs\"",
+        "furo; extra == \"docs\"",
+        "objgraph; extra == \"test\"",
+        "psutil; extra == \"test\"",
+        "setuptools; extra == \"test\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "eed88b64a5e5da72d6a71cdc5aaeefaa5ced9b748f8d19f89800b339961dad39",
+      "version": "3.5.6"
+    },
+    {
+      "filename": "h11-0.16.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "h11",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86",
+      "version": "0.16.0"
+    },
+    {
+      "filename": "h5py-3.16.0-cp310-cp310-manylinux_2_28_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": "BSD-3-Clause",
+      "name": "h5py",
+      "requires_dist": [
+        "numpy>=1.21.2"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "8975273c2c5921c25700193b408e28d6bdd0111c37468b2d4e25dcec4cd1d84d",
+      "version": "3.16.0"
+    },
+    {
+      "filename": "hexdump-3.3-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: Public Domain"
+      ],
+      "license_expression": null,
+      "name": "hexdump",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "034d759219788b3764826f23910827fabfa41501f7b2d0dd806bd0aaacb73737",
+      "version": "3.3"
+    },
+    {
+      "filename": "httpcore-1.0.9-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "license_expression": "BSD-3-Clause",
+      "name": "httpcore",
+      "requires_dist": [
+        "certifi",
+        "h11>=0.16",
+        "anyio<5.0,>=4.0; extra == 'asyncio'",
+        "h2<5,>=3; extra == 'http2'",
+        "socksio==1.*; extra == 'socks'",
+        "trio<1.0,>=0.22.0; extra == 'trio'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55",
+      "version": "1.0.9"
+    },
+    {
+      "filename": "httpcore2-2.13.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "license_expression": "BSD-3-Clause",
+      "name": "httpcore2",
+      "requires_dist": [
+        "h11>=0.16",
+        "truststore>=0.10",
+        "anyio<5.0,>=4.5.0; extra == 'asyncio'",
+        "h2<5,>=3; extra == 'http2'",
+        "socksio==1.*; extra == 'socks'",
+        "trio<1.0,>=0.34.0; extra == 'trio'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "35ae5be347aa40467b4a5dc032ac67ebb6d27189fc97e8cebcf99616f6a1bb9e",
+      "version": "2.13.0"
+    },
+    {
+      "filename": "httptools-0.8.0-cp310-cp310-manylinux_2_5_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "name": "httptools",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "a6f21e2a3b0067bbe7f67e34cfd16276af556e5e52f4c7503be0cb5f90e905e4",
+      "version": "0.8.0"
+    },
+    {
+      "filename": "httpx-0.28.1-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "name": "httpx",
+      "requires_dist": [
+        "anyio",
+        "certifi",
+        "httpcore==1.*",
+        "idna",
+        "brotli; (platform_python_implementation == 'CPython') and extra == 'brotli'",
+        "brotlicffi; (platform_python_implementation != 'CPython') and extra == 'brotli'",
+        "click==8.*; extra == 'cli'",
+        "pygments==2.*; extra == 'cli'",
+        "rich<14,>=10; extra == 'cli'",
+        "h2<5,>=3; extra == 'http2'",
+        "socksio==1.*; extra == 'socks'",
+        "zstandard>=0.18.0; extra == 'zstd'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad",
+      "version": "0.28.1"
+    },
+    {
+      "filename": "httpx2-2.13.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "license_expression": "BSD-3-Clause",
+      "name": "httpx2",
+      "requires_dist": [
+        "anyio>=4.10; sys_platform != 'emscripten'",
+        "httpcore2==2.13.0; sys_platform != 'emscripten'",
+        "httpx2-jsfetch; sys_platform == 'emscripten' and python_version >= '3.12'",
+        "idna>=3.18",
+        "truststore>=0.10; sys_platform != 'emscripten'",
+        "typing-extensions>=4.5.0; python_version < '3.13'",
+        "brotli>=1.2.0; (platform_python_implementation == 'CPython') and extra == 'brotli'",
+        "brotlicffi>=1.2.0.2; (platform_python_implementation != 'CPython') and extra == 'brotli'",
+        "click>=8.4.2; extra == 'cli'",
+        "pygments==2.*; extra == 'cli'",
+        "rich<16,>=10; extra == 'cli'",
+        "h2<5,>=3; extra == 'http2'",
+        "socksio==1.*; extra == 'socks'",
+        "wsproto>=1.2; extra == 'ws'",
+        "backports-zstd>=1.0.0; (python_version <= '3.13') and extra == 'zstd'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "fc12720cedf72faa26cca6b4ca394e05c894e7d7933fc45cafe767960804e49a",
+      "version": "2.13.0"
+    },
+    {
+      "filename": "humanfriendly-10.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "humanfriendly",
+      "requires_dist": [
+        "monotonic ; python_version == \"2.7\"",
+        "pyreadline ; sys_platform == \"win32\" and python_version<\"3.8\"",
+        "pyreadline3 ; sys_platform == \"win32\" and python_version>=\"3.8\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "1697e1a8a8f550fd43c2865cd84542fc175a61dcb779b6fee18cf6b6ccba1477",
+      "version": "10.0"
+    },
+    {
+      "filename": "icalendar-7.3.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "license_expression": "BSD-2-Clause",
+      "name": "icalendar",
+      "requires_dist": [
+        "python-dateutil",
+        "typing-extensions~=4.10; python_version < '3.13'",
+        "tzdata>=2025.3"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "8355acfe17be81b368f0b1e3740817cea9b56ea889931f8f1a87c62f2d28db0b",
+      "version": "7.3.0"
+    },
+    {
+      "filename": "idna-3.20-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "BSD-3-Clause",
+      "name": "idna",
+      "requires_dist": [
+        "ruff >= 0.16.0 ; extra == \"all\"",
+        "mypy >= 1.11.2 ; extra == \"all\"",
+        "ty >= 0.0.37 ; extra == \"all\"",
+        "pytest >= 8.3.2 ; extra == \"all\"",
+        "hypothesis >= 6.141.1 ; extra == \"all\"",
+        "coverage >= 7.10.0 ; extra == \"all\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c",
+      "version": "3.20"
+    },
+    {
+      "filename": "iniconfig-2.3.0-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "name": "iniconfig",
+      "requires_dist": [],
+      "role": "test_build",
+      "sha256": "f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12",
+      "version": "2.3.0"
+    },
+    {
+      "filename": "isodate-0.7.2-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "name": "isodate",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "28009937d8031054830160fce6d409ed342816b543597cece116d966c6d99e15",
+      "version": "0.7.2"
+    },
+    {
+      "filename": "jiter-0.17.0-cp310-cp310-manylinux_2_17_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "name": "jiter",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "826871c42cebaae22f0a2b5673a4a1a75c851bb2d13b3c17764a630a6b298984",
+      "version": "0.17.0"
+    },
+    {
+      "filename": "lxml-6.1.3-cp310-cp310-manylinux_2_26_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": null,
+      "name": "lxml",
+      "requires_dist": [
+        "cssselect>=0.7; extra == \"cssselect\"",
+        "html5lib; extra == \"html5\"",
+        "BeautifulSoup4; extra == \"htmlsoup\"",
+        "lxml_html_clean; extra == \"html-clean\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "f6449672f9c93316deb5e2839e18931f468670e44d5bd9b1301a5a9655d45c07",
+      "version": "6.1.3"
+    },
+    {
+      "filename": "lz4-4.4.5-cp310-cp310-manylinux_2_17_x86_64.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "name": "lz4",
+      "requires_dist": [
+        "pytest!=3.3.0; extra == \"tests\"",
+        "psutil; extra == \"tests\"",
+        "pytest-cov; extra == \"tests\"",
+        "sphinx>=1.6.0; extra == \"docs\"",
+        "sphinx_bootstrap_theme; extra == \"docs\"",
+        "flake8; extra == \"flake8\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "2a2b7504d2dffed3fd19d4085fe1cc30cf221263fd01030819bdd8d2bb101cf1",
+      "version": "4.4.5"
+    },
+    {
+      "filename": "magika-0.6.3-py3-none-manylinux_2_28_x86_64.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: Apache Software License"
+      ],
+      "license_expression": null,
+      "name": "magika",
+      "requires_dist": [
+        "click>=8.1.7",
+        "onnxruntime>=1.17.0 ; python_full_version >= '3.10'",
+        "onnxruntime>=1.17.0,<1.20.0 ; python_full_version < '3.10'",
+        "onnxruntime<=1.20.1 ; sys_platform == 'win32'",
+        "numpy>=1.24 ; python_full_version < '3.12'",
+        "numpy>=1.26 ; python_full_version == '3.12.*'",
+        "numpy>=2.1.0 ; python_full_version >= '3.13'",
+        "python-dotenv>=1.0.1"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "3d9661eedbdf445ac9567e97e7ceefb93545d77a6a32858139ea966b5806fb64",
+      "version": "0.6.3"
+    },
+    {
+      "filename": "mako-1.4.1-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "name": "mako",
+      "requires_dist": [
+        "MarkupSafe>=2.0",
+        "pytest; extra == \"testing\"",
+        "Babel; extra == \"babel\"",
+        "lingua>=4.16; extra == \"lingua\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "a359d9a94a541213958742b2698d0a7757bb83551767bc468a74b9905aba9617",
+      "version": "1.4.1"
+    },
+    {
+      "filename": "mammoth-1.11.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "name": "mammoth",
+      "requires_dist": [
+        "cobble<0.2,>=0.1.3"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "c077ab0d450bd7c0c6ecd529a23bf7e0fa8190c929e28998308ff4eada3f063b",
+      "version": "1.11.0"
+    },
+    {
+      "filename": "markdownify-1.2.3-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "markdownify",
+      "requires_dist": [
+        "beautifulsoup4<5,>=4.9",
+        "six<2,>=1.15"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "a189a0bedfd14009030fde5f85bb6f77c56897cb839b5c25315dd7d4e3e290ba",
+      "version": "1.2.3"
+    },
+    {
+      "filename": "markitdown-0.1.8-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "name": "markitdown",
+      "requires_dist": [
+        "beautifulsoup4",
+        "charset-normalizer",
+        "defusedxml",
+        "magika~=0.6.1",
+        "markdownify",
+        "requests",
+        "azure-ai-contentunderstanding>=1.2.0b1; extra == 'all'",
+        "azure-ai-documentintelligence; extra == 'all'",
+        "azure-identity; extra == 'all'",
+        "lxml; extra == 'all'",
+        "mammoth~=1.11.0; extra == 'all'",
+        "olefile; extra == 'all'",
+        "openpyxl; extra == 'all'",
+        "pandas; extra == 'all'",
+        "pdfminer-six>=20251230; extra == 'all'",
+        "pdfplumber>=0.11.9; extra == 'all'",
+        "pydub; extra == 'all'",
+        "python-pptx; extra == 'all'",
+        "speechrecognition; extra == 'all'",
+        "xlrd; extra == 'all'",
+        "youtube-transcript-api~=1.2.3; extra == 'all'",
+        "pydub; extra == 'audio-transcription'",
+        "speechrecognition; extra == 'audio-transcription'",
+        "azure-ai-contentunderstanding>=1.2.0b1; extra == 'az-content-understanding'",
+        "azure-identity; extra == 'az-content-understanding'",
+        "azure-ai-documentintelligence; extra == 'az-doc-intel'",
+        "azure-identity; extra == 'az-doc-intel'",
+        "lxml; extra == 'docx'",
+        "mammoth~=1.11.0; extra == 'docx'",
+        "olefile; extra == 'outlook'",
+        "pdfminer-six>=20251230; extra == 'pdf'",
+        "pdfplumber>=0.11.9; extra == 'pdf'",
+        "python-pptx; extra == 'pptx'",
+        "pandas; extra == 'xls'",
+        "xlrd; extra == 'xls'",
+        "openpyxl; extra == 'xlsx'",
+        "pandas; extra == 'xlsx'",
+        "youtube-transcript-api~=1.2.3; extra == 'youtube-transcription'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "de7375a50578a39bcbbf13b48c67d99033d988e0ae8ad25af46ed432dbe4cbab",
+      "version": "0.1.8"
+    },
+    {
+      "filename": "markupsafe-3.0.3-cp310-cp310-manylinux_2_17_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": "BSD-3-Clause",
+      "name": "markupsafe",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "f42d0984e947b8adf7dd6dde396e720934d12c506ce84eea8476409563607591",
+      "version": "3.0.3"
+    },
+    {
+      "filename": "mpmath-1.3.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "name": "mpmath",
+      "requires_dist": [
+        "pytest (>=4.6) ; extra == 'develop'",
+        "pycodestyle ; extra == 'develop'",
+        "pytest-cov ; extra == 'develop'",
+        "codecov ; extra == 'develop'",
+        "wheel ; extra == 'develop'",
+        "sphinx ; extra == 'docs'",
+        "gmpy2 (>=2.1.0a4) ; (platform_python_implementation != \"PyPy\") and extra == 'gmpy'",
+        "pytest (>=4.6) ; extra == 'tests'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "a0b2b9fe80bbcd81a6647ff13108738cfb482d481d826cc0e02f5b35e5c88d2c",
+      "version": "1.3.0"
+    },
+    {
+      "filename": "msal-1.39.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "msal",
+      "requires_dist": [
+        "requests <3,>=2.0.0",
+        "PyJWT[crypto] <3,>=1.0.0",
+        "cryptography <51,>=2.5",
+        "pymsalruntime <0.21,>=0.20 ; (python_version >= \"3.9\" and platform_system == \"Darwin\") and extra == 'broker'",
+        "pymsalruntime <0.21,>=0.20 ; (python_version >= \"3.9\" and platform_system == \"Linux\") and extra == 'broker'",
+        "pymsalruntime <0.21,>=0.20 ; (python_version >= \"3.9\" and platform_system == \"Windows\") and extra == 'broker'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "2d2577886906cd7293850dffa2da29119966c213bfc6ec0cecf8bf7621e1ca77",
+      "version": "1.39.0"
+    },
+    {
+      "filename": "msal_extensions-1.3.1-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "msal-extensions",
+      "requires_dist": [
+        "msal<2,>=1.29",
+        "portalocker<4,>=1.4; extra == \"portalocker\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "96d3de4d034504e969ac5e85bae8106c8373b5c6568e4c8fa7af2eca9dbe6bca",
+      "version": "1.3.1"
+    },
+    {
+      "filename": "mutagen-1.48.1-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "GPL-2.0-or-later",
+      "name": "mutagen",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "4f077fe87d3fc7fba259aa63d8c026b18382ca6a42ef37c61e16f1b1b5b82fe7",
+      "version": "1.48.1"
+    },
+    {
+      "filename": "neo4j-6.3.1-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "Apache-2.0 AND Python-2.0",
+      "name": "neo4j",
+      "requires_dist": [
+        "pytz",
+        "numpy<3.0.0,>=1.21.2; extra == \"numpy\"",
+        "pandas[timezone]<4.0.0,>=1.1.0; extra == \"pandas\"",
+        "numpy<3.0.0,>=1.21.2; extra == \"pandas\"",
+        "pyarrow<26.0.0,>=6.0.0; extra == \"pyarrow\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "a1b702d356f88885c27bdcf7dcd56af76423dbff4e26064e5bf5dbf47af53044",
+      "version": "6.3.1"
+    },
+    {
+      "filename": "networkx-3.4.2-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "name": "networkx",
+      "requires_dist": [
+        "numpy >=1.24 ; extra == 'default'",
+        "scipy !=1.11.0,!=1.11.1,>=1.10 ; extra == 'default'",
+        "matplotlib >=3.7 ; extra == 'default'",
+        "pandas >=2.0 ; extra == 'default'",
+        "changelist ==0.5 ; extra == 'developer'",
+        "pre-commit >=3.2 ; extra == 'developer'",
+        "mypy >=1.1 ; extra == 'developer'",
+        "rtoml ; extra == 'developer'",
+        "sphinx >=7.3 ; extra == 'doc'",
+        "pydata-sphinx-theme >=0.15 ; extra == 'doc'",
+        "sphinx-gallery >=0.16 ; extra == 'doc'",
+        "numpydoc >=1.8.0 ; extra == 'doc'",
+        "pillow >=9.4 ; extra == 'doc'",
+        "texext >=0.6.7 ; extra == 'doc'",
+        "myst-nb >=1.1 ; extra == 'doc'",
+        "intersphinx-registry ; extra == 'doc'",
+        "osmnx >=1.9 ; extra == 'example'",
+        "momepy >=0.7.2 ; extra == 'example'",
+        "contextily >=1.6 ; extra == 'example'",
+        "seaborn >=0.13 ; extra == 'example'",
+        "cairocffi >=1.7 ; extra == 'example'",
+        "igraph >=0.11 ; extra == 'example'",
+        "scikit-learn >=1.5 ; extra == 'example'",
+        "lxml >=4.6 ; extra == 'extra'",
+        "pygraphviz >=1.14 ; extra == 'extra'",
+        "pydot >=3.0.1 ; extra == 'extra'",
+        "sympy >=1.10 ; extra == 'extra'",
+        "pytest >=7.2 ; extra == 'test'",
+        "pytest-cov >=4.0 ; extra == 'test'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "df5d4365b724cf81b8c6a7312509d0c22386097011ad1abe274afd5e9d3bbc5f",
+      "version": "3.4.2"
+    },
+    {
+      "filename": "numpy-2.2.6-cp310-cp310-manylinux_2_17_x86_64.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "name": "numpy",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "fc7b73d02efb0e18c000e9ad8b83480dfcd5dfd11065997ed4c6747470ae8915",
+      "version": "2.2.6"
+    },
+    {
+      "filename": "odfpy-1.4.1-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: Apache Software License",
+        "License :: OSI Approved :: GNU General Public License (GPL)",
+        "License :: OSI Approved :: GNU Library or Lesser General Public License (LGPL)"
+      ],
+      "license_expression": null,
+      "name": "odfpy",
+      "requires_dist": [
+        "defusedxml"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "9a8e004d887d4de2c93fe07a58c0a1ddca4c44c5966e5e860d69744cac098dbb",
+      "version": "1.4.1"
+    },
+    {
+      "filename": "olefile-0.47-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "name": "olefile",
+      "requires_dist": [
+        "pytest ; extra == 'tests'",
+        "pytest-cov ; extra == 'tests'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "543c7da2a7adadf21214938bb79c83ea12b473a4b6ee4ad4bf854e7715e13d1f",
+      "version": "0.47"
+    },
+    {
+      "filename": "onnxruntime-1.23.2-cp310-cp310-manylinux_2_27_x86_64.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "onnxruntime",
+      "requires_dist": [
+        "coloredlogs",
+        "flatbuffers",
+        "numpy>=1.21.6",
+        "packaging",
+        "protobuf",
+        "sympy"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "4ca88747e708e5c67337b0f65eed4b7d0dd70d22ac332038c9fc4635760018f7",
+      "version": "1.23.2"
+    },
+    {
+      "filename": "openai-3.17.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: Apache Software License"
+      ],
+      "license_expression": "Apache-2.0",
+      "name": "openai",
+      "requires_dist": [
+        "anyio<5,>=4.10.0",
+        "httpx2<3,>=2.12.0",
+        "jiter<1,>=0.16.0",
+        "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,<3,>=1.10.13",
+        "sniffio",
+        "typing-extensions<5,>=4.14",
+        "aiohttp>=3.14.3; extra == 'aiohttp'",
+        "botocore<2,>=1.40.0; extra == 'bedrock'",
+        "urllib3<3,>=2.7.0; extra == 'bedrock'",
+        "numpy>=1; extra == 'datalib'",
+        "pandas>=1.2.3; extra == 'datalib'",
+        "websockets<16,>=13; extra == 'realtime'",
+        "numpy>=2.0.2; extra == 'voice-helpers'",
+        "sounddevice>=0.5.1; extra == 'voice-helpers'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "712bc2982a6da1af10f6948a1d2d9ff5ce3ee3604ded88002a53765a77cf5ae5",
+      "version": "3.17.0"
+    },
+    {
+      "filename": "openpyxl-3.1.5-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "openpyxl",
+      "requires_dist": [
+        "et-xmlfile"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "5282c12b107bffeef825f4617dc029afaf41d0ea60823bbb665ef3079dc79de2",
+      "version": "3.1.5"
+    },
+    {
+      "filename": "packaging-26.3-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "Apache-2.0 OR BSD-2-Clause",
+      "name": "packaging",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
+      "version": "26.3"
+    },
+    {
+      "filename": "pandas-2.3.3-cp310-cp310-manylinux_2_24_x86_64.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "name": "pandas",
+      "requires_dist": [
+        "numpy>=1.22.4; python_version < \"3.11\"",
+        "numpy>=1.23.2; python_version == \"3.11\"",
+        "numpy>=1.26.0; python_version >= \"3.12\"",
+        "python-dateutil>=2.8.2",
+        "pytz>=2020.1",
+        "tzdata>=2022.7",
+        "hypothesis>=6.46.1; extra == \"test\"",
+        "pytest>=7.3.2; extra == \"test\"",
+        "pytest-xdist>=2.2.0; extra == \"test\"",
+        "pyarrow>=10.0.1; extra == \"pyarrow\"",
+        "bottleneck>=1.3.6; extra == \"performance\"",
+        "numba>=0.56.4; extra == \"performance\"",
+        "numexpr>=2.8.4; extra == \"performance\"",
+        "scipy>=1.10.0; extra == \"computation\"",
+        "xarray>=2022.12.0; extra == \"computation\"",
+        "fsspec>=2022.11.0; extra == \"fss\"",
+        "s3fs>=2022.11.0; extra == \"aws\"",
+        "gcsfs>=2022.11.0; extra == \"gcp\"",
+        "pandas-gbq>=0.19.0; extra == \"gcp\"",
+        "odfpy>=1.4.1; extra == \"excel\"",
+        "openpyxl>=3.1.0; extra == \"excel\"",
+        "python-calamine>=0.1.7; extra == \"excel\"",
+        "pyxlsb>=1.0.10; extra == \"excel\"",
+        "xlrd>=2.0.1; extra == \"excel\"",
+        "xlsxwriter>=3.0.5; extra == \"excel\"",
+        "pyarrow>=10.0.1; extra == \"parquet\"",
+        "pyarrow>=10.0.1; extra == \"feather\"",
+        "tables>=3.8.0; extra == \"hdf5\"",
+        "pyreadstat>=1.2.0; extra == \"spss\"",
+        "SQLAlchemy>=2.0.0; extra == \"postgresql\"",
+        "psycopg2>=2.9.6; extra == \"postgresql\"",
+        "adbc-driver-postgresql>=0.8.0; extra == \"postgresql\"",
+        "SQLAlchemy>=2.0.0; extra == \"mysql\"",
+        "pymysql>=1.0.2; extra == \"mysql\"",
+        "SQLAlchemy>=2.0.0; extra == \"sql-other\"",
+        "adbc-driver-postgresql>=0.8.0; extra == \"sql-other\"",
+        "adbc-driver-sqlite>=0.8.0; extra == \"sql-other\"",
+        "beautifulsoup4>=4.11.2; extra == \"html\"",
+        "html5lib>=1.1; extra == \"html\"",
+        "lxml>=4.9.2; extra == \"html\"",
+        "lxml>=4.9.2; extra == \"xml\"",
+        "matplotlib>=3.6.3; extra == \"plot\"",
+        "jinja2>=3.1.2; extra == \"output-formatting\"",
+        "tabulate>=0.9.0; extra == \"output-formatting\"",
+        "PyQt5>=5.15.9; extra == \"clipboard\"",
+        "qtpy>=2.3.0; extra == \"clipboard\"",
+        "zstandard>=0.19.0; extra == \"compression\"",
+        "dataframe-api-compat>=0.1.7; extra == \"consortium-standard\"",
+        "adbc-driver-postgresql>=0.8.0; extra == \"all\"",
+        "adbc-driver-sqlite>=0.8.0; extra == \"all\"",
+        "beautifulsoup4>=4.11.2; extra == \"all\"",
+        "bottleneck>=1.3.6; extra == \"all\"",
+        "dataframe-api-compat>=0.1.7; extra == \"all\"",
+        "fastparquet>=2022.12.0; extra == \"all\"",
+        "fsspec>=2022.11.0; extra == \"all\"",
+        "gcsfs>=2022.11.0; extra == \"all\"",
+        "html5lib>=1.1; extra == \"all\"",
+        "hypothesis>=6.46.1; extra == \"all\"",
+        "jinja2>=3.1.2; extra == \"all\"",
+        "lxml>=4.9.2; extra == \"all\"",
+        "matplotlib>=3.6.3; extra == \"all\"",
+        "numba>=0.56.4; extra == \"all\"",
+        "numexpr>=2.8.4; extra == \"all\"",
+        "odfpy>=1.4.1; extra == \"all\"",
+        "openpyxl>=3.1.0; extra == \"all\"",
+        "pandas-gbq>=0.19.0; extra == \"all\"",
+        "psycopg2>=2.9.6; extra == \"all\"",
+        "pyarrow>=10.0.1; extra == \"all\"",
+        "pymysql>=1.0.2; extra == \"all\"",
+        "PyQt5>=5.15.9; extra == \"all\"",
+        "pyreadstat>=1.2.0; extra == \"all\"",
+        "pytest>=7.3.2; extra == \"all\"",
+        "pytest-xdist>=2.2.0; extra == \"all\"",
+        "python-calamine>=0.1.7; extra == \"all\"",
+        "pyxlsb>=1.0.10; extra == \"all\"",
+        "qtpy>=2.3.0; extra == \"all\"",
+        "scipy>=1.10.0; extra == \"all\"",
+        "s3fs>=2022.11.0; extra == \"all\"",
+        "SQLAlchemy>=2.0.0; extra == \"all\"",
+        "tables>=3.8.0; extra == \"all\"",
+        "tabulate>=0.9.0; extra == \"all\"",
+        "xarray>=2022.12.0; extra == \"all\"",
+        "xlrd>=2.0.1; extra == \"all\"",
+        "xlsxwriter>=3.0.5; extra == \"all\"",
+        "zstandard>=0.19.0; extra == \"all\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "dd7478f1463441ae4ca7308a70e90b33470fa593429f9d4c578dd00d1fa78838",
+      "version": "2.3.3"
+    },
+    {
+      "filename": "passlib-1.7.4-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": null,
+      "name": "passlib",
+      "requires_dist": [
+        "argon2-cffi (>=18.2.0) ; extra == 'argon2'",
+        "bcrypt (>=3.1.0) ; extra == 'bcrypt'",
+        "sphinx (>=1.6) ; extra == 'build_docs'",
+        "sphinxcontrib-fulltoc (>=1.2.0) ; extra == 'build_docs'",
+        "cloud-sptheme (>=1.10.1) ; extra == 'build_docs'",
+        "cryptography ; extra == 'totp'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "aa6bca462b8d8bda89c70b382f0c298a20b5560af6cbfa2dce410c0a2fb669f1",
+      "version": "1.7.4"
+    },
+    {
+      "filename": "pdfminer_six-20260107-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "name": "pdfminer-six",
+      "requires_dist": [
+        "charset-normalizer>=2.0.0",
+        "cryptography>=36.0.0",
+        "Pillow; extra == \"image\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "366585ba97e80dffa8f00cebe303d2f381884d8637af4ce422f1df3ef38111a9",
+      "version": "20260107"
+    },
+    {
+      "filename": "pdfplumber-0.11.10-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "pdfplumber",
+      "requires_dist": [
+        "pdfminer.six==20260107",
+        "Pillow>=12.2.0",
+        "pypdfium2>=5.9.0"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "7741ea81bf165b474b153e6789d10d18e06b6ddcf3ec84289c3ef2fed6802580",
+      "version": "0.11.10"
+    },
+    {
+      "filename": "pefile-2024.8.26-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": null,
+      "name": "pefile",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "76f8b485dcd3b1bb8166f1128d395fa3d87af26360c2358fb75b80019b957c6f",
+      "version": "2024.8.26"
+    },
+    {
+      "filename": "pillow-12.3.0-cp310-cp310-manylinux_2_27_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT-CMU",
+      "name": "pillow",
+      "requires_dist": [
+        "furo; extra == \"docs\"",
+        "olefile; extra == \"docs\"",
+        "sphinx>=8.2; extra == \"docs\"",
+        "sphinx-autobuild; extra == \"docs\"",
+        "sphinx-copybutton; extra == \"docs\"",
+        "sphinx-inline-tabs; extra == \"docs\"",
+        "sphinxext-opengraph; extra == \"docs\"",
+        "olefile; extra == \"fpx\"",
+        "olefile; extra == \"mic\"",
+        "arro3-compute; extra == \"test-arrow\"",
+        "arro3-core; extra == \"test-arrow\"",
+        "nanoarrow; extra == \"test-arrow\"",
+        "pyarrow; extra == \"test-arrow\"",
+        "coverage>=7.4.2; extra == \"tests\"",
+        "defusedxml; extra == \"tests\"",
+        "markdown2; extra == \"tests\"",
+        "olefile; extra == \"tests\"",
+        "packaging; extra == \"tests\"",
+        "pytest; extra == \"tests\"",
+        "pytest-cov; extra == \"tests\"",
+        "pytest-timeout; extra == \"tests\"",
+        "pytest-xdist; extra == \"tests\"",
+        "setuptools; extra == \"tests\"",
+        "trove-classifiers>=2024.10.12; extra == \"tests\"",
+        "defusedxml; extra == \"xmp\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "f0606c8bf2cdefea14a43530f7657cbbb7ecf1c4222512492ef4a4434a9501ec",
+      "version": "12.3.0"
+    },
+    {
+      "filename": "pillow_heif-1.7.0-cp310-cp310-manylinux_2_27_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": null,
+      "name": "pillow-heif",
+      "requires_dist": [
+        "pillow>=11.1.0",
+        "sphinx>=4.4; extra == \"docs\"",
+        "sphinx-issues>=3.0.1; extra == \"docs\"",
+        "sphinx-rtd-theme>=1.0; extra == \"docs\"",
+        "pytest; extra == \"tests-min\"",
+        "defusedxml; extra == \"tests-min\"",
+        "packaging; extra == \"tests-min\"",
+        "pytest; extra == \"tests\"",
+        "defusedxml; extra == \"tests\"",
+        "packaging; extra == \"tests\"",
+        "numpy; extra == \"tests\"",
+        "pympler; extra == \"tests\"",
+        "pytest; extra == \"dev\"",
+        "defusedxml; extra == \"dev\"",
+        "packaging; extra == \"dev\"",
+        "numpy; extra == \"dev\"",
+        "pympler; extra == \"dev\"",
+        "opencv-python==5.0.0.93; extra == \"dev\"",
+        "pre-commit; extra == \"dev\"",
+        "pylint; extra == \"dev\"",
+        "mypy; extra == \"dev\"",
+        "coverage; extra == \"dev\"",
+        "setuptools; extra == \"dev\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "e533bb4a167bb79db334bc35060e979e46aa752921a056f308a6daff9b6cf5cc",
+      "version": "1.7.0"
+    },
+    {
+      "filename": "pip-22.0.2-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "pip",
+      "requires_dist": [],
+      "role": "test_build",
+      "sha256": "a224c6deadc39331992070878a114a060acf96968fdc3781881b3a14faf458d1",
+      "version": "22.0.2"
+    },
+    {
+      "filename": "pluggy-1.6.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "pluggy",
+      "requires_dist": [
+        "pre-commit; extra == \"dev\"",
+        "tox; extra == \"dev\"",
+        "pytest; extra == \"testing\"",
+        "pytest-benchmark; extra == \"testing\"",
+        "coverage; extra == \"testing\""
+      ],
+      "role": "test_build",
+      "sha256": "e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746",
+      "version": "1.6.0"
+    },
+    {
+      "filename": "plyvel-1.5.1-cp310-cp310-manylinux_2_17_x86_64.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "name": "plyvel",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "a8394aed946000fca2c92d7ae8537d9907c8169debf7f55c7ecb53751f3bf4e7",
+      "version": "1.5.1"
+    },
+    {
+      "filename": "posthog-7.58.0-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "name": "posthog",
+      "requires_dist": [
+        "requests<3.0,>=2.7",
+        "backoff>=1.10.0",
+        "distro>=1.5.0",
+        "typing-extensions>=4.2.0",
+        "langchain>=1.3.9; extra == \"langchain\"",
+        "httpx<1.0,>=0.27.0; extra == \"async\"",
+        "zstandard>=0.23.0; extra == \"zstd\"",
+        "opentelemetry-sdk>=1.20.0; extra == \"otel\"",
+        "opentelemetry-exporter-otlp-proto-http>=1.20.0; extra == \"otel\"",
+        "django-stubs; extra == \"dev\"",
+        "griffe; extra == \"dev\"",
+        "lxml; extra == \"dev\"",
+        "mypy; extra == \"dev\"",
+        "mypy-baseline; extra == \"dev\"",
+        "types-requests; extra == \"dev\"",
+        "types-setuptools; extra == \"dev\"",
+        "pre-commit; extra == \"dev\"",
+        "pydantic>=2.12.0; extra == \"dev\"",
+        "ruff; extra == \"dev\"",
+        "setuptools; extra == \"dev\"",
+        "packaging; extra == \"dev\"",
+        "wheel; extra == \"dev\"",
+        "twine; extra == \"dev\"",
+        "tomli; extra == \"dev\"",
+        "tomli_w; extra == \"dev\"",
+        "freezegun==1.5.1; extra == \"test\"",
+        "python-dateutil>=2.9.0.post0; extra == \"test\"",
+        "tzdata; extra == \"test\"",
+        "coverage; extra == \"test\"",
+        "pytest; extra == \"test\"",
+        "pytest-timeout; extra == \"test\"",
+        "pytest-asyncio; extra == \"test\"",
+        "jsonschema>=4.0; extra == \"test\"",
+        "django<6.0,>=5.2.15; extra == \"test\"",
+        "openai-agents>=0.18; extra == \"test\"",
+        "anthropic>=0.72; extra == \"test\"",
+        "langgraph>=1.0; extra == \"test\"",
+        "langgraph-checkpoint>=4.1.1; extra == \"test\"",
+        "tiktoken>=0.12.0; extra == \"test\"",
+        "langchain-core>=1.0; extra == \"test\"",
+        "langchain>=1.3.9; extra == \"test\"",
+        "langchain-community>=0.4; extra == \"test\"",
+        "langchain-openai>=1.1.14; extra == \"test\"",
+        "langchain-anthropic>=1.0; extra == \"test\"",
+        "google-genai; extra == \"test\"",
+        "pydantic>=2.12.0; extra == \"test\"",
+        "parameterized>=0.8.1; extra == \"test\"",
+        "claude-agent-sdk; extra == \"test\"",
+        "mcp<2,>=1.28.1; extra == \"test\"",
+        "fastmcp>=2.0; extra == \"test\"",
+        "opentelemetry-sdk>=1.20.0; extra == \"test\"",
+        "opentelemetry-exporter-otlp-proto-http>=1.20.0; extra == \"test\"",
+        "pytest-bdd>=8.1.0; extra == \"test\"",
+        "zstandard>=0.23.0; extra == \"test\"",
+        "gevent>=25.4.1; implementation_name == \"cpython\" and extra == \"test\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "2ac581ce52c63acb3a551c9066652c3d29e1de1ea06e70655ebe8b866e80f334",
+      "version": "7.58.0"
+    },
+    {
+      "filename": "protobuf-7.36.2-cp310-abi3-manylinux2014_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": null,
+      "name": "protobuf",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "89f23aa53c24553a2416fd4fd1ec06f74fa42b14b546d8883128813f775bbfd2",
+      "version": "7.36.2"
+    },
+    {
+      "filename": "psycopg2_binary-2.9.13-cp310-cp310-manylinux_2_17_x86_64.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: GNU Library or Lesser General Public License (LGPL)"
+      ],
+      "license_expression": null,
+      "name": "psycopg2-binary",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "d2fc9342aad969b9a28490a4c3eaba94b35beb2d26e9a39b31d1430378aa71b2",
+      "version": "2.9.13"
+    },
+    {
+      "filename": "pyasn1-0.6.4-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": null,
+      "name": "pyasn1",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "deda9277cfd454080ec40b207fb6df82206a3a2688735233cdcd8d3d565f088b",
+      "version": "0.6.4"
+    },
+    {
+      "filename": "pycdlib-1.20.0-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": null,
+      "name": "pycdlib",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "cb675959dd6d61e94f02560ed7e9a5d368a3188b5f7f31813bc25a750cff0863",
+      "version": "1.20.0"
+    },
+    {
+      "filename": "pycparser-3.0-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "BSD-3-Clause",
+      "name": "pycparser",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992",
+      "version": "3.0"
+    },
+    {
+      "filename": "pydantic-2.13.5-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "name": "pydantic",
+      "requires_dist": [
+        "annotated-types>=0.6.0",
+        "pydantic-core==2.46.5",
+        "typing-extensions>=4.14.1",
+        "typing-inspection>=0.4.2",
+        "email-validator>=2.0.0; extra == 'email'",
+        "tzdata; (python_version >= '3.9' and platform_system == 'Windows') and extra == 'timezone'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "346a034f080da3755d8e9cb5e00e8b07de1d39e4f6e2c87d8ab7cafa0b269a73",
+      "version": "2.13.5"
+    },
+    {
+      "filename": "pydantic_core-2.46.5-cp310-cp310-manylinux_2_17_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "name": "pydantic-core",
+      "requires_dist": [
+        "typing-extensions>=4.14.1"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "850a08d167dde16db8702c274f320c7be9d7da6f6dff2b58b18f9e815bd94f5b",
+      "version": "2.46.5"
+    },
+    {
+      "filename": "pydantic_settings-2.15.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": "MIT",
+      "name": "pydantic-settings",
+      "requires_dist": [
+        "pydantic>=2.7.0",
+        "python-dotenv>=0.21.0",
+        "typing-inspection>=0.4.0",
+        "boto3>=1.35.0; extra == 'aws-secrets-manager'",
+        "azure-identity>=1.16.0; extra == 'azure-key-vault'",
+        "azure-keyvault-secrets>=4.8.0; extra == 'azure-key-vault'",
+        "google-cloud-secret-manager>=2.23.1; extra == 'gcp-secret-manager'",
+        "tomli>=2.0.1; extra == 'toml'",
+        "pyyaml>=6.0.1; extra == 'yaml'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "0ba092c291c94baceb5eff768aa0d56400a457585bc0175925a5a5510303da42",
+      "version": "2.15.0"
+    },
+    {
+      "filename": "pydicom-3.0.2-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "pydicom",
+      "requires_dist": [
+        "numpy ; extra == \"basic\"",
+        "types-pydicom ; extra == \"basic\"",
+        "black==24.8.0 ; extra == \"dev\"",
+        "mypy==1.11.2 ; extra == \"dev\"",
+        "pydicom-data ; extra == \"dev\"",
+        "pytest ; extra == \"dev\"",
+        "pytest-cov ; extra == \"dev\"",
+        "ruff==0.6.3 ; extra == \"dev\"",
+        "types-requests ; extra == \"dev\"",
+        "pre-commit ; extra == \"dev\"",
+        "pyfakefs>=6.1.6 ; extra == \"dev\"",
+        "numpy ; extra == \"docs\"",
+        "numpydoc ; extra == \"docs\"",
+        "matplotlib ; extra == \"docs\"",
+        "pillow ; extra == \"docs\"",
+        "sphinx ; extra == \"docs\"",
+        "sphinx_rtd_theme ; extra == \"docs\"",
+        "sphinx-gallery ; extra == \"docs\"",
+        "sphinxcontrib-napoleon ; extra == \"docs\"",
+        "sphinxcontrib-jquery ; extra == \"docs\"",
+        "sphinx-copybutton ; extra == \"docs\"",
+        "pylibjpeg[libjpeg] ; extra == \"gpl-license\"",
+        "numpy ; extra == \"pixeldata\"",
+        "pillow ; extra == \"pixeldata\"",
+        "pyjpegls ; extra == \"pixeldata\"",
+        "pylibjpeg[openjpeg] ; extra == \"pixeldata\"",
+        "pylibjpeg[rle] ; extra == \"pixeldata\"",
+        "python-gdcm ; extra == \"pixeldata\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "abf971a5440f84dbaf42c4b6758e30e62480902584f8b270b9a5d146e278a07b",
+      "version": "3.0.2"
+    },
+    {
+      "filename": "pydub-0.25.1-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "pydub",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "65617e33033874b59d87db603aa1ed450633288aefead953b30bded59cb599a6",
+      "version": "0.25.1"
+    },
+    {
+      "filename": "pyelftools-0.33-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: Public Domain"
+      ],
+      "license_expression": null,
+      "name": "pyelftools",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "f215ad5f47d3f1373a21496a6c9e0707c622840d0622f23ff7ce08678b020036",
+      "version": "0.33"
+    },
+    {
+      "filename": "pygments-2.21.0-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "BSD-2-Clause",
+      "name": "pygments",
+      "requires_dist": [
+        "colorama>=0.4.6; extra == 'windows-terminal'"
+      ],
+      "role": "test_build",
+      "sha256": "2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9",
+      "version": "2.21.0"
+    },
+    {
+      "filename": "pyjwt-2.14.0-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "name": "pyjwt",
+      "requires_dist": [
+        "typing_extensions>=4.0; python_version < \"3.11\"",
+        "cryptography>=3.4.0; extra == \"crypto\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "ad0cef71c756a56e74863c2919cf0985f72decbcfcb550ee2f422e7c62b5eedc",
+      "version": "2.14.0"
+    },
+    {
+      "filename": "pymongo-4.18.1-cp310-cp310-manylinux_2_17_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": "Apache-2.0",
+      "name": "pymongo",
+      "requires_dist": [
+        "dnspython<3.0.0,>=2.7.0",
+        "pymongo-auth-aws<2.0.0,>=1.3.0; extra == 'aws'",
+        "furo==2025.12.19; extra == 'docs'",
+        "readthedocs-sphinx-search~=0.3; extra == 'docs'",
+        "sphinx-autobuild>=2024.10.3; extra == 'docs'",
+        "sphinx-rtd-theme<4,>=3.1.0; extra == 'docs'",
+        "sphinx<9,>=5.3; extra == 'docs'",
+        "sphinxcontrib-shellcheck<2,>=1.1.2; extra == 'docs'",
+        "certifi>=2023.7.22; (os_name == 'nt' or sys_platform == 'darwin') and extra == 'encryption'",
+        "pymongo-auth-aws<2.0.0,>=1.3.0; extra == 'encryption'",
+        "pymongocrypt<2.0.0,>=1.18.1; extra == 'encryption'",
+        "pykerberos>=1.2.4; (os_name != 'nt') and extra == 'gssapi'",
+        "winkerberos>=0.12.2; (os_name == 'nt') and extra == 'gssapi'",
+        "certifi>=2023.7.22; (os_name == 'nt' or sys_platform == 'darwin') and extra == 'ocsp'",
+        "cryptography>=47.0.0; extra == 'ocsp'",
+        "pyopenssl>=26.2.0; extra == 'ocsp'",
+        "requests<3.0,>=2.23.0; extra == 'ocsp'",
+        "service-identity>=24.2.0; extra == 'ocsp'",
+        "python-snappy>=0.7.3; extra == 'snappy'",
+        "importlib-metadata>=7.0; (python_version < '3.13') and extra == 'test'",
+        "pytest-asyncio>=0.24.0; extra == 'test'",
+        "pytest>=8.2; extra == 'test'",
+        "backports-zstd>=1.0.0; (python_version < '3.14') and extra == 'zstd'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "06d7c9f6388552b1c2b6ba6ea9f60bce1d4cc9c6f5c5e5d103fee7cdd20bdcdb",
+      "version": "4.18.1"
+    },
+    {
+      "filename": "pymupdf-1.27.1-cp310-abi3-manylinux_2_28_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": null,
+      "name": "pymupdf",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "aeaed76e72cbc061149a825ab0811c5f4752970c56591c2938c5042ec06b26e1",
+      "version": "1.27.1"
+    },
+    {
+      "filename": "pypdfium2-5.13.0-py3-none-manylinux_2_17_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": null,
+      "name": "pypdfium2",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "81df25c1ab4c13ff773102d3cbea1967511d079123b067fc077bd0c4d57d91d8",
+      "version": "5.13.0"
+    },
+    {
+      "filename": "pytest-9.1.1-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "name": "pytest",
+      "requires_dist": [
+        "colorama>=0.4; sys_platform == \"win32\"",
+        "exceptiongroup>=1; python_version < \"3.11\"",
+        "iniconfig>=1.0.1",
+        "packaging>=22",
+        "pluggy<2,>=1.5",
+        "pygments>=2.7.2",
+        "tomli>=1; python_version < \"3.11\"",
+        "argcomplete; extra == \"dev\"",
+        "attrs>=19.2; extra == \"dev\"",
+        "hypothesis>=3.56; extra == \"dev\"",
+        "mock; extra == \"dev\"",
+        "requests; extra == \"dev\"",
+        "setuptools; extra == \"dev\"",
+        "xmlschema; extra == \"dev\""
+      ],
+      "role": "test_build",
+      "sha256": "37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c",
+      "version": "9.1.1"
+    },
+    {
+      "filename": "pytest_asyncio-1.4.0-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "Apache-2.0",
+      "name": "pytest-asyncio",
+      "requires_dist": [
+        "backports-asyncio-runner<2,>=1.1; python_version < \"3.11\"",
+        "pytest<10,>=8.4",
+        "typing-extensions>=4.12; python_version < \"3.13\"",
+        "sphinx>=5.3; extra == \"docs\"",
+        "sphinx-rtd-theme>=1; extra == \"docs\"",
+        "sphinx-tabs>=3.5; extra == \"docs\"",
+        "coverage>=6.2; extra == \"testing\"",
+        "hypothesis>=5.7.1; extra == \"testing\""
+      ],
+      "role": "test_build",
+      "sha256": "933ca923a23075a87fb7070c0ec272a6848489824d887c85c812670932835aa1",
+      "version": "1.4.0"
+    },
+    {
+      "filename": "pytest_cov-7.1.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": "MIT",
+      "name": "pytest-cov",
+      "requires_dist": [
+        "coverage[toml]>=7.10.6",
+        "pluggy>=1.2",
+        "pytest>=7",
+        "process-tests; extra == 'testing'",
+        "pytest-xdist; extra == 'testing'",
+        "virtualenv; extra == 'testing'"
+      ],
+      "role": "test_build",
+      "sha256": "a0461110b7865f9a271aa1b51e516c9a95de9d696734a2f71e3e78f46e1d4678",
+      "version": "7.1.0"
+    },
+    {
+      "filename": "python_dateutil-2.9.0.post0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License",
+        "License :: OSI Approved :: Apache Software License"
+      ],
+      "license_expression": null,
+      "name": "python-dateutil",
+      "requires_dist": [
+        "six >=1.5"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427",
+      "version": "2.9.0.post0"
+    },
+    {
+      "filename": "python_docx-1.2.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "python-docx",
+      "requires_dist": [
+        "lxml>=3.1.0",
+        "typing_extensions>=4.9.0"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "3fd478f3250fbbbfd3b94fe1e985955737c145627498896a8a6bf81f4baf66c7",
+      "version": "1.2.0"
+    },
+    {
+      "filename": "python_dotenv-1.2.3-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": null,
+      "name": "python-dotenv",
+      "requires_dist": [
+        "click>=5.0; extra == \"cli\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "904552145e8bfed22162c09dab1c2b9b54fefa7b23ba780f4f26ca0316b0f0d9",
+      "version": "1.2.3"
+    },
+    {
+      "filename": "python_evtx-0.8.1-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "Apache-2.0",
+      "name": "python-evtx",
+      "requires_dist": [
+        "hexdump>=3.3",
+        "pytest-cov>=5.0.0; extra == \"test\"",
+        "pytest>=8.2.2; extra == \"test\"",
+        "lxml>=5.2.2; extra == \"test\"",
+        "black>=24.4.2; extra == \"test\"",
+        "isort>=5.13.2; extra == \"test\"",
+        "ruff>=0.4.10; extra == \"test\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "46336b854dbe0a1e75873ae30db5f583c9d2262ff1d21bdb6b1e624ecfa18ddb",
+      "version": "0.8.1"
+    },
+    {
+      "filename": "python_jose-3.5.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "python-jose",
+      "requires_dist": [
+        "ecdsa!=0.15",
+        "rsa!=4.1.1,!=4.4,<5.0,>=4.0",
+        "pyasn1>=0.5.0",
+        "pytest; extra == \"test\"",
+        "pytest-cov; extra == \"test\"",
+        "cryptography>=3.4.0; extra == \"cryptography\"",
+        "pycrypto<2.7.0,>=2.6.0; extra == \"pycrypto\"",
+        "pycryptodome<4.0.0,>=3.3.1; extra == \"pycryptodome\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "abd1202f23d34dfad2c3d28cb8617b90acf34132c7afd60abd0b0b7d3cb55771",
+      "version": "3.5.0"
+    },
+    {
+      "filename": "python_louvain-0.16-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "name": "python-louvain",
+      "requires_dist": [
+        "networkx",
+        "numpy"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "6444d4166b91aefda840309608c3395630f5d095207ae6de4c11a4d59d62b87e",
+      "version": "0.16"
+    },
+    {
+      "filename": "python_multipart-0.0.32-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: Apache Software License"
+      ],
+      "license_expression": "Apache-2.0",
+      "name": "python-multipart",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "ff6d3f776f16878c894e52e107296ffc890e913c611b1a4ec6c44e2821fe2e23",
+      "version": "0.0.32"
+    },
+    {
+      "filename": "python_pptx-1.0.2-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "python-pptx",
+      "requires_dist": [
+        "Pillow >=3.3.2",
+        "XlsxWriter >=0.5.7",
+        "lxml >=3.1.0",
+        "typing-extensions >=4.9.0"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "160838e0b8565a8b1f67947675886e9fea18aa5e795db7ae531606d68e785cba",
+      "version": "1.0.2"
+    },
+    {
+      "filename": "python_registry-1.3.1-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: Apache Software License"
+      ],
+      "license_expression": null,
+      "name": "python-registry",
+      "requires_dist": [
+        "enum-compat",
+        "unicodecsv"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "b5b8ae07c271dce12dacd24e16af8aa8d56167ebdb360112a4f152b6d04a4ca9",
+      "version": "1.3.1"
+    },
+    {
+      "filename": "pytz-2026.3.post1-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "pytz",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "dd95840dd199baea12d9cc096a1d452caa6596a1c1e4b5f3dbd1541855d5e815",
+      "version": "2026.3.post1"
+    },
+    {
+      "filename": "pyyaml-6.0.3-cp310-cp310-manylinux_2_17_x86_64.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "pyyaml",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "9c7708761fccb9397fe64bbc0395abcae8c4bf7b0eac081e12b809bf47700d0b",
+      "version": "6.0.3"
+    },
+    {
+      "filename": "rawpy-0.27.1-cp310-cp310-manylinux_2_27_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "name": "rawpy",
+      "requires_dist": [
+        "numpy>=1.26.0",
+        "pytest; extra == \"test\"",
+        "imageio>=2.21; extra == \"test\"",
+        "mypy; extra == \"test\"",
+        "scikit-image; extra == \"test\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "38c36c9756d2b0853e14f14adf2871193e081d5c6666fca31f4d1d2b1f9bf2b0",
+      "version": "0.27.1"
+    },
+    {
+      "filename": "rdbtools-0.1.15-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "rdbtools",
+      "requires_dist": [
+        "redis"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "3fc95e0f057cedb642dce1ef97789a61de16d49fb5879f51d053fb1b22f78171",
+      "version": "0.1.15"
+    },
+    {
+      "filename": "redis-8.1.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": "MIT",
+      "name": "redis",
+      "requires_dist": [
+        "async-timeout>=4.0.3; python_full_version < '3.11.3'",
+        "pybreaker>=1.4.0; extra == 'circuit-breaker'",
+        "hiredis>=3.2.0; extra == 'hiredis'",
+        "pyjwt>=2.13.0; extra == 'jwt'",
+        "cryptography>=36.0.1; extra == 'ocsp'",
+        "pyopenssl>=20.0.1; extra == 'ocsp'",
+        "requests>=2.31.0; extra == 'ocsp'",
+        "opentelemetry-api>=1.39.1; extra == 'otel'",
+        "opentelemetry-exporter-otlp-proto-http>=1.39.1; extra == 'otel'",
+        "opentelemetry-sdk>=1.39.1; extra == 'otel'",
+        "xxhash~=3.6.0; extra == 'xxhash'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "a4fe1aac3d3b3cc791d4b3d5931c5a956045dc951ee74d1c913ee3ac4d2ee9fb",
+      "version": "8.1.0"
+    },
+    {
+      "filename": "redis_dump_load-1.1-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "name": "redis-dump-load",
+      "requires_dist": [
+        "redis"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "f846b0cb4f5a587edbbc5e36c5e510d51621fe3712e4dc168bf204b61d665d96",
+      "version": "1.1"
+    },
+    {
+      "filename": "requests-2.34.2-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: Apache Software License"
+      ],
+      "license_expression": null,
+      "name": "requests",
+      "requires_dist": [
+        "charset_normalizer<4,>=2",
+        "idna<4,>=2.5",
+        "urllib3<3,>=1.26",
+        "certifi>=2023.5.7",
+        "PySocks!=1.5.7,>=1.5.6; extra == \"socks\"",
+        "chardet<8,>=3.0.2; extra == \"use-chardet-on-py3\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0",
+      "version": "2.34.2"
+    },
+    {
+      "filename": "rsa-4.9.1-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: Apache Software License"
+      ],
+      "license_expression": null,
+      "name": "rsa",
+      "requires_dist": [
+        "pyasn1 (>=0.1.3)"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "68635866661c6836b8d39430f97a996acbd61bfa49406748ea243539fe239762",
+      "version": "4.9.1"
+    },
+    {
+      "filename": "scipy-1.15.3-cp310-cp310-manylinux_2_17_x86_64.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "name": "scipy",
+      "requires_dist": [
+        "numpy<2.5,>=1.23.5",
+        "pytest; extra == \"test\"",
+        "pytest-cov; extra == \"test\"",
+        "pytest-timeout; extra == \"test\"",
+        "pytest-xdist; extra == \"test\"",
+        "asv; extra == \"test\"",
+        "mpmath; extra == \"test\"",
+        "gmpy2; extra == \"test\"",
+        "threadpoolctl; extra == \"test\"",
+        "scikit-umfpack; extra == \"test\"",
+        "pooch; extra == \"test\"",
+        "hypothesis>=6.30; extra == \"test\"",
+        "array-api-strict<2.1.1,>=2.0; extra == \"test\"",
+        "Cython; extra == \"test\"",
+        "meson; extra == \"test\"",
+        "ninja; sys_platform != \"emscripten\" and extra == \"test\"",
+        "sphinx<8.0.0,>=5.0.0; extra == \"doc\"",
+        "intersphinx_registry; extra == \"doc\"",
+        "pydata-sphinx-theme>=0.15.2; extra == \"doc\"",
+        "sphinx-copybutton; extra == \"doc\"",
+        "sphinx-design>=0.4.0; extra == \"doc\"",
+        "matplotlib>=3.5; extra == \"doc\"",
+        "numpydoc; extra == \"doc\"",
+        "jupytext; extra == \"doc\"",
+        "myst-nb; extra == \"doc\"",
+        "pooch; extra == \"doc\"",
+        "jupyterlite-sphinx>=0.19.1; extra == \"doc\"",
+        "jupyterlite-pyodide-kernel; extra == \"doc\"",
+        "mypy==1.10.0; extra == \"dev\"",
+        "typing_extensions; extra == \"dev\"",
+        "types-psutil; extra == \"dev\"",
+        "pycodestyle; extra == \"dev\"",
+        "ruff>=0.0.292; extra == \"dev\"",
+        "cython-lint>=0.12.2; extra == \"dev\"",
+        "rich-click; extra == \"dev\"",
+        "doit>=0.36.0; extra == \"dev\"",
+        "pydevtool; extra == \"dev\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "9e2abc762b0811e09a0d3258abee2d98e0c703eee49464ce0069590846f31d40",
+      "version": "1.15.3"
+    },
+    {
+      "filename": "sentencepiece-0.2.2-cp310-cp310-manylinux_2_27_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": "Apache-2.0",
+      "name": "sentencepiece",
+      "requires_dist": [
+        "numpy; extra == \"numpy\"",
+        "protobuf; extra == \"protobuf\"",
+        "pytest; extra == \"test\"",
+        "numpy; extra == \"test\"",
+        "protobuf; extra == \"test\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "44284adc6fbe9d5bdd480541431a3d93f674fa44736714d3ad4bcee8283ace7d",
+      "version": "0.2.2"
+    },
+    {
+      "filename": "setuptools-59.6.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "setuptools",
+      "requires_dist": [
+        "furo ; extra == 'docs'",
+        "jaraco.packaging (>=8.2) ; extra == 'docs'",
+        "jaraco.tidelift (>=1.4) ; extra == 'docs'",
+        "pygments-github-lexers (==0.0.5) ; extra == 'docs'",
+        "rst.linker (>=1.9) ; extra == 'docs'",
+        "sphinx ; extra == 'docs'",
+        "sphinx-inline-tabs ; extra == 'docs'",
+        "sphinxcontrib-towncrier ; extra == 'docs'",
+        "flake8-2020 ; extra == 'testing'",
+        "jaraco.envs (>=2.2) ; extra == 'testing'",
+        "jaraco.path (>=3.2.0) ; extra == 'testing'",
+        "mock ; extra == 'testing'",
+        "paver ; extra == 'testing'",
+        "pip (>=19.1) ; extra == 'testing'",
+        "pytest-checkdocs (>=2.4) ; extra == 'testing'",
+        "pytest-cov ; extra == 'testing'",
+        "pytest-enabler (>=1.0.1) ; extra == 'testing'",
+        "pytest-flake8 ; extra == 'testing'",
+        "pytest-subprocess ; extra == 'testing'",
+        "pytest-virtualenv (>=1.2.7) ; extra == 'testing'",
+        "pytest-xdist ; extra == 'testing'",
+        "pytest (>=6) ; extra == 'testing'",
+        "sphinx ; extra == 'testing'",
+        "virtualenv (>=13.0.0) ; extra == 'testing'",
+        "wheel ; extra == 'testing'",
+        "pytest-black (>=0.3.7) ; (platform_python_implementation != \"PyPy\") and extra == 'testing'",
+        "pytest-mypy ; (platform_python_implementation != \"PyPy\") and extra == 'testing'"
+      ],
+      "role": "test_build",
+      "sha256": "99f782cb9f22e0276ca49d435e9eac9c7fa5ca936ac6d2a70501844f4bdc5c17",
+      "version": "59.6.0"
+    },
+    {
+      "filename": "six-1.17.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "six",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274",
+      "version": "1.17.0"
+    },
+    {
+      "filename": "sniffio-1.3.1-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License",
+        "License :: OSI Approved :: Apache Software License"
+      ],
+      "license_expression": null,
+      "name": "sniffio",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2",
+      "version": "1.3.1"
+    },
+    {
+      "filename": "soupsieve-2.9.2-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": "MIT",
+      "name": "soupsieve",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "8089a26fd974ca7a1f30276d3d8492ab266ab15af581642dfe8aa162e0c1c823",
+      "version": "2.9.2"
+    },
+    {
+      "filename": "speechrecognition-3.17.0-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "BSD-3-Clause",
+      "name": "speechrecognition",
+      "requires_dist": [
+        "typing-extensions",
+        "standard-aifc; python_version >= \"3.13\"",
+        "audioop-lts; python_version >= \"3.13\"",
+        "pytest; extra == \"dev\"",
+        "pytest-randomly; extra == \"dev\"",
+        "respx; extra == \"dev\"",
+        "numpy; extra == \"dev\"",
+        "pytest-httpserver; extra == \"dev\"",
+        "mypy; extra == \"dev\"",
+        "types-requests; extra == \"dev\"",
+        "PyAudio>=0.2.11; extra == \"audio\"",
+        "pocketsphinx; extra == \"pocketsphinx\"",
+        "google-cloud-speech; extra == \"google-cloud\"",
+        "openai-whisper; extra == \"whisper-local\"",
+        "soundfile; extra == \"whisper-local\"",
+        "faster-whisper; extra == \"faster-whisper\"",
+        "soundfile; extra == \"faster-whisper\"",
+        "openai; extra == \"openai\"",
+        "httpx<0.28; extra == \"openai\"",
+        "groq; extra == \"groq\"",
+        "httpx<0.28; extra == \"groq\"",
+        "cohere>=5.21.0; extra == \"cohere-api\"",
+        "requests; extra == \"assemblyai\"",
+        "vosk; extra == \"vosk\"",
+        "librosa<1.0,>=0.10.2; extra == \"audio-split\"",
+        "numpy>=1.26.0; extra == \"audio-split\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "754f2cd9d7fbeff5e05ad91b906350cb7983fd2ef82002d91e117ac44aa94efa",
+      "version": "3.17.0"
+    },
+    {
+      "filename": "sqlalchemy-2.0.54-cp310-cp310-manylinux_2_17_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": null,
+      "name": "sqlalchemy",
+      "requires_dist": [
+        "importlib-metadata; python_version < \"3.8\"",
+        "greenlet>=1; platform_machine == \"aarch64\" or (platform_machine == \"ppc64le\" or (platform_machine == \"x86_64\" or (platform_machine == \"amd64\" or (platform_machine == \"AMD64\" or (platform_machine == \"win32\" or platform_machine == \"WIN32\")))))",
+        "typing-extensions>=4.6.0",
+        "greenlet>=1; extra == \"asyncio\"",
+        "mypy>=0.910; extra == \"mypy\"",
+        "pyodbc; extra == \"mssql\"",
+        "pymssql; extra == \"mssql-pymssql\"",
+        "pyodbc; extra == \"mssql-pyodbc\"",
+        "mysqlclient>=1.4.0; extra == \"mysql\"",
+        "mysql-connector-python; extra == \"mysql-connector\"",
+        "mariadb!=1.1.10,!=1.1.2,!=1.1.5,>=1.0.1; extra == \"mariadb-connector\"",
+        "cx_oracle>=8; extra == \"oracle\"",
+        "oracledb>=1.0.1; extra == \"oracle-oracledb\"",
+        "psycopg2>=2.7; extra == \"postgresql\"",
+        "pg8000>=1.29.1; extra == \"postgresql-pg8000\"",
+        "greenlet>=1; extra == \"postgresql-asyncpg\"",
+        "asyncpg; extra == \"postgresql-asyncpg\"",
+        "psycopg2-binary; extra == \"postgresql-psycopg2binary\"",
+        "psycopg2cffi; extra == \"postgresql-psycopg2cffi\"",
+        "psycopg>=3.0.7; extra == \"postgresql-psycopg\"",
+        "psycopg[binary]>=3.0.7; extra == \"postgresql-psycopgbinary\"",
+        "pymysql; extra == \"pymysql\"",
+        "greenlet>=1; extra == \"aiomysql\"",
+        "aiomysql>=0.2.0; extra == \"aiomysql\"",
+        "greenlet>=1; extra == \"aioodbc\"",
+        "aioodbc; extra == \"aioodbc\"",
+        "greenlet>=1; extra == \"asyncmy\"",
+        "asyncmy>=0.2.12; extra == \"asyncmy\"",
+        "greenlet>=1; extra == \"aiosqlite\"",
+        "aiosqlite; extra == \"aiosqlite\"",
+        "typing_extensions!=3.10.0.1; extra == \"aiosqlite\"",
+        "sqlcipher3_binary; extra == \"sqlcipher\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "0e7a76d5dce712ce50435d0f97181eb955ec27d138c004176f01282e063bac52",
+      "version": "2.0.54"
+    },
+    {
+      "filename": "sqlcipher3_binary-0.6.0-cp310-cp310-manylinux_2_17_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": null,
+      "name": "sqlcipher3-binary",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "9886d2d30b5bb4e3ddc3a9e2b9e5b65261fa0c748eaf8a584781082312d37cee",
+      "version": "0.6.0"
+    },
+    {
+      "filename": "starlette-1.6.0-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "BSD-3-Clause",
+      "name": "starlette",
+      "requires_dist": [
+        "anyio<5,>=3.6.2",
+        "typing-extensions>=4.10.0; python_version < '3.13'",
+        "httpx2>=2.0.0; extra == 'full'",
+        "httpx<0.29.0,>=0.27.0; extra == 'full'",
+        "itsdangerous; extra == 'full'",
+        "jinja2; extra == 'full'",
+        "python-multipart>=0.0.18; extra == 'full'",
+        "pyyaml; extra == 'full'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "a86dd39d14bb45f85a3d18525215a9ef0cfd1f192ac793220e72598c90335f0c",
+      "version": "1.6.0"
+    },
+    {
+      "filename": "striprtf-0.0.33-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "license_expression": "BSD-3-Clause",
+      "name": "striprtf",
+      "requires_dist": [
+        "build>=1.0.0; extra == 'dev'",
+        "pytest>=7.0.0; extra == 'dev'",
+        "twine>=6.1.0; extra == 'dev'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "f9637632a4414de05b1c399ee34d324dc336133ae45769992143a024e0f919ef",
+      "version": "0.0.33"
+    },
+    {
+      "filename": "structlog-26.1.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: Apache Software License",
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": "MIT OR Apache-2.0",
+      "name": "structlog",
+      "requires_dist": [
+        "typing-extensions; python_version < '3.11'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "e081a26d6c373e6d201eca24eede26d8ffab07f88f477822e679183428d3d91e",
+      "version": "26.1.0"
+    },
+    {
+      "filename": "sympy-1.14.0-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "name": "sympy",
+      "requires_dist": [
+        "mpmath<1.4,>=1.1.0",
+        "pytest>=7.1.0; extra == \"dev\"",
+        "hypothesis>=6.70.0; extra == \"dev\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5",
+      "version": "1.14.0"
+    },
+    {
+      "filename": "tenacity-9.1.4-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: Apache Software License"
+      ],
+      "license_expression": null,
+      "name": "tenacity",
+      "requires_dist": [
+        "reno; extra == \"doc\"",
+        "sphinx; extra == \"doc\"",
+        "pytest; extra == \"test\"",
+        "tornado>=4.5; extra == \"test\"",
+        "typeguard; extra == \"test\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "6095a360c919085f28c6527de529e76a06ad89b23659fa881ae0649b867a9d55",
+      "version": "9.1.4"
+    },
+    {
+      "filename": "tomli-2.4.1-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "name": "tomli",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "0d85819802132122da43cb86656f8d1f8c6587d54ae7dcaf30e90533028b49fe",
+      "version": "2.4.1"
+    },
+    {
+      "filename": "truststore-0.10.4-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "name": "truststore",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "adaeaecf1cbb5f4de3b1959b42d41f6fab57b2b1666adb59e89cb0b53361d981",
+      "version": "0.10.4"
+    },
+    {
+      "filename": "typing_extensions-4.16.0-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "PSF-2.0",
+      "name": "typing-extensions",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8",
+      "version": "4.16.0"
+    },
+    {
+      "filename": "typing_inspection-0.4.4-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "name": "typing-inspection",
+      "requires_dist": [
+        "typing-extensions>=4.15.0"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147",
+      "version": "0.4.4"
+    },
+    {
+      "filename": "tzdata-2026.4-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": null,
+      "name": "tzdata",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "c2169a8b0a7a5e9674da5a135ccdfb2b3e671b333ed9fed17b41f73c34476e81",
+      "version": "2026.4"
+    },
+    {
+      "filename": "unicodecsv-0.14.1-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "name": "unicodecsv",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "dcb6dfb828775b232a79ac6650be7e3df078eda952267b681138e01c5d5a5e8c",
+      "version": "0.14.1"
+    },
+    {
+      "filename": "urllib3-2.8.0-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "MIT",
+      "name": "urllib3",
+      "requires_dist": [
+        "brotli>=1.2.0; (platform_python_implementation == 'CPython') and extra == 'brotli'",
+        "brotlicffi>=1.2.0.0; (platform_python_implementation != 'CPython') and extra == 'brotli'",
+        "h2<5,>=4; extra == 'h2'",
+        "pysocks!=1.5.7,<2.0,>=1.5.6; extra == 'socks'",
+        "backports-zstd>=1.0.0; (python_version < '3.14') and extra == 'zstd'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",
+      "version": "2.8.0"
+    },
+    {
+      "filename": "uvicorn-0.53.0-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": "BSD-3-Clause",
+      "name": "uvicorn",
+      "requires_dist": [
+        "click>=7.0",
+        "h11>=0.8",
+        "typing-extensions>=4.0; python_version < '3.11'",
+        "httptools>=0.8.0; extra == 'standard'",
+        "python-dotenv>=0.13; extra == 'standard'",
+        "pyyaml>=5.1; extra == 'standard'",
+        "uvloop>=0.15.1; (sys_platform != 'win32' and (sys_platform != 'cygwin' and platform_python_implementation != 'PyPy')) and extra == 'standard'",
+        "watchfiles>=0.20; extra == 'standard'",
+        "websockets>=13.0; extra == 'standard'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "e8dca71ec86dce5f04e333f0d56cdedf942446e6643b9cea1af0d6d3a02cb03e",
+      "version": "0.53.0"
+    },
+    {
+      "filename": "uvloop-0.22.1-cp310-cp310-manylinux_2_17_x86_64.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: Apache Software License",
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "uvloop",
+      "requires_dist": [
+        "aiohttp>=3.10.5; extra == \"test\"",
+        "flake8~=6.1; extra == \"test\"",
+        "psutil; extra == \"test\"",
+        "pycodestyle~=2.11.0; extra == \"test\"",
+        "pyOpenSSL~=25.3.0; extra == \"test\"",
+        "mypy>=0.800; extra == \"test\"",
+        "setuptools>=60; extra == \"dev\"",
+        "Cython~=3.0; extra == \"dev\"",
+        "Sphinx~=4.1.2; extra == \"docs\"",
+        "sphinxcontrib-asyncio~=0.3.0; extra == \"docs\"",
+        "sphinx_rtd_theme~=0.5.2; extra == \"docs\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "481c990a7abe2c6f4fc3d98781cc9426ebd7f03a9aaa7eb03d3bfc68ac2a46bd",
+      "version": "0.22.1"
+    },
+    {
+      "filename": "vobject-0.9.9-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: Apache Software License"
+      ],
+      "license_expression": null,
+      "name": "vobject",
+      "requires_dist": [
+        "pytz",
+        "six",
+        "python-dateutil>=2.5.0; python_version < \"3.10\"",
+        "python-dateutil>=2.7.0; python_version >= \"3.10\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "0fbdb982065cf4d1843a5d5950c88510041c6de026bda49c3502721de1c6ac3d",
+      "version": "0.9.9"
+    },
+    {
+      "filename": "volatility3-2.28.2-py3-none-any.whl",
+      "license_classifiers": [],
+      "license_expression": null,
+      "name": "volatility3",
+      "requires_dist": [
+        "pefile >=2024.8.26",
+        "pyarrow >=17.0.0 ; extra == 'arrow'",
+        "gcsfs >=2024.10.0 ; extra == 'cloud'",
+        "s3fs >=2024.10.0 ; extra == 'cloud'",
+        "volatility3[cloud,full] ; extra == 'dev'",
+        "jsonschema <5,>=4.23.0 ; extra == 'dev'",
+        "pyinstaller <7,>=6.5.0 ; extra == 'dev'",
+        "pyinstaller-hooks-contrib >=2024.9 ; extra == 'dev'",
+        "types-jsonschema <5,>=4.23.0 ; extra == 'dev'",
+        "volatility3[dev] ; extra == 'docs'",
+        "sphinx <9,>=4.0.0 ; extra == 'docs'",
+        "sphinx-rtd-theme <4,>=3.0.1 ; extra == 'docs'",
+        "sphinx-autodoc-typehints <4,>=3.0.0 ; (python_version >= \"3.11\") and extra == 'docs'",
+        "yara-python <5,>=4.5.1 ; extra == 'full'",
+        "capstone <6,>=5.0.3 ; extra == 'full'",
+        "pycryptodome <4,>=3.21.0 ; extra == 'full'",
+        "pillow <11.0.0,>=10.0.0 ; extra == 'full'",
+        "leechcorepyc <3,>=2.19.2 ; (sys_platform != \"darwin\") and extra == 'full'",
+        "volatility3[dev] ; extra == 'test'",
+        "pytest <9,>=8.3.3 ; extra == 'test'",
+        "pytest-cov <7,>=5 ; extra == 'test'",
+        "yara-x <1,>=0.10.0 ; extra == 'test'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "0461d6dd71b9ddbaf70c96e079c06efdf174ac65383b3dcf10dd165181fbd3c3",
+      "version": "2.28.2"
+    },
+    {
+      "filename": "watchfiles-1.3.0-cp310-abi3-manylinux_2_17_x86_64.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "watchfiles",
+      "requires_dist": [
+        "anyio>=3.0.0"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "b5768b49e426fd5b550b012c866db347cdf15c398ef98dc557b6e6b72fa74cd1",
+      "version": "1.3.0"
+    },
+    {
+      "filename": "websockets-16.1.1-cp310-cp310-manylinux_2_5_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": "BSD-3-Clause",
+      "name": "websockets",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "1214e673c404684b9bf7154f5cf43b45025b1a6160fac3a9e438e9c1a97e22cb",
+      "version": "16.1.1"
+    },
+    {
+      "filename": "xlrd-2.0.2-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "name": "xlrd",
+      "requires_dist": [
+        "wheel ; extra == 'build'",
+        "twine ; extra == 'build'",
+        "sphinx ; extra == 'docs'",
+        "pytest ; extra == 'test'",
+        "pytest-cov ; extra == 'test'"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "ea762c3d29f4cca48d82df517b6d89fbce4db3107f9d78713e48cd321d5c9aa9",
+      "version": "2.0.2"
+    },
+    {
+      "filename": "xlsxwriter-3.2.9-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: BSD License"
+      ],
+      "license_expression": null,
+      "name": "xlsxwriter",
+      "requires_dist": [],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "9a5db42bc5dff014806c58a20b9eae7322a134abb6fce3c92c181bfb275ec5b3",
+      "version": "3.2.9"
+    },
+    {
+      "filename": "youtube_transcript_api-1.2.4-py3-none-any.whl",
+      "license_classifiers": [
+        "License :: OSI Approved :: MIT License"
+      ],
+      "license_expression": null,
+      "name": "youtube-transcript-api",
+      "requires_dist": [
+        "defusedxml (>=0.7.1,<0.8.0)",
+        "requests"
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "03878759356da5caf5edac77431780b91448fb3d8c21d4496015bdc8a7bc43ff",
+      "version": "1.2.4"
+    },
+    {
+      "filename": "zstandard-0.25.0-cp310-cp310-manylinux_2_17_x86_64.whl",
+      "license_classifiers": [],
+      "license_expression": "BSD-3-Clause",
+      "name": "zstandard",
+      "requires_dist": [
+        "cffi~=1.17; (platform_python_implementation != \"PyPy\" and python_version < \"3.14\") and extra == \"cffi\"",
+        "cffi>=2.0.0b; (platform_python_implementation != \"PyPy\" and python_version >= \"3.14\") and extra == \"cffi\""
+      ],
+      "role": "runtime_shared_or_optional_parser",
+      "sha256": "4b6d83057e713ff235a12e73916b6d356e3084fd3d14ced499d84240f3eecee0",
+      "version": "0.25.0"
+    }
+  ],
+  "bootstrap_difference": "pip 22.0.2 from Ubuntu ensurepip replaces development pip 26.2.1; runtime package versions unchanged",
+  "format": "tracelens-python-offline-lock-v1",
+  "libc": [
+    "glibc",
+    "2.35"
+  ],
+  "os_release": "Ubuntu 22.04.5 LTS",
+  "python": "3.10.12",
+  "system": "Linux",
+  "vcs_or_editable_dependencies": []
+}

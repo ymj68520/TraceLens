@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
 import httpx
+from .field_security import load_policy
 
 from ..config import Settings
 
@@ -42,6 +43,10 @@ class CppBackendService:
         """
         self.settings = settings
         self.base_url = settings.cpp_backend_url
+        field_policy = load_policy()
+        self._headers = ({"X-TraceLens-Service-Token": field_policy.python_to_cpp}
+                         if field_policy.enabled else {})
+        self._trust_env = not field_policy.enabled
         self._client: Optional[httpx.AsyncClient] = None
         self._initialized = False
         self._request_timeout_override: Optional[float] = None
@@ -53,6 +58,8 @@ class CppBackendService:
         
         self._client = httpx.AsyncClient(
             base_url=self.base_url,
+            headers=self._headers,
+            trust_env=self._trust_env,
             timeout=httpx.Timeout(30.0),
             limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
         )
@@ -72,6 +79,8 @@ class CppBackendService:
         if self._client is None:
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
+                headers=self._headers,
+                trust_env=self._trust_env,
                 timeout=httpx.Timeout(30.0),
             )
         return self._client
@@ -87,8 +96,7 @@ class CppBackendService:
         **kwargs,
     ) -> Dict[str, Any]:
         """Make a request, with optional short-lived startup/recovery bounds."""
-        payload_preview = kwargs.get("json") or kwargs.get("params")
-        logger.info(f"C++ Request: {method} {path} - Payload: {payload_preview}")
+        logger.info("C++ request: %s %s", method, path.split("?", 1)[0])
 
         request_kwargs = dict(kwargs)
         if timeout is not None:
@@ -108,18 +116,16 @@ class CppBackendService:
                         "status": response.status_code,
                     }
                 if response.status_code >= 400:
-                    logger.error(
-                        "C++ API Error (%s): %s", response.status_code, response.text
-                    )
+                    logger.error("C++ API error: HTTP %s", response.status_code)
                     return {
                         "success": False,
-                        "error": response.text,
+                        "error": f"backend HTTP {response.status_code}" if self._headers else response.text,
                         "status": response.status_code,
                     }
                 if not response.content:
                     return {}
                 result = response.json()
-                logger.info("C++ Response from %s: %s...", path, str(result)[:200])
+                logger.info("C++ response from %s: HTTP %s", path.split("?", 1)[0], response.status_code)
                 return result
             except Exception as exc:
                 if attempt == max_retries - 1:

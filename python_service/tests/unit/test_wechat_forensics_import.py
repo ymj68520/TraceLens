@@ -10,6 +10,8 @@ EnMicroMsg.db (message/rcontact/chatroom/userinfo), including:
 """
 
 import hashlib
+import ctypes
+import ctypes.util
 import os
 import sqlite3
 import struct
@@ -42,7 +44,33 @@ KDF_ITER = 4000
 # ---------------------------------------------------------------------------
 
 
+def _create_reserved_page_db(path: str) -> None:
+    """Configure SQLCipher-v1-sized reserve space before SQLite lays out cells."""
+    library = ctypes.CDLL(ctypes.util.find_library("sqlite3"))
+    library.sqlite3_open.argtypes = [ctypes.c_char_p, ctypes.POINTER(ctypes.c_void_p)]
+    library.sqlite3_open.restype = ctypes.c_int
+    library.sqlite3_exec.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+    library.sqlite3_exec.restype = ctypes.c_int
+    library.sqlite3_file_control.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_void_p]
+    library.sqlite3_file_control.restype = ctypes.c_int
+    library.sqlite3_close.argtypes = [ctypes.c_void_p]
+    library.sqlite3_close.restype = ctypes.c_int
+
+    db = ctypes.c_void_p()
+    assert library.sqlite3_open(os.fsencode(path), ctypes.byref(db)) == 0
+    try:
+        assert library.sqlite3_exec(db, b"PRAGMA page_size=1024", None, None, None) == 0
+        reserved = ctypes.c_int(RESERVE)
+        # SQLITE_FCNTL_RESERVE_BYTES = 38 (sqlite3.h).
+        assert library.sqlite3_file_control(db, b"main", 38, ctypes.byref(reserved)) == 0
+        assert library.sqlite3_exec(db, b"VACUUM", None, None, None) == 0
+    finally:
+        assert library.sqlite3_close(db) == 0
+    assert Path(path).read_bytes()[20] == RESERVE
+
+
 def _build_plain_db(path: str) -> None:
+    _create_reserved_page_db(path)
     con = sqlite3.connect(path)
     con.executescript(
         """
@@ -96,20 +124,8 @@ def _build_plain_db(path: str) -> None:
         messages,
     )
     con.commit()
-    # Match the real EnMicroMsg.db physical layout: 1024-byte pages with a
-    # 16-byte reserve region per page (SQLCipher v1).  SQLite lays cells out
-    # within the usable (page_size - reserve) area only when the reserve byte
-    # (DB header offset 20) is set BEFORE the final VACUUM.
-    con.execute("PRAGMA page_size = 1024")
+    # The reserve region was set before any cells were written.
     con.execute("VACUUM")
-    con.close()
-
-    raw = bytearray(Path(path).read_bytes())
-    raw[20] = RESERVE  # reserved bytes per page
-    Path(path).write_bytes(bytes(raw))
-
-    con = sqlite3.connect(path)
-    con.execute("VACUUM")  # re-layout cells within usable 1008-byte area
     con.execute("PRAGMA integrity_check")
     con.close()
 

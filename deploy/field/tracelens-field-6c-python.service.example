@@ -1,0 +1,29 @@
+[Unit]
+Description=TraceLens 6C immutable field Python backend
+After=network.target tracelens-field-6c-cpp.service
+
+[Service]
+Type=simple
+User=tracelens
+Group=tracelens
+WorkingDirectory=/opt/tracelens/releases/REPLACE_RELEASE_ID/python_service
+EnvironmentFile=/etc/tracelens/field-REPLACE_RELEASE_ID.env
+Environment=TRACELENS_REQUIRE_FIELD_AUTH=1
+Environment=TRACELENS_REQUIRE_RELEASE_LAYOUT=1
+ExecStart=/opt/tracelens/releases/REPLACE_RELEASE_ID/python_service/.venv/bin/python -m httpserver.main
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+ReadWritePaths=/srv/tracelens-field/data
+IPAddressDeny=any
+IPAddressAllow=localhost
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

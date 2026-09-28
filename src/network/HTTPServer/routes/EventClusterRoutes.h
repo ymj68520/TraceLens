@@ -1,6 +1,7 @@
 #pragma once
 
 #include <crow.h>
+#include "../FieldApp.h"
 #include <nlohmann/json.hpp>
 
 namespace forensics {
@@ -11,7 +12,7 @@ namespace forensics {
  */
 class EventClusterRoutes {
 public:
-    explicit EventClusterRoutes(crow::App<>& app);
+    explicit EventClusterRoutes(HttpApp& app);
     
 private:
     // Retired with the legacy C++ LLM cluster stack (SPEC D11); the route

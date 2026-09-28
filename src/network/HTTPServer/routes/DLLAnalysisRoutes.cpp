@@ -24,7 +24,7 @@ struct AnalysisResult {
     std::string error;
 };
 
-DLLAnalysisRoutes::DLLAnalysisRoutes(crow::App<>& app) {
+DLLAnalysisRoutes::DLLAnalysisRoutes(HttpApp& app) {
     // List all DLLs
     CROW_ROUTE(app, "/api/forensics/dlls").methods("GET"_method)([this](const crow::request& req) {
         return handle_get_dll_list(req);

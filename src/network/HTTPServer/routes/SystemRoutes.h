@@ -1,6 +1,7 @@
 #pragma once
 
 #include <crow.h>
+#include "../FieldApp.h"
 #include <nlohmann/json.hpp>
 #include "SystemHealthRoutes.h"
 #include "SystemInfoRoutes.h"
@@ -14,7 +15,7 @@ namespace forensics {
  */
 class SystemRoutes {
 public:
-    explicit SystemRoutes(crow::App<>& app);
+    explicit SystemRoutes(HttpApp& app);
 
 private:
     SystemHealthRoutes health_routes_;

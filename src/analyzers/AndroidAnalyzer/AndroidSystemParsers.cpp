@@ -82,10 +82,14 @@ bool AndroidAnalyzer::parseWifiConfig(const std::string& configPath) {
 
 void AndroidAnalyzer::parseInstalledPackages(const std::string& xmlPath) {
     std::string tempPath = makeAnalysisTempPath(xmlPath, ".xml");
-    if (!fileExtractor_->extractFileByPath(xmlPath, tempPath)) return;
+    if (!fileExtractor_->extractFileByPath(xmlPath, tempPath)) {
+        androidDb_->recordSourceCoverage("installed_apps", xmlPath, "not_found_or_unreadable");
+        return;
+    }
 
     std::ifstream file(tempPath);
     std::string line;
+    std::size_t inserted = 0;
     while (std::getline(file, line)) {
         // Very basic XML scraping - look for <package name="..." ...>
         if (line.find("<package") != std::string::npos) {
@@ -103,11 +107,14 @@ void AndroidAnalyzer::parseInstalledPackages(const std::string& xmlPath) {
             pkg.installer = extractAttr("installer");
 
             if (!pkg.packageName.empty()) {
-                androidDb_->insertInstalledPackage(pkg);
+                if (androidDb_->insertInstalledPackage(pkg)) ++inserted;
             }
         }
     }
     std::filesystem::remove(tempPath);
+    androidDb_->recordSourceCoverage("installed_apps", xmlPath,
+        inserted ? "parsed" : "staged_for_parser",
+        "Parsed installed package rows: " + std::to_string(inserted));
 }
 
 void AndroidAnalyzer::parseUsageStats(const std::string& usageStatsPath) {

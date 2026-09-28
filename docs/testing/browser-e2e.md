@@ -1,5 +1,19 @@
 # Phase E Browser E2E
 
+## 6C isolation requirement (current)
+
+The older commands below are historical and **must not be used for field-release tests**: a default frontend build could point at an existing 8090 service. The current harness refuses to run without `--mode ISOLATED_TEST`, a fresh network namespace, and a field-build manifest matching current sources. It binds a random 127.0.0.1 mock instance, validates its identity, installs CDP `Fetch` interception before first navigation, bypasses Service Workers, and fails if an unexpected request is attempted. A controlled forbidden synthetic target must be blocked before its server sees a request. The namespace contains only loopback, so child Chrome/proxy processes cannot reach host services.
+
+Build only to a new independent output directory, never to the live `web/dist`:
+
+```bash
+source "$HOME/.nvm/nvm.sh" && nvm use 22
+unshare -n -- python_service/.venv/bin/python scripts/field_frontend_build.py --output /tmp/APPROVED_NEW_6C_CANDIDATE
+unshare -n -- env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY CHROME_BIN="$(cd web && node --input-type=module -e "import puppeteer from 'puppeteer'; console.log(await puppeteer.executablePath())")" python_service/.venv/bin/python scripts/browser_e2e.py --mode ISOLATED_TEST --field-mode --android-6b --dist /tmp/APPROVED_NEW_6C_CANDIDATE/web --output /tmp/tracelens-6c-browser.json
+```
+
+Replace the example candidate path with an explicitly created *new* directory under an approved test root. The build refuses an existing target. `PRODUCTION_SMOKE` is not implemented in this harness; it requires separate explicit approval and a separate entrypoint. Missing isolation or build provenance is a test failure, not a fallback to 8666/8090/8091.
+
 ## Purpose
 
 `scripts/browser_e2e.py` is the minimal browser harness for Phase E and D6-E7 closure. It deliberately avoids Playwright/Cypress/Puppeteer dependencies and uses only:

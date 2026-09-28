@@ -46,7 +46,7 @@ static std::string urlDecodeProfileName(const std::string& in) {
     return out;
 }
 
-FilterRoutes::FilterRoutes(crow::App<>& app) {
+FilterRoutes::FilterRoutes(HttpApp& app) {
     // GET /api/filter/profiles - List all available filter profiles
     CROW_ROUTE(app, "/api/filter/profiles").methods("GET"_method)([this](const crow::request& req) {
         return handle_list_profiles(req);

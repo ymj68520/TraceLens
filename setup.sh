@@ -25,6 +25,26 @@ ok()    { echo -e "${GREEN}✓ $*${NC}"; }
 warn()  { echo -e "${YELLOW}⚠ $*${NC}"; }
 fail()  { echo -e "${RED}✗ $*${NC}"; exit 1; }
 
+# CMake caches absolute source paths. Reusing a build directory after moving or
+# copying the repository otherwise fails before CMake can regenerate it.
+prepare_cmake_build_dir() {
+    local build_dir="$1"
+    local source_dir="$2"
+    local cache_file="$build_dir/CMakeCache.txt"
+    local cached_source=""
+
+    mkdir -p "$build_dir"
+    if [ -f "$cache_file" ]; then
+        cached_source="$(sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "$cache_file" | head -1)"
+        if [ -n "$cached_source" ] \
+            && [ "$(realpath -m "$cached_source")" != "$(realpath -m "$source_dir")" ]; then
+            warn "Removing stale CMake cache from $build_dir (old source: $cached_source)"
+            rm -f "$cache_file"
+            rm -rf "$build_dir/CMakeFiles"
+        fi
+    fi
+}
+
 # Optional download proxy for flaky networks. Set PIP_PROXY in the environment
 # or .env (e.g. PIP_PROXY=http://192.168.31.226:7897); it is exported as
 # HTTP_PROXY/HTTPS_PROXY so pip/git/curl route through it.
@@ -182,6 +202,8 @@ APT_PACKAGES=(
     # Build tools
     build-essential cmake pkg-config git wget gnupg software-properties-common
     ca-certificates
+    # Python runtime and venv support (python3 -m venv needs the distro package)
+    python3 python3-venv
     # Core libraries
     libsqlite3-dev libsqlcipher-dev libssl-dev
     # Boost (system/thread for runtime, uuid headers for CaseManager/TaskManager)
@@ -208,6 +230,8 @@ APT_PACKAGES=(
     libcurl4-openssl-dev
     # ZIP
     libzip-dev
+    # TAR/7z Android logical sources (libarchive, BSD-style license)
+    libarchive-dev
     # Word document parsing
     antiword
     # Media analysis (VideoExtractor/AudioExtractor call ffmpeg/ffprobe via subprocess)
@@ -520,7 +544,7 @@ if [ -f "$OSS_SDK_LIB" ]; then
 else
     info "Building Aliyun OSS C++ SDK from source..."
     cd "$OSS_SDK_DIR"
-    mkdir -p build
+    prepare_cmake_build_dir "$OSS_SDK_DIR/build" "$OSS_SDK_DIR"
     cd build
     cmake .. -DBUILD_SAMPLE=OFF -DBUILD_TESTS=OFF 2>&1 | tail -5
     make -j$(nproc) -s 2>&1 | tail -5
@@ -555,7 +579,16 @@ ensure_venv_pip() {
     if ! "$PYTHON_EXEC" -m pip --version &>/dev/null; then
         info "  pip is missing from the virtual environment; bootstrapping with ensurepip..."
         "$PYTHON_EXEC" -m ensurepip --upgrade \
-            || fail "Failed to bootstrap pip in $VENV_DIR"
+            || fail "Failed to bootstrap pip in $VENV_DIR. Verify that python3-venv is installed, remove the incomplete venv, and re-run setup.sh."
+    fi
+}
+
+create_python_venv() {
+    local venv_log="$PROJECT_ROOT/build/python-venv-create.log"
+    mkdir -p "$PROJECT_ROOT/build"
+    if ! python3 -m venv "$VENV_DIR" >"$venv_log" 2>&1; then
+        tail -100 "$venv_log"
+        fail "Failed to create the Python virtual environment. Verify that python3-venv is installed. Full log: $venv_log"
     fi
 }
 
@@ -579,13 +612,13 @@ ensure_large_python_package() {
     fi
 }
 
-# Detect broken venv: python binary exists but pyvenv.cfg is missing
-if [ -f "$PYTHON_EXEC" ] && [ ! -f "$VENV_DIR/pyvenv.cfg" ]; then
-    warn "Virtual environment at $VENV_DIR is broken (missing pyvenv.cfg), recreating..."
+# Detect a partial venv left by an interrupted or failed `python3 -m venv`.
+if [ -d "$VENV_DIR" ] && { [ ! -x "$PYTHON_EXEC" ] || [ ! -f "$VENV_DIR/pyvenv.cfg" ]; }; then
+    warn "Virtual environment at $VENV_DIR is incomplete, recreating..."
     rm -rf "$VENV_DIR"
 fi
 
-if [ -f "$PYTHON_EXEC" ] && [ -f "$VENV_DIR/pyvenv.cfg" ]; then
+if [ -x "$PYTHON_EXEC" ] && [ -f "$VENV_DIR/pyvenv.cfg" ]; then
     ok "Virtual environment exists at $VENV_DIR"
     ensure_venv_pip
     # Upgrade pip and install/update deps
@@ -600,7 +633,7 @@ if [ -f "$PYTHON_EXEC" ] && [ -f "$VENV_DIR/pyvenv.cfg" ]; then
     ok "Python dependencies updated"
 else
     info "Creating new virtual environment..."
-    python3 -m venv "$VENV_DIR"
+    create_python_venv
     ensure_venv_pip
     "$PYTHON_EXEC" -m pip install --upgrade pip -q
     if ! "$PYTHON_EXEC" -m pip install -q --retries 3 -r "$REQUIREMENTS_HTTPSERVER" -r "$REQUIREMENTS_SERVER" 2>/dev/null; then
@@ -629,6 +662,18 @@ ensure_large_python_package "plyvel"             plyvel
 ensure_large_python_package "pillow-heif"        pillow_heif
 ensure_large_python_package "rawpy"              rawpy
 ensure_large_python_package "pydicom"            pydicom
+
+# The read-only Initial Analysis Chinese overlay uses a separate offline
+# translation model. Keep setup usable without network; a missing model only
+# disables translation, never the forensic pipeline or original snapshot.
+if [ "${INSTALL_INITIAL_ANALYSIS_TRANSLATION_MODEL:-0}" != "0" ]; then
+    info "Installing offline Initial Analysis EN-ZH model (if missing)..."
+    if "$PYTHON_EXEC" "$PROJECT_ROOT/scripts/install_initial_analysis_translation_model.py"; then
+        ok "Offline Initial Analysis translation model ready"
+    else
+        warn "Offline EN-ZH model unavailable; Initial Analysis will show its original snapshot until the installer succeeds"
+    fi
+fi
 
 # Core sanity check: if even the lightweight core failed, the venv is unusable
 # - fail loudly rather than proceed to the C++ build.
@@ -671,7 +716,7 @@ info "Step 8/8: Building C++ project..."
 OSS_BUILD_DIR="$PROJECT_ROOT/libs/aliyun-oss-cpp-sdk/build"
 if [ ! -f "$OSS_BUILD_DIR/lib/libalibabacloud-oss-cpp-sdk.a" ]; then
     info "  Building Alibaba OSS SDK..."
-    mkdir -p "$OSS_BUILD_DIR"
+    prepare_cmake_build_dir "$OSS_BUILD_DIR" "$PROJECT_ROOT/libs/aliyun-oss-cpp-sdk"
     cd "$OSS_BUILD_DIR"
     cmake .. -DBUILD_SHARED_LIBS=OFF -DBUILD_SAMPLE=OFF -DBUILD_TESTS=OFF 2>&1 | tail -3
     make -j$(nproc) -s
@@ -681,7 +726,7 @@ else
 fi
 
 BUILD_DIR="$PROJECT_ROOT/build"
-mkdir -p "$BUILD_DIR"
+prepare_cmake_build_dir "$BUILD_DIR" "$PROJECT_ROOT"
 cd "$BUILD_DIR"
 
 info "  Running cmake..."
@@ -717,9 +762,22 @@ fi
 if [ -d "$PROJECT_ROOT/web" ] && [ -f "$PROJECT_ROOT/web/package.json" ]; then
     info "Building web frontend..."
     cd "$PROJECT_ROOT/web"
-    if [ ! -d "node_modules" ]; then
+    if ! command -v node &>/dev/null || ! command -v npm &>/dev/null; then
+        fail "Node.js and npm are required to build the web frontend. Install Node.js 22 or fix the NVM installation, then re-run setup.sh."
+    fi
+    if [ ! -d "node_modules" ] || [ ! -x "node_modules/.bin/vite" ]; then
         info "  Installing web dependencies first..."
-        npm install -s 2>&1 | tail -3
+        WEB_INSTALL_LOG="$BUILD_DIR/web-frontend-install.log"
+        if [ -f "package-lock.json" ]; then
+            NPM_INSTALL_COMMAND=(npm ci --silent)
+        else
+            NPM_INSTALL_COMMAND=(npm install --silent)
+        fi
+        if ! "${NPM_INSTALL_COMMAND[@]}" >"$WEB_INSTALL_LOG" 2>&1; then
+            tail -100 "$WEB_INSTALL_LOG"
+            fail "Web dependency installation failed. Full log: $WEB_INSTALL_LOG"
+        fi
+        tail -3 "$WEB_INSTALL_LOG"
     fi
     WEB_BUILD_LOG="$BUILD_DIR/web-frontend-build.log"
     if ! npm run build >"$WEB_BUILD_LOG" 2>&1; then

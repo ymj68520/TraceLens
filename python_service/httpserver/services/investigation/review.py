@@ -33,7 +33,7 @@ class InvestigationReviewService:
         if not isinstance(task, dict) or task.get("id") != task_id:
             raise EvidenceNotFoundError("analysis not found")
 
-        if not task.get("output_files_db") and not task.get("output_events_db"):
+        if not any(task.get(name) for name in ("output_files_db", "output_events_db", "output_raw_db")):
             raise EvidenceNotFoundError("analysis not found")
         db_path = investigation_db_path_for_task(task)
         if not db_path.exists():

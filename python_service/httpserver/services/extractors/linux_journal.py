@@ -219,8 +219,9 @@ class JournalExtractor(BaseExtractor):
             ts = e['timestamp']
             if hasattr(ts, 'strftime'): ts = ts.strftime('%Y-%m-%d %H:%M:%S')
             msg = str(e['message']).replace('|', '\\|').replace('\n', ' ')
+            unit = str(e['unit']).replace('|', '\\|')
             if len(msg) > 100: msg = msg[:97] + "..."
-            result.append(f"| {ts} | {e['priority']} | {e['unit'].replace('|', '\\|')} | {msg} |")
+            result.append(f"| {ts} | {e['priority']} | {unit} | {msg} |")
         return "\n".join(result)
 
     def _parse_header(self, file_path: str, header: bytes) -> str:

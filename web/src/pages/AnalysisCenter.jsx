@@ -71,6 +71,7 @@ const EvidenceReviewPage = () => {
     const [loading, setLoading] = useState(false);
     const [seeding, setSeeding] = useState(false);
     const searchTimer = useRef(null);
+    const candidatesRequest = useRef(0);
 
     useEffect(() => {
         dispatch(fetchTasks({ status: 'all', priority: 'all' }));
@@ -85,6 +86,7 @@ const EvidenceReviewPage = () => {
 
     // 回显已保存的案情描述
     useEffect(() => {
+        setCaseDescription('');
         if (!activeContextId || activeContextId === caseId) return undefined;
         let alive = true;
         fetchTaskById(activeContextId)
@@ -97,6 +99,7 @@ const EvidenceReviewPage = () => {
 
     const loadCandidates = useCallback(async () => {
         if (!activeContextId || activeContextId === caseId) return;
+        const requestId = ++candidatesRequest.current;
         setLoading(true);
         try {
             const data = await listReportEvidenceFileCandidates(activeContextId, {
@@ -106,21 +109,24 @@ const EvidenceReviewPage = () => {
                 page,
                 page_size: PAGE_SIZE,
             });
+            if (requestId !== candidatesRequest.current) return;
             setItems(data?.items || []);
             setTotal(data?.total || 0);
             setStatusCounts(data?.status_counts || { main: 0, appendix: 0, excluded: 0, unjudged: 0 });
         } catch (err) {
+            if (requestId !== candidatesRequest.current) return;
             console.error('Failed to load evidence candidates:', err);
             toast.error('加载证据清单失败: ' + (err?.response?.data?.detail || err?.message || err));
             setItems([]);
             setTotal(0);
         } finally {
-            setLoading(false);
+            if (requestId === candidatesRequest.current) setLoading(false);
         }
     }, [activeContextId, caseId, search, statusFilter, analyzedOnly, page, toast]);
 
     useEffect(() => {
         loadCandidates();
+        return () => { candidatesRequest.current += 1; };
     }, [loadCandidates]);
 
     // 搜索防抖：输入后 400ms 才真正触发查询并回到第一页
@@ -416,4 +422,9 @@ const EvidenceReviewPage = () => {
     );
 };
 
-export default EvidenceReviewPage;
+export default function AnalysisCenter() {
+    const [searchParams] = useSearchParams();
+    const contextId = searchParams.get('case_id') || searchParams.get('taskId') || searchParams.get('task_id') || '';
+    // Changing task must also reset the review list and every action's target.
+    return <EvidenceReviewPage key={contextId} />;
+}

@@ -1,0 +1,5 @@
+#pragma once
+// Generated at build configuration from fixed, independently checked inputs.
+#define TRACELENS_RELEASE_ID "@TRACELENS_RELEASE_ID@"
+#define TRACELENS_SOURCE_COMMIT "@TRACELENS_SOURCE_COMMIT@"
+#define TRACELENS_SOURCE_SHA256 "@TRACELENS_SOURCE_SHA256@"

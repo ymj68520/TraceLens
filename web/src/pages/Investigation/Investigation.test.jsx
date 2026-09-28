@@ -5,6 +5,11 @@ import Investigation from './Investigation';
 import { ToastProvider } from '../../components/common/ToastContext';
 import * as service from '../../services/investigationService';
 
+const reportScope = vi.hoisted(() => ({ reportId: 'rep-1', loading: false, error: null, refresh: vi.fn() }));
+vi.mock('./hooks/useCitedReportVersion', () => ({
+  default: () => reportScope,
+}));
+
 vi.mock('./components/LocalKnowledgeGraph', () => ({
   default: ({ graph }) => <div>{graph?.nodes?.map((node) => node.label).join(',')}</div>,
 }));
@@ -29,6 +34,7 @@ vi.mock('../../services/investigationService', () => ({
   getInvestigationFileTimeline: vi.fn(),
   getEventEvidence: vi.fn(),
   getEvidenceDetail: vi.fn(),
+  translateInitialAnalysis: vi.fn(),
   getAnalysisVersions: vi.fn(),
   getLocalGraph: vi.fn(),
   reviewInvestigationEvent: vi.fn(),
@@ -77,11 +83,15 @@ function renderPage(route = '/investigation?task_id=t1') {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  reportScope.reportId = 'rep-1';
+  reportScope.loading = false;
+  reportScope.error = null;
   service.getOverview.mockResolvedValue({ initialized: true, event_count: 2, analysis_count: 0, report_evidence_count: 0 });
   service.getInvestigationEvents.mockResolvedValue({ events });
   service.getInvestigationFileTimeline.mockResolvedValue({ files, total_count: 2, axis: { start: 150, end: 250 } });
   service.getEventEvidence.mockImplementation((taskId, eventId) => Promise.resolve({ evidence: evidenceByEvent[eventId] || [] }));
   service.getEvidenceDetail.mockResolvedValue({ evidence: { evidence_key: 'file:/case/b.txt', title: 'b.txt', file_path: '/case/b.txt', snapshot: { initial_description: 'Initial B' }, metadata: {}, related_event_ids: [] } });
+  service.translateInitialAnalysis.mockResolvedValue({ text: '摘要：中文译文。', translated: true, cached: false });
   service.getAnalysisVersions.mockResolvedValue({ versions: [] });
   service.getLocalGraph.mockResolvedValue({ nodes: [], links: [], base_available: false });
 });
@@ -150,7 +160,7 @@ test('does not bootstrap an initialized investigation', async () => {
 test('timeline nodes are files sorted by latest MACB time; first file opens the evidence analysis workspace', async () => {
   renderPage();
   await screen.findByTestId('file-node-/case/a.txt');
-  expect(service.getInvestigationFileTimeline).toHaveBeenCalledWith('t1', {});
+  expect(service.getInvestigationFileTimeline).toHaveBeenCalledWith('t1', { report_id: 'rep-1' });
   // 左栏展示选中文件（首个文件）及其关联事件
   expect(screen.getByTestId('file-event-panel-name')).toHaveTextContent('a.txt');
   expect(screen.getByTestId('file-event-e1')).toBeInTheDocument();
@@ -159,6 +169,76 @@ test('timeline nodes are files sorted by latest MACB time; first file opens the 
   await screen.findByTestId('evidence-analysis-panel');
   expect(screen.getByTestId('file-context-header')).toBeInTheDocument();
   expect(service.getEventEvidence).not.toHaveBeenCalled();
+});
+
+test('explains an empty task event list without calling file timestamps investigation events', async () => {
+  service.getOverview.mockResolvedValue({ initialized: true, event_count: 0, analysis_count: 0, report_evidence_count: 1 });
+  service.getInvestigationEvents.mockResolvedValue({ events: [] });
+  service.getInvestigationFileTimeline.mockResolvedValue({
+    files: [{ ...files[0], event_ids: [] }], total_count: 1,
+  });
+  renderPage();
+  await screen.findByTestId('file-event-panel-name');
+  expect(screen.getByText('当前任务尚未生成调查事件')).toBeInTheDocument();
+  expect(screen.getByText('上方展示的是文件时间戳；原始文件活动记录不等同于已建立关联的调查事件。')).toBeInTheDocument();
+  expect(screen.queryByText('在上方选择一个关联事件，查看它的佐证证据与 Claim 引用。')).not.toBeInTheDocument();
+});
+
+test('distinguishes an unlinked file from a task with no investigation events', async () => {
+  service.getInvestigationFileTimeline.mockResolvedValue({
+    files: [{ ...files[0], event_ids: [] }], total_count: 1,
+  });
+  renderPage();
+  await screen.findByTestId('file-event-panel-name');
+  expect(screen.getByText('该文件尚未关联调查事件')).toBeInTheDocument();
+  expect(screen.queryByText('当前任务尚未生成调查事件')).not.toBeInTheDocument();
+});
+
+test('shows the immutable snapshot payload description and requests this evidence local graph', async () => {
+  service.getEvidenceDetail.mockResolvedValue({ evidence: {
+    evidence_key: 'file:/case/a.txt', title: 'a.txt', file_path: '/case/a.txt',
+    snapshot: { captured_at: 123, payload: { initial_description: '已生成的初次分析描述', initial_summary: '摘要' } },
+    metadata: {}, related_event_ids: [],
+  } });
+  renderPage();
+  expect(await screen.findByTestId('initial-analysis-description')).toHaveTextContent('已生成的初次分析描述');
+  expect(screen.getByTestId('initial-analysis-description')).toHaveTextContent('摘要：摘要');
+  expect(service.getLocalGraph).toHaveBeenCalledWith('t1', {
+    evidence_key: 'file:/case/a.txt', max_nodes: 50,
+  });
+});
+
+test('renders Chinese reading overlay and keeps immutable English source collapsible', async () => {
+  service.getEvidenceDetail.mockResolvedValue({ evidence: {
+    evidence_key: 'file:/case/a.txt', title: 'a.txt', file_path: '/case/a.txt',
+    snapshot: { payload: {
+      initial_description: 'SUMMARY: This file is a plugin configuration file that defines a deletion rule for user data.',
+      initial_summary: 'This file is a plugin configuration file.',
+    } },
+    metadata: {}, related_event_ids: [],
+  } });
+  renderPage();
+  expect(await screen.findByTestId('initial-analysis-description')).toHaveTextContent('摘要：中文译文。');
+  expect(screen.getByText('2. 初次分析（快照，只读）')).toBeInTheDocument();
+  expect(service.translateInitialAnalysis).toHaveBeenCalledWith('t1', 'file:/case/a.txt');
+  expect(screen.getByText('查看英文原文（不可变快照）')).toBeInTheDocument();
+  expect(screen.getByTestId('initial-analysis-description')).not.toHaveTextContent('SUMMARY:');
+});
+
+test('shows an existing secondary analysis even when new LLM actions are disabled', async () => {
+  featuresState.workbench_llm_enabled = false;
+  service.getAnalysisVersions.mockResolvedValue({ versions: [{
+    id: 'analysis-1', version: 2, status: 'accepted',
+    description: '已有二次分析结论', claims: [],
+  }] });
+  try {
+    renderPage();
+    expect(await screen.findByText('已有二次分析结论')).toBeInTheDocument();
+    expect(screen.getByText(/历史二次分析记录/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '执行二次分析' })).not.toBeInTheDocument();
+  } finally {
+    featuresState.workbench_llm_enabled = true;
+  }
 });
 
 test('selecting a file node shows its events and opens the file workspace', async () => {
@@ -311,7 +391,7 @@ test('deep link ?event= switches to the file hosting that event', async () => {
 test('deep link ?file= (evidence key form) parks the timeline on that file', async () => {
   renderPage('/investigation?task_id=t1&file=file:/case/b.txt');
   // 深链目标经 ensure_path 透传，超出显示截断也能落在时间线上。
-  await waitFor(() => expect(service.getInvestigationFileTimeline).toHaveBeenCalledWith('t1', { ensure_path: '/case/b.txt' }));
+  await waitFor(() => expect(service.getInvestigationFileTimeline).toHaveBeenCalledWith('t1', { report_id: 'rep-1', ensure_path: '/case/b.txt' }));
   await screen.findByTestId('file-node-/case/b.txt');
   // 选中文件即左栏文件工作台 + 关联事件，时间线滚动定位由选中态驱动。
   await waitFor(() => expect(screen.getByTestId('file-event-panel-name')).toHaveTextContent('b.txt'));
@@ -326,4 +406,27 @@ test('deep link ?file= accepts a bare path and falls back to the first file when
 
   renderPage('/investigation?task_id=t1&file=/case/missing.txt');
   await waitFor(() => expect(screen.getByTestId('file-event-panel-name')).toHaveTextContent('a.txt'));
+});
+
+test('only report-cited files appear and node links back to exact citation', async () => {
+  service.getInvestigationFileTimeline.mockResolvedValueOnce({
+    files: [files[1]], total_count: 1, citation_ids_by_path: { '/case/b.txt': ['c002'] },
+    axis: { start: 250, end: 250 },
+  });
+  renderPage();
+  await screen.findByTestId('file-node-/case/b.txt');
+  expect(screen.queryByTestId('file-node-/case/a.txt')).not.toBeInTheDocument();
+  expect(screen.getByTestId('cited-file-count')).toHaveTextContent('1 引用文件');
+  fireEvent.click(screen.getByTestId('file-node-/case/b.txt'));
+  expect(screen.getByTestId('report-citation-link-c002')).toHaveAttribute(
+    'href', '/case-intelligence?task_id=t1&tab=forensic&report_id=rep-1&citation_id=c002',
+  );
+});
+
+test('without a ready narrative report the timeline never falls back to all analyzed files', async () => {
+  reportScope.reportId = null;
+  renderPage();
+  expect(await screen.findByTestId('timeline-empty')).toHaveTextContent('尚无已就绪的最终叙事报告');
+  expect(service.getInvestigationFileTimeline).not.toHaveBeenCalled();
+  expect(screen.queryByTestId('file-node-/case/a.txt')).not.toBeInTheDocument();
 });

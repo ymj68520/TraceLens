@@ -6,7 +6,7 @@ namespace forensics {
 
 using json = nlohmann::json;
 
-SystemDocsRoutes::SystemDocsRoutes(crow::App<>& app) {
+SystemDocsRoutes::SystemDocsRoutes(HttpApp& app) {
     CROW_ROUTE(app, "/api/docs/endpoints").methods("GET"_method)([this](const crow::request& req) {
         return handle_docs_endpoints(req);
     });

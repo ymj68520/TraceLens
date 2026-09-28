@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Clock3, FileText, Filter } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import Badge from '../../../components/common/Badge';
 import Spinner from '../../../components/common/Spinner';
+import { reportCitationUrl } from '../../../utils/evidenceKey';
 import { REVIEW_STATUS, formatTimestamp } from '../utils/investigationConstants';
 
 // review_status → 轴上节点圆点颜色（与 REVIEW_STATUS 徽章语义对齐）
@@ -91,8 +93,9 @@ const fromDatetimeLocalValue = (value) => {
   return Number.isNaN(time) ? null : Math.floor(time / 1000);
 };
 
-export default function InvestigationTimeline({ files, events, selectedFileKey, onSelectFile, onSelectEvent, loading }) {
+export default function InvestigationTimeline({ taskId = null, reportId = null, citationIdsByPath = {}, files, events, selectedFileKey, focusFileKey = null, onSelectFile, onSelectEvent, loading, emptyMessage = '暂无已分析文件。请确认初次流水线已完成并产生已分析 Event Cluster。' }) {
   const [expandedKey, setExpandedKey] = useState(null);
+  const [expandedSummaryKey, setExpandedSummaryKey] = useState(null);
   const [filterStart, setFilterStart] = useState('');
   const [filterEnd, setFilterEnd] = useState('');
   const nodeRefs = useRef({});
@@ -134,12 +137,22 @@ export default function InvestigationTimeline({ files, events, selectedFileKey, 
   // 外部选择（URL、图谱联动）滚动定位；卡片只靠点击展开。
   useEffect(() => {
     if (!selectedFileKey) return;
-    nodeRefs.current[selectedFileKey]?.scrollIntoView?.({ block: 'nearest' });
-  }, [selectedFileKey, visible]);
+    const node = nodeRefs.current[selectedFileKey];
+    const card = expandedKey === selectedFileKey
+      ? node?.querySelector('[data-testid^="file-card-"]')
+      : null;
+    (card || node)?.scrollIntoView?.({ block: card ? 'center' : 'nearest' });
+  }, [selectedFileKey, expandedKey, visible]);
+
+  useEffect(() => {
+    if (focusFileKey && (files || []).some((file) => file.path === focusFileKey)) {
+      setExpandedKey(focusFileKey);
+    }
+  }, [files, focusFileKey]);
 
   if (loading) return <div className="h-full flex items-center justify-center"><Spinner /></div>;
   if (!files.length) {
-    return <div className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">暂无已分析文件。请确认初次流水线已完成并产生已分析 Event Cluster。</div>;
+    return <div className="p-8 text-center text-sm text-slate-500 dark:text-slate-400" data-testid="timeline-empty">{emptyMessage}</div>;
   }
 
   const toggle = (file) => {
@@ -160,6 +173,7 @@ export default function InvestigationTimeline({ files, events, selectedFileKey, 
         data-testid="timeline-filter"
       >
         <Filter size={12} className="shrink-0 text-slate-400" />
+        {reportId && <span className="shrink-0 text-[11px] font-semibold text-primary-600 dark:text-primary-300" data-testid="timeline-report-scope">最终报告引用 · {files.length} 文件</span>}
         <input
           type="datetime-local"
           step="1"
@@ -218,6 +232,7 @@ export default function InvestigationTimeline({ files, events, selectedFileKey, 
         </div>
 
         {visible.map((file, index) => {
+          const citationIds = citationIdsByPath[file.path] || [];
           const fileEvents = resolveEvents(file);
           const judgeKey = judgeKeyOf(file);
           const selected = selectedFileKey === file.path;
@@ -311,8 +326,25 @@ export default function InvestigationTimeline({ files, events, selectedFileKey, 
                       );
                     })}
                   </div>
+                  {taskId && reportId && citationIds.length > 0 && (
+                    <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50/60 p-2.5 dark:border-blue-900/50 dark:bg-blue-950/20" data-testid={`file-citations-${file.path}`}>
+                      <p className="text-[11px] font-semibold text-blue-800 dark:text-blue-200">最终报告中的引用</p>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {citationIds.map((citationId) => (
+                          <Link key={citationId} to={reportCitationUrl(taskId, reportId, citationId)} data-testid={`report-citation-link-${citationId}`} className="rounded-md border border-blue-200 bg-white px-2 py-0.5 font-mono text-[11px] font-semibold text-blue-700 hover:border-blue-400 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-blue-800 dark:bg-slate-800 dark:text-blue-300">
+                            {citationId} ↗
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {file.llm_summary && (
-                    <p className="mt-2 whitespace-pre-wrap break-words text-xs text-slate-600 dark:text-slate-400">{file.llm_summary}</p>
+                    <div className="mt-2">
+                      <p className={`whitespace-pre-wrap break-words text-xs leading-5 text-slate-600 dark:text-slate-400 ${String(file.llm_summary).length > 220 && expandedSummaryKey !== file.path ? 'line-clamp-4' : ''}`}>{file.llm_summary}</p>
+                      {String(file.llm_summary).length > 220 && (
+                        <button type="button" className="mt-1 text-[11px] font-semibold text-primary-600 hover:underline dark:text-primary-300" onClick={() => setExpandedSummaryKey((current) => current === file.path ? null : file.path)}>{expandedSummaryKey === file.path ? '收起文件摘要' : '展开文件摘要'}</button>
+                      )}
+                    </div>
                   )}
                   <div className="mt-2 border-t border-slate-100 pt-2 dark:border-slate-800">
                     <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">佐证事件 · {fileEvents.length}</div>

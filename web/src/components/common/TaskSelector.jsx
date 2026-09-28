@@ -12,7 +12,7 @@ const TaskSelector = () => {
     // 研判页面统一通过 query 参数（task_id/taskId）携带当前镜像
     const currentTaskId = searchParams.get('taskId') || searchParams.get('task_id') || currentTask?.id;
 
-    const relevantPaths = ['/timeline', '/files', '/statistics', '/llm-descriptions', '/android', '/oss', '/case-report', '/knowledge-graph', '/case-intelligence', '/analysis-center', '/investigation'];
+    const relevantPaths = ['/timeline', '/files', '/statistics', '/llm-descriptions', '/android', '/oss', '/case-report', '/knowledge-graph', '/graph-source-file', '/case-intelligence', '/analysis-center', '/investigation'];
     const isRelevantPage = relevantPaths.some(path => location.pathname.startsWith(path));
 
     useEffect(() => {
@@ -46,12 +46,19 @@ const TaskSelector = () => {
             // Clean up both possible names to avoid confusion
             delete newParams.taskId;
             delete newParams.task_id;
+            // A report, citation, file, or event belongs to the old task.
+            // Carrying one into the new task would make exact report links fail
+            // or select evidence from the wrong scope.
+            for (const key of ['case_id', 'report_id', 'import_id', 'citation_id', 'file', 'event', 'evidence_key', 'relationship_id', 'episode_id']) delete newParams[key];
+            if (newParams.tab === 'cross-image') delete newParams.tab;
             newParams[paramName] = newTaskId;
             setSearchParams(newParams);
         } else {
             const newParams = Object.fromEntries(searchParams);
             delete newParams.taskId;
             delete newParams.task_id;
+            for (const key of ['case_id', 'report_id', 'import_id', 'citation_id', 'file', 'event', 'evidence_key', 'relationship_id', 'episode_id']) delete newParams[key];
+            if (newParams.tab === 'cross-image') delete newParams.tab;
             setSearchParams(newParams);
         }
     };
@@ -71,7 +78,7 @@ const TaskSelector = () => {
                 <option value="">Select task...</option>
                 {tasks.map((task) => (
                     <option key={task.id} value={task.id}>
-                        {task.image_path.split('/').pop()} ({task.id.substring(0, 8)}) - {task.status}
+                        {task.image_path?.split('/').pop() || task.name || task.id} ({String(task.id).substring(0, 8)}) - {task.status}
                     </option>
                 ))}
             </select>

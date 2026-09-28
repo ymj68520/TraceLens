@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { fetchTasks, cancelTask, deleteTask, setFilters } from '../store/taskSlice';
 import { fetchCases } from '../store/caseSlice';
@@ -14,9 +15,11 @@ import TaskTable from '../components/tasks/TaskTable';
 import CreateTaskModal from '../components/tasks/CreateTaskModal';
 import AddTasksToCaseModal from '../components/tasks/AddTasksToCaseModal';
 import ComposeCaseModal from '../components/tasks/ComposeCaseModal';
+import EvidencePreflightPanel from '../components/tasks/EvidencePreflightPanel';
 import { useTaskAutoTrigger } from '../hooks/useTaskAutoTrigger';
 
 const Tasks = () => {
+  const navigate = useNavigate();
   const dispatch = useDispatch();
   const { tasks, status, error, filters } = useSelector((state) => state.tasks);
   const { cases } = useSelector((state) => state.cases);
@@ -33,6 +36,8 @@ const Tasks = () => {
   const [selectedTaskIds, setSelectedTaskIds] = useState(new Set());
   // Compose-case modal (opened with the current selection)
   const [showCompose, setShowCompose] = useState(false);
+  const [showPreflight, setShowPreflight] = useState(false);
+  const [taskSourcePrefill, setTaskSourcePrefill] = useState(null);
 
   const toggleSelect = (taskId) =>
     setSelectedTaskIds((prev) => {
@@ -130,12 +135,21 @@ const Tasks = () => {
           <p className="mt-2 text-slate-600 dark:text-slate-300">Manage and monitor analysis tasks</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setShowPreflight((value) => !value)}>🔍 检材预检</Button>
+          <Button variant="outline" disabled={selectedTaskIds.size !== 1} onClick={() => navigate(`/android?mode=report&task_id=${encodeURIComponent([...selectedTaskIds][0])}`)}>
+            📱 关联离线报告
+          </Button>
           <Button variant="outline" onClick={() => setShowCompose(true)} disabled={selectedTaskIds.size === 0}>
             📂 组建案件（{selectedTaskIds.size}）
           </Button>
-          <Button onClick={() => dispatch(openModal({ type: 'createTask' }))}>➕ Create Task</Button>
+          <Button onClick={() => { setTaskSourcePrefill(null); dispatch(openModal({ type: 'createTask' })); }}>➕ Create Task</Button>
         </div>
       </div>
+
+      {showPreflight && <EvidencePreflightPanel onCreateTask={(source) => {
+        setTaskSourcePrefill(source);
+        dispatch(openModal({ type: 'createTask' }));
+      }} />}
 
       {/* Filters */}
       <Card>
@@ -171,7 +185,7 @@ const Tasks = () => {
       </Card>
 
       {/* Modal */}
-      {modal.open && modal.type === 'createTask' && <CreateTaskModal />}
+      {modal.open && modal.type === 'createTask' && <CreateTaskModal initialSource={taskSourcePrefill} onClose={() => setTaskSourcePrefill(null)} />}
 
       {/* Join-case modal (task-row entry point) */}
       {joinTaskId && (

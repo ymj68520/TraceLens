@@ -1,9 +1,9 @@
 import { useContext, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, XCircle, Info, AlertTriangle, X } from 'lucide-react';
-// context 单一来源：与 ./toastContext.js 共享同一个实例，
+// context 单一来源：所有入口都从 toastContextBase.js 共享同一个实例，
 // 避免 useToast.js 读到另一个空 context 导致 "must be used within ToastProvider"。
-import { ToastContext } from './toastContext';
+import { ToastContext } from './toastContextBase.js';
 
 let toastId = 0;
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <crow.h>
+#include "../FieldApp.h"
 #include <nlohmann/json.hpp>
 #include "../TaskManager.h"
 
@@ -11,9 +12,10 @@ namespace forensics {
  */
 class TaskCRUDRoutes {
 public:
-    explicit TaskCRUDRoutes(crow::App<>& app);
+    explicit TaskCRUDRoutes(HttpApp& app);
 
 private:
+    HttpApp& app_;
     TaskManager& task_manager_;
 
     crow::response handle_create_task(const crow::request& req);

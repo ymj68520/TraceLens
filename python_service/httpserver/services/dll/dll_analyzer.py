@@ -3,6 +3,7 @@
 import httpx
 from typing import Dict, Any, Optional
 import os
+from ..field_security import load_policy
 
 
 class DLLAnalyzerClient:
@@ -31,7 +32,11 @@ class DLLAnalyzerClient:
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client."""
         if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(timeout=self.timeout)
+            policy = load_policy()
+            self._client = httpx.AsyncClient(
+                timeout=self.timeout, trust_env=not policy.enabled,
+                headers={"X-TraceLens-Service-Token": policy.python_to_cpp} if policy.enabled else {},
+            )
         return self._client
 
     async def analyze_dll(self, file_path: str) -> Dict[str, Any]:

@@ -6,8 +6,18 @@
 #include <algorithm>
 #include <filesystem>
 #include <iostream>
+#include <cstdlib>
 
 namespace forensics {
+
+namespace {
+bool field_ai_disabled() {
+    const char* auth = std::getenv("TRACELENS_FIELD_AUTH");
+    const char* mode = std::getenv("FIELD_OUTBOUND_POLICY");
+    return auth && std::string(auth) == "enabled" &&
+        (!mode || std::string(mode) == "disabled");
+}
+}
 
 ConfigManager& ConfigManager::instance() {
     static ConfigManager instance;
@@ -83,7 +93,7 @@ bool ConfigManager::getBool(const std::string& key, bool defaultValue) const {
 }
 
 // --- LLM Analysis Settings ---
-std::string ConfigManager::getLLMBaseUrl() const { return get("LLM_BASE_URL", "http://192.168.31.170:1234"); }
+std::string ConfigManager::getLLMBaseUrl() const { return field_ai_disabled() ? "" : get("LLM_BASE_URL", "http://192.168.31.170:1234"); }
 std::string ConfigManager::getLLMEndpoint() const { return get("LLM_ENDPOINT", "/v1/chat/completions"); }
 std::string ConfigManager::getLLMApiKey() const { return get("LLM_API_KEY", ""); }
 std::string ConfigManager::getLLMThinkingMode() const {
@@ -128,7 +138,7 @@ bool ConfigManager::getLLMSkipBinary() const { return getBool("LLM_SKIP_BINARY",
 bool ConfigManager::getWinLinuxArtifactLlmEnabled() const { return getBool("WIN_LINUX_ARTIFACT_LLM_ENABLED", false); }
 
 // Text Model Settings
-std::string ConfigManager::getTextBaseUrl() const { return get("LLM_TEXT_BASE_URL", getLLMBaseUrl()); }
+std::string ConfigManager::getTextBaseUrl() const { return field_ai_disabled() ? "" : get("LLM_TEXT_BASE_URL", getLLMBaseUrl()); }
 std::string ConfigManager::getTextModel() const { return get("LLM_TEXT_MODEL", "gpt-oss"); }
 int ConfigManager::getTextMaxTokens() const { return getInt("LLM_TEXT_MAX_TOKENS", 2048); }
 double ConfigManager::getTextTemperature() const { return getDouble("LLM_TEXT_TEMPERATURE", 0.7); }
@@ -148,7 +158,7 @@ llm::LLMConfig ConfigManager::getTextModelConfig() const {
 }
 
 // Vision Model Settings
-std::string ConfigManager::getVisionBaseUrl() const { return get("LLM_VISION_BASE_URL", getLLMBaseUrl()); }
+std::string ConfigManager::getVisionBaseUrl() const { return field_ai_disabled() ? "" : get("LLM_VISION_BASE_URL", getLLMBaseUrl()); }
 std::string ConfigManager::getVisionModel() const { return get("LLM_VISION_MODEL", "qwen3-vl"); }
 int ConfigManager::getVisionMaxTokens() const { return getInt("LLM_VISION_MAX_TOKENS", 4096); }
 double ConfigManager::getVisionTemperature() const { return getDouble("LLM_VISION_TEMPERATURE", 0.5); }

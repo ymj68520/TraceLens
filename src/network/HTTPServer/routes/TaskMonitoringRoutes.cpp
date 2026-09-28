@@ -8,7 +8,7 @@ namespace forensics {
 
 using json = nlohmann::json;
 
-TaskMonitoringRoutes::TaskMonitoringRoutes(crow::App<>& app) : task_manager_(TaskManager::instance()) {
+TaskMonitoringRoutes::TaskMonitoringRoutes(HttpApp& app) : task_manager_(TaskManager::instance()) {
     // Task monitoring routes
     CROW_ROUTE(app, "/api/tasks/<string>/progress").methods("GET"_method)([this](const crow::request& req, const std::string& task_id) {
         return handle_get_task_progress(req, task_id);

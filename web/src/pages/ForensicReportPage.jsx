@@ -10,6 +10,8 @@ import { useReportSearch } from '../hooks/useReportSearch';
 import { useReportVersion } from '../hooks/useReportVersion';
 import { getNarrativeReport } from '../services/reportGenerationService';
 import { reportDataSource } from '../services/reportService';
+import { fetchTaskById } from '../services/taskService';
+import AndroidCoverageCard from '../components/AndroidCoverageCard';
 
 function reportErrorMessage(error) {
   const detail = error?.data?.detail;
@@ -26,23 +28,33 @@ export default function ForensicReportPage({
   dataSource = reportDataSource,
   narrativeLoader = getNarrativeReport,
   generationPollIntervalMs,
+  requestedReportId = null,
+  focusCitationId = null,
+  onVersionChange,
 }) {
   const params = useParams();
   // Prefer an explicit prop (used when embedded outside of /reports/.../:id routes);
   // fall back to the route param otherwise.
   const resolvedScopeId = scopeId ?? (scopeType === 'case' ? params.caseId : params.taskId);
   const state = useReportVersion({ scopeType, scopeId: resolvedScopeId, dataSource });
+  const selectedReportId = state.selectedVersion?.report_id;
+  const selectByReportId = state.selectByReportId;
+  const requestedSelectionRef = useRef(null);
   const reportId = state.selectedVersion?.report_id || null;
   const searchState = useReportSearch({ dataSource, reportId });
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedPage, setSelectedPage] = useState(1);
   const [directoryOpen, setDirectoryOpen] = useState(false);
+  const [imageTask, setImageTask] = useState(false);
   const currentManifest = state.manifest?.report_id === reportId ? state.manifest : null;
   const defaultCategoryId = currentManifest?.categories?.[0]?.category_id || null;
   const incompatible = Boolean(currentManifest && currentManifest.schema_version !== '1.0');
   // R2d: a published narrative version renders the Narrative view; it never
   // enters the deterministic category/page workspace.
   const selectedIsNarrative = state.selectedVersion?.report_kind === 'llm_generation';
+  const requestedVersionFound = !requestedReportId || state.versions.some((version) => version.report_id === requestedReportId);
+  const requestedVersionMissing = Boolean(requestedReportId && !state.loading && !requestedVersionFound);
+  const awaitingRequestedVersion = Boolean(requestedReportId && requestedVersionFound && reportId !== requestedReportId);
 
   // 渲染期同步 refs：generation 晚完成时用它们判定"用户是否仍在原地"，
   // 绝不让晚到的 completed 劫持当前 selection（§7/§30）。
@@ -75,7 +87,27 @@ export default function ForensicReportPage({
   useEffect(() => {
     scopeRef.current = `${scopeType}:${resolvedScopeId}`;
     selectionWhenAdmittedRef.current = undefined;
+    requestedSelectionRef.current = null;
   }, [scopeType, resolvedScopeId]);
+
+  useEffect(() => {
+    let active = true;
+    setImageTask(false);
+    if (scopeType !== 'task' || !resolvedScopeId) return () => { active = false; };
+    fetchTaskById(resolvedScopeId).then((task) => {
+      if (active) setImageTask(['filesystem-image', 'android-container'].includes(task?.android_source));
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [scopeType, resolvedScopeId]);
+
+  useEffect(() => {
+    if (!requestedReportId || selectedReportId === requestedReportId) return;
+    if (!state.versions.some((version) => version.report_id === requestedReportId)) return;
+    const requestKey = `${scopeType}:${resolvedScopeId}:${requestedReportId}`;
+    if (requestedSelectionRef.current === requestKey) return;
+    requestedSelectionRef.current = requestKey;
+    void selectByReportId(requestedReportId);
+  }, [requestedReportId, resolvedScopeId, scopeType, selectedReportId, selectByReportId, state.versions]);
 
   useEffect(() => {
     setSelectedCategory(defaultCategoryId);
@@ -113,21 +145,28 @@ export default function ForensicReportPage({
         version={state.selectedVersion}
         incompatible={incompatible}
       />
+      {imageTask && resolvedScopeId && <div data-testid="android-report-coverage-reference" className="space-y-2">
+        <p className="text-sm text-amber-700">本报告须连同下列 Android 来源覆盖清单阅读；已解析记录不代表全部加密或缺失数据可用。</p>
+        <AndroidCoverageCard taskId={resolvedScopeId} />
+      </div>}
+      {requestedVersionMissing && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-200">指定的最终报告版本不属于当前任务或尚未就绪；不会自动改为其他版本。</div>}
+      {awaitingRequestedVersion && <div className="flex justify-center rounded-xl border border-slate-200 p-6 dark:border-slate-700"><span className="text-sm text-slate-500">正在定位指定报告版本…</span></div>}
       {state.versions.length > 0 && (
         <VersionHistory
           versions={state.versions}
           selectedVersion={state.selectedVersion}
-          onSelect={(version) => { void state.selectVersion(version); }}
+          onSelect={(version) => { onVersionChange?.(version.report_id); void state.selectVersion(version); }}
         />
       )}
-      {selectedIsNarrative && resolvedScopeId ? (
+      {!requestedVersionMissing && !awaitingRequestedVersion && selectedIsNarrative && resolvedScopeId ? (
         <NarrativeReportView
           taskId={resolvedScopeId}
           reportId={reportId}
           fetchNarrative={narrativeLoader}
+          focusCitationId={focusCitationId}
         />
       ) : (
-        currentManifest && !incompatible && reportId && (
+        !requestedVersionMissing && !awaitingRequestedVersion && currentManifest && !incompatible && reportId && (
           <ReportWorkspace
             manifest={currentManifest}
             dataSource={dataSource}

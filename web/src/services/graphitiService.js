@@ -136,6 +136,16 @@ export const getGraphData = async (taskId, maxNodes = 200) => {
     });
 };
 
+export const getRelationshipTrace = (taskId, relationshipId) =>
+    pythonApi.get(`/api/graphiti/relationships/${encodeURIComponent(relationshipId)}/trace`, {
+        params: { task_id: taskId },
+    });
+
+export const getGraphSourceFile = (taskId, evidenceKey) =>
+    pythonApi.get('/api/graphiti/source-file', {
+        params: { task_id: taskId, evidence_key: evidenceKey },
+    });
+
 export default {
     ingestTaskData,
     searchGraph,
@@ -148,4 +158,6 @@ export default {
     listIngestionJobs,
     reingestAnalyzedData,
     getGraphData,
+    getRelationshipTrace,
+    getGraphSourceFile,
 };

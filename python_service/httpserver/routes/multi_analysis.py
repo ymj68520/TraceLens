@@ -33,6 +33,25 @@ router = APIRouter()
 _jobs: Dict[str, Dict[str, Any]] = {}
 
 
+class MissingCrossImageReport(RuntimeError):
+    """The analysis job ended without a usable, persisted combined report."""
+
+
+def require_persisted_cross_image_report(service, case_id: str, result: Dict[str, Any]) -> None:
+    report_step = (result.get("steps") or {}).get("report") or {}
+    report_text = report_step.get("report") if isinstance(report_step, dict) else None
+    if (
+        not isinstance(report_text, str)
+        or not report_text.strip()
+        or report_step.get("error")
+        or report_text.startswith(("报告生成失败", "生成报告时发生错误"))
+    ):
+        raise MissingCrossImageReport("cross-image report generation failed")
+    persisted = service.get_cross_image_report(case_id)
+    if not persisted or persisted.get("case_report") != report_text:
+        raise MissingCrossImageReport("cross-image report was not persisted")
+
+
 # ── Pydantic Models ───────────────────────────────────────────────────────────
 
 class CreateCaseRequest(BaseModel):
@@ -353,6 +372,7 @@ async def start_multi_image_analysis(
                 max_filter_files=req.max_filter_files,
                 progress_callback=progress_cb,
             )
+            require_persisted_cross_image_report(svc, req.case_id, result)
             _jobs[job_id]["status"] = "completed"
             _jobs[job_id]["result"] = result
             # Update C++ case status to COMPLETED
@@ -364,7 +384,11 @@ async def start_multi_image_analysis(
         except Exception as e:
             logger.error(f"[MULTI_ANALYSIS] Job {job_id} failed: {e}", exc_info=True)
             _jobs[job_id]["status"] = "failed"
-            _jobs[job_id]["error"] = "multi-image analysis failed"
+            _jobs[job_id]["error"] = (
+                "cross-image report generation or persistence failed"
+                if isinstance(e, MissingCrossImageReport)
+                else "multi-image analysis failed"
+            )
             async with httpx.AsyncClient(timeout=5) as client:
                 await client.put(
                     f"{settings.cpp_backend_url}/api/cases/{req.case_id}/status",

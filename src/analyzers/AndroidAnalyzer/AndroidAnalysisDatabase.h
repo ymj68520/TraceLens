@@ -9,6 +9,8 @@
 #include <sqlite3.h>
 #include "fileSystem.h"
 
+struct AndroidSourceProvenance;
+
 class AndroidAnalysisDatabase {
 public:
     explicit AndroidAnalysisDatabase(const std::string& dbPath, bool integratedMode = false);
@@ -30,7 +32,18 @@ public:
     bool insertWeChatMessage(const ChatMessage& msg);
     bool insertWeChatEnhancedMessage(const ChatMessage& msg, int msgType, int isSend,
                                       const std::string& chatroomName, const std::string& senderNickname,
-                                      const std::string& talker);
+                                      const std::string& talker,
+                                      const std::string& sourcePath = "");
+    bool recordSourceCoverage(const std::string& artifactKind, const std::string& sourcePath,
+                              const std::string& status, const std::string& detail = "");
+    bool insertSourceProvenance(const AndroidSourceProvenance& provenance);
+    bool insertFilesystemMetrics(const std::string& source, const std::string& filesystem,
+        const std::string& reader, std::uint64_t walkMs, std::uint64_t indexed,
+        std::uint64_t extracted, std::uint64_t bytesRead, std::uint64_t analysisMs);
+    bool recordContainerCoverage(const std::string& sourcePath, const std::string& normalizedPath,
+                                 const std::string& adapter, const std::string& status,
+                                 const std::string& reason);
+    int artifactRowCount(const std::string& tableName) const;
     bool insertWeChatContact(const WeChatContact& contact);
     bool insertWeChatChatroom(const WeChatChatroom& chatroom);
     bool insertWeChatOwnerInfo(const WeChatOwnerInfo& owner);

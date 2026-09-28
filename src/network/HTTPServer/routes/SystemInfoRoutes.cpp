@@ -7,7 +7,7 @@ namespace forensics {
 
 using json = nlohmann::json;
 
-SystemInfoRoutes::SystemInfoRoutes(crow::App<>& app) : task_manager_(TaskManager::instance()) {
+SystemInfoRoutes::SystemInfoRoutes(HttpApp& app) : task_manager_(TaskManager::instance()) {
     CROW_ROUTE(app, "/api/system/info").methods("GET"_method)([this](const crow::request& req) {
         return handle_system_info(req);
     });

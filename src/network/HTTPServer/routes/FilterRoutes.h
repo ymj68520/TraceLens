@@ -1,6 +1,7 @@
 #pragma once
 
 #include <crow.h>
+#include "../FieldApp.h"
 #include <nlohmann/json.hpp>
 
 namespace forensics {
@@ -17,7 +18,7 @@ namespace forensics {
  */
 class FilterRoutes {
 public:
-    explicit FilterRoutes(crow::App<>& app);
+    explicit FilterRoutes(HttpApp& app);
 
 private:
     crow::response handle_list_profiles(const crow::request& req);

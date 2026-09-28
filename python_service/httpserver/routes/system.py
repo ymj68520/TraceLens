@@ -5,13 +5,36 @@ import json
 import asyncio
 import re
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from ..config import Settings, get_settings
+from ..config import Settings, get_settings, get_data_root
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _service_log_path(service: str, *, stream: bool = False) -> str | None:
+    name = {"cpp": "cpp_server.log", "python": "python_service.log"}.get(service)
+    if name is None:
+        return None
+    configured = os.environ.get("TRACELENS_LOG_ROOT", "")
+    if configured:
+        root = Path(configured)
+        data_root = get_data_root().resolve(strict=False)
+        if (not root.is_absolute() or root.is_symlink() or
+                not root.resolve(strict=False).is_relative_to(data_root)):
+            return None
+        return str(root / name)
+    if os.environ.get("TRACELENS_REQUIRE_RELEASE_LAYOUT") == "1":
+        return None  # a release must never fall back into a source-worktree log
+    if stream:
+        return os.path.join(os.getcwd(), "..", "build", "logs", name)
+    project_root = os.path.abspath(os.path.join(os.getcwd(), ".."))
+    if not os.path.exists(os.path.join(project_root, "build")):
+        project_root = os.getcwd()
+    return os.path.join(project_root, "build", "logs", name)
 
 
 @router.get("/features")
@@ -84,17 +107,7 @@ async def get_service_logs(
     settings: Settings = Depends(get_settings),
 ):
     """Get the last N lines of logs for a specific service."""
-    # Absolute paths based on project root
-    project_root = os.path.abspath(os.path.join(os.getcwd(), ".."))
-    if not os.path.exists(os.path.join(project_root, "build")):
-        project_root = os.getcwd()
-
-    log_map = {
-        "cpp": os.path.join(project_root, "build", "logs", "cpp_server.log"),
-        "python": os.path.join(project_root, "build", "logs", "python_service.log"),
-    }
-    
-    log_path = log_map.get(service)
+    log_path = _service_log_path(service)
     if not log_path or not os.path.exists(log_path):
         return {"service": service, "logs": [{"timestamp": "", "level": "WARN", "message": "Log file not found"}]}
         
@@ -116,12 +129,7 @@ async def stream_service_logs(
     """
     Stream logs for a specific service (Server-Sent Events).
     """
-    log_map = {
-        "cpp": os.path.join(os.getcwd(), "..", "build", "logs", "cpp_server.log"),
-        "python": os.path.join(os.getcwd(), "..", "build", "logs", "python_service.log"),
-    }
-    
-    log_path = log_map.get(service)
+    log_path = _service_log_path(service, stream=True)
     if not log_path or not os.path.exists(log_path):
         raise HTTPException(status_code=404, detail=f"Log file for {service} not found")
 

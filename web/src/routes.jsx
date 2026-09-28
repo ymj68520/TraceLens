@@ -12,6 +12,7 @@ import Search from './pages/Search';
 import Statistics from './pages/Statistics';
 import Settings from './pages/Settings';
 import KnowledgeGraph from './pages/KnowledgeGraph';
+import GraphSourceFile from './pages/GraphSourceFile';
 import CaseIntelligence from './pages/CaseIntelligence';
 import AnalysisCenter from './pages/AnalysisCenter';
 import Investigation from './pages/Investigation/Investigation';
@@ -124,6 +125,10 @@ export const appRoutes = [
       {
         path: 'knowledge-graph',
         element: <KnowledgeGraph />,
+      },
+      {
+        path: 'graph-source-file',
+        element: <GraphSourceFile />,
       },
       {
         path: 'case-intelligence',

@@ -120,6 +120,24 @@ bool ZipArchiveExtractor::initialize() {
     return true;
 }
 
+std::vector<std::string> ZipArchiveExtractor::findPathsByFilename(
+    const std::string& filename, std::size_t limit) const {
+    std::vector<std::string> found;
+    if (!initialized_ || !archive_ || filename.empty() || limit == 0) return found;
+    const auto count = std::min<zip_int64_t>(zip_get_num_entries(archive_, 0), 100000);
+    for (zip_int64_t i = 0; i < count && found.size() < limit; ++i) {
+        const char* raw = zip_get_name(archive_, static_cast<zip_uint64_t>(i), 0);
+        if (!raw) continue;
+        const std::string path(raw);
+        if (path.find("..") != std::string::npos || path.empty() || path.front() == '/' ||
+            fs::path(path).filename() != filename) continue;
+        found.push_back(path);
+    }
+    std::sort(found.begin(), found.end());
+    found.erase(std::unique(found.begin(), found.end()), found.end());
+    return found;
+}
+
 bool ZipArchiveExtractor::extractFileByPath(const std::string& imageRelPath,
                                             const std::string& outPath) {
     if (!initialized_ || !archive_) {
@@ -219,6 +237,11 @@ bool ZipArchiveExtractor::initialize() {
 
 bool ZipArchiveExtractor::extractFileByPath(const std::string&, const std::string&) {
     return false;
+}
+
+std::vector<std::string> ZipArchiveExtractor::findPathsByFilename(
+    const std::string&, std::size_t) const {
+    return {};
 }
 
 #endif  // HAVE_LIBZIP

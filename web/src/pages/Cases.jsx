@@ -383,7 +383,7 @@ function CaseCard({ forensicCase: fc, tasks, onStartAnalysis, onDelete, onAddTas
                 onClick={() => navigate(`/reports/case/${fc.id}`)}
                 className="shadow-sm"
             >
-                👀 查看取证报告
+                👀 查看跨镜像报告
             </Button>
           )}
           {/* Add already-analyzed tasks to this case (allowed unless analysing) */}

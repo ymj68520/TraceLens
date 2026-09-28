@@ -342,7 +342,8 @@ private:
     // TSK disk-image pipeline — runs the Android analyzer directly against the
     // given data source. Returns true on success.
     bool runLogicalAndroidAnalysis(const AnalysisTask& task,
-                                   const std::string& baseName);
+                                   const std::string& baseName,
+                                   std::string* failureCode = nullptr);
 
     // Helper methods
     int calculate_overall_percentage(TaskPhase phase, int phase_percentage);

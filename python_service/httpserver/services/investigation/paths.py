@@ -16,17 +16,20 @@ from ..evidence.exceptions import EvidenceStoreError
 def investigation_db_path_for_task(task: dict) -> Path:
     """Return the investigation.db path for a task.
 
-    Uses whichever trusted DB paths are present (files.db and/or events.db);
+    Uses whichever trusted DB paths are present (files.db, events.db or raw.db);
     they must agree on the parent directory. ``resolve(strict=False)`` normalizes
     syntactic differences (e.g. ``data/tasks/A`` vs ``./data/tasks/A``).
     """
     parents = []
     files_db = task.get("output_files_db")
     events_db = task.get("output_events_db")
+    raw_db = task.get("output_raw_db")
     if files_db:
         parents.append(Path(files_db).resolve(strict=False).parent)
     if events_db:
         parents.append(Path(events_db).resolve(strict=False).parent)
+    if raw_db:
+        parents.append(Path(raw_db).resolve(strict=False).parent)
 
     if not parents:
         raise EvidenceStoreError("task has no trusted database path")

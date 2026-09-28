@@ -1,0 +1,1681 @@
+{
+  "schema": "field-route-inventory-v1",
+  "source": "FastAPI app.routes + CMake-compiled CROW_ROUTE declarations",
+  "global_guard": "C++ FieldAuthMiddleware and Python field_authentication; unknown /api paths are guarded",
+  "anonymous_exceptions": [
+    "GET /health/live (C++ and Python): minimal alive only",
+    "POST /api/field-auth/login (Python): credential check",
+    "OPTIONS: CORS preflight only, no data body",
+    "GET static SPA assets (C++): confined to web/dist"
+  ],
+  "service_only": [
+    "POST /api/field-auth/introspect (Python): loopback + C++ service token"
+  ],
+  "python": [
+    {
+      "method": "GET",
+      "path": "/api/android-report/candidates",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/android-report/imports",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/android-report/imports",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/android-report/imports/{import_id}/attachment",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/android-report/imports/{import_id}/coverage",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/android-report/imports/{import_id}/manifest",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/android-report/imports/{import_id}/overview",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/android-report/imports/{import_id}/records",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/android-report/imports/{import_id}/records/{record_id}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/android-report/imports/{import_id}/source-location/{record_id}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/android-report/imports/{import_id}/source-page",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/android-report/imports/{import_id}/tasks",
+      "permission": "write"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/android-report/imports/{import_id}/tasks/{task_id}",
+      "permission": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/associations/cluster-files",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/associations/file-clusters",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/associations/file-events",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/associations/file-timeline",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/audio-analysis/transcribe",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/db/tasks",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/db/tasks/{task_id}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/db/tasks/{task_id}/databases",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/db/tasks/{task_id}/events",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/db/tasks/{task_id}/export/json",
+      "permission": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/db/tasks/{task_id}/export/toon",
+      "permission": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/db/tasks/{task_id}/files",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/evidence-intake/candidates",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/evidence-intake/jobs",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/evidence-intake/jobs/{job_id}",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/evidence-intake/jobs/{job_id}/cancel",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/evidence-intake/jobs/{job_id}/manifest",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/evidence-intake/tasks/{task_id}/android-artifacts/{kind}",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/evidence-intake/tasks/{task_id}/android-artifacts/{kind}/search",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/evidence-intake/tasks/{task_id}/android-artifacts/{kind}/{row_id}",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/evidence-intake/tasks/{task_id}/android-artifacts/{kind}/{row_id}/capture",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/evidence-intake/tasks/{task_id}/android-coverage",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/evidence-intake/tasks/{task_id}/android-coverage-manifest",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/evidence-intake/tasks/{task_id}/android-normalization-manifest",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/evidence-intake/tasks/{task_id}/android-result-sets/{result_set_id}/{kind}/{row_id}",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/field-auth/introspect",
+      "permission": "SERVICE_ONLY_CPP_TO_PYTHON"
+    },
+    {
+      "method": "POST",
+      "path": "/api/field-auth/login",
+      "permission": "ANONYMOUS_CREDENTIAL_CHECK"
+    },
+    {
+      "method": "GET",
+      "path": "/api/field-auth/me",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/field-auth/status",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/forensics/oss/ai/analyze",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/forensics/oss/ai/filter",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/graphiti/entities",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/graphiti/graph",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/graphiti/ingest",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/graphiti/ingest/events",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/graphiti/ingest/file",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/graphiti/jobs",
+      "permission": "read"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/graphiti/jobs/{job_id}",
+      "permission": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/graphiti/jobs/{job_id}",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/graphiti/migrate/cleanup/{task_id}",
+      "permission": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/graphiti/migrate/deduplicate",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/graphiti/migrate/status/{task_id}",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/graphiti/migrate/task/{task_id}",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/graphiti/relationships",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/graphiti/relationships/{relationship_id}/trace",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/graphiti/search",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/graphiti/source-file",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/graphiti/status",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/graphiti/tasks",
+      "permission": "read"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/graphiti/tasks/{task_id}",
+      "permission": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/analyses",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/investigation/analyses",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/analyses/{analysis_id}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/analyses/{analysis_id}/claims",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/investigation/analyses/{analysis_id}/review",
+      "permission": "review"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/events",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/investigation/events",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/events/{event_id}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/events/{event_id}/evidence",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/investigation/events/{event_id}/evidence",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/investigation/events/{event_id}/refresh",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/events/{event_id}/refreshes",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/events/{event_id}/versions",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/evidence",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/evidence/snapshot",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/graph",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/investigation/snapshots",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/workbench/{task_id}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/workbench/{task_id}/analysis-jobs/{job_id}",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/investigation/workbench/{task_id}/analysis/{analysis_id}/accept",
+      "permission": "review"
+    },
+    {
+      "method": "POST",
+      "path": "/api/investigation/workbench/{task_id}/analysis/{analysis_id}/reject",
+      "permission": "review"
+    },
+    {
+      "method": "POST",
+      "path": "/api/investigation/workbench/{task_id}/bootstrap",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/workbench/{task_id}/claims/{claim_id}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/workbench/{task_id}/events",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/workbench/{task_id}/events/{event_id}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/workbench/{task_id}/events/{event_id}/claims/effective",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/workbench/{task_id}/events/{event_id}/evidence",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/investigation/workbench/{task_id}/events/{event_id}/evidence/link",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/investigation/workbench/{task_id}/events/{event_id}/refresh",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/investigation/workbench/{task_id}/events/{event_id}/review",
+      "permission": "review"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/workbench/{task_id}/events/{event_id}/versions",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/investigation/workbench/{task_id}/events/{event_id}/versions/{version_id}/accept",
+      "permission": "review"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/workbench/{task_id}/events/{event_id}/versions/{version_id}/claims",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/investigation/workbench/{task_id}/events/{event_id}/versions/{version_id}/claims/{claim_id}/accept",
+      "permission": "review"
+    },
+    {
+      "method": "POST",
+      "path": "/api/investigation/workbench/{task_id}/events/{event_id}/versions/{version_id}/claims/{claim_id}/reject",
+      "permission": "review"
+    },
+    {
+      "method": "POST",
+      "path": "/api/investigation/workbench/{task_id}/events/{event_id}/versions/{version_id}/reject",
+      "permission": "review"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/workbench/{task_id}/evidence/analysis",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/investigation/workbench/{task_id}/evidence/analyze",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/workbench/{task_id}/evidence/detail",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/investigation/workbench/{task_id}/evidence/initial-analysis/translate",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/workbench/{task_id}/file-timeline",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/workbench/{task_id}/final-reports",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/workbench/{task_id}/final-reports/{report_id}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/workbench/{task_id}/final-reports/{report_id}/html",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/workbench/{task_id}/final-reports/{report_id}/markdown",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/workbench/{task_id}/final-reports/{report_id}/print",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/workbench/{task_id}/final-reports/{report_id}/publication",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/investigation/workbench/{task_id}/final-reports/{report_id}/publish",
+      "permission": "review"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/workbench/{task_id}/graph/local",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/workbench/{task_id}/notes",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/investigation/workbench/{task_id}/notes",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/workbench/{task_id}/report-evidence",
+      "permission": "read"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/investigation/workbench/{task_id}/report-evidence",
+      "permission": "review"
+    },
+    {
+      "method": "POST",
+      "path": "/api/investigation/workbench/{task_id}/report-evidence/remove",
+      "permission": "review"
+    },
+    {
+      "method": "POST",
+      "path": "/api/llm/analyze",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/llm/analyze-event-cluster",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/llm/analyze/dll",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/llm/analyze/file",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/llm/batch",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/batch/{job_id}",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/llm/case-analysis",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/case-analysis/{job_id}",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/llm/case-description",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/case-report-by-case/{case_id}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/case-report/{task_id}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/cases",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/llm/cases",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/llm/cases/smart-create",
+      "permission": "write"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/llm/cases/{case_id}",
+      "permission": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/cases/{case_id}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/cases/{case_id}/analysis-status",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/llm/cases/{case_id}/associate-tasks",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/llm/cases/{case_id}/incremental-analysis",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/llm/cases/{case_id}/tasks",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/llm/cases/{case_id}/tasks/incremental",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/event-cluster-analyses",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/llm/event-cluster-analysis/estimate",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/llm/event-cluster-analysis/run",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/event-cluster-analysis/run/{job_id}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/file-analyses",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/llm/file-analysis/estimate",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/llm/file-analysis/record",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/llm/file-analysis/run",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/file-analysis/run/{job_id}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/filtered-files/{task_id}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/intelligence-report/{task_id}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/intelligence-report/{task_id}/metadata",
+      "permission": "read"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/llm/intelligence-report/{task_id}/metadata",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/intelligence-report/{task_id}/records",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/intelligence-report/{task_id}/search",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/models",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/llm/multi-image-analysis",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/multi-image-analysis/{job_id}",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/llm/reanalyze-files",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/status",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/llm/toggle-cluster-relevance",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/llm/toggle-relevance",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/llm/windows-analysis",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/windows-export/{task_id}/toon",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/llm/windows-report/{task_id}",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/markitdown/batch-convert",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/markitdown/convert",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/markitdown/convert-one",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/markitdown/status",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/office/file",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/office/parse",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/office/supported-types",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/qq/forensics/imports",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/qq/forensics/imports",
+      "permission": "write"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/qq/forensics/imports/{import_id}",
+      "permission": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/qq/forensics/imports/{import_id}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/qq/forensics/imports/{import_id}/chatrooms",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/qq/forensics/imports/{import_id}/contacts",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/qq/forensics/imports/{import_id}/messages",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/qq/forensics/imports/{import_id}/overview",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/qq/forensics/imports/{import_id}/sessions",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/reports",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/evidence",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/reports/evidence",
+      "permission": "review"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/reports/evidence",
+      "permission": "review"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/evidence/file-candidates",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/reports/evidence/seed-analyzed",
+      "permission": "review"
+    },
+    {
+      "method": "POST",
+      "path": "/api/reports/generate",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/generations/{generation_id}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/narrative/versions/{report_id}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/{report_id}/categories/{category_id}/pages/{page}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/{report_id}/manifest",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/{report_id}/search",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/{report_id}/status",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/system/features",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/system/info",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/system/logs",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/system/logs-stream/{service}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/system/logs/{service}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/system/redis/status",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/video-analysis/describe",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wechat/chat",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wechat/chat/group",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wechat/contacts",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wechat/forensics/imports",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/wechat/forensics/imports",
+      "permission": "write"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/wechat/forensics/imports/{import_id}",
+      "permission": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wechat/forensics/imports/{import_id}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wechat/forensics/imports/{import_id}/chatrooms",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wechat/forensics/imports/{import_id}/contacts",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wechat/forensics/imports/{import_id}/media/{rel_path:path}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wechat/forensics/imports/{import_id}/messages",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wechat/forensics/imports/{import_id}/overview",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wechat/forensics/imports/{import_id}/sessions",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wechat/graph",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wechat/graph/community",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/wechat/graph/invalidate",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wechat/graph/person/{username}",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wechat/graph/timeline",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wechat/owner",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/health/live",
+      "permission": "ANONYMOUS_MINIMAL_LIVE"
+    },
+    {
+      "method": "GET",
+      "path": "/health/ready",
+      "permission": "read"
+    }
+  ],
+  "cpp": [
+    {
+      "method": "GET",
+      "path": "/",
+      "source": "src/network/HTTPServer/HTTPserver.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/<path>",
+      "source": "src/network/HTTPServer/HTTPserver.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cases",
+      "source": "src/network/HTTPServer/routes/CaseCRUDRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/cases/<string>",
+      "source": "src/network/HTTPServer/routes/CaseCRUDRoutes.cpp",
+      "permission": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cases/<string>",
+      "source": "src/network/HTTPServer/routes/CaseCRUDRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/docs/endpoints",
+      "source": "src/network/HTTPServer/routes/SystemDocsRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/docs/openapi.json",
+      "source": "src/network/HTTPServer/routes/SystemDocsRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/filter/apply",
+      "source": "src/network/HTTPServer/routes/FilterRoutes.cpp",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/filter/profiles",
+      "source": "src/network/HTTPServer/routes/FilterRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/filter/profiles",
+      "source": "src/network/HTTPServer/routes/FilterRoutes.cpp",
+      "permission": "write"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/filter/profiles/<string>",
+      "source": "src/network/HTTPServer/routes/FilterRoutes.cpp",
+      "permission": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/filter/profiles/<string>",
+      "source": "src/network/HTTPServer/routes/FilterRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/android/communication-summary",
+      "source": "src/network/HTTPServer/routes/AndroidForensicsRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/android/device-info",
+      "source": "src/network/HTTPServer/routes/AndroidForensicsRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/android/llm-summary",
+      "source": "src/network/HTTPServer/routes/AndroidForensicsRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/android/miui-db-inventory",
+      "source": "src/network/HTTPServer/routes/AndroidForensicsRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/android/miui-installed-apps",
+      "source": "src/network/HTTPServer/routes/AndroidForensicsRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/android/miui-overview",
+      "source": "src/network/HTTPServer/routes/AndroidForensicsRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/android/miui-qqnt-overview",
+      "source": "src/network/HTTPServer/routes/AndroidForensicsRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/android/miui-qqnt-records",
+      "source": "src/network/HTTPServer/routes/AndroidForensicsRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/android/miui-wechat-artifacts",
+      "source": "src/network/HTTPServer/routes/AndroidForensicsRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/dlls",
+      "source": "src/network/HTTPServer/routes/DLLAnalysisRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/dlls/<int>/anomalies",
+      "source": "src/network/HTTPServer/routes/DLLAnalysisRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/dlls/health",
+      "source": "src/network/HTTPServer/routes/DLLAnalysisRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/dlls/suspicious",
+      "source": "src/network/HTTPServer/routes/DLLAnalysisRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/export/events/csv",
+      "source": "src/network/HTTPServer/routes/ExportRoutes.cpp",
+      "permission": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/export/events/visualization",
+      "source": "src/network/HTTPServer/routes/ExportRoutes.cpp",
+      "permission": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/export/toon",
+      "source": "src/network/HTTPServer/routes/ExportRoutes.cpp",
+      "permission": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/forensics/extract",
+      "source": "src/network/HTTPServer/routes/FileExtractionRoutes.cpp",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/extract/<string>",
+      "source": "src/network/HTTPServer/routes/FileExtractionRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/files/duplicates",
+      "source": "src/network/HTTPServer/routes/FileAnalysisRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/files/largest",
+      "source": "src/network/HTTPServer/routes/FileAnalysisRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/forensics/files/materialize",
+      "source": "src/network/HTTPServer/routes/FileExtractionRoutes.cpp",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/files/paged",
+      "source": "src/network/HTTPServer/routes/FileAnalysisRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/files/recent",
+      "source": "src/network/HTTPServer/routes/FileAnalysisRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/memory/boot-info",
+      "source": "src/network/HTTPServer/routes/MemoryForensicsRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/memory/network",
+      "source": "src/network/HTTPServer/routes/MemoryForensicsRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/memory/summary",
+      "source": "src/network/HTTPServer/routes/MemoryForensicsRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/forensics/oss/ai/analyze",
+      "source": "src/network/HTTPServer/routes/OSSAnalysisRoutes.cpp",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/forensics/oss/ai/filter",
+      "source": "src/network/HTTPServer/routes/OSSAnalysisRoutes.cpp",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/oss/ai/status",
+      "source": "src/network/HTTPServer/routes/OSSAnalysisRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/forensics/oss/analyze",
+      "source": "src/network/HTTPServer/routes/OSSAnalysisRoutes.cpp",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/oss/analyze/status",
+      "source": "src/network/HTTPServer/routes/OSSAnalysisRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/oss/buckets",
+      "source": "src/network/HTTPServer/routes/OSSStatsRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/forensics/oss/download",
+      "source": "src/network/HTTPServer/routes/OSSAnalysisRoutes.cpp",
+      "permission": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/oss/logs",
+      "source": "src/network/HTTPServer/routes/OSSQueryRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/oss/objects",
+      "source": "src/network/HTTPServer/routes/OSSQueryRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/oss/stats/extensions",
+      "source": "src/network/HTTPServer/routes/OSSStatsRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/oss/stats/storage-class",
+      "source": "src/network/HTTPServer/routes/OSSStatsRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/oss/summary",
+      "source": "src/network/HTTPServer/routes/OSSStatsRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/statistics/activity-patterns",
+      "source": "src/network/HTTPServer/routes/StatisticsRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/statistics/overview",
+      "source": "src/network/HTTPServer/routes/StatisticsRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/system/events",
+      "source": "src/network/HTTPServer/routes/SystemEventRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/system/summary",
+      "source": "src/network/HTTPServer/routes/SystemEventRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/timeline/by-file",
+      "source": "src/network/HTTPServer/routes/TimelineRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/timeline/by-time-range",
+      "source": "src/network/HTTPServer/routes/TimelineRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/forensics/timeline/clusters/analyze",
+      "source": "src/network/HTTPServer/routes/EventClusterRoutes.cpp",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/timeline/clusters/analyzed",
+      "source": "src/network/HTTPServer/routes/EventClusterRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/forensics/timeline/clusters/batch-analyze",
+      "source": "src/network/HTTPServer/routes/EventClusterRoutes.cpp",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/forensics/timeline/clusters/reanalyze",
+      "source": "src/network/HTTPServer/routes/EventClusterRoutes.cpp",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/timeline/comprehensive",
+      "source": "src/network/HTTPServer/routes/TimelineRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/timeline/details",
+      "source": "src/network/HTTPServer/routes/TimelineRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/timeline/file-activity",
+      "source": "src/network/HTTPServer/routes/TimelineRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/timeline/full",
+      "source": "src/network/HTTPServer/routes/TimelineRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/timeline/statistics-by-period",
+      "source": "src/network/HTTPServer/routes/TimelineRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forensics/timeline/user-activity",
+      "source": "src/network/HTTPServer/routes/TimelineRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/health/dependencies",
+      "source": "src/network/HTTPServer/routes/SystemHealthRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/health/live",
+      "source": "src/network/HTTPServer/routes/SystemHealthRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/search/fulltext",
+      "source": "src/network/HTTPServer/routes/SearchRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/search/index",
+      "source": "src/network/HTTPServer/routes/SearchRoutes.cpp",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/security/status",
+      "source": "src/network/HTTPServer/HTTPserver.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/system/database-schema/<string>",
+      "source": "src/network/HTTPServer/routes/SystemInfoRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/system/health",
+      "source": "src/network/HTTPServer/routes/SystemHealthRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/system/info",
+      "source": "src/network/HTTPServer/routes/SystemInfoRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/system/logs",
+      "source": "src/network/HTTPServer/routes/SystemInfoRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks",
+      "source": "src/network/HTTPServer/routes/TaskCRUDRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/tasks/<string>",
+      "source": "src/network/HTTPServer/routes/TaskCRUDRoutes.cpp",
+      "permission": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks/<string>",
+      "source": "src/network/HTTPServer/routes/TaskCRUDRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/tasks/<string>",
+      "source": "src/network/HTTPServer/routes/TaskCRUDRoutes.cpp",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks/<string>/databases",
+      "source": "src/network/HTTPServer/routes/TaskCRUDRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/tasks/<string>/priority",
+      "source": "src/network/HTTPServer/routes/TaskMonitoringRoutes.cpp",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks/<string>/progress",
+      "source": "src/network/HTTPServer/routes/TaskMonitoringRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks/<string>/results",
+      "source": "src/network/HTTPServer/routes/TaskCRUDRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks/<string>/scene-artifacts",
+      "source": "src/network/HTTPServer/routes/SceneQueryRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks/<string>/scene-stats",
+      "source": "src/network/HTTPServer/routes/SceneQueryRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/tasks/batch-cancel",
+      "source": "src/network/HTTPServer/routes/TaskBatchRoutes.cpp",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/tasks/batch-create",
+      "source": "src/network/HTTPServer/routes/TaskBatchRoutes.cpp",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/tasks/batch-status",
+      "source": "src/network/HTTPServer/routes/TaskBatchRoutes.cpp",
+      "permission": "write"
+    },
+    {
+      "method": "POST",
+      "path": "/api/tasks/cleanup",
+      "source": "src/network/HTTPServer/routes/TaskCRUDRoutes.cpp",
+      "permission": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks/list",
+      "source": "src/network/HTTPServer/routes/TaskCRUDRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks/statistics",
+      "source": "src/network/HTTPServer/routes/TaskMonitoringRoutes.cpp",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/health/live",
+      "source": "src/network/HTTPServer/HTTPserver.cpp",
+      "permission": "ANONYMOUS_MINIMAL_LIVE"
+    }
+  ],
+  "cpp_websocket_route_count": 0
+}

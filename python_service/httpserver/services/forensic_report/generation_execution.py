@@ -105,6 +105,9 @@ def group_report_evidence(
     """
     groups: dict[str, list[EnvelopeEvidenceItemV1]] = {}
     for item in (*envelope.main_evidence, *envelope.appendix_evidence):
+        if item.snapshot.evidence_type == "android_artifact":
+            groups.setdefault("android_records", []).append(item)
+            continue
         path = item.snapshot.payload.normalized_path.lower()
         if item.snapshot.payload.is_deleted:
             group_id = "recovered"
@@ -123,6 +126,9 @@ def group_report_evidence(
         if items:
             ordered.append((gid, name, items))
             seen.add(gid)
+    android_items = groups.pop("android_records", [])
+    if android_items:
+        ordered.append(("android_records", "Android 派生工件记录", android_items))
     fallback_items = groups.pop(_FALLBACK_GROUP_ID, [])
     if fallback_items:
         ordered.append((_FALLBACK_GROUP_ID, _FALLBACK_GROUP_NAME, fallback_items))
@@ -600,6 +606,7 @@ class ReportGenerationExecutor:
             f"{i}. {s.heading}：{s.brief}" for i, s in enumerate(sections, start=1)
         )
         for index, section in enumerate(sections, start=1):
+            scope_items: list[EnvelopeEvidenceItemV1] = []
             if index == 1:
                 scope_keys = all_keys
                 projection = groups_brief
@@ -611,7 +618,9 @@ class ReportGenerationExecutor:
                 ]
                 scope_keys = [item.evidence_key for item in scope_items]
                 if scope_keys:
-                    projection = render_evidence_projection(scope_items)
+                    projection = render_evidence_projection(
+                        scope_items, include_bound_analysis=envelope.schema_version >= 3
+                    )
                 else:
                     scope_keys = all_keys
                     projection = groups_brief
@@ -636,6 +645,11 @@ class ReportGenerationExecutor:
                 set(scope_keys),
                 index,
                 model,
+                allow_derived=envelope.schema_version >= 3,
+                bound_by_key={item.evidence_key: (
+                    item.bound_analysis.analysis_id,
+                    {claim.claim_id for claim in item.bound_analysis.claims},
+                ) for item in scope_items if item.bound_analysis is not None},
             )
             section_ids: list[str] = []
             for citation in response.citations:
@@ -646,8 +660,8 @@ class ReportGenerationExecutor:
                     StructuredReportCitation(
                         citation_id=new_id,
                         evidence_key=citation.evidence_key,
-                        analysis_id=None,
-                        claim_id=None,
+                        analysis_id=citation.analysis_id if envelope.schema_version >= 3 else None,
+                        claim_id=citation.claim_id if envelope.schema_version >= 3 else None,
                     )
                 )
             merged_sections.append(
@@ -747,6 +761,9 @@ class ReportGenerationExecutor:
         scope: set[str],
         index: int,
         model: str | None,
+        *,
+        allow_derived: bool = False,
+        bound_by_key: dict[str, tuple[str, set[str]]] | None = None,
     ) -> StructuredSectionResponse:
         try:
             response = parse_structured_section_response(content)
@@ -759,12 +776,21 @@ class ReportGenerationExecutor:
             ) from None
         seen: set[str] = set()
         for citation in response.citations:
-            if citation.analysis_id is not None or citation.claim_id is not None:
+            if not allow_derived and (citation.analysis_id is not None or citation.claim_id is not None):
                 raise _StageFailure(
                     "section_invalid",
                     f"section {index} cited a non-null analysis/claim identity",
                     model=model,
                 )
+            if allow_derived and (citation.analysis_id is not None or citation.claim_id is not None):
+                bound = (bound_by_key or {}).get(citation.evidence_key)
+                if (bound is None or citation.analysis_id != bound[0] or
+                        (citation.claim_id is not None and citation.claim_id not in bound[1])):
+                    raise _StageFailure(
+                        "citation_invalid",
+                        f"section {index} referenced an unbound analysis or claim",
+                        model=model,
+                    )
             if citation.citation_id in seen:
                 raise _StageFailure(
                     "section_invalid",

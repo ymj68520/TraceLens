@@ -1,4 +1,5 @@
 #include "TaskManager.h"
+#include <openssl/crypto.h>
 #include "TaskPersistence.h"
 #include "TaskWatchdog.h"
 #include "TaskSerialization.h"
@@ -273,6 +274,8 @@ void TaskManager::clear_backup_password(const std::string& id) {
     std::lock_guard<std::mutex> lock(mtx_);
     auto it = tasks_.find(id);
     if (it != tasks_.end()) {
+        if (!it->second.backup_password.empty())
+            OPENSSL_cleanse(it->second.backup_password.data(), it->second.backup_password.size());
         it->second.backup_password.clear();
     }
 }

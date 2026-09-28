@@ -10,7 +10,7 @@ namespace forensics {
 
 using json = nlohmann::json;
 
-ExportRoutes::ExportRoutes(crow::App<>& app) {
+ExportRoutes::ExportRoutes(HttpApp& app) {
     CROW_ROUTE(app, "/api/forensics/export/toon").methods("GET"_method)([this](const crow::request& req) {
         return handle_export_toon(req);
     });

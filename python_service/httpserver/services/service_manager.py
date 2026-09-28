@@ -11,6 +11,7 @@ The design supports future extension to other communication protocols:
 
 import asyncio
 import logging
+import os
 from functools import lru_cache
 from typing import Optional
 
@@ -106,7 +107,15 @@ class ServiceManager:
         logger.info("Initializing services...")
         try:
             startup_timeout = getattr(self.settings, "startup_timeout", 30.0)
-            async with asyncio.timeout(startup_timeout):
+            if hasattr(asyncio, "timeout"):
+                timeout_context = asyncio.timeout(startup_timeout)
+            else:
+                # asyncio.timeout was added in Python 3.11. Ubuntu 22.04 uses
+                # Python 3.10, where async-timeout provides the same API.
+                from async_timeout import timeout
+
+                timeout_context = timeout(startup_timeout)
+            async with timeout_context:
                 await self._initialize_services()
         except BaseException:
             await self._rollback_initialization()
@@ -119,6 +128,10 @@ class ServiceManager:
             logger.info("All services initialized successfully")
 
     async def _initialize_services(self) -> None:
+        from .field_security import load_policy
+        field_policy = load_policy()
+        release_readonly = (field_policy.enabled and field_policy.outbound_mode == "disabled"
+                            and os.environ.get("TRACELENS_REQUIRE_RELEASE_LAYOUT") == "1")
         # Initialize C++ backend service. Its ordinary failures remain tolerated,
         # but cancellation and other BaseExceptions abort the whole transition.
         try:
@@ -133,38 +146,41 @@ class ServiceManager:
         # Report recovery must never bind to a backend that failed initialization.
         if self._cpp_backend_ready:
             try:
-                self._forensic_report_service = self._create_forensic_report_service()
-                await self._forensic_report_service.initialize()
+                self._forensic_report_service = self._create_forensic_report_service(readonly=release_readonly)
+                if release_readonly:
+                    self._forensic_report_service._accepting_starts = False
+                else:
+                    await self._forensic_report_service.initialize()
                 self._forensic_report_ready = True
             except Exception as error:
                 logger.warning(
                     f"ForensicReportService initialization failed: {error}"
                 )
 
-        # Initialize Graphiti service
-        try:
-            from .graphiti_service import GraphitiService
+        # No construction means no eager model/embedding client or fallback
+        # endpoint can be reached in a disabled field deployment.
+        if not field_policy.enabled or field_policy.outbound_mode != "disabled":
+            try:
+                from .graphiti_service import GraphitiService
 
-            self._graphiti_service = GraphitiService(self.settings)
-            await asyncio.wait_for(
-                self._graphiti_service.initialize(),
-                timeout=getattr(self.settings, "optional_service_init_timeout", 12.0),
-            )
-        except Exception as error:
-            logger.warning(f"Graphiti service initialization failed: {error}")
+                self._graphiti_service = GraphitiService(self.settings)
+                await asyncio.wait_for(
+                    self._graphiti_service.initialize(),
+                    timeout=getattr(self.settings, "optional_service_init_timeout", 12.0),
+                )
+            except Exception as error:
+                logger.warning("Graphiti service initialization failed: %s", type(error).__name__)
+            try:
+                from .llm_service import LLMService
 
-        # Initialize LLM service
-        try:
-            from .llm_service import LLMService
-
-            self._llm_service = LLMService(self.settings)
-            await self._llm_service.initialize()
-        except Exception as error:
-            logger.warning(f"LLM service initialization failed: {error}")
+                self._llm_service = LLMService(self.settings)
+                await self._llm_service.initialize()
+            except Exception as error:
+                logger.warning("LLM service initialization failed: %s", type(error).__name__)
 
         # Initialize Secondary Analysis Executor (after LLM + investigation_service)
         # Requires cpp_backend_ready; LLM may be None (tolerated by executor).
-        if self._cpp_backend_ready:
+        if self._cpp_backend_ready and not release_readonly:
             try:
                 executor = self._create_secondary_analysis_executor()
                 await asyncio.wait_for(
@@ -211,49 +227,48 @@ class ServiceManager:
                     f"ReportGenerationExecutor initialization failed: {error}"
                 )
 
-        # Initialize IngestionJobManager
-        try:
-            from .ingestion_job_manager import IngestionJobManager
+        # Do not resume queued graph/model ingestion from Redis in disabled
+        # field mode; such jobs belong to the prior runtime and remain intact.
+        if not field_policy.enabled or field_policy.outbound_mode != "disabled":
+            try:
+                from .ingestion_job_manager import IngestionJobManager
 
-            self._ingestion_job_manager = IngestionJobManager(self.settings)
-            await asyncio.wait_for(
-                self._ingestion_job_manager.initialize(),
-                timeout=getattr(self.settings, "optional_service_init_timeout", 12.0),
-            )
-            # Pipeline tail: the initial analysis flow ends with an
-            # auto-generated final report once ingestion completes. Optional
-            # services may be missing — the callback degrades to a warning.
-            self._ingestion_job_manager.on_ingestion_completed = (
-                self._auto_generate_report_after_ingestion
-            )
-        except Exception as error:
-            logger.warning(f"IngestionJobManager initialization failed: {error}")
+                self._ingestion_job_manager = IngestionJobManager(self.settings)
+                await asyncio.wait_for(
+                    self._ingestion_job_manager.initialize(),
+                    timeout=getattr(self.settings, "optional_service_init_timeout", 12.0),
+                )
+                self._ingestion_job_manager.on_ingestion_completed = (
+                    self._auto_generate_report_after_ingestion
+                )
+            except Exception as error:
+                logger.warning("IngestionJobManager initialization failed: %s", type(error).__name__)
 
-        # Initialize MigrationManager (optional, requires Neo4j)
-        try:
-            import sys
-            from pathlib import Path
+        if not field_policy.enabled or field_policy.outbound_mode != "disabled":
+            try:
+                import sys
+                from pathlib import Path
 
-            python_service_path = str(Path(__file__).parent.parent.parent)
-            if python_service_path not in sys.path:
-                sys.path.insert(0, python_service_path)
-            from graphiti_integration.migration import MigrationManager
+                python_service_path = str(Path(__file__).parent.parent.parent)
+                if python_service_path not in sys.path:
+                    sys.path.insert(0, python_service_path)
+                from graphiti_integration.migration import MigrationManager
 
-            self._migration_manager = MigrationManager(
-                neo4j_uri=self.settings.neo4j_uri,
-                neo4j_user=self.settings.neo4j_user,
-                neo4j_password=self.settings.neo4j_password,
-                neo4j_connect_timeout=getattr(self.settings, "neo4j_connect_timeout", 5.0),
-                neo4j_query_timeout=getattr(self.settings, "neo4j_query_timeout", 5.0),
-            )
-            await asyncio.wait_for(
-                self._migration_manager.initialize(),
-                timeout=getattr(self.settings, "optional_service_init_timeout", 12.0),
-            )
-        except ImportError as error:
-            logger.warning(f"MigrationManager import failed: {error}")
-        except Exception as error:
-            logger.warning(f"MigrationManager initialization failed: {error}")
+                self._migration_manager = MigrationManager(
+                    neo4j_uri=self.settings.neo4j_uri,
+                    neo4j_user=self.settings.neo4j_user,
+                    neo4j_password=self.settings.neo4j_password,
+                    neo4j_connect_timeout=getattr(self.settings, "neo4j_connect_timeout", 5.0),
+                    neo4j_query_timeout=getattr(self.settings, "neo4j_query_timeout", 5.0),
+                )
+                await asyncio.wait_for(
+                    self._migration_manager.initialize(),
+                    timeout=getattr(self.settings, "optional_service_init_timeout", 12.0),
+                )
+            except ImportError as error:
+                logger.warning("MigrationManager import failed: %s", type(error).__name__)
+            except Exception as error:
+                logger.warning("MigrationManager initialization failed: %s", type(error).__name__)
 
     async def _rollback_initialization(self) -> None:
         cleanup_errors: list[BaseException] = []
@@ -397,7 +412,7 @@ class ServiceManager:
             self._cpp_backend = CppBackendService(self.settings)
         return self._cpp_backend
     
-    def _create_forensic_report_service(self):
+    def _create_forensic_report_service(self, *, readonly: bool = False):
         from pathlib import Path
 
         from .forensic_report.adapters import build_default_adapters
@@ -414,7 +429,7 @@ class ServiceManager:
 
             root = get_project_root() / root
         return ForensicReportService(
-            repository=ReportRepository(root / "reports.db"),
+            repository=ReportRepository(root / "reports.db", readonly=readonly),
             resolver=SourceResolver(self._cpp_backend),
             writer=SnapshotWriter(
                 root / "snapshots", self.settings.report_generator_version
@@ -587,6 +602,9 @@ class ServiceManager:
     def report_generation_service(self):
         """Get the frozen report generation admission service (Phase R2b)."""
         self._require_service_access()
+        if (os.environ.get("TRACELENS_REQUIRE_RELEASE_LAYOUT") == "1" and
+                os.environ.get("FIELD_OUTBOUND_POLICY") == "disabled"):
+            raise RuntimeError("R2 generation is disabled in the read-only field release profile")
         if self._report_generation_service is None:
             self._report_generation_service = (
                 self._create_report_generation_service()

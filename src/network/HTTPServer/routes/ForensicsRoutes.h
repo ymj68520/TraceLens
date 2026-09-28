@@ -1,6 +1,7 @@
 #pragma once
 
 #include <crow.h>
+#include "../FieldApp.h"
 #include <nlohmann/json.hpp>
 #include "../TaskManager.h"
 #include "../HTTPServerDataTypes.h"
@@ -39,7 +40,7 @@ namespace forensics {
  */
 class ForensicsRoutes {
 public:
-    explicit ForensicsRoutes(crow::App<>& app);
+    explicit ForensicsRoutes(HttpApp& app);
 
     /**
      * @brief Create a new file extraction job

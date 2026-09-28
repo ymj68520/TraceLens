@@ -110,6 +110,29 @@ TEST_F(LogicalDirExtractorTest, MissingFileReturnsFalseNotCrash) {
     EXPECT_FALSE(fs::exists(out));
 }
 
+TEST_F(LogicalDirExtractorTest, FindsWeChatDatabasesAcrossAccountDirectories) {
+    writeFile(root_ / "data/data/com.tencent.mm/MicroMsg/account_a/EnMicroMsg.db", "A");
+    writeFile(root_ / "data/user/0/com.tencent.mm/MicroMsg/account_b/EnMicroMsg.db", "B");
+    LogicalDirExtractor ex(root_.string());
+    ASSERT_TRUE(ex.initialize());
+    const auto paths = ex.findPathsByFilename("EnMicroMsg.db", 10);
+    ASSERT_EQ(paths.size(), 2);
+    EXPECT_EQ(paths[0], "data/data/com.tencent.mm/MicroMsg/account_a/EnMicroMsg.db");
+    EXPECT_EQ(paths[1], "data/user/0/com.tencent.mm/MicroMsg/account_b/EnMicroMsg.db");
+}
+
+TEST_F(LogicalDirExtractorTest, RejectsSiblingDirectoryWithSameNamePrefix) {
+    const fs::path sibling = root_.parent_path() / (root_.filename().string() + "-outside");
+    writeFile(sibling / "secret.txt", "outside");
+    LogicalDirExtractor ex(root_.string());
+    ASSERT_TRUE(ex.initialize());
+    const fs::path out = outDir_ / "secret.txt";
+    EXPECT_FALSE(ex.extractFileByPath("../" + sibling.filename().string() + "/secret.txt", out.string()));
+    EXPECT_FALSE(fs::exists(out));
+    std::error_code error;
+    fs::remove_all(sibling, error);
+}
+
 TEST_F(LogicalDirExtractorTest, RejectsPathTraversal) {
     // Place a secret outside the root.
     fs::path secret = root_.parent_path() / "secret.txt";
@@ -212,10 +235,17 @@ protected:
         fs::path stage = workDir_ / "stage";
         writeFile(stage / "data/data/com.bar.app/databases/bar.db", "BAR-DB-XYZ");
         writeFile(stage / "data/system/packages.xml", "<pkgs/>");
+        writeFile(stage / "data/data/com.tencent.mm/MicroMsg/account_a/EnMicroMsg.db", "WX-A");
 
         std::string cmd = "cd '" + stage.string() + "' && zip -q -r -X '" +
                           zipPath_.string() + "' data >/dev/null 2>&1";
         int rc = std::system(cmd.c_str());
+        if (rc != 0) {
+            // CI images often omit the `zip` executable but provide Python.
+            cmd = "cd '" + stage.string() + "' && python3 -m zipfile -c '" +
+                  zipPath_.string() + "' data >/dev/null 2>&1";
+            rc = std::system(cmd.c_str());
+        }
         zipBuilt_ = (rc == 0 && fs::exists(zipPath_));
     }
 
@@ -247,6 +277,15 @@ TEST_F(ZipArchiveExtractorTest, MissingEntryReturnsFalse) {
     fs::path out = outDir_ / "absent.db";
     EXPECT_FALSE(ex.extractFileByPath("data/data/com.absent/databases/x.db", out.string()));
     EXPECT_FALSE(fs::exists(out));
+}
+
+TEST_F(ZipArchiveExtractorTest, FindsWeChatDatabaseWithoutHardCodedAccount) {
+    if (!zipBuilt_) GTEST_SKIP() << "system `zip` tool unavailable";
+    ZipArchiveExtractor ex(zipPath_.string());
+    ASSERT_TRUE(ex.initialize());
+    const auto paths = ex.findPathsByFilename("EnMicroMsg.db", 10);
+    ASSERT_EQ(paths.size(), 1);
+    EXPECT_EQ(paths.front(), "data/data/com.tencent.mm/MicroMsg/account_a/EnMicroMsg.db");
 }
 
 TEST_F(ZipArchiveExtractorTest, InitializeFailsForMissingArchive) {

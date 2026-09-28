@@ -1,8 +1,10 @@
 import { useEffect } from 'react';
 import { useSelector } from 'react-redux';
-import { Outlet } from 'react-router-dom';
+import { Navigate, Outlet } from 'react-router-dom';
 import Layout from './components/Layout/Layout';
 import ErrorBoundary from './components/common/ErrorBoundary';
+import { FIELD_AUTH_ENABLED } from './config/runtime';
+import { getFieldToken } from './services/fieldSession';
 
 function App() {
   const { theme } = useSelector((state) => state.settings);
@@ -14,6 +16,8 @@ function App() {
       document.documentElement.classList.remove('dark');
     }
   }, [theme]);
+
+  if (FIELD_AUTH_ENABLED && !getFieldToken()) return <Navigate to="/login" replace />;
 
   return (
     <ErrorBoundary>

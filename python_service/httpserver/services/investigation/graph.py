@@ -224,6 +224,29 @@ def _project_overlay(
     return nodes, links
 
 
+def _local_overlay(
+    nodes: list[InvestigationGraphNode],
+    links: list[InvestigationGraphLink],
+    evidence_key: str,
+) -> tuple[list[InvestigationGraphNode], list[InvestigationGraphLink]]:
+    """Keep only the selected Evidence and its two-hop investigation context."""
+    anchor = f"evidence:{evidence_key}"
+    if not any(node.id == anchor for node in nodes):
+        return [], []
+    included = {anchor}
+    for _ in range(2):
+        frontier = included.copy()
+        included.update(
+            link.target if link.source in frontier else link.source
+            for link in links
+            if link.source in frontier or link.target in frontier
+        )
+    return (
+        [node for node in nodes if node.id in included],
+        [link for link in links if link.source in included and link.target in included],
+    )
+
+
 class InvestigationGraphService:
     """Compose the Base KG with the derived Investigation Overlay (C8b)."""
 
@@ -232,7 +255,9 @@ class InvestigationGraphService:
         self._base_graph_provider = base_graph_provider
 
     async def get_graph(
-        self, task_id: str, *, max_base_nodes: int = 200
+        self, task_id: str, *, max_base_nodes: int = 200,
+        evidence_key: str | None = None,
+        evidence_path: str | None = None,
     ) -> InvestigationGraphResponse:
         task = await self._cpp_backend.get_task(task_id)
         if not isinstance(task, dict) or task.get("id") != task_id:
@@ -253,9 +278,15 @@ class InvestigationGraphService:
         base_link_rows: list[dict] = []
         try:
             graphiti = self._base_graph_provider()
-            base_rows, base_link_rows = await graphiti.get_graph_data(
-                task_id, max_base_nodes
-            )
+            if evidence_key:
+                if evidence_path:
+                    base_rows, base_link_rows = await graphiti.get_local_graph_data(
+                        task_id, evidence_path, max_base_nodes
+                    )
+            else:
+                base_rows, base_link_rows = await graphiti.get_graph_data(
+                    task_id, max_base_nodes
+                )
             base_graph_available = True
             base_nodes_truncated = len(base_rows) >= max_base_nodes
         except Exception:
@@ -266,6 +297,10 @@ class InvestigationGraphService:
             warnings.append(BASE_GRAPH_UNAVAILABLE_WARNING)
 
         overlay_nodes, overlay_links = _project_overlay(overlay)
+        if evidence_key:
+            overlay_nodes, overlay_links = _local_overlay(
+                overlay_nodes, overlay_links, evidence_key
+            )
         return InvestigationGraphResponse(
             task_id=task_id,
             base_graph_available=base_graph_available,

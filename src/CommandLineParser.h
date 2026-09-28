@@ -33,7 +33,7 @@ struct CommandLineArgs {
     std::string backup_password;   // MIUI/Android backup password (AES-256)
     bool backup_password_stdin = false;
     int backup_password_fd = -1;
-    std::string android_source;  // "tsk" (default), "dir", "zip", or "miui-backup"
+    std::string android_source;  // tsk, dir, zip, miui-backup, tar, seven-zip, android-backup
     bool windows_analyze = false;
     bool linux_analyze = false;
     bool memory_analyze = false;

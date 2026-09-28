@@ -1,13 +1,14 @@
 #pragma once
 
 #include <crow.h>
+#include "../FieldApp.h"
 #include <nlohmann/json.hpp>
 
 namespace forensics {
 
 class StatisticsRoutes {
 public:
-    explicit StatisticsRoutes(crow::App<>& app);
+    explicit StatisticsRoutes(HttpApp& app);
     
 private:
     crow::response handle_statistics_overview(const crow::request& req);

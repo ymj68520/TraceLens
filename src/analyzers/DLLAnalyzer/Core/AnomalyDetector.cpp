@@ -5,7 +5,8 @@
 #include "AnomalyDetector.h"
 #include <algorithm>
 #include <cctype>
-#include <format>
+#include <iomanip>
+#include <sstream>
 
 using namespace forensics::dll;
 
@@ -225,9 +226,13 @@ Anomaly AnomalyDetector::checkEntryPointAnomaly(const PEHeaderInfo& header) {
             if (lowerName == ".data" || lowerName == ".rdata" ||
                 lowerName == ".bss" || lowerName == ".rodata" ||
                 lowerName == ".idata" || lowerName == ".edata") {
+                std::ostringstream message;
+                message << "Entry point 0x" << std::uppercase << std::hex
+                        << entryPoint << std::dec
+                        << " is in non-code section: " << section.name;
                 return Anomaly{
                     "ENTRY_POINT_IN_DATA",
-                    std::format("Entry point 0x{:X} is in non-code section: {}", entryPoint, section.name),
+                    message.str(),
                     RiskLevel::HIGH,
                     10
                 };
@@ -239,9 +244,12 @@ Anomaly AnomalyDetector::checkEntryPointAnomaly(const PEHeaderInfo& header) {
     }
 
     // 入口点不在任何节中（可能是无效的PE）
+    std::ostringstream message;
+    message << "Entry point RVA 0x" << std::uppercase << std::hex
+            << entryPoint << std::dec << " not found in any section";
     return Anomaly{
         "ENTRY_POINT_NOT_FOUND",
-        std::format("Entry point RVA 0x{:X} not found in any section", entryPoint),
+        message.str(),
         RiskLevel::MEDIUM,
         5
     };

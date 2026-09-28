@@ -52,6 +52,10 @@ else()
   message(STATUS "libzip not found - Android zip-source backend disabled (dir source still works)")
 endif()
 
+# Android TAR/7z/AB logical sources must never silently compile without a
+# container reader. libarchive is a required, open-source dependency.
+pkg_check_modules(LIBARCHIVE REQUIRED libarchive)
+
 # Optional database connectors
 pkg_check_modules(MYSQLCLIENT mysqlclient)
 pkg_check_modules(LIBPQ libpq)
@@ -204,6 +208,7 @@ include_directories(
   ${HIVEX_INCLUDE_DIRS}
   ${LIBEVTX_INCLUDE_DIRS}
   ${LIBBFIO_INCLUDE_DIRS}
+  ${LIBARCHIVE_INCLUDE_DIRS}
   ${LIBESEDB_INCLUDE_DIRS}
   ${LIBOLECF_INCLUDE_DIRS}
   ${LIBFSNTFS_INCLUDE_DIRS}
@@ -344,6 +349,7 @@ set(LIB_SOURCES
     src/analyzers/ImageAnalyzer/KeyFileLoader.cpp
     src/network/Swagger/Swagger.cpp
     src/network/HTTPServer/HTTPserver.cpp
+    src/network/HTTPServer/FieldApp.cpp
     src/network/HTTPServer/TaskManager.cpp
     src/network/HTTPServer/TaskManagerAnalysis.cpp
     src/network/HTTPServer/SceneDetector.cpp
@@ -411,6 +417,12 @@ set(LIB_SOURCES
     # Android logical-extraction backends (dir / zip sources, bypassing TSK)
     src/analyzers/AndroidAnalyzer/LogicalDirExtractor.cpp
     src/analyzers/AndroidAnalyzer/ZipArchiveExtractor.cpp
+    src/analyzers/AndroidAnalyzer/AndroidPathMapper.cpp
+    src/analyzers/AndroidAnalyzer/FilesystemEvidenceSource.cpp
+    src/analyzers/AndroidAnalyzer/ArchiveFileExtractor.cpp
+    src/analyzers/AndroidAnalyzer/AndroidBackupStream.cpp
+    src/network/HTTPServer/AndroidPreflightAdmission.cpp
+    src/network/HTTPServer/AndroidContainerNormalization.cpp
     # Xiaomi MIUI backup source (offline .bak analysis, bypassing TSK)
     src/analyzers/AndroidAnalyzer/MiuiBackupManifest.cpp
     src/analyzers/AndroidAnalyzer/AndroidBackupHeader.cpp
@@ -584,11 +596,20 @@ else()
 endif()
 
 add_executable(forensic_analyzer src/main.cpp ${LIB_SOURCES})
+set(TRACELENS_RELEASE_ID "UNFROZEN_WORKTREE" CACHE STRING "Baked field release identity")
+set(TRACELENS_SOURCE_COMMIT "UNFROZEN_WORKTREE" CACHE STRING "Fixed source commit for this build")
+set(TRACELENS_SOURCE_SHA256 "UNFROZEN_WORKTREE" CACHE STRING "Fixed source input fingerprint")
+configure_file(include/tracelens/build_identity.h.in generated/tracelens/build_identity.h @ONLY)
+target_include_directories(forensic_analyzer PRIVATE "${CMAKE_BINARY_DIR}/generated")
+set_source_files_properties(src/analyzers/AndroidAnalyzer/FilesystemEvidenceSource.cpp
+    PROPERTIES COMPILE_DEFINITIONS "TRACELENS_SOURCE_ROOT=\"${CMAKE_SOURCE_DIR}\"")
+set_source_files_properties(src/network/HTTPServer/AndroidContainerNormalization.cpp
+    PROPERTIES COMPILE_DEFINITIONS "TRACELENS_SOURCE_ROOT=\"${CMAKE_SOURCE_DIR}\"")
 
 # Link libraries
 if(WIN32)
   target_link_libraries(forensic_analyzer ${TSK_LIBRARIES} sqlite3.lib
-                        ${Boost_LIBRARIES} ${PLATFORM_LIBRARIES})
+                        ${Boost_LIBRARIES} ${LIBARCHIVE_LIBRARIES} ${PLATFORM_LIBRARIES})
 else()
   target_link_libraries(
     forensic_analyzer
@@ -617,6 +638,7 @@ else()
     ${BZIP2_LIBRARIES}
     ${ZSTD_LIBRARIES}
     ${LIBZIP_LIBRARIES}
+    ${LIBARCHIVE_LIBRARIES}
     ${PLATFORM_LIBRARIES})
 endif()
 

@@ -25,7 +25,7 @@ export default function AnalysisWorkspace({
   onBackToFile,
 }) {
   if (evidenceKey) {
-    return <EvidenceAnalysisPanel taskId={taskId} eventId={eventId} evidenceKey={evidenceKey} onEvidenceChanged={onEvidenceChanged} />;
+    return <EvidenceAnalysisPanel key={`${taskId}:${evidenceKey}`} taskId={taskId} eventId={eventId} evidenceKey={evidenceKey} onEvidenceChanged={onEvidenceChanged} />;
   }
   if (rightPane === 'event' && event) {
     return (
@@ -42,6 +42,7 @@ export default function AnalysisWorkspace({
   if (file) {
     return (
       <EvidenceAnalysisPanel
+        key={`${taskId}:file:${file.path}`}
         taskId={taskId}
         evidenceKey={`file:${file.path}`}
         onEvidenceChanged={onEvidenceChanged}

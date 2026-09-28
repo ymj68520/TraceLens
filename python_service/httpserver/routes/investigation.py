@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from ..services.field_security import audit_actor
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..services import get_service_manager
@@ -39,8 +40,15 @@ from ..services.investigation import (
     SecondaryAnalysisStatus,
     AnalysisReviewDecision,
 )
+from ..services.investigation.repository import InvestigationMigrationRequiredError
 
 router = APIRouter()
+
+
+def _store_http_error(exc: EvidenceStoreError, detail: str = "evidence store unavailable") -> HTTPException:
+    if isinstance(exc, InvestigationMigrationRequiredError):
+        return HTTPException(status_code=409, detail=str(exc))
+    return HTTPException(status_code=503, detail=detail)
 
 
 # ---------------------------------------------------------------------------
@@ -79,7 +87,7 @@ async def capture_snapshot(
     except EvidenceNotFoundError as exc:
         raise HTTPException(status_code=404, detail="evidence not found") from exc
     except EvidenceStoreError as exc:
-        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+        raise _store_http_error(exc) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +144,7 @@ async def create_analysis(
     except EvidenceNotFoundError as exc:
         raise HTTPException(status_code=404, detail="evidence not found") from exc
     except EvidenceStoreError as exc:
-        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+        raise _store_http_error(exc) from exc
 
 
 class ReviewAnalysisRequest(BaseModel):
@@ -169,6 +177,7 @@ def get_investigation_review_service() -> InvestigationReviewService:
 async def review_analysis(
     analysis_id: str,
     request: ReviewAnalysisRequest,
+    http_request: Request,
     service: InvestigationReviewService = Depends(get_investigation_review_service),
 ) -> SecondaryAnalysis:
     """Record one explicit analyst decision for an exact analysis version."""
@@ -177,7 +186,7 @@ async def review_analysis(
             request.task_id,
             analysis_id,
             decision=request.decision,
-            reviewer=request.reviewer,
+            reviewer=audit_actor(http_request, request.reviewer),
             reason=request.reason,
         )
     except EvidenceNotFoundError as exc:
@@ -185,7 +194,7 @@ async def review_analysis(
     except AnalysisReviewConflictError as exc:
         raise HTTPException(status_code=409, detail="analysis review conflict") from exc
     except EvidenceStoreError as exc:
-        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+        raise _store_http_error(exc) from exc
 
 
 @router.get("/analyses/{analysis_id}", response_model=SecondaryAnalysis)
@@ -290,7 +299,7 @@ async def create_investigation_event(
     except EvidenceNotFoundError as exc:
         raise HTTPException(status_code=404, detail="task not found") from exc
     except EvidenceStoreError as exc:
-        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+        raise _store_http_error(exc) from exc
 
 
 @router.get("/events", response_model=list[InvestigationEvent])
@@ -305,7 +314,7 @@ async def list_investigation_events(
     except EvidenceNotFoundError as exc:
         raise HTTPException(status_code=404, detail="task not found") from exc
     except EvidenceStoreError as exc:
-        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+        raise _store_http_error(exc) from exc
 
 
 @router.get("/events/{event_id}", response_model=InvestigationEvent)
@@ -322,7 +331,7 @@ async def get_investigation_event(
             status_code=404, detail="investigation event not found"
         ) from exc
     except EvidenceStoreError as exc:
-        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+        raise _store_http_error(exc) from exc
 
 
 @router.get(
@@ -341,7 +350,7 @@ async def list_investigation_event_versions(
             status_code=404, detail="investigation event not found"
         ) from exc
     except EvidenceStoreError as exc:
-        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+        raise _store_http_error(exc) from exc
 
 
 @router.post(
@@ -350,6 +359,7 @@ async def list_investigation_event_versions(
 async def link_investigation_event_evidence(
     event_id: str,
     request: LinkEventEvidenceRequest,
+    http_request: Request,
     service: InvestigationEventService = Depends(get_investigation_event_service),
 ) -> EventEvidenceLink:
     """Link canonical evidence to an event (resolve + capture, INSERT-only)."""
@@ -358,7 +368,7 @@ async def link_investigation_event_evidence(
             request.task_id,
             event_id,
             request.evidence_key,
-            linked_by=request.linked_by,
+            linked_by=audit_actor(http_request, request.linked_by),
         )
     except InvalidEvidenceKeyError as exc:
         raise HTTPException(status_code=400, detail="invalid evidence key") from exc
@@ -371,7 +381,7 @@ async def link_investigation_event_evidence(
             status_code=409, detail="event evidence link already exists"
         ) from exc
     except EvidenceStoreError as exc:
-        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+        raise _store_http_error(exc) from exc
 
 
 @router.get(
@@ -390,7 +400,7 @@ async def list_investigation_event_evidence(
             status_code=404, detail="investigation event not found"
         ) from exc
     except EvidenceStoreError as exc:
-        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+        raise _store_http_error(exc) from exc
 
 
 def get_event_refresh_executor():
@@ -409,12 +419,13 @@ def get_event_refresh_executor():
 async def create_event_refresh(
     event_id: str,
     request: CreateEventRefreshRequest,
+    http_request: Request,
     executor = Depends(get_event_refresh_executor),
 ) -> EventRefresh:
     """Admit and schedule one explicit refresh without waiting for the LLM."""
     try:
         return await executor.submit(
-            request.task_id, event_id, requested_by=request.requested_by
+            request.task_id, event_id, requested_by=audit_actor(http_request, request.requested_by)
         )
     except EvidenceNotFoundError as exc:
         raise HTTPException(
@@ -425,7 +436,7 @@ async def create_event_refresh(
             status_code=409, detail="event refresh already in progress"
         ) from exc
     except EvidenceStoreError as exc:
-        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+        raise _store_http_error(exc) from exc
 
 
 @router.get(
@@ -444,7 +455,7 @@ async def list_event_refreshes(
             status_code=404, detail="investigation event not found"
         ) from exc
     except EvidenceStoreError as exc:
-        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+        raise _store_http_error(exc) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -481,7 +492,7 @@ async def list_investigation_evidence(
     except EvidenceNotFoundError as exc:
         raise HTTPException(status_code=404, detail="task not found") from exc
     except EvidenceStoreError as exc:
-        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+        raise _store_http_error(exc) from exc
 
 
 @router.get(
@@ -506,7 +517,7 @@ async def get_investigation_evidence_snapshot(
     try:
         snapshot = await service.get_snapshot(task_id, parsed.canonical_key)
     except EvidenceStoreError as exc:
-        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+        raise _store_http_error(exc) from exc
     if snapshot is None:
         raise HTTPException(status_code=404, detail="evidence snapshot not found")
     return snapshot
@@ -530,7 +541,7 @@ async def list_investigation_analysis_claims(
     try:
         claims = await service.list_analysis_claims(task_id, analysis_id)
     except EvidenceStoreError as exc:
-        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+        raise _store_http_error(exc) from exc
     if claims is None:
         raise HTTPException(status_code=404, detail="analysis not found")
     return AnalysisClaimsResponse(

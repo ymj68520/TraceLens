@@ -9,7 +9,7 @@ namespace forensics {
 
 using json = nlohmann::json;
 
-SystemHealthRoutes::SystemHealthRoutes(crow::App<>& app) {
+SystemHealthRoutes::SystemHealthRoutes(HttpApp& app) {
     CROW_ROUTE(app, "/api/system/health").methods("GET"_method)([this](const crow::request& req) {
         return handle_system_health(req);
     });

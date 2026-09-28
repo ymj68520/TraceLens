@@ -196,7 +196,10 @@ class SecondaryAnalysisExecutor:
                 analyst_note=analyst_note,
                 case_context=case_context,
                 related_evidence=ordered_related,
-                prompt_version=CURRENT_PROMPT_VERSION,
+                prompt_version=("investigation-evidence-analysis:v4" if
+                                (snapshot.evidence_type == "android_artifact" or
+                                 any(key.startswith("android_artifact:") for key in ordered_related))
+                                else CURRENT_PROMPT_VERSION),
             )
             # E11: pass the SAME db_path — worker never re-derives it.
             bg_task = asyncio.create_task(

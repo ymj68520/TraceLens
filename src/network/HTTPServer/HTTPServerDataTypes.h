@@ -168,6 +168,7 @@ struct AnalysisTask {
     //   "dir"           — logical extraction laid out as a directory tree
     //   "zip"           — logical extraction packaged as a single .zip
     //   "miui-backup"   — Xiaomi MIUI offline backup (.bak folder + descript.xml)
+    //   "tar" / "seven-zip" / "android-backup" — read-only logical containers
     // Only "tsk" participates in the standard TSK disk-image pipeline; the
     // other values short-circuit straight to the Android analyzer.
     std::string android_source = "tsk";

@@ -6,6 +6,8 @@
 #include "TaskPersistence.h"
 #include "TaskWatchdog.h"
 #include "TaskSerialization.h"
+#include "AndroidPreflightAdmission.h"
+#include "AndroidContainerNormalization.h"
 #include "LLMPythonProxy.h"
 #include "../../integration/LLMIntegration/LLMClient.h"
 #include "EventClusterAnalyzer.h"
@@ -19,11 +21,232 @@
 #include <fstream>
 #include <filesystem>
 #include <thread>
+#include <cstdlib>
+#include <sqlite3.h>
+#include <openssl/crypto.h>
+#include <openssl/evp.h>
+#include <array>
+#include <iomanip>
+#include <sstream>
 
 
 using forensics::TaskPersistence;
 using forensics::TaskWatchdog;
 using forensics::FileFilter;
+
+namespace {
+std::string hashAndroidOutputFile(const std::filesystem::path& path) {
+    std::ifstream source(path, std::ios::binary);
+    if (!source) return {};
+    EVP_MD_CTX* context = EVP_MD_CTX_new();
+    if (!context) return {};
+    bool okay = EVP_DigestInit_ex(context, EVP_sha256(), nullptr) == 1;
+    std::array<char, 1 << 20> buffer{};
+    while (okay && source) {
+        source.read(buffer.data(), buffer.size());
+        if (source.gcount() > 0)
+            okay = EVP_DigestUpdate(context, buffer.data(),
+                                    static_cast<std::size_t>(source.gcount())) == 1;
+    }
+    unsigned char digest[EVP_MAX_MD_SIZE]{};
+    unsigned int size = 0;
+    okay = okay && !source.bad() && EVP_DigestFinal_ex(context, digest, &size) == 1;
+    EVP_MD_CTX_free(context);
+    if (!okay) return {};
+    std::ostringstream output;
+    output << std::hex << std::setfill('0');
+    for (unsigned int i = 0; i < size; ++i)
+        output << std::setw(2) << static_cast<unsigned int>(digest[i]);
+    return output.str();
+}
+
+bool appendAndroidArtifactProvenance(const std::filesystem::path& manifestPath,
+                                     const std::filesystem::path& androidDb,
+                                     const std::string& derivedHash) {
+    try {
+        std::ifstream input(manifestPath);
+        nlohmann::json manifest; input >> manifest;
+        if (manifest.at("normalized_kind") != "userdata" ||
+            manifest.at("derived_sha256") != derivedHash) return false;
+        const std::string dbHash = hashAndroidOutputFile(androidDb);
+        if (dbHash.size() != 64) return false;
+        for (const auto& step : manifest.at("steps"))
+            if (step.value("step_id", std::string()) == "artifact-android-db") return false;
+        manifest["steps"].push_back({
+            {"step_id", "artifact-android-db"}, {"parent_step", "filesystem"},
+            {"operation", "ARTIFACT_ANALYSIS"}, {"input_id", "userdata-filesystem"},
+            {"input_sha256", derivedHash},
+            {"input_format", manifest.at("userdata").at("filesystem")},
+            {"tool", "AndroidAnalyzer"}, {"tool_version", "TraceLens-stage5"},
+            {"parameters", nlohmann::json::object()},
+            {"output_id", "android.db"}, {"output_sha256", dbHash},
+            {"output_format", "sqlite"}, {"status", "SUCCESS"},
+            {"warnings", nlohmann::json::array()}});
+        const auto temporary = std::filesystem::path(manifestPath.string() + ".tmp");
+        std::ofstream output(temporary, std::ios::trunc);
+        if (!output) return false;
+        output << manifest.dump(2) << '\n'; output.close();
+        if (!output) return false;
+        std::error_code ec;
+        std::filesystem::rename(temporary, manifestPath, ec);
+        return !ec;
+    } catch (const std::exception&) { return false; }
+}
+
+struct AndroidCoverageSummary {
+    int parsed = 0;
+    int unresolved = 0;
+    bool available = false;
+};
+
+AndroidCoverageSummary inspectAndroidCoverage(const std::string& databasePath) {
+    AndroidCoverageSummary summary;
+    sqlite3* db = nullptr;
+    if (sqlite3_open_v2(databasePath.c_str(), &db, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
+        sqlite3_close(db);
+        return summary;
+    }
+    sqlite3_stmt* statement = nullptr;
+    const char* sql = "SELECT status, COUNT(*) FROM android_source_coverage GROUP BY status";
+    if (sqlite3_prepare_v2(db, sql, -1, &statement, nullptr) == SQLITE_OK) {
+        summary.available = true;
+        while (sqlite3_step(statement) == SQLITE_ROW) {
+            const char* status = reinterpret_cast<const char*>(sqlite3_column_text(statement, 0));
+            const int count = sqlite3_column_int(statement, 1);
+            if (status && (std::string(status) == "parsed" || std::string(status) == "PARSED")) summary.parsed += count;
+            else summary.unresolved += count;
+        }
+    }
+    sqlite3_finalize(statement);
+    sqlite3_close(db);
+    return summary;
+}
+
+bool writeAndroidCoverageManifest(const AnalysisTask& task, const std::string& databasePath) {
+    sqlite3* db = nullptr;
+    if (sqlite3_open_v2(databasePath.c_str(), &db, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
+        sqlite3_close(db); return false;
+    }
+    nlohmann::json manifest = {
+        {"schema_version", 1}, {"source", task.image_path},
+        {"source_image_sha256", task.metadata.count("preflight_source_sha256")
+             ? task.metadata.at("preflight_source_sha256") : ""},
+        {"container", task.android_source == "filesystem-image"
+             ? (task.metadata.count("preflight_container")
+                 ? task.metadata.at("preflight_container") : "unknown")
+             : task.android_source},
+        {"partition", {{"name", task.metadata.count("preflight_partition_name")
+                                ? task.metadata.at("preflight_partition_name") : ""},
+                       {"offset", task.metadata.count("preflight_partition_offset")
+                                ? task.metadata.at("preflight_partition_offset") : ""}}},
+        {"filesystem", task.metadata.count("preflight_filesystem")
+             ? task.metadata.at("preflight_filesystem") : "not_applicable"},
+        {"encryption", task.metadata.count("preflight_encryption_state")
+             ? task.metadata.at("preflight_encryption_state") : "UNKNOWN"},
+        {"reader", task.metadata.count("preflight_filesystem") &&
+                       task.metadata.at("preflight_filesystem") == "f2fs"
+             ? "qnxprobe-1.34-fc74ca829c27" : "The Sleuth Kit"},
+        {"artifact_types", nlohmann::json::object()},
+    };
+    std::map<std::string, std::string> tables{{"sms", "sms_messages"},
+        {"contacts", "contacts"}, {"installed_packages", "installed_packages"},
+        {"wifi", "wifi_networks"}, {"calls", "call_logs"}};
+    sqlite3_stmt* rows = nullptr;
+    if (sqlite3_prepare_v2(db,
+        "SELECT artifact_kind,source_path,status,detail FROM android_source_coverage "
+        "ORDER BY artifact_kind,source_path", -1, &rows, nullptr) != SQLITE_OK) {
+        sqlite3_close(db); return false;
+    }
+    while (sqlite3_step(rows) == SQLITE_ROW) {
+        auto field = [&](int i) -> std::string {
+            const char* text = reinterpret_cast<const char*>(sqlite3_column_text(rows, i));
+            return text ? text : "";
+        };
+        const std::string kind = field(0), path = field(1), status = field(2), detail = field(3);
+        auto& artifact = manifest["artifact_types"][kind];
+        if (artifact.is_null()) artifact = {
+            {"status", "NOT_FOUND"}, {"source_candidates", nlohmann::json::array()},
+            {"parsed_count", 0}, {"failure_reason", ""}};
+        artifact["source_candidates"].push_back(path);
+        if (status == "LOCKED" || status == "locked_or_unsupported") artifact["status"] = "LOCKED";
+        else if (status == "NOT_PRESENT_IN_SOURCE") artifact["status"] = "NOT_PRESENT_IN_SOURCE";
+        else if (status == "extract_failed") artifact["status"] = "EXTRACT_FAILED";
+        else if (status == "UNSUPPORTED") artifact["status"] = "UNSUPPORTED";
+        else if (status == "MALFORMED") artifact["status"] = "MALFORMED";
+        else if (status == "parsed" || status == "PARSED") artifact["status"] = "PARSED";
+        else if (status == "staged_for_parser" || status == "FOUND") artifact["status"] = "FOUND";
+        if (artifact["status"] != "PARSED" && !detail.empty()) artifact["failure_reason"] = detail;
+    }
+    sqlite3_finalize(rows);
+    for (const auto& [kind, table] : tables) {
+        if (manifest["artifact_types"].contains(kind)) {
+            std::string query = "SELECT COUNT(*) FROM " + table;
+            sqlite3_stmt* count = nullptr;
+            if (sqlite3_prepare_v2(db, query.c_str(), -1, &count, nullptr) == SQLITE_OK &&
+                sqlite3_step(count) == SQLITE_ROW) {
+                const int n = sqlite3_column_int(count, 0);
+                manifest["artifact_types"][kind]["parsed_count"] = n;
+                if (n > 0) {
+                    manifest["artifact_types"][kind]["status"] = "PARSED";
+                    manifest["artifact_types"][kind]["failure_reason"] = "";
+                }
+            }
+            sqlite3_finalize(count);
+        }
+    }
+    sqlite3_stmt* metrics = nullptr;
+    if (sqlite3_prepare_v2(db, "SELECT reader,walk_milliseconds,indexed_file_count,"
+        "extracted_member_count,bytes_read,analysis_milliseconds FROM android_filesystem_metrics "
+        "LIMIT 1", -1, &metrics, nullptr) == SQLITE_OK &&
+        sqlite3_step(metrics) == SQLITE_ROW) {
+        const char* actualReader = reinterpret_cast<const char*>(sqlite3_column_text(metrics, 0));
+        if (actualReader) manifest["reader"] = actualReader;
+        manifest["performance"] = {
+            {"walk_milliseconds", sqlite3_column_int64(metrics, 1)},
+            {"indexed_file_count", sqlite3_column_int64(metrics, 2)},
+            {"extracted_member_count", sqlite3_column_int64(metrics, 3)},
+            {"bytes_read", sqlite3_column_int64(metrics, 4)},
+            {"analysis_milliseconds", sqlite3_column_int64(metrics, 5)}};
+    }
+    sqlite3_finalize(metrics);
+    sqlite3_close(db);
+    const std::filesystem::path normalizationPath = std::filesystem::path(databasePath).parent_path() /
+                                       "android_normalization_manifest.json";
+    if (std::filesystem::is_regular_file(normalizationPath) &&
+        !std::filesystem::is_symlink(normalizationPath)) {
+        try {
+            std::ifstream normalization(normalizationPath);
+            nlohmann::json detail; normalization >> detail;
+            manifest["normalization"] = {
+                {"manifest", "android_normalization_manifest.json"},
+                {"kind", detail.value("kind", std::string())},
+                {"normalized_kind", detail.value("normalized_kind", std::string())},
+                {"source_sha256", detail.value("source_sha256", std::string())},
+                {"derived_sha256", detail.value("derived_sha256", std::string())},
+                {"selected_slot", detail.value("selected_slot", 0)}};
+            if (detail.contains("userdata"))
+                manifest["filesystem"] = detail["userdata"].value("filesystem", std::string("not_applicable"));
+            if (detail.value("normalized_kind", std::string()) == "super")
+                manifest["userdata"] = { {"status", "NOT_PRESENT_IN_SOURCE"} };
+            if (detail.value("normalized_kind", std::string()) == "super") {
+                manifest["reader"] = "AOSP liblp/lpunpack android-10.0.0_r36";
+                manifest["encryption"] = "NOT_APPLICABLE";
+            }
+        } catch (const std::exception&) { return false; }
+    }
+    const std::filesystem::path output = std::filesystem::path(databasePath).parent_path() /
+                                          "android_coverage_manifest.json";
+    const std::filesystem::path temporary = output.string() + ".tmp";
+    std::ofstream stream(temporary, std::ios::trunc);
+    if (!stream) return false;
+    stream << manifest.dump(2) << '\n';
+    stream.close();
+    if (!stream) return false;
+    std::error_code error;
+    std::filesystem::rename(temporary, output, error);
+    return !error;
+}
+}  // namespace
 
 // Platform-artifact progress → task progress. The artifact walks stream
 // rows whose total is unknown upfront (per-table caps, many tables), so the
@@ -177,6 +400,13 @@ void TaskManager::start_analysis(const std::string& task_id) {
         try {
             // Re-fetch task to ensure we have the most up-to-date state (atomic load)
             AnalysisTask task = get_task(task_id);
+            struct BackupPasswordWiper {
+                AnalysisTask& task;
+                ~BackupPasswordWiper() {
+                    if (!task.backup_password.empty())
+                        OPENSSL_cleanse(task.backup_password.data(), task.backup_password.size());
+                }
+            } wipeBackupPassword{task};
             if (task.id.empty()) {
                 std::cerr << "Analysis Error: Task " << task_id << " not found in manager" << std::endl;
                 return;
@@ -269,7 +499,12 @@ void TaskManager::start_analysis(const std::string& task_id) {
             // entire TSK / event / classification pipeline.
             if (task.android_source == "dir" ||
                 task.android_source == "zip" ||
-                task.android_source == "miui-backup") {
+                task.android_source == "miui-backup" ||
+                task.android_source == "tar" ||
+                task.android_source == "seven-zip" ||
+                task.android_source == "android-backup" ||
+                task.android_source == "filesystem-image" ||
+                task.android_source == "android-container") {
 
                 if (is_task_cancelled(task_id)) {
                     update_status(task_id, TaskStatus::CANCELLED, "Task cancelled");
@@ -277,7 +512,8 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     return;
                 }
 
-                bool ok = runLogicalAndroidAnalysis(task, baseName);
+                std::string archiveFailure;
+                bool ok = runLogicalAndroidAnalysis(task, baseName, &archiveFailure);
 
                 // Drop the runtime-only backup password as soon as the analyzer
                 // has consumed it (mirrors the decryption-password handling).
@@ -285,11 +521,11 @@ void TaskManager::start_analysis(const std::string& task_id) {
 
                 if (!ok) {
                     update_status(task_id, TaskStatus::FAILED,
-                                  "Android logical analysis failed for source: " + task.android_source,
-                                  "Android logical analysis failed for source '" + task.android_source +
+                                  archiveFailure.empty() ? "Android logical analysis failed for source: " + task.android_source : archiveFailure,
+                                  archiveFailure.empty() ? "Android logical analysis failed for source '" + task.android_source +
                                       "' at path '" + task.image_path +
                                       "'. Verify the source layout (dir tree / zip / MIUI backup) and "
-                                      "see cpp_server.log for the analyzer error.");
+                                      "see cpp_server.log for the analyzer error." : archiveFailure);
                     return;
                 }
 
@@ -306,6 +542,12 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     if (tasks_.count(task_id)) logicalResultDb = tasks_[task_id].output_files_db;
                 }
                 if (logicalResultDb.empty()) logicalResultDb = fileDbPath;
+
+                if (!writeAndroidCoverageManifest(task, logicalResultDb)) {
+                    update_status(task_id, TaskStatus::FAILED,
+                                  "Android coverage manifest could not be written");
+                    return;
+                }
 
                 // The Android analyzer already ran its own artifact-level LLM
                 // analysis inside analyzeAndroidData() (AndroidLLMAnalysisService,
@@ -326,8 +568,39 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 add_audit_log(task_id, "GRAPHITI_INGESTION",
                               "Skipped: no Graphiti reader for android.db (source: " +
                                   task.android_source + ")");
-                update_progress(task_id, TaskPhase::FINALIZING, 100, "Analysis completed successfully");
-                update_status(task_id, TaskStatus::COMPLETED, "Android logical analysis completed");
+                const auto coverage = inspectAndroidCoverage(logicalResultDb);
+                const bool incomplete = !coverage.available || coverage.unresolved > 0 || coverage.parsed == 0;
+                bool superNormalized = false;
+                {
+                    std::lock_guard<std::mutex> lock(mtx_);
+                    auto it = tasks_.find(task_id);
+                    if (it != tasks_.end()) {
+                        const auto prior = it->second.metadata.find("android_coverage_status");
+                        superNormalized = prior != it->second.metadata.end() &&
+                            prior->second == "SUPER_NORMALIZED_NO_USERDATA";
+                        const bool lockedPersisted = prior != it->second.metadata.end() &&
+                            prior->second == "COMPLETED_WITH_LOCKED_USERDATA";
+                        if (!superNormalized && !lockedPersisted)
+                            it->second.metadata["android_coverage_status"] = incomplete ? "incomplete" : "parsed_sources_present";
+                        it->second.metadata["android_coverage_parsed"] = std::to_string(coverage.parsed);
+                        it->second.metadata["android_coverage_unresolved"] = std::to_string(coverage.unresolved);
+                    }
+                }
+                add_audit_log(task_id, "ANDROID_COVERAGE",
+                    "Source coverage: parsed=" + std::to_string(coverage.parsed) +
+                    ", unresolved=" + std::to_string(coverage.unresolved) +
+                    ", available=" + (coverage.available ? "true" : "false"));
+                const bool locked = task.android_source == "filesystem-image" &&
+                    task.metadata.count("preflight_locked") && task.metadata.at("preflight_locked") == "true";
+                const std::string message = superNormalized
+                    ? "SUPER_NORMALIZED_USERDATA_NOT_PRESENT: 系统逻辑分区已规范化；来源中没有 userdata，未分析用户数据。"
+                    : locked
+                    ? "COMPLETED_WITH_LOCKED_USERDATA: userdata 已识别，但用户加密内容不可读取，Android 工件覆盖不完整。"
+                    : incomplete
+                    ? "Android source processed; coverage incomplete, review Android source status"
+                    : "Android source processed; source coverage recorded for review";
+                update_progress(task_id, TaskPhase::FINALIZING, 100, message);
+                update_status(task_id, TaskStatus::COMPLETED, message);
                 return;
             }
 
@@ -742,12 +1015,18 @@ void TaskManager::start_analysis(const std::string& task_id) {
             update_progress(task_id, TaskPhase::FINALIZING, 10, "Triggering knowledge graph ingestion...");
 
             std::string graphiti_job_id;
-            try {
-                auto& proxy = forensics::LLMPythonProxy::instance();
-                graphiti_job_id = proxy.async_ingest(task_id, forensics::IngestionMode::FULL);
-            } catch (const std::exception& e) {
-                std::cerr << "Warning: Exception triggering Graphiti ingestion: " << e.what() << std::endl;
-                add_audit_log(task_id, "WARNING", "Graphiti ingestion failed: " + std::string(e.what()));
+            const char* fieldMode = std::getenv("TRACELENS_FIELD_AUTH");
+            const char* outbound = std::getenv("FIELD_OUTBOUND_POLICY");
+            const bool noOptionalIntelligence = fieldMode && std::string(fieldMode) == "enabled" &&
+                (!outbound || std::string(outbound) == "disabled");
+            if (!noOptionalIntelligence) {
+                try {
+                    auto& proxy = forensics::LLMPythonProxy::instance();
+                    graphiti_job_id = proxy.async_ingest(task_id, forensics::IngestionMode::FULL);
+                } catch (const std::exception& e) {
+                    std::cerr << "Warning: Exception triggering Graphiti ingestion: " << e.what() << std::endl;
+                    add_audit_log(task_id, "WARNING", "Graphiti ingestion failed: " + std::string(e.what()));
+                }
             }
             if (!graphiti_job_id.empty()) {
                 add_audit_log(task_id, "GRAPHITI_INGESTION",
@@ -758,7 +1037,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
 
             // Finalization — gated on ingestion (budget: GRAPHITI_INGEST_WAIT_TIMEOUT_MIN,
             // 0 restores the legacy fire-and-forget completion).
-            const bool ingestion_ok = wait_for_graphiti_ingestion(task_id, graphiti_job_id);
+            const bool ingestion_ok = noOptionalIntelligence || wait_for_graphiti_ingestion(task_id, graphiti_job_id);
             if (is_task_cancelled(task_id)) { return; }
 
             set_result_db(task_id, fileDbPath);
@@ -781,9 +1060,23 @@ void TaskManager::start_analysis(const std::string& task_id) {
 }
 
 bool TaskManager::runLogicalAndroidAnalysis(const AnalysisTask& task,
-                                            const std::string& baseName) {
+                                            const std::string& baseName,
+                                            std::string* failureCode) {
     const std::string& task_id = task.id;
     const std::string& imagePath = task.image_path;
+    const bool archiveMode = task.android_source == "filesystem-image" ||
+        task.android_source == "android-container" ||
+        task.android_source == "tar" ||
+        task.android_source == "seven-zip" || task.android_source == "android-backup";
+    if (archiveMode) {
+        const auto expected = task.metadata.find("preflight_source_sha256");
+        if (expected == task.metadata.end() ||
+            !sourceMatchesPreflightHash(imagePath, expected->second)) {
+            if (failureCode) *failureCode = "EVIDENCE_CHANGED_AFTER_PREFLIGHT";
+            add_audit_log(task_id, "ERROR", "EVIDENCE_CHANGED_AFTER_PREFLIGHT");
+            return false;
+        }
+    }
 
     update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, 10,
                     "Analyzing Android artifacts (source=" + task.android_source + ")...");
@@ -808,15 +1101,126 @@ bool TaskManager::runLogicalAndroidAnalysis(const AnalysisTask& task,
             androidDbPath = outputRoot / (baseName + "_android.db");
         }
 
+        const bool lockedImage = task.android_source == "filesystem-image" &&
+            task.metadata.count("preflight_locked") && task.metadata.at("preflight_locked") == "true";
+        if (lockedImage) {
+            AndroidAnalysisDatabase database(androidDbPath.string());
+            if (!database.initialize() ||
+                !database.recordSourceCoverage("userdata", imagePath, "LOCKED",
+                    "F2FS_PER_FILE_ENCRYPTION_OR_UNAVAILABLE_NAMES; "
+                    "preflight identified userdata but no clear Android artifact path")) {
+                if (failureCode) *failureCode = "LOCKED_COVERAGE_WRITE_FAILED";
+                return false;
+            }
+            const std::pair<const char*, const char*> candidates[] = {
+                {"sms", "data/data/com.android.providers.telephony/databases/mmssms.db"},
+                {"contacts", "data/data/com.android.providers.contacts/databases/contacts2.db"},
+                {"calls", "data/data/com.android.providers.contacts/databases/calllog.db"},
+                {"installed_packages", "data/system/packages.xml"},
+                {"wifi", "data/misc/wifi/WifiConfigStore.xml"},
+                {"whatsapp", "data/data/com.whatsapp/databases/msgstore.db"},
+                {"telegram", "data/data/org.telegram.messenger/files/cache4.db"},
+            };
+            for (const auto& [kind, path] : candidates)
+                database.recordSourceCoverage(kind, path, "LOCKED",
+                    "USERDATA_LOCKED; candidate path not asserted present");
+            std::lock_guard<std::mutex> lock(mtx_);
+            if (tasks_.count(task_id)) {
+                tasks_[task_id].output_files_db = androidDbPath;
+                tasks_[task_id].metadata["android_db"] = androidDbPath;
+                tasks_[task_id].metadata["android_coverage_status"] = "COMPLETED_WITH_LOCKED_USERDATA";
+            }
+            return true;
+        }
+
+        std::string analysisImagePath = imagePath;
+        std::string analysisImageSha256;
+        const bool containerImage = task.android_source == "android-container";
+        if (containerImage) {
+            const auto plan = task.metadata.find("preflight_plan_sha256");
+            const auto sourceHash = task.metadata.find("preflight_source_sha256");
+            const auto slot = task.metadata.find("preflight_selected_slot");
+            if (plan == task.metadata.end() || sourceHash == task.metadata.end() ||
+                slot == task.metadata.end()) {
+                if (failureCode) *failureCode = "NORMALIZATION_PREFLIGHT_MISSING";
+                return false;
+            }
+            const auto normalized = normalizeAndroidContainer(imagePath,
+                pm.getTaskDir(task_id).string(), sourceHash->second, plan->second,
+                std::stoi(slot->second),
+                [this, &task_id]() { touch_heartbeat(task_id); },
+                [this, &task_id]() { return is_task_cancelled(task_id); });
+            if (!normalized.okay) {
+                if (failureCode) *failureCode = normalized.code;
+                add_audit_log(task_id, "ERROR", "Android normalization: " + normalized.code);
+                return false;
+            }
+            const auto& output = normalized.manifest;
+            if (output.value("normalized_kind", std::string()) == "super") {
+                AndroidAnalysisDatabase database(androidDbPath.string());
+                if (!database.initialize() || !database.recordSourceCoverage(
+                    "userdata", imagePath, "NOT_PRESENT_IN_SOURCE",
+                    "super supplies system/vendor/product logical partitions, not userdata")) {
+                    if (failureCode) *failureCode = "SUPER_COVERAGE_WRITE_FAILED";
+                    return false;
+                }
+                std::lock_guard<std::mutex> lock(mtx_);
+                if (tasks_.count(task_id)) {
+                    tasks_[task_id].output_files_db = androidDbPath;
+                    tasks_[task_id].metadata["android_db"] = androidDbPath;
+                    tasks_[task_id].metadata["android_coverage_status"] = "SUPER_NORMALIZED_NO_USERDATA";
+                    tasks_[task_id].metadata["android_normalization_manifest"] =
+                        output.at("manifest_path").get<std::string>();
+                }
+                return true;
+            }
+            if (output.value("normalized_kind", std::string()) != "userdata") {
+                if (failureCode) *failureCode = "NORMALIZATION_KIND_UNSUPPORTED";
+                return false;
+            }
+            analysisImagePath = output.at("derived_image").get<std::string>();
+            analysisImageSha256 = output.at("derived_sha256").get<std::string>();
+            add_audit_log(task_id, "ANDROID_NORMALIZATION",
+                "Sparse userdata normalized to validated raw image; manifest=" +
+                output.at("manifest_path").get<std::string>());
+            {
+                std::lock_guard<std::mutex> lock(mtx_);
+                if (tasks_.count(task_id))
+                    tasks_[task_id].metadata["android_normalization_manifest"] =
+                        output.at("manifest_path").get<std::string>();
+            }
+        }
+
         // dbManager is nullptr: logical sources have no _raw.db to read from.
-        auto androidAnalyzer = std::make_unique<AndroidAnalyzer>(imagePath, nullptr);
+        auto androidAnalyzer = std::make_unique<AndroidAnalyzer>(analysisImagePath, nullptr);
 
         // Select the non-TSK backend matching the chosen data source.
         AndroidSourceMode mode =
             task.android_source == "zip"          ? AndroidSourceMode::Zip :
             task.android_source == "miui-backup"  ? AndroidSourceMode::MiuiBackup :
+            task.android_source == "tar"          ? AndroidSourceMode::Tar :
+            task.android_source == "seven-zip"    ? AndroidSourceMode::SevenZip :
+            task.android_source == "android-backup" ? AndroidSourceMode::AndroidBackup :
+            (task.android_source == "filesystem-image" || containerImage) ? AndroidSourceMode::FilesystemImage :
                                                      AndroidSourceMode::LogicalDir;
         androidAnalyzer->setSourceMode(mode);
+        if (containerImage) {
+            androidAnalyzer->setSourceImageSha256(analysisImageSha256);
+            androidAnalyzer->setExpectedPartitionOffset(0);
+        } else if (archiveMode) {
+            const auto hash = task.metadata.find("preflight_source_sha256");
+            if (hash != task.metadata.end()) androidAnalyzer->setSourceImageSha256(hash->second);
+        }
+        if (mode == AndroidSourceMode::FilesystemImage) {
+            const auto offset = task.metadata.find("preflight_partition_offset");
+            if (offset != task.metadata.end())
+                androidAnalyzer->setExpectedPartitionOffset(std::stoull(offset->second));
+        }
+        const char* fieldMode = std::getenv("TRACELENS_FIELD_AUTH");
+        const char* outbound = std::getenv("FIELD_OUTBOUND_POLICY");
+        const bool fieldDisabled = fieldMode && std::string(fieldMode) == "enabled" &&
+            (!outbound || std::string(outbound) == "disabled");
+        androidAnalyzer->setSkipAI(!task.llm_analyze || fieldDisabled);
 
         if (!task.backup_password.empty()) {
             androidAnalyzer->setBackupPassword(task.backup_password);
@@ -825,6 +1229,7 @@ bool TaskManager::runLogicalAndroidAnalysis(const AnalysisTask& task,
         androidAnalyzer->setOutputDatabasePath(androidDbPath.string());
 
         if (!androidAnalyzer->initialize()) {
+            if (failureCode) *failureCode = androidAnalyzer->sourceError();
             add_audit_log(task_id, "ERROR", "Failed to initialize Android analyzer (logical)");
             return false;
         }
@@ -832,6 +1237,29 @@ bool TaskManager::runLogicalAndroidAnalysis(const AnalysisTask& task,
             add_audit_log(task_id, "SKIPPED", "Platform analysis disabled for this task");
         } else {
             androidAnalyzer->analyzeAndroidData();
+        }
+        if (containerImage &&
+            !sourceMatchesPreflightHash(analysisImagePath, analysisImageSha256)) {
+            if (failureCode) *failureCode = "DERIVED_IMAGE_CHANGED_AFTER_NORMALIZATION";
+            return false;
+        }
+        if (archiveMode) {
+            const auto expected = task.metadata.find("preflight_source_sha256");
+            if (expected == task.metadata.end() ||
+                !sourceMatchesPreflightHash(imagePath, expected->second)) {
+                if (failureCode) *failureCode = "EVIDENCE_CHANGED_AFTER_PREFLIGHT";
+                add_audit_log(task_id, "ERROR", "EVIDENCE_CHANGED_AFTER_PREFLIGHT during Android analysis");
+                return false;
+            }
+        }
+        if (containerImage) {
+            androidAnalyzer.reset(); // Close SQLite before hashing the final artifact.
+            const auto manifestPath = pm.getTaskDir(task_id) / "android_normalization_manifest.json";
+            if (!appendAndroidArtifactProvenance(manifestPath, androidDbPath,
+                                                 analysisImageSha256)) {
+                if (failureCode) *failureCode = "ARTIFACT_PROVENANCE_FAILED";
+                return false;
+            }
         }
 
         // Record the produced database on the task so downstream result
@@ -852,10 +1280,10 @@ bool TaskManager::runLogicalAndroidAnalysis(const AnalysisTask& task,
                       ", db=" + androidDbPath.string() + ")");
         return true;
     } catch (const std::exception& e) {
+        if (failureCode) *failureCode = "ANDROID_ARCHIVE_ANALYSIS_EXCEPTION";
         add_audit_log(task_id, "ERROR",
                       std::string("Logical Android analysis exception: ") + e.what());
         std::cerr << "Error: Logical Android analysis failed: " << e.what() << std::endl;
         return false;
     }
 }
-

@@ -30,10 +30,6 @@ const Statistics = () => {
 
       try {
         const data = await getStatisticsOverview(taskId);
-        console.log('Statistics data:', data);
-        console.log('Raw stats:', data?.raw_database_stats?.[0]);
-        console.log('Files stats:', data?.files_database_stats?.[0]);
-        console.log('Events stats:', data?.events_database_stats?.[0]);
         setStatistics(data);
       } catch (err) {
         console.error('Failed to fetch statistics:', err);

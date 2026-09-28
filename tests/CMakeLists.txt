@@ -1202,6 +1202,46 @@ target_link_libraries(
   pthread)
 
 add_test(NAME AndroidLogicalSourceGTests COMMAND test_android_logical_source_gtest)
+add_executable(test_android_archive_gtest
+  UnitTest/test_android_archive_gtest.cpp
+  ../src/analyzers/AndroidAnalyzer/AndroidPathMapper.cpp
+  ../src/analyzers/AndroidAnalyzer/ArchiveFileExtractor.cpp
+  ../src/analyzers/AndroidAnalyzer/AndroidBackupStream.cpp)
+target_include_directories(test_android_archive_gtest PRIVATE
+  ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer)
+target_link_libraries(test_android_archive_gtest
+  ${GTEST_LIBRARIES} ${LIBARCHIVE_LIBRARIES} ${ZLIB_LIBRARIES} OpenSSL::Crypto pthread)
+add_test(NAME AndroidArchiveGTests COMMAND test_android_archive_gtest)
+if(UNIX)
+  add_test(NAME AndroidArchiveCliEndToEndTests
+    COMMAND ${CMAKE_SOURCE_DIR}/python_service/.venv/bin/python
+      ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_android_container_cli_e2e.py
+      --analyzer $<TARGET_FILE:forensic_analyzer>)
+  add_test(NAME AndroidArchiveHttpEndToEndTests
+    COMMAND ${CMAKE_SOURCE_DIR}/python_service/.venv/bin/python
+      ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_android_container_http_e2e.py
+      --analyzer $<TARGET_FILE:forensic_analyzer>)
+  set_tests_properties(AndroidArchiveHttpEndToEndTests PROPERTIES
+    ENVIRONMENT "PYTHONPATH=${CMAKE_SOURCE_DIR}/python_service" TIMEOUT 180)
+  set_tests_properties(AndroidArchiveCliEndToEndTests PROPERTIES TIMEOUT 180)
+  add_test(NAME AndroidFilesystemImageCliEndToEndTests
+    COMMAND ${CMAKE_SOURCE_DIR}/python_service/.venv/bin/python
+      ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_android_filesystem_image_e2e.py
+      --analyzer $<TARGET_FILE:forensic_analyzer>)
+  set_tests_properties(AndroidFilesystemImageCliEndToEndTests PROPERTIES TIMEOUT 1200)
+  add_test(NAME AndroidFilesystemImageHttpEndToEndTests
+    COMMAND ${CMAKE_SOURCE_DIR}/python_service/.venv/bin/python
+      ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_android_filesystem_http_e2e.py
+      --analyzer $<TARGET_FILE:forensic_analyzer>)
+  set_tests_properties(AndroidFilesystemImageHttpEndToEndTests PROPERTIES
+    ENVIRONMENT "PYTHONPATH=${CMAKE_SOURCE_DIR}/python_service" TIMEOUT 1800)
+  add_test(NAME AndroidContainerHttpEndToEndTests
+    COMMAND ${CMAKE_SOURCE_DIR}/python_service/.venv/bin/python
+      ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_android_container_http_e2e.py
+      --analyzer $<TARGET_FILE:forensic_analyzer>)
+  set_tests_properties(AndroidContainerHttpEndToEndTests PROPERTIES
+    ENVIRONMENT "PYTHONPATH=${CMAKE_SOURCE_DIR}/python_service" TIMEOUT 1800)
+endif()
 add_test(
   NAME MiuiCliEndToEndTests
   COMMAND python3

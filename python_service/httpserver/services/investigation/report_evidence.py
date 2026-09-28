@@ -46,7 +46,7 @@ class ReportEvidenceService:
         task = await self._cpp_backend.get_task(task_id)
         if not isinstance(task, dict) or task.get("id") != task_id:
             raise EvidenceNotFoundError("task not found")
-        if not task.get("output_files_db") and not task.get("output_events_db"):
+        if not any(task.get(name) for name in ("output_files_db", "output_events_db", "output_raw_db")):
             raise EvidenceNotFoundError("task not found")
         return investigation_db_path_for_task(task)
 
@@ -78,6 +78,9 @@ class ReportEvidenceService:
         stays immutable (first-write-wins), exactly as on the event path.
         """
         db_path = await self._resolve_task_db(task_id)
+        # V7 is read-only: reject before the legacy file fast path inserts a
+        # snapshot row. Fresh Tasks initialize v8 once, within the Task root.
+        repository = InvestigationRepository(db_path, task_id)
         if evidence_key.startswith("file:"):
             try:
                 resolved = await EvidenceResolver(self._cpp_backend).resolve_evidence(
@@ -147,7 +150,6 @@ class ReportEvidenceService:
                 "evidence snapshot not captured for this task"
             )
         try:
-            repository = InvestigationRepository(db_path, task_id)
             await asyncio.to_thread(
                 repository.add_report_evidence,
                 evidence_key,

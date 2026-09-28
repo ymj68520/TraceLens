@@ -19,7 +19,7 @@ FileExtractionRoutes::~FileExtractionRoutes() {
     }
 }
 
-FileExtractionRoutes::FileExtractionRoutes(crow::App<>& app) {
+FileExtractionRoutes::FileExtractionRoutes(HttpApp& app) {
     CROW_ROUTE(app, "/api/forensics/extract").methods("POST"_method, "OPTIONS"_method)([this](const crow::request& req) {
         if (req.method == "OPTIONS"_method) {
             crow::response res;

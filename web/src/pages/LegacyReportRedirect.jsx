@@ -6,7 +6,7 @@ import { Navigate, useParams, useSearchParams } from 'react-router-dom';
  */
 export function getReportTarget(searchParams) {
   const caseId = searchParams.get('case_id');
-  if (caseId) return `/case-intelligence?case_id=${encodeURIComponent(caseId)}`;
+  if (caseId) return `/case-intelligence?case_id=${encodeURIComponent(caseId)}&tab=cross-image`;
 
   const taskId = searchParams.get('task_id') || searchParams.get('taskId');
   if (taskId) return `/case-intelligence?task_id=${encodeURIComponent(taskId)}`;
@@ -25,9 +25,8 @@ export function TaskReportRedirect() {
   return <Navigate to={`/case-intelligence?task_id=${encodeURIComponent(taskId)}`} replace />;
 }
 
-/** /reports/case/:caseId → /case-intelligence?case_id=:caseId */
+/** /reports/case/:caseId → the persisted cross-image report reader */
 export function CaseReportRedirect() {
   const { caseId } = useParams();
-  return <Navigate to={`/case-intelligence?case_id=${encodeURIComponent(caseId)}`} replace />;
+  return <Navigate to={`/case-intelligence?case_id=${encodeURIComponent(caseId)}&tab=cross-image`} replace />;
 }
-

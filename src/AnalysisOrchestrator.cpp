@@ -22,6 +22,7 @@
 #include <array>
 #include <filesystem>
 #include <memory>
+#include <openssl/crypto.h>
 
 #ifdef _WIN32
 #include <io.h>
@@ -110,6 +111,10 @@ bool readPasswordFromStdin(std::string& password) {
 bool readPasswordFromDescriptor(int descriptor, std::string& password) {
     password.clear();
     std::array<char, 256> buffer{};
+    struct BufferWiper {
+        std::array<char, 256>& value;
+        ~BufferWiper() { OPENSSL_cleanse(value.data(), value.size()); }
+    } wipe{buffer};
     while (password.size() < 4096) {
 #ifdef _WIN32
         const int count = _read(descriptor, buffer.data(), static_cast<unsigned>(buffer.size()));
@@ -169,7 +174,9 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
     // runs only the Android analyzer against the data source directly.
     if (args.android_analyze &&
         (args.android_source == "dir" || args.android_source == "zip" ||
-         args.android_source == "miui-backup")) {
+         args.android_source == "miui-backup" || args.android_source == "tar" ||
+         args.android_source == "seven-zip" || args.android_source == "android-backup" ||
+         args.android_source == "filesystem-image")) {
         return runAndroidLogicalAnalysis(args);
     }
 
@@ -467,6 +474,11 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
 }
 
 int AnalysisOrchestrator::runAndroidLogicalAnalysis(const CommandLineArgs& args) {
+    if ((args.android_source == "seven-zip" || args.android_source == "android-backup") &&
+        !args.backup_password.empty()) {
+        std::cerr << "Error: archive passwords must be supplied via stdin or an open file descriptor, not argv" << std::endl;
+        return 1;
+    }
     std::cout << "=== Android Logical Extraction Analyzer ===" << std::endl;
     std::cout << "Source: " << args.image_path << std::endl;
     std::cout << "Mode:   " << args.android_source
@@ -490,9 +502,17 @@ int AnalysisOrchestrator::runAndroidLogicalAnalysis(const CommandLineArgs& args)
         AndroidSourceMode mode =
             args.android_source == "zip"         ? AndroidSourceMode::Zip :
             args.android_source == "miui-backup" ? AndroidSourceMode::MiuiBackup :
+            args.android_source == "tar"         ? AndroidSourceMode::Tar :
+            args.android_source == "seven-zip"   ? AndroidSourceMode::SevenZip :
+            args.android_source == "android-backup" ? AndroidSourceMode::AndroidBackup :
+            args.android_source == "filesystem-image" ? AndroidSourceMode::FilesystemImage :
                                                     AndroidSourceMode::LogicalDir;
         androidAnalyzer->setSourceMode(mode);
         std::string backupPassword = args.backup_password;
+        struct PasswordWiper {
+            std::string& value;
+            ~PasswordWiper() { if (!value.empty()) OPENSSL_cleanse(value.data(), value.size()); }
+        } wipePassword{backupPassword};
         if (args.backup_password_stdin || args.backup_password_fd >= 0) {
             if (!backupPassword.empty()) {
                 std::cerr << "Warning: secure backup-password input overrides deprecated argv input."
@@ -517,7 +537,9 @@ int AnalysisOrchestrator::runAndroidLogicalAnalysis(const CommandLineArgs& args)
 
         std::cout << "[Android] Analyzing logical extraction..." << std::endl;
         if (!androidAnalyzer->initialize()) {
-            std::cerr << "Error: Failed to initialize Android analyzer" << std::endl;
+            std::cerr << "Error: Failed to initialize Android analyzer"
+                      << (androidAnalyzer->sourceError().empty() ? "" :
+                          " (" + androidAnalyzer->sourceError() + ")") << std::endl;
             return 1;
         }
         androidAnalyzer->analyzeAndroidData();

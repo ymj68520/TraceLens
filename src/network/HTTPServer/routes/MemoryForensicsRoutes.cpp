@@ -7,7 +7,7 @@
 namespace forensics {
 using json = nlohmann::json;
 
-MemoryForensicsRoutes::MemoryForensicsRoutes(crow::App<>& app) {
+MemoryForensicsRoutes::MemoryForensicsRoutes(HttpApp& app) {
     CROW_ROUTE(app, "/api/forensics/memory/summary").methods("GET"_method)([this](const crow::request& req){
         return handle_memory_summary(req); });
     CROW_ROUTE(app, "/api/forensics/memory/processes").methods("GET"_method)([this](const crow::request& req){

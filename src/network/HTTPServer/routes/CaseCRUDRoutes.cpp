@@ -7,7 +7,7 @@ using json = nlohmann::json;
 
 // ── Constructor — register all routes ────────────────────────────────────────
 
-CaseCRUDRoutes::CaseCRUDRoutes(crow::App<>& app)
+CaseCRUDRoutes::CaseCRUDRoutes(HttpApp& app)
     : case_manager_(CaseManager::instance()) {
 
     CROW_ROUTE(app, "/api/cases").methods("GET"_method)([this](const crow::request& req) {

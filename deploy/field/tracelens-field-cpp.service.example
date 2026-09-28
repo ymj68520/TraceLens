@@ -1,0 +1,29 @@
+[Unit]
+Description=TraceLens field C++ service (loopback, restricted egress)
+After=network.target
+
+[Service]
+Type=simple
+User=tracelens
+Group=tracelens
+WorkingDirectory=/opt/tracelens/build
+EnvironmentFile=/etc/tracelens/field.env
+Environment=TRACELENS_REQUIRE_FIELD_AUTH=1
+UnsetEnvironment=FIELD_JWT_SECRET FIELD_USER_FILE
+ExecStart=/opt/tracelens/build/forensic_analyzer --http-server 8666
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+ReadWritePaths=/srv/tracelens-field/data
+IPAddressDeny=any
+IPAddressAllow=localhost
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

@@ -12,7 +12,8 @@ from __future__ import annotations
 
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from ..services.field_security import audit_actor
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..services import get_service_manager
@@ -28,8 +29,15 @@ from ..services.investigation import (
     ReportEvidenceItem,
     ReportEvidenceService,
 )
+from ..services.investigation.repository import InvestigationMigrationRequiredError
 
 router = APIRouter()
+
+
+def _store_http_error(exc: EvidenceStoreError) -> HTTPException:
+    if isinstance(exc, InvestigationMigrationRequiredError):
+        return HTTPException(status_code=409, detail=str(exc))
+    return HTTPException(status_code=503, detail="report evidence store unavailable")
 
 
 def get_report_evidence_service() -> ReportEvidenceService:
@@ -72,7 +80,7 @@ async def list_report_evidence(
     except EvidenceNotFoundError as exc:
         raise HTTPException(status_code=404, detail="task not found") from exc
     except EvidenceStoreError as exc:
-        raise HTTPException(status_code=503, detail="report evidence store unavailable") from exc
+        raise _store_http_error(exc) from exc
 
 
 @router.get("/evidence/file-candidates")
@@ -111,7 +119,7 @@ async def list_report_evidence_file_candidates(
     except EvidenceNotFoundError as exc:
         raise HTTPException(status_code=404, detail="task not found") from exc
     except EvidenceStoreError as exc:
-        raise HTTPException(status_code=503, detail="report evidence store unavailable") from exc
+        raise _store_http_error(exc) from exc
 
 
 class SeedAnalyzedFilesRequest(BaseModel):
@@ -126,6 +134,7 @@ class SeedAnalyzedFilesRequest(BaseModel):
 @router.post("/evidence/seed-analyzed")
 async def seed_analyzed_files(
     request: SeedAnalyzedFilesRequest,
+    http_request: Request,
     service: ReportEvidenceService = Depends(get_report_evidence_service),
 ) -> dict:
     """初管全量入报：把初次流水线覆盖的全部"已分析文件"判为正文证据。
@@ -135,12 +144,12 @@ async def seed_analyzed_files(
     """
     try:
         return await service.seed_analyzed_files(
-            request.task_id, added_by=request.added_by
+            request.task_id, added_by=audit_actor(http_request, request.added_by)
         )
     except EvidenceNotFoundError as exc:
         raise HTTPException(status_code=404, detail="task not found") from exc
     except EvidenceStoreError as exc:
-        raise HTTPException(status_code=503, detail="report evidence store unavailable") from exc
+        raise _store_http_error(exc) from exc
 
 
 class AddReportEvidenceRequest(BaseModel):
@@ -163,6 +172,7 @@ class AddReportEvidenceRequest(BaseModel):
 @router.post("/evidence", response_model=ReportEvidenceItem, status_code=200)
 async def add_report_evidence(
     request: AddReportEvidenceRequest,
+    http_request: Request,
     service: ReportEvidenceService = Depends(get_report_evidence_service),
 ) -> ReportEvidenceItem:
     """Add one captured Evidence to the report with an optional frozen
@@ -174,7 +184,7 @@ async def add_report_evidence(
             evidence_key,
             report_status=request.report_status,
             analysis_id=request.analysis_id,
-            added_by=request.added_by,
+            added_by=audit_actor(http_request, request.added_by),
         )
     except EvidenceNotFoundError as exc:
         raise HTTPException(
@@ -190,7 +200,7 @@ async def add_report_evidence(
             status_code=409, detail="report evidence already exists"
         ) from exc
     except EvidenceStoreError as exc:
-        raise HTTPException(status_code=503, detail="report evidence store unavailable") from exc
+        raise _store_http_error(exc) from exc
 
 
 class UpdateReportEvidenceRequest(BaseModel):
@@ -213,6 +223,7 @@ class UpdateReportEvidenceRequest(BaseModel):
 @router.put("/evidence", response_model=ReportEvidenceItem, status_code=200)
 async def update_report_evidence(
     request: UpdateReportEvidenceRequest,
+    http_request: Request,
     service: ReportEvidenceService = Depends(get_report_evidence_service),
 ) -> ReportEvidenceItem:
     """Explicitly set the report status and/or (re)bind the accepted analysis.
@@ -233,7 +244,7 @@ async def update_report_evidence(
             report_status=request.report_status,
             analysis_id=request.analysis_id,
             bind_analysis=request.analysis_id is not None,
-            updated_by=request.updated_by,
+            updated_by=audit_actor(http_request, request.updated_by),
         )
     except EvidenceNotFoundError as exc:
         raise HTTPException(
@@ -245,4 +256,4 @@ async def update_report_evidence(
             status_code=409, detail="analysis binding conflict"
         ) from exc
     except EvidenceStoreError as exc:
-        raise HTTPException(status_code=503, detail="report evidence store unavailable") from exc
+        raise _store_http_error(exc) from exc

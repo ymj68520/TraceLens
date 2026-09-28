@@ -5,7 +5,7 @@
 
 namespace forensics {
 
-SystemRoutes::SystemRoutes(crow::App<>& app)
+SystemRoutes::SystemRoutes(HttpApp& app)
     : health_routes_(app),
       info_routes_(app),
       docs_routes_(app) {

@@ -24,6 +24,27 @@
 #define IFILE_EXTRACTOR_H
 
 #include <string>
+#include <vector>
+#include <cstddef>
+#include <cstdint>
+
+struct AndroidSourceProvenance {
+    std::string sourceContainer;
+    std::string containerSha256;
+    std::string sourceMemberPath;
+    std::string normalizedAndroidPath;
+    std::size_t memberSize = 0;
+    std::string memberSha256;
+    std::string adapterType;
+    std::string adapterVersion;
+    int partitionNumber = 0;
+    std::string partitionName;
+    std::uint64_t partitionStartOffset = 0;
+    std::string filesystemType;
+    std::string filesystemObjectId;
+    std::string filesystemReader;
+    std::string imageContainerType;
+};
 
 /**
  * @brief Abstract file-extraction backend.
@@ -59,6 +80,19 @@ public:
      */
     virtual bool extractFileByPath(const std::string& imageRelPath,
                                    const std::string& outPath) = 0;
+
+    /** Bounded, read-only discovery; providers without an index return none. */
+    virtual std::vector<std::string> findPathsByFilename(
+        const std::string& filename, std::size_t limit = 200) const {
+        (void)filename;
+        (void)limit;
+        return {};
+    }
+
+    /** Successfully staged source bytes, not every merely discovered member. */
+    virtual std::vector<AndroidSourceProvenance> usedSourceProvenance() const {
+        return {};
+    }
 };
 
 #endif // IFILE_EXTRACTOR_H

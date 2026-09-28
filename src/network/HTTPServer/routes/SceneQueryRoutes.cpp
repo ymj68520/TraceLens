@@ -7,7 +7,7 @@ namespace forensics {
 
 using json = nlohmann::json;
 
-SceneQueryRoutes::SceneQueryRoutes(crow::App<>& app) {
+SceneQueryRoutes::SceneQueryRoutes(HttpApp& app) {
     // GET /api/tasks/{id}/scene-stats
     CROW_ROUTE(app, "/api/tasks/<string>/scene-stats")
         .methods("GET"_method)

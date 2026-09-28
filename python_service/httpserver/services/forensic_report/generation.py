@@ -28,21 +28,25 @@ from ..investigation.models import (
     AnalysisGroundingStatus,
     ClaimGroundingStatus,
     ClaimType,
+    AndroidArtifactSnapshotPayload,
     ClusterSnapshotPayload,
     FileSnapshotPayload,
     ReportEvidenceStatus,
 )
 from ..investigation.paths import investigation_db_path_for_task
-from ..investigation.repository import SUPPORTED_SCHEMA_VERSION
+from ..investigation.repository import READABLE_SCHEMA_VERSIONS
 from .models import (
     CASE_DESCRIPTION_MAX_CHARS,
     EnvelopeBoundAnalysisReviewV1,
     EnvelopeBoundAnalysisV1,
     EnvelopeClaimV1,
     EnvelopeEvidenceItemV1,
+    EnvelopeEvidenceItemV3,
     EnvelopeSnapshotV1,
+    EnvelopeSnapshotV3,
     ReportGenerationEnvelopeV1,
     ReportGenerationEnvelopeV2,
+    ReportGenerationEnvelopeV3,
     ReportGenerationInput,
 )
 from .repository import ReportRepository
@@ -95,7 +99,7 @@ class ReportGenerationInputBuilder:
         try:
             with contextlib.closing(self._connect()) as conn:
                 version = conn.execute("PRAGMA user_version").fetchone()[0]
-                if version != SUPPORTED_SCHEMA_VERSION:
+                if version not in READABLE_SCHEMA_VERSIONS:
                     raise EvidenceStoreError(
                         "investigation store schema is unsupported"
                     )
@@ -123,7 +127,7 @@ class ReportGenerationInputBuilder:
         prompt_version: str,
         *,
         case_description: str = "",
-    ) -> ReportGenerationEnvelopeV1 | ReportGenerationEnvelopeV2:
+    ) -> ReportGenerationEnvelopeV1 | ReportGenerationEnvelopeV2 | ReportGenerationEnvelopeV3:
         main: list[EnvelopeEvidenceItemV1] = []
         appendix: list[EnvelopeEvidenceItemV1] = []
         if self._report_evidence_table_exists(conn):
@@ -155,6 +159,16 @@ class ReportGenerationInputBuilder:
                 sorted({item.evidence_key for item in (*main, *appendix)})
             ),
         )
+        has_android = any(item.snapshot.evidence_type == "android_artifact" for item in (*main, *appendix))
+        if has_android:
+            if prompt_version not in (REPORT_GENERATION_PROMPT_VERSION, "final-report:v3"):
+                raise ReportGenerationInputError("invalid_report_evidence_binding", "Android evidence requires report v3")
+            return ReportGenerationEnvelopeV3(
+                case_description=case_description[:CASE_DESCRIPTION_MAX_CHARS],
+                **{**common, "prompt_version": "final-report:v3"},
+            )
+        if prompt_version == "final-report:v3":
+            raise ReportGenerationInputError("invalid_report_evidence_binding", "report v3 requires Android evidence")
         if prompt_version == REPORT_GENERATION_PROMPT_V1_LEGACY:
             # Legacy single-shot contract: no case description in the input.
             return ReportGenerationEnvelopeV1(**common)
@@ -177,7 +191,8 @@ class ReportGenerationInputBuilder:
         analysis_id = row["analysis_id"]
         if analysis_id is not None:
             bound = self._bound_analysis_with_conn(conn, evidence_key, analysis_id)
-        return EnvelopeEvidenceItemV1(
+        item_type = EnvelopeEvidenceItemV3 if snapshot.evidence_type == "android_artifact" else EnvelopeEvidenceItemV1
+        return item_type(
             evidence_key=evidence_key,
             report_status=ReportEvidenceStatus(row["report_status"]),
             snapshot=snapshot,
@@ -297,9 +312,19 @@ class ReportGenerationInputBuilder:
             payload = FileSnapshotPayload.model_validate(data)
         elif evidence_type == "cluster":
             payload = ClusterSnapshotPayload.model_validate(data)
+        elif evidence_type == "android_artifact":
+            from ..evidence.keys import parse_evidence_key
+            key = parse_evidence_key(row["evidence_key"])
+            payload = AndroidArtifactSnapshotPayload.model_validate(data)
+            if (key.evidence_type != "android_artifact" or
+                (payload.task_id, payload.result_set_id, payload.artifact_kind, payload.record_id) !=
+                (key.artifact_task_id, key.result_set_id, key.artifact_kind, key.artifact_record_id) or
+                payload.task_id != row["task_id"]):
+                raise EvidenceStoreError("Android report snapshot identity mismatch")
         else:  # pragma: no cover - guarded by the table CHECK
             raise EvidenceStoreError("report evidence snapshot type is unknown")
-        return EnvelopeSnapshotV1(
+        snapshot_type = EnvelopeSnapshotV3 if evidence_type == "android_artifact" else EnvelopeSnapshotV1
+        return snapshot_type(
             task_id=row["task_id"],
             evidence_key=row["evidence_key"],
             evidence_type=evidence_type,
@@ -369,7 +394,7 @@ class ReportGenerationAdmissionService:
                 task_id,
                 requested_by=requested_by,
                 input_schema_version=envelope.schema_version,
-                prompt_version=prompt_version,
+                prompt_version=envelope.prompt_version,
                 input_envelope_json=envelope_json,
                 input_hash=input_hash,
             )

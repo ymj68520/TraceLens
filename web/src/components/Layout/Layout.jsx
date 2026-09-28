@@ -60,6 +60,7 @@ const Layout = ({ children }) => {
   const isActive = (path) =>
     location.pathname === path ||
     (location.pathname.startsWith('/reports/') && path.startsWith('/reports/')) ||
+    (path === '/knowledge-graph' && location.pathname === '/graph-source-file') ||
     // 子路由页（如 /investigation/report）高亮所属导航并保持顶栏标题正确
     (path === '/investigation' && location.pathname.startsWith('/investigation'));
 

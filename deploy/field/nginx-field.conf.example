@@ -1,0 +1,31 @@
+# Illustrative HTTPS gateway; install only after approved LAN address,
+# certificate, firewall and Windows/WSL forwarding are confirmed.
+# Build the frontend with VITE_FIELD_AUTH=enabled VITE_PYTHON_API_URL=/python.
+server {
+    listen APPROVED_LAN_IP:443 ssl;
+    server_name APPROVED_HOSTNAME;
+    ssl_certificate /etc/tracelens/tls/fullchain.pem;
+    ssl_certificate_key /etc/tracelens/tls/privkey.pem;
+    access_log off; # query strings may contain evidence text; use dedicated redacted audit logs
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    client_max_body_size 32m;
+
+    location /python/ {
+        proxy_pass http://127.0.0.1:8090/;
+        proxy_set_header Host $host;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-TraceLens-Service-Token "";
+        proxy_set_header X-User "";
+        proxy_set_header X-Forwarded-User "";
+        proxy_redirect off;
+    }
+    location / {
+        proxy_pass http://127.0.0.1:8666;
+        proxy_set_header Host $host;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-TraceLens-Service-Token "";
+        proxy_set_header X-User "";
+        proxy_set_header X-Forwarded-User "";
+        proxy_redirect off;
+    }
+}

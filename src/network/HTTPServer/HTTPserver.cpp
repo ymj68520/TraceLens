@@ -4,6 +4,7 @@
  */
 
 #include "HTTPserver.h"
+#include "tracelens/build_identity.h"
 #include "FullTextSearch/FullTextSearch.h"
 #include "FullTextSearch/TextExtractor.h"
 #include <iostream>
@@ -12,6 +13,7 @@
 #include <filesystem>
 #include <ctime>
 #include <cstdlib>
+#include <stdexcept>
 
 namespace fs = std::filesystem;
 
@@ -77,19 +79,72 @@ namespace forensics {
     void HTTPServer::run(int port) {
         std::cout << "Starting HTTP server on port " << port << std::endl;
 
+        const char* configured = std::getenv("HTTP_SERVER_HOST");
+        const std::string host = configured && *configured ? configured : "0.0.0.0";
+        if (std::getenv("TRACELENS_REQUIRE_FIELD_AUTH") &&
+            std::string(std::getenv("TRACELENS_REQUIRE_FIELD_AUTH")) == "1" &&
+            (!std::getenv("TRACELENS_FIELD_AUTH") ||
+             std::string(std::getenv("TRACELENS_FIELD_AUTH")) != "enabled")) {
+            throw std::runtime_error("field authentication is required but not enabled");
+        }
+        if (std::getenv("TRACELENS_FIELD_AUTH") &&
+            std::string(std::getenv("TRACELENS_FIELD_AUTH")) == "enabled") {
+#ifndef TRACELENS_RELEASE_ID
+#define TRACELENS_RELEASE_ID "UNFROZEN_WORKTREE"
+#endif
+            if (std::getenv("TRACELENS_REQUIRE_RELEASE_LAYOUT") &&
+                std::string(std::getenv("TRACELENS_REQUIRE_RELEASE_LAYOUT")) == "1") {
+                const char* expected = std::getenv("TRACELENS_RELEASE_ID");
+                if (!expected || std::string(expected) != TRACELENS_RELEASE_ID ||
+                    std::string(expected) == "UNFROZEN_WORKTREE") {
+                    throw std::runtime_error("field release identity is not baked into this executable");
+                }
+            }
+            if (!field_runtime_ready() || (host != "127.0.0.1" && host != "::1")) {
+                throw std::runtime_error("field authentication or loopback binding is not configured");
+            }
+        }
+
         // Setup static file serving for React frontend
         setup_static_routes();
 
-        app_.port(port).multithreaded().run();
+        app_.bindaddr(host).port(port).multithreaded().run();
     }
 
     void HTTPServer::setup_static_routes() {
         // Add CORS headers to all responses
         app_.loglevel(crow::LogLevel::Warning);
 
+        CROW_ROUTE(app_, "/health/live").methods("GET"_method)([] {
+            crow::response response;
+            response.set_header("Content-Type", "application/json");
+            response.set_header("Cache-Control", "no-store");
+            response.write("{\"status\":\"alive\"}");
+            return response;
+        });
+
+        CROW_ROUTE(app_, "/api/security/status").methods("GET"_method)([] {
+            crow::response response;
+            response.set_header("Content-Type", "application/json");
+            response.set_header("Cache-Control", "no-store");
+            const char* mode = std::getenv("FIELD_OUTBOUND_POLICY");
+            const bool field = std::getenv("TRACELENS_FIELD_AUTH") &&
+                std::string(std::getenv("TRACELENS_FIELD_AUTH")) == "enabled";
+            const bool required = std::getenv("TRACELENS_REQUIRE_FIELD_AUTH") &&
+                std::string(std::getenv("TRACELENS_REQUIRE_FIELD_AUTH")) == "1";
+            response.write(nlohmann::json{{"field_security_version", "6a-v1"},
+                {"release_id", TRACELENS_RELEASE_ID}, {"release_layout_version", "6c-v1"},
+                {"source_commit", TRACELENS_SOURCE_COMMIT}, {"source_tree_sha256", TRACELENS_SOURCE_SHA256},
+                {"field_auth", field}, {"required_auth", required},
+                {"outbound_policy", mode ? mode : "disabled"}}.dump());
+            return response;
+        });
+
         // Global CORS middleware - handles OPTIONS and adds CORS headers to all responses
         auto cors_middleware = [](crow::request& req, crow::response& res){
-            res.set_header("Access-Control-Allow-Origin", "*");
+            if (!std::getenv("TRACELENS_FIELD_AUTH") ||
+                std::string(std::getenv("TRACELENS_FIELD_AUTH")) != "enabled")
+                res.set_header("Access-Control-Allow-Origin", "*");
             res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
             res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
 
@@ -110,9 +165,18 @@ namespace forensics {
         .methods("GET"_method)
         ([this](const crow::request& req, const std::string& path){
             crow::response res;
+            if (path == "api" || path.rfind("api/", 0) == 0 || path.rfind("python/", 0) == 0 ||
+                path.rfind("cs-disabled/", 0) == 0) {
+                res.code = 404;
+                res.set_header("Content-Type", "application/json");
+                res.write("{\"detail\":\"not found\"}");
+                return res;
+            }
 
             // Add CORS headers
-            res.set_header("Access-Control-Allow-Origin", "*");
+            if (!std::getenv("TRACELENS_FIELD_AUTH") ||
+                std::string(std::getenv("TRACELENS_FIELD_AUTH")) != "enabled")
+                res.set_header("Access-Control-Allow-Origin", "*");
             res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
             res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
 
@@ -144,7 +208,9 @@ namespace forensics {
             std::string index_path = "web/dist/index.html";
 
             // Add CORS headers
-            res.set_header("Access-Control-Allow-Origin", "*");
+            if (!std::getenv("TRACELENS_FIELD_AUTH") ||
+                std::string(std::getenv("TRACELENS_FIELD_AUTH")) != "enabled")
+                res.set_header("Access-Control-Allow-Origin", "*");
             res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
             res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
 
@@ -160,12 +226,20 @@ namespace forensics {
     }
 
     bool HTTPServer::serve_static_file(crow::response& res, const std::string& file_path) {
-        if (!fs::exists(file_path) || !fs::is_regular_file(file_path)) {
+        std::error_code ec;
+        const fs::path root = fs::weakly_canonical("web/dist", ec);
+        if (ec) return false;
+        const fs::path target = fs::weakly_canonical(file_path, ec);
+        if (ec) return false;
+        const fs::path relative = target.lexically_relative(root);
+        if (relative.empty() || relative.is_absolute() ||
+            relative.begin() == relative.end() || *relative.begin() == ".." ||
+            !fs::is_regular_file(target)) {
             return false;
         }
 
         // Read file content
-        std::ifstream file(file_path, std::ios::binary);
+        std::ifstream file(target, std::ios::binary);
         if (!file.is_open()) {
             return false;
         }
@@ -176,6 +250,16 @@ namespace forensics {
         // Set content type
         std::string mime_type = get_mime_type(file_path);
         res.set_header("Content-Type", mime_type);
+        if (std::getenv("TRACELENS_FIELD_AUTH") &&
+            std::string(std::getenv("TRACELENS_FIELD_AUTH")) == "enabled") {
+            res.set_header("X-Content-Type-Options", "nosniff");
+            res.set_header("Referrer-Policy", "no-referrer");
+            res.set_header("X-Frame-Options", "DENY");
+            res.set_header("Content-Security-Policy",
+                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' blob: data:; font-src 'self' data:; connect-src 'self'; "
+                "object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+        }
 
         // Add cache headers for static assets
         std::string ext = fs::path(file_path).extension().string();

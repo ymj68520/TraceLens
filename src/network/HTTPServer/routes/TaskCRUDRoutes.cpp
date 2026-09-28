@@ -1,18 +1,22 @@
 #include "TaskCRUDRoutes.h"
+#include "../AndroidPreflightAdmission.h"
 #include "TaskHelpers.h"
 #include "RouteHelpers.h"
 #include "../SQLiteHelper.h"
 #include "../../Swagger/Swagger.h"
 #include "PathManager/PathManager.h"
 #include <ctime>
+#include <cstdlib>
 #include <filesystem>
 #include <algorithm>
+#include <set>
+#include <openssl/crypto.h>
 
 namespace forensics {
 
 using json = nlohmann::json;
 
-TaskCRUDRoutes::TaskCRUDRoutes(crow::App<>& app) : task_manager_(TaskManager::instance()) {
+TaskCRUDRoutes::TaskCRUDRoutes(HttpApp& app) : app_(app), task_manager_(TaskManager::instance()) {
     // 任务 API 只注册 /api 前缀路径：非前缀的遗留路由会把 SPA 的
     // /tasks 页面路径遮蔽成 JSON，导致浏览器刷新该页时拿不到前端。
     CROW_ROUTE(app, "/api/tasks").methods("GET"_method)([this](const crow::request& req) {
@@ -42,10 +46,11 @@ TaskCRUDRoutes::TaskCRUDRoutes(crow::App<>& app) : task_manager_(TaskManager::in
     Swagger::instance().RegisterEndpoint(
         "/api/tasks", "POST",
         "Create task",
-        "Create a new forensic analysis task.",
+        "Create a forensic task. tar/seven-zip/android-backup require a completed full-hash "
+        "preflight_job_id, preflight_source_sha256 and preflight_detected_kind; changed evidence returns 409.",
         {"Tasks"},
         {},
-        {{201, "Task created"}, {400, "Invalid request"}}
+        {{201, "Task created"}, {400, "Invalid request"}, {409, "Evidence changed after preflight"}}
     );
 
     CROW_ROUTE(app, "/api/tasks/<string>/results").methods("GET"_method)([this](const crow::request& req, const std::string& task_id) {
@@ -129,6 +134,15 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
         }
         {
             const std::string source_kind = body.value("android_source", "tsk");
+            static const std::set<std::string> supportedSources{
+                "tsk", "dir", "zip", "miui-backup", "tar", "seven-zip", "android-backup", "filesystem-image", "android-container"};
+            if (!supportedSources.count(source_kind)) {
+                res.code = 400;
+                res.set_header("Content-Type", "application/json");
+                res.write(json{{"error", "Unsupported android_source"},
+                               {"error_code", "UNSUPPORTED_ANDROID_SOURCE"}}.dump());
+                return res;
+            }
             const bool wants_directory = (source_kind == "dir" || source_kind == "miui-backup");
             std::error_code ec;
             const bool exists = std::filesystem::exists(image_path, ec);
@@ -169,6 +183,19 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
                 metadata[key] = value.get<std::string>();
             }
         }
+        const char* fieldPrincipalMode = std::getenv("TRACELENS_FIELD_AUTH");
+        if (fieldPrincipalMode && std::string(fieldPrincipalMode) == "enabled") {
+            const auto& authenticated = app_.get_context<FieldAuthMiddleware>(req).principal;
+            if (authenticated.empty()) {
+                res.code = 401;
+                res.write("{\"detail\":\"authentication required\"}");
+                return res;
+            }
+            metadata["requested_by"] = authenticated;
+            metadata["requested_by_source"] = "field_jwt";
+        }
+        if (body.value("android_source", std::string("tsk")) == "tsk")
+            metadata["source_verification"] = "UNVERIFIED_SOURCE";
 
         // Dependencies
         std::vector<TaskDependency> dependencies;
@@ -208,6 +235,20 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
         // task-time event cluster analysis has its own switch (off by default).
         bool llm_analyze = body.value("llm_analyze", true);
         bool llm_event_analyze = body.value("llm_event_analyze", false);
+        const char* fieldAuth = std::getenv("TRACELENS_FIELD_AUTH");
+        const char* fieldOutbound = std::getenv("FIELD_OUTBOUND_POLICY");
+        if (fieldAuth && std::string(fieldAuth) == "enabled" &&
+            (!fieldOutbound || std::string(fieldOutbound) == "disabled")) {
+            if (std::find(scenarios.begin(), scenarios.end(), ForensicScenario::SERVER_CLOUD) != scenarios.end()) {
+                res.code = 400;
+                res.set_header("Content-Type", "application/json");
+                res.write("{\"error\":\"cloud scenario is disabled by field outbound policy\"}");
+                return res;
+            }
+            llm_analyze = false;
+            llm_event_analyze = false;
+            metadata["field_outbound_policy"] = "disabled";
+        }
         std::string llm_mode = body.value("llm_mode", "smart"); // "full" or "smart"
         std::string case_description = body.value("case_description", "");
 
@@ -224,12 +265,66 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
         // disk-image pipeline; "dir" / "zip" / "miui-backup" short-circuit
         // straight to the Android analyzer (no _raw.db produced).
         std::string android_source = body.value("android_source", "tsk");
+        if (android_source == "android-container" &&
+            !body.value("db_output_dir", std::string()).empty()) {
+            res.code = 400;
+            res.set_header("Content-Type", "application/json");
+            res.write(json{{"error", "Android container Task outputs must stay in its Task directory"},
+                           {"error_code", "TASK_WORKDIR_REQUIRED"}}.dump());
+            return res;
+        }
+        const bool newContainer = android_source == "tar" ||
+            android_source == "seven-zip" || android_source == "android-backup" ||
+            android_source == "filesystem-image" || android_source == "android-container";
+        if (newContainer) {
+            const auto admission = android_source == "android-container"
+              ? admitAndroidContainerSource(
+                image_path, body.value("preflight_job_id", std::string()),
+                body.value("preflight_source_sha256", std::string()),
+                body.value("preflight_detected_kind", std::string()),
+                body.value("preflight_plan_sha256", std::string()),
+                body.value("preflight_selected_slot", 0))
+              : android_source == "filesystem-image"
+              ? admitAndroidFilesystemImage(
+                image_path, body.value("preflight_job_id", std::string()),
+                body.value("preflight_source_sha256", std::string()),
+                body.value("preflight_detected_kind", std::string()))
+              : admitAndroidArchiveSource(
+                image_path, android_source,
+                body.value("preflight_job_id", std::string()),
+                body.value("preflight_source_sha256", std::string()),
+                body.value("preflight_detected_kind", std::string()),
+                !body.value("backup_password", std::string()).empty());
+            if (!admission.accepted) {
+                res.code = admission.code == "EVIDENCE_CHANGED_AFTER_PREFLIGHT" ? 409 : 400;
+                res.set_header("Content-Type", "application/json");
+                res.write(json{{"error", admission.detail}, {"error_code", admission.code},
+                               {"status", "rejected"}}.dump());
+                return res;
+            }
+            metadata.insert(admission.metadata.begin(), admission.metadata.end());
+            // The trusted admission values take precedence over caller metadata.
+            for (const auto& [key, value] : admission.metadata) metadata[key] = value;
+            metadata["source_verification"] = "VERIFIED_PREFLIGHT";
+        }
         // MIUI / Android backup AES-256 password (runtime-only, never persisted).
         std::string backup_password = body.value("backup_password", "");
+        body.erase("backup_password");
+        struct PasswordWiper {
+            std::string& value;
+            ~PasswordWiper() { if (!value.empty()) OPENSSL_cleanse(value.data(), value.size()); }
+        } wipePassword{backup_password};
 
         // Platform artifact analysis (Android/Windows/Linux/ServerCloud stage).
         // Task-level switch, selected by the user at creation; on by default.
         bool platform_analyze = body.value("platform_analyze", true);
+        if (newContainer && !platform_analyze) {
+            res.code = 400;
+            res.set_header("Content-Type", "application/json");
+            res.write(json{{"error", "Archive Android Task requires platform_analyze=true"},
+                           {"error_code", "ANDROID_ANALYSIS_REQUIRED"}}.dump());
+            return res;
+        }
 
         // File carving option: accepts both a top-level flag and the documented
         // options.file_carving spelling. Previously this option was silently

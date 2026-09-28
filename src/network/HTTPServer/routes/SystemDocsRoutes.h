@@ -1,13 +1,14 @@
 #pragma once
 
 #include <crow.h>
+#include "../FieldApp.h"
 #include <nlohmann/json.hpp>
 
 namespace forensics {
 
 class SystemDocsRoutes {
 public:
-    explicit SystemDocsRoutes(crow::App<>& app);
+    explicit SystemDocsRoutes(HttpApp& app);
     
 private:
     crow::response handle_docs_endpoints(const crow::request& req);

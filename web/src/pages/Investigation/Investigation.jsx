@@ -7,6 +7,7 @@ import InvestigationGraphView from '../../components/investigation/Investigation
 import useInvestigationEvents from './hooks/useInvestigationEvents';
 import useEventEvidence from './hooks/useEventEvidence';
 import useInvestigationFileTimeline from './hooks/useInvestigationFileTimeline';
+import useCitedReportVersion from './hooks/useCitedReportVersion';
 import InvestigationTimeline from './components/InvestigationTimeline';
 import FileEventPanel from './components/FileEventPanel';
 import EventEvidencePanel from './components/EventEvidencePanel';
@@ -21,12 +22,18 @@ const MIDDLE_TABS = [
 
 export default function Investigation() {
   const [searchParams] = useSearchParams();
+  const taskId = searchParams.get('task_id') || searchParams.get('taskId');
+  const selectionKey = `${taskId || ''}|${searchParams.get('report_id') || ''}|${searchParams.get('event') || ''}|${searchParams.get('file') || ''}|${searchParams.get('evidence_key') || ''}`;
+  return <InvestigationForTask key={selectionKey} taskId={taskId} searchParams={searchParams} />;
+}
+
+function InvestigationForTask({ taskId, searchParams }) {
   // MVP (mvp-phase1-acceptance §4.4): the graph tab and the LLM workspace
   // actions are trimmed; read-only browsing and file evidence binding stay.
   const { workbench_llm_enabled: workbenchLlmEnabled } = useFeatures();
   const middleTabs = workbenchLlmEnabled ? MIDDLE_TABS : MIDDLE_TABS.filter((tab) => tab.id !== 'graph');
-  const taskId = searchParams.get('task_id') || searchParams.get('taskId');
   const requestedEvent = searchParams.get('event');
+  const requestedReportId = searchParams.get('report_id');
   // 报告引用深链 ?file=：接受裸路径或完整 file: 证据键，统一按冻结规则归一化。
   const requestedFileParam = searchParams.get('file');
   const requestedFileKey = useMemo(() => {
@@ -34,21 +41,27 @@ export default function Investigation() {
     return raw ? normalizeEvidencePath(raw) : null;
   }, [requestedFileParam]);
   const [selectedEventId, setSelectedEventId] = useState(requestedEvent);
-  const [selectedEvidenceKey, setSelectedEvidenceKey] = useState(null);
+  const [selectedEvidenceKey, setSelectedEvidenceKey] = useState(
+    searchParams.get('evidence_key')?.startsWith(`android_artifact:v1:${taskId}:`)
+      ? searchParams.get('evidence_key') : null
+  );
   const [claimEvidenceScope, setClaimEvidenceScope] = useState(null);
   // 中栏视图切换（方案 B）：graph 激活时右栏让位，切两栏全宽；回时间线自动弹出。
   const [middleTab, setMiddleTab] = useState('timeline');
   const [graphRefreshSignal, setGraphRefreshSignal] = useState(0);
   const { overview, events, loading, error, refresh: refreshEvents } = useInvestigationEvents(taskId);
-  const { fileTimeline, loading: fileTimelineLoading, refresh: refreshFileTimeline } = useInvestigationFileTimeline(taskId, requestedFileKey);
+  const { reportId, loading: reportLoading, error: reportError, refresh: refreshReportVersion } = useCitedReportVersion(taskId, requestedReportId);
+  const { fileTimeline, loading: fileTimelineLoading, error: fileTimelineError, refresh: refreshFileTimeline } = useInvestigationFileTimeline(taskId, requestedFileKey, reportId);
   const { evidence, loading: evidenceLoading, error: evidenceError, refresh: refreshEvidence } = useEventEvidence(taskId, selectedEventId);
   const selectedEvent = useMemo(() => events.find((event) => event.id === selectedEventId) || null, [events, selectedEventId]);
 
   // ---- 文件中心选择模型 -------------------------------------------------
-  // 时间线节点 = 已分析文件；右栏默认 = 文件工作台（判定 + 分析评审）。
+  // 时间线节点 = 当前最终叙事报告实际引用的文件；不回退显示全部已分析文件。
+  // 右栏默认 = 文件工作台（判定 + 分析评审）。
   // selectedEventId 仅在用户显式点选事件（佐证事件/关联事件/claim 追溯/
   // 深链 ?event=）时设置，右栏随之切换到事件面板。
   const files = useMemo(() => fileTimeline?.files || [], [fileTimeline]);
+  const citationIdsByPath = fileTimeline?.citation_ids_by_path || {};
   const filesSignature = useMemo(() => files.map((file) => file.path).join('\n'), [files]);
   const [selectedFileKey, setSelectedFileKey] = useState(null);
   const selectedFile = useMemo(
@@ -145,12 +158,14 @@ export default function Investigation() {
   // 让 Graph Tab 重读 C8b 投影（Overlay 的 confirmed/版本随 review/submit 变化）。
   const refreshEventsAndGraph = () => {
     refreshEvents();
+    refreshReportVersion();
     refreshFileTimeline();
     setGraphRefreshSignal((signal) => signal + 1);
   };
 
   const handleEvidenceChanged = async () => {
     await Promise.all([refreshEvents(), refreshEvidence(), refreshFileTimeline()]);
+    refreshReportVersion();
     setGraphRefreshSignal((signal) => signal + 1);
   };
 
@@ -174,15 +189,17 @@ export default function Investigation() {
 
   return (
     <div className="h-[calc(100vh-6.5rem)] flex flex-col gap-3">
+      {overview?.read_only && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">历史 v7 调查库仅可读；浏览不会自动初始化或迁移。写入前需要备份并完成受控 v8 迁移。</div>}
       <header className="flex items-center justify-between rounded-2xl glass px-5 py-3">
         <div><h1 className="text-xl font-bold text-slate-900 dark:text-white">Investigation / 二次调查分析</h1><p className="text-xs text-slate-500">初次证据只读 · 分析员上下文 · 版本化二次分析 · 可追溯到真实 Evidence</p></div>
-        <div className="flex items-center gap-4 text-xs text-slate-500"><span>{overview?.event_count || 0} Events</span><span>{overview?.analysis_count || 0} Analyses</span><span>{overview?.report_evidence_count || 0} Report Evidence</span><Link to={`/investigation/report?task_id=${encodeURIComponent(taskId)}`} className="font-semibold text-primary-600 hover:text-primary-500 dark:text-primary-300">Final Report Viewer</Link><Button size="sm" variant="ghost" icon={RefreshCw} onClick={refreshEventsAndGraph}>刷新</Button></div>
+        <div className="flex items-center gap-4 text-xs text-slate-500"><span>{overview?.event_count || 0} Events</span><span>{overview?.analysis_count || 0} Analyses</span><span data-testid="cited-file-count">{files.length} 引用文件</span><Link to={`/case-intelligence?task_id=${encodeURIComponent(taskId)}&tab=forensic${reportId ? `&report_id=${encodeURIComponent(reportId)}` : ''}`} className="font-semibold text-primary-600 hover:text-primary-500 dark:text-primary-300">查看最终报告</Link><Button size="sm" variant="ghost" icon={RefreshCw} onClick={refreshEventsAndGraph}>刷新</Button></div>
       </header>
       <main className={`grid min-h-0 flex-1 gap-3 ${graphActive ? 'grid-cols-[minmax(250px,0.8fr)_minmax(640px,2.45fr)]' : 'grid-cols-[minmax(250px,0.8fr)_minmax(300px,0.9fr)_minmax(440px,1.45fr)]'}`}>
         <section className="min-h-0 overflow-hidden rounded-2xl glass">
           <FileEventPanel
             file={selectedFile}
             events={fileEvents}
+            taskEventCount={events.length}
             selectedEventId={selectedEventId}
             onSelectEvent={selectEvent}
             evidencePanel={
@@ -211,8 +228,10 @@ export default function Investigation() {
           <div className="flex-1 min-h-0">
             {graphActive ? (
               <InvestigationGraphView taskId={taskId} onNodeClick={handleGraphNodeClick} refreshSignal={graphRefreshSignal} />
+            ) : reportError || fileTimelineError ? (
+              <div role="alert" className="p-6 text-sm text-rose-700 dark:text-rose-300" data-testid="cited-timeline-error">读取最终报告引用时间线失败：{(reportError || fileTimelineError)?.message || '请稍后重试'}</div>
             ) : (
-              <InvestigationTimeline files={files} events={events} selectedFileKey={selectedFileKey} onSelectFile={selectFile} onSelectEvent={selectEvent} loading={fileTimelineLoading && !files.length} />
+              <InvestigationTimeline taskId={taskId} reportId={reportId} citationIdsByPath={citationIdsByPath} files={files} events={events} selectedFileKey={selectedFileKey} focusFileKey={requestedFileKey} onSelectFile={selectFile} onSelectEvent={selectEvent} loading={(reportLoading || fileTimelineLoading) && !files.length} emptyMessage={reportId ? '当前最终报告没有可显示的文件引用。' : '该任务尚无已就绪的最终叙事报告，时间线不会显示未引用文件。'} />
             )}
           </div>
         </section>

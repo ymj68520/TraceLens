@@ -27,8 +27,28 @@ export const normalizeEvidencePath = (value) => {
 
 // file: 证据键 → /investigation 文件深链。新标签页打开后由工作台 ?file=
 // 深链定位时间线文件；缺 taskId 或非 file: 键返回 null，调用方渲染纯文本。
-export const investigationFileUrl = (taskId, evidenceKey) => {
+export const investigationFileUrl = (taskId, evidenceKey, { reportId, citationId } = {}) => {
     const path = stripFileKeyPrefix(evidenceKey);
     if (!taskId || !path) return null;
-    return `/investigation?task_id=${encodeURIComponent(taskId)}&file=${encodeURIComponent(path)}`;
+    let url = `/investigation?task_id=${encodeURIComponent(taskId)}&file=${encodeURIComponent(path)}`;
+    if (reportId) url += `&report_id=${encodeURIComponent(reportId)}`;
+    if (citationId) url += `&citation_id=${encodeURIComponent(citationId)}`;
+    return url;
+};
+
+// Only the exact frozen Android key can be linked: never replace it with a
+// current-row ID or a file timeline path.
+export const investigationEvidenceUrl = (taskId, evidenceKey, options = {}) => {
+    if (evidenceKey?.startsWith('file:')) return investigationFileUrl(taskId, evidenceKey, options);
+    if (!taskId || typeof evidenceKey !== 'string' ||
+        !evidenceKey.startsWith(`android_artifact:v1:${taskId}:`)) return null;
+    let url = `/investigation?task_id=${encodeURIComponent(taskId)}&evidence_key=${encodeURIComponent(evidenceKey)}`;
+    if (options.reportId) url += `&report_id=${encodeURIComponent(options.reportId)}`;
+    if (options.citationId) url += `&citation_id=${encodeURIComponent(options.citationId)}`;
+    return url;
+};
+
+export const reportCitationUrl = (taskId, reportId, citationId) => {
+    if (!taskId || !reportId || !citationId) return null;
+    return `/case-intelligence?task_id=${encodeURIComponent(taskId)}&tab=forensic&report_id=${encodeURIComponent(reportId)}&citation_id=${encodeURIComponent(citationId)}`;
 };

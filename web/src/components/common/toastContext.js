@@ -1,3 +1,2 @@
-import { createContext } from 'react';
-
-export const ToastContext = createContext(null);
+export { ToastContext } from './toastContextBase.js';
+export { ToastProvider, useToast, default } from './ToastContext.jsx';

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <crow.h>
+#include "../FieldApp.h"
 #include <nlohmann/json.hpp>
 #include "../TaskManager.h"
 
@@ -8,7 +9,7 @@ namespace forensics {
 
 class TaskBatchRoutes {
 public:
-    explicit TaskBatchRoutes(crow::App<>& app);
+    explicit TaskBatchRoutes(HttpApp& app);
 
 private:
     TaskManager& task_manager_;

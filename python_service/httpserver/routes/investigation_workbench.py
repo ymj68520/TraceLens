@@ -12,6 +12,7 @@ import hashlib
 import html
 import json
 import sqlite3
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -24,9 +25,15 @@ from ..config import get_project_root, get_settings
 from ..services import get_service_manager
 from ..services.evidence import EvidenceNotFoundError, EvidenceStoreError, parse_evidence_key
 from ..services.evidence.resolver import EvidenceResolver
+from ..services.field_security import audit_actor
 from ..services.forensic_report.models import ScopeType
 from ..services.forensic_report.narrative_reader import read_narrative_version_strict
 from ..services.investigation import AnalysisReviewDecision
+from ..services.investigation.initial_analysis_translation import (
+    InitialAnalysisTranslationCache,
+    TranslationUnavailable,
+)
+from ..services.investigation.offline_translation import OfflineArgosTranslator
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +88,12 @@ class WorkbenchNoteRequest(BaseModel):
     author: str | None = None
 
 
+class InitialAnalysisTranslationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    evidence_key: str = Field(min_length=1)
+
+
 def _manager():
     try:
         return get_service_manager()
@@ -92,8 +105,22 @@ def _dump(value: Any) -> Any:
     return value.model_dump(mode="json") if hasattr(value, "model_dump") else value
 
 
+@lru_cache(maxsize=1)
+def _initial_translation_cache() -> InitialAnalysisTranslationCache:
+    root = Path(get_settings().report_output_dir)
+    if not root.is_absolute():
+        root = get_project_root() / root
+    return InitialAnalysisTranslationCache(
+        root.parent / "initial_analysis_translations.db",
+        OfflineArgosTranslator(get_project_root() / "build/models/translate-en_zh-1_9"),
+    )
+
+
 def _error(exc: Exception, not_found: str = "investigation resource not found") -> HTTPException:
     logger.error("investigation request failed: %s", exc, exc_info=exc)
+    from ..services.investigation.repository import InvestigationMigrationRequiredError
+    if isinstance(exc, InvestigationMigrationRequiredError):
+        return HTTPException(status_code=409, detail=str(exc))
     if isinstance(exc, EvidenceNotFoundError):
         return HTTPException(status_code=404, detail=not_found)
     if isinstance(exc, (ValueError, KeyError)):
@@ -122,6 +149,15 @@ async def _events_view(manager, task_id: str) -> list[dict[str, Any]]:
 
 
 async def _overview(task_id: str, manager) -> dict[str, Any]:
+    from ..services.investigation.paths import investigation_db_path_for_task
+    from urllib.parse import quote
+    task = await manager.cpp_backend.get_task(task_id)
+    db_path = investigation_db_path_for_task(task)
+    schema_version = None
+    if db_path.is_file():
+        with sqlite3.connect('file:' + quote(str(db_path)) + '?mode=ro', uri=True) as conn:
+            conn.execute('PRAGMA query_only=ON')
+            schema_version = conn.execute('PRAGMA user_version').fetchone()[0]
     evidence = await manager.investigation_read_service.list_evidence(task_id)
     events = await _events_view(manager, task_id)
     report_evidence = await manager.report_evidence_service.list(task_id)
@@ -135,7 +171,9 @@ async def _overview(task_id: str, manager) -> dict[str, Any]:
     for item in evidence:
         analyses.extend(analyses_by_key.get(item.evidence_key, []))
     return {
-        "task": await manager.cpp_backend.get_task(task_id),
+        "task": task,
+        "store_schema_version": schema_version,
+        "read_only": schema_version == 7,
         "initialized": bool(evidence or events or report_evidence),
         "event_count": len(events),
         "analysis_count": len(analyses),
@@ -160,8 +198,10 @@ def _analysis_view(analysis: Any) -> dict[str, Any]:
 def _evidence_detail(resolved: Any, snapshot: Any, analyses: list[Any], report_item: Any) -> dict[str, Any]:
     detail = _dump(resolved)
     detail["evidence_key"] = resolved.evidence_key
-    detail["evidence_type"] = "event_cluster" if resolved.evidence_type == "cluster" else "file"
-    detail["title"] = resolved.normalized_path or resolved.event_type or resolved.evidence_key
+    detail["evidence_type"] = "event_cluster" if resolved.evidence_type == "cluster" else resolved.evidence_type
+    detail["title"] = (f"Android {resolved.artifact_kind} #{resolved.artifact_record_id}"
+                       if resolved.evidence_type == "android_artifact" else
+                       resolved.normalized_path or resolved.event_type or resolved.evidence_key)
     detail["file_path"] = resolved.normalized_path
     detail["timestamp"] = resolved.representative_timestamp
     detail["metadata"] = {
@@ -171,6 +211,9 @@ def _evidence_detail(resolved: Any, snapshot: Any, analyses: list[Any], report_i
         if resolved.cluster_start is not None else None,
     }
     detail["snapshot"] = _dump(snapshot) if snapshot is not None else None
+    if resolved.evidence_type == "android_artifact":
+        detail.pop("source_db", None)
+        detail["frozen_result_set_id"] = resolved.result_set_id
     detail["analyses"] = [_analysis_view(item) for item in analyses]
     detail["report_evidence"] = _dump(report_item) if report_item is not None else None
     detail["analysis_status"] = analyses[0].status.value if analyses else None
@@ -269,19 +312,59 @@ async def workbench_events(task_id: str, manager=Depends(_manager)):
 async def workbench_file_timeline(
     task_id: str,
     ensure_path: str | None = None,
+    report_id: str | None = None,
     manager=Depends(_manager),
 ):
     """File-centric timeline: analyzed files as nodes at their latest MACB
     time, with the associated Investigation Events as corroborating refs.
 
-    ``ensure_path`` (optional, report-citation deep link): guarantee the named
-    covered file is present even when the display-limit cut would drop it.
+    ``report_id`` limits the timeline to exact file Evidence cited by that
+    task's persisted narrative report. All cited paths are passed as ensured
+    paths so the ordinary 500-node display cap cannot silently omit a citation.
+    Without a report_id, the legacy analyzed-file projection is unchanged.
     """
     try:
+        citation_ids_by_path: dict[str, list[str]] = {}
+        if report_id:
+            _, manifest = await _strict_report(task_id, report_id)
+            citations = {item.citation_id: item for item in manifest.citations}
+            for section in manifest.sections:
+                for citation_id in section.citation_ids:
+                    citation = citations.get(citation_id)
+                    if citation is None:
+                        continue
+                    parsed = parse_evidence_key(citation.evidence_key)
+                    if parsed.evidence_type != "file" or not parsed.normalized_path:
+                        continue
+                    ids = citation_ids_by_path.setdefault(parsed.normalized_path, [])
+                    if citation_id not in ids:
+                        ids.append(citation_id)
         timeline = await manager.investigation_event_service.file_timeline(
             task_id,
-            ensure_paths=(ensure_path,) if ensure_path else (),
+            ensure_paths=tuple(citation_ids_by_path) if report_id else ((ensure_path,) if ensure_path else ()),
         )
+        if report_id:
+            files = [
+                item for item in timeline.get("files", [])
+                if item.get("path") in citation_ids_by_path
+            ]
+            dated = [item["latest_time"] for item in files if item.get("latest_time") is not None]
+            timeline = {
+                **timeline,
+                "files": files,
+                "total_count": len(files),
+                "axis": {"start": min(dated) if dated else None, "end": max(dated) if dated else None},
+                "citation_ids_by_path": {
+                    item["path"]: citation_ids_by_path[item["path"]] for item in files
+                },
+                "scope": {
+                    **timeline.get("scope", {}),
+                    "report_id": report_id,
+                    "citation_file_count": len(citation_ids_by_path),
+                    "missing_citation_file_count": len(citation_ids_by_path) - len(files),
+                    "limited": False,
+                },
+            }
         return {"success": True, **timeline}
     except Exception as exc:
         raise _error(exc) from exc
@@ -317,10 +400,10 @@ async def workbench_event_evidence(task_id: str, event_id: str, manager=Depends(
 
 
 @router.post("/{task_id}/events/{event_id}/evidence/link")
-async def workbench_link_event_evidence(task_id: str, event_id: str, payload: dict[str, Any], manager=Depends(_manager)):
+async def workbench_link_event_evidence(task_id: str, event_id: str, payload: dict[str, Any], http_request: Request, manager=Depends(_manager)):
     try:
         item = await manager.investigation_event_service.link_event_evidence(
-            task_id, event_id, payload["evidence_key"], linked_by=payload.get("linked_by") or "workbench"
+            task_id, event_id, payload["evidence_key"], linked_by=audit_actor(http_request, payload.get("linked_by"))
         )
         return {"success": True, "link": _dump(item)}
     except Exception as exc:
@@ -336,6 +419,49 @@ async def workbench_evidence_detail(task_id: str, evidence_key: str = Query(...)
         report_items = await manager.report_evidence_service.list(task_id)
         report_item = next((item for item in report_items if item.evidence_key == resolved.evidence_key), None)
         return {"success": True, "evidence": _evidence_detail(resolved, snapshot, analyses, report_item)}
+    except Exception as exc:
+        raise _error(exc, "evidence not found") from exc
+
+
+@router.post("/{task_id}/evidence/initial-analysis/translate")
+async def workbench_translate_initial_analysis(
+    task_id: str,
+    payload: InitialAnalysisTranslationRequest,
+    manager=Depends(_manager),
+):
+    """Render a Chinese overlay from the task's frozen snapshot, never edit it."""
+    try:
+        resolved = await EvidenceResolver(manager.cpp_backend).resolve_evidence(
+            task_id, payload.evidence_key
+        )
+        snapshot = await manager.investigation_read_service.get_snapshot(
+            task_id, resolved.evidence_key
+        )
+        if snapshot is None:
+            raise EvidenceNotFoundError("snapshot not found")
+        description = snapshot.payload.initial_description or ""
+        summary = snapshot.payload.initial_summary or ""
+        source_text = (
+            f"摘要：{summary}\n\n详细描述：{description}"
+            if description and summary and description != summary
+            else description or summary
+        )
+        if len(source_text) > 30_000:
+            raise HTTPException(status_code=413, detail="initial analysis exceeds translation limit")
+        if not source_text:
+            return {"success": True, "text": None, "translated": False, "cached": False}
+        result = await _initial_translation_cache().translate(
+            task_id,
+            resolved.evidence_key,
+            source_text,
+            evidence_name=Path(resolved.normalized_path or "").name,
+        )
+        return {"success": True, **result}
+    except HTTPException:
+        raise
+    except TranslationUnavailable as exc:
+        logger.warning("initial analysis translation unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail="initial analysis translation unavailable") from exc
     except Exception as exc:
         raise _error(exc, "evidence not found") from exc
 
@@ -386,29 +512,29 @@ async def workbench_analysis_versions(task_id: str, evidence_key: str = Query(..
         raise _error(exc) from exc
 
 
-async def _review_analysis(task_id: str, analysis_id: str, decision: str, manager):
+async def _review_analysis(task_id: str, analysis_id: str, decision: str, manager, reviewer: str):
     try:
         enum = AnalysisReviewDecision(decision)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="invalid analysis review decision") from exc
     return await manager.investigation_review_service.review(
-        task_id, analysis_id, decision=enum, reviewer="workbench", reason=None
+        task_id, analysis_id, decision=enum, reviewer=reviewer, reason=None
     )
 
 
 @router.post("/{task_id}/analysis/{analysis_id}/accept")
-async def workbench_accept_analysis(task_id: str, analysis_id: str, request: WorkbenchReviewRequest, manager=Depends(_manager)):
+async def workbench_accept_analysis(task_id: str, analysis_id: str, request: WorkbenchReviewRequest, http_request: Request, manager=Depends(_manager)):
     try:
-        analysis = await _review_analysis(task_id, analysis_id, "accepted", manager)
+        analysis = await _review_analysis(task_id, analysis_id, "accepted", manager, audit_actor(http_request, request.reviewer))
         return {"success": True, "analysis": _analysis_view(analysis)}
     except Exception as exc:
         raise _error(exc, "analysis not found") from exc
 
 
 @router.post("/{task_id}/analysis/{analysis_id}/reject")
-async def workbench_reject_analysis(task_id: str, analysis_id: str, manager=Depends(_manager)):
+async def workbench_reject_analysis(task_id: str, analysis_id: str, http_request: Request, manager=Depends(_manager)):
     try:
-        analysis = await _review_analysis(task_id, analysis_id, "rejected", manager)
+        analysis = await _review_analysis(task_id, analysis_id, "rejected", manager, audit_actor(http_request))
         return {"success": True, "analysis": _analysis_view(analysis)}
     except Exception as exc:
         raise _error(exc, "analysis not found") from exc
@@ -419,6 +545,7 @@ async def workbench_refresh_event(
     task_id: str,
     event_id: str,
     payload: dict[str, Any],
+    http_request: Request,
     manager=Depends(_manager),
     settings=Depends(get_settings),
 ):
@@ -429,7 +556,7 @@ async def workbench_refresh_event(
             detail="Workbench LLM analysis is disabled in this build (MVP)",
         )
     try:
-        refresh = await manager.event_refresh_executor.submit(task_id, event_id, requested_by=payload.get("requested_by") or "workbench")
+        refresh = await manager.event_refresh_executor.submit(task_id, event_id, requested_by=audit_actor(http_request, payload.get("requested_by")))
         return {"success": True, "job_id": refresh.refresh_id, "refresh_id": refresh.refresh_id, "refresh": _dump(refresh)}
     except Exception as exc:
         raise _error(exc, "event not found") from exc
@@ -481,13 +608,13 @@ async def workbench_get_note(task_id: str, target_type: str = Query(...), target
 
 
 @router.put("/{task_id}/report-evidence")
-async def workbench_set_report_evidence(task_id: str, request: WorkbenchReportEvidenceRequest, manager=Depends(_manager)):
+async def workbench_set_report_evidence(task_id: str, request: WorkbenchReportEvidenceRequest, http_request: Request, manager=Depends(_manager)):
     try:
         if request.usage == "excluded":
             # Excluded stays available for cluster keys too: it is the cleanup
             # path for legacy rows the generator skips anyway.
             item = await manager.report_evidence_service.update(
-                task_id, request.evidence_key, report_status="excluded", updated_by=request.added_by
+                task_id, request.evidence_key, report_status="excluded", updated_by=audit_actor(http_request, request.added_by)
             )
         else:
             # MVP (mvp-phase1-acceptance SPEC §4.2): events are never report
@@ -500,7 +627,7 @@ async def workbench_set_report_evidence(task_id: str, request: WorkbenchReportEv
                 )
             item = await manager.report_evidence_service.add(
                 task_id, request.evidence_key, report_status=request.usage,
-                analysis_id=request.analysis_id, added_by=request.added_by
+                analysis_id=request.analysis_id, added_by=audit_actor(http_request, request.added_by)
             )
         return {"success": True, "report_evidence": _dump(item)}
     except HTTPException:
@@ -510,10 +637,10 @@ async def workbench_set_report_evidence(task_id: str, request: WorkbenchReportEv
 
 
 @router.post("/{task_id}/report-evidence/remove")
-async def workbench_remove_report_evidence(task_id: str, payload: dict[str, Any], manager=Depends(_manager)):
+async def workbench_remove_report_evidence(task_id: str, payload: dict[str, Any], http_request: Request, manager=Depends(_manager)):
     try:
         item = await manager.report_evidence_service.update(
-            task_id, payload["evidence_key"], report_status="excluded", updated_by="workbench"
+            task_id, payload["evidence_key"], report_status="excluded", updated_by=audit_actor(http_request)
         )
         return {"success": True, "report_evidence": _dump(item)}
     except Exception as exc:
@@ -530,9 +657,23 @@ async def workbench_report_evidence(task_id: str, manager=Depends(_manager)):
 
 
 @router.get("/{task_id}/graph/local")
-async def workbench_local_graph(task_id: str, max_nodes: int = Query(50, ge=1, le=200), manager=Depends(_manager)):
+async def workbench_local_graph(
+    task_id: str,
+    evidence_key: str | None = None,
+    max_nodes: int = Query(50, ge=1, le=200),
+    manager=Depends(_manager),
+):
     try:
-        graph = await manager.investigation_graph_service.get_graph(task_id, max_base_nodes=max_nodes)
+        if evidence_key:
+            resolved = await EvidenceResolver(manager.cpp_backend).resolve_evidence(task_id, evidence_key)
+            graph = await manager.investigation_graph_service.get_graph(
+                task_id,
+                max_base_nodes=max_nodes,
+                evidence_key=resolved.evidence_key,
+                evidence_path=resolved.normalized_path,
+            )
+        else:
+            graph = await manager.investigation_graph_service.get_graph(task_id, max_base_nodes=max_nodes)
         value = _dump(graph)
         value["base_available"] = value.pop("base_graph_available", False)
         value["links"] = value.pop("links", [])

@@ -15,10 +15,13 @@ Provides REST API endpoints for WeChat forensic analysis:
 import asyncio
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+
+from ..config import get_data_root, get_project_root
 
 
 
@@ -140,7 +143,7 @@ async def _resolve_android_db_path(task_id: str) -> str:
     Resolve the _android.db path for a given task_id.
 
     Tries the C++ backend task metadata first (output_raw_db derived),
-    then falls back to a glob search in common output directories.
+    then checks only the known task's bounded output directories.
 
     WeChat forensics imports (微信取证) are first-class identifiers here: a
     ``wx_<import_id>`` task id resolves to that import's normalized
@@ -195,6 +198,8 @@ async def _resolve_android_db_path(task_id: str) -> str:
 
     # Try C++ backend task metadata
     task_info = await service_manager.cpp_backend.get_task(task_id)
+    if not task_info:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
     if task_info:
         # Check metadata for android_db first.
         metadata = task_info.get("metadata", {})
@@ -272,17 +277,32 @@ async def _resolve_android_db_path(task_id: str) -> str:
                 except sqlite3.Error:
                     pass
 
-    # Fallback: glob search
-    import glob
-    search_patterns = [
-        f"**/tasks/{task_id}/*_android.db",
-        f"**/{task_id}*_android.db",
-        f"**/output/{task_id}/*_android.db",
-    ]
-    for pattern in search_patterns:
-        matches = glob.glob(pattern, recursive=True)
-        if matches:
-            return matches[0]
+    # Legacy outputs may lack a usable metadata path. Inspect only this
+    # existing task's own directory, never recursively scan the whole CWD.
+    import sqlite3
+    for task_dir in (
+        get_data_root() / "tasks" / task_id,
+        get_project_root() / "build" / "data" / "tasks" / task_id,
+    ):
+        if not task_dir.is_dir():
+            continue
+        for candidate in (task_dir / "android.db", *task_dir.glob("*_android.db")):
+            if not candidate.is_file():
+                continue
+            try:
+                with sqlite3.connect(candidate) as connection:
+                    tables = {
+                        row[0] for row in connection.execute(
+                            "SELECT name FROM sqlite_master WHERE type='table'"
+                        )
+                    }
+                if tables.intersection({
+                    "wechat_messages", "wechat_contacts",
+                    "wechat_chatrooms", "wechat_owner_info",
+                }):
+                    return str(candidate)
+            except sqlite3.Error:
+                continue
 
     raise HTTPException(
         status_code=404,
@@ -305,5 +325,4 @@ def _now_iso() -> str:
 # ==============================================================================
 # Endpoints
 # ==============================================================================
-
 

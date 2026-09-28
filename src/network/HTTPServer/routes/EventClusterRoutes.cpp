@@ -21,7 +21,7 @@ using json = nlohmann::json;
 // is kept below inside `#if 0` for reference. The live C++ surface for
 // clusters is the read-only GET /clusters/analyzed (data source migrates to
 // the analysis-record table in Phase D).
-EventClusterRoutes::EventClusterRoutes(crow::App<>& app) {
+EventClusterRoutes::EventClusterRoutes(HttpApp& app) {
 #if 0
     CROW_ROUTE(app, "/api/forensics/timeline/clusters/analyze").methods("POST"_method, "OPTIONS"_method)([this](const crow::request& req) {
         if (req.method == "OPTIONS"_method) {

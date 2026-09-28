@@ -23,7 +23,7 @@ import logging
 
 from fastapi import APIRouter
 
-from .graphiti_endpoints import _ingest, _jobs, _migrate, _query, _admin
+from .graphiti_endpoints import _ingest, _jobs, _migrate, _query, _admin, _trace
 
 # Re-export models for backward compatibility (some external code may import
 # request/response classes from this module).
@@ -52,3 +52,4 @@ router.include_router(_jobs.router)
 router.include_router(_migrate.router)
 router.include_router(_query.router)
 router.include_router(_admin.router)
+router.include_router(_trace.router)

@@ -1,13 +1,14 @@
 #pragma once
 
 #include <crow.h>
+#include "../FieldApp.h"
 #include <nlohmann/json.hpp>
 
 namespace forensics {
 
 class ExportRoutes {
 public:
-    explicit ExportRoutes(crow::App<>& app);
+    explicit ExportRoutes(HttpApp& app);
     
 private:
     crow::response handle_export_toon(const crow::request& req);

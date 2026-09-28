@@ -1,6 +1,7 @@
 #pragma once
 
 #include <crow.h>
+#include "../FieldApp.h"
 #include <nlohmann/json.hpp>
 #include "../HTTPServerDataTypes.h"
 #include <mutex>
@@ -12,7 +13,7 @@ namespace forensics {
 
 class FileExtractionRoutes {
 public:
-    explicit FileExtractionRoutes(crow::App<>& app);
+    explicit FileExtractionRoutes(HttpApp& app);
     ~FileExtractionRoutes();
 
     FileExtractionRoutes(const FileExtractionRoutes&) = delete;

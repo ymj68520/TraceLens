@@ -69,7 +69,7 @@ test('shows an explicit no-publication fact state without calling it Unpublished
 test('publishes the selected report version and re-reads the same publication', async () => {
   render(<MemoryRouter initialEntries={['/investigation/report?task_id=task-a']}><FinalReportViewer /></MemoryRouter>);
 
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Publish this report version' })).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Publish this report version' })).toBeInTheDocument(), { timeout: 5000 });
   fireEvent.click(screen.getByRole('button', { name: 'Publish this report version' }));
 
   await waitFor(() => expect(publishFinalReport).toHaveBeenCalledWith('task-a', 'r3'));

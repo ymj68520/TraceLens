@@ -4,13 +4,14 @@
 #pragma once
 
 #include <crow.h>
+#include "../FieldApp.h"
 #include <nlohmann/json.hpp>
 
 namespace forensics {
 
 class DLLAnalysisRoutes {
 public:
-    explicit DLLAnalysisRoutes(crow::App<>& app);
+    explicit DLLAnalysisRoutes(HttpApp& app);
 
 private:
     crow::response handle_get_dll_list(const crow::request& req);

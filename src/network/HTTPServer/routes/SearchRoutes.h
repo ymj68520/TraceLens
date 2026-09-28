@@ -1,6 +1,7 @@
 #pragma once
 
 #include <crow.h>
+#include "../FieldApp.h"
 #include <nlohmann/json.hpp>
 #include "../TaskManager.h"
 
@@ -12,7 +13,7 @@ namespace forensics {
  */
 class SearchRoutes {
 public:
-    explicit SearchRoutes(crow::App<>& app);
+    explicit SearchRoutes(HttpApp& app);
 
 private:
     // Search operations

@@ -58,6 +58,39 @@ int countNotNull(sqlite3* db, const std::string& table, const std::string& colum
 }
 }  // namespace
 
+TEST(AndroidSourceCoverageTest, StoresExactSourcePathAndStatus) {
+    const std::string path = uniqueDbPath();
+    const std::string source = "data/data/com.tencent.mm/MicroMsg/account_x/EnMicroMsg.db";
+    {
+        AndroidAnalysisDatabase database(path);
+        ASSERT_TRUE(database.initialize());
+        ASSERT_TRUE(database.recordSourceCoverage("wechat", source, "parsed", "test"));
+        ChatMessage message;
+        message.sender = "sender";
+        message.receiver = "receiver";
+        message.content = "message";
+        message.timestamp = "1710000000000";
+        ASSERT_TRUE(database.insertWeChatEnhancedMessage(message, 1, 0, "", "", "talker", source));
+    }
+    sqlite3* connection = nullptr;
+    ASSERT_EQ(sqlite3_open_v2(path.c_str(), &connection, SQLITE_OPEN_READONLY, nullptr), SQLITE_OK);
+    sqlite3_stmt* statement = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(connection,
+        "SELECT source_path FROM wechat_messages LIMIT 1", -1, &statement, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_EQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 0)), source);
+    sqlite3_finalize(statement);
+    ASSERT_EQ(sqlite3_prepare_v2(connection,
+        "SELECT status FROM android_source_coverage WHERE source_path=?", -1, &statement, nullptr), SQLITE_OK);
+    sqlite3_bind_text(statement, 1, source.c_str(), -1, SQLITE_TRANSIENT);
+    ASSERT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(statement, 0)), "parsed");
+    sqlite3_finalize(statement);
+    sqlite3_close(connection);
+    std::error_code error;
+    fs::remove(path, error);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. Migration adds llm_* columns to every analyzed table (idempotent).
 // ─────────────────────────────────────────────────────────────────────────────

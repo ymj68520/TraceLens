@@ -23,6 +23,8 @@ from urllib.parse import quote
 from .exceptions import EvidenceNotFoundError, EvidenceStoreError
 from .keys import parse_evidence_key
 from .models import ParsedEvidenceKey, ResolvedEvidence
+from ..android_artifact_reader import ArtifactUnavailable, read_raw_row
+from ..android_result_sets import read_result_set
 
 logger = logging.getLogger(__name__)
 
@@ -117,8 +119,25 @@ class EvidenceResolver:
 
         # R1/R2/R3: task must exist; DB paths come ONLY from get_task.
         task = await self._cpp_backend.get_task(task_id)
-        if not task:
+        if not isinstance(task, dict) or task.get("id") != task_id:
             raise EvidenceNotFoundError(f"task not found: {task_id}")
+
+        if parsed.evidence_type == "android_artifact":
+            if parsed.artifact_task_id != task_id:
+                raise EvidenceNotFoundError("Android artifact belongs to another task")
+            try:
+                manifest, db = await asyncio.to_thread(read_result_set, task, parsed.result_set_id)
+                await asyncio.to_thread(read_raw_row, db, parsed.artifact_kind, parsed.artifact_record_id)
+            except FileNotFoundError as exc:
+                raise EvidenceNotFoundError("Android artifact result or record not found") from exc
+            except (ArtifactUnavailable, sqlite3.DatabaseError, OSError) as exc:
+                raise EvidenceStoreError("Android artifact result set is unavailable") from exc
+            return ResolvedEvidence(
+                task_id=task_id, evidence_key=parsed.canonical_key,
+                evidence_type="android_artifact", result_set_id=parsed.result_set_id,
+                artifact_kind=parsed.artifact_kind, artifact_record_id=parsed.artifact_record_id,
+                source_db=str(db), result_manifest=manifest,
+            )
 
         files_db = task.get("output_files_db") or ""
         events_db = task.get("output_events_db") or ""

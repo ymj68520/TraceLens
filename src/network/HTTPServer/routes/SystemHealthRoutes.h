@@ -1,13 +1,14 @@
 #pragma once
 
 #include <crow.h>
+#include "../FieldApp.h"
 #include <nlohmann/json.hpp>
 
 namespace forensics {
 
 class SystemHealthRoutes {
 public:
-    explicit SystemHealthRoutes(crow::App<>& app);
+    explicit SystemHealthRoutes(HttpApp& app);
     
 private:
     crow::response handle_system_health(const crow::request& req);

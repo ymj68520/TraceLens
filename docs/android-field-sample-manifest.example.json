@@ -1,0 +1,34 @@
+{
+  "sample_id": "SYNTHETIC_EXAMPLE_ONLY",
+  "source_category": "android_userdata_or_vendor_report",
+  "source_kind": "UNKNOWN_ORIGINAL_IMAGE_FFS_ARCHIVE_DERIVED_REPORT",
+  "files": [
+    {
+      "local_path": "/explicit/operator/approved/sample.img",
+      "sha256": null,
+      "segments": [],
+      "expected_size_bytes": null,
+      "role": "primary_input"
+    }
+  ],
+  "attachments": [],
+  "extraction_tool": {"name": null, "version": null},
+  "container": null,
+  "filesystem": null,
+  "readability": "UNKNOWN",
+  "encryption_evidence": [],
+  "target_artifacts": ["sms", "contacts", "apps", "wifi"],
+  "target_artifact_details": {
+    "sms": {"expected_count": null, "required_fields": ["address", "body", "date", "type"], "account": null},
+    "contacts": {"expected_count": null, "required_fields": ["display_name", "phone_number"], "account": null},
+    "apps": {"expected_count": null, "required_fields": ["package_name", "version"], "account": null},
+    "wifi": {"expected_count": null, "required_fields": ["ssid", "key_mgmt"], "account": null}
+  },
+  "other_app_requirements": [],
+  "expected_records": {},
+  "comparison_source": null,
+  "comparison_scope": {"same_evidence": null, "account": null, "time_range": null, "deleted_included": null, "attachments_included": null, "filters": null, "timezone_basis": null},
+  "business_goal": {"required_messages_readable": null, "locked_input_is_failure_for_message_goal": true},
+  "authorization_record": null,
+  "validation_status": "REAL_SAMPLE_REQUIRED"
+}

@@ -1,7 +1,9 @@
 #include "AndroidAnalysisDatabase.h"
 #include "DatabaseManager/SQL/android_analysis_sql.h"
 #include "DatabaseManager/SQL/file_classifier_sql.h"
+#include "IFileExtractor.h"
 #include <iostream>
+#include <set>
 #include <sqlite3.h>
 #include "fileSystem.h"
 
@@ -32,9 +34,25 @@ bool AndroidAnalysisDatabase::initialize() {
 bool AndroidAnalysisDatabase::createTables() {
     if (!executeSQL(AndroidAnalysisSQL::CREATE_ALL_TABLES) ||
         !executeSQL(AndroidAnalysisSQL::CREATE_MIUI_TABLES) ||
-        !executeSQL(AndroidAnalysisSQL::CREATE_ANALYSIS_PROGRESS)) {
+        !executeSQL(AndroidAnalysisSQL::CREATE_ANALYSIS_PROGRESS) ||
+        !executeSQL(AndroidAnalysisSQL::CREATE_SOURCE_COVERAGE) ||
+        !executeSQL(AndroidAnalysisSQL::CREATE_CONTAINER_PROVENANCE) ||
+        !executeSQL(AndroidAnalysisSQL::CREATE_FILESYSTEM_PROVENANCE)) {
         return false;
     }
+    // Existing task databases predate the source-path column. The duplicate
+    // column error is harmless; all other errors are surfaced.
+    bool hasSourcePath = false;
+    sqlite3_stmt* columns = nullptr;
+    if (sqlite3_prepare_v2(db_, "PRAGMA table_info(wechat_messages)", -1, &columns, nullptr) == SQLITE_OK) {
+        while (sqlite3_step(columns) == SQLITE_ROW) {
+            const char* name = reinterpret_cast<const char*>(sqlite3_column_text(columns, 1));
+            if (name && std::string(name) == "source_path") hasSourcePath = true;
+        }
+    }
+    sqlite3_finalize(columns);
+    if (!hasSourcePath && !executeSQL("ALTER TABLE wechat_messages ADD COLUMN source_path TEXT"))
+        return false;
     // Add the 5 llm_* columns to every artifact table that the LLM service
     // analyzes. Each ALTER is idempotent: a duplicate-column error is tolerated
     // so re-opening an existing android.db is safe.
@@ -199,8 +217,8 @@ bool AndroidAnalysisDatabase::insertWeChatMessage(const ChatMessage& msg) {
 bool AndroidAnalysisDatabase::insertWeChatEnhancedMessage(
     const ChatMessage& msg, int msgType, int isSend,
     const std::string& chatroomName, const std::string& senderNickname,
-    const std::string& talker) {
-    const char* sql = "INSERT INTO wechat_messages (sender, receiver, content, timestamp, msg_type, is_send, chatroom_name, sender_nickname, talker) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);";
+    const std::string& talker, const std::string& sourcePath) {
+    const char* sql = "INSERT INTO wechat_messages (sender, receiver, content, timestamp, msg_type, is_send, chatroom_name, sender_nickname, talker, source_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
 
@@ -213,10 +231,127 @@ bool AndroidAnalysisDatabase::insertWeChatEnhancedMessage(
     sqlite3_bind_text(stmt, 7, chatroomName.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 8, senderNickname.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 9, talker.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 10, sourcePath.c_str(), -1, SQLITE_TRANSIENT);
 
     bool success = (sqlite3_step(stmt) == SQLITE_DONE);
     sqlite3_finalize(stmt);
     return success;
+}
+
+bool AndroidAnalysisDatabase::recordSourceCoverage(
+    const std::string& artifactKind, const std::string& sourcePath,
+    const std::string& status, const std::string& detail) {
+    // SQLCipher builds used by the runtime may embed SQLite without UPSERT.
+    // REPLACE is portable and preserves the table's uniqueness contract.
+    const char* sql = "INSERT OR REPLACE INTO android_source_coverage "
+                      "(artifact_kind, source_path, status, detail, updated_at) "
+                      "VALUES (?, ?, ?, ?, strftime('%s','now'))";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        std::cerr << "Android source coverage prepare failed: " << sqlite3_errmsg(db_) << std::endl;
+        return false;
+    }
+    sqlite3_bind_text(stmt, 1, artifactKind.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, sourcePath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, status.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, detail.c_str(), -1, SQLITE_TRANSIENT);
+    const bool success = sqlite3_step(stmt) == SQLITE_DONE;
+    if (!success) std::cerr << "Android source coverage write failed: " << sqlite3_errmsg(db_) << std::endl;
+    sqlite3_finalize(stmt);
+    return success;
+}
+
+bool AndroidAnalysisDatabase::insertSourceProvenance(const AndroidSourceProvenance& item) {
+    const char* sql = "INSERT OR REPLACE INTO android_source_provenance "
+        "(source_container,source_container_sha256,source_member_path,normalized_android_path,"
+        "member_size,member_sha256,adapter_type,adapter_version) VALUES (?,?,?,?,?,?,?,?)";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+    sqlite3_bind_text(stmt, 1, item.sourceContainer.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, item.containerSha256.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, item.sourceMemberPath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, item.normalizedAndroidPath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 5, static_cast<sqlite3_int64>(item.memberSize));
+    sqlite3_bind_text(stmt, 6, item.memberSha256.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 7, item.adapterType.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 8, item.adapterVersion.c_str(), -1, SQLITE_TRANSIENT);
+    const bool success = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    if (!success || item.filesystemType.empty()) return success;
+    const char* imageSql = "INSERT OR REPLACE INTO android_filesystem_provenance "
+        "(source_evidence_id,source_image_sha256,container_type,partition_number,partition_name,"
+        "partition_start_offset,filesystem_type,filesystem_object_id,filesystem_path,"
+        "normalized_android_path,file_size,file_sha256,reader,reader_version) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+    if (sqlite3_prepare_v2(db_, imageSql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+    sqlite3_bind_text(stmt, 1, item.containerSha256.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, item.containerSha256.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, item.imageContainerType.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 4, item.partitionNumber);
+    sqlite3_bind_text(stmt, 5, item.partitionName.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 6, item.partitionStartOffset);
+    sqlite3_bind_text(stmt, 7, item.filesystemType.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 8, item.filesystemObjectId.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 9, item.sourceMemberPath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 10, item.normalizedAndroidPath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 11, item.memberSize);
+    sqlite3_bind_text(stmt, 12, item.memberSha256.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 13, item.filesystemReader.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 14, item.adapterVersion.c_str(), -1, SQLITE_TRANSIENT);
+    const bool imageSuccess = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return imageSuccess;
+}
+
+bool AndroidAnalysisDatabase::insertFilesystemMetrics(
+    const std::string& source, const std::string& filesystem, const std::string& reader,
+    std::uint64_t walkMs, std::uint64_t indexed, std::uint64_t extracted,
+    std::uint64_t bytesRead, std::uint64_t analysisMs) {
+    const char* sql = "INSERT OR REPLACE INTO android_filesystem_metrics "
+        "(source_image,filesystem_type,reader,walk_milliseconds,indexed_file_count,"
+        "extracted_member_count,bytes_read,analysis_milliseconds) VALUES (?,?,?,?,?,?,?,?)";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+    sqlite3_bind_text(stmt, 1, source.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, filesystem.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, reader.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 4, walkMs);
+    sqlite3_bind_int64(stmt, 5, indexed);
+    sqlite3_bind_int64(stmt, 6, extracted);
+    sqlite3_bind_int64(stmt, 7, bytesRead);
+    sqlite3_bind_int64(stmt, 8, analysisMs);
+    const bool success = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return success;
+}
+
+bool AndroidAnalysisDatabase::recordContainerCoverage(
+    const std::string& sourcePath, const std::string& normalizedPath,
+    const std::string& adapter, const std::string& status, const std::string& reason) {
+    const char* sql = "INSERT OR REPLACE INTO android_container_coverage "
+        "(source_path,normalized_path,adapter,status,reason) VALUES (?,?,?,?,?)";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+    sqlite3_bind_text(stmt, 1, sourcePath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, normalizedPath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, adapter.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, status.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, reason.c_str(), -1, SQLITE_TRANSIENT);
+    const bool success = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return success;
+}
+
+int AndroidAnalysisDatabase::artifactRowCount(const std::string& tableName) const {
+    static const std::set<std::string> allowed{
+        "sms_messages", "contacts", "installed_packages", "wifi_networks"};
+    if (!allowed.count(tableName)) return -1;
+    const std::string sql = "SELECT COUNT(*) FROM " + tableName;
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return -1;
+    const int count = sqlite3_step(stmt) == SQLITE_ROW ? sqlite3_column_int(stmt, 0) : -1;
+    sqlite3_finalize(stmt);
+    return count;
 }
 
 bool AndroidAnalysisDatabase::insertWeChatContact(const WeChatContact& contact) {
@@ -299,7 +434,10 @@ bool AndroidAnalysisDatabase::insertChromeHistory(const ChromeHistoryItem& item)
 bool AndroidAnalysisDatabase::insertInstalledPackage(const InstalledPackageInfo& pkg) {
     const char* sql = "INSERT OR REPLACE INTO installed_packages (package_name, code_path, version, installer) VALUES (?, ?, ?, ?);";
     sqlite3_stmt* stmt;
-    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        std::cerr << "Installed package prepare failed: " << sqlite3_errmsg(db_) << std::endl;
+        return false;
+    }
 
     sqlite3_bind_text(stmt, 1, pkg.packageName.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 2, pkg.codePath.c_str(), -1, SQLITE_TRANSIENT);
@@ -307,6 +445,7 @@ bool AndroidAnalysisDatabase::insertInstalledPackage(const InstalledPackageInfo&
     sqlite3_bind_text(stmt, 4, pkg.installer.c_str(), -1, SQLITE_TRANSIENT);
 
     bool success = (sqlite3_step(stmt) == SQLITE_DONE);
+    if (!success) std::cerr << "Installed package write failed: " << sqlite3_errmsg(db_) << std::endl;
     sqlite3_finalize(stmt);
     return success;
 }

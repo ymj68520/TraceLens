@@ -41,9 +41,9 @@ std::string LogicalDirExtractor::resolveSafe(const std::string& relPath) const {
     }
 
     // Path-traversal guard: resolved path must live under root.
-    std::string rootStr = root.string();
-    std::string candStr = candidate.string();
-    if (candStr.rfind(rootStr, 0) != 0) {
+    const fs::path relative = candidate.lexically_relative(root);
+    if (relative.empty() || relative.is_absolute() ||
+        *relative.begin() == "..") {
         std::cerr << "LogicalDirExtractor: path escapes root: " << relPath << std::endl;
         return {};
     }
@@ -52,6 +52,47 @@ std::string LogicalDirExtractor::resolveSafe(const std::string& relPath) const {
         return {};
     }
     return candidate.string();
+}
+
+std::vector<std::string> LogicalDirExtractor::findPathsByFilename(
+    const std::string& filename, std::size_t limit) const {
+    std::vector<std::string> found;
+    if (!initialized_ || filename.empty() || limit == 0) return found;
+    std::error_code error;
+    const fs::path root = fs::weakly_canonical(rootDir_, error);
+    if (error) return found;
+
+    // Search the app's data roots, not an unbounded whole-device tree.
+    const std::vector<fs::path> appRoots = {
+        root / "data/data/com.tencent.mm", root / "data/user/0/com.tencent.mm",
+        root / "data/user_de/0/com.tencent.mm", root / "data/com.tencent.mm",
+        root / "user/0/com.tencent.mm", root / "com.tencent.mm"
+    };
+    std::size_t inspected = 0;
+    for (const auto& candidateRoot : appRoots) {
+        if (!fs::is_directory(candidateRoot, error)) { error.clear(); continue; }
+        fs::recursive_directory_iterator iter(candidateRoot,
+            fs::directory_options::skip_permission_denied, error);
+        const fs::recursive_directory_iterator end;
+        for (; !error && iter != end && found.size() < limit && inspected < 100000;
+             iter.increment(error)) {
+            ++inspected;
+            if (iter->is_symlink(error)) { iter.disable_recursion_pending(); error.clear(); continue; }
+            if (!iter->is_regular_file(error)) { error.clear(); continue; }
+            if (iter->path().filename() != filename) continue;
+            const fs::path resolved = fs::weakly_canonical(iter->path(), error);
+            if (error) { error.clear(); continue; }
+            const fs::path relative = resolved.lexically_relative(root);
+            if (!relative.empty() && !relative.is_absolute() && *relative.begin() != "..") {
+                found.push_back(relative.generic_string());
+            }
+        }
+        error.clear();
+        if (found.size() >= limit || inspected >= 100000) break;
+    }
+    std::sort(found.begin(), found.end());
+    found.erase(std::unique(found.begin(), found.end()), found.end());
+    return found;
 }
 
 bool LogicalDirExtractor::initialize() {

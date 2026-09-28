@@ -16,9 +16,34 @@ export default defineConfig(({ mode }) => {
     || env.CS_SERVICE_URL
     || `http://${env.CS_HOST || env.HOST || '127.0.0.1'}:${env.CS_PORT || env.PORT || '8091'}`;
 
+  // Vite's development proxy is another outbound client. An isolated test
+  // must never inherit a root .env or silently proxy to old host services.
+  if (env.TRACELENS_TEST_MODE === 'ISOLATED_TEST' && mode === 'development') {
+    if (!process.env.TRACELENS_TEST_INSTANCE_ID || process.env.TRACELENS_TEST_INSTANCE_ID.length < 16) {
+      throw new Error('isolated Vite proxy requires a synthetic instance identity');
+    }
+    for (const [name, target] of Object.entries({
+      VITE_CPP_PROXY_TARGET: env.VITE_CPP_PROXY_TARGET,
+      VITE_PYTHON_PROXY_TARGET: env.VITE_PYTHON_PROXY_TARGET,
+      VITE_CS_PROXY_TARGET: env.VITE_CS_PROXY_TARGET,
+    })) {
+      if (!process.env[name] || process.env[name] !== target) {
+        throw new Error(`${name} must be supplied by the isolated test launcher`);
+      }
+      let parsed;
+      try { parsed = new URL(target); } catch { throw new Error(`${name} requires an explicit synthetic origin`); }
+      if (parsed.protocol !== 'http:' || parsed.hostname !== '127.0.0.1' || !parsed.port ||
+          ['8666', '8090', '8091'].includes(parsed.port) || parsed.username || parsed.password ||
+          parsed.pathname !== '/' || parsed.search || parsed.hash) {
+        throw new Error(`${name} must be a non-production numeric loopback origin`);
+      }
+    }
+  }
+
   return {
     plugins: [react()],
     define: {
+      'import.meta.env.VITE_FIELD_RELEASE_ID': JSON.stringify(env.VITE_FIELD_RELEASE_ID || 'UNFROZEN_WORKTREE'),
       // Make root .env service ports available to browser code without
       // exposing the complete server environment to the client bundle.
       'import.meta.env.VITE_CPP_PORT': JSON.stringify(env.VITE_CPP_PORT || env.HTTP_SERVER_PORT || ''),
@@ -38,6 +63,11 @@ export default defineConfig(({ mode }) => {
       host: env.WEB_DEV_HOST || '127.0.0.1',
       port: Number(env.VITE_DEV_SERVER_PORT || env.WEB_DEV_PORT || 3000),
       proxy: {
+        '/python': {
+          target: pythonTarget,
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/python/, ''),
+        },
         '/csapi': {
           target: csTarget,
           changeOrigin: true,
@@ -57,7 +87,7 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: 'dist',
       assetsDir: 'assets',
-      sourcemap: true,
+      sourcemap: env.VITE_FIELD_RELEASE_BUILD === '1' ? false : true,
       rollupOptions: {
         output: {
           manualChunks: {

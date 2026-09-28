@@ -642,10 +642,10 @@ def test_fk_definition_validated_at_init(tmp_path):
 # New DB + future version
 # ---------------------------------------------------------------------------
 
-def test_new_db_is_v7_with_report_extension(tmp_path):
+def test_new_db_is_v8_with_report_extension(tmp_path):
     idb = str(tmp_path / "investigation.db")
     InvestigationRepository(idb, "A")
-    assert SUPPORTED_SCHEMA_VERSION == 7
+    assert SUPPORTED_SCHEMA_VERSION == 8
     conn = sqlite3.connect(idb)
     assert conn.execute("PRAGMA user_version").fetchone()[0] == SUPPORTED_SCHEMA_VERSION
     for table in (

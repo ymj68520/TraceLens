@@ -135,6 +135,12 @@ class _Graphiti:
             raise self.error
         return self.nodes, self.links
 
+    async def get_local_graph_data(self, task_id, evidence_path, max_nodes):
+        self.calls.append((task_id, evidence_path, max_nodes))
+        if self.error is not None:
+            raise self.error
+        return self.nodes, self.links
+
 
 def _service(task_dir, graphiti=None, provider=None):
     if provider is None:
@@ -147,6 +153,31 @@ def _service(task_dir, graphiti=None, provider=None):
 
 def _ids(nodes):
     return [n.id for n in nodes]
+
+
+@pytest.mark.asyncio
+async def test_evidence_graph_uses_exact_path_and_excludes_unrelated_overlay(tmp_path):
+    files_db, repo = _store(tmp_path)
+    snap_a = _capture(repo, files_db, KEY_A)
+    snap_b = _capture(repo, files_db, KEY_B)
+    _analysis(repo, snap_a, candidates=[], decision=AnalysisReviewDecision.accepted)
+    _analysis(repo, snap_b, candidates=[], decision=AnalysisReviewDecision.accepted)
+    graphiti = _Graphiti(
+        nodes=[{"id": "path-a", "name": "/case/a.txt", "label": "Entity"}],
+    )
+
+    response = await _service(tmp_path, graphiti).get_graph(
+        "A", max_base_nodes=50, evidence_key=KEY_A, evidence_path="/case/a.txt"
+    )
+
+    assert graphiti.calls == [("A", "/case/a.txt", 50)]
+    assert "path-a" in _ids(response.nodes)
+    assert f"evidence:{KEY_A}" in _ids(response.nodes)
+    assert f"evidence:{KEY_B}" not in _ids(response.nodes)
+    assert all(
+        link.source in _ids(response.nodes) and link.target in _ids(response.nodes)
+        for link in response.links
+    )
 
 
 # ---------------------------------------------------------------------------

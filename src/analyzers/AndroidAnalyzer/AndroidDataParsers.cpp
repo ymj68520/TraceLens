@@ -332,11 +332,13 @@ WeChatOwnerInfo AndroidAnalyzer::identifyWeChatOwner(sqlite3* db) {
     return owner;
 }
 
-void AndroidAnalyzer::parseWeChatEnhanced(const std::string& dbPath, const std::string& password) {
+bool AndroidAnalyzer::parseWeChatEnhanced(const std::string& dbPath,
+                                         const std::string& password,
+                                         const std::string& sourcePath) {
     WeChatDecryptor decryptor;
     if (!decryptor.openDatabase(dbPath, password)) {
         LOG_WARNING("Failed to decrypt WeChat database: " + decryptor.getLastError());
-        return;
+        return false;
     }
 
     sqlite3* db = decryptor.getDb();
@@ -360,8 +362,10 @@ void AndroidAnalyzer::parseWeChatEnhanced(const std::string& dbPath, const std::
     // 4. Parse messages with enhanced fields
     const char* msgSql = "SELECT talker, content, createTime, type, isSend FROM message WHERE type IN (1, 3, 34, 43, 47, 49) ORDER BY createTime;";
     sqlite3_stmt* stmt;
+    bool messagesParsed = false;
     if (sqlite3_prepare_v2(db, msgSql, -1, &stmt, nullptr) == SQLITE_OK) {
-        while (sqlite3_step(stmt) == SQLITE_ROW) {
+        int stepResult = SQLITE_OK;
+        while ((stepResult = sqlite3_step(stmt)) == SQLITE_ROW) {
             ChatMessage msg;
             const char* talker = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
             const char* content = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
@@ -413,14 +417,17 @@ void AndroidAnalyzer::parseWeChatEnhanced(const std::string& dbPath, const std::
             msg.sender = sender;
             msg.receiver = receiver;
 
-            androidDb_->insertWeChatEnhancedMessage(msg, msgType, isSend, chatroomName, senderNickname, talkerStr);
+            androidDb_->insertWeChatEnhancedMessage(msg, msgType, isSend, chatroomName,
+                                                     senderNickname, talkerStr, sourcePath);
         }
+        messagesParsed = stepResult == SQLITE_DONE;
         sqlite3_finalize(stmt);
     }
 
     decryptor.close();
     LOG_INFO("WeChat enhanced parsing completed: " + std::to_string(contacts.size()) + " contacts, " +
              std::to_string(chatrooms.size()) + " chatrooms");
+    return messagesParsed;
 }
 
 void AndroidAnalyzer::parseChromeHistory(const std::string& dbPath) {

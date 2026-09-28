@@ -7,7 +7,7 @@ namespace forensics {
 
 using json = nlohmann::json;
 
-FileAnalysisRoutes::FileAnalysisRoutes(crow::App<>& app) {
+FileAnalysisRoutes::FileAnalysisRoutes(HttpApp& app) {
     CROW_ROUTE(app, "/api/forensics/files/largest").methods("GET"_method)([this](const crow::request& req) {
         return handle_files_largest(req);
     });

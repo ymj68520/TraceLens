@@ -4,11 +4,12 @@
  * Pure presentational component — renders the task list table.
  * All actions (cancel, delete) are passed in as callbacks.
  */
+import { Fragment } from 'react';
 import { Link } from 'react-router-dom';
 import Badge from '../common/Badge';
 import ProgressBar from '../common/ProgressBar';
 import { useTranslation } from '../../hooks/useTranslation';
-import { TASK_STATUS, TASK_PRIORITY, STATUS_COLORS, PRIORITY_COLORS } from '../../utils/constants';
+import { STATUS_COLORS, PRIORITY_COLORS } from '../../utils/constants';
 
 /** Helper: convert timestamp (ms or s) to locale string */
 function formatDate(timestamp) {
@@ -128,8 +129,8 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskC
               : null;
             const selected = isSel(task.id);
             return (
-            <>
-            <tr key={task.id} className={`hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors ${selected ? 'bg-primary-50/60 dark:bg-primary-900/20' : ''}`}>
+            <Fragment key={task.id}>
+            <tr className={`hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors ${selected ? 'bg-primary-50/60 dark:bg-primary-900/20' : ''}`}>
               {selectable && (
                 <td className="px-4 py-4 whitespace-nowrap">
                   <input
@@ -138,7 +139,7 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskC
                     checked={selected}
                     onChange={() => onToggleSelect && onToggleSelect(task.id)}
                     className="h-4 w-4 text-primary-600 rounded disabled:opacity-30"
-                    title={isCompleted ? '勾选后可组建案件' : '仅已完成任务可选'}
+                    title={isCompleted ? '勾选后可组建案件或关联离线报告' : '仅已完成任务可选'}
                   />
                 </td>
               )}
@@ -157,6 +158,12 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskC
               </td>
               <td className="px-4 py-4 whitespace-nowrap">
                 <StatusBadge status={task.status} />
+                {task.metadata?.source_verification === 'UNVERIFIED_SOURCE' &&
+                  <span className="block mt-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400" title="未经过 Android 镜像完整哈希及文件系统预检">UNVERIFIED_SOURCE</span>}
+                {task.metadata?.android_coverage_status === 'COMPLETED_WITH_LOCKED_USERDATA' &&
+                  <span className="block mt-1 text-[10px] font-semibold text-orange-700 dark:text-orange-400">LOCKED USERDATA</span>}
+                {task.metadata?.android_coverage_status === 'SUPER_NORMALIZED_NO_USERDATA' &&
+                  <span className="block mt-1 text-[10px] font-semibold text-violet-700 dark:text-violet-400">SUPER NORMALIZED · NO USERDATA</span>}
               </td>
               <td className="px-4 py-4 whitespace-nowrap">
                 <PriorityBadge priority={task.priority} />
@@ -184,7 +191,7 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskC
               </td>
             </tr>
             {failureLog && (
-              <tr key={`${task.id}-error`} className="bg-rose-50/60 dark:bg-rose-950/20 hover:bg-rose-50/60">
+              <tr className="bg-rose-50/60 dark:bg-rose-950/20 hover:bg-rose-50/60">
                 <td colSpan={(selectable ? 1 : 0) + 7} className="px-4 py-2">
                   <pre className="font-mono text-[11px] leading-5 whitespace-pre-wrap break-all text-rose-700 dark:text-rose-300">
 {failureLog}
@@ -192,7 +199,7 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskC
                 </td>
               </tr>
             )}
-            </>
+            </Fragment>
             );
           })}
         </tbody>

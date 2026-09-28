@@ -16,6 +16,7 @@ import {
     listTaskGraphs,
     deleteTaskGraph,
     getGraphData,
+    getRelationshipTrace,
     getJobStatus,
     listIngestionJobs,
     reingestAnalyzedData,
@@ -27,6 +28,11 @@ import { NODE_COLORS, getNodeColor } from '../components/knowledge-graph/graphCo
 import SearchTab from '../components/knowledge-graph/SearchTab';
 import EntitiesTab from '../components/knowledge-graph/EntitiesTab';
 import RelationshipsTab from '../components/knowledge-graph/RelationshipsTab';
+import RelationshipTracePanel from '../components/knowledge-graph/RelationshipTracePanel';
+
+const escapeGraphTooltip = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+}[character]));
 
 /**
  * 知识图谱页面 - 任务特定
@@ -34,6 +40,7 @@ import RelationshipsTab from '../components/knowledge-graph/RelationshipsTab';
 export default function KnowledgeGraph() {
     const [searchParams, setSearchParams] = useSearchParams();
     const taskId = searchParams.get('task_id');
+    const requestedRelationshipId = searchParams.get('relationship_id');
     const { tasks } = useSelector((state) => state.tasks);
 
     const [status, setStatus] = useState(null);
@@ -73,14 +80,39 @@ export default function KnowledgeGraph() {
     const [graphData, setGraphData] = useState({ nodes: [], links: [] });
     const [graphLoading, setGraphLoading] = useState(false);
     const [selectedNode, setSelectedNode] = useState(null);
+    const [selectedRelationship, setSelectedRelationship] = useState(null);
+    const [relationshipTrace, setRelationshipTrace] = useState(null);
+    const [traceLoading, setTraceLoading] = useState(false);
+    const [traceError, setTraceError] = useState(null);
+    const traceRequestRef = useRef(0);
     const [highlightNodes, setHighlightNodes] = useState(new Set());
     const [highlightLinks, setHighlightLinks] = useState(new Set());
     const [maxNodes, setMaxNodes] = useState(200);
     const graphRef = useRef(null);
+    const graphContainerRef = useRef(null);
+    const [graphWidth, setGraphWidth] = useState(900);
 
     const [activeTab, setActiveTab] = useState('graph');
     const PAGE_SIZE = 20;
     const currentTask = tasks.find((t) => t.id === taskId);
+    const graphConnected = Boolean(taskId) && status?.task_id === taskId && status?.neo4j_connected === true;
+
+    useEffect(() => {
+        const container = graphContainerRef.current;
+        if (!container) return undefined;
+        const measure = () => setGraphWidth(Math.max(320, Math.floor(container.clientWidth)));
+        measure();
+        if (typeof ResizeObserver === 'undefined') return undefined;
+        const observer = new ResizeObserver(measure);
+        observer.observe(container);
+        return () => observer.disconnect();
+    }, [graphData.nodes.length, Boolean(selectedRelationship)]);
+
+    useEffect(() => {
+        if (!graphData.nodes.length) return undefined;
+        const timer = setTimeout(() => graphRef.current?.zoomToFit(300, 36), 250);
+        return () => clearTimeout(timer);
+    }, [graphWidth, graphData.nodes.length]);
 
     // ── Fetch status ────────────────────────────────────────────────────────────
     const fetchStatus = useCallback(async () => {
@@ -116,6 +148,10 @@ export default function KnowledgeGraph() {
         setRelationshipsPage(1);
         setGraphData({ nodes: [], links: [] });
         setSelectedNode(null);
+        traceRequestRef.current += 1;
+        setSelectedRelationship(null);
+        setRelationshipTrace(null);
+        setTraceError(null);
         setReingestError(null);
         if (taskId) fetchStatus();
     }, [taskId, fetchStatus]);
@@ -211,7 +247,7 @@ export default function KnowledgeGraph() {
 
     // ── Graph visualization ──────────────────────────────────────────────────────
     const fetchGraphData = useCallback(async () => {
-        if (!taskId) return;
+        if (!taskId || !graphConnected) return;
         setGraphLoading(true);
         try {
             const result = await getGraphData(taskId, maxNodes);
@@ -221,16 +257,24 @@ export default function KnowledgeGraph() {
         } finally {
             setGraphLoading(false);
         }
-    }, [taskId, maxNodes]);
+    }, [taskId, maxNodes, graphConnected]);
 
     // Auto-load graph when tab switches to graph
     useEffect(() => {
-        if (activeTab === 'graph' && taskId && graphData.nodes.length === 0 && !graphLoading) {
+        if (activeTab === 'graph' && graphConnected && graphData.nodes.length === 0 && !graphLoading) {
             fetchGraphData();
         }
-    }, [activeTab, taskId]);
+    }, [activeTab, taskId, graphConnected]);
 
     const handleNodeClick = useCallback((node) => {
+        traceRequestRef.current += 1;
+        setSelectedRelationship(null);
+        setRelationshipTrace(null);
+        if (searchParams.has('relationship_id')) {
+            const next = new URLSearchParams(searchParams);
+            next.delete('relationship_id');
+            setSearchParams(next, { replace: true });
+        }
         setSelectedNode(node);
         // Highlight node and neighbors
         const neighbors = new Set();
@@ -244,7 +288,61 @@ export default function KnowledgeGraph() {
         neighbors.add(node.id);
         setHighlightNodes(neighbors);
         setHighlightLinks(neighborLinks);
-    }, [graphData]);
+    }, [graphData, searchParams, setSearchParams]);
+
+    const handleRelationshipClick = useCallback(async (link) => {
+        const relationshipId = link?.id;
+        const requestId = ++traceRequestRef.current;
+        setSelectedNode(null);
+        setSelectedRelationship(link || null);
+        setRelationshipTrace(null);
+        setTraceError(null);
+        if (!taskId || !relationshipId) {
+            setTraceError('该关系没有可追溯的 ID，请刷新图谱后重试。');
+            return;
+        }
+        const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+        const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+        setHighlightNodes(new Set([sourceId, targetId].filter(Boolean)));
+        setHighlightLinks(new Set([link]));
+        setTraceLoading(true);
+        try {
+            const result = await getRelationshipTrace(taskId, relationshipId);
+            if (requestId === traceRequestRef.current) setRelationshipTrace(result);
+        } catch (err) {
+            if (requestId === traceRequestRef.current) setTraceError(err?.data?.detail || err?.message || '未知错误');
+        } finally {
+            if (requestId === traceRequestRef.current) setTraceLoading(false);
+        }
+    }, [taskId]);
+
+    useEffect(() => {
+        if (!taskId || !requestedRelationshipId || selectedRelationship?.id === requestedRelationshipId) return;
+        handleRelationshipClick({ id: requestedRelationshipId });
+    }, [taskId, requestedRelationshipId, selectedRelationship?.id, handleRelationshipClick]);
+
+    const openRelationship = (link) => {
+        handleRelationshipClick(link);
+        if (link?.id && requestedRelationshipId !== link.id) {
+            const next = new URLSearchParams(searchParams);
+            next.set('relationship_id', link.id);
+            setSearchParams(next);
+        }
+    };
+
+    const closeRelationship = () => {
+        traceRequestRef.current += 1;
+        setSelectedRelationship(null);
+        setRelationshipTrace(null);
+        setTraceError(null);
+        setHighlightNodes(new Set());
+        setHighlightLinks(new Set());
+        if (searchParams.has('relationship_id')) {
+            const next = new URLSearchParams(searchParams);
+            next.delete('relationship_id');
+            setSearchParams(next, { replace: true });
+        }
+    };
 
     const handleNodeHover = useCallback((node) => {
         if (!node) {
@@ -574,8 +672,9 @@ export default function KnowledgeGraph() {
                         <span className="text-sm text-slate-500 dark:text-slate-400">
                             {hasData
                                 ? `${graphData.nodes.length} 节点 · ${graphData.links.length} 关系`
-                                : '点击"加载图谱"查看知识图谱'}
+                                : graphConnected ? '点击"加载图谱"查看知识图谱' : 'Neo4j 未连接，无法加载图谱'}
                         </span>
+                        {hasData && <span className="text-xs text-amber-700 dark:text-amber-300">连线为机器提取的待核验关系；点击连线查看来源</span>}
                         {hasData && (
                             <div className="flex items-center gap-2">
                                 <span className="text-xs text-slate-400">最多节点:</span>
@@ -593,7 +692,7 @@ export default function KnowledgeGraph() {
                         <Button
                             size="sm"
                             onClick={fetchGraphData}
-                            disabled={!taskId || graphLoading}
+                            disabled={!graphConnected || graphLoading}
                         >
                             {graphLoading ? <><Spinner size="sm" />&nbsp;加载中...</> : '加载图谱'}
                         </Button>
@@ -601,7 +700,7 @@ export default function KnowledgeGraph() {
                             <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => { setSelectedNode(null); setHighlightNodes(new Set()); setHighlightLinks(new Set()); graphRef.current?.zoomToFit(400); }}
+                                onClick={() => { setSelectedNode(null); closeRelationship(); graphRef.current?.zoomToFit(400); }}
                             >
                                 重置视图
                             </Button>
@@ -629,16 +728,17 @@ export default function KnowledgeGraph() {
                     <div className="flex gap-4">
                         {/* Graph Canvas */}
                         <div
-                            className="flex-1 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700"
+                            ref={graphContainerRef}
+                            className="min-w-0 flex-1 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700"
                             style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%)', minHeight: 560 }}
                         >
                             <ForceGraph2D
                                 ref={graphRef}
                                 graphData={graphData}
-                                width={undefined}
+                                width={graphWidth}
                                 height={560}
                                 backgroundColor="transparent"
-                                nodeLabel={(n) => `${n.name}\n${n.summary ? n.summary.substring(0, 80) + '...' : ''}`}
+                                nodeLabel={(n) => `${escapeGraphTooltip(n.name)}<br>${n.summary ? escapeGraphTooltip(n.summary.substring(0, 80)) + '…' : ''}`}
                                 nodeColor={(n) => {
                                     if (highlightNodes.size === 0) return getNodeColor(n.label);
                                     return highlightNodes.has(n.id) ? getNodeColor(n.label) : 'rgba(148,163,184,0.2)';
@@ -655,13 +755,13 @@ export default function KnowledgeGraph() {
                                 linkDirectionalParticles={(l) => highlightLinks.has(l) ? 3 : 0}
                                 linkDirectionalParticleSpeed={0.005}
                                 linkDirectionalParticleColor={() => '#a5b4fc'}
-                                linkLabel={(l) => l.label}
+                                linkLabel={(l) => `${escapeGraphTooltip(l.label)} · 机器提取，点击查看来源`}
                                 onNodeClick={handleNodeClick}
+                                onLinkClick={openRelationship}
                                 onNodeHover={handleNodeHover}
                                 onBackgroundClick={() => {
                                     setSelectedNode(null);
-                                    setHighlightNodes(new Set());
-                                    setHighlightLinks(new Set());
+                                    closeRelationship();
                                 }}
                                 nodeCanvasObject={(node, ctx, globalScale) => {
                                     const r = highlightNodes.size === 0 || highlightNodes.has(node.id) ? 5 : 3;
@@ -707,8 +807,16 @@ export default function KnowledgeGraph() {
                         </div>
 
                         {/* Node detail panel */}
-                        <div className="w-72 shrink-0">
-                            {selectedNode ? (
+                        <div className={selectedRelationship ? 'w-[420px] max-w-[44vw] shrink-0' : 'w-72 shrink-0'}>
+                            {selectedRelationship ? (
+                                <RelationshipTracePanel
+                                    taskId={taskId}
+                                    trace={relationshipTrace}
+                                    loading={traceLoading}
+                                    error={traceError}
+                                    onClose={closeRelationship}
+                                />
+                            ) : selectedNode ? (
                                 <motion.div
                                     initial={{ opacity: 0, x: 20 }}
                                     animate={{ opacity: 1, x: 0 }}
@@ -793,6 +901,10 @@ export default function KnowledgeGraph() {
             relationshipsTotalCount={relationshipsTotalCount}
             relationshipsPage={relationshipsPage}
             fetchRelationships={fetchRelationships}
+            onTrace={(item) => {
+                setActiveTab('graph');
+                openRelationship({ id: item.id, source: item.source_id, target: item.target_id, label: item.type });
+            }}
             PAGE_SIZE={PAGE_SIZE}
         />
     );

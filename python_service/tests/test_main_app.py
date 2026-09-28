@@ -125,7 +125,8 @@ def test_auth_login_route_exists(client):
 def test_cors_preflight_allows_configured_origin():
     """A preflight from a whitelisted origin is accepted with permissive CORS
     headers."""
-    origin = settings.CORS_ORIGINS[0]
+    wildcard = "*" in settings.CORS_ORIGINS
+    origin = "http://localhost:8666" if wildcard else settings.CORS_ORIGINS[0]
     transport = TestClient(app)
 
     response = transport.options(
@@ -138,21 +139,24 @@ def test_cors_preflight_allows_configured_origin():
     )
 
     assert response.status_code == 200
-    assert response.headers["access-control-allow-origin"] == origin
+    assert response.headers["access-control-allow-origin"] == ("*" if wildcard else origin)
     assert "GET" in response.headers["access-control-allow-methods"]
-    # allow-credentials is reflected because we configured allow_credentials=True
-    assert response.headers["access-control-allow-credentials"] == "true"
+    if wildcard:
+        assert "access-control-allow-credentials" not in response.headers
+    else:
+        assert response.headers["access-control-allow-credentials"] == "true"
 
 
 def test_cors_simple_request_sets_allow_origin():
     """A simple GET from a whitelisted origin receives an allow-origin header."""
-    origin = settings.CORS_ORIGINS[0]
+    wildcard = "*" in settings.CORS_ORIGINS
+    origin = "http://localhost:8666" if wildcard else settings.CORS_ORIGINS[0]
     transport = TestClient(app)
 
     response = transport.get("/health", headers={"Origin": origin})
 
     assert response.status_code == 200
-    assert response.headers["access-control-allow-origin"] == origin
+    assert response.headers["access-control-allow-origin"] == ("*" if wildcard else origin)
 
 
 # -----------------------------------------------------------------------------

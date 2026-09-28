@@ -12,7 +12,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from ..services.field_security import audit_actor
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..config import get_project_root, get_settings
@@ -95,6 +96,7 @@ def _report_root() -> Path:
 @router.post("/generate", status_code=202, response_model=GenerationStatusResponse)
 async def generate_report(
     request: GenerateReportRequest,
+    http_request: Request,
     service: ReportGenerationAdmissionService = Depends(
         get_report_generation_admission_service
     ),
@@ -103,7 +105,7 @@ async def generate_report(
     """Admit one frozen generation from the task's Report Evidence (202)."""
     try:
         row = await service.admit(
-            request.task_id, requested_by=request.requested_by
+            request.task_id, requested_by=audit_actor(http_request, request.requested_by)
         )
     except ReportGenerationInputError as exc:
         if exc.code == "no_report_evidence":

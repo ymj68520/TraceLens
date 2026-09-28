@@ -207,9 +207,7 @@ const Timeline = () => {
         params.end_time = (start + 86400).toString();
       }
 
-      console.log('Final params:', params);
       const data = await getComprehensiveTimeline(taskId, params);
-      console.log('Received timeline data:', data);
       
       // Debug: Check if timeline exists and has data
       if (!data) {
@@ -230,8 +228,6 @@ const Timeline = () => {
         return;
       }
       
-      console.log('Timeline has', data.timeline.length, 'events');
-      console.log('Sample event:', data.timeline[0]);
 
       // Preserve the backend descriptor exactly; it is the only trusted group
       // identity used by detail and analysis calls.
@@ -555,7 +551,6 @@ const Timeline = () => {
 
   // 计算事件数据
   const events = useMemo(() => {
-    console.log('Timeline data:', timelineData);
     return timelineData?.timeline || [];
   }, [timelineData]);
   

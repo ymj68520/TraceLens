@@ -7,7 +7,7 @@ namespace forensics {
 
 using json = nlohmann::json;
 
-StatisticsRoutes::StatisticsRoutes(crow::App<>& app) {
+StatisticsRoutes::StatisticsRoutes(HttpApp& app) {
     CROW_ROUTE(app, "/api/forensics/statistics/overview").methods("GET"_method)([this](const crow::request& req) {
         return handle_statistics_overview(req);
     });

@@ -1,13 +1,14 @@
 #pragma once
 
 #include <crow.h>
+#include "../FieldApp.h"
 #include <nlohmann/json.hpp>
 
 namespace forensics {
 
 class FileAnalysisRoutes {
 public:
-    explicit FileAnalysisRoutes(crow::App<>& app);
+    explicit FileAnalysisRoutes(HttpApp& app);
     
 private:
     crow::response handle_files_largest(const crow::request& req);

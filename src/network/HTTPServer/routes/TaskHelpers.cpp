@@ -1,4 +1,5 @@
 #include "TaskHelpers.h"
+#include "RouteHelpers.h"
 #include "../TaskManager.h"
 #include "../../core/PathManager/PathManager.h"
 #include <chrono>
@@ -38,6 +39,9 @@ nlohmann::json TaskHelpers::task_to_json(const AnalysisTask& task) {
     json scenario_databases = json::object();
     auto& pm = forensics::PathManager::instance();
     auto dbPaths = pm.getTaskDbPaths(task.id);
+    const auto output_files_db = RouteHelpers::get_database_path(task.id, "files");
+    const auto output_raw_db = RouteHelpers::get_database_path(task.id, "raw");
+    const auto output_events_db = RouteHelpers::get_database_path(task.id, "events");
     for (auto scenario : task.scenarios) {
         std::string key = scenario_to_string(scenario);
         std::string db_path;
@@ -65,9 +69,9 @@ nlohmann::json TaskHelpers::task_to_json(const AnalysisTask& task) {
         {"priority", priority_to_string(task.priority)},
         {"message", task.message},
         {"interrupted_by_restart", task.interrupted_by_restart},
-        {"output_files_db", task.output_files_db},
-        {"output_raw_db", task.output_raw_db},
-        {"output_events_db", task.output_events_db},
+        {"output_files_db", output_files_db},
+        {"output_raw_db", output_raw_db},
+        {"output_events_db", output_events_db},
         {"progress", {
             {"current_phase", phase_to_string(task.progress.current_phase)},
             {"phase_percentage", task.progress.phase_percentage},

@@ -29,6 +29,11 @@ const DATA_SOURCES = [
   { value: 'dir', label: 'Android 目录', desc: '已解压的逻辑提取目录树' },
   { value: 'zip', label: 'Android ZIP', desc: '逻辑提取打包成的单个 .zip' },
   { value: 'miui-backup', label: 'MIUI 备份', desc: '小米 MIUI 离线备份目录（含 descript.xml + .bak）' },
+  { value: 'tar', label: 'Android TAR', desc: '.tar / .tar.gz / .tgz / .tar.xz（需完整预检）' },
+  { value: 'seven-zip', label: 'Android 7z', desc: '.7z 逻辑提取归档（需完整预检）' },
+  { value: 'android-backup', label: 'Android Backup', desc: '.ab（需完整预检）' },
+  { value: 'filesystem-image', label: 'Android userdata 镜像', desc: 'EXT4/F2FS RAW/E01（需完整预检）' },
+  { value: 'android-container', label: 'Android sparse / super', desc: '需完整预检及规范化计划' },
 ];
 
 const INITIAL_FORM = {
@@ -45,11 +50,11 @@ const INITIAL_FORM = {
   // (task-time event cluster analysis) always false — NOT user settings.
 };
 
-export default function CreateTaskModal() {
+export default function CreateTaskModal({ initialSource = null, onClose = () => {} }) {
   const dispatch = useDispatch();
   const toast = useToast();
 
-  const [form, setForm] = useState(INITIAL_FORM);
+  const [form, setForm] = useState(() => ({ ...INITIAL_FORM, ...initialSource }));
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -59,6 +64,7 @@ export default function CreateTaskModal() {
 
   const isLogical = form.android_source !== 'tsk';
   const isMiui = form.android_source === 'miui-backup';
+  const isArchive = ['tar', 'seven-zip', 'android-backup', 'filesystem-image', 'android-container'].includes(form.android_source);
 
   // Label / placeholder for the path input changes with the data source.
   const pathLabel = isMiui
@@ -67,6 +73,10 @@ export default function CreateTaskModal() {
     ? 'Android 提取目录 *'
     : form.android_source === 'zip'
     ? 'Android ZIP 文件 *'
+    : form.android_source === 'android-container'
+    ? 'Android sparse / super 镜像 *'
+    : isArchive
+    ? 'Android 归档/备份文件 *'
     : 'Image Path *';
   const pathPlaceholder = isMiui
     ? '/path/to/MIUI备份目录（含 descript.xml + .bak）'
@@ -74,6 +84,16 @@ export default function CreateTaskModal() {
     ? '/path/to/android_logical_extraction/'
     : form.android_source === 'zip'
     ? '/path/to/android_extraction.zip'
+    : form.android_source === 'tar'
+    ? '/path/to/android_export.tar.gz'
+    : form.android_source === 'seven-zip'
+    ? '/path/to/android_export.7z'
+    : form.android_source === 'android-backup'
+    ? '/path/to/backup.ab'
+    : form.android_source === 'filesystem-image'
+    ? '/path/to/userdata.img or /path/to/disk.E01'
+    : form.android_source === 'android-container'
+    ? '/path/to/userdata.sparse or /path/to/super.img'
     : '/path/to/disk_image.dd or /path/to/image.E01';
 
   const handleSubmit = async (e) => {
@@ -92,12 +112,13 @@ export default function CreateTaskModal() {
         llm_event_analyze: false,
         llm_mode: 'smart',
         // 平台分析任务级开关（创建时选择；默认开启）
-        platform_analyze: form.platform_analyze !== false,
+        platform_analyze: isArchive || form.platform_analyze !== false,
       };
       // Only send backup_password when non-empty (keeps it runtime-only / sparse).
       if (!payload.backup_password) delete payload.backup_password;
       await dispatch(createTask(payload)).unwrap();
       dispatch(closeModal());
+      onClose();
       setForm(INITIAL_FORM);
       dispatch(fetchTasks({}));
       toast.success('Task created successfully!');
@@ -121,7 +142,7 @@ export default function CreateTaskModal() {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
           <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Create New Task</h2>
-          <button onClick={() => dispatch(closeModal())} className="text-slate-400 hover:text-slate-500 dark:hover:text-slate-300">✕</button>
+          <button onClick={() => { dispatch(closeModal()); onClose(); }} className="text-slate-400 hover:text-slate-500 dark:hover:text-slate-300">✕</button>
         </div>
 
         <form onSubmit={handleSubmit} className="px-6 py-4 space-y-4">
@@ -132,7 +153,7 @@ export default function CreateTaskModal() {
           )}
 
           {/* Data Source Type — selects the analysis backend */}
-          <Field label="数据源类型 *" hint="决定分析后端：磁盘镜像走 TSK 文件系统解析；目录/ZIP/MIUI 备份直接交给 Android 分析器">
+          <Field label="数据源类型 *" hint="Android userdata、sparse/super 与 TAR/7z/AB 必须先完成完整哈希预检；旧式 TSK 任务未经过镜像预检。">
             <select
               disabled={isCreating}
               value={form.android_source}
@@ -146,7 +167,7 @@ export default function CreateTaskModal() {
           </Field>
 
           {/* Image Path / data source path */}
-          <Field label={pathLabel}>
+          <Field label={pathLabel} hint={initialSource ? '由检材预检结果预填；分析前请确认来源未改变。' : undefined}>
             <input
               type="text" required disabled={isCreating}
               value={form.image_path}
@@ -156,15 +177,15 @@ export default function CreateTaskModal() {
             />
           </Field>
 
-          {/* Backup password — only for encrypted MIUI backups */}
-          {isMiui && (
-            <Field label="备份密码（可选）" hint="若 MIUI 备份已加密（AES-256），填入密码以解密 .bak；仅本次运行使用，不会持久化">
+          {/* Runtime-only password; never persisted in Task serialization. */}
+          {(isMiui || form.android_source === 'seven-zip' || form.android_source === 'android-backup') && (
+            <Field label="归档/备份密码（可选）" hint="仅本次运行使用，不写入 Task 持久化或命令行；密码错误或不支持的变体会明确失败。">
               <input
                 type="password" disabled={isCreating}
                 value={form.backup_password}
                 onChange={(e) => set('backup_password', e.target.value)}
                 className={inputCls}
-                placeholder="留空表示备份未加密"
+                placeholder="未加密时留空"
                 autoComplete="new-password"
               />
             </Field>
@@ -225,7 +246,8 @@ export default function CreateTaskModal() {
                 <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
                   <input
                     type="checkbox"
-                    checked={form.platform_analyze !== false}
+                    checked={isArchive || form.platform_analyze !== false}
+                    disabled={isArchive}
                     onChange={(e) => set('platform_analyze', e.target.checked)}
                     className="w-4 h-4 rounded border-slate-300"
                   />
@@ -296,7 +318,7 @@ export default function CreateTaskModal() {
 
           {/* Actions */}
           <div className="flex justify-end space-x-3 pt-2">
-            <Button type="button" variant="secondary" onClick={() => dispatch(closeModal())} disabled={isCreating}>Cancel</Button>
+            <Button type="button" variant="secondary" onClick={() => { dispatch(closeModal()); onClose(); }} disabled={isCreating}>Cancel</Button>
             <Button type="submit" disabled={isCreating}>{isCreating ? 'Creating...' : 'Create Task'}</Button>
           </div>
         </form>

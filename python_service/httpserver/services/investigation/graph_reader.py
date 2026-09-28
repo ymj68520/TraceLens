@@ -26,6 +26,7 @@ from .models import (
     ClaimGroundingStatus,
     ClaimType,
     ClusterSnapshotPayload,
+    AndroidArtifactSnapshotPayload,
     EventEvidenceLink,
     EventRefresh,
     EvidenceSnapshot,
@@ -38,7 +39,7 @@ from .models import (
     SecondaryAnalysis,
     SelectedAnalysisRef,
 )
-from .repository import InvestigationRepository, SUPPORTED_SCHEMA_VERSION
+from .repository import InvestigationRepository, READABLE_SCHEMA_VERSIONS
 
 
 @dataclass(frozen=True)
@@ -438,6 +439,17 @@ class InvestigationGraphReader:
                         "linked_at": row["linked_at"],
                         "linked_by": row["linked_by"],
                     })
+                elif row["evidence_key"].startswith("android_artifact:"):
+                    views.append({
+                        "evidence_key": row["evidence_key"],
+                        "evidence_type": "android_artifact",
+                        "title": f"Android {payload.get('artifact_kind', 'unknown')} #{payload.get('record_id', '?')}",
+                        "timestamp": None,  # raw date unit/timezone is not established
+                        "initial_summary": None,
+                        "role": None,
+                        "linked_at": row["linked_at"],
+                        "linked_by": row["linked_by"],
+                    })
                 else:
                     timestamp = (
                         payload.get("mtime")
@@ -523,7 +535,7 @@ class InvestigationGraphReader:
         try:
             with contextlib.closing(self._connect()) as conn:
                 version = conn.execute("PRAGMA user_version").fetchone()[0]
-                if version != SUPPORTED_SCHEMA_VERSION:
+                if version not in READABLE_SCHEMA_VERSIONS:
                     # B3: an unsupported store fails closed, never partial data.
                     raise EvidenceStoreError(
                         "investigation graph store schema is unsupported"
@@ -654,6 +666,15 @@ class InvestigationGraphReader:
             payload = FileSnapshotPayload.model_validate(data)
         elif evidence_type == "cluster":
             payload = ClusterSnapshotPayload.model_validate(data)
+        elif evidence_type == "android_artifact":
+            from ..evidence.keys import parse_evidence_key
+            key = parse_evidence_key(row["evidence_key"])
+            payload = AndroidArtifactSnapshotPayload.model_validate(data)
+            if (key.evidence_type != "android_artifact" or
+                (payload.task_id, payload.result_set_id, payload.artifact_kind, payload.record_id) !=
+                (key.artifact_task_id, key.result_set_id, key.artifact_kind, key.artifact_record_id) or
+                payload.task_id != row["task_id"]):
+                raise EvidenceStoreError("Android snapshot identity mismatch")
         else:  # pragma: no cover - guarded by the table CHECK
             raise EvidenceStoreError(
                 f"unknown evidence_type {evidence_type!r} for id={row['id']}"

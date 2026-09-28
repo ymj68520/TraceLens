@@ -7,7 +7,7 @@ namespace forensics {
 
 using json = nlohmann::json;
 
-SystemEventRoutes::SystemEventRoutes(crow::App<>& app) {
+SystemEventRoutes::SystemEventRoutes(HttpApp& app) {
     CROW_ROUTE(app, "/api/forensics/system/events").methods("GET"_method)([this](const crow::request& req) {
         return handle_system_events(req);
     });

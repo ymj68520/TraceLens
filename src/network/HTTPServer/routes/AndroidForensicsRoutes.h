@@ -1,13 +1,14 @@
 #pragma once
 
 #include <crow.h>
+#include "../FieldApp.h"
 #include <nlohmann/json.hpp>
 
 namespace forensics {
 
 class AndroidForensicsRoutes {
 public:
-    explicit AndroidForensicsRoutes(crow::App<>& app);
+    explicit AndroidForensicsRoutes(HttpApp& app);
     
 private:
     crow::response handle_android_communication_summary(const crow::request& req);

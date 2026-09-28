@@ -77,7 +77,7 @@ bool optionRequiresNonOptionValue(const std::string& option) {
 
 bool isValidAndroidSource(const std::string& source) {
     static const std::unordered_set<std::string> validSources{
-        "tsk", "dir", "zip", "miui-backup"
+        "tsk", "dir", "zip", "miui-backup", "tar", "seven-zip", "android-backup", "filesystem-image"
     };
     return validSources.contains(source);
 }
@@ -112,11 +112,13 @@ void CommandLineParser::printUsage(const char* programName) {
     std::cout << "  --android-analyze           Analyze Android data\n";
     std::cout << "  --android-source <mode>     Android data source: tsk (default, disk image),\n"
                  "                              dir (extracted data/ tree), zip (Image.zip),\n"
-                 "                              miui-backup (Xiaomi MIUI .bak folder)\n";
+                 "                              miui-backup (Xiaomi MIUI .bak folder),\n"
+                 "                              tar, seven-zip, android-backup (.ab),\n"
+                 "                              filesystem-image (userdata EXT4/F2FS RAW/E01)\n";
     std::cout << "  --wechat-password <pass>    WeChat SQLCipher decryption password\n";
     std::cout << "  --backup-password-stdin     Read backup password from stdin (no echo when interactive)\n";
     std::cout << "  --backup-password-fd <fd>   Read backup password from an already-open file descriptor\n";
-    std::cout << "  --backup-password <pass>    Deprecated: password in argv; encrypted ADB v5 remains locked\n";
+    std::cout << "  --backup-password <pass>    Deprecated: password in argv; rejected for 7z/Android Backup\n";
     std::cout << "  --windows-analyze           Analyze Windows artifacts\n";
     std::cout << "  --linux-analyze             Analyze Linux artifacts\n";
     std::cout << "  --no-ai                     Skip AI/LLM analysis (for offline/no-key environments)\n";
@@ -197,7 +199,7 @@ CommandLineArgs CommandLineParser::parse(int argc, char* argv[]) {
             const std::string source = argv[++i];
             if (!isValidAndroidSource(source)) {
                 args.parse_error = "Invalid --android-source '" + source +
-                    "' (expected tsk, dir, zip, or miui-backup)";
+                    "' (expected tsk, dir, zip, miui-backup, tar, seven-zip, android-backup, or filesystem-image)";
                 return args;
             }
             args.android_source = source;

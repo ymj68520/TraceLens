@@ -30,7 +30,9 @@ export default function useEvidenceAnalysis(taskId, evidenceKey) {
       const [detailResult, versionsResult, graphResult] = await Promise.all([
         getEvidenceDetail(taskId, evidenceKey),
         getAnalysisVersions(taskId, evidenceKey),
-        getLocalGraph(taskId, { evidence_key: evidenceKey, max_nodes: 50 }),
+        evidenceKey.startsWith('android_artifact:')
+          ? Promise.resolve(null)
+          : getLocalGraph(taskId, { evidence_key: evidenceKey, max_nodes: 50 }),
       ]);
       if (requestId !== requestIdRef.current) return;
       setDetail(detailResult.evidence);

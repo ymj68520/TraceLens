@@ -28,7 +28,7 @@ static std::string generate_job_id() {
     return ss.str();
 }
 
-ForensicsRoutes::ForensicsRoutes(crow::App<>& app)
+ForensicsRoutes::ForensicsRoutes(HttpApp& app)
     : task_manager_(TaskManager::instance()),
       timeline_routes_(app),
       event_cluster_routes_(app),

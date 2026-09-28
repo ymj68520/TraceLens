@@ -7,7 +7,7 @@ namespace forensics {
 
 using json = nlohmann::json;
 
-OSSQueryRoutes::OSSQueryRoutes(crow::App<>& app) : task_manager_(TaskManager::instance()) {
+OSSQueryRoutes::OSSQueryRoutes(HttpApp& app) : task_manager_(TaskManager::instance()) {
     CROW_ROUTE(app, "/api/forensics/oss/objects").methods("GET"_method)([this](const crow::request& req) {
         return handle_get_objects(req);
     });

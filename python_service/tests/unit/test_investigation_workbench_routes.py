@@ -63,7 +63,8 @@ def _manager():
         list_all_analyses=AsyncMock(return_value={}),
     )
     manager.cpp_backend = Mock(
-        get_task=AsyncMock(return_value={"id": "T1", "status": "completed"})
+        get_task=AsyncMock(return_value={"id": "T1", "status": "completed",
+                                       "output_files_db": "/synthetic-fixture-only/T1/files.db"})
     )
     return manager
 
@@ -189,6 +190,76 @@ def test_event_without_derived_bounds_omits_time_fields():
     event = response.json()["events"][0]
     assert "start_time" not in event
     assert "end_time" not in event
+
+
+def test_local_graph_resolves_evidence_before_requesting_exact_subgraph(monkeypatch):
+    manager = _manager()
+    resolved = Mock(
+        evidence_key="file:/case/a.txt",
+        normalized_path="/case/a.txt",
+    )
+    resolver = AsyncMock(return_value=resolved)
+    monkeypatch.setattr(
+        investigation_workbench.EvidenceResolver, "resolve_evidence", resolver
+    )
+
+    response = _client(manager).get(
+        "/api/investigation/workbench/T1/graph/local",
+        params={"evidence_key": "file:/case/a.txt", "max_nodes": 30},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["nodes"] == []
+    resolver.assert_awaited_once_with("T1", "file:/case/a.txt")
+    manager.investigation_graph_service.get_graph.assert_awaited_once_with(
+        "T1", max_base_nodes=30,
+        evidence_key="file:/case/a.txt", evidence_path="/case/a.txt",
+    )
+
+
+def test_initial_translation_uses_frozen_snapshot_not_browser_text(monkeypatch):
+    manager = _manager()
+    resolved = Mock(evidence_key="file:/case/a.txt", normalized_path="/case/a.txt")
+    monkeypatch.setattr(
+        investigation_workbench.EvidenceResolver, "resolve_evidence",
+        AsyncMock(return_value=resolved),
+    )
+    manager.investigation_read_service.get_snapshot = AsyncMock(return_value=Mock(
+        payload=Mock(initial_summary="English summary", initial_description="English description"),
+    ))
+    cache = Mock(translate=AsyncMock(return_value={
+        "text": "摘要：中文译文", "translated": True, "cached": False,
+        "source_hash": "digest", "model": "test-model",
+    }))
+    monkeypatch.setattr(investigation_workbench, "_initial_translation_cache", lambda: cache)
+
+    response = _client(manager).post(
+        "/api/investigation/workbench/T1/evidence/initial-analysis/translate",
+        json={"evidence_key": "file:/case/a.txt"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["text"] == "摘要：中文译文"
+    assert cache.translate.await_args.args[:3] == (
+        "T1", "file:/case/a.txt", "摘要：English summary\n\n详细描述：English description",
+    )
+    manager.investigation_read_service.get_snapshot.assert_awaited_once_with(
+        "T1", "file:/case/a.txt"
+    )
+
+
+def test_initial_translation_rejects_missing_snapshot(monkeypatch):
+    manager = _manager()
+    monkeypatch.setattr(
+        investigation_workbench.EvidenceResolver, "resolve_evidence",
+        AsyncMock(return_value=Mock(evidence_key="file:/case/a.txt")),
+    )
+    manager.investigation_read_service.get_snapshot = AsyncMock(return_value=None)
+    response = _client(manager).post(
+        "/api/investigation/workbench/T1/evidence/initial-analysis/translate",
+        json={"evidence_key": "file:/case/a.txt"},
+    )
+    assert response.status_code == 404
 
 
 def test_single_event_merges_derived_time_bounds():

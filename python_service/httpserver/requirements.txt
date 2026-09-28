@@ -8,6 +8,14 @@ uvicorn[standard]>=0.24.0
 # Async HTTP Client
 httpx>=0.25.0
 
+# Read-only AES-256 Android Backup preflight; password is never persisted.
+cryptography>=42,<53
+
+# Offline EN→ZH reading overlay for immutable Initial Analysis snapshots.
+# The model is installed separately by scripts/install_initial_analysis_translation_model.py.
+ctranslate2==4.8.2
+sentencepiece==0.2.2
+
 # Data Validation
 pydantic>=2.5.0
 pydantic-settings>=2.1.0

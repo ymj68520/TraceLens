@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import Card from './Card';
 import Button from './Button';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useTranslation } from '../../hooks/useTranslation';
 import { CPP_BASE_URL, PYTHON_API_BASE_URL } from '../../services/api';
+import { authorizedFetch } from '../../services/fieldStream';
+import { FIELD_AUTH_ENABLED } from '../../config/runtime';
 import { CPP_WS_BASE_URL } from '../../config/runtime';
 
 const PYTHON_BASE = PYTHON_API_BASE_URL;
@@ -32,57 +34,20 @@ const TerminalOutput = ({ taskId = null, maxHeight = '400px' }) => {
   });
   const [autoScroll, setAutoScroll] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false);
-  const eventSourceRef = useRef(null);
 
-  const terminalEndRefs = {
-    cpp: useRef(null),
-    python: useRef(null),
-    web: useRef(null),
-  };
+  const cppEndRef = useRef(null);
+  const pythonEndRef = useRef(null);
+  const webEndRef = useRef(null);
+  const terminalEndRefs = useMemo(() => ({
+    cpp: cppEndRef, python: pythonEndRef, web: webEndRef,
+  }), []);
 
   // Scroll to bottom when new logs arrive
   useEffect(() => {
     if (autoScroll && terminalEndRefs[activeTab]?.current) {
       terminalEndRefs[activeTab].current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [logs, activeTab, autoScroll]);
-
-  const startStreaming = (source) => {
-    if (eventSourceRef.current) eventSourceRef.current.close();
-    if (source === 'web') return;
-
-    const endpoints = {
-      cpp: `${PYTHON_BASE}/api/system/logs-stream/cpp`,
-      python: `${PYTHON_BASE}/api/system/logs-stream/python`,
-    };
-
-    const url = endpoints[source];
-    if (!url) return;
-
-    setIsStreaming(true);
-    const es = new EventSource(url);
-    eventSourceRef.current = es;
-
-    es.onmessage = (event) => {
-      try {
-        const entry = JSON.parse(event.data);
-        setLogs(prev => ({
-          ...prev,
-          [source]: [...prev[source].slice(-499), entry],
-        }));
-      } catch (e) {
-        setLogs(prev => ({
-          ...prev,
-          [source]: [...prev[source].slice(-499), { timestamp: '', level: 'INFO', message: event.data }],
-        }));
-      }
-    };
-
-    es.onerror = () => {
-      setIsStreaming(false);
-      es.close();
-    };
-  };
+  }, [logs, activeTab, autoScroll, terminalEndRefs]);
 
   // Fetch logs via REST API
   const fetchLogs = async (source) => {
@@ -96,7 +61,7 @@ const TerminalOutput = ({ taskId = null, maxHeight = '400px' }) => {
       const endpoint = endpoints[source];
       if (!endpoint) return;
 
-      const response = await fetch(endpoint);
+      const response = await authorizedFetch(endpoint);
       if (response.ok) {
         const data = await response.json();
         setLogs(prev => ({
@@ -117,6 +82,7 @@ const TerminalOutput = ({ taskId = null, maxHeight = '400px' }) => {
 
   // Capture web logs locally
   useEffect(() => {
+    if (FIELD_AUTH_ENABLED) return undefined; // never retain evidence-bearing console arguments
     const originalLog = console.log;
     const originalError = console.error;
     const originalWarn = console.warn;
@@ -178,7 +144,7 @@ const TerminalOutput = ({ taskId = null, maxHeight = '400px' }) => {
   const { connected } = useWebSocket(
     taskId ? `${WS_BASE}/ws/tasks/${taskId}/logs` : `${WS_BASE}/ws/logs`,
     wsHandlers,
-    { enabled: !!taskId }
+    { enabled: !!taskId && !FIELD_AUTH_ENABLED } // no authenticated WS endpoint is registered
   );
 
   useEffect(() => {

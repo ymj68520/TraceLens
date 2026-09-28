@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from enum import Enum
-from typing import Literal, Optional, Union
+from typing import Any, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -65,7 +65,41 @@ class ClusterSnapshotPayload(BaseModel):
     initial_keywords: Optional[str] = None
 
 
-SnapshotPayload = Union[FileSnapshotPayload, ClusterSnapshotPayload]
+class AndroidArtifactSnapshotPayload(BaseModel):
+    """One exact AndroidAnalyzer row in one immutable derived result version.
+
+    Original source-table PK, Android account/user, timezone and WAL frame are
+    nullable by design. A reviewer decision does not upgrade these facts.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    evidence_type: Literal["android_artifact"] = "android_artifact"
+    source_type: Literal["android_analyzer"] = "android_analyzer"
+    task_id: str
+    result_set_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    artifact_kind: Literal["sms", "contacts", "apps", "wifi"]
+    record_id: int = Field(gt=0)
+    snapshot_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+    record_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    record_fields: dict[str, Any]
+    redacted_fields: tuple[str, ...] = ()
+    normalized_fields: dict[str, Any]
+    raw_timestamp: int | str | None = None
+    timestamp_unit: str | None = None
+    timestamp_timezone: str | None = None
+    timestamp_basis: str | None = None
+    parser_name: str
+    parser_version: str | None = None
+    android_user: str | None = None
+    account: str | None = None
+    provenance: dict[str, Any]
+    coverage: dict[str, Any]
+    warnings: tuple[str, ...] = ()
+
+
+SnapshotPayload = Union[FileSnapshotPayload, ClusterSnapshotPayload, AndroidArtifactSnapshotPayload]
 
 
 class SnapshotCandidate(BaseModel):
@@ -76,7 +110,7 @@ class SnapshotCandidate(BaseModel):
 
     task_id: str
     evidence_key: str  # canonical
-    evidence_type: Literal["file", "cluster"]
+    evidence_type: Literal["file", "cluster", "android_artifact"]
     captured_at: int
     payload: SnapshotPayload
     # identity / index columns (must satisfy the table CHECK)
@@ -92,7 +126,7 @@ class EvidenceSnapshot(BaseModel):
 
     task_id: str
     evidence_key: str  # canonical
-    evidence_type: Literal["file", "cluster"]
+    evidence_type: Literal["file", "cluster", "android_artifact"]
     captured_at: int
     payload: SnapshotPayload
     # Internal relational key only -- never part of public Evidence Identity
@@ -242,7 +276,13 @@ class AnalysisInputEnvelopeV2(BaseModel):
     prompt_version: Optional[str] = None
 
 
-AnalysisInputEnvelope = Union[AnalysisInputEnvelopeV1, AnalysisInputEnvelopeV2]
+class AnalysisInputEnvelopeV3(AnalysisInputEnvelopeV2):
+    """Android-aware frozen input; old v1/v2 JSON is never reinterpreted."""
+
+    schema_version: Literal[3] = 3
+
+
+AnalysisInputEnvelope = Union[AnalysisInputEnvelopeV1, AnalysisInputEnvelopeV2, AnalysisInputEnvelopeV3]
 
 
 def parse_analysis_input_envelope(raw: Union[str, dict]) -> AnalysisInputEnvelope:
@@ -257,6 +297,8 @@ def parse_analysis_input_envelope(raw: Union[str, dict]) -> AnalysisInputEnvelop
         return AnalysisInputEnvelopeV1.model_validate(payload)
     if version == 2:
         return AnalysisInputEnvelopeV2.model_validate(payload)
+    if version == 3:
+        return AnalysisInputEnvelopeV3.model_validate(payload)
     raise ValueError(f"unsupported envelope schema version: {version!r}")
 
 
@@ -639,7 +681,7 @@ class EvidenceSummary(BaseModel):
 
     task_id: str
     evidence_key: str  # canonical
-    evidence_type: Literal["file", "cluster"]
+    evidence_type: Literal["file", "cluster", "android_artifact"]
     captured_at: int
     selected_analysis: Optional[SelectedAnalysisRef] = None
 

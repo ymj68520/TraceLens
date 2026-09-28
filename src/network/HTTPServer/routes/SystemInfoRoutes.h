@@ -1,6 +1,7 @@
 #pragma once
 
 #include <crow.h>
+#include "../FieldApp.h"
 #include <nlohmann/json.hpp>
 #include "../TaskManager.h"
 
@@ -8,7 +9,7 @@ namespace forensics {
 
 class SystemInfoRoutes {
 public:
-    explicit SystemInfoRoutes(crow::App<>& app);
+    explicit SystemInfoRoutes(HttpApp& app);
     
 private:
     TaskManager& task_manager_;

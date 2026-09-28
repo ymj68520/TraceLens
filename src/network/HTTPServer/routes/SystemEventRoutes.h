@@ -1,13 +1,14 @@
 #pragma once
 
 #include <crow.h>
+#include "../FieldApp.h"
 #include <nlohmann/json.hpp>
 
 namespace forensics {
 
 class SystemEventRoutes {
 public:
-    explicit SystemEventRoutes(crow::App<>& app);
+    explicit SystemEventRoutes(HttpApp& app);
     
 private:
     crow::response handle_system_events(const crow::request& req);

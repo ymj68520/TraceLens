@@ -10,6 +10,7 @@ const RelationshipsTab = ({
     relationshipsTotalCount,
     relationshipsPage,
     fetchRelationships,
+    onTrace,
     PAGE_SIZE,
 }) => (
     <div>
@@ -31,6 +32,7 @@ const RelationshipsTab = ({
                             <th className="px-4 py-3 text-left">源实体</th>
                             <th className="px-4 py-3 text-left">关系</th>
                             <th className="px-4 py-3 text-left">目标实体</th>
+                            <th className="px-4 py-3 text-left">核验状态 / 操作</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -39,6 +41,7 @@ const RelationshipsTab = ({
                                 <td className="px-4 py-3">{r.source_name || r.source_id?.substring(0, 8)}</td>
                                 <td className="px-4 py-3"><Badge variant="purple">{r.type || 'RELATES_TO'}</Badge></td>
                                 <td className="px-4 py-3">{r.target_name || r.target_id?.substring(0, 8)}</td>
+                                <td className="px-4 py-3"><span className="mr-2 text-xs text-amber-700">机器提取</span><button type="button" onClick={() => onTrace?.(r)} className="text-xs font-semibold text-primary-600 hover:underline">查看来源</button></td>
                             </tr>
                         ))}
                     </tbody>

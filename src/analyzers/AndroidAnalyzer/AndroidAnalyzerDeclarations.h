@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <optional>
+#include <cstdint>
 #include "fileSystem.h"
 
 class DatabaseManager;
@@ -30,7 +32,11 @@ enum class AndroidSourceMode {
     TSK,
     LogicalDir,
     Zip,
-    MiuiBackup
+    MiuiBackup,
+    Tar,
+    SevenZip,
+    AndroidBackup,
+    FilesystemImage
 };
 
 /**
@@ -64,6 +70,8 @@ public:
     bool initialize();
 
     void setOutputDatabasePath(const std::string& path) { outputDbPath_ = path; }
+    void setSourceImageSha256(const std::string& hash) { sourceImageSha256_ = hash; }
+    void setExpectedPartitionOffset(std::uint64_t offset) { expectedPartitionOffset_ = offset; }
 
     void setWeChatPassword(const std::string& password) { wechatPassword_ = password; }
     const std::string& getWeChatPassword() const { return wechatPassword_; }
@@ -79,6 +87,7 @@ public:
      */
     void setSourceMode(AndroidSourceMode mode) { sourceMode_ = mode; }
     AndroidSourceMode getSourceMode() const { return sourceMode_; }
+    const std::string& sourceError() const { return sourceError_; }
     
     /**
      * @brief Analyze all Android data
@@ -170,7 +179,8 @@ private:
     std::vector<WeChatContact> parseWeChatContacts(sqlite3* db);
     std::vector<WeChatChatroom> parseWeChatChatrooms(sqlite3* db);
     WeChatOwnerInfo identifyWeChatOwner(sqlite3* db);
-    void parseWeChatEnhanced(const std::string& dbPath, const std::string& password);
+    bool parseWeChatEnhanced(const std::string& dbPath, const std::string& password,
+                             const std::string& sourcePath = "");
 
     // Build.prop analysis methods
     BuildPropAnalysisResult analyzeBuildPropFile(const std::string& buildPropPath);
@@ -194,5 +204,8 @@ private:
     std::string wechatPassword_;
     std::string backupPassword_;
     std::string secureTemporaryRoot_;
+    std::string sourceError_;
+    std::string sourceImageSha256_;
+    std::optional<std::uint64_t> expectedPartitionOffset_;
     bool skipAI_ = false;
 };

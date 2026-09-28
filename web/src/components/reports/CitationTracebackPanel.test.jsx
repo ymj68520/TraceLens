@@ -49,6 +49,18 @@ function makeLoaders(overrides = {}) {
 }
 
 describe('CitationTracebackPanel', () => {
+    test('Android citation links to exact frozen result and identifies derived provenance', async () => {
+        const key = `android_artifact:v1:task-1:${'a'.repeat(64)}:sms:7`;
+        const loaders = makeLoaders({ snapshot: vi.fn().mockResolvedValue({
+            evidence_key: key, evidence_type: 'android_artifact',
+            payload: { result_set_id: 'a'.repeat(64), artifact_kind: 'sms', record_id: 7 },
+        }) });
+        render(<CitationTracebackPanel taskId="task-1" reportId="rep-1"
+            citation={{ ...ORIGINAL_ONLY, evidence_key: key }} onClose={() => {}} loaders={loaders} />);
+        const link = await screen.findByTestId('evidence-key-link');
+        expect(link.getAttribute('href')).toContain(`evidence_key=${encodeURIComponent(key)}`);
+        expect(await screen.findByText(/AndroidAnalyzer 派生解析记录/)).toBeInTheDocument();
+    });
     test('citation with analysis/claim passes exact ids to the detail readers (§27-4)', async () => {
         const loaders = makeLoaders({
             claims: vi.fn().mockResolvedValue([
@@ -171,7 +183,7 @@ describe('CitationTracebackPanel', () => {
     test('file evidence keys open the investigation workbench in a new tab at that file', async () => {
         const loaders = makeLoaders({
             claims: vi.fn().mockResolvedValue([
-                { claim_id: 'C1', claim_text: 'Claim text.', grounding_status: 'grounded', evidence_refs: ['file:/case/a.txt', 'cluster:v1:1000:login'] },
+                { claim_id: 'C1', claim_text: 'Claim text.', grounding_status: 'grounded', evidence_refs: ['file:/case/a.txt', 'file:/case/other.txt', 'cluster:v1:1000:login'] },
             ]),
         });
         render(
@@ -187,15 +199,16 @@ describe('CitationTracebackPanel', () => {
         const links = screen.getAllByTestId('evidence-key-link');
         // evidence_key + claim 里的 file: 引用可点；cluster: 引用保持纯文本。
         expect(links).toHaveLength(2);
+        expect(screen.getByText('file:/case/other.txt')).toBeInTheDocument();
         expect(links[0]).toHaveAttribute(
             'href',
-            `/investigation?task_id=t1&file=${encodeURIComponent('/case/a.txt')}`,
+            `/investigation?task_id=t1&file=${encodeURIComponent('/case/a.txt')}&report_id=rep-1&citation_id=cit-a`,
         );
         expect(links[0]).toHaveAttribute('target', '_blank');
         expect(links[0]).toHaveAttribute('rel', 'noopener noreferrer');
         expect(links[1]).toHaveAttribute(
             'href',
-            `/investigation?task_id=t1&file=${encodeURIComponent('/case/a.txt')}`,
+            `/investigation?task_id=t1&file=${encodeURIComponent('/case/a.txt')}&report_id=rep-1&citation_id=cit-a`,
         );
     });
 

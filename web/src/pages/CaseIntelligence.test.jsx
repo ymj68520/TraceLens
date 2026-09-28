@@ -12,9 +12,13 @@ vi.mock('../components/case-intelligence/report-reader/IntelligenceReportReader'
 }));
 
 vi.mock('./ForensicReportPage', () => ({
-  default: ({ scopeType, scopeId }) => (
-    <div data-testid="forensic-page">forensic:{scopeType}:{scopeId}</div>
+  default: ({ scopeType, scopeId, requestedReportId, focusCitationId }) => (
+    <div data-testid="forensic-page" data-report-id={requestedReportId || ''} data-citation-id={focusCitationId || ''}>forensic:{scopeType}:{scopeId}</div>
   ),
+}));
+
+vi.mock('../components/case-intelligence/CrossImageReport', () => ({
+  default: ({ caseId }) => <div data-testid="cross-image-report">cross-image:{caseId}</div>,
 }));
 
 const getCaseMock = vi.fn().mockResolvedValue({ id: 'case-1', task_ids: [] });
@@ -65,10 +69,24 @@ describe('CaseIntelligence report workflow', () => {
     expect(screen.getByRole('button', { name: /历史研判报告/ })).toBeInTheDocument();
   });
 
-  test('passes case scope to the current forensic report view', () => {
+  test('defaults case context to the persisted cross-image report', () => {
     renderPage('/case-intelligence?case_id=case-1');
 
+    expect(screen.getByTestId('cross-image-report')).toHaveTextContent('cross-image:case-1');
+  });
+
+  test('keeps the new forensic report view available by explicit case tab', () => {
+    renderPage('/case-intelligence?case_id=case-1&tab=forensic');
+
     expect(screen.getByTestId('forensic-page')).toHaveTextContent('forensic:case:case-1');
+  });
+
+  test('passes an exact report and citation deep link into the task report view', () => {
+    renderPage('/case-intelligence?task_id=task-1&tab=forensic&report_id=rep-old&citation_id=c001');
+
+    expect(screen.getByTestId('forensic-page')).toHaveAttribute('data-report-id', 'rep-old');
+    expect(screen.getByTestId('forensic-page')).toHaveAttribute('data-citation-id', 'c001');
+    expect(screen.getByTestId('back-to-investigation')).toHaveAttribute('href', '/investigation?task_id=task-1&report_id=rep-old');
   });
 
   test('case context resolves case tasks and feeds the historical reader', async () => {

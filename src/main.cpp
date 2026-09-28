@@ -6,6 +6,7 @@
 
 #include <iostream>
 #include <memory>
+#include "tracelens/build_identity.h"
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -95,6 +96,9 @@ int main(int argc, char* argv[]) {
     if (cmdArgs.show_version) {
         std::cout << "Forensic Image Analyzer v1.0" << std::endl;
         std::cout << "Using The Sleuth Kit 4.14.0" << std::endl;
+        std::cout << "Release: " << TRACELENS_RELEASE_ID << std::endl;
+        std::cout << "Source commit: " << TRACELENS_SOURCE_COMMIT << std::endl;
+        std::cout << "Source SHA-256: " << TRACELENS_SOURCE_SHA256 << std::endl;
         return 0;
     }
 

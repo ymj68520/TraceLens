@@ -8,7 +8,7 @@ namespace forensics {
 
 using json = nlohmann::json;
 
-TaskBatchRoutes::TaskBatchRoutes(crow::App<>& app) : task_manager_(TaskManager::instance()) {
+TaskBatchRoutes::TaskBatchRoutes(HttpApp& app) : task_manager_(TaskManager::instance()) {
     // Batch operations routes
     CROW_ROUTE(app, "/api/tasks/batch-create").methods("POST"_method)([this](const crow::request& req) {
         return handle_batch_create_tasks(req);

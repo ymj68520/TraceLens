@@ -1,6 +1,7 @@
 #pragma once
 
 #include <crow.h>
+#include "../FieldApp.h"
 #include <nlohmann/json.hpp>
 #include "../TaskManager.h"
 #include "TaskCRUDRoutes.h"
@@ -19,7 +20,7 @@ namespace forensics {
  */
 class TaskRoutes {
 public:
-    explicit TaskRoutes(crow::App<>& app);
+    explicit TaskRoutes(HttpApp& app);
 
 private:
     TaskManager& task_manager_;
@@ -36,7 +37,7 @@ private:
     /**
      * @brief Register CORS OPTIONS handlers for all task routes
      */
-    void register_cors_handlers(crow::App<>& app);
+    void register_cors_handlers(HttpApp& app);
 };
 
 } // namespace forensics

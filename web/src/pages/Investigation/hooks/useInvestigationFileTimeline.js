@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getInvestigationFileTimeline } from '../../../services/investigationService';
 
 /**
@@ -7,29 +7,38 @@ import { getInvestigationFileTimeline } from '../../../services/investigationSer
  * @param {string} taskId
  * @param {string|null} ensurePath 报告引用深链目标：即使超出显示截断也保证在投影里。
  */
-export default function useInvestigationFileTimeline(taskId, ensurePath = null) {
+export default function useInvestigationFileTimeline(taskId, ensurePath = null, reportId = null) {
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(Boolean(taskId));
+  const [loading, setLoading] = useState(Boolean(taskId && reportId));
   const [error, setError] = useState(null);
+  const requestRef = useRef(0);
 
   const refresh = useCallback(async () => {
-    if (!taskId) return;
+    const requestId = ++requestRef.current;
+    if (!taskId || !reportId) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
+    setData(null);
     try {
-      setData(await getInvestigationFileTimeline(
+      const nextData = await getInvestigationFileTimeline(
         taskId,
-        ensurePath ? { ensure_path: ensurePath } : {},
-      ));
+        { report_id: reportId, ...(ensurePath ? { ensure_path: ensurePath } : {}) },
+      );
+      if (requestRef.current === requestId) setData(nextData);
     } catch (err) {
-      setError(err);
+      if (requestRef.current === requestId) setError(err);
     } finally {
-      setLoading(false);
+      if (requestRef.current === requestId) setLoading(false);
     }
-  }, [taskId, ensurePath]);
+  }, [taskId, ensurePath, reportId]);
 
   useEffect(() => {
     refresh();
+    return () => { requestRef.current += 1; };
   }, [refresh]);
 
   return { fileTimeline: data, loading, error, refresh };

@@ -7,7 +7,7 @@ namespace forensics {
 
 using json = nlohmann::json;
 
-TimelineRoutes::TimelineRoutes(crow::App<>& app) {
+TimelineRoutes::TimelineRoutes(HttpApp& app) {
     CROW_ROUTE(app, "/api/forensics/timeline/comprehensive").methods("GET"_method)([this](const crow::request& req) {
         return handle_timeline_comprehensive(req);
     });

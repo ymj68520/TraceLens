@@ -11,6 +11,7 @@
  *   PUT    /api/cases/<id>/status     — update cross-analysis status/job
  */
 #include <crow.h>
+#include "../FieldApp.h"
 #include "CaseManager.h"
 #include "routes/RouteHelpers.h"
 
@@ -18,7 +19,7 @@ namespace forensics {
 
 class CaseCRUDRoutes {
 public:
-    explicit CaseCRUDRoutes(crow::App<>& app);
+    explicit CaseCRUDRoutes(HttpApp& app);
 
 private:
     CaseManager& case_manager_;

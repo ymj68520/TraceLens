@@ -1,6 +1,7 @@
 #pragma once
 
 #include <crow.h>
+#include "FieldApp.h"
 #include <asio.hpp>
 #include <asio/co_spawn.hpp>
 #include <asio/detached.hpp>
@@ -83,7 +84,7 @@ namespace forensics {
         void run(int port = 8080);
 
     private:
-        crow::App<> app_;
+        HttpApp app_;
         TaskManager& task_manager_;
         asio::io_context& ioc_;
 

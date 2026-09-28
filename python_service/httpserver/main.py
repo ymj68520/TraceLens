@@ -13,18 +13,25 @@ The architecture is designed for extensibility:
 
 import asyncio
 import logging
+import os
 import sys
 import time
 from contextlib import asynccontextmanager
 from typing import Optional
+from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 
 from .config import Settings, get_settings
+from .services.field_security import (
+    FieldAuthenticationError, authorize,
+    load_policy, principal, valid_internal,
+)
+from .release_info import RELEASE_ID
 
 # Configure logging
 logging.basicConfig(
@@ -46,7 +53,7 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     logger.info(f"Starting Python HTTP Service on port {settings.python_http_port}")
     logger.info(f"C++ Backend URL: {settings.cpp_backend_url}")
-    logger.info(f"Neo4j URI: {settings.neo4j_uri}")
+    logger.info("Neo4j endpoint configured: %s", bool(settings.neo4j_uri))
     
     # Startup: Initialize services
     try:
@@ -105,6 +112,19 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     
     if settings is None:
         settings = get_settings()
+
+    # In field mode, missing/weak credentials abort app creation. Never turn a
+    # failed authentication configuration into anonymous service access.
+    field_policy = load_policy()
+    if field_policy.enabled and os.environ.get("TRACELENS_REQUIRE_RELEASE_LAYOUT") == "1":
+        configured_root = os.environ.get("TRACELENS_RELEASE_ROOT", "")
+        configured_python = os.environ.get("TRACELENS_PYTHON_BIN", "")
+        if (RELEASE_ID == "UNFROZEN_WORKTREE" or
+                os.environ.get("TRACELENS_RELEASE_ID") != RELEASE_ID or
+                not configured_root or not configured_python or
+                Path(configured_root).resolve(strict=False) != Path(__file__).resolve().parents[2] or
+                not Path(configured_python).is_file()):
+            raise RuntimeError("field release identity or Python layout is not loaded")
     
     app = FastAPI(
         title="ForensicsProject Python Service",
@@ -130,11 +150,13 @@ with the C++ backend for task management and file system operations.
         openapi_url="/openapi.json",
         lifespan=lifespan,
     )
+    app.state.field_policy = field_policy
     
     # Configure CORS. Origins come from PYTHON_CORS_ORIGINS (default ["*"]).
     # A wildcard origin cannot be combined with credentials per the CORS spec
     # (browsers reject it), so only enable credentials when origins are explicit.
-    _cors_origins = settings.cors_origins
+    _cors_origins = ([field_policy.browser_origin] if field_policy.browser_origin else []) \
+        if field_policy.enabled else settings.cors_origins
     _allow_credentials = _cors_origins != ["*"]
     app.add_middleware(
         CORSMiddleware,
@@ -143,6 +165,58 @@ with the C++ backend for task management and file system operations.
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def field_authentication(request: Request, call_next):
+        policy = request.app.state.field_policy
+        if not policy.enabled:
+            return await call_next(request)
+        path = request.url.path
+        if request.method == "OPTIONS":
+            # Let the explicit-origin CORS middleware answer preflight. The
+            # subsequent real request still passes through this auth guard.
+            return await call_next(request)
+        if path == "/health/live":
+            return JSONResponse({"status": "alive"})
+        if path in {"/api/field-auth/login", "/api/field-auth/introspect"}:
+            return await call_next(request)
+        peer = request.client.host if request.client else ""
+        service_token = request.headers.get("x-tracelens-service-token", "")
+        if service_token and valid_internal(policy, service_token, direction="cpp_to_python", peer=peer):
+            if not (path == "/health" or path.startswith("/api/graphiti/")
+                    or path == "/api/graphiti/ingest" or path == "/api/llm/file-analysis/record"):
+                return JSONResponse(status_code=403, content={"detail": "service scope denied"})
+            request.state.principal = {"id": "cpp-service", "role": "service", "kind": "service"}
+        else:
+            try:
+                subject = principal(policy, request.headers.get("authorization", ""))
+                authorize(subject, request.method, path)
+                request.state.principal = subject
+            except FieldAuthenticationError:
+                return JSONResponse(status_code=401, content={"detail": "authentication required"},
+                                    headers={"WWW-Authenticate": "Bearer"})
+            except PermissionError:
+                return JSONResponse(status_code=403, content={"detail": "insufficient permission"})
+        if policy.outbound_mode == "disabled" and (
+            path.startswith("/api/graphiti") or path.startswith("/api/llm/")
+            or "oss" in path.lower() or "embedding" in path.lower()
+        ):
+            return JSONResponse(status_code=503, content={"detail": "optional intelligence services disabled"})
+        return await call_next(request)
+
+    @app.middleware("http")
+    async def field_response_headers(request: Request, call_next):
+        response = await call_next(request)
+        if request.app.state.field_policy.enabled:
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["Referrer-Policy"] = "no-referrer"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'none'; style-src 'unsafe-inline'; "
+                "frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+            )
+            response.headers["Cache-Control"] = "no-store"
+        return response
     
     # Add request logging middleware
     @app.middleware("http")
@@ -166,9 +240,11 @@ with the C++ backend for task management and file system operations.
             return response
         except Exception as e:
             duration = (time.time() - start_time) * 1000
+            # Exception messages can contain report text, paths, tokens or
+            # request bodies. Ordinary access logs only need the error class.
             logger.error(
                 f"{request.method} {request.url.path} - "
-                f"ERROR - {duration:.2f}ms - {client_ip}: {str(e)}"
+                f"ERROR - {duration:.2f}ms - {client_ip}: {type(e).__name__}"
             )
             raise
     
@@ -176,10 +252,9 @@ with the C++ backend for task management and file system operations.
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
         """Handle all unhandled exceptions."""
-        # The full exception (message + traceback) stays in the server log;
-        # the response is a fixed string even under DEBUG because str(exc)
-        # can carry filesystem paths and internal endpoint details.
-        logger.error(f"Unhandled exception: {exc}", exc_info=True)
+        # Do not log exception text or traceback in ordinary operation:
+        # either can contain evidence content, paths, credentials or prompts.
+        logger.error("Unhandled exception class: %s", type(exc).__name__)
         return JSONResponse(
             status_code=500,
             content={
@@ -195,14 +270,19 @@ with the C++ backend for task management and file system operations.
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
         """Handle Pydantic validation errors with detailed logging."""
         logger.error(f"[VALIDATION_ERROR] Path: {request.url.path}")
-        logger.error(f"[VALIDATION_ERROR] Body: {await request.body()}")
-        logger.error(f"[VALIDATION_ERROR] Errors: {exc.errors()}")
+        # Request bodies can contain one-time archive passwords. Pydantic's
+        # `input` field can echo them too, so never log/return raw values.
+        safe_errors = [
+            {key: value for key, value in error.items() if key in {"loc", "msg", "type"}}
+            for error in exc.errors()
+        ]
+        logger.error(f"[VALIDATION_ERROR] Errors: {safe_errors}")
         return JSONResponse(
             status_code=422,
             content={
                 "success": False,
                 "message": "Validation error",
-                "errors": exc.errors(),
+                "errors": safe_errors,
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             }
         )
@@ -216,10 +296,11 @@ with the C++ backend for task management and file system operations.
 
 def _register_routes(app: FastAPI):
     """Register all route modules."""
-    from .routes import health, graphiti, llm, database, office, case_analysis, system, associations, oss_analysis, multi_analysis, dll, markitdown, wechat_graph, qq_forensics, forensic_reports, investigation, investigation_workbench, report_evidence, report_generation, report_narrative, event_cluster_analysis, video_analysis, audio_analysis
+    from .routes import health, graphiti, llm, database, office, case_analysis, system, associations, oss_analysis, multi_analysis, dll, markitdown, wechat_graph, qq_forensics, android_report, evidence_intake, forensic_reports, investigation, investigation_workbench, report_evidence, report_generation, report_narrative, event_cluster_analysis, video_analysis, audio_analysis, field_auth
 
     # Health routes (no prefix)
     app.include_router(health.router, tags=["Health"])
+    app.include_router(field_auth.router, prefix="/api/field-auth", tags=["Field Authentication"])
 
     # API routes
     app.include_router(graphiti.router, prefix="/api/graphiti", tags=["Graphiti"])
@@ -268,6 +349,8 @@ def _register_routes(app: FastAPI):
     app.include_router(audio_analysis.router, prefix="/api/audio-analysis", tags=["Audio Analysis"])
     app.include_router(wechat_graph.router, prefix="/api/wechat", tags=["WeChat Analysis"])
     app.include_router(qq_forensics.router, prefix="/api/qq", tags=["QQ Forensics"])
+    app.include_router(android_report.router, prefix="/api/android-report", tags=["Android Offline Reports"])
+    app.include_router(evidence_intake.router, prefix="/api/evidence-intake", tags=["Evidence Intake"])
 
 
 def get_app() -> FastAPI:

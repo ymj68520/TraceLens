@@ -548,7 +548,7 @@ def test_unsupported_investigation_version_fails_closed(tmp_path):
     repo.add_report_evidence(KEY, report_status="main", added_by="x")
     assert (root / "investigation.db").exists()
     conn = sqlite3.connect(root / "investigation.db")
-    conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION - 1}")
+    conn.execute("PRAGMA user_version = 6")  # v7 is intentionally readable after v8 extension
     conn.commit()
     conn.close()
     service, _ = _service(tmp_path, {"A": _task_dict(root, "A")})

@@ -2,13 +2,14 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import ReportEvidenceJudgment from './ReportEvidenceJudgment';
 
-vi.mock('../common/useToast', () => ({
-  useToast: () => ({ success: vi.fn(), error: vi.fn() }),
-}));
-
 const mocks = vi.hoisted(() => ({
   addReportEvidence: vi.fn().mockResolvedValue({}),
   updateReportEvidenceStatus: vi.fn().mockResolvedValue({}),
+  toastError: vi.fn(),
+}));
+
+vi.mock('../common/useToast', () => ({
+  useToast: () => ({ success: vi.fn(), error: mocks.toastError }),
 }));
 
 vi.mock('../../services/investigationService', () => ({
@@ -19,6 +20,15 @@ vi.mock('../../services/investigationService', () => ({
 beforeEach(() => {
   mocks.addReportEvidence.mockClear();
   mocks.updateReportEvidenceStatus.mockClear();
+  mocks.toastError.mockClear();
+});
+
+test('v7 write restriction shows the migration requirement instead of a missing-record message', async () => {
+  mocks.addReportEvidence.mockRejectedValueOnce({ data: { detail: 'MIGRATION_REQUIRED: 历史 v7 调查库仅可读' } });
+  render(<ReportEvidenceJudgment taskId="t1" evidenceKey="file:/old.txt" status={null} />);
+  fireEvent.click(screen.getByTitle('作为报告正文证据'));
+  await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith(
+    expect.stringContaining('MIGRATION_REQUIRED')));
 });
 
 test('unjudged file renders judgment buttons and POSTs on first judgment', async () => {

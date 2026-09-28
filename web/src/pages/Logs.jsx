@@ -5,6 +5,7 @@ import Button from '../components/common/Button';
 import Badge from '../components/common/Badge';
 
 import { PYTHON_API_BASE_URL } from '../config/runtime';
+import { authorizedFetch, openAuthenticatedEventStream } from '../services/fieldStream';
 
 const PYTHON_BASE = PYTHON_API_BASE_URL;
 
@@ -18,7 +19,7 @@ const Logs = () => {
 
   const fetchLogs = async (service) => {
     try {
-      const response = await fetch(`${PYTHON_BASE}/api/system/logs/${service}?lines=200`);
+      const response = await authorizedFetch(`${PYTHON_BASE}/api/system/logs/${service}?lines=200`);
       const data = await response.json();
       if (data.logs) {
         setLogs(data.logs);
@@ -35,18 +36,12 @@ const Logs = () => {
     }
 
     setIsStreaming(true);
-    const eventSource = new EventSource(`${PYTHON_BASE}/api/system/logs-stream/${service}`);
+    const eventSource = openAuthenticatedEventStream(
+      `${PYTHON_BASE}/api/system/logs-stream/${service}`,
+      (data) => setLogs((prevLogs) => [...prevLogs.slice(-499), data]),
+      () => { setIsStreaming(false); eventSource.close(); },
+    );
     eventSourceRef.current = eventSource;
-
-    eventSource.onmessage = (event) => {
-      setLogs((prevLogs) => [...prevLogs.slice(-499), event.data]);
-    };
-
-    eventSource.onerror = (error) => {
-      console.error('EventSource error:', error);
-      setIsStreaming(false);
-      eventSource.close();
-    };
   };
 
   const stopStreaming = () => {
@@ -59,9 +54,6 @@ const Logs = () => {
 
   useEffect(() => {
     fetchLogs(activeService);
-    if (isStreaming) {
-      startStreaming(activeService);
-    }
     return () => stopStreaming();
   }, [activeService]);
 

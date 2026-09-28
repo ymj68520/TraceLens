@@ -33,6 +33,8 @@ public:
     bool initialize() override;
     bool extractFileByPath(const std::string& imageRelPath,
                            const std::string& outPath) override;
+    std::vector<std::string> findPathsByFilename(
+        const std::string& filename, std::size_t limit = 200) const override;
 
     const std::string& rootDir() const { return rootDir_; }
 

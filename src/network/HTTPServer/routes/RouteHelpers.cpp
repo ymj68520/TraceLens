@@ -10,6 +10,8 @@
 namespace forensics {
 
 void RouteHelpers::add_cors_headers(crow::response& res) {
+    const char* field = std::getenv("TRACELENS_FIELD_AUTH");
+    if (field && std::string(field) == "enabled") return; // same-origin field gateway
     // Origin is configurable via CORS_ALLOW_ORIGIN so deployments can restrict
     // it (e.g. to a specific dashboard host). Defaults to "*" for backward
     // compatibility / local development.
@@ -39,31 +41,73 @@ std::string RouteHelpers::get_database_path(const std::string& task_id, const st
         throw std::runtime_error("Task not found: " + task_id);
     }
 
+    // Task metadata stores absolute artifact paths.  After a repository or
+    // deployment directory is moved, those paths can be stale even though the
+    // task-owned databases are present under the current data directory.
+    const auto db_paths = PathManager::instance().getTaskDbPaths(task_id);
+    const auto resolve_task_db = [](const std::string& recorded,
+                                    const std::filesystem::path& current) {
+        std::error_code ec;
+        if (!recorded.empty() && std::filesystem::is_regular_file(recorded, ec)) {
+            return recorded;
+        }
+        // Preserve legacy artifact names such as raw.db.filtered while moving
+        // them under the current task directory.
+        if (!recorded.empty()) {
+            const auto relocated = current.parent_path()
+                / std::filesystem::path(recorded).filename();
+            ec.clear();
+            if (std::filesystem::is_regular_file(relocated, ec)) {
+                return relocated.string();
+            }
+        }
+        ec.clear();
+        if (std::filesystem::is_regular_file(current, ec)) {
+            return current.string();
+        }
+        // Preserve the recorded path in the eventual error when there is no
+        // local replacement; otherwise report the canonical current location.
+        return recorded.empty() ? current.string() : recorded;
+    };
+
     if (db_type == "raw") {
-        return task.output_raw_db;
+        return resolve_task_db(task.output_raw_db, db_paths.rawDb);
     } else if (db_type == "events") {
-        return task.output_events_db;
+        return resolve_task_db(task.output_events_db, db_paths.eventsDb);
     } else if (db_type == "files") {
-        return task.output_files_db;
+        return resolve_task_db(task.output_files_db, db_paths.filesDb);
     } else if (db_type == "android") {
-        if (task.metadata.find("android_db") != task.metadata.end() &&
-            std::filesystem::exists(task.metadata.at("android_db"))) {
-            return task.metadata.at("android_db");
+        std::error_code ec;
+        const auto android_it = task.metadata.find("android_db");
+        if (android_it != task.metadata.end()) {
+            const auto recorded = resolve_task_db(android_it->second, db_paths.androidDb);
+            if (std::filesystem::is_regular_file(recorded, ec)) return recorded;
+        }
+        ec.clear();
+        if (std::filesystem::is_regular_file(db_paths.androidDb, ec)) {
+            return db_paths.androidDb.string();
         }
         if (!task.output_files_db.empty()) {
-            const std::filesystem::path filesPath(task.output_files_db);
-            const std::filesystem::path taskAndroid = filesPath.parent_path() / "android.db";
-            if (std::filesystem::exists(taskAndroid)) return taskAndroid.string();
+            const auto files_db = resolve_task_db(task.output_files_db, db_paths.androidDb);
+            ec.clear();
+            if (std::filesystem::is_regular_file(files_db, ec) &&
+                std::filesystem::path(files_db).filename() == "android.db") {
+                return files_db;
+            }
         }
         const auto dot = task.output_raw_db.find_last_of('.');
         const std::string fallback = dot == std::string::npos
             ? task.output_raw_db + "_android.db"
             : task.output_raw_db.substr(0, dot) + "_android.db";
-        if (!fallback.empty() && std::filesystem::exists(fallback)) return fallback;
-        if (!task.output_files_db.empty() && std::filesystem::exists(task.output_files_db)) {
+        const auto resolved_fallback = resolve_task_db(fallback, db_paths.androidDb);
+        ec.clear();
+        if (std::filesystem::is_regular_file(resolved_fallback, ec)) return resolved_fallback;
+        ec.clear();
+        if (!task.output_files_db.empty() &&
+            std::filesystem::is_regular_file(task.output_files_db, ec)) {
             return task.output_files_db;
         }
-        return fallback;
+        return resolved_fallback;
     } else if (db_type == "dll") {
         if (task.metadata.find("dll_db") != task.metadata.end()) {
             return task.metadata.at("dll_db");

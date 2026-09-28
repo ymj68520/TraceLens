@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Lock, User, ArrowRight, Shield } from 'lucide-react';
+import { FIELD_AUTH_ENABLED } from '../config/runtime';
+import { pythonApi } from '../services/api';
+import { setFieldSession } from '../services/fieldSession';
 
 const Login = () => {
     const navigate = useNavigate();
@@ -14,13 +17,18 @@ const Login = () => {
         setError('');
         setLoading(true);
         try {
-            await new Promise((r) => setTimeout(r, 800));
-            if (credentials.username && credentials.password) {
-                localStorage.setItem('auth_token', 'mock_jwt_token_' + Date.now());
-                localStorage.setItem('auth_user', credentials.username);
-                navigate('/dashboard');
-            } else {
+            if (!FIELD_AUTH_ENABLED) {
+                setError('当前部署未启用现场认证，请联系管理员');
+            } else if (!credentials.username || !credentials.password) {
                 setError('请输入用户名和密码');
+            } else {
+                const response = await pythonApi.post('/api/field-auth/login', credentials);
+                if (!response?.access_token || response?.token_type !== 'bearer' || !response?.principal?.id) {
+                    throw new Error('invalid login response');
+                }
+                setFieldSession(response.access_token, response.principal);
+                setCredentials({ username: '', password: '' });
+                navigate('/dashboard');
             }
         } catch {
             setError('登录失败，请重试');
@@ -115,7 +123,7 @@ const Login = () => {
                     </form>
 
                     <p className="mt-4 text-center text-xs text-slate-500">
-                        Demo: 任意用户名 + 密码即可登录
+                        使用管理员分配的现场账号登录；会话过期后需重新验证。
                     </p>
                 </div>
             </motion.div>

@@ -254,7 +254,7 @@ class InvestigationService:
         being destroyed.
         """
         import os
-        from .investigation.repository import InvestigationRepository
+        from .investigation.repository import InvestigationMigrationRequiredError, InvestigationRepository
 
         if not os.path.exists(db_path):
             InvestigationRepository(db_path, task_id)  # builds v7 atomically
@@ -264,7 +264,10 @@ class InvestigationService:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
         finally:
             conn.close()
-        if version == 7:
+        if version == 7 or (os.environ.get("TRACELENS_REQUIRE_RELEASE_LAYOUT") == "1" and version != 8):
+            raise InvestigationMigrationRequiredError(
+                "MIGRATION_REQUIRED: 历史调查库仅可读；请先备份并完成受控 v8 迁移")
+        if version == 8:
             self._create_recovery_aux_table(db_path)
             return
         if version != 3:

@@ -1,0 +1,2176 @@
+{
+  "baseline_commit": "c7f1fc3c0281527fb635773515521ed23960aecc",
+  "decisions": [
+    {
+      "path": ".gitignore",
+      "class": "A",
+      "reason": "exclude pinned .deps from Git; no tool versions changed",
+      "sha256": "b1c11f2a013d7b45a797ff4ad7e43964ab39c29fdb1fcb05eb436324ee298e98"
+    },
+    {
+      "path": "CMakeLists.txt",
+      "class": "A",
+      "reason": "libarchive and Android source registration plus release identity build inputs",
+      "sha256": "f0f35b90c61eca1850e08c30e0fc71d0757222a2a608b4644f08685dd8d0aae1"
+    },
+    {
+      "path": "THIRD_PARTY_LICENSES.md",
+      "class": "A",
+      "reason": "license boundaries for pinned tools and optional translation model",
+      "sha256": "14a9ba6c4f06fbf1ef35f479623e912da00e8c79283aaaad048a12fae2f8b917"
+    },
+    {
+      "path": "deploy/field/field-release-lan.env.example",
+      "class": "A",
+      "reason": "6A/6C controlled deployment examples only; no active configuration",
+      "sha256": "aecfb471855695755180e33b964d446746b05178fc6c64bb67b8b5bb71f316da"
+    },
+    {
+      "path": "deploy/field/field-release-local.env.example",
+      "class": "A",
+      "reason": "6A/6C controlled deployment examples only; no active configuration",
+      "sha256": "9a10b810151f7ccdfca285e1b4859e5a78365ade488cc3fa2442c4485ae67358"
+    },
+    {
+      "path": "deploy/field/field.env.example",
+      "class": "A",
+      "reason": "6A/6C controlled deployment examples only; no active configuration",
+      "sha256": "7ce7db6f4aed2c5d1ce17e5e7858212ed8231280318a8cd7a0c12930c1afc3db"
+    },
+    {
+      "path": "deploy/field/nginx-field-local.conf.example",
+      "class": "A",
+      "reason": "6A/6C controlled deployment examples only; no active configuration",
+      "sha256": "7ec6e3d60a80c42aeedcba121f1fede02fa27cf4a0f0732b8f06822885cd8cdd"
+    },
+    {
+      "path": "deploy/field/nginx-field.conf.example",
+      "class": "A",
+      "reason": "6A/6C controlled deployment examples only; no active configuration",
+      "sha256": "4cec41ecd6a534dee779148fd4b3d633739d3392dce1986c14c82defaa8b2f21"
+    },
+    {
+      "path": "deploy/field/tracelens-field-6c-cpp.service.example",
+      "class": "A",
+      "reason": "6A/6C controlled deployment examples only; no active configuration",
+      "sha256": "5cdbb4ee65b609d1d6a94b486088ccb296c1846f1a41b1faacad66883dbf878e"
+    },
+    {
+      "path": "deploy/field/tracelens-field-6c-python.service.example",
+      "class": "A",
+      "reason": "6A/6C controlled deployment examples only; no active configuration",
+      "sha256": "daef6f870da3277599eb8b831d7797ba5131011ed79d1210d9c93e277372fd82"
+    },
+    {
+      "path": "deploy/field/tracelens-field-cpp.service.example",
+      "class": "A",
+      "reason": "6A/6C controlled deployment examples only; no active configuration",
+      "sha256": "4f64da0d8481c7ddb6f1d7e2f1985b9f5d55e574bde791e9d8d9f67fbf76936e"
+    },
+    {
+      "path": "deploy/field/tracelens-field-python.service.example",
+      "class": "A",
+      "reason": "6A/6C controlled deployment examples only; no active configuration",
+      "sha256": "fd3551b214ffd881b2188f4271651b1b65a0a230fe2bf3b2cb0ca238270a047d"
+    },
+    {
+      "path": "docs/android-field-acceptance.md",
+      "class": "A",
+      "reason": "phase capability/security/provenance and acceptance documentation",
+      "sha256": "f44330ce1c0c7065287d188236a54f3b5c398d6c7dc8a82b2032fb90ad10e2f5"
+    },
+    {
+      "path": "docs/android-field-sample-manifest.example.json",
+      "class": "A",
+      "reason": "phase capability/security/provenance and acceptance documentation",
+      "sha256": "7a2654e435663c6b2c3c5422832ec990f1c40ae49b1813a7cce2dde1f98d735f"
+    },
+    {
+      "path": "docs/android-field-security-6a.md",
+      "class": "A",
+      "reason": "phase capability/security/provenance and acceptance documentation",
+      "sha256": "ea4c1612e7c528afb1859c21cd7aedfb17d220b0004ffaaebb6e05b7dca28283"
+    },
+    {
+      "path": "docs/android-filesystem-image-input.md",
+      "class": "A",
+      "reason": "phase capability/security/provenance and acceptance documentation",
+      "sha256": "cbd1d698471d1d740cc1b178e87a88b4f4396ca58b76c89e084314b8e25671ad"
+    },
+    {
+      "path": "docs/android-input-support-matrix.md",
+      "class": "A",
+      "reason": "phase capability/security/provenance and acceptance documentation",
+      "sha256": "34ada5c32020b396df7639002d45e8a5d2cc8b13afd09eb67d7bd3c3d9c14965"
+    },
+    {
+      "path": "docs/android-investigation-6b.md",
+      "class": "A",
+      "reason": "phase capability/security/provenance and acceptance documentation",
+      "sha256": "4563873b9a66ab11d828fab4805184d691de2c1c5c215a3c223e7a47a87834f3"
+    },
+    {
+      "path": "docs/android-logical-container-input.md",
+      "class": "A",
+      "reason": "phase capability/security/provenance and acceptance documentation",
+      "sha256": "c04d9d6efc47d23154fab84da9b0026145703d10a4e74aa70cacfa7b3de8d1b0"
+    },
+    {
+      "path": "docs/android-offline-report-import.md",
+      "class": "A",
+      "reason": "phase capability/security/provenance and acceptance documentation",
+      "sha256": "0e5b8a242da6043c491573300e528f8516c8920c1724dda16704215fe826be5a"
+    },
+    {
+      "path": "docs/android-release-6c.md",
+      "class": "A",
+      "reason": "phase capability/security/provenance and acceptance documentation",
+      "sha256": "4cbb34065adb5f34de519c9f7644bf2e17b05fb05efd023209c072d0291f358f"
+    },
+    {
+      "path": "docs/android-sparse-super-input.md",
+      "class": "A",
+      "reason": "phase capability/security/provenance and acceptance documentation",
+      "sha256": "bc43853c18644a17cf0b1f0bfdabd5688fe6c57fab10a20190b7523cd9911147"
+    },
+    {
+      "path": "docs/evidence-intake-playbook.md",
+      "class": "A",
+      "reason": "phase capability/security/provenance and acceptance documentation",
+      "sha256": "5d014fe5cf1dbc9480eae00b9eee4ed91536b1ced962395813782b066a9e12f6"
+    },
+    {
+      "path": "docs/external-html-report-import.md",
+      "class": "A",
+      "reason": "phase capability/security/provenance and acceptance documentation",
+      "sha256": "bdf8732699a731003a4ebf2893a5de09f3b1f86393764ebd84a2ea4e7b672b46"
+    },
+    {
+      "path": "docs/field-protected-routes.json",
+      "class": "A",
+      "reason": "phase capability/security/provenance and acceptance documentation",
+      "sha256": "68ceb58baa8ea01a5f5f6f6773defe37048e7330975ae9c06024f222cc499364"
+    },
+    {
+      "path": "docs/incidents/2026-09-27-browser-isolation-gap.md",
+      "class": "A",
+      "reason": "phase capability/security/provenance and acceptance documentation",
+      "sha256": "53a164cae80180b04f46475d574ed3a82e517323aafd729c156d5ac6ad934416"
+    },
+    {
+      "path": "docs/testing/browser-e2e.md",
+      "class": "A",
+      "reason": "phase capability/security/provenance and acceptance documentation",
+      "sha256": "2d0effbff05a0242da769fddd66706bb68a425053c8a67f2717a848738c7d7a3"
+    },
+    {
+      "path": "docs/testing/browser-regression-2026-09-23.md",
+      "class": "B",
+      "reason": "historical ad-hoc test notes; not current candidate evidence"
+    },
+    {
+      "path": "docs/testing/full-system-regression-2026-09-23.md",
+      "class": "B",
+      "reason": "historical ad-hoc test notes; not current candidate evidence"
+    },
+    {
+      "path": "python_service/httpserver/main.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "f4e50a35434f79ab527071d28afc925b28efe335ebfb543284b0b92ad1e6cd2e"
+    },
+    {
+      "path": "python_service/httpserver/release_info.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "28101b438f4a4707f7477942c881968898ac572242b232177a9db9d70d59a725"
+    },
+    {
+      "path": "python_service/httpserver/requirements.txt",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "b5f6cb438d9a655c622378826e3c4e896127a0824e8dd3175bae2b525ae6239e"
+    },
+    {
+      "path": "python_service/httpserver/routes/android_report.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "8745159cbf94efdeec1c593fcd5938b2adbd7ba8a18dc532462fe3c8ccbac359"
+    },
+    {
+      "path": "python_service/httpserver/routes/evidence_intake.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "7645d9b2bcc7386f20f7674affac86b475d2dc85f54772eaad4f1932872a515c"
+    },
+    {
+      "path": "python_service/httpserver/routes/field_auth.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "0498307e6e8b7e74b963b35aea3e216ba2d373aecc839ca8571d2b6a53d94450"
+    },
+    {
+      "path": "python_service/httpserver/routes/graphiti.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release; include existing caller dependencies rather than silently drop graph/translation/case-reader functionality already delivered; not an added 6C feature",
+      "sha256": "68907ba45503efa73fd6c3ccc500f638556a1be496ed302c51422715b179aeaa"
+    },
+    {
+      "path": "python_service/httpserver/routes/graphiti_endpoints/__init__.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release; include existing caller dependencies rather than silently drop graph/translation/case-reader functionality already delivered; not an added 6C feature",
+      "sha256": "12405b75118fc394bc6a8bbc88c54af1a51ce9a4b5a7b1cf30bacad6f74ed059"
+    },
+    {
+      "path": "python_service/httpserver/routes/graphiti_endpoints/_trace.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release; include existing caller dependencies rather than silently drop graph/translation/case-reader functionality already delivered; not an added 6C feature",
+      "sha256": "c7fc9aba2099858290703eeaf049e6d92c912e35122918c1fbb8f04dc10d7f96"
+    },
+    {
+      "path": "python_service/httpserver/routes/investigation.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "d19045f8e22028b476b56266c3da4baa446e94fee6a2e7fc2e8a899ee7d49706"
+    },
+    {
+      "path": "python_service/httpserver/routes/investigation_workbench.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "9d5243e1f7514ef056fd188a0ad558206c6b61dd4ea5b711d02fd67b0069a759"
+    },
+    {
+      "path": "python_service/httpserver/routes/multi_analysis.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "c54366b84a70e55ddd21d1494b32f56b1926d15fbeecf5c71ceddf2286631592"
+    },
+    {
+      "path": "python_service/httpserver/routes/report_evidence.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "a7fc56b513be3f4c06f578f8341041e35e44847fcb168e1125ceb969bc5e1249"
+    },
+    {
+      "path": "python_service/httpserver/routes/report_generation.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "c93b4eafdca55a10e59bf963f12c305cacf6b2667715ef78b1aadaf037e7f846"
+    },
+    {
+      "path": "python_service/httpserver/routes/system.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "13fdfe1e152e1888f263a2db88cb877c805169eb5318a9a59fe891eed31910f9"
+    },
+    {
+      "path": "python_service/httpserver/routes/wechat_graph_models.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "0b41de72ba5389181a4325f041407b28e3f1677a034733f47c93afe97e45dc84"
+    },
+    {
+      "path": "python_service/httpserver/services/android_archive_preflight.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "18737526d80828181a53a902a546a2c038803def14174b2af4279110da3e07fb"
+    },
+    {
+      "path": "python_service/httpserver/services/android_artifact_reader.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "3c93b62e8202125cc2a8b57b8285c3927514908f64c5c72ad2e7907492afffc7"
+    },
+    {
+      "path": "python_service/httpserver/services/android_container_pipeline.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "de25fb57bc1a4e6a279de1beb757cebd2c17cdbb0c06e04f0486cc0c37eff5a1"
+    },
+    {
+      "path": "python_service/httpserver/services/android_coverage.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "5f40494cf0901989a1ad2240aa82a19dc9fb86544b4dfb7391decb52126997e4"
+    },
+    {
+      "path": "python_service/httpserver/services/android_encryption_inspector.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "20cf6410260a797d61af320c900ddf17551018f8955c6f2aa204a303f9c6e369"
+    },
+    {
+      "path": "python_service/httpserver/services/android_field_package.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "f26f1dfcff29e774a93d62d7d17269c3f00fecf98630877e45575c712ad5c779"
+    },
+    {
+      "path": "python_service/httpserver/services/android_image_preflight.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "feeab8e40af67e70f9c2b04592a8df95e4d4d9b110ec027aa63f095e89c296d7"
+    },
+    {
+      "path": "python_service/httpserver/services/android_lp_image.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "93a26ff5dbd577b23cd8b3dbbe6f789d6c7a3236f7fc824b57655219f6765b4f"
+    },
+    {
+      "path": "python_service/httpserver/services/android_report_import.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "120e8aa9a61185f3fda86c50a93e71c59d749d1935451821f97a0918d7dca31f"
+    },
+    {
+      "path": "python_service/httpserver/services/android_result_sets.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "c6fb55bb4a990966c6ff6a15b5e257cfbd78d0548c6d03a83435e2a48b06940d"
+    },
+    {
+      "path": "python_service/httpserver/services/android_sparse_image.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "70fb1e47edf6bcf836069e2b33f89f5b906cf32f02e8df0174dc799fee8dcd7c"
+    },
+    {
+      "path": "python_service/httpserver/services/cpp_backend.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "8964f04121ab5cc2bf316f5ac3ba1abc80f4f5889af7206b145d77b3ff8170ce"
+    },
+    {
+      "path": "python_service/httpserver/services/dll/dll_analyzer.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "4915795d46e30baa3d0f00945f2cc834cc8f02c56ed1a504becfe4dc7637b121"
+    },
+    {
+      "path": "python_service/httpserver/services/evidence/keys.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "6848a8e8918aacfd75bf5abedb4e5e2425e5306bafdc9ddd794590e789d3cff9"
+    },
+    {
+      "path": "python_service/httpserver/services/evidence/models.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "fba354afd15dd28aaccf6f5384536ce4ffb535efaf96319a7d78e33de1e6fc91"
+    },
+    {
+      "path": "python_service/httpserver/services/evidence/resolver.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "31be251b79c30d66c30fe9efdc9d08042ea8e476eacd8b1724bb46127ae0363b"
+    },
+    {
+      "path": "python_service/httpserver/services/evidence_preflight.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "c56aca2c3ded2441fdebb6bd27367415b018af256ca122f8d8af71a1b6fdc834"
+    },
+    {
+      "path": "python_service/httpserver/services/extractors/linux_journal.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "aea53901635b091e65f28eb0c3442d5a89d8877b643ba2d0c424cab8fc7f29a8"
+    },
+    {
+      "path": "python_service/httpserver/services/field_security.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "a7c3e4ecd6286a952224f56a8372094fa34cf6f51032eeeabe89d61522324986"
+    },
+    {
+      "path": "python_service/httpserver/services/forensic_report/generation.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "f89c54e472e11ed1cac50b397e4f7c4144a7f5ebaf8bfdb5a8324742f3392548"
+    },
+    {
+      "path": "python_service/httpserver/services/forensic_report/generation_execution.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "401d64c04b36781697a7de1fae72d426edb237d38a0288f3da6b19d7f0b7cc58"
+    },
+    {
+      "path": "python_service/httpserver/services/forensic_report/generation_prompts.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "17a3bb5ea8c5d36f45f160daa941c9343d936b7d1159f060ceaca648e976af8e"
+    },
+    {
+      "path": "python_service/httpserver/services/forensic_report/models.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "401351aee251a973bddf82bd3c29883acb2a77d70784914edda07bba72ad9ea2"
+    },
+    {
+      "path": "python_service/httpserver/services/forensic_report/repository.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "87dc10dc43428f9945b8e46f8420e5c6cf67e27f8c6323e43e34eccbde90fe49"
+    },
+    {
+      "path": "python_service/httpserver/services/graphiti_parts/_query.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release; include existing caller dependencies rather than silently drop graph/translation/case-reader functionality already delivered; not an added 6C feature",
+      "sha256": "a3641038fb32d7c012e47cb22552df4f4e98513cd79a91187e8ea065d10c2b77"
+    },
+    {
+      "path": "python_service/httpserver/services/graphiti_relation_trace.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release; include existing caller dependencies rather than silently drop graph/translation/case-reader functionality already delivered; not an added 6C feature",
+      "sha256": "330f19afad6cc57d8ba362bc8d6bd80141a92508ded65bcc3ae926d018fcb62c"
+    },
+    {
+      "path": "python_service/httpserver/services/investigation/acquisition.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "4c8ab78f633a18e7c50bd09c401f860a96fcc5189a1987501eb995930d8460a9"
+    },
+    {
+      "path": "python_service/httpserver/services/investigation/execution.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "7ee2b137f5f8337e2defcb1707553ef8f387d5ecd49e15cdd5b5856665879e07"
+    },
+    {
+      "path": "python_service/httpserver/services/investigation/graph.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "179c8c230a768a0f02fa840908eb44ab751b0438a5bbde44e751c01df902fbc4"
+    },
+    {
+      "path": "python_service/httpserver/services/investigation/graph_reader.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "828b529f8a1c3c0c91531a592d2e3880e106eef709bfbdebf7b534196d1c0ac3"
+    },
+    {
+      "path": "python_service/httpserver/services/investigation/initial_analysis_translation.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release; include existing caller dependencies rather than silently drop graph/translation/case-reader functionality already delivered; not an added 6C feature",
+      "sha256": "c6620bfabb59dae78846d71b04e7ce34c4d521c00cd504f330039a314f4c5ddb"
+    },
+    {
+      "path": "python_service/httpserver/services/investigation/models.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "bc28498bdf0dcdec0a83c4609c1bb35602b89b670af428a3bf86bba682c0992a"
+    },
+    {
+      "path": "python_service/httpserver/services/investigation/offline_translation.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release; include existing caller dependencies rather than silently drop graph/translation/case-reader functionality already delivered; not an added 6C feature",
+      "sha256": "fe0c8e0c75c72dfb53c123796265678afb3e405b97ad1e76ba2b15f9e7a57d58"
+    },
+    {
+      "path": "python_service/httpserver/services/investigation/paths.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "c0ca248cd3e6518c52578dbf124bd1e05957a0560f29a42ca6b0562e470b3c41"
+    },
+    {
+      "path": "python_service/httpserver/services/investigation/prompts.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "a778b028dd1be57440cd54ae431427b1c00d41fbe1506556a102248b4666e291"
+    },
+    {
+      "path": "python_service/httpserver/services/investigation/report_evidence.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "b3ded75a823fc250e79fbd57d233643abead74c9f9eeb4624f2cb3fb096aaa6b"
+    },
+    {
+      "path": "python_service/httpserver/services/investigation/repository.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "adbbd6ce14e21eade4b531d35ba2455f278eec786377e4707383058ac7237407"
+    },
+    {
+      "path": "python_service/httpserver/services/investigation/review.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "f9f0814e67aed64354adf9386da6ee83a47ec0854a6cc3677e9ea7d2366a1d93"
+    },
+    {
+      "path": "python_service/httpserver/services/investigation_service.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "d6e291ce14e0ad068d1df6253d34e817ae7a9226b735a07165f4e1671f41f369"
+    },
+    {
+      "path": "python_service/httpserver/services/service_manager.py",
+      "class": "A",
+      "reason": "HTML import/stages 2-5; 6A auth/outbound; 6B/v8/R2; 6C readonly release",
+      "sha256": "c607f26634ded14fe666c3b2ced6cd82df54942483e93b932a42dfb751a809db"
+    },
+    {
+      "path": "python_service/server/config.py",
+      "class": "B",
+      "reason": "C/S legacy configuration repair; C/S is disabled in this local profile"
+    },
+    {
+      "path": "python_service/tests/integration/test_6c_backup_restore.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "b34c284b0bf8a7ce644a58609e049f390ecd1384bde82c7cc02316cc0bacac81"
+    },
+    {
+      "path": "python_service/tests/integration/test_6c_citation_scope.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "15fd51f23e663203220d0dc596feda7b0b4ea16ea365940221257857915261a2"
+    },
+    {
+      "path": "python_service/tests/integration/test_6c_tls_check.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "ed50a3371bb889125dcf4676dbd00ff7a883e6d26c4537fc7baabe20cc19f696"
+    },
+    {
+      "path": "python_service/tests/integration/test_android_6b_full_http.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "21a739d2450480845399002678942934d991073ab89499898aaf114e29146afd"
+    },
+    {
+      "path": "python_service/tests/integration/test_android_6b_http.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "3e2afea07d08791a0725a5eb708c0044547734350ce75b7ef2eebf7af8383b2d"
+    },
+    {
+      "path": "python_service/tests/integration/test_external_html_report_sample.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "45ca6a89c8ff83e703c9040c8d6b6872e2cf3c39db3dd98bd7fad8d6298fb008"
+    },
+    {
+      "path": "python_service/tests/test_config_port.py",
+      "class": "B",
+      "reason": "test only of excluded legacy C/S configuration repair"
+    },
+    {
+      "path": "python_service/tests/test_main_app.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "6fe06f39bbc32a4dae3752af32d13d7a9a4db36489e8c969cf805cdf8ed77e12"
+    },
+    {
+      "path": "python_service/tests/unit/forensic_report/test_6c_readonly_repository.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "7129e8df05f9bbc44ca8259eb0233115b103f8348ba1b7dba7169271f872c999"
+    },
+    {
+      "path": "python_service/tests/unit/forensic_report/test_generation_admission.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "49c0598eb3c06b7ee8350e69692adbc4fcb20eadebdcca7406622662e2fec401"
+    },
+    {
+      "path": "python_service/tests/unit/forensic_report/test_snapshot_writer.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "d53ec5a7767906ff0503e1e0c4968b4e8c28724d372d84a20d5f1ec3b6869f5a"
+    },
+    {
+      "path": "python_service/tests/unit/investigation/conftest.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "1932ff6f8358d0d82c32b6e35f2f7414baed3bcef62f331eefb2e07d93996268"
+    },
+    {
+      "path": "python_service/tests/unit/investigation/test_6c_v7_readonly_routes.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "7c6da8c001a594a5c01b0e4639662a2c3bc9c7462bb788c63f8d97a467b32b54"
+    },
+    {
+      "path": "python_service/tests/unit/investigation/test_android_artifact_report_chain.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "b6b898795eca78788832a1fff1e0cdecd3be0a5749ccddd48c4b12b28d46b692"
+    },
+    {
+      "path": "python_service/tests/unit/investigation/test_investigation_completion.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "bd5e161749cbb989cbebc425d6aab60cd15c4266e6facd940930249786e18d50"
+    },
+    {
+      "path": "python_service/tests/unit/investigation/test_investigation_event.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "9e4450dd45f355a415523bed384bc5945944f422b2cca8df08c35d4c672598fe"
+    },
+    {
+      "path": "python_service/tests/unit/investigation/test_investigation_graph.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "e2ead6bf52e1001168d25bdcc9902e715b2f8af3ab5499b98aa67dbd5e735201"
+    },
+    {
+      "path": "python_service/tests/unit/investigation/test_investigation_grounding.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "ae4614c75e3831ad6842ff327d281c22edabb3f8c2b7fd84bc10888238a02327"
+    },
+    {
+      "path": "python_service/tests/unit/investigation/test_investigation_refresh.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "8aa37d0d6e4e6f441cf96a65855bc18dbc9242cc43a4b8b7f480fd096671bbae"
+    },
+    {
+      "path": "python_service/tests/unit/investigation/test_investigation_report_evidence.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "8a7246bd2d9995cade61253b3b69737d5dd8f30ed74b6dcfcf18d6ac0c23fd54"
+    },
+    {
+      "path": "python_service/tests/unit/investigation/test_investigation_secondary.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "20684694e12ef41fa2c9427c354f7460f4349a994d0516a2129e6013abc51d7c"
+    },
+    {
+      "path": "python_service/tests/unit/test_android_archive_preflight.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "a7ea25d6389ae45b917bcd9144d5ccc9be24771b443785a32deb2071d54381fc"
+    },
+    {
+      "path": "python_service/tests/unit/test_android_container_pipeline.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "a290021d74d060ed220960eb76c98db0dd6a2d0001b9752fec740bcb91ab0cb7"
+    },
+    {
+      "path": "python_service/tests/unit/test_android_coverage.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "38b57390fbebc72c4ce4e0cfb5f6ada5337da2f7b96c494f22387ea6a412853e"
+    },
+    {
+      "path": "python_service/tests/unit/test_android_field_check.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "23325817cf213d4b4a73d51fb1932b1220ffefb1327bb63e3be365764b47dbf8"
+    },
+    {
+      "path": "python_service/tests/unit/test_android_field_delivery.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "41e7c6ffe179224acaf3fcc27f5949fdab5f7a316a691752cdb8f5f90b8ac58f"
+    },
+    {
+      "path": "python_service/tests/unit/test_android_image_preflight.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "aaa00b26f9079ffaee81510adc3dc157e13614330cea06d27981a7d950552a00"
+    },
+    {
+      "path": "python_service/tests/unit/test_android_report_import.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "6ad2f545eab34a4147ff1acbf96ca2c912fb5a5e1f6b056b4674257dd7ff71de"
+    },
+    {
+      "path": "python_service/tests/unit/test_android_result_sets.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "7a8bf995755c466d7e9992e68a11fcc909ac6b6d328509f0d7f1bb5482627a7b"
+    },
+    {
+      "path": "python_service/tests/unit/test_android_sample_manifest_6c.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "3fe485782de8edb635952200d59988527625757a46e9f8670c6c8a5ee8815772"
+    },
+    {
+      "path": "python_service/tests/unit/test_case_analysis_routes.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "fdb4cf69676016d22df61183d9ed521163698049fd88b7896c30dd82723af719"
+    },
+    {
+      "path": "python_service/tests/unit/test_evidence_preflight.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "0ee7a1018b57e7f2449467429bf54d9b1ffc2c26942e70b498190d4aa9f56e1e"
+    },
+    {
+      "path": "python_service/tests/unit/test_field_security.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "ad7e073fcd3bdab623cedff28fe0bbad937c645adb5d0335ae15f407201ac760"
+    },
+    {
+      "path": "python_service/tests/unit/test_graphiti_local_evidence_query.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "dc7a2ea3754496cf616fb300b5269d85b7af20efe10511eba7ddf3039cc158cb"
+    },
+    {
+      "path": "python_service/tests/unit/test_graphiti_relationship_trace.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "95de88905bd1fb1a96f68cfb6686e62f77ec578df791cf854fba592ee32a50bc"
+    },
+    {
+      "path": "python_service/tests/unit/test_initial_analysis_translation.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "83da11e7386d9d8b128970bb48313c7f5a2a1e6360f1bb7b6a60510911933022"
+    },
+    {
+      "path": "python_service/tests/unit/test_investigation_workbench_routes.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "9a6c2e3bff9a28df77843838f69e83c0b810b5e59a48841af0a8a76fdf6cc32a"
+    },
+    {
+      "path": "python_service/tests/unit/test_report_citation_timeline_route.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "04b929024119f954d00c4f73a7fd523a7433008fdabc67ec5b81080835a8e327"
+    },
+    {
+      "path": "python_service/tests/unit/test_validation_secret_redaction.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "06d08ed7c855f98b251a655b7f1c6c1a0a7307e309adeaa4212fa7ffe1a4e666"
+    },
+    {
+      "path": "python_service/tests/unit/test_wechat_forensics_import.py",
+      "class": "A",
+      "reason": "synthetic fixtures and regression assertions for scoped production modules",
+      "sha256": "a0f13dfa147daa05619acf184570aa4b2c7a698d5bbc2d5b8326c7d70eac815c"
+    },
+    {
+      "path": "run.sh",
+      "class": "B",
+      "reason": "legacy launcher is not the 6C explicit authenticated entry"
+    },
+    {
+      "path": "scripts/android_container_pipeline_cli.py",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "cb4949bbdb49daacf6c2d9368100f868ede9abf9e0e9505112acf61ba1bf0e67"
+    },
+    {
+      "path": "scripts/android_field_check.py",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "3fe1c5a87d11b92462496a861f8e440924665c126eb75281854315baaa1a2566"
+    },
+    {
+      "path": "scripts/android_field_package.py",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "f59894f994a957db926180091a6fab7b7251b8293e2e16f51a540c62e8d8e72e"
+    },
+    {
+      "path": "scripts/android_field_sample_manifest.py",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "014b36c1a8b170631b4da06df439ec005376460b2c1999ec956ee3c7ee7a0481"
+    },
+    {
+      "path": "scripts/android_image_reader_bridge.py",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "e9652ae34a57beda95228024be06d34a6d3ac95388c87d9111576618fb696e49"
+    },
+    {
+      "path": "scripts/android_incident_audit.py",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "78bd45187fd2d1012bde84990747fa5e60bc9426f7695c56346352cccd2e93df"
+    },
+    {
+      "path": "scripts/android_local_model_audit.py",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "8c0202e2041d6b6da52d27ca5c6d4543e4dd8ff4ee2a020231b0284bf9c6b4a8"
+    },
+    {
+      "path": "scripts/android_release_job_audit.py",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "bb18e6e1da15e6291d5a6651a3fb61b2237bc1f4293b6f9b4409340324ed9ed5"
+    },
+    {
+      "path": "scripts/android_release_manifest.py",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "f190c4f22e4eaea6bf8f0a1cf015df83cd298a85beec80628041055e93e34137"
+    },
+    {
+      "path": "scripts/aosp_lp_inventory.cpp",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "9081195e373ded64b8efe6454ec2fae33163709b399963024cb3a40ea2109fe7"
+    },
+    {
+      "path": "scripts/browser_e2e.py",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "773a4ec2af1e32ccdcd39f2884b1a2e8f4e2320969888e79ee442e32dffb8132"
+    },
+    {
+      "path": "scripts/check_field_tls.py",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "3580690e6b06d763e6caf7f49725ee9874b13baab4429335793ea4133fdad720"
+    },
+    {
+      "path": "scripts/check_isolated_target.py",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "c1ab89dc9c7f523e7683fd353d7561ab4f8b20d81b1b715899174f4d80b63b0a"
+    },
+    {
+      "path": "scripts/field_egress_probe.py",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "3a755999808a16ad8857303bdca4146cfeb496950de91a6d10f24eeea8cbaccf"
+    },
+    {
+      "path": "scripts/field_frontend_build.py",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "5736d75c55cdf64fdccbd47588ac1d7acda95dd5400a0cf5856419452bab7a2f"
+    },
+    {
+      "path": "scripts/field_os_egress_check.py",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "b8b7624dcba3b68345428856f2b6d01664a538d5f1558d66b6829376269a5436"
+    },
+    {
+      "path": "scripts/field_route_inventory.py",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "88332c8b7023926c2ce32f25f16e56aec7a2ebd90d965d24a66649c16eb71c85"
+    },
+    {
+      "path": "scripts/field_user_admin.py",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "b22b1604c257a3d3ec23a032b7221182d0d78bb758e00c9e72b41e599f953dcf"
+    },
+    {
+      "path": "scripts/install_android_container_tools.sh",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "e8e8b49fa5219f5684f84298b89b1d599ed1b8cf19c272213aef9af841f87768"
+    },
+    {
+      "path": "scripts/install_android_image_reader.sh",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "d263d9f53d340fdacbdb484e247cdc5c98ab10ee8c31228f717dca71247e28d1"
+    },
+    {
+      "path": "scripts/install_initial_analysis_translation_model.py",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "ba8a011155ced69b55f83cb85715b3282c93f192a1b99fd3bb1077128feb1f9a"
+    },
+    {
+      "path": "scripts/isolated_node_guard.cjs",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "a57e7b52937d4d1deef91410e9832ebc0301f13ffda2b4f1167592692e61a492"
+    },
+    {
+      "path": "scripts/isolated_target.py",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "2db5940296c524d3683d857329fa20139f1c185d6ef8b6d578aeda4a14f3ff09"
+    },
+    {
+      "path": "scripts/prepare_field_drill.py",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "c28f95bb8ef3a54d20a30f5778ee394ffec0f4a4520c193ddb1434cccfe118d2"
+    },
+    {
+      "path": "scripts/prepare_investigation_v8.py",
+      "class": "A",
+      "reason": "adapter bridges and reproducible isolation/release/acceptance tooling",
+      "sha256": "681735bef622b4c654c5fd5890d1aaf53e450b0758a3be5072ec28cce141686a"
+    },
+    {
+      "path": "scripts/start_all_services.sh",
+      "class": "B",
+      "reason": "legacy launcher diagnostic only; not used by fixed candidate"
+    },
+    {
+      "path": "setup.sh",
+      "class": "A",
+      "reason": "previous environment bootstrap/relocation fixes and libarchive required by stage3",
+      "sha256": "445902c9363df167a79abe74eebb3286527493c2faf15875f0264f28bf20ba63"
+    },
+    {
+      "path": "src/AnalysisOrchestrator.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "f568444dfd627be277ce0814012c69500223e39de98edca6aeea9c5cb849180e"
+    },
+    {
+      "path": "src/CommandLineParser.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "55be688644f579569098c8ffbf1247bf49ab09ce14d419320ea0d71ad2b6c0c2"
+    },
+    {
+      "path": "src/CommandLineParser.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "3272c0316bbd70ff8ac1e944bed973dbb4d6b4d59e16a62083c83575def6c606"
+    },
+    {
+      "path": "src/analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "7920962337c164edf4f9d2458f43203e26e7ecd69fef6704ef0c5a0141d9e343"
+    },
+    {
+      "path": "src/analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "33b553b9bd4b82d1beb0a0c3c6c3c65ccd46fe0baa006b308269f58ecfc6903b"
+    },
+    {
+      "path": "src/analyzers/AndroidAnalyzer/AndroidAnalyzerCore.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "60aa73a5faea0e19429ad45e9b8ae6a46c702908113bb82393c14e4dbdb14ca8"
+    },
+    {
+      "path": "src/analyzers/AndroidAnalyzer/AndroidAnalyzerDeclarations.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "ddc3236ebc409aab53d5ca31a215857380e62f1c88c468c953c4e749839ff956"
+    },
+    {
+      "path": "src/analyzers/AndroidAnalyzer/AndroidBackupStream.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "1afd55afb073244bfe017e1362517eb5bb69878aa658fd36bdad9347f17681e1"
+    },
+    {
+      "path": "src/analyzers/AndroidAnalyzer/AndroidBackupStream.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "4400f05617a435bfcdf099ac4ba1b972c6dbc81b48b560442da7df4ffa27db83"
+    },
+    {
+      "path": "src/analyzers/AndroidAnalyzer/AndroidDataParsers.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "efa9fb33742c4b2faf777ba3a5d159f81f68929f9601b70c1341e59af9f4e644"
+    },
+    {
+      "path": "src/analyzers/AndroidAnalyzer/AndroidPathMapper.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "221831b52108d9cf1c5187f3472f0f49e138ca50c643feda2e2ac2b039370cb4"
+    },
+    {
+      "path": "src/analyzers/AndroidAnalyzer/AndroidPathMapper.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "e7c98686089249e4d47f2492cd706f99f0339ed768cbe2e4208df96e4597a020"
+    },
+    {
+      "path": "src/analyzers/AndroidAnalyzer/AndroidSystemParsers.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "da2eb64f627210eac16ea40d18165c78faeffa5b9180debcfdc41149b77cd70f"
+    },
+    {
+      "path": "src/analyzers/AndroidAnalyzer/ArchiveFileExtractor.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "61ffa11d02181b87fa8273e0973326ebe56479780ad8b655e25985a29166b00e"
+    },
+    {
+      "path": "src/analyzers/AndroidAnalyzer/ArchiveFileExtractor.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "a6223b93a76ba29ebd3f77644cd2b8da143de8a38cd153a58ccd0c287b739c30"
+    },
+    {
+      "path": "src/analyzers/AndroidAnalyzer/FilesystemEvidenceSource.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "4e6bd5b6e6ceb0d78afa3cbfd2c9f83cdc0a2805d72172f4ecb80508c76308fd"
+    },
+    {
+      "path": "src/analyzers/AndroidAnalyzer/FilesystemEvidenceSource.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "8348b017102d4511499a383c25199a4fb6547d2e3f3533b29f15b5376df50f07"
+    },
+    {
+      "path": "src/analyzers/AndroidAnalyzer/IFileExtractor.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "43a70324c259528acdd7f5f7725f6cd0e6e33b08c6a1e6e382d89f4ffd627e4e"
+    },
+    {
+      "path": "src/analyzers/AndroidAnalyzer/LogicalDirExtractor.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "1446faa60906dd380d619b87ad1b1425af4ff4b0137dad13dab4691477535cba"
+    },
+    {
+      "path": "src/analyzers/AndroidAnalyzer/LogicalDirExtractor.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "f59a33b10cb82291e9adc3c14da9cf7af49d269a28d35c4969cce3811206103f"
+    },
+    {
+      "path": "src/analyzers/AndroidAnalyzer/ZipArchiveExtractor.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "1c979b32e66493d1b1edceedbb3dedc8e398337a68b8db1560e1d0dc6af94330"
+    },
+    {
+      "path": "src/analyzers/AndroidAnalyzer/ZipArchiveExtractor.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "2f8df279d0b6a7dfac377cb114f61aff7f551a903ad9ff190e5e9846a5685e13"
+    },
+    {
+      "path": "src/analyzers/DLLAnalyzer/Core/AnomalyDetector.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "54130dc2027f842e7e29bf65bb6597f323a44d444f823ce9d486c53e81c0e266"
+    },
+    {
+      "path": "src/core/ConfigManager/ConfigManager.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "7fb354b0843b397e12dcfc2814da0a939e3e300b3cf431fc0f4290059b37f802"
+    },
+    {
+      "path": "src/core/DatabaseManager/FileExtractor/FileExtractor.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "c12b048b865abdf5164258a38b2fb2881c18017506b42e447891024ce5b13adc"
+    },
+    {
+      "path": "src/core/DatabaseManager/FileExtractor/FileExtractor.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "95fb82808d1a2a9f6d1606d22ea48e0181125fdb6cc468c506b2e551d5ffbb21"
+    },
+    {
+      "path": "src/core/DatabaseManager/SQL/android_analysis_sql.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "bc7b18fb26ca0af3e6496bb080d197647a5e2f5f36876fe027fd51e6e63e483f"
+    },
+    {
+      "path": "src/network/HTTPServer/AndroidContainerNormalization.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "d15672f3027a824d16241abfbf2220a85bbbe1aa7e17740c09d23f8b19acca5b"
+    },
+    {
+      "path": "src/network/HTTPServer/AndroidContainerNormalization.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "68246858128d38a5e8f94c219a7fa8e1a60cdc9ad3c023ab0fd0440f0e0f7628"
+    },
+    {
+      "path": "src/network/HTTPServer/AndroidPreflightAdmission.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "7500cc889c42f9a9e54f845b7fa34fcb9fdd1054cb5ab2e16d2d188bdf531835"
+    },
+    {
+      "path": "src/network/HTTPServer/AndroidPreflightAdmission.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "60c919860613a73973c56eecb6477815c5e7748d176075dc0d2d60f61c9a0fbb"
+    },
+    {
+      "path": "src/network/HTTPServer/FieldApp.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "55860ec2e9a01cc9b5176872148da9b5371b75f1c0ff8d851ac489b624160386"
+    },
+    {
+      "path": "src/network/HTTPServer/FieldApp.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "db6e13750d106e53337e67bca4db1e766953f02591fd812a293a5b1493ed2e0d"
+    },
+    {
+      "path": "src/network/HTTPServer/HTTPServerDataTypes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "f9c5c64464c25d70cdf27e4ce73e5df1f187bf49cb90a86424a9b59d76710878"
+    },
+    {
+      "path": "src/network/HTTPServer/HTTPserver.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "3a08430dcd9e1abc727069dd74e3d3b14e277fb18d16c18ec579de15412f5a76"
+    },
+    {
+      "path": "src/network/HTTPServer/HTTPserver.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "fb874a8ffd2c2c722b804845167269aad28b881d416e69df5212d29e5beaa87f"
+    },
+    {
+      "path": "src/network/HTTPServer/LLMPythonProxy.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "52611161d38e3827d6ff3dc6b86013997926accaebf5852fc490876cf187b6cb"
+    },
+    {
+      "path": "src/network/HTTPServer/TaskManager.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "5851e8b2178401c6981aa386b2a3fcac5e86b3a1472c03b7372badaa53300344"
+    },
+    {
+      "path": "src/network/HTTPServer/TaskManager.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "bd3fd848b34876450b46690d0e95d66f328ec4faba402da415b694a960a33652"
+    },
+    {
+      "path": "src/network/HTTPServer/TaskManagerAnalysis.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "f6134c4db13a846726f49d76c0ddf3832c57e0691cf5ce3d6baa3c57231df698"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/AndroidForensicsRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "fbf051e6351493b3a8bcfbe961b3f32832548cc2b2283ccb637f730f973c2198"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/AndroidForensicsRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "fc8a127e4a25e9bfc01e614363c2bf13ee14249df20a94851c3fa95520128d29"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/CaseCRUDRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "a0c2c0ec197f2b94dfa472402370a1fdfae22e066a256763f25c7f85c7e22f98"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/CaseCRUDRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "88ffc743998d4e3f5494f63c72162053992388c8c85f2ae7b576c093ef0a7016"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/DLLAnalysisRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "1f8a28d9934aee48be97d3ddf2797c71cbc3c98030fcfeb7abde201fcdef43af"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/DLLAnalysisRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "1cff816a2dd9d1605ba5402fa8034abe92bcf760928287c05f7927d705b3da26"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/EventClusterRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "6de4bd26af01f3cdbf7b6aa4531aa75dcfdcc5cfbd83ebe897360503a7cc4be3"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/EventClusterRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "eebcc5cee73bc9ef30d5037557f70b137ac2012f16a90e8bdfec9c4b075aaa6d"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/ExportRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "785825c427a750a35106353a7eb242287f6c8e72978d19329a1d25c003554bfd"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/ExportRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "affe50153eac0955bd2cfe3f7a01478b180225ecc3b864934ad93b663965b932"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/FileAnalysisRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "77cb65cd665441760daab834a6eb605e5255a1620fe7bd3e377353fe530c31e2"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/FileAnalysisRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "9d6a178708ca1e0e001e4fa2702396797e8f3b9a8af542f7c83e0363034f6118"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/FileExtractionRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "59083c4cb353a9768e4753c480e24bc4ec3469d742ce438cb8780f531e4f80a7"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/FileExtractionRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "c3a91e05ef072cec5b04865217696db3a46b9a8acfc51ae346ad7577acf1aee7"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/FilterRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "5007daf80fcf9b8453f39134613eea8478e5465ea0c70b570acc573aac16563c"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/FilterRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "d23e115ef1feec011b9ab7cd3086c12d05d33e52b6c215cefd070b6cc891ff8a"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/ForensicsRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "eb4eb2cd6c099fc9b77eb36651742b19ccc5c31e2d273f781b9109748d53cbbf"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/ForensicsRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "f256ac4c22172ba75769ff28a339ba3fafcf7312c60dcf21485b473e3a372251"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/MemoryForensicsRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "55f553eb3aa61ef8688f0ed1ae644bae50606eac0d7957ce2141bfc2824f6167"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/MemoryForensicsRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "48600d775f9418117a588a2ba4ff5b5207fa0a7d9b52842b04a10afd80e097f0"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/OSSAnalysisRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "3898575373b3a904497ca3ee79e507d20c2513ed6dafe718269be1900ff204fd"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/OSSAnalysisRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "44a4b9a9330f3961df4366751a87c01dcb552aeb754005870ced7369961232e0"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/OSSQueryRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "877f27afffbb57013a1ceda1e0d62e09235643b3e2a69abff75c3f3c06cd63ed"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/OSSQueryRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "307258fae3c6d0dcc72f7d802d5f2ac8d08a1391df979db50420cc2c62d45b39"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/OSSRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "e4b1f464c04fb0aea3b141825499722be70151baf2907610c9489bde90524346"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/OSSRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "5ea94b65c5846218f4a3288dac9e5bad654fb8fad59a4bde0d5005562080f082"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/OSSRoutes_new.cpp",
+      "class": "B",
+      "reason": "unused alternative not compiled by CMake"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/OSSRoutes_new.h",
+      "class": "B",
+      "reason": "unused alternative not compiled by CMake"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/OSSStatsRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "136579e540ba415b13aa4c9377410967beabe9a23a75bc096d4c1f560d0763bd"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/OSSStatsRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "bf96808d2d598c602cfcdb53752664e48e176e98b0d770a87ae56340b9c611cc"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/RouteHelpers.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "512c0963bdef02e583eec7eff1def4eb282290163e608fdfdd2db786b88c77d0"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/SceneQueryRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "9466c820d7171a46a0e56bed6a24b1c866e8d94891b3219dde2b9f8f4f4d2529"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/SceneQueryRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "f2be4e5b020cc0294c01d7f9d8fb0dad0a1fb150dc30be21093820bde8cd8c92"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/SearchRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "b24b705f6713839b99aa0b89a3967e399e25d24896e8997829cdfa4e29581af5"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/SearchRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "da39d0e595d5f686cb08250a06557bca0ef14af23575536eac7fbe190a05b5d7"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/StatisticsRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "9623e5493b80faa528747db72d5bf80bb88639a989be41f8edbe72ee43b307e8"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/StatisticsRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "523298a4b40b8cc6f1b5f50f0a51cdcaa80715ae5fb249df5b8cd1718450e21d"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/SystemDocsRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "26b9c7c4d39934c10a10abaef7adc4256f44dadd298cc608aaef69046a80f8d0"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/SystemDocsRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "4c057aa9c062c755b7af6ca9503ba41628e107286f7b61d2290002dc9130eb4a"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/SystemEventRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "9782ae8b928e0cfef93f4a3bf4e89ba60da2830ab355b299d4c0308756076f8a"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/SystemEventRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "c50305fa638240d62002abccc07ce0039e447d31f73cb732b3e329e4c20a41bc"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/SystemHealthRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "487f72f8fb6eaebb1363966c37ce56fa615f8f59e08c8e9cd9799072c8ded230"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/SystemHealthRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "037b6429ff607ee00af9ed3656db90d5b39f07b23252448d7e043092f1678a6e"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/SystemInfoRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "c9456f6adaed27d33d5278a3b5f691da148ead432bd6abf136d70005943d4c3c"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/SystemInfoRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "299102c05373bf4fd1d341adb0c3c6c17fc82e60bf0839ba45d7e5d471ade7a3"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/SystemRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "f9f76e1cb1c1d800f84c2c28c4a45d8b28b2fbd286e56ab74557a04f783cfc57"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/SystemRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "715b012495be00f42d60c278784716526bf5a2391050412ca111ad58429fbbdc"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/TaskBatchRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "2000440ce365e7d86dfb8f4a8f87836ee3865fb5952c284304d7cca6e1edb6e1"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/TaskBatchRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "8dbe2f4605ead4d8c85521c97ec395d3a0c7ef1fad6487193994b42fadf24857"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/TaskCRUDRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "3bfcc0fdb2fcca5af8c98a7da5fa1df01b051b6acd629b9fd29967d85e4a233a"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/TaskCRUDRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "84ca929d2a03086efb155aa0cbf48972bed1062c8250911fcfc577f37f862687"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/TaskHelpers.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "9a1ff22c7545c0f2c352ff1fad508d28518bd2ef809667065ce71fad2b5d372a"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/TaskMonitoringRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "1bd4edfd3fa8d52fc09beab83b170ecd7df0ba6ea0bcfce904707f4d208d95c5"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/TaskMonitoringRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "b31d005c0dccda9c8e01d4190e8bc18ac6028430fd3082dfdf42309313641a8a"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/TaskRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "6f9178b6269ecb4266e2b3a91dd860c2d395ec019380f7c3ccdd2e758c512c3c"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/TaskRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "ae9109a64d8355e8535342cb7a839266a63fbd5fbc1239c1342c0f5404cf5da2"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/TimelineRoutes.cpp",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "81594398ce52c23c4909725eaf24bc07b8c6d7a0a72bf2c0890d319a3732230f"
+    },
+    {
+      "path": "src/network/HTTPServer/routes/TimelineRoutes.h",
+      "class": "A",
+      "reason": "Android adapters/stages 3-5; 6A field auth; 6C release; C++ production call chain",
+      "sha256": "dbe2833f686ff76da37cdeb98ed646e8f9da6790589d47e31ebd4f161d94c08f"
+    },
+    {
+      "path": "tests/CMakeLists.txt",
+      "class": "A",
+      "reason": "synthetic C++/CLI/HTTP input and security regressions",
+      "sha256": "4bcedf6690b58a649252941cc27cb63d3eec2613d17567250794746b55320eae"
+    },
+    {
+      "path": "tests/UnitTest/test_android_archive_gtest.cpp",
+      "class": "A",
+      "reason": "synthetic C++/CLI/HTTP input and security regressions",
+      "sha256": "72ad1a5d6607f4d6f42083ae261e7b1dbd78c3fd5dc6f2fb82e87a6c333f96ee"
+    },
+    {
+      "path": "tests/UnitTest/test_android_llm_gtest.cpp",
+      "class": "A",
+      "reason": "synthetic C++/CLI/HTTP input and security regressions",
+      "sha256": "6e48e70e340a6887dff1999a86832a22aec6be1ff5be4188edf98bda027047c1"
+    },
+    {
+      "path": "tests/UnitTest/test_android_logical_source_gtest.cpp",
+      "class": "A",
+      "reason": "synthetic C++/CLI/HTTP input and security regressions",
+      "sha256": "62ecc6793cd9dc9e00a22e1e8f50eadda9bf1a4677db33de33d5951c82de0d53"
+    },
+    {
+      "path": "tests/integration/test_android_container_cli_e2e.py",
+      "class": "A",
+      "reason": "synthetic C++/CLI/HTTP input and security regressions",
+      "sha256": "97d58f2631d30cb0ecff891d260187b17948387404dc1788b0cd168455a1f359"
+    },
+    {
+      "path": "tests/integration/test_android_container_http_e2e.py",
+      "class": "A",
+      "reason": "synthetic C++/CLI/HTTP input and security regressions",
+      "sha256": "eb6798fcedaa8d704c4e41ae1da0155e5fc7d151b8855192cd24c495f3b2b53d"
+    },
+    {
+      "path": "tests/integration/test_android_filesystem_http_e2e.py",
+      "class": "A",
+      "reason": "synthetic C++/CLI/HTTP input and security regressions",
+      "sha256": "5035cbb1f24b8253e8a75c543e0f2e78a0ac4c857fc5111de061ccab00b2c9cd"
+    },
+    {
+      "path": "tests/integration/test_android_filesystem_image_e2e.py",
+      "class": "A",
+      "reason": "synthetic C++/CLI/HTTP input and security regressions",
+      "sha256": "6b1b5f7084c3c90af6284b5bcd1c514fc1be0f453b8974dd2901e7b3e6339327"
+    },
+    {
+      "path": "tests/integration/test_field_security_e2e.py",
+      "class": "A",
+      "reason": "synthetic C++/CLI/HTTP input and security regressions",
+      "sha256": "625e2671665d2ad6a5e6fc796211204914c0ab253c297f1d230f4f76bbb841e4"
+    },
+    {
+      "path": "web/.puppeteerrc.cjs",
+      "class": "A",
+      "reason": "repository-local browser resolution; no hard-coded Chrome version",
+      "sha256": "c103e72b86638c0ee5a99fd7754767d69ba440d1dcc2b8cf7c45cb94872d75be"
+    },
+    {
+      "path": "web/package-lock.json",
+      "class": "A",
+      "reason": "complete frontend dependency integrity lock",
+      "sha256": "3374260a71cad46b0d9d48c85109b14c77be9dcd46f4e51c8d4674b0b666bb22"
+    },
+    {
+      "path": "web/package.json",
+      "class": "A",
+      "reason": "pinned frontend and repository-local headless tooling",
+      "sha256": "8927ef56dd250a44ac13c1d630d6f9ccbb556296c3b8764d217e15ba3f72ef97"
+    },
+    {
+      "path": "web/scripts/browser_android_report.mjs",
+      "class": "B",
+      "reason": "historical ad-hoc browser scripts are not runtime dependencies and do not enforce 6C target policy; retain original, use guarded scripts/browser_e2e.py"
+    },
+    {
+      "path": "web/scripts/browser_case_crud.mjs",
+      "class": "B",
+      "reason": "historical ad-hoc browser scripts are not runtime dependencies and do not enforce 6C target policy; retain original, use guarded scripts/browser_e2e.py"
+    },
+    {
+      "path": "web/scripts/browser_evidence_preflight.mjs",
+      "class": "B",
+      "reason": "historical ad-hoc browser scripts are not runtime dependencies and do not enforce 6C target policy; retain original, use guarded scripts/browser_e2e.py"
+    },
+    {
+      "path": "web/scripts/browser_graph_trace.mjs",
+      "class": "B",
+      "reason": "historical ad-hoc browser scripts are not runtime dependencies and do not enforce 6C target policy; retain original, use guarded scripts/browser_e2e.py"
+    },
+    {
+      "path": "web/scripts/browser_inline_citations.mjs",
+      "class": "B",
+      "reason": "historical ad-hoc browser scripts are not runtime dependencies and do not enforce 6C target policy; retain original, use guarded scripts/browser_e2e.py"
+    },
+    {
+      "path": "web/scripts/browser_investigation_details.mjs",
+      "class": "B",
+      "reason": "historical ad-hoc browser scripts are not runtime dependencies and do not enforce 6C target policy; retain original, use guarded scripts/browser_e2e.py"
+    },
+    {
+      "path": "web/scripts/browser_journeys.mjs",
+      "class": "B",
+      "reason": "historical ad-hoc browser scripts are not runtime dependencies and do not enforce 6C target policy; retain original, use guarded scripts/browser_e2e.py"
+    },
+    {
+      "path": "web/scripts/browser_regression.mjs",
+      "class": "B",
+      "reason": "historical ad-hoc browser scripts are not runtime dependencies and do not enforce 6C target policy; retain original, use guarded scripts/browser_e2e.py"
+    },
+    {
+      "path": "web/scripts/browser_report_timeline.mjs",
+      "class": "B",
+      "reason": "historical ad-hoc browser scripts are not runtime dependencies and do not enforce 6C target policy; retain original, use guarded scripts/browser_e2e.py"
+    },
+    {
+      "path": "web/scripts/browser_task_lifecycle.mjs",
+      "class": "B",
+      "reason": "historical ad-hoc browser scripts are not runtime dependencies and do not enforce 6C target policy; retain original, use guarded scripts/browser_e2e.py"
+    },
+    {
+      "path": "web/src/App.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "d57dfb691867c92b24206dee6bbfa52fa485c3c562ce220686ba42652778daa1"
+    },
+    {
+      "path": "web/src/components/AndroidArtifactsCard.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "68a55da5c7c9a95c34a65f3cf93ee9809034fab72692563a6caa2d47072251e9"
+    },
+    {
+      "path": "web/src/components/AndroidArtifactsCard.test.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "2193341a446cb684eb72fa664a4d13f435d542a48d79ea1d1c17068dc2b2c4e6"
+    },
+    {
+      "path": "web/src/components/AndroidCoverageCard.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "1edaf62a8df3ad38513671bf3740970f608e6781e735ee8191329fce145800a6"
+    },
+    {
+      "path": "web/src/components/AndroidCoverageCard.test.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "774562aa90a08732a04ac3a5be04dfd592dd647f097e3c0ea53514fe46476b9a"
+    },
+    {
+      "path": "web/src/components/Layout/Layout.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "cc9e9f07614153f5e5672e4a0687d8eaaa1c1569a8ee5deac98e91528bcbc46c"
+    },
+    {
+      "path": "web/src/components/case-intelligence/CrossImageReport.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers; include existing caller dependencies rather than silently drop graph/translation/case-reader functionality already delivered; not an added 6C feature",
+      "sha256": "ff1b68a8e25cf7275a10ea06dc1482ba01d9618811948124ac8fce1d328f6fe3"
+    },
+    {
+      "path": "web/src/components/case-intelligence/CrossImageReport.test.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers; include existing caller dependencies rather than silently drop graph/translation/case-reader functionality already delivered; not an added 6C feature",
+      "sha256": "657f57394ac3fcff2e2372e1b9140cfa5102f05ee69b6f20ca5f86866e154e5d"
+    },
+    {
+      "path": "web/src/components/common/TaskSelector.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "18755ce5a8d4c2fb8fb22da92cc1db36d9d16e27e3f48155ccf54ebdcf76fbd6"
+    },
+    {
+      "path": "web/src/components/common/TaskSelector.test.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "87c5bcd91a4c203fb2eedc166c9ab54df0a347a83163293b7a1d8322e98cd813"
+    },
+    {
+      "path": "web/src/components/common/TerminalOutput.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "77a0fa60b2ca1ff04d48558b959d6a5e4f33a04a63edf22eaf5f92812c10b8af"
+    },
+    {
+      "path": "web/src/components/common/ToastContext.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "baeb7792e134874f361359b3aa1a657015779d641fc171b7a4f69ae9d2f36575"
+    },
+    {
+      "path": "web/src/components/common/toastContext.js",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "8230b732874e3b5aa98ffaaa8bacca53934cd598849422b5a07e40d075bdb072"
+    },
+    {
+      "path": "web/src/components/common/toastContextBase.js",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "5bdbfb316d4ebfa8e309201a65e82813fa253f393e63e5a9f7feccc7ed8e2068"
+    },
+    {
+      "path": "web/src/components/files/ExtensionAnalysisTab.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "b59e932fe88de886157d66a2a688695ad8c46a22d0356f68398e5f48e256be4b"
+    },
+    {
+      "path": "web/src/components/investigation/ReportEvidenceJudgment.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "b0f068e4b0095ca6b14ee8e5aa0d1cecf0ae5df71a89d49df9f3dba785e5e68f"
+    },
+    {
+      "path": "web/src/components/investigation/ReportEvidenceJudgment.test.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "7eb4b38dcdb4966cee47ce1b36a47e8548f7ba2179e91c2c3aa71f637257aa81"
+    },
+    {
+      "path": "web/src/components/knowledge-graph/RelationshipTracePanel.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers; include existing caller dependencies rather than silently drop graph/translation/case-reader functionality already delivered; not an added 6C feature",
+      "sha256": "fd7981ba504055a3e8b5940cefa8ce9f8cdd52b63d6d67385a979f70da375a5a"
+    },
+    {
+      "path": "web/src/components/knowledge-graph/RelationshipTracePanel.test.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers; include existing caller dependencies rather than silently drop graph/translation/case-reader functionality already delivered; not an added 6C feature",
+      "sha256": "7a37e66dcbb4308ee8c90bea462318725b2a780020b94be8fce53712770fc2fa"
+    },
+    {
+      "path": "web/src/components/knowledge-graph/RelationshipsTab.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers; include existing caller dependencies rather than silently drop graph/translation/case-reader functionality already delivered; not an added 6C feature",
+      "sha256": "ea3f574007e21f9e1afa60685a2e1a4d973fe07fbf9af1c0688a7c6f35a2cd5b"
+    },
+    {
+      "path": "web/src/components/reports/CitationTracebackPanel.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "e0b2f327b3a9f02a9438978995b15fbb78ecff7fec6ca6b9fdb89eea03ee4da5"
+    },
+    {
+      "path": "web/src/components/reports/CitationTracebackPanel.test.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "399096d227d1f556865935a64fcce6e0e8c51368a80aa3ab52bbe34204f09e38"
+    },
+    {
+      "path": "web/src/components/reports/NarrativeReportView.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "44b05f8d119574ed7bb34e65362cd74ab18e3f91a1e1ae95d8ff7da6bd36506e"
+    },
+    {
+      "path": "web/src/components/reports/NarrativeReportView.test.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "3bff5e6e06e1c3a417df29f56f03c6703a6c592087b6353867093a186e9766e3"
+    },
+    {
+      "path": "web/src/components/reports/narrativeCitationPlacement.js",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "687b4cef7d325f786d3c9f49f1294e3070b15db3202b438c13031e3cac22da76"
+    },
+    {
+      "path": "web/src/components/reports/narrativeCitationPlacement.test.js",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "157c642b1303bfec73ffc1c6750e5373926f8c53f4786666867e3fac9d07b4cb"
+    },
+    {
+      "path": "web/src/components/tasks/CreateTaskModal.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "f44e5f5e91003d2ff00784cff0ce22ed43ca8c25f5acc880bc89b1e1f04963fa"
+    },
+    {
+      "path": "web/src/components/tasks/CreateTaskModal.preflight.test.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "8fcbcc80cd15c7c64648e7679ac4fc354ed30b803f520fb30df1b5953702f60b"
+    },
+    {
+      "path": "web/src/components/tasks/EvidencePreflightPanel.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "ed263276fd3360e76760c228e0c1604158be904fd497d6aa9e987a6ff87a0533"
+    },
+    {
+      "path": "web/src/components/tasks/EvidencePreflightPanel.test.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "a2ec6ae9a5eeaac438fb4ad410fcc9f86b8738a95ba36067dc7b4bfa00cb1d77"
+    },
+    {
+      "path": "web/src/components/tasks/TaskTable.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "e6bd6a93a6a523cc95d505d911b89778cb3d68ee4614f399e259cce4eb8ecb0c"
+    },
+    {
+      "path": "web/src/config/runtime.js",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "7e036bcf7e8089aa0d7ce342f4b01374b4892cbdca918e2be7b9e14aa851e8ba"
+    },
+    {
+      "path": "web/src/pages/AnalysisCenter.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "79e0902cbe7251fe015f77efc720f246e5652f89efc8282f7727e4098b8c90bf"
+    },
+    {
+      "path": "web/src/pages/Android.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "c5d3b2c16d3110c681d498f34f9852cb16b88c490646c886056740c688e02441"
+    },
+    {
+      "path": "web/src/pages/AndroidReportImports.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "3eaae7d9acd2056aff5ae9fb42cada86bfc8288ed8c04b6bf435ec6c8b5a9353"
+    },
+    {
+      "path": "web/src/pages/AndroidReportImports.test.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "e6b5bd1476a4c3dc80c99cfea86d257ca13850bb1a976994ca32241ad55b6298"
+    },
+    {
+      "path": "web/src/pages/CaseIntelligence.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "ee636626ac5e77f499aa73e1044c1c3bdcc741fdbe0f1cb4a06c3fae1445e821"
+    },
+    {
+      "path": "web/src/pages/CaseIntelligence.test.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "fa6321ed60c1c07ad1d3914e3675f3e0262a15b15738e10563aa650fc61c5ef3"
+    },
+    {
+      "path": "web/src/pages/Cases.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "c3530ae6772b465b4038593694141c8b8bedc0d0342ed60a27d7bbcfb5ee5cc1"
+    },
+    {
+      "path": "web/src/pages/Files.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "d194ee8979888ad31131d3df97ea34807473c9bebe4f043746119bffd9d77d34"
+    },
+    {
+      "path": "web/src/pages/ForensicReportPage.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "dc250def468608e367721428e1b816245b1a8314520df84f3cf112c2caefb75d"
+    },
+    {
+      "path": "web/src/pages/ForensicReportPage.test.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "6f855354e7297afedb12189752b0300dae6d9135821b74f0b19d0402ab9bf2e9"
+    },
+    {
+      "path": "web/src/pages/GraphSourceFile.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers; include existing caller dependencies rather than silently drop graph/translation/case-reader functionality already delivered; not an added 6C feature",
+      "sha256": "9e36db84e588318718c49b46a2b9dc8a72d865f6d453df3cac5f84389fa81907"
+    },
+    {
+      "path": "web/src/pages/GraphSourceFile.test.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers; include existing caller dependencies rather than silently drop graph/translation/case-reader functionality already delivered; not an added 6C feature",
+      "sha256": "aec79e923ae43540293b80fda25a216133bbde3f85ca4a5f6f70474fa379c124"
+    },
+    {
+      "path": "web/src/pages/Investigation/FinalReportViewer.test.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "493ef575143127c73d544f74b1bf4fa9b3dc15be387717b2367fba78f5a310d6"
+    },
+    {
+      "path": "web/src/pages/Investigation/Investigation.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "07a7c57237b13ac2de6b5a7fcac56dbb44eb4128439eb52e6a17d12fd43f5c8d"
+    },
+    {
+      "path": "web/src/pages/Investigation/Investigation.test.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "c4634fa875b61303421dcd5059bedcb09213ffb867d2f7effcc9cefb94f37f10"
+    },
+    {
+      "path": "web/src/pages/Investigation/components/AnalysisWorkspace.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "b19edc2c3761ba8f5d69c5e32b01bcfaa08c6b4d97b9bbe29860c500fd87bf21"
+    },
+    {
+      "path": "web/src/pages/Investigation/components/EvidenceAnalysisPanel.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "68e49f037041ae7fe71fe5d10c9b48081e49d7aa02dc79f84f064bebaff949e3"
+    },
+    {
+      "path": "web/src/pages/Investigation/components/FileEventPanel.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "f665e3159dacec4e31485581fa3adf409964c5b7b262541b8ef4cb0b462dd4a0"
+    },
+    {
+      "path": "web/src/pages/Investigation/components/InvestigationTimeline.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "664e48a158c0b5d91841c51fa6978456cab2c42608903de19368257fcc6c7cde"
+    },
+    {
+      "path": "web/src/pages/Investigation/components/InvestigationTimeline.test.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "26dc733079f136555f1405be6c8fc92ad53a83e5145c20c507d3a24dde7a245f"
+    },
+    {
+      "path": "web/src/pages/Investigation/components/LocalKnowledgeGraph.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "a1d18c1f2f9aefebaad2fbc691e86d796bf66229b50514989e14a793a38175f4"
+    },
+    {
+      "path": "web/src/pages/Investigation/components/LocalKnowledgeGraph.test.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "681cc8645599e9d77a9384e715b1e69e34e2380be59674345e5522694799037f"
+    },
+    {
+      "path": "web/src/pages/Investigation/hooks/useCitedReportVersion.js",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "c2669f9a5f4bebc8c3ca3afe38935afa5c4555e791a0aa457bf660037c8eddf4"
+    },
+    {
+      "path": "web/src/pages/Investigation/hooks/useCitedReportVersion.test.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "9e0c304b256fdd2824d853b85bc15956a585ca330dca8572f34b90b411376175"
+    },
+    {
+      "path": "web/src/pages/Investigation/hooks/useEvidenceAnalysis.js",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "f750e6c6e749ab02a024b41f1dd448a91e0cd42dbe907d8fa49cf07b24d9f48c"
+    },
+    {
+      "path": "web/src/pages/Investigation/hooks/useInitialAnalysisTranslation.js",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "6dee54e5c2e0cbbb890732c4c97e39dd33fd512f2fbae1265dff8fcc6c5840ab"
+    },
+    {
+      "path": "web/src/pages/Investigation/hooks/useInitialAnalysisTranslation.test.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "21d23f3ac37e05b6e01fb97048746518601c7cb8270ae3d552756ee115cd2902"
+    },
+    {
+      "path": "web/src/pages/Investigation/hooks/useInvestigationFileTimeline.js",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "a938108c4b6380d9f009ac3484fef1a3930288b0517416a336121e40d01a781c"
+    },
+    {
+      "path": "web/src/pages/KnowledgeGraph.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "9070deefe4edf070b1ea4fa54a448b75c062a04b4aef1853654b07a21c492703"
+    },
+    {
+      "path": "web/src/pages/LegacyReportRedirect.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "b77c8e77f2b55a338678e002e1278372a5bdbde9950a5fe925b26577a3dc803a"
+    },
+    {
+      "path": "web/src/pages/LegacyReportRedirect.test.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "d1a2ecbbc42bc7e219efc278d430b5c4981f0f4fdd6c60dbeacfc91d39feeb69"
+    },
+    {
+      "path": "web/src/pages/Login.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "968c2d5aa6f5059a147865e6038828e7e0f39949b520333621bb3ea9e63e2dab"
+    },
+    {
+      "path": "web/src/pages/Login.test.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "2a334aa5101863cc7912221a1b32692ac484bbb77d7c87b7ecf7dc7b50791293"
+    },
+    {
+      "path": "web/src/pages/Logs.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "0994240dac6f1508e21f0c84e86f55d2f1a0f0bef92e836d5d31cc4340458012"
+    },
+    {
+      "path": "web/src/pages/Statistics.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "c5410d7e037646e841841a612e363582a902007db1c8ee268eecd4f225113049"
+    },
+    {
+      "path": "web/src/pages/Tasks.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "f180373e15b1a43eaae8f1ef119dce84f58da585c2ead2e9d7c6f386d9d47459"
+    },
+    {
+      "path": "web/src/pages/Timeline.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "fc3605fc749c078c1abd1b96f1ca3caca52723d45d14f8a27438ec182fe58878"
+    },
+    {
+      "path": "web/src/pages/reportRedirectTarget.js",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "ed74eb29a48ceca799aca65df632d8537aef0d4c80948c792c39d088d8896fa7"
+    },
+    {
+      "path": "web/src/routes.jsx",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "418f2b35fcc232bbef3a00817a18ffb7fb0af449a1ddc039ae3917af601273e3"
+    },
+    {
+      "path": "web/src/services/androidReportService.js",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "54dad80ec3ebf1225b946506998fbd7d5448faa067164fe9aed4d43ab2d9b923"
+    },
+    {
+      "path": "web/src/services/api.js",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "699c7cd77e262138cd504fbbee1c96c7d921716a2ff45c928c2aa8003423ea92"
+    },
+    {
+      "path": "web/src/services/associationService.js",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "bf2238fdc225a8243eb7dc5f67770df2216b5f381b250b2e7c22644919130a15"
+    },
+    {
+      "path": "web/src/services/evidenceIntakeService.js",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "9cbc4755975c8bdb733a8e0c8f728a921ea897e9bc3d4f12993b7204450d943b"
+    },
+    {
+      "path": "web/src/services/fieldResource.js",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "bce219d75af02c1b1d4c3219cd9d5872a2e5e0769fc5cc4d3869dcef98ec4183"
+    },
+    {
+      "path": "web/src/services/fieldResource.test.js",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "e2d9628f1ae6d2639871360a3e959de6486890ef9dd9daaf9e86af60add3f89c"
+    },
+    {
+      "path": "web/src/services/fieldSession.js",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "c21434dc234d34274b6e5135e9a0b616babd3e091ebca716cce9c46876615e01"
+    },
+    {
+      "path": "web/src/services/fieldStream.js",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "0e216519c9b436c367827517d4346afd547b75a08303517e1f0bb0b81282b422"
+    },
+    {
+      "path": "web/src/services/fieldStream.test.js",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "4bbb7b6be4fd4fe12dc1320044c560a2ed590aa889ee9befd3c6dc7a8a1e50b5"
+    },
+    {
+      "path": "web/src/services/graphitiService.js",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "6937526daab456d681a6a147019dca43d346caea26f38181e24764b1d8ac1077"
+    },
+    {
+      "path": "web/src/services/investigationService.js",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "e73ca8d2daa87d33e2b18d1cc0b96ea0a5c3561918e9b3327a297ba75c83d4ae"
+    },
+    {
+      "path": "web/src/styles/index.css",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "1f0819437b173b389da45198c4ddf06e0d7fa0ab444696e5bf6abb7aac48a8f5"
+    },
+    {
+      "path": "web/src/utils/evidenceKey.js",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "5bad885e84b2c935d36c819ebf624f42f38e0e7aa406823e55e38d9e606169b3"
+    },
+    {
+      "path": "web/src/utils/evidenceKey.test.js",
+      "class": "A",
+      "reason": "earlier UI fixes/citations/timeline/graph tracing and Android/security/6B consumers",
+      "sha256": "ff2661882b1cb15f936b7918cf5f2648734dd3671fa489cdec978bfa9d4c24f9"
+    },
+    {
+      "path": "web/vite.config.js",
+      "class": "A",
+      "reason": "field same-origin and isolated development proxy guard",
+      "sha256": "f3ecf31ce7ab890b6adf617a8d703177ad52e482a3137d1b4f519337d7ce95a8"
+    }
+  ],
+  "private_excluded_class_C_groups": {
+    ".vite": 1,
+    "data": 25,
+    "testimg": 13
+  },
+  "staged_entries_before": [],
+  "dependency_decision": "All production source consumers and their untracked modules included; historical ad-hoc harnesses not referenced by build/runtime.",
+  "mixed_hunks": [
+    {
+      "path": "setup.sh",
+      "included": "libarchive/venv/cache relocation fixes",
+      "candidate_fix": "optional translation-model download defaults to opt-in, not automatic"
+    },
+    {
+      "path": "web/package*.json",
+      "decision": "retain existing pinned browser dependency closure including yauzl rather than rewrite lockfile; never included in shipped runtime assets"
+    },
+    {
+      "path": "python_service/httpserver/routes/investigation_workbench.py",
+      "decision": "include graph/translation dependency closure to preserve existing route registration; local profile disables optional model calls"
+    }
+  ],
+  "D_required_decisions": [],
+  "baseline_gitlink": {
+    "path": "python_service/graphiti",
+    "commit": "e0d70d373870a5a391efb1512aa93c8c568a9557",
+    "initialized": false,
+    "runtime": "pinned graphiti-core 0.30.2 wheel, not this gitlink"
+  }
+}
