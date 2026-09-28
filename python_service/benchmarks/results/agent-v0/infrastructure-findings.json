@@ -1,0 +1,20 @@
+{
+  "finding_version": "infrastructure-finding:v1",
+  "finding_id": "SERVICE_MANAGER_RECOVERY_SCAN_LINEAR_TASK_GROWTH",
+  "classification": "RUNTIME/PERFORMANCE",
+  "observed_at": "2026-09-28",
+  "environment": {
+    "branch": "mvp/agent-v0-phase8-benchmark-acceptance-calibration",
+    "production_runtime_commit": "946f325eeb6add1072466aed96e5e2e7e38748ed"
+  },
+  "observation": "ServiceManager.initialize() runs restart-recovery sweeps (AgentOrchestrator._recover_all_tasks, SecondaryAnalysisExecutor._recover_stale_analyses, EventRefreshExecutor, ForensicReportService) that sequentially open EVERY task's trusted stores. At 112 tasks a full init exceeded 180s, exceeding both startup_timeout (30s default) and optional_service_init_timeout (12s default); benchmark drivers failed with empty-reason TimeoutError while the recovery sweep itself was still making steady ~40ms/task progress. A wedged worker (killed) also held no locks; the slowdown was pure O(task_count) sequential IO, not a deadlock.",
+  "impact": "Any process initializing ServiceManager on a host with many tasks fails startup once task count exceeds the init budget. This is measurement/infrastructure failure, NOT an agent semantic failure, and must never be attributed to Supervisor completion (B3.5 §21).",
+  "interim_mitigation": "Deleted 67 completed benchmark provisioning tasks via the normal task lifecycle API (all runs already persisted under benchmarks/results/agent-v0/). Init returned to ~10s at 45 tasks.",
+  "not_done_now": "Production recovery architecture NOT modified (B3.5 §17: current round is measurement closure + calibration decision). The harness-level fix is post_snapshot_cleanup (B3.5 §18) so benchmark tasks no longer accumulate.",
+  "remediation_options_future": [
+    "parallelize or page-budget the per-task recovery sweep",
+    "cache trusted DB paths instead of re-opening every store at init",
+    "exempt terminal tasks from the agent-runtime recovery sweep"
+  ],
+  "owner_component": "httpserver/services/service_manager.py + investigation/agent_orchestrator.py + investigation/execution.py"
+}

@@ -704,11 +704,35 @@ def _persist(out_dir: Path, outcome: dict) -> None:
         )
 
 
+def _cleanup_task(task_id: str) -> bool:
+    """B3.5 §18 post_snapshot_cleanup: delete the benchmark-created task
+    through the normal task lifecycle API AFTER snapshot+result persistence
+    and evaluate-only reproduction.  Only ever called with task ids this
+    driver created via POST /api/tasks."""
+    import urllib.request
+
+    try:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:8666/api/tasks/{task_id}", method="DELETE"
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return 200 <= resp.status < 300
+    except Exception:
+        return False
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="run_p8b_baseline")
     parser.add_argument("--case", help="single case id (default: all)")
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--repeat-start", type=int, default=0)
+    parser.add_argument(
+        "--cleanup-tasks",
+        action="store_true",
+        help="B3.5 §18: delete each benchmark task after snapshot+result "
+        "persistence and evaluate-only reproduction (§20: never on "
+        "incomplete artifacts)",
+    )
     args = parser.parse_args(argv)
 
     corpus = json.loads(CORPUS_FILE.read_text(encoding="utf-8"))
@@ -813,6 +837,75 @@ def main(argv=None) -> int:
                     f"[fail] {case_id}/{tag}: "
                     f"{outcome['failure'].failure_reason[:150]}"
                 )
+            # B3.5 §18 post_snapshot_cleanup: snapshot + result are durable;
+            # verify evaluate-only reproduction, then delete the
+            # benchmark-created task.  §20: NEVER on incomplete artifacts.
+            if args.cleanup_tasks and outcome["status"] == "completed":
+                from httpserver.services.benchmarks.runner import (
+                    evaluate_only,
+                )
+                from httpserver.services.benchmarks.run_manifest import (
+                    BenchmarkRunManifestV1,
+                )
+                from httpserver.services.benchmarks.snapshot import (
+                    BenchmarkRunSnapshotV1,
+                )
+                from httpserver.services.benchmarks.truth_manifest import (
+                    ReachabilityManifestV1 as _RM,
+                    TruthManifestV1 as _TM,
+                )
+
+                recomputed = evaluate_only(
+                    run_manifest=BenchmarkRunManifestV1(
+                        **json.loads(
+                            (out_dir / "run_manifest.json").read_text(
+                                encoding="utf-8"
+                            )
+                        )
+                    ),
+                    truth_manifest=_TM(
+                        **json.loads(
+                            (
+                                CASES_ROOT / case_id / "truth_manifest.json"
+                            ).read_text(encoding="utf-8")
+                        )
+                    ),
+                    reachability=_RM(
+                        **json.loads(
+                            (
+                                CASES_ROOT / case_id / "reachability.json"
+                            ).read_text(encoding="utf-8")
+                        )
+                    ),
+                    snapshot=BenchmarkRunSnapshotV1(
+                        **json.loads(
+                            (out_dir / "snapshot.json").read_text(
+                                encoding="utf-8"
+                            )
+                        )
+                    ),
+                )
+                persisted_hash = json.loads(
+                    (out_dir / "result.json").read_text(encoding="utf-8")
+                )["result_hash"]
+                if recomputed.result_hash == persisted_hash:
+                    if _cleanup_task(fresh_task_id):
+                        (out_dir / "cleanup.json").write_text(
+                            json.dumps(
+                                {
+                                    "benchmark_run_id": result.run_manifest_id,
+                                    "task_id": fresh_task_id,
+                                    "source_task_deleted_after_snapshot": True,
+                                },
+                                indent=1,
+                            ),
+                            encoding="utf-8",
+                        )
+                        print(f"       [cleanup] task {fresh_task_id} deleted (snapshot-verified)")
+                    else:
+                        print(f"       [cleanup] task {fresh_task_id} delete FAILED; kept for analysis")
+                else:
+                    print(f"       [cleanup] SKIPPED: evaluate-only hash mismatch")
     EXPERIMENT_FILE.write_text(
         json.dumps(experiment, indent=2, ensure_ascii=False),
         encoding="utf-8",
