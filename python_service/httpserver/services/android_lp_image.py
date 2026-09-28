@@ -20,11 +20,12 @@ CORE_COMMIT = "204bd34e58de124ead5a1e65b852608620077b84"
 EXTRAS_COMMIT = "ef17b323e8be065ed9fbcd1ea863d72e63488fc0"
 TOOL_VERSION = "AOSP android-10.0.0_r36"
 TOOL_HASHES = {
-    "liblp.so": "15dda55ad2bfd0e0ea867f7e4834017ff70338a01184d3d0cdfdf7f9ece0bf0e",
-    "lpmake": "c46c73fcb80871f38134750a9661e87d3940b1b1f1df15c4b3f9d29c22a7d518",
-    "lpunpack": "8acbc953127f0da88f995f1be43f15b499eb4410ece0bd3df29e199b41170b48",
-    "lp_inventory": "40bf009e33a9f0b800c9134e3bfdbb66665d5c33475ccba51ccc4e6a9e8dbe00",
+    "liblp.so": "d18f50d4d49110e377da3d8a40be626f2c66558160a4197e867e44fb0279c9d3",
+    "lpmake": "56fa052af00e7cd2b5ff285b34a834056c8f1afd92d7f1e3340de5bccbb82200",
+    "lpunpack": "94fe28cc7e595cc77cc17660cb1c95a16ce5b9219efc509e9d76ee942cd3883a",
+    "lp_inventory": "684466b62d3d5b44460be7c15bb6a27cdf8fd95131a43365fe767185ccc4dc3b",
 }
+PINNED_SOURCE_MANIFEST_SHA256 = "bebfd3bd55d4dc4bea84035176cec0355f9de106bfa36b07b96adf80e752eb2c"
 LP_GEOMETRY_MAGIC = b"\x67\x44\x6c\x61"
 MAX_INVENTORY_BYTES = 8 * 1024 * 1024
 
@@ -39,10 +40,19 @@ def tool_root() -> Path:
 
 def verify_tools() -> Path:
     root = tool_root()
-    for subdir, expected in (("core", CORE_COMMIT), ("extras", EXTRAS_COMMIT)):
-        completed = subprocess.run(["/usr/bin/git", "-C", str(root / subdir), "rev-parse", "HEAD"],
-                                   capture_output=True, text=True, timeout=10, check=False)
-        if completed.returncode or completed.stdout.strip() != expected:
+    # Runtime bundles have no mutable upstream checkout. The exact accepted
+    # source manifest and every named source file replace a parent-repo HEAD
+    # probe, which could silently query the wrong worktree's .git file.
+    manifest = root / 'pinned-source.sha256'
+    if (not manifest.is_file() or manifest.is_symlink() or
+            file_sha256(manifest) != PINNED_SOURCE_MANIFEST_SHA256):
+        raise LpError("AOSP_LIBLP_SOURCE_PIN_MISMATCH")
+    for line in manifest.read_text(encoding='utf-8').splitlines():
+        digest, relative = line.split('  ', 1)
+        path = root / relative
+        if (Path(relative).is_absolute() or '..' in Path(relative).parts or path.is_symlink()
+                or not path.resolve().is_relative_to(root.resolve()) or
+                not path.is_file() or file_sha256(path) != digest):
             raise LpError("AOSP_LIBLP_SOURCE_PIN_MISMATCH")
     for name, expected in TOOL_HASHES.items():
         path = root / "bin" / name

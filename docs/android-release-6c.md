@@ -24,6 +24,11 @@
   新建 venv，从带哈希 wheelhouse 完全离线安装并 `pip check`，不得回退旧环境或公网。
 - 现有 AOSP 工具曾把原开发目录的 `liblp.so` 绝对路径写入 DT_NEEDED；同一已验收源版本
   在候选重新构建，SONAME 为 `liblp.so`，运行时经 `$ORIGIN` 使用包内库，算法与格式未扩展。
+- LP 发布包不携带 upstream Git 元数据；以固定 SHA-256 源码清单、逐文件校验和固定工具
+  二进制哈希验证同一已验收输入。源码/二进制任一变化仍拒绝，不能任意换 manifest 放行。
+  原阶段记录的 upstream commit 标识保留，不把父 worktree 的 HEAD 冒充 upstream 版本。
+- 冻结目录包含正常启动需要的公开 `extractor_mapping.json` 和 `artifact_whitelist.json`，
+  不因打包遗漏而静默变成零 extractor 路由。失败尝试和修复后验收记录分别保留。
 - 空历史 v7 overview 明确标只读，页面不再自动 POST bootstrap；写操作仍要求受控 v8 迁移。
   不修改历史数据库，不拿浏览行为触发迁移。
 

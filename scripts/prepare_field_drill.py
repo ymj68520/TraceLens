@@ -121,6 +121,8 @@ def freeze(frontend: Path, binary: Path, output: Path, wheelhouse: Path) -> dict
     marker.write_text('Candidate staging is incomplete\n')
     shutil.copytree(ROOT / 'python_service/httpserver', output / 'python_service/httpserver',
                     ignore=shutil.ignore_patterns('__pycache__', '*.pyc', '*.db', '*.log'))
+    for name in ('extractor_mapping.json','artifact_whitelist.json'):
+        _copy(output, 'python_service/config/' + name)
     (output / 'python_service/httpserver/_build_identity.py').write_text(
         '# Generated from fixed source; imported once by the running service.\n'
         + ''.join(f'{key.upper()} = {fixed[key]!r}\n' for key in ('release_id','source_commit','source_tree_sha256')))
@@ -132,6 +134,12 @@ def freeze(frontend: Path, binary: Path, output: Path, wheelhouse: Path) -> dict
         _copy(output, name)
     for name in ('.deps/aosp-android10-r36/core/NOTICE', '.deps/aosp-android10-r36/pinned-source.sha256'):
         _copy(output, name)
+    for line in (ROOT / '.deps/aosp-android10-r36/pinned-source.sha256').read_text().splitlines():
+        digest, relative = line.split('  ',1)
+        path = ROOT / '.deps/aosp-android10-r36' / relative
+        if Path(relative).is_absolute() or '..' in Path(relative).parts or path.is_symlink() or _sha(path) != digest:
+            raise ValueError('pinned public tool source changed before staging')
+        _copy(output,'.deps/aosp-android10-r36/' + relative)
     shutil.copytree(ROOT / 'deploy/field', output / 'deploy/field')
     dest = output / 'build/forensic_analyzer'
     dest.parent.mkdir(parents=True)
