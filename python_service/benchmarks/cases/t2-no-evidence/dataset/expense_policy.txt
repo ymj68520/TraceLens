@@ -1,0 +1,4 @@
+Company expense reimbursement policy v3.
+1. Submit receipts within 30 days.
+2. Manager approval required above 5000 CNY.
+3. Finance processes payments every Friday.

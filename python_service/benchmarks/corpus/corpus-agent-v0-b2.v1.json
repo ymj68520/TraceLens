@@ -1,0 +1,94 @@
+{
+  "manifest_version": "benchmark-corpus-manifest:v1",
+  "corpus_id": "corpus-agent-v0-b2",
+  "version": "3",
+  "development_cases": [],
+  "calibration_cases": [
+    {
+      "case_id": "t1-fraud-script-usb",
+      "case_hash": "877b171b12b9f06d8c2ba68551e702461b3d33b3251a47d5b18b0e069ea22f39",
+      "truth_manifest_id": "tman:fd3d504c10ba9bd137820b38",
+      "truth_manifest_hash": "fd3d504c10ba9bd137820b38824b14c1b77bb29f016459c196dcbc60ff69e5a9",
+      "dataset_hash": "071f01f1a197a71b68e93d51917c8381b6832b68c4d39fe5ea131ffaf5f000c9",
+      "tier": "T1",
+      "negative_dimensions": []
+    },
+    {
+      "case_id": "t2-identity-trap",
+      "case_hash": "900282661b7baeebaae6ec636ecdda73083b92dba02187b14a15930df7433983",
+      "truth_manifest_id": "tman:PLACEHOLDER",
+      "truth_manifest_hash": "34b1db2600918e4196eded9b3faa7a7abdceca337e7955465d09a5625b42e4e2",
+      "dataset_hash": "e20d1369ff21d35affaa02b2a879677208bda616e5d91ebea6800c6a99b02eed",
+      "tier": "T2",
+      "negative_dimensions": [
+        "ambiguous_evidence",
+        "same_username_different_person"
+      ]
+    },
+    {
+      "case_id": "t2-no-evidence",
+      "case_hash": "d3e11a07ddb68777695339c401558d7cdff090998c174277c744289bad0c5795",
+      "truth_manifest_id": "tman:PLACEHOLDER",
+      "truth_manifest_hash": "e6f337f50e0a586ca4315a42406c42ec8865ba51eef07fdcc1252e3bee758559",
+      "dataset_hash": "0ecdbd6ff73fc961d02132dd7276544e6e7d40e3a4a2ee79e2b75df1adb298e8",
+      "tier": "T2",
+      "negative_dimensions": [
+        "no_incriminating_evidence"
+      ]
+    },
+    {
+      "case_id": "t2-temporal-trap",
+      "case_hash": "a035b2f9b27cbafdae2c10d26f7bc6bf101249485e923a859be5c7cd20fa3eae",
+      "truth_manifest_id": "tman:PLACEHOLDER",
+      "truth_manifest_hash": "77694d90d115fb512888b1393bee7f8162e187d9d0d41b7331f8e3c6a8317d22",
+      "dataset_hash": "95816de840e121b307dca0c68da0b242c2f57593e45281123ca5fc0484cf4c7d",
+      "tier": "T2",
+      "negative_dimensions": [
+        "ambiguous_evidence",
+        "temporal_proximity_not_causality"
+      ]
+    }
+  ],
+  "acceptance_cases": [
+    {
+      "case_id": "t1-usb-collector",
+      "case_hash": "8e02165da0bc62a9368e21908cdd916435fc02ddd0e736ca95ef5e1b4ec97c25",
+      "truth_manifest_id": "tman:c2f151e5ff96e455bcfd71a5",
+      "truth_manifest_hash": "c2f151e5ff96e455bcfd71a52a0439b3c8369a6795da11eb9c13d2c84c65740d",
+      "dataset_hash": "dc015b118e5ca91fc4a4273a25fc548bc348c0ea4d7baa04fb3e86208e0aa975",
+      "tier": "T1",
+      "negative_dimensions": []
+    }
+  ],
+  "stress_cases": [],
+  "freeze_commit": "946f325e",
+  "selection_rationale": "B2 measured-baseline corpus v3: the canary calibration case t1-fraud-script-usb (unchanged, case_version 2) plus three new T2 negative-dimension cases authored on purpose-built minimal ext4 images (t2-identity-trap: same_username trap + shared-IP attribution; t2-no-evidence: benign volume, scoped-negative indeterminate outcome; t2-temporal-trap: temporal-proximity causality trap with real third-party deposits). Holdout t1-usb-collector remains sealed and unchanged. Canary corpus v2 (corpus-agent-v0-canary) is superseded as the measurement corpus; the v2 freeze remains valid for the canary record.",
+  "coverage_matrix": {
+    "single_device_clear": true,
+    "single_device_noisy": true,
+    "multi_source_correlation": false,
+    "cross_device_relation": false,
+    "evidence_absent_indeterminate": true,
+    "analyst_note_misleading": false,
+    "case_context_misleading": false,
+    "same_username_identity_trap": true,
+    "same_ip_identity_trap": true,
+    "temporal_causality_trap": true,
+    "malicious_intent_trap": false,
+    "review_pending_vs_accepted": false,
+    "graph_optional_failure": false,
+    "report_citation_ceiling": false,
+    "provider_tool_failure": false
+  },
+  "known_exclusions": [
+    "multi-source correlation cases (C7): no second source image available this round — CALIBRATION_EVIDENCE_LIMITED",
+    "misleading Case Context / Analyst Note as authored negative (C4): covered only partially via trap READMEs, not a dedicated case — CALIBRATION_EVIDENCE_LIMITED",
+    "review_pending vs accepted temptation (C8) and report/citation path (C9): not exercised this round — CALIBRATION_EVIDENCE_LIMITED",
+    "provider/tool recoverable failure (C10): observed opportunistically, no dedicated case — CALIBRATION_EVIDENCE_LIMITED",
+    "T4 large-volume stress cases"
+  ],
+  "truth_review_status": "single-reviewer",
+  "calibration_profile_hash": null,
+  "input_hash": "237d40c1f56ab78f2b842861f905291c0bf10b37013949991e474949b29c95f8",
+  "created_at": "2026-09-28T00:59:17.141488+00:00"
+}

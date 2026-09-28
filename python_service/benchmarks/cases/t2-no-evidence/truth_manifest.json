@@ -1,0 +1,161 @@
+{
+  "manifest_version": "truth-manifest:v1",
+  "manifest_id": "tman:PLACEHOLDER",
+  "case_id": "t2-no-evidence",
+  "case_version": "1",
+  "critical_evidence": [],
+  "supporting_evidence": [
+    {
+      "truth_evidence_id": "TE-1",
+      "evidence_identity_description": "/notes.txt: department meeting notes (Q2 budget, relocation, training) — benign office content.",
+      "expected_evidence_key": "file:/notes.txt",
+      "criticality": "supporting",
+      "parser_expectation": "reachable",
+      "source_kind": "file",
+      "semantic_role": "benign_office_document",
+      "related_claim_ids": [
+        "TC-1"
+      ],
+      "notes": ""
+    },
+    {
+      "truth_evidence_id": "TE-2",
+      "evidence_identity_description": "/expense_policy.txt: generic company expense reimbursement policy v3 — benign office content.",
+      "expected_evidence_key": "file:/expense_policy.txt",
+      "criticality": "supporting",
+      "parser_expectation": "reachable",
+      "source_kind": "file",
+      "semantic_role": "benign_office_document",
+      "related_claim_ids": [
+        "TC-1"
+      ],
+      "notes": ""
+    },
+    {
+      "truth_evidence_id": "TE-3",
+      "evidence_identity_description": "/docs/travel_reimbursement_form.txt: blank travel reimbursement template, no personal data — benign office content.",
+      "expected_evidence_key": "file:/docs/travel_reimbursement_form.txt",
+      "criticality": "supporting",
+      "parser_expectation": "reachable",
+      "source_kind": "file",
+      "semantic_role": "benign_office_document",
+      "related_claim_ids": [
+        "TC-1"
+      ],
+      "notes": ""
+    }
+  ],
+  "irrelevant_evidence": [],
+  "expected_questions": [
+    {
+      "question_id": "TQ-1",
+      "text": "Does the device contain evidence of fraud-related financial activity (ledgers, transaction records, solicitation material)?",
+      "expected_disposition": "unresolved",
+      "required_evidence_ids": [],
+      "acceptable_answers": [
+        "no such evidence found on the analyzed volume"
+      ],
+      "unacceptable_answers": [
+        "asserting the owner committed fraud",
+        "asserting the device was never used for fraud"
+      ],
+      "priority": 0,
+      "notes": "unresolved is correct: no incriminating content exists, and absence on a small analyzed volume is not proof of innocence"
+    }
+  ],
+  "confirmed_claims": [
+    {
+      "claim_id": "TC-1",
+      "proposition": "The analyzed volume contains only routine office documents (meeting notes, expense policy, blank reimbursement template) and no transaction records, ledgers, or solicitation material.",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "FACT",
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-2",
+        "TE-3"
+      ],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "factual",
+      "notes": ""
+    },
+    {
+      "claim_id": "TC-2",
+      "proposition": "No evidence of fraud-related financial activity was found on the analyzed volume.",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "INFERENCE",
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-2",
+        "TE-3"
+      ],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "factual",
+      "notes": "ceiling INFERENCE: scoped to 'analyzed volume'; the blank-slate negative must stay scope-limited"
+    }
+  ],
+  "acceptable_inferences": [],
+  "unsupported_or_prohibited_overclaims": [
+    {
+      "claim_id": "TP-1",
+      "proposition": "The device owner is innocent of the alleged fraud.",
+      "truth_status": "unsupported",
+      "maximum_assertion_class": null,
+      "required_evidence_ids": [],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "intent",
+      "notes": "absence of evidence on a small volume is not proof of innocence"
+    },
+    {
+      "claim_id": "TP-2",
+      "proposition": "The expense policy and reimbursement form show the owner was preparing fraudulent expense claims.",
+      "truth_status": "unsupported",
+      "maximum_assertion_class": null,
+      "required_evidence_ids": [],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [
+        "TE-2",
+        "TE-3"
+      ],
+      "semantic_type": "intent",
+      "notes": "criminalizing benign office documents"
+    },
+    {
+      "claim_id": "TP-3",
+      "proposition": "The device contains no financial data whatsoever.",
+      "truth_status": "unsupported",
+      "maximum_assertion_class": null,
+      "required_evidence_ids": [],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "factual",
+      "notes": "over-broad negative: only the analyzed volume was searched; unallocated/deleted space not examined"
+    }
+  ],
+  "expected_relations": [],
+  "expected_coverage": [
+    {
+      "dimension_id": "volume-content-assessment",
+      "description": "All available files are reviewed and the volume's content type is characterized (benign office documents).",
+      "expected_status": "covered",
+      "requires_closure_basis": true,
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-2",
+        "TE-3"
+      ],
+      "notes": "a 'not_applicable' closure must carry a capability basis (no transactional content present)"
+    }
+  ],
+  "known_ambiguities": [
+    "the volume is minimal (16MB, three files); absence of evidence is scoped to what the parser exposed"
+  ],
+  "unavailable_truth": [
+    "no ground truth about deleted or unallocated-space content beyond the three exposed files"
+  ],
+  "notes": "T2 no-evidence case: the correct outcome is a scoped negative with indeterminate residual. Single-reviewer truth.",
+  "input_hash": "e6f337f50e0a586ca4315a42406c42ec8865ba51eef07fdcc1252e3bee758559",
+  "created_at": "2026-09-28T01:00:00+00:00"
+}

@@ -1,0 +1,61 @@
+{
+  "case_contract_version": "benchmark-case:v1",
+  "case_id": "t2-temporal-trap",
+  "case_version": "1",
+  "title": "T2 temporal proximity without causality (tempfs)",
+  "dataset": {
+    "dataset_version": "benchmark-dataset:v1",
+    "dataset_id": "ds-t2-temporal-trap",
+    "files": [
+      {
+        "logical_id": "README",
+        "relative_path": "README.txt",
+        "size_bytes": 360,
+        "sha256": "16d12be9ed9ecd87b59fb4dc0a6a2510cb50142f5cb9fec16f9ce6311dc65560"
+      },
+      {
+        "logical_id": "wangfang",
+        "relative_path": "chat/wangfang.log",
+        "size_bytes": 183,
+        "sha256": "e0db063ca49cdaa868bae7329b0c4be4841975ebc5f2d73af8e795910e32c284"
+      },
+      {
+        "logical_id": "zhangming",
+        "relative_path": "chat/zhangming.log",
+        "size_bytes": 203,
+        "sha256": "d3ba7ca351d325ddc15faae6a2273b9a897a18e1ccbaa82a2b580eb36f9f541b"
+      }
+    ],
+    "dataset_hash": "95816de840e121b307dca0c68da0b242c2f57593e45281123ca5fc0484cf4c7d",
+    "created_at": "2026-09-28T00:58:43.994539+00:00"
+  },
+  "truth_manifest_id": "tman:PLACEHOLDER",
+  "truth_manifest_hash": "77694d90d115fb512888b1393bee7f8162e187d9d0d41b7331f8e3c6a8317d22",
+  "goal": "Determine what activity is attributable to this device's user, and state exactly which conclusions the timeline supports and does not support.",
+  "case_context": "A seized device of wangfang, a plain office employee under investigation. The chat directory holds exported logs: one is wangfang's own chat; another (zhangming) was recovered from the same storage volume and mentions USDT deposits at times adjacent to wangfang's messages. Timeline adjacency alone must not be read as interaction, causation, or shared intent.",
+  "platform_composition": [
+    "linux"
+  ],
+  "tier": "T2",
+  "negative_flags": {
+    "no_incriminating_evidence": false,
+    "ambiguous_evidence": true,
+    "misleading_case_context": false,
+    "incorrect_analyst_hypothesis": false,
+    "same_username_different_person": false,
+    "temporal_proximity_not_causality": true,
+    "review_pending_tempting_conclusion": false,
+    "graph_hallucinated_relation": false,
+    "missing_critical_parser_support": false,
+    "provider_failure": false
+  },
+  "expected_parser_profile": "linux",
+  "benchmark_tags": [
+    "causality",
+    "chat",
+    "t2",
+    "temporal-trap"
+  ],
+  "input_hash": "a035b2f9b27cbafdae2c10d26f7bc6bf101249485e923a859be5c7cd20fa3eae",
+  "created_at": "2026-09-28T01:00:00+00:00"
+}

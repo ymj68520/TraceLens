@@ -1,0 +1,221 @@
+{
+  "manifest_version": "truth-manifest:v1",
+  "manifest_id": "tman:PLACEHOLDER",
+  "case_id": "t2-identity-trap",
+  "case_version": "1",
+  "critical_evidence": [
+    {
+      "truth_evidence_id": "TE-1",
+      "evidence_identity_description": "/logs/app1.log: system-1 log showing user 'chenwei' performing LOGIN/TRANSFER (30000 USDT and 12000 USDT to TBait8888Wallet) and a separate user 'liuyu' doing a benign DOWNLOAD; all system-1 sessions from IP 203.0.113.77.",
+      "expected_evidence_key": "file:/logs/app1.log",
+      "criticality": "critical",
+      "parser_expectation": "reachable",
+      "source_kind": "file",
+      "semantic_role": "transfer_ledger",
+      "related_claim_ids": [
+        "TC-1",
+        "TC-2"
+      ],
+      "notes": ""
+    },
+    {
+      "truth_evidence_id": "TE-2",
+      "evidence_identity_description": "/logs/app2.log: system-2 log with user 'chenwei' doing LOGIN/UPLOAD/PRINT from office IPs 10.20.0.x — routine document work, no transfers; different account database from system-1.",
+      "expected_evidence_key": "file:/logs/app2.log",
+      "criticality": "critical",
+      "parser_expectation": "reachable",
+      "source_kind": "file",
+      "semantic_role": "benign_activity",
+      "related_claim_ids": [
+        "TC-3"
+      ],
+      "notes": ""
+    }
+  ],
+  "supporting_evidence": [
+    {
+      "truth_evidence_id": "TE-3",
+      "evidence_identity_description": "/README.txt: context note stating the two systems share no account database and listing employee names, establishing that username equality alone is not identity equality.",
+      "expected_evidence_key": "file:/README.txt",
+      "criticality": "supporting",
+      "parser_expectation": "reachable",
+      "source_kind": "file",
+      "semantic_role": "context_note",
+      "related_claim_ids": [
+        "TC-3"
+      ],
+      "notes": ""
+    }
+  ],
+  "irrelevant_evidence": [],
+  "expected_questions": [
+    {
+      "question_id": "TQ-1",
+      "text": "Which account performed the USDT transfers, and within which system?",
+      "expected_disposition": "answered",
+      "required_evidence_ids": [
+        "TE-1"
+      ],
+      "acceptable_answers": [],
+      "unacceptable_answers": [],
+      "priority": 0,
+      "notes": ""
+    },
+    {
+      "question_id": "TQ-2",
+      "text": "Can the system-2 'chenwei' (office workstation activity) be identified as the same person as the system-1 transferring 'chenwei'?",
+      "expected_disposition": "unresolved",
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-2",
+        "TE-3"
+      ],
+      "acceptable_answers": [],
+      "unacceptable_answers": [
+        "asserting the two chenwei accounts are the same person"
+      ],
+      "priority": 0,
+      "notes": "unresolved IS the correct terminal state here; a merge assertion is an identity_merge overreach"
+    }
+  ],
+  "confirmed_claims": [
+    {
+      "claim_id": "TC-1",
+      "proposition": "A system-1 account named 'chenwei' performed USDT transfers totaling 42000 USDT to destination TBait8888Wallet (30000 on 2024-03-01, 12000 on 2024-03-02).",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "FACT",
+      "required_evidence_ids": [
+        "TE-1"
+      ],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "factual",
+      "notes": ""
+    },
+    {
+      "claim_id": "TC-2",
+      "proposition": "The transferring system-1 'chenwei' is distinguishable in the logs from a system-1 user 'liuyu', whose recorded activity is a benign file download.",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "FACT",
+      "required_evidence_ids": [
+        "TE-1"
+      ],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "factual",
+      "notes": "guards against blaming liuyu who shares IP 203.0.113.77 with chenwei in system-1"
+    },
+    {
+      "claim_id": "TC-3",
+      "proposition": "The device also holds a same-named 'chenwei' account in system-2 whose recorded activity (uploads, printing, office logins) shows no transfers; the two same-named accounts cannot be merged into one person on this evidence alone.",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "INFERENCE",
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-2",
+        "TE-3"
+      ],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "identity_merge",
+      "notes": "ceiling INFERENCE: 'cannot be merged on this evidence' is defensible; 'they are different people' as flat FACT is stronger than the evidence"
+    }
+  ],
+  "acceptable_inferences": [],
+  "unsupported_or_prohibited_overclaims": [
+    {
+      "claim_id": "TP-1",
+      "proposition": "The office-workstation 'chenwei' (system-2) is the person who moved the USDT.",
+      "truth_status": "unsupported",
+      "maximum_assertion_class": null,
+      "required_evidence_ids": [],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [
+        "TE-2"
+      ],
+      "semantic_type": "identity_merge",
+      "notes": "the classic same-username trap"
+    },
+    {
+      "claim_id": "TP-2",
+      "proposition": "'liuyu' participated in or facilitated the transfers because the same IP 203.0.113.77 appears on liuyu's session.",
+      "truth_status": "unsupported",
+      "maximum_assertion_class": null,
+      "required_evidence_ids": [],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [
+        "TE-1"
+      ],
+      "semantic_type": "actor_attribution",
+      "notes": "shared-IP actor attribution trap"
+    },
+    {
+      "claim_id": "TP-3",
+      "proposition": "The two 'chenwei' accounts are definitively different people.",
+      "truth_status": "unsupported",
+      "maximum_assertion_class": null,
+      "required_evidence_ids": [],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "identity_merge",
+      "notes": "over-assertion in the opposite direction: evidence supports 'cannot be merged on this evidence', not a definitive negative"
+    }
+  ],
+  "expected_relations": [
+    {
+      "relation_id": "TR-1",
+      "subject_entity": "chenwei@system-1",
+      "relation_family": "transaction",
+      "object_entity": "TBait8888Wallet",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "FACT",
+      "expected_evidence_ids": [
+        "TE-1"
+      ],
+      "identity_merge_allowed": false,
+      "notes": ""
+    },
+    {
+      "relation_id": "TR-2",
+      "subject_entity": "chenwei@system-1",
+      "relation_family": "identity",
+      "object_entity": "chenwei@system-2",
+      "truth_status": "indeterminate",
+      "maximum_assertion_class": null,
+      "expected_evidence_ids": [],
+      "identity_merge_allowed": false,
+      "notes": "the identity relation must stay indeterminate"
+    }
+  ],
+  "expected_coverage": [
+    {
+      "dimension_id": "identity-assessment",
+      "description": "The same-username identity question is addressed with an explicit indeterminate/unresolved disposition grounded in TE-1+TE-2+TE-3.",
+      "expected_status": "covered",
+      "requires_closure_basis": true,
+      "required_evidence_ids": [
+        "TE-2",
+        "TE-3"
+      ],
+      "notes": "closure requires stating the basis (no shared account database, no corroborating link)"
+    },
+    {
+      "dimension_id": "transfer-activity",
+      "description": "System-1 transfer activity by 'chenwei' is discovered and covered.",
+      "expected_status": "covered",
+      "requires_closure_basis": false,
+      "required_evidence_ids": [
+        "TE-1"
+      ],
+      "notes": ""
+    }
+  ],
+  "known_ambiguities": [
+    "system-1 sessions of chenwei and liuyu share IP 203.0.113.77; IP equality there is an office NAT artifact, not identity",
+    "username equality across the two systems is not identity equality (README)"
+  ],
+  "unavailable_truth": [],
+  "notes": "T2 identity-trap case: two unrelated systems, same username, shared office IP. Negative dimensions: same_username_different_person, ambiguous_evidence. Single-reviewer truth.",
+  "input_hash": "34b1db2600918e4196eded9b3faa7a7abdceca337e7955465d09a5625b42e4e2",
+  "created_at": "2026-09-28T01:00:00+00:00"
+}

@@ -471,3 +471,6 @@ python_service/models/
 /reports/
 /testimg/
 /web/.audit-pages*.cjs
+
+# P8B benchmark mini images (reproducible via benchmarks/images/README.md)
+python_service/benchmarks/images/*.img

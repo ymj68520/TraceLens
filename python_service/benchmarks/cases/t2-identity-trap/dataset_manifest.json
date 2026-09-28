@@ -1,0 +1,26 @@
+{
+  "dataset_version": "benchmark-dataset:v1",
+  "dataset_id": "ds-t2-identity-trap",
+  "files": [
+    {
+      "logical_id": "README",
+      "relative_path": "README.txt",
+      "size_bytes": 206,
+      "sha256": "1962686c069860d5b56ea33d9f5d19f2f69d615de502412f852b53ce0c387c37"
+    },
+    {
+      "logical_id": "app1",
+      "relative_path": "logs/app1.log",
+      "size_bytes": 495,
+      "sha256": "f87d5b51c8c064c37eef122de694cd4806afb15f0af3c39f39e64aa09882d3b6"
+    },
+    {
+      "logical_id": "app2",
+      "relative_path": "logs/app2.log",
+      "size_bytes": 277,
+      "sha256": "8b8d75ecefdafe16e144e87bbeb9a3041c31156e9e66fcca0ee03264c7811c20"
+    }
+  ],
+  "dataset_hash": "e20d1369ff21d35affaa02b2a879677208bda616e5d91ebea6800c6a99b02eed",
+  "created_at": "2026-09-28T00:58:43.989795+00:00"
+}
