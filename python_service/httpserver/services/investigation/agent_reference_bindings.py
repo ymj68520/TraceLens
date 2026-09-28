@@ -350,13 +350,14 @@ def build_plan_binding_table(
             sorted(pack.attention_items, key=lambda i: i.item_id), start=1
         )
     ):
+        band = getattr(item.band, "value", item.band)
         bindings.append(
             ReferenceBinding(
                 handle=handle,
                 kind=BindingKind.attention_item,
                 canonical_ref=item.item_id,
                 display_digest=_display_digest(
-                    item.item_id, item.band.value, tuple(item.reason_codes)
+                    item.item_id, band, tuple(item.reason_codes)
                 ),
             )
         )
