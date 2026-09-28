@@ -1030,7 +1030,10 @@ def render_plan_context_v2(
                 "band": item.band,
                 "eligibility": item.eligibility,
                 "title": item.title,
-                "reason_codes": list(item.reason_codes),
+                "reason_codes": list(getattr(item, "reason_codes", ())),
+                "eligible_action_types": list(
+                    getattr(item, "eligible_action_types", ())
+                ),
                 "related_question_handles": [
                     q_map.get(qid, qid)
                     for qid in item.related_question_ids

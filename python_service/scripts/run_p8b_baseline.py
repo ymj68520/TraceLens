@@ -754,6 +754,12 @@ def _execute_with_wiring(
                 else dispatcher
             ),
             final_review_runner=_final_review_runner,
+            # A1 §38 canary axis: AGENT_SUPERVISOR_CONTRACT_VERSION=v2
+            # switches the supervisor/model interface to the handle-based
+            # trusted binding contract (gates unchanged).
+            supervisor_contract_version=(
+                getattr(settings, "agent_supervisor_contract_version", "v1")
+            ),
         )
         await orchestrator.initialize()
 

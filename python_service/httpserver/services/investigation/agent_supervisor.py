@@ -587,6 +587,36 @@ class SupervisorAgentFactory:
             instructions=[_integration_instructions(integration_context)],
         )
 
+    # -- A1 contract v2: handle-based, identity-free model interface -----
+
+    def build_plan_agent_v2(self, planning_context, table) -> Any:
+        from pydantic_ai import Agent
+
+        from .agent_integration_v2 import (
+            SupervisorPlanDecisionV2,
+            render_plan_context_v2,
+        )
+
+        projection = render_plan_context_v2(planning_context, table)
+        return Agent(
+            self._model,
+            output_type=SupervisorPlanDecisionV2,
+            instructions=[_planning_instructions_v2(projection)],
+        )
+
+    def build_integration_agent_v2(self, projection) -> Any:
+        from pydantic_ai import Agent
+
+        from .agent_integration_v2 import (
+            SupervisorIntegrationDecisionV2,
+        )
+
+        return Agent(
+            self._model,
+            output_type=SupervisorIntegrationDecisionV2,
+            instructions=[_integration_instructions_v2(projection)],
+        )
+
 
 def _integration_instructions(context) -> str:
     from .agent_integration import INTEGRATION_POLICY_VERSION
@@ -635,6 +665,54 @@ def _planning_instructions(pack: SupervisorPlanningContextPack) -> str:
     )
 
 
+def _planning_instructions_v2(projection) -> str:
+    from .agent_runtime import canonical_state_json as _csj
+
+    return (
+        "You are the investigation supervisor. You have NO tools.\n"
+        "Read the frozen planning projection and return one structured "
+        "supervisor plan decision (v2).\n\n"
+        f"{_csj(projection)}\n\n"
+        "Rules: reference attention items and questions ONLY by their "
+        "handles (A1, Q1, ...) from this projection. NEVER echo task ids, "
+        "investigation ids, run ids, state revisions, state hashes or "
+        "attention hashes — the server knows them and your output schema "
+        "has no fields for them. source_scope_id must be one of the "
+        "listed source_scopes. Emit AT MOST ONE delegate_investigation "
+        "per (question, source scope) pair and never repeat the same "
+        "pair twice in one plan. request_finalization and no_action "
+        "require a reason code. Return proposals only."
+    )
+
+
+def _integration_instructions_v2(projection) -> str:
+    from .agent_runtime import canonical_state_json as _csj
+
+    return (
+        "You are the investigation supervisor in INTEGRATION mode. You "
+        "have NO tools. Read the frozen integration projection (handles "
+        "only) and return one structured integration decision (v2) with "
+        "typed actions only.\n\n"
+        f"{_csj(projection)}\n\n"
+        "Rules: reference entities ONLY by their handles from this "
+        "projection (Q*=questions, E*=evidence, COV*=coverage, "
+        "D*=specialist results, F*=findings, P*=pending proposals, "
+        "H*=hypotheses, X*=contradictions). NEVER echo task ids, "
+        "investigation ids, run ids, state revisions, state hashes, "
+        "delegation UUIDs, result hashes or canonical evidence keys — "
+        "the server already knows them and your output schema has no "
+        "fields for them. Every basis/evidence reference must be an "
+        "E-handle. Omitting an optional field keeps the current value; "
+        "an EXPLICIT empty list (e.g. basis_handles: []) means 'no "
+        "basis' and will be rejected wherever basis is required. "
+        "Dispositions, statuses and closure semantics remain your "
+        "responsibility and are validated strictly. Never emit a "
+        "complete working state, JSON patch, SQL, canonical claim, "
+        "review decision, graph or report mutation. Return proposals "
+        "only."
+    )
+
+
 class InvestigationSupervisor:
     """The single investigation-level supervisor (PLAN mode here; the
     integration mode joins in P4B-2 through the same object)."""
@@ -670,6 +748,29 @@ class InvestigationSupervisor:
         result = await agent.run(
             f"integrate at state revision {context.state_revision}"
         )
+        return result.output
+
+    # -- A1 contract v2 (handle-based; the caller resolves + injects) ----
+
+    async def plan_v2(self, planning_context, table):
+        agent = SupervisorAgentFactory(
+            model=self._model
+        ).build_plan_agent_v2(planning_context, table)
+        result = await agent.run(
+            planning_context.objective_digest or "plan"
+        )
+        return result.output
+
+    async def integrate_v2(self, context, table, state):
+        from .agent_integration_v2 import (
+            render_integration_context_v2,
+        )
+
+        projection = render_integration_context_v2(context, state, table)
+        agent = SupervisorAgentFactory(
+            model=self._model
+        ).build_integration_agent_v2(projection)
+        result = await agent.run("integrate")
         return result.output
 
     def validate(

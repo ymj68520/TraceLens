@@ -830,6 +830,9 @@ class ServiceManager:
         return AgentOrchestrator(
             self._cpp_backend,
             final_review_runner=_final_review_runner,
+            supervisor_contract_version=(
+                self.settings.agent_supervisor_contract_version
+            ),
         )
 
     @property

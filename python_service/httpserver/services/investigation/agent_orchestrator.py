@@ -265,6 +265,7 @@ class AgentOrchestrator:
         directive_digest_provider=None,
         cycle_policy=None,
         final_review_runner=None,
+        supervisor_contract_version: str = "v1",
     ):
         self._cpp_backend = cpp_backend
         self._attention_config = attention_config or AttentionPolicyConfig()
@@ -300,6 +301,17 @@ class AgentOrchestrator:
         # StateTransitionPolicy rejects a batch; blocks finalization until
         # an integration resolves them
         self._transition_conflicts: dict[str, set[str]] = {}
+        # A1 supervisor/model interface contract version ("v1" = canonical
+        # echo contract, "v2" = handle-based trusted binding contract).
+        # v2 changes ONLY what the model must emit; both versions feed the
+        # same IntegrationDecisionValidator -> StateTransitionPolicy ->
+        # commit path, and the v1 path is byte-identical when "v1".
+        if supervisor_contract_version not in ("v1", "v2"):
+            raise ValueError(
+                "supervisor_contract_version must be 'v1' or 'v2', got "
+                f"{supervisor_contract_version!r}"
+            )
+        self._supervisor_contract_version = supervisor_contract_version
 
     # =====================================================================
     # lifecycle (ServiceManager startup hook, P2 §44/§45)
@@ -1214,8 +1226,65 @@ class AgentOrchestrator:
             active_delegations=active_digests,
             recent_terminal_delegations=terminal_digests,
         )
+        plan_contract_provenance: dict = {}
         try:
-            decision = await self._supervisor.plan(planning_context)
+            if self._supervisor_contract_version == "v2":
+                from .agent_integration_v2 import (
+                    resolve_plan_proposal_v2,
+                )
+                from .agent_reference_bindings import (
+                    build_plan_binding_table,
+                )
+
+                plan_table = build_plan_binding_table(planning_context)
+                raw_v2 = await self._supervisor.plan_v2(
+                    planning_context, plan_table
+                )
+                decision, plan_resolution = resolve_plan_proposal_v2(
+                    raw_v2, plan_table, planning_context
+                )
+                if decision is None:
+                    # A1 §22: persist raw proposal + binding table id +
+                    # resolution record beside the policy verdict.
+                    runtime.append_trajectory(
+                        investigation_id,
+                        AgentTrajectoryEventType.transition_decision_rejected,
+                        run_id=run_id,
+                        payload={
+                            "stage": "plan_resolution_v2",
+                            "integration_contract_version": "v2",
+                            "violation_codes": [
+                                v.code.value for v in plan_resolution.violations
+                            ],
+                            "binding_table_id": plan_table.binding_table_id,
+                            "raw_model_proposal_v2": raw_v2.model_dump(
+                                mode="json"
+                            ),
+                            "resolution_record": plan_resolution.model_dump(
+                                mode="json"
+                            ),
+                        },
+                    )
+                    return _outcome(
+                        plan_rejected_codes=tuple(
+                            v.code.value
+                            for v in plan_resolution.violations
+                        ),
+                        warnings=(
+                            "supervisor plan rejected at v2 resolution",
+                        ),
+                    )
+                plan_contract_provenance = {
+                    "integration_contract_version": "v2",
+                    "binding_table_id": plan_table.binding_table_id,
+                    "binding_table_hash": plan_table.table_hash(),
+                    "resolution_record": plan_resolution.model_dump(
+                        mode="json"
+                    ),
+                    "raw_model_proposal_v2": raw_v2.model_dump(mode="json"),
+                }
+            else:
+                decision = await self._supervisor.plan(planning_context)
         except Exception as exc:  # noqa: BLE001 - supervisor failure is a
             # first-class cycle outcome; never an empty decision
             from .agent_specialist_executor import (
@@ -1345,11 +1414,18 @@ class AgentOrchestrator:
         _event, admitted = await asyncio.to_thread(
             runtime.commit_supervisor_plan,
             run_id,
-            decision_payload=decision.model_dump(),
+            decision_payload={
+                **decision.model_dump(),
+                **plan_contract_provenance,
+            },
             decision_hash=decision.decision_hash(),
             model_name=getattr(self._supervisor, "model_name", None),
             model_config_hash=getattr(self._supervisor, "model_config_hash", None),
-            prompt_version="supervisor-plan-decision:v1",
+            prompt_version=(
+                "supervisor-plan-decision:v2"
+                if self._supervisor_contract_version == "v2"
+                else "supervisor-plan-decision:v1"
+            ),
             specs=specs,
         )
         # executor dispatch only AFTER the admission commit (P4B-E8)
@@ -1470,9 +1546,86 @@ class AgentOrchestrator:
             ),
             current_directive_digests=current_directives,
         )
-        integration_decision = await self._supervisor.integrate(
-            integration_context
-        )
+        integration_contract_provenance: dict = {}
+        if self._supervisor_contract_version == "v2":
+            from .agent_integration_v2 import (
+                resolve_integration_proposal_v2,
+            )
+            from .agent_reference_bindings import (
+                build_integration_binding_table,
+            )
+
+            integration_table = build_integration_binding_table(
+                integration_context, current_state
+            )
+            raw_integration_v2 = await self._supervisor.integrate_v2(
+                integration_context, integration_table, current_state
+            )
+            integration_decision, integration_resolution = (
+                resolve_integration_proposal_v2(
+                    raw_integration_v2,
+                    integration_table,
+                    integration_context,
+                    current_state,
+                )
+            )
+            if integration_decision is None:
+                # A1 §22: raw proposal + binding table id + resolution
+                # record persisted beside the verdict; fail-closed.
+                runtime.append_trajectory(
+                    investigation_id,
+                    AgentTrajectoryEventType.transition_decision_rejected,
+                    run_id=run_id,
+                    payload={
+                        "stage": "integration_resolution_v2",
+                        "integration_contract_version": "v2",
+                        "violation_codes": [
+                            v.code.value
+                            for v in integration_resolution.violations
+                        ],
+                        "binding_table_id": (
+                            integration_table.binding_table_id
+                        ),
+                        "raw_model_proposal_v2": (
+                            raw_integration_v2.model_dump(mode="json")
+                        ),
+                        "resolution_record": (
+                            integration_resolution.model_dump(mode="json")
+                        ),
+                    },
+                )
+                return _outcome(
+                    plan_decision_hash=None,
+                    delegation_ids=tuple(s.delegation_id for s in summaries),
+                    delegation_terminal_statuses=tuple(
+                        s.status for s in summaries
+                    ),
+                    stale_delegation_ids=tuple(stale_ids),
+                    failure_delegation_ids=tuple(failure_ids),
+                    integration_status="rejected",
+                    integration_violation_codes=tuple(
+                        v.code.value
+                        for v in integration_resolution.violations
+                    ),
+                    warnings=(
+                        "integration decision rejected at v2 resolution",
+                    ),
+                )
+            integration_contract_provenance = {
+                "integration_contract_version": "v2",
+                "binding_table_id": integration_table.binding_table_id,
+                "binding_table_hash": integration_table.table_hash(),
+                "resolution_record": (
+                    integration_resolution.model_dump(mode="json")
+                ),
+                "raw_model_proposal_v2": raw_integration_v2.model_dump(
+                    mode="json"
+                ),
+            }
+        else:
+            integration_decision = await self._supervisor.integrate(
+                integration_context
+            )
         integration_validator = IntegrationDecisionValidator(
             evidence_ref_validator=getattr(
                 self, "_integration_evidence_validator", None
@@ -1577,9 +1730,13 @@ class AgentOrchestrator:
             expected_state_hash=latest.state_hash,
             operation_key=operation_key,
             integration_policy_version=INTEGRATION_POLICY_VERSION,
-            decision_payload=integration_decision.model_dump(
-                mode="json", exclude={"transition_proposals"}
-            ),
+            decision_payload={
+                **integration_decision.model_dump(
+                    mode="json", exclude={"transition_proposals"}
+                ),
+                # A1 §22 audit provenance (empty for the v1 contract)
+                **integration_contract_provenance,
+            },
             decision_hash=integration_decision.decision_hash(),
             delegation_integrations=[
                 {

@@ -357,7 +357,8 @@ def build_plan_binding_table(
                 kind=BindingKind.attention_item,
                 canonical_ref=item.item_id,
                 display_digest=_display_digest(
-                    item.item_id, band, tuple(item.reason_codes)
+                    item.item_id, band,
+                    tuple(getattr(item, "reason_codes", ())),
                 ),
             )
         )

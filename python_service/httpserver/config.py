@@ -198,6 +198,26 @@ class Settings(BaseSettings):
             return {}
         return {"thinking": {"type": self.llm_thinking_mode}}
 
+    # A1 supervisor/model interface contract version: "v1" = canonical echo
+    # contract (frozen P8B baseline semantics); "v2" = handle-based trusted
+    # reference binding contract.  Only the model-facing interface changes;
+    # the deterministic gates (IntegrationDecisionValidator,
+    # StateTransitionPolicy, FinalizationGate) are identical for both.
+    agent_supervisor_contract_version: str = Field(
+        default="v1", alias="AGENT_SUPERVISOR_CONTRACT_VERSION"
+    )
+
+    @field_validator("agent_supervisor_contract_version", mode="before")
+    @classmethod
+    def normalize_agent_supervisor_contract_version(cls, value: str) -> str:
+        version = str(value or "").strip().lower()
+        if version not in {"v1", "v2"}:
+            raise ValueError(
+                "AGENT_SUPERVISOR_CONTRACT_VERSION must be 'v1' or 'v2', "
+                f"got {value!r}"
+            )
+        return version
+
     llm_text_base_url: str = Field(default="http://192.168.31.170:1234", alias="LLM_TEXT_BASE_URL")
     llm_text_model: str = Field(default="openai/gpt-oss-20b", alias="LLM_TEXT_MODEL")
     llm_text_max_tokens: int = Field(default=4096, alias="LLM_TEXT_MAX_TOKENS")
