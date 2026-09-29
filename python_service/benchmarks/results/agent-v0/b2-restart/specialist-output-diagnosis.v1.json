@@ -1,0 +1,48 @@
+{
+  "artifact_version": "SpecialistOutputDiagnosisV1",
+  "round": "p8b-b2-restart",
+  "created_at": "2026-09-29T12:12:25+00:00",
+  "finding": "sensenova-6.8-flash-lite fails the SpecialistResultV1 output contract by attempting to FILL server-computed fields: it emits extra top-level tool_call_count/observation_count (extra_forbidden) and serializes execution_digest as a JSON string instead of an object. After the retry prompt names the errors it partially recovers (extras removed, digest still stringified) and exhausts the 2 output retries -> UnexpectedModelBehavior('Exceeded maximum output retries (2)') -> sanitized agent_output_invalid.",
+  "classification": "S-equivalent at the SPECIALIST layer (model schema-discipline failure on a fail-closed validator); NOT a provider 4xx, NOT P, NOT H, NOT G",
+  "raw_exception": [
+    {
+      "ts": "2026-09-29T20:05:27",
+      "exception_class": "UnexpectedModelBehavior",
+      "module": "pydantic_ai.exceptions",
+      "status_code": null,
+      "body": "None",
+      "message": "Exceeded maximum output retries (2)"
+    },
+    {
+      "ts": "2026-09-29T20:08:04",
+      "exception_class": "UnexpectedModelBehavior",
+      "module": "pydantic_ai.exceptions",
+      "status_code": null,
+      "body": "None",
+      "message": "Exceeded maximum output retries (2)"
+    }
+  ],
+  "retry_prompt_evidence": [
+    {
+      "ts": "2026-09-29T20:10:08",
+      "kind": "retry_prompt",
+      "tag": "specialist",
+      "tool_name": "final_result",
+      "content": "[{'type': 'extra_forbidden', 'loc': ('tool_call_count',), 'msg': 'Extra inputs are not permitted', 'input': '10'}, {'type': 'extra_forbidden', 'loc': ('observation_count',), 'msg': 'Extra inputs are not permitted', 'input': '10'}, {'type': 'model_type', 'loc': ('execution_digest',), 'msg': 'Input should be an object', 'input': ''}]"
+    },
+    {
+      "ts": "2026-09-29T20:10:08",
+      "kind": "retry_prompt",
+      "tag": "specialist",
+      "tool_name": "final_result",
+      "content": "[{'type': 'model_type', 'loc': ('execution_digest',), 'msg': 'Input should be an object', 'input': '{\"observation_count\": 10, \"tool_call_count\": 10}'}]"
+    }
+  ],
+  "successful_path": "runs that succeed emit final_result WITHOUT the server-computed fields; the executor then injects the trusted ExecutionDigest server-side (model_copy update) — the contract requires the model to OMIT schema-visible server-computed fields",
+  "canary_link": "benchmarks/results/agent-v0/b2-restart/canary-aggregate.v1.json (agent_output_invalid x7/8)",
+  "notes": [
+    "Supervisor v2 (PLAN+INTEGRATE) structured output: 0 failures in canary (0/8) and all diagnosis runs — the step-5-preview 67% supervisor bottleneck did NOT reproduce on this model.",
+    "One H-class event across all diagnosis runs: HANDLE_KIND_MISMATCH at integration_resolution_v2 (fail-closed, semantically excellent content; §11 'H should be near 0' holds).",
+    "Two environmental incidents during diagnosis were harness-side, not model: (a) ServiceManager init TimeoutError at 102 accumulated benchmark tasks (known B2/B3 degradation; fixed by deleting 57 benchmark-created tasks, init 8.3s at 45 tasks); (b) a telemetry wrapper bug (TextIOWrapper.write encoding kwarg) that masked one diagnosis batch — fixed before the captured evidence above."
+  ]
+}

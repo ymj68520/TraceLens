@@ -267,7 +267,7 @@ def _run_one(
             "reasoning_effort": "none" if thinking_mode == "disabled" else None,
         },
         context_window_tokens=settings.llm_context_length,
-        request_date="2026-09-28",
+        request_date="2026-09-29",
     )
     configuration = BenchmarkConfigurationV1(
         configuration_id=configuration_id,
@@ -841,28 +841,63 @@ def _persist(out_dir: Path, outcome: dict) -> None:
 
 
 def _extract_trajectory_digest(task_store: Path, out_dir: Path) -> None:
-    """Persist the run's rejection reason codes (§11) from the durable
-    trajectory before post_snapshot_cleanup removes the store."""
+    """Persist the run's §11-§12 rejection reason codes, supervisor output
+    failures and delegation failures from the durable trajectory BEFORE
+    post_snapshot_cleanup removes the store.
+
+    digest_version 2 (b2-restart round): structured dict with
+    rejection_codes / supervisor_failures / delegation_failures. Older
+    artifacts carry a flat code list (digest implicit v1)."""
     import sqlite3
 
     try:
         conn = sqlite3.connect(task_store)
         rows = conn.execute(
-            "select payload_json from agent_trajectory_events "
+            "select event_type, payload_json, delegation_id from "
+            "agent_trajectory_events "
             "where event_type in "
-            "('transition_decision_rejected','integration_decision_rejected') "
-            "order by seq"
+            "('transition_decision_rejected','integration_decision_rejected',"
+            "'delegation_failed') order by seq"
         ).fetchall()
         conn.close()
-        reasons = []
-        for (payload,) in rows:
+        rejection_codes: list[str] = []
+        supervisor_failures: list[dict] = []
+        delegation_failures: list[dict] = []
+        for event_type, payload, delegation_id in rows:
             try:
                 p = json.loads(payload)
             except Exception:
                 continue
-            reasons.extend(p.get("violation_codes", []))
+            if "supervisor_failure" in p:
+                supervisor_failures.append(
+                    {
+                        "event": event_type,
+                        "code": p["supervisor_failure"],
+                        "message": str(p.get("message", ""))[:200],
+                    }
+                )
+            if event_type == "delegation_failed":
+                delegation_failures.append(
+                    {
+                        "delegation_id": delegation_id,
+                        "failure_code": p.get("failure_code"),
+                        "message": str(p.get("message", ""))[:200],
+                    }
+                )
+                if p.get("failure_code"):
+                    rejection_codes.append(p["failure_code"])
+            for code in p.get("violation_codes", []) or []:
+                rejection_codes.append(code)
         (out_dir / "trajectory_digest.json").write_text(
-            json.dumps(reasons), encoding="utf-8"
+            json.dumps(
+                {
+                    "digest_version": 2,
+                    "rejection_codes": rejection_codes,
+                    "supervisor_failures": supervisor_failures,
+                    "delegation_failures": delegation_failures,
+                }
+            ),
+            encoding="utf-8",
         )
     except Exception:
         pass  # diagnostic only — never fail a run over its digest
@@ -978,7 +1013,7 @@ def main(argv=None) -> int:
     else:
         import subprocess
 
-        experiment["code_commit"] = (
+        head = (
             subprocess.run(
                 ["git", "rev-parse", "HEAD"],
                 capture_output=True,
@@ -986,7 +1021,13 @@ def main(argv=None) -> int:
                 cwd=REPO_ROOT,
             ).stdout.strip()
         )
-        experiment["started_at"] = "2026-09-28T01:10:00+00:00"
+        experiment["code_commit"] = head
+        # provenance: record the ACTUAL production runtime commit (the
+        # original hardcode pointed at the pre-amendment P7 frozen HEAD).
+        experiment["production_runtime_commit"] = head
+        experiment["started_at"] = time.strftime(
+            "%Y-%m-%dT%H:%M:%S+00:00", time.gmtime()
+        )
     experiment_file.parent.mkdir(parents=True, exist_ok=True)
 
     failures = 0

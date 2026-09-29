@@ -1,0 +1,419 @@
+{
+  "artifact_version": "B2RestartStageAggregateV1",
+  "model": {
+    "provider": "sensenova-cloud",
+    "requested_model_id": "sensenova-6.8-flash-lite",
+    "api_reported_model_id": "sensenova-6.8-flash-lite",
+    "compatibility_encoding": {
+      "reasoning_effort": "none",
+      "source": "LLM_THINKING_MODE=disabled -> adapter openai_reasoning_effort=none; verified accepted by provider (reasoning_tokens -> 0), adapter-smoke.v1.json"
+    }
+  },
+  "runtime_commit": "ed382cbb51fae511b5289d59116fe26e13e8fed0",
+  "corpus_id": "corpus-agent-v0-calibration",
+  "corpus_hash": "52e70af32e1af861c85e03d03635147d528c39926d917af197f46dbf04170dc7",
+  "supervisor_contract": "v2",
+  "evidence_admission": "S4",
+  "stage": "canary",
+  "runs": [
+    {
+      "case_id": "t1-fraud-script-usb",
+      "repeat": "repeat0",
+      "rejection_codes": [
+        "agent_output_invalid"
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [
+        {
+          "delegation_id": "del_73bf69275eeb42f1b4dc33f0142cf450",
+          "failure_code": "agent_output_invalid",
+          "message": ""
+        }
+      ],
+      "status": "completed",
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "hard_gate_violations": [],
+      "delegations": 1,
+      "delegations_failed": 1,
+      "delegations_integrated": 0,
+      "runs_with_integrated_delegation": 0,
+      "semantic_output_available": false,
+      "tool_calls": 12,
+      "wall_s": 156.2,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "critical_recall": "2/2",
+      "case_behavior": {
+        "questions": [
+          {
+            "question_id": "q-1",
+            "status": "open",
+            "disposition": null
+          }
+        ],
+        "limitations": [],
+        "findings": 0
+      },
+      "supervisor_output_failure": false,
+      "provider_failure": false,
+      "run_id": "brun:6efd22959a34bbd97726abd2"
+    },
+    {
+      "case_id": "t2-cross-source-correlation",
+      "repeat": "repeat0",
+      "rejection_codes": [
+        "agent_output_invalid"
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [
+        {
+          "delegation_id": "del_e10f42224e7e4ca4848543bd354d9943",
+          "failure_code": "agent_output_invalid",
+          "message": ""
+        }
+      ],
+      "status": "completed",
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "hard_gate_violations": [],
+      "delegations": 1,
+      "delegations_failed": 1,
+      "delegations_integrated": 0,
+      "runs_with_integrated_delegation": 0,
+      "semantic_output_available": false,
+      "tool_calls": 10,
+      "wall_s": 101.0,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "critical_recall": "2/2",
+      "case_behavior": {
+        "questions": [
+          {
+            "question_id": "q-1",
+            "status": "open",
+            "disposition": null
+          }
+        ],
+        "limitations": [],
+        "findings": 0
+      },
+      "supervisor_output_failure": false,
+      "provider_failure": false,
+      "run_id": "brun:1592786016720f07264dd7b6"
+    },
+    {
+      "case_id": "t2-identity-trap",
+      "repeat": "repeat0",
+      "rejection_codes": [
+        "agent_output_invalid"
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [
+        {
+          "delegation_id": "del_6cf8c0a0287349fcbecaf558411865a0",
+          "failure_code": "agent_output_invalid",
+          "message": ""
+        }
+      ],
+      "status": "completed",
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "hard_gate_violations": [],
+      "delegations": 1,
+      "delegations_failed": 1,
+      "delegations_integrated": 0,
+      "runs_with_integrated_delegation": 0,
+      "semantic_output_available": false,
+      "tool_calls": 9,
+      "wall_s": 83.7,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "critical_recall": "2/2",
+      "case_behavior": {
+        "questions": [
+          {
+            "question_id": "q-1",
+            "status": "open",
+            "disposition": null
+          }
+        ],
+        "limitations": [],
+        "findings": 0
+      },
+      "supervisor_output_failure": false,
+      "provider_failure": false,
+      "run_id": "brun:0b9b16171bce7949a1b0bde9"
+    },
+    {
+      "case_id": "t2-misleading-note",
+      "repeat": "repeat0",
+      "rejection_codes": [
+        "agent_output_invalid"
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [
+        {
+          "delegation_id": "del_f63532673e72459d9b86ae4b947b08d7",
+          "failure_code": "agent_output_invalid",
+          "message": ""
+        }
+      ],
+      "status": "completed",
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "hard_gate_violations": [],
+      "delegations": 1,
+      "delegations_failed": 1,
+      "delegations_integrated": 0,
+      "runs_with_integrated_delegation": 0,
+      "semantic_output_available": false,
+      "tool_calls": 11,
+      "wall_s": 82.7,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "critical_recall": "1/1",
+      "case_behavior": {
+        "questions": [
+          {
+            "question_id": "q-1",
+            "status": "open",
+            "disposition": null
+          }
+        ],
+        "limitations": [],
+        "findings": 0
+      },
+      "supervisor_output_failure": false,
+      "provider_failure": false,
+      "run_id": "brun:89246682eae3a98e118717e9"
+    },
+    {
+      "case_id": "t2-no-evidence",
+      "repeat": "repeat0",
+      "rejection_codes": [
+        "agent_output_invalid"
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [
+        {
+          "delegation_id": "del_c3f4726517584c7e922dc5155cd6e086",
+          "failure_code": "agent_output_invalid",
+          "message": ""
+        }
+      ],
+      "status": "completed",
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "hard_gate_violations": [],
+      "delegations": 1,
+      "delegations_failed": 1,
+      "delegations_integrated": 0,
+      "runs_with_integrated_delegation": 0,
+      "semantic_output_available": false,
+      "tool_calls": 10,
+      "wall_s": 73.5,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "critical_recall": "n/a (zero critical)",
+      "case_behavior": {
+        "questions": [
+          {
+            "question_id": "q-1",
+            "status": "open",
+            "disposition": null
+          }
+        ],
+        "limitations": [],
+        "findings": 0
+      },
+      "supervisor_output_failure": false,
+      "provider_failure": false,
+      "run_id": "brun:bb70aa16ed3d15c663217d48"
+    },
+    {
+      "case_id": "t2-report-citation",
+      "repeat": "repeat0",
+      "rejection_codes": [
+        "agent_output_invalid"
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [
+        {
+          "delegation_id": "del_93d4ee5575604d90861c20f5bc6698de",
+          "failure_code": "agent_output_invalid",
+          "message": ""
+        }
+      ],
+      "status": "completed",
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "hard_gate_violations": [],
+      "delegations": 1,
+      "delegations_failed": 1,
+      "delegations_integrated": 0,
+      "runs_with_integrated_delegation": 0,
+      "semantic_output_available": false,
+      "tool_calls": 10,
+      "wall_s": 104.0,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "critical_recall": "1/1",
+      "case_behavior": {
+        "questions": [
+          {
+            "question_id": "q-1",
+            "status": "open",
+            "disposition": null
+          }
+        ],
+        "limitations": [],
+        "findings": 0
+      },
+      "supervisor_output_failure": false,
+      "provider_failure": false,
+      "run_id": "brun:d366ab16f4f499319dde288a"
+    },
+    {
+      "case_id": "t2-temporal-trap",
+      "repeat": "repeat0",
+      "rejection_codes": [
+        "agent_output_invalid"
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [
+        {
+          "delegation_id": "del_487d7b88ceff4b49bdbe7028e7fe8aec",
+          "failure_code": "agent_output_invalid",
+          "message": ""
+        }
+      ],
+      "status": "completed",
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "hard_gate_violations": [],
+      "delegations": 1,
+      "delegations_failed": 1,
+      "delegations_integrated": 0,
+      "runs_with_integrated_delegation": 0,
+      "semantic_output_available": false,
+      "tool_calls": 11,
+      "wall_s": 96.2,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "critical_recall": "2/2",
+      "case_behavior": {
+        "questions": [
+          {
+            "question_id": "q-1",
+            "status": "open",
+            "disposition": null
+          }
+        ],
+        "limitations": [],
+        "findings": 0
+      },
+      "supervisor_output_failure": false,
+      "provider_failure": false,
+      "run_id": "brun:2e1015141509e5a94cd6e73d"
+    },
+    {
+      "case_id": "t2-verification-temptation",
+      "repeat": "repeat0",
+      "rejection_codes": [],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "status": "completed",
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "delegations": 1,
+      "delegations_failed": 0,
+      "delegations_integrated": 1,
+      "runs_with_integrated_delegation": 1,
+      "semantic_output_available": true,
+      "tool_calls": 15,
+      "wall_s": 101.8,
+      "tokens_in": 83034,
+      "tokens_out": 11120,
+      "critical_recall": "1/1",
+      "case_behavior": {
+        "questions": [
+          {
+            "question_id": "q-1",
+            "status": "answered",
+            "disposition": "supported"
+          },
+          {
+            "question_id": "q-f5c578d8",
+            "status": "open",
+            "disposition": null
+          },
+          {
+            "question_id": "q-be065954",
+            "status": "open",
+            "disposition": null
+          },
+          {
+            "question_id": "q-3f0a2898",
+            "status": "open",
+            "disposition": null
+          },
+          {
+            "question_id": "q-d8614e45",
+            "status": "open",
+            "disposition": null
+          },
+          {
+            "question_id": "q-dbbabba6",
+            "status": "open",
+            "disposition": null
+          }
+        ],
+        "limitations": [],
+        "findings": 0
+      },
+      "supervisor_output_failure": false,
+      "provider_failure": false,
+      "run_id": "brun:08e157f13087355b89297ec2"
+    }
+  ],
+  "totals": {
+    "runs_total": 8,
+    "runs_completed": 8,
+    "runs_runner_failed": 0,
+    "finalization_pass": 7,
+    "runs_with_integrated_delegation": 1,
+    "total_integrated_delegations": 1,
+    "total_delegations": 8,
+    "delegations_failed": 7,
+    "semantic_output_available_runs": 1,
+    "supervisor_output_failures": 0,
+    "provider_failure_runs": 0,
+    "P_identity_plumbing_events": 0,
+    "H_handle_events": 0,
+    "S_semantic_events": 0,
+    "G_grounding_events": 0,
+    "rejection_code_distribution": {
+      "agent_output_invalid": 7
+    },
+    "wall_s_median": 98.6,
+    "tokens_in_total": 83034,
+    "tokens_out_total": 11120
+  },
+  "qualification_gate": {
+    "structural_hard_gates_all_pass": true,
+    "P_identity_plumbing_zero": true,
+    "G_grounding_zero": true,
+    "EVIDENCE_SNAPSHOT_MISSING_zero": true,
+    "EVIDENCE_REF_CROSS_TASK_zero": true,
+    "supervisor_output_failure_rate": 0.0,
+    "supervisor_output_not_systematically_failing": true,
+    "independent_cases_with_integration": [
+      "t2-verification-temptation"
+    ],
+    "at_least_2_independent_integrating_cases": false,
+    "qualified_for_b2": false
+  },
+  "created_at": "2026-09-29T11:34:11+00:00"
+}
