@@ -199,12 +199,16 @@ class Settings(BaseSettings):
         return {"thinking": {"type": self.llm_thinking_mode}}
 
     # A1 supervisor/model interface contract version: "v1" = canonical echo
-    # contract (frozen P8B baseline semantics); "v2" = handle-based trusted
-    # reference binding contract.  Only the model-facing interface changes;
-    # the deterministic gates (IntegrationDecisionValidator,
+    # contract (historical P8B baseline semantics); "v2" = handle-based
+    # trusted reference binding contract.  A1 R2 froze v2 as the
+    # architecture contract (V2_FREEZE_RECOMMENDED, 24-run series: P/H/S/G
+    # all zero, integration reproducible 2/3 reps on two independent cases)
+    # and flipped the production default — an explicit freeze decision, not
+    # an assumption.  Only the model-facing interface changes; the
+    # deterministic gates (IntegrationDecisionValidator,
     # StateTransitionPolicy, FinalizationGate) are identical for both.
     agent_supervisor_contract_version: str = Field(
-        default="v1", alias="AGENT_SUPERVISOR_CONTRACT_VERSION"
+        default="v2", alias="AGENT_SUPERVISOR_CONTRACT_VERSION"
     )
 
     @field_validator("agent_supervisor_contract_version", mode="before")

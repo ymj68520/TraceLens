@@ -1,0 +1,20 @@
+{
+  "artifact_version": "AgentV0RuntimeBaselineV2",
+  "supersedes": "precalibration-runtime-baseline.v1.json (946f325e, v1-contract era)",
+  "frozen_at_commit": "f711851c59ca00b9122ac986bd727ed66be063af",
+  "supervisor_contract": {
+    "version": "v2",
+    "frozen_by": "A1 R2 disposition V2_FREEZE_RECOMMENDED",
+    "reliability_artifact": "supervisor-contract-reliability.v1.json",
+    "production_default": "v2 (explicit freeze decision, §29)",
+    "v1_still_selectable": "AGENT_SUPERVISOR_CONTRACT_VERSION=v1"
+  },
+  "evidence_admission": "A1-S S4 FROZEN (f711851c)",
+  "model_qualification": {
+    "step-5-preview": "NOT QUALIFIED / provisional — supervisor structured-output reliability 16/24 (67%), systematic",
+    "note": "P8B BLOCKED until a qualified model exists; B2 baseline restart required on the next qualified configuration (§31)"
+  },
+  "historical_benchmarks": "all pre-amendment P8 results (v1 baseline, model qualification, A1-R) retained as historical pre-amendment benchmark; not usable for final acceptance threshold derivation",
+  "holdout": "SEALED / NEVER RUN / still usable (never executed, never inspected for tuning, case/truth hashes unchanged)",
+  "created_at": "2026-09-29T00:00:00+00:00"
+}

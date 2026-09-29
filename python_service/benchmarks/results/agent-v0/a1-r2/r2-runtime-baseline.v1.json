@@ -1,0 +1,49 @@
+{
+  "artifact_version": "R2RuntimeBaselineV1",
+  "experiment_id": "a1-r2-post-s-comparison",
+  "branch": "mvp/agent-v0-supervisor-v2-r2",
+  "runtime_commit": "f711851c",
+  "evidence_admission_contract": "A1-S S4 FROZEN — invariant: completed SpecialistResult cited refs ⇒ EvidenceSnapshot exists (same transaction)",
+  "reuse_justification": {
+    "canary_commit": "cd593405",
+    "production_diff_to_f711851c": 0,
+    "verified": "git diff cd593405 f711851c -- python_service/httpserver/ = empty; S4 was a docs-only commit, so the A1-S canary executed on byte-identical production code",
+    "canary_manifest_axes": {
+      "model_ids": [
+        "step-5-preview"
+      ],
+      "generation_param_sets": 1,
+      "generation_params": {
+        "temperature": 0.7,
+        "max_tokens": 16384,
+        "thinking_mode": "",
+        "reasoning_effort": null
+      },
+      "cases_hashed": 8,
+      "configuration_id": "bconf-a1s-canary-step5-v2"
+    },
+    "conclusion": "A1-S canary 8 runs qualify as R2-0 v2 repetition #1 (spec §5); only v1 8x1 runs fresh"
+  },
+  "model": {
+    "provider": "hcnsec-cloud",
+    "requested_model": "step-5-preview",
+    "api_reported_model": "step-5-preview",
+    "adapter": "production build_chat_model, overrides: llm_text_model=step-5-preview, llm_thinking_mode='' (normal chat), temperature=0.7",
+    "max_tokens": 16384,
+    "timeout_seconds": 120
+  },
+  "frozen_axes_unchanged": [
+    "Supervisor prompts (v1 and v2 instruction builders, untouched since A1-3)",
+    "Specialist prompts",
+    "ToolRegistry",
+    "StateTransitionPolicy",
+    "FinalizationGate",
+    "AttentionPolicy",
+    "CyclePolicy",
+    "ToolBudgetPolicy",
+    "corpus v5 hash 52e70af32e1af861...",
+    "repeat semantics"
+  ],
+  "baseline_hash": "112e88ddbfd7f7977f87d6d4edcf3c828b3dc75107fef1c18941f609106b0422",
+  "created_at": "2026-09-29T00:00:00+00:00"
+}
