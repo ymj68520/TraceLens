@@ -230,7 +230,7 @@ export default function Cases() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="cases-page">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -238,7 +238,7 @@ export default function Cases() {
             initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
             className="text-3xl font-bold text-slate-900 dark:text-white"
           >
-            Cases
+            案件管理
           </motion.h1>
           <p className="mt-2 text-slate-600 dark:text-slate-300">
             多镜像联合分析案件管理
@@ -251,14 +251,15 @@ export default function Cases() {
       </div>
 
       {error && (
-        <div className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 rounded-xl">
+        <div role="alert" className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 rounded-xl">
           <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
+          <Button size="sm" variant="secondary" className="mt-2" onClick={() => dispatch(fetchCases())}>重新加载</Button>
         </div>
       )}
 
       {/* Case list */}
       {cases.length === 0 ? (
-        <Card>
+        !error && <Card>
           <p className="text-center py-12 text-slate-500 dark:text-slate-400">
             暂无案件，点击"新建案件"开始多镜像联合分析。
           </p>

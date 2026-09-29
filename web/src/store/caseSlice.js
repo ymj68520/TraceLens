@@ -19,15 +19,15 @@ export const fetchCases = createAsyncThunk(
  * createCaseWithTasks:
  *  1. Batch-create N tasks in C++ backend (one per new image path)
  *  2. Merge any already-completed task IDs the user chose to associate
- *  3. Create a Case record in Python/C++ linking all task IDs
- *  4. Pre-populate the case-level analysis state for associated (already-analyzed)
- *     tasks so a subsequent cross-image run REUSES them instead of re-analyzing.
+ *  3. Create the authoritative C++ Case record linking all task IDs
+ *  4. Preserve existing task/evidence results; do not prepare AI state as metadata
  *  5. Return {case, tasks}
  */
 export const createCaseWithTasks = createAsyncThunk(
   'cases/createWithTasks',
   async ({ name, description, imagePaths = [], priority = 'normal', androidAnalyze = false, associateTaskIds = [] }, { rejectWithValue }) => {
     try {
+      const analysisOptions = imagePaths.length ? await caseGroupSvc.caseTaskAnalysisOptions() : {};
       // Step 1 — create individual tasks for each NEW image path
       const createdTasks = await Promise.all(
         imagePaths.map((path) =>
@@ -35,8 +35,7 @@ export const createCaseWithTasks = createAsyncThunk(
             image_path:      path,
             priority,
             case_description: description,
-            llm_analyze:     true,
-            llm_event_analyze: false,
+            ...analysisOptions,
             llm_mode:        'smart',
             android_analyze: androidAnalyze,
           })
@@ -50,17 +49,7 @@ export const createCaseWithTasks = createAsyncThunk(
       // Step 3 — create case linking all tasks
       const newCase = await caseGroupSvc.createCase(name, description, taskIds);
 
-      // Step 4 — pre-populate analysis state so associated already-analyzed
-      // tasks are reused (not re-analyzed). Safe to call with the full list:
-      // the backend skips not-completed tasks and is idempotent.
-      if (associateTaskIds.length > 0) {
-        try {
-          await caseGroupSvc.associateTasksToCase(newCase.id, associateTaskIds);
-        } catch (e) {
-          // Non-fatal: case was created; reuse-state can be repaired later.
-          console.warn('associateTasksToCase after create failed:', e);
-        }
-      }
+      // task_ids were linked by createCase; do not write an analysis DB here.
 
       return { case: newCase, tasks: createdTasks };
     } catch (err) {

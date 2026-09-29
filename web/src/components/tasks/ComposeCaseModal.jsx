@@ -9,8 +9,8 @@
  *    tasks here (e.g. from the Cases-page quick entry).
  *
  * On submit it dispatches createCaseWithTasks with imagePaths=[] and the
- * chosen task IDs as associateTaskIds — the thunk creates the case and
- * pre-populates the reuse state, so no re-analysis happens.
+ * chosen task IDs as associateTaskIds — only metadata linkage is created;
+ * existing results are preserved and no scan/AI job is launched.
  */
 import { useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
@@ -65,7 +65,7 @@ export default function ComposeCaseModal({ preselectedTaskIds = [], onClose }) {
         imagePaths: [],                       // no new scans
         associateTaskIds: [...selectedTaskIds], // reuse existing analysis
       })).unwrap();
-      toast.success(`案件「${name.trim()}」已创建，复用 ${selectedCount} 个镜像的既有分析`);
+      toast.success(`案件「${name.trim()}」已创建，关联 ${selectedCount} 个已完成镜像并保留已有结果`);
       dispatch(fetchCases());
       dispatch(fetchTasks({ status: 'all', priority: 'all' }));
       onClose();
