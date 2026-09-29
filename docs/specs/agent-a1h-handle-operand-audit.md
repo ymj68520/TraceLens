@@ -133,3 +133,70 @@ WHICH evidence), policy preservation (resolver → canonical → validator →
 policy → commit, no fast path), negative semantics (valid handle +
 unsupported claim still rejected downstream), and the full regression
 suite.
+
+---
+
+# A1-H FREEZE RECORD — typed supervisor handle contract
+
+Status: FROZEN (H5, real-canary supported, spec §40 Scenario A)
+Branch: `mvp/agent-v0-typed-handle-contract`
+Commits: H1 audit `f2852f2d` · H2 typed contract `0d938eba` ·
+H4 tests `cb82a6a9` · H5 this record
+Regression: full unit tree 2437 passed / 1 skipped (2418 + 19 A1-H tests)
+
+## What froze
+
+- Model-facing integration decision epoch
+  `supervisor-integration-decision:v3` (supervisor CONTRACT version
+  stays v2): every operand is a kind-constrained typed handle
+  (E/Q/COV/H/X/F/P; D* appears in NO operand), exact unions per the
+  resolver's real semantics (all multi-handle fields evidence-only).
+  Static kind discipline at the schema; the ReferenceBindingResolver
+  remains the exact fail-closed binding authority (§13/§14); D1
+  auto-mapping forbidden (§9); no canonical creation (§15/§16).
+- Deterministic availability projection (§17/§18 minimal per §19):
+  `handle_counts_by_kind` + `available_actions` rendered into the
+  integration projection; instructions require choosing only from them.
+- Auditability (§20/§21): integration trajectory payloads record
+  `available_handles_by_kind` + `offered_action_variants` +
+  `decision_schema_version`; benchmark digest v4 adds per-rejection
+  `legal_operand_available` + full raw proposal + a §22 benchmark-only
+  semantic projection of each completed SpecialistResult (never
+  Evidence, never consumed by production, §23).
+- StateTransitionPolicy / FinalizationGate / retries / cycles / budgets:
+  UNCHANGED (§1/§27).
+
+## Real canary (§34/§35/§40) — same SenseNova sensenova-6.8-flash-lite,
+same corpus v5, same frozen config
+
+| Metric | pre-A1-H (A1-T canary) | post-A1-H canary |
+|---|---|---|
+| H events (kind mismatch + unknown) | 7 | **0** |
+| RunsWithIntegratedDelegation | 5/8 | **7/8** |
+| Specialist output failures | 1/8 | 1/8 (unchanged residual) |
+| Supervisor PLAN/INTEGRATE output failures | 0/8 | 0/8 |
+| P / S / G | 0/0/0 | **0/0/0** |
+| Structural hard gates | all PASS | all PASS (8/8) |
+| Finalization pass | 5/8 | 7/8 |
+
+§36 met: the kind-mismatch class is structurally zero (schema-level)
+with zero migration into structured-output failures (§40 Scenario B
+excluded).
+
+§37 identity-trap: FIRST-EVER full integration of the case — semantics
+correct (transfers attributed to 'chenwei' at log level; two systems
+explicitly share no account database; same-name never merged; separate
+office-side activity kept separate). §38 cross-source: integrated +
+finalized. Temporal trap direction preserved (identical-timestamp
+denial; third-party log separated). no-evidence: integrated, finalization
+denied REQUIRED_QUESTION_OPEN (supervisor opened sub-questions it could
+not close — honest S-class, fail-closed).
+
+## Consequence (§41)
+
+The model-facing contract changed ⇒ B2 `7195a43c` (RuntimeBaselineV3
+epoch) is now a **historical pre-A1-H baseline**: descriptive only, NOT
+usable for CalibrationProfile/AcceptanceProfile derivation. A fresh
+B2 (8 cases × 3) on the post-A1-H runtime is REQUIRED before the B4
+calibration decision. holdout stays SEALED / NEVER RUN (§42). Numeric
+calibration stays deferred (§43).
