@@ -29,6 +29,11 @@ from .agent_tools.visibility import reconstruct_allowed_evidence_ids
 
 SPECIALIST_RESULT_VERSION = "specialist-result:v1"
 
+# A1-T: the model-facing output contract. Runtime-owned facts
+# (execution_digest and the counts it carries) are structurally absent —
+# the model cannot see, set or spoof them; the server finalizer owns them.
+SPECIALIST_RESULT_PROPOSAL_VERSION = "specialist-result-proposal:v1"
+
 
 class AssertionClass(str, Enum):
     """Proposed assertion ceiling only — real assertion policy is P5."""
@@ -97,6 +102,133 @@ class ExecutionDigest(BaseModel):
     output_tokens: Optional[int] = None
     tool_call_count: int = 0
     observation_count: int = 0
+
+
+class SpecialistResultProposalV1(BaseModel):
+    """Model-facing output contract (A1-T, version-frozen).
+
+    Carries exactly the model-owned semantic fields of
+    ``SpecialistResultV1`` plus the identity bindings the validator
+    enforces. Runtime-owned facts — ``execution_digest`` and the counts
+    it carries — are STRUCTURALLY ABSENT: they are neither optional nor
+    instruction-hidden, they do not exist in this schema, so a model can
+    neither omit nor spoof them. The deterministic server finalizer
+    (``finalize_specialist_result``) produces the canonical
+    ``SpecialistResultV1``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    proposal_version: str = SPECIALIST_RESULT_PROPOSAL_VERSION
+    delegation_id: str
+    question_id: Optional[str] = None
+
+    summary: str
+
+    claim_candidates: tuple[SpecialistClaimCandidate, ...] = ()
+    evidence_refs: tuple[str, ...] = ()
+
+    entity_candidates: tuple[SpecialistEntityCandidate, ...] = ()
+    correlation_candidates: tuple[SpecialistCorrelationCandidate, ...] = ()
+
+    follow_up_questions: tuple[SpecialistFollowUpQuestion, ...] = ()
+    coverage_observations: tuple[SpecialistCoverageObservation, ...] = ()
+
+    limitations: tuple[str, ...] = ()
+    warnings: tuple[str, ...] = ()
+
+    @field_validator("proposal_version")
+    @classmethod
+    def _check_version(cls, value: str) -> str:
+        if value != SPECIALIST_RESULT_PROPOSAL_VERSION:
+            raise ValueError(
+                f"unsupported proposal version {value!r} "
+                f"(expected {SPECIALIST_RESULT_PROPOSAL_VERSION!r})"
+            )
+        return value
+
+    def proposal_hash(self) -> str:
+        """Deterministic content hash of the RAW model proposal."""
+        return state_hash_of(canonical_state_json(self.model_dump()))
+
+    def to_canonical_draft(self) -> "SpecialistResultV1":
+        """Canonical shape with the default (unset) execution digest.
+
+        Used for the pre-enrichment semantic/evidence validation step;
+        the digest is server-owned and filled only by
+        ``finalize_specialist_result``."""
+        return SpecialistResultV1(
+            result_version=SPECIALIST_RESULT_VERSION,
+            delegation_id=self.delegation_id,
+            question_id=self.question_id,
+            summary=self.summary,
+            claim_candidates=self.claim_candidates,
+            evidence_refs=self.evidence_refs,
+            entity_candidates=self.entity_candidates,
+            correlation_candidates=self.correlation_candidates,
+            follow_up_questions=self.follow_up_questions,
+            coverage_observations=self.coverage_observations,
+            limitations=self.limitations,
+            warnings=self.warnings,
+        )
+
+
+class SpecialistResultContractError(Exception):
+    """Raised when a proposal cannot be bound to the executing delegation."""
+
+
+def finalize_specialist_result(
+    proposal: SpecialistResultProposalV1,
+    *,
+    delegation_id: str,
+    model_name: Optional[str] = None,
+    usage_payload: Optional[Mapping[str, Any]] = None,
+    run_observations: Iterable[ToolObservation] = (),
+) -> "SpecialistResultV1":
+    """Deterministic server finalizer (A1-T §5): proposal -> canonical.
+
+    Fills ONLY trusted runtime facts, from durable records — never from
+    model claims, never from an LLM:
+
+    - ``model_name``: the server-side adapter's model identity
+    - ``request_count`` / ``input_tokens`` / ``output_tokens``: the
+      provider usage payload the runtime captured
+    - ``tool_call_count`` / ``observation_count``: durable
+      ToolObservation rows for THIS delegation (the same delegation-
+      scoped counting rule the executor has always applied)
+
+    Semantic fields pass through the proposal verbatim; every Evidence
+    boundary (syntax, visibility, canonical resolution, S4 admission)
+    stays downstream and untouched.
+    """
+    if proposal.delegation_id != delegation_id:
+        raise SpecialistResultContractError(
+            "proposal delegation identity does not match the executing "
+            f"delegation ({proposal.delegation_id!r} != {delegation_id!r})"
+        )
+    delegation_observations = [
+        observation
+        for observation in run_observations
+        if observation.delegation_id == delegation_id
+    ]
+    tool_call_count = len(delegation_observations)
+    usage = usage_payload or {}
+    digest = ExecutionDigest(
+        model_name=model_name,
+        request_count=usage.get("requests"),
+        input_tokens=usage.get("input_tokens"),
+        output_tokens=usage.get("output_tokens"),
+        tool_call_count=tool_call_count,
+        observation_count=tool_call_count,
+    )
+    result = proposal.to_canonical_draft()
+    return result.model_copy(update={"execution_digest": digest})
+
+
+def execution_digest_hash(digest: ExecutionDigest) -> str:
+    """Deterministic audit hash of the server-injected trusted facts."""
+    return state_hash_of(canonical_state_json(digest.model_dump()))
+
 
 
 class SpecialistResultV1(BaseModel):
@@ -451,6 +583,7 @@ __all__ = [
     "ExecutionDigest",
     "ResultViolation",
     "ResultViolationCode",
+    "SPECIALIST_RESULT_PROPOSAL_VERSION",
     "SPECIALIST_RESULT_VERSION",
     "SpecialistClaimCandidate",
     "SpecialistContextPack",
@@ -458,7 +591,11 @@ __all__ = [
     "SpecialistCoverageObservation",
     "SpecialistEntityCandidate",
     "SpecialistFollowUpQuestion",
+    "SpecialistResultContractError",
+    "SpecialistResultProposalV1",
     "SpecialistResultV1",
     "SpecialistResultValidation",
     "SpecialistResultValidator",
+    "execution_digest_hash",
+    "finalize_specialist_result",
 ]

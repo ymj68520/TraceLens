@@ -337,6 +337,7 @@ class OfflineSpecialistDispatcher:
         from httpserver.services.investigation.agent_specialist_result import (
             AssertionClass,
             SpecialistClaimCandidate,
+            SpecialistResultProposalV1,
             SpecialistResultV1,
         )
         from httpserver.services.investigation.agent_tools.pydantic_bridge import (
@@ -379,7 +380,7 @@ class OfflineSpecialistDispatcher:
                 model_config_digest="cfg-e2e",
             )
             result_args = {
-                "result_version": "specialist-result:v1",
+                "proposal_version": "specialist-result-proposal:v1",
                 "delegation_id": delegation.delegation_id,
                 "question_id": action.question_id,
                 "summary": "specialist findings",
@@ -393,7 +394,6 @@ class OfflineSpecialistDispatcher:
                         "limitations": [],
                     }
                 ],
-                "execution_digest": {"tool_call_count": 0, "observation_count": 0},
             }
             model = TestModel(
                 call_tools=["search_evidence"], custom_output_args=result_args
@@ -402,7 +402,7 @@ class OfflineSpecialistDispatcher:
             def build_agent(pack_arg, registry_arg, _model=model):
                 return build_specialist_agent(
                     pack_arg, registry_arg, model=_model,
-                    output_type=SpecialistResultV1, retries=1,
+                    output_type=SpecialistResultProposalV1, retries=1,
                 )
 
             class _Exec(SimpleNamespace):

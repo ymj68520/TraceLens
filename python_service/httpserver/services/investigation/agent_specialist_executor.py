@@ -3,9 +3,10 @@
 Real PydanticAI SourceSpecialist execution over the P3 substrate:
 
     DelegationExecutionEnvelope (frozen at dispatch)
-        -> SourceSpecialistAgentFactory (ContextPack -> Agent[deps, SpecialistResultV1])
+        -> SourceSpecialistAgentFactory (ContextPack -> Agent[deps, SpecialistResultProposalV1])
         -> offline-tested real run
         -> SpecialistResultValidator (visible-evidence + contract checks)
+        -> finalize_specialist_result (deterministic trusted-field enrichment, A1-T)
         -> atomic result row + delegation ``completed`` transition
 
 Hard P4A boundary: the Specialist investigates and returns proposals; it
@@ -24,9 +25,10 @@ from .agent_runtime import AgentRuntimeRepository, canonical_state_json, state_h
 from .agent_skills import FrozenSkillBinding
 from .agent_specialist_result import (
     SPECIALIST_RESULT_VERSION,
-    ExecutionDigest,
+    SpecialistResultProposalV1,
     SpecialistResultValidator,
-    SpecialistResultV1,
+    execution_digest_hash,
+    finalize_specialist_result,
 )
 from .agent_tools.context import ForensicToolContext, ToolBudgetPolicy
 
@@ -643,7 +645,7 @@ class SpecialistDelegationExecutor:
             )
 
         raw_result = agent_result.output
-        if not isinstance(raw_result, SpecialistResultV1):
+        if not isinstance(raw_result, SpecialistResultProposalV1):
             failure_code = DelegationFailureCode.AGENT_OUTPUT_INVALID
             failure_message = safe_failure_message(
                 last_exc or UnexpectedModelBehavior("output"),
@@ -662,44 +664,39 @@ class SpecialistDelegationExecutor:
                 failure_message=failure_message,
             )
 
-        result: SpecialistResultV1 = raw_result
+        # A1-T: the model proposes semantics only; runtime facts are
+        # server-owned.  §9 order: proposal schema validation happened at
+        # pydantic parse time (extra=forbid, trusted fields structurally
+        # absent) -> semantic/evidence validation on the canonical draft
+        # -> deterministic enrichment -> canonical validation.
+        proposal: SpecialistResultProposalV1 = raw_result
         observations = runtime.list_tool_observations(
             envelope.investigation_id, run_id=envelope.run_id
         )
         validator = SpecialistResultValidator()
-        validation = validator.validate(pack, result, observations)
+        draft = proposal.to_canonical_draft()
+        validation = validator.validate(pack, draft, observations)
 
         raw_usage = agent_result.usage
         # pydantic-ai exposes usage as a property on this version; tolerate
         # both shapes so the executor tracks the installed runtime
         usage = raw_usage() if callable(raw_usage) else raw_usage
-        tool_call_count = sum(
-            1 for o in observations if o.delegation_id == envelope.delegation_id
-        )
-        execution_digest = ExecutionDigest(
-            model_name=self._model_name(agent_result),
-            request_count=getattr(usage, "requests", None),
-            input_tokens=getattr(usage, "input_tokens", None),
-            output_tokens=getattr(usage, "output_tokens", None),
-            tool_call_count=tool_call_count,
-            observation_count=tool_call_count,
-        )
-        result = result.model_copy(
-            update={"execution_digest": execution_digest}
-        )
+        usage_payload = self._usage_payload(usage)
 
         if not validation.valid:
-            # audit the invalid proposal, fail the delegation
+            # audit the invalid proposal, fail the delegation.  The audit
+            # row keeps the model's semantic payload with the digest unset;
+            # no trusted enrichment of a rejected proposal.
             runtime.record_delegation_result(
                 delegation_id,
-                result_version=result.result_version,
-                result=result.model_dump(),
-                result_hash=result.result_hash(),
+                result_version=draft.result_version,
+                result=draft.model_dump(),
+                result_hash=draft.result_hash(),
                 context_hash=envelope.context_hash,
                 tool_registry_hash=envelope.tool_registry_hash,
-                model_name=execution_digest.model_name,
+                model_name=self._model_name(agent_result),
                 model_config_hash=envelope.model_config_digest,
-                usage=self._usage_payload(usage),
+                usage=usage_payload,
                 validation_status="invalid",
             )
             runtime.transition_delegation_terminal(
@@ -716,6 +713,49 @@ class SpecialistDelegationExecutor:
                 failure_message="result validation failed",
                 validation_codes=validation.codes,
             )
+
+        # deterministic server enrichment (§5): trusted facts from durable
+        # records only; the model's execution digest (if any was somehow
+        # produced) never existed — the proposal schema cannot carry it.
+        result = finalize_specialist_result(
+            proposal,
+            delegation_id=envelope.delegation_id,
+            model_name=self._model_name(agent_result),
+            usage_payload=usage_payload,
+            run_observations=observations,
+        )
+        # canonical validation on the enriched result (§9): identical
+        # semantics (the validator is digest-blind) and it pins that the
+        # canonical construction itself introduced no drift.
+        canonical_validation = validator.validate(pack, result, observations)
+        if not canonical_validation.valid:
+            runtime.record_delegation_result(
+                delegation_id,
+                result_version=result.result_version,
+                result=result.model_dump(),
+                result_hash=result.result_hash(),
+                context_hash=envelope.context_hash,
+                tool_registry_hash=envelope.tool_registry_hash,
+                model_name=result.execution_digest.model_name,
+                model_config_hash=envelope.model_config_digest,
+                usage=usage_payload,
+                validation_status="invalid",
+            )
+            runtime.transition_delegation_terminal(
+                delegation_id,
+                "failed",
+                failure_code=DelegationFailureCode.AGENT_OUTPUT_INVALID.value,
+                failure_message="canonical validation failed: "
+                + ",".join(canonical_validation.codes),
+            )
+            return DispatchOutcome(
+                delegation_id=delegation_id,
+                status=DispatchStatus.FAILED,
+                failure_code=DelegationFailureCode.AGENT_OUTPUT_INVALID.value,
+                failure_message="canonical validation failed",
+                validation_codes=canonical_validation.codes,
+            )
+        execution_digest = result.execution_digest
 
         # A1-S Phase A (§5): resolve every PROMOTED evidence ref
         # (result.evidence_refs — never raw ToolObservation refs, §6/§11)
@@ -735,7 +775,7 @@ class SpecialistDelegationExecutor:
                 tool_registry_hash=envelope.tool_registry_hash,
                 model_name=execution_digest.model_name,
                 model_config_hash=envelope.model_config_digest,
-                usage=self._usage_payload(usage),
+                usage=usage_payload,
                 validation_status="invalid",
             )
             runtime.transition_delegation_terminal(
@@ -767,7 +807,7 @@ class SpecialistDelegationExecutor:
             tool_registry_hash=envelope.tool_registry_hash,
             model_name=execution_digest.model_name,
             model_config_hash=envelope.model_config_digest,
-            usage=self._usage_payload(usage),
+            usage=usage_payload,
             evidence_snapshots=tuple(snapshot_candidates),
             trajectory_payload={
                 "execution_input_hash": envelope.execution_input_hash(),
@@ -780,6 +820,15 @@ class SpecialistDelegationExecutor:
                 ],
                 "tool_registry_hash": envelope.tool_registry_hash,
                 "model_config_hash": envelope.model_config_digest,
+                # A1-T §10 auditability: what the model proposed, what the
+                # server added, what was persisted.
+                "specialist_proposal_contract": {
+                    "proposal_version": proposal.proposal_version,
+                    "proposal_hash": proposal.proposal_hash(),
+                    "trusted_enrichment_digest": execution_digest_hash(
+                        execution_digest
+                    ),
+                },
             },
         )
         return DispatchOutcome(
@@ -831,11 +880,14 @@ class SpecialistDelegationExecutor:
     def _build_agent(self, pack: SpecialistContextPack, registry):
         from .agent_tools.pydantic_bridge import build_specialist_agent
 
+        # A1-T: the model-facing output contract is the trusted-field-free
+        # proposal; the canonical SpecialistResultV1 is constructed
+        # server-side by finalize_specialist_result after validation.
         return build_specialist_agent(
             pack,
             registry,
             model=self._get_model(),
-            output_type=SpecialistResultV1,
+            output_type=SpecialistResultProposalV1,
             retries=self._policy.max_output_retries,
         )
 

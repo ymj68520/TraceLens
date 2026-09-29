@@ -151,9 +151,13 @@ def build_specialist_agent(
     """Complete the bridge: ContextPack + registry -> PydanticAI Agent.
 
     P4A runs this agent in production with
-    ``output_type=SpecialistResultV1``; instructions come from the pack's
-    frozen layers — never from chat history. The model must always be
-    explicit; no live provider model is ever constructed implicitly.
+    ``output_type=SpecialistResultProposalV1`` (A1-T: the model-facing
+    contract without runtime-owned fields); the canonical
+    ``SpecialistResultV1`` is constructed server-side by
+    ``finalize_specialist_result`` after validation. Instructions come
+    from the pack's frozen layers — never from chat history. The model
+    must always be explicit; no live provider model is ever constructed
+    implicitly.
     """
     from ..agent_deps import ForensicAgentDeps
 

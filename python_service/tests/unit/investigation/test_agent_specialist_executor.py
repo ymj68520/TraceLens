@@ -45,8 +45,9 @@ from httpserver.services.investigation.agent_specialist_executor import (
 from httpserver.services.investigation.agent_specialist_result import (
     AssertionClass,
     SpecialistClaimCandidate,
-    SpecialistResultV1,
+    SpecialistResultProposalV1,
     SpecialistResultValidator,
+    finalize_specialist_result,
 )
 from httpserver.services.investigation.agent_tools.adapters import (
     build_read_only_registry,
@@ -345,8 +346,9 @@ class _OfflineAgent:
         )
 
 
-def _good_result(delegation_id, question_id="q-1") -> SpecialistResultV1:
-    return SpecialistResultV1(
+def _good_result(delegation_id, question_id="q-1") -> SpecialistResultProposalV1:
+    """A1-T: fake models emit the model-facing PROPOSAL contract."""
+    return SpecialistResultProposalV1(
         delegation_id=delegation_id,
         question_id=question_id,
         summary="specialist summary",
@@ -939,7 +941,7 @@ async def test_offline_e2e_real_agent_through_pydantic_ai(runtime_env):
     )
 
     result_args = {
-        "result_version": "specialist-result:v1",
+        "proposal_version": "specialist-result-proposal:v1",
         "delegation_id": delegation_id,
         "question_id": "q-e2e",
         "summary": "e2e specialist summary",
@@ -953,7 +955,6 @@ async def test_offline_e2e_real_agent_through_pydantic_ai(runtime_env):
             }
         ],
         "evidence_refs": ["file:C/logon_4624.doc"],
-        "execution_digest": {"tool_call_count": 0, "observation_count": 0},
     }
     model = TestModel(
         call_tools=["search_evidence"],
@@ -969,7 +970,7 @@ async def test_offline_e2e_real_agent_through_pydantic_ai(runtime_env):
             pack_arg,
             registry_arg,
             model=model,
-            output_type=SpecialistResultV1,
+            output_type=SpecialistResultProposalV1,
             retries=1,
         )
 
