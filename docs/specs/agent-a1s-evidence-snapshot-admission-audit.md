@@ -139,3 +139,34 @@ revalidate lifecycle, `capture_if_absent_conn(...)` for every candidate,
 persist result, transition `running → completed`, trajectory, COMMIT.
 Atomicity (§10), idempotency (§11), source-truth payloads (§12),
 Tool-boundary purity (§6), allowed_evidence_ids untouched (§8).
+
+---
+
+## Freeze record (S4, 2026-09-29)
+
+Real canary (spec §28): step-5-preview, contract v2, 8 calibration cases × 1,
+A1-R configuration unchanged — `benchmarks/results/agent-v0/a1-s-canary/`.
+
+- **§29 primary target MET: G = 0.** No missing-snapshot grounding rejection
+  of any kind (0× EVIDENCE_SNAPSHOT_MISSING, 0× EVIDENCE_REF_CROSS_TASK).
+- **First valid integrated delegations in the entire measurement history**
+  (2 independent cases; hard gates PASS; correct dispositions —
+  `supported` on the correlation case, `not_supported` on the temporal trap,
+  i.e. the trap was handled, not avoided).  A server-assigned follow-up
+  question id (CreateQuestion via the v2 contract) also worked in
+  production.
+- 6/8 runner failures are supervisor structured-output reliability
+  (unchanged, as expected — S does not touch it).
+- §31 determination: **Scenario C** — the Evidence lifecycle seam was a major
+  hidden blocker; A1 viability re-evaluation (R2) is now meaningful.
+- §32: R1 reinterpretation recorded in
+  `r1-interpretation-amendment.v1.json` (original artifact untouched):
+  MODEL_CAPABILITY_LIMIT_CONFIRMED + EVIDENCE_LIFECYCLE_CONFOUND_PRESENT
+  (closed) + SUPERVISOR_CONTRACT_DISCRIMINANT_INCONCLUSIVE.
+
+**The evidence admission boundary is FROZEN** (invariant: a completed
+SpecialistResult's cited refs always have immutable Investigation
+EvidenceSnapshots, captured in the same terminal transaction).  The
+SUPERVISOR CONTRACT v2 freeze remains withheld pending R2 (A1-R §28);
+`AGENT_SUPERVISOR_CONTRACT_VERSION` default stays `v1`.  P8B remains
+BLOCKED; holdout remains SEALED.

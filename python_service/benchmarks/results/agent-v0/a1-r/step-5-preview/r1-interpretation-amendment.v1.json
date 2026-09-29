@@ -1,0 +1,26 @@
+{
+  "artifact_version": "R1InterpretationAmendmentV1",
+  "amends_experiment": {
+    "artifact": "supervisor-contract-comparison.v1.json",
+    "sha256": "6df1480d975b7ff785b6c9b9ae109b2b239feffa1f55faad87ec8a612dea32e1",
+    "experiment_id": "a1-r-r1-supervisor-contract-comparison",
+    "original_disposition": "MODEL_CAPABILITY_DOMINANT"
+  },
+  "new_deterministic_evidence": {
+    "amendment": "A1-S Deterministic Evidence Snapshot Admission Boundary",
+    "branch": "mvp/agent-v0-evidence-snapshot-admission",
+    "canary_report": "benchmarks/results/agent-v0/a1-s-canary/a1-s-canary-report.v1.json",
+    "facts": [
+      "A1-R's v2 EVIDENCE_REF_CROSS_TASK x7 were decomposed as missing-snapshot grounding rejections (G class), not model capability failures",
+      "closing the admission boundary (snapshots captured in the specialist completion transaction) with the SAME model, SAME contract v2, SAME config produces G=0 and the FIRST-ever valid integrated delegations (2 independent cases, hard gates PASS, correct trap dispositions)"
+    ]
+  },
+  "reason_for_reinterpretation": "A1-R's R1 was confounded by an Evidence lifecycle admission gap: valid tool-visible refs cited by completed specialist results had no immutable EvidenceSnapshot, so every basis-bearing integration attempt was deterministically rejected before any model-capability signal could be read.  The v1-vs-v2 comparison therefore could not discriminate the intended hypotheses.",
+  "revised_disposition": {
+    "model_capability": "MODEL_CAPABILITY_LIMIT_CONFIRMED (residual: supervisor structured-output reliability, 6/8 canary runner failures unchanged)",
+    "confound": "EVIDENCE_LIFECYCLE_CONFOUND_PRESENT (now closed)",
+    "discriminant": "SUPERVISOR_CONTRACT_DISCRIMINANT_INCONCLUSIVE (R1 invalid as a clean contract comparison; R2 after S is the first meaningful contract discrimination point)"
+  },
+  "original_artifact_untouched": true,
+  "created_at": "2026-09-29T00:00:00+00:00"
+}
