@@ -41,7 +41,7 @@ def _source_digest() -> str:
     return digest.hexdigest()
 
 
-def build(output: Path) -> dict:
+def build(output: Path, *, local_auto_session: bool = False) -> dict:
     netns = require_private_loopback_namespace()
     output = output.absolute()
     if (output == ROOT / "web" / "dist" or output.exists() or output.parent.is_symlink()
@@ -62,6 +62,8 @@ def build(output: Path) -> dict:
         "VITE_API_BASE_URL": "", "VITE_FIELD_RELEASE_BUILD": "1",
         "npm_config_offline": "true", "npm_config_audit": "false",
     })
+    if local_auto_session:
+        safe_env['VITE_LOCAL_AUTO_SESSION'] = 'enabled'
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT,
                             capture_output=True, text=True, check=True).stdout.strip()
     release_id = "6c-" + commit[:16]
@@ -90,6 +92,7 @@ def build(output: Path) -> dict:
         "source_tree_sha256": source_sha, "node_version": node_version,
         "routing": {"cpp": "same_origin", "python": "/python", "cs": "/cs-disabled"},
         "field_auth": "enabled", "files": assets,
+        "local_auto_session": local_auto_session,
         "publishable": not bool(dirty),
     }
     (web_root / "frontend_build_manifest.json").write_text(
@@ -103,8 +106,10 @@ def build(output: Path) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument('--local-auto-session', action='store_true',
+                        help='temporary loopback gateway session UI; backend auth remains required')
     args = parser.parse_args()
-    print(json.dumps(build(args.output), ensure_ascii=False))
+    print(json.dumps(build(args.output, local_auto_session=args.local_auto_session), ensure_ascii=False))
     return 0
 
 

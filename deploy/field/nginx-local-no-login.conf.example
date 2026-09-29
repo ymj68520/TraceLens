@@ -1,0 +1,59 @@
+# Temporary single-operator loopback UI only. Never use as a LAN/public server.
+# Private request include holds only the local user's JSON login body (0600).
+server {
+    listen 127.0.0.1:8666;
+    server_name localhost;
+    access_log off;
+    error_log /var/log/nginx/error.log warn;
+    client_max_body_size 32m;
+    root REPLACE_WITH_LOCAL_UI_WEB_ROOT;
+    add_header X-TraceLens-UI-Mode "temporary-local-no-login" always;
+
+    location = /_local/session {
+        if ($request_method != POST) { return 405; }
+        if ($http_host !~ "^(localhost|127\.0\.0\.1):8666$") { return 403; }
+        if ($http_origin != "http://$http_host") { return 403; }
+        if ($http_sec_fetch_site != same-origin) { return 403; }
+        proxy_pass http://127.0.0.1:8090/api/field-auth/login;
+        proxy_pass_request_body off;
+        include /etc/tracelens/local-auto-session.request.conf;
+        proxy_set_header Content-Type application/json;
+        proxy_set_header Authorization "";
+        proxy_set_header X-TraceLens-Service-Token "";
+        proxy_set_header X-TraceLens-Field-Token "";
+        proxy_set_header X-User "";
+        proxy_set_header X-Forwarded-User "";
+        proxy_hide_header Access-Control-Allow-Origin;
+        proxy_hide_header Access-Control-Allow-Credentials;
+        proxy_no_cache 1;
+        proxy_cache_bypass 1;
+        add_header Cache-Control "no-store" always;
+        add_header Pragma "no-cache" always;
+        add_header X-Content-Type-Options nosniff always;
+        proxy_redirect off;
+    }
+    location /python/ {
+        proxy_pass http://127.0.0.1:8090/;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-TraceLens-Service-Token "";
+        proxy_set_header X-User "";
+        proxy_set_header X-Forwarded-User "";
+        proxy_redirect off;
+        proxy_buffering off;
+    }
+    location /api/ {
+        proxy_pass http://127.0.0.1:8667;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-TraceLens-Service-Token "";
+        proxy_set_header X-User "";
+        proxy_set_header X-Forwarded-User "";
+        proxy_redirect off;
+        proxy_buffering off;
+    }
+    location = /health/live { proxy_pass http://127.0.0.1:8667; }
+    location /cs-disabled/ { default_type application/json; return 503 '{"detail":"C/S disabled"}'; }
+    location /assets/ { try_files $uri =404; }
+    location = /frontend_build_manifest.json { add_header Cache-Control no-store; }
+    location = /index.html { add_header Cache-Control no-store; }
+    location / { try_files $uri /index.html; }
+}

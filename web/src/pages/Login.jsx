@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Lock, User, ArrowRight, Shield } from 'lucide-react';
-import { FIELD_AUTH_ENABLED } from '../config/runtime';
+import { FIELD_AUTH_ENABLED, LOCAL_AUTO_SESSION_ENABLED } from '../config/runtime';
+import LocalOperatorEntry from './LocalOperatorEntry';
 import { pythonApi } from '../services/api';
 import { setFieldSession } from '../services/fieldSession';
 
@@ -11,6 +12,8 @@ const Login = () => {
     const [credentials, setCredentials] = useState({ username: '', password: '' });
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+
+    if (LOCAL_AUTO_SESSION_ENABLED) return <LocalOperatorEntry />;
 
     const handleSubmit = async (e) => {
         e.preventDefault();

@@ -5,7 +5,7 @@ import Login from './Login';
 import { pythonApi } from '../services/api';
 import { setFieldSession } from '../services/fieldSession';
 
-vi.mock('../config/runtime', () => ({ FIELD_AUTH_ENABLED: true }));
+vi.mock('../config/runtime', () => ({ FIELD_AUTH_ENABLED: true, LOCAL_AUTO_SESSION_ENABLED: false }));
 vi.mock('../services/api', () => ({ pythonApi: { post: vi.fn() } }));
 vi.mock('../services/fieldSession', () => ({ setFieldSession: vi.fn() }));
 beforeEach(() => {

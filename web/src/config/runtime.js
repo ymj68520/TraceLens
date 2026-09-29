@@ -4,6 +4,18 @@
 
 const env = import.meta.env || {};
 export const FIELD_AUTH_ENABLED = env.VITE_FIELD_AUTH === 'enabled';
+// Explicit, temporary loopback UI profile. Backend authentication stays enabled.
+export const LOCAL_AUTO_SESSION_ENABLED = FIELD_AUTH_ENABLED && env.VITE_LOCAL_AUTO_SESSION === 'enabled';
+
+export function isLocalOperatorOrigin(origin) {
+  try {
+    const parsed = new URL(origin);
+    return parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname)
+      && parsed.port === '8666' && !parsed.username && !parsed.password;
+  } catch {
+    return false;
+  }
+}
 
 function pageOrigin() {
   if (typeof window === 'undefined' || !window.location) return 'http://localhost';
