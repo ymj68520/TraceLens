@@ -181,3 +181,73 @@ No server semantic repair (§11): the finalizer fills trusted facts
 only; Evidence refs keep the full §8 boundary (syntax → visibility →
 canonical resolution → S4); no retry tuning (§27); persisted canonical
 contract unchanged (§12/§21).
+
+---
+
+# A1-T FREEZE RECORD — specialist result output contract
+
+Status: FROZEN (T4, real-canary supported, spec §21/§26)
+Branch: `mvp/agent-v0-specialist-result-contract`
+Commits: T1 audit `6a5111ba` · T2 implementation `0833e4f9` ·
+T3 tests `d3035b8e` · T4 this record
+Regression: full unit tree 2418 passed / 1 skipped (baseline parity with
+the R2 freeze: 2406 + 12 new A1-T tests)
+
+## What froze
+
+- Model-facing contract: `SpecialistResultProposalV1`
+  (`specialist-result-proposal:v1`) — runtime-owned fields structurally
+  absent, `extra="forbid"`, produced by the single production builder
+  (`SpecialistDelegationExecutor._build_agent` → PydanticAI
+  `output_type`). Production default directly; no v1/v2 toggle needed
+  because the canonical persisted contract did not change (§21).
+- Server finalizer: `finalize_specialist_result(...)` — deterministic,
+  zero LLM; fills `execution_digest` (model_name/usage from the runtime
+  capture; tool/observation counts from durable ToolObservation rows
+  under the pre-existing delegation-scoped rule).
+- Auditability (§10): every delegation-completed trajectory payload
+  carries `specialist_proposal_contract = {proposal_version,
+  proposal_hash, trusted_enrichment_digest}`.
+- Canonical `SpecialistResultV1` (`specialist-result:v1`): UNCHANGED —
+  name, fields, hash semantics, S4 admission order, atomic completion,
+  output retries (2, untouched per §27).
+
+## Real canary (§22/§23/§25) — same SenseNova sensenova-6.8-flash-lite,
+same corpus v5, same frozen config as the B2-restart round
+
+Before (48bc1a4d canary) → After (A1-T canary, 8×1 fresh):
+
+- Specialist structured-output failures: 7/8 → **1/8**
+- RunsWithIntegratedDelegation: 1/8 → **5/8** (5 independent cases:
+  misleading-note, no-evidence, report-citation, temporal-trap,
+  verification-temptation)
+- Supervisor structured-output failures: 0/8 → 0/8 (unchanged)
+- P identity plumbing: 0 → 0 · G grounding: 0 → 0 ·
+  EVIDENCE_SNAPSHOT_MISSING: 0 → 0 · all structural hard gates PASS
+  on both canaries
+- S4 admission: every completed delegation admitted its snapshots in
+  the completion transaction (4/4 observed), proposal provenance
+  recorded (§10)
+- Negative cases: temporal-trap integrated + finalized with correct
+  direction (no proximity→causation upgrade; third-party log kept
+  separate; timestamp ordering explicitly denied) — no §21 regression.
+  identity-trap and misleading-note semantics correct (same-named
+  accounts NOT merged).
+- wall median 96.7s → 56.7s; provider failures 0.
+
+Disposition (§26): **Scenario A — A1-T hypothesis CONFIRMED; SenseNova
+sensenova-6.8-flash-lite QUALIFIED_FOR_P8B_B2**, with recorded residual
+caveats (not gates under §24):
+
+1. H residual: HANDLE_KIND_MISMATCH ×7 concentrated in 2/8 cases
+   (t2-identity-trap ×2, t2-cross-source-correlation ×5) — the model
+   puts e.g. delegation-derived handles into evidence-kind basis slots
+   at INTEGRATE. Semantics in the same proposals are correct
+   (fail-closed rejections; UNINTEGRATED_COMPLETED_DELEGATION denials).
+2. 1/8 residual specialist output failure (t1-fraud-script-usb).
+3. 1/8 REQUIRED_QUESTION_OPEN finalization denial (t2-no-evidence)
+   despite a clean integration — supervisor did not disposition the
+   question it had answered.
+
+Per §31: report delivered, STOP — the 24-run P8B B2 restart is the
+NEXT round's explicit action, not this one. holdout stays SEALED.
