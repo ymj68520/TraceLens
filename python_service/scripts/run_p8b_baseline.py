@@ -841,44 +841,70 @@ def _persist(out_dir: Path, outcome: dict) -> None:
 
 
 def _extract_trajectory_digest(task_store: Path, out_dir: Path) -> None:
-    """Persist the run's §11-§12 rejection reason codes, supervisor output
-    failures and delegation failures from the durable trajectory BEFORE
-    post_snapshot_cleanup removes the store.
+    """Persist the run's §11-§13 rejection/failure detail from the durable
+    trajectory BEFORE post_snapshot_cleanup removes the store.
 
-    digest_version 2 (b2-restart round): structured dict with
-    rejection_codes / supervisor_failures / delegation_failures. Older
-    artifacts carry a flat code list (digest implicit v1)."""
+    digest_version 3 (P8B B2 restart): structured record with
+    - rejection_codes (flat, backwards compatible)
+    - rejections[]: per-event violation codes + resolution_record
+      violations (handle / actual kind / expected kind / field location)
+      + the raw proposal action signatures (handle kinds the model chose)
+      + stage context (delegations admitted/completed before the event)
+    - supervisor_failures[]: sanitized supervisor exceptions with stage
+      context (plan vs integrate disambiguated by delegation progress)
+    - delegation_failures[]: specialist delegation failures
+    - completions[]: per completed delegation — S4 snapshots admitted and
+      the A1-T specialist_proposal_contract provenance (§17 audit)
+    - finalization: denied/completed outcomes with codes
+
+    Older artifacts carry a flat code list (implicit v1) or the v2 dict.
+    """
     import sqlite3
 
     try:
         conn = sqlite3.connect(task_store)
         rows = conn.execute(
-            "select event_type, payload_json, delegation_id from "
-            "agent_trajectory_events "
-            "where event_type in "
+            "select seq, event_type, payload_json, delegation_id from "
+            "agent_trajectory_events where event_type in "
             "('transition_decision_rejected','integration_decision_rejected',"
-            "'delegation_failed') order by seq"
+            "'delegation_failed','delegation_admitted','delegation_completed',"
+            "'finalization_denied','finalization_completed') order by seq"
         ).fetchall()
         conn.close()
         rejection_codes: list[str] = []
+        rejections: list[dict] = []
         supervisor_failures: list[dict] = []
         delegation_failures: list[dict] = []
-        for event_type, payload, delegation_id in rows:
+        completions: list[dict] = []
+        finalization: dict = {}
+        admitted = completed = 0
+        for seq, event_type, payload, delegation_id in rows:
             try:
                 p = json.loads(payload)
             except Exception:
                 continue
-            if "supervisor_failure" in p:
-                supervisor_failures.append(
+            if event_type == "delegation_admitted":
+                admitted += 1
+                continue
+            if event_type == "delegation_completed":
+                completed += 1
+                completions.append(
                     {
-                        "event": event_type,
-                        "code": p["supervisor_failure"],
-                        "message": str(p.get("message", ""))[:200],
+                        "seq": seq,
+                        "delegation_id": delegation_id,
+                        "evidence_snapshots_admitted": p.get(
+                            "evidence_snapshots_admitted"
+                        ),
+                        "specialist_proposal_contract": p.get(
+                            "specialist_proposal_contract"
+                        ),
                     }
                 )
+                continue
             if event_type == "delegation_failed":
                 delegation_failures.append(
                     {
+                        "seq": seq,
                         "delegation_id": delegation_id,
                         "failure_code": p.get("failure_code"),
                         "message": str(p.get("message", ""))[:200],
@@ -886,15 +912,71 @@ def _extract_trajectory_digest(task_store: Path, out_dir: Path) -> None:
                 )
                 if p.get("failure_code"):
                     rejection_codes.append(p["failure_code"])
-            for code in p.get("violation_codes", []) or []:
-                rejection_codes.append(code)
+                continue
+            if event_type.startswith("finalization_"):
+                finalization = {
+                    "event": event_type,
+                    "violation_codes": p.get("violation_codes", []),
+                    "completion_mode": p.get("completion_mode"),
+                }
+                continue
+            # rejection events (transition/integration)
+            if "supervisor_failure" in p:
+                supervisor_failures.append(
+                    {
+                        "seq": seq,
+                        "event": event_type,
+                        "code": p["supervisor_failure"],
+                        "message": str(p.get("message", ""))[:200],
+                        # stage context: PLAN failures occur before any
+                        # delegation completes; INTEGRATE failures after
+                        "delegations_admitted_before": admitted,
+                        "delegations_completed_before": completed,
+                    }
+                )
+                continue
+            codes = list(p.get("violation_codes", []) or [])
+            rejection_codes.extend(codes)
+            resolution = p.get("resolution_record") or {}
+            entry = {
+                "seq": seq,
+                "stage": p.get("stage"),
+                "violation_codes": codes,
+                "delegations_admitted_before": admitted,
+                "delegations_completed_before": completed,
+                "resolution_violations": [
+                    {
+                        "code": v.get("code"),
+                        "message": str(v.get("message", ""))[:200],
+                        "location": v.get("location", ""),
+                    }
+                    for v in (resolution.get("violations") or [])
+                    if isinstance(v, dict)
+                ],
+                "raw_action_signatures": [
+                    {
+                        "action_type": a.get("action_type"),
+                        "basis_handles": a.get("basis_handles"),
+                        "supporting_handles": a.get("supporting_handles"),
+                    }
+                    for a in (
+                        (p.get("raw_model_proposal_v2") or {}).get("actions")
+                        or []
+                    )
+                    if isinstance(a, dict)
+                ],
+            }
+            rejections.append(entry)
         (out_dir / "trajectory_digest.json").write_text(
             json.dumps(
                 {
-                    "digest_version": 2,
+                    "digest_version": 3,
                     "rejection_codes": rejection_codes,
+                    "rejections": rejections,
                     "supervisor_failures": supervisor_failures,
                     "delegation_failures": delegation_failures,
+                    "completions": completions,
+                    "finalization": finalization,
                 }
             ),
             encoding="utf-8",
