@@ -1578,6 +1578,7 @@ class AgentOrchestrator:
         integration_contract_provenance: dict = {}
         if self._supervisor_contract_version == "v2":
             from .agent_integration_v2 import (
+                availability_projection,
                 resolve_integration_proposal_v2,
             )
             from .agent_reference_bindings import (
@@ -1586,6 +1587,11 @@ class AgentOrchestrator:
 
             integration_table = build_integration_binding_table(
                 integration_context, current_state
+            )
+            # A1-H §20 auditability: record the operand availability the
+            # model was offered, beside every integration decision.
+            integration_availability = availability_projection(
+                integration_table
             )
             raw_integration_v2 = await self._supervisor.integrate_v2(
                 integration_context, integration_table, current_state
@@ -1608,6 +1614,17 @@ class AgentOrchestrator:
                     payload={
                         "stage": "integration_resolution_v2",
                         "integration_contract_version": "v2",
+                        "decision_schema_version": (
+                            raw_integration_v2.decision_version
+                        ),
+                        "available_handles_by_kind": (
+                            integration_availability[
+                                "handle_counts_by_kind"
+                            ]
+                        ),
+                        "offered_action_variants": (
+                            integration_availability["available_actions"]
+                        ),
                         "violation_codes": [
                             v.code.value
                             for v in integration_resolution.violations
@@ -1642,6 +1659,15 @@ class AgentOrchestrator:
                 )
             integration_contract_provenance = {
                 "integration_contract_version": "v2",
+                "decision_schema_version": (
+                    raw_integration_v2.decision_version
+                ),
+                "available_handles_by_kind": (
+                    integration_availability["handle_counts_by_kind"]
+                ),
+                "offered_action_variants": (
+                    integration_availability["available_actions"]
+                ),
                 "binding_table_id": integration_table.binding_table_id,
                 "binding_table_hash": integration_table.table_hash(),
                 "resolution_record": (

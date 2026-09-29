@@ -290,21 +290,15 @@ def test_unknown_evidence_handle_fails_closed():
 
 
 def test_raw_canonical_key_is_not_a_handle():
-    table = build_integration_binding_table(_context(), _state())
-    decision = SupervisorIntegrationDecisionV2(
-        actions=(
-            UpdateEvidenceRelevanceActionV2(
-                evidence_handle=E1_KEY, to_status="relevant"
-            ),
+    # A1-H: the raw canonical key is not even a schema-valid handle —
+    # the typed contract rejects it before the resolver sees it.
+    import pytest as _pytest
+    from pydantic import ValidationError as _VE
+
+    with _pytest.raises(_VE):
+        UpdateEvidenceRelevanceActionV2(
+            evidence_handle=E1_KEY, to_status="relevant"
         )
-    )
-    canonical, record = resolve_integration_proposal_v2(
-        decision, table, _context(), _state()
-    )
-    assert canonical is None
-    assert record.violations[0].code is (
-        ResolutionViolationCode.HANDLE_UNKNOWN
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -426,22 +420,16 @@ def test_coverage_handle_maps_to_exact_dimension():
 
 
 def test_free_form_coverage_name_is_not_accepted():
-    table = build_integration_binding_table(_context(), _state())
-    decision = SupervisorIntegrationDecisionV2(
-        actions=(
-            UpdateCoverageActionV2(
-                coverage_handle="network_activity",
-                to_status=CoverageStatus.covered,
-            ),
+    # A1-H: free-text coverage names are schema-rejected (§8/§39) —
+    # coverage operands must be issued COV* handles.
+    import pytest as _pytest
+    from pydantic import ValidationError as _VE
+
+    with _pytest.raises(_VE):
+        UpdateCoverageActionV2(
+            coverage_handle="network_activity",
+            to_status=CoverageStatus.covered,
         )
-    )
-    canonical, record = resolve_integration_proposal_v2(
-        decision, table, _context(), _state()
-    )
-    assert canonical is None
-    assert record.violations[0].code is (
-        ResolutionViolationCode.HANDLE_UNKNOWN
-    )
 
 
 # ---------------------------------------------------------------------------

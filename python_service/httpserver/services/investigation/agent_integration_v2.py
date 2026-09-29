@@ -70,7 +70,31 @@ from .agent_working_state import (
 )
 
 INTEGRATION_DECISION_VERSION_V2 = "supervisor-integration-decision:v2"
+# A1-H: typed model-facing handle contract epoch (kind-constrained
+# operand fields + availability projection).  The supervisor CONTRACT
+# version (env-selected v2 handle contract vs v1) is unchanged.
+INTEGRATION_DECISION_VERSION_V3 = "supervisor-integration-decision:v3"
+INTEGRATION_DECISION_VERSION = INTEGRATION_DECISION_VERSION_V3
 PLAN_DECISION_VERSION_V2 = "supervisor-plan-decision:v2"
+
+
+# ---------------------------------------------------------------------------
+# A1-H typed model-facing handles (§11/§12): the schema itself restricts
+# every operand to handles of the kind the resolver will accept.  Static
+# kind discipline only — existence/context/canonical binding stay with
+# the fail-closed ReferenceBindingResolver (§13/§14).
+# ---------------------------------------------------------------------------
+
+from typing import Annotated as _Annotated  # noqa: E402
+from pydantic import StringConstraints as _StringConstraints  # noqa: E402
+
+EvidenceHandle = _Annotated[str, _StringConstraints(pattern=r"^E\d+$")]
+QuestionHandle = _Annotated[str, _StringConstraints(pattern=r"^Q\d+$")]
+CoverageHandle = _Annotated[str, _StringConstraints(pattern=r"^COV\d+$")]
+HypothesisHandle = _Annotated[str, _StringConstraints(pattern=r"^H\d+$")]
+ContradictionHandle = _Annotated[str, _StringConstraints(pattern=r"^X\d+$")]
+FindingHandle = _Annotated[str, _StringConstraints(pattern=r"^F\d+$")]
+ProposalHandle = _Annotated[str, _StringConstraints(pattern=r"^P\d+$")]
 
 
 # ---------------------------------------------------------------------------
@@ -84,14 +108,14 @@ class _ActionV2(BaseModel):
 
 class UpdateQuestionActionV2(_ActionV2):
     action_type: Literal["update_question"] = "update_question"
-    question_handle: str
+    question_handle: QuestionHandle
     to_status: QuestionStatus
     disposition: Optional[QuestionDisposition] = None
-    basis_handles: Optional[tuple[str, ...]] = None
+    basis_handles: Optional[tuple[EvidenceHandle, ...]] = None
     limitations: Optional[tuple[str, ...]] = None
     investigated_summary: Optional[str] = None
     blocker: Optional[str] = None
-    superseded_by_handle: Optional[str] = None
+    superseded_by_handle: Optional[QuestionHandle] = None
 
 
 class CreateQuestionActionV2(_ActionV2):
@@ -99,34 +123,34 @@ class CreateQuestionActionV2(_ActionV2):
     text: str = Field(min_length=1)
     source: QuestionSource = QuestionSource.supervisor_discovery
     priority: QuestionPriority = QuestionPriority.high
-    parent_question_handle: Optional[str] = None
+    parent_question_handle: Optional[QuestionHandle] = None
 
 
 class UpdateEvidenceRelevanceActionV2(_ActionV2):
     action_type: Literal["update_evidence_relevance"] = (
         "update_evidence_relevance"
     )
-    evidence_handle: str
+    evidence_handle: EvidenceHandle
     to_status: EvidenceRelevanceStatus
-    related_question_handles: Optional[tuple[str, ...]] = None
+    related_question_handles: Optional[tuple[QuestionHandle, ...]] = None
 
 
 class CreateHypothesisActionV2(_ActionV2):
     action_type: Literal["create_hypothesis"] = "create_hypothesis"
     text: str = Field(min_length=1)
-    supporting_handles: tuple[str, ...] = ()
+    supporting_handles: tuple[EvidenceHandle, ...] = ()
 
 
 class UpdateHypothesisActionV2(_ActionV2):
     action_type: Literal["update_hypothesis"] = "update_hypothesis"
-    hypothesis_handle: str
+    hypothesis_handle: HypothesisHandle
     to_status: HypothesisStatus
 
 
 class CreateContradictionActionV2(_ActionV2):
     action_type: Literal["create_contradiction"] = "create_contradiction"
     severity: ContradictionSeverity
-    refs_handles: tuple[str, ...] = ()
+    refs_handles: tuple[EvidenceHandle, ...] = ()
     attempted_resolution: Optional[str] = None
     impact: Optional[str] = None
     limitation: Optional[str] = None
@@ -134,9 +158,9 @@ class CreateContradictionActionV2(_ActionV2):
 
 class UpdateContradictionActionV2(_ActionV2):
     action_type: Literal["update_contradiction"] = "update_contradiction"
-    contradiction_handle: str
+    contradiction_handle: ContradictionHandle
     to_status: ContradictionStatus
-    resolution_basis_handles: Optional[tuple[str, ...]] = None
+    resolution_basis_handles: Optional[tuple[EvidenceHandle, ...]] = None
     attempted_resolution: Optional[str] = None
     impact: Optional[str] = None
     limitation: Optional[str] = None
@@ -144,24 +168,24 @@ class UpdateContradictionActionV2(_ActionV2):
 
 class UpdateCoverageActionV2(_ActionV2):
     action_type: Literal["update_coverage"] = "update_coverage"
-    coverage_handle: str
+    coverage_handle: CoverageHandle
     to_status: CoverageStatus
-    basis_handles: Optional[tuple[str, ...]] = None
+    basis_handles: Optional[tuple[EvidenceHandle, ...]] = None
     limitation: Optional[str] = None
     capability_basis: Optional[str] = None
-    related_question_handles: Optional[tuple[str, ...]] = None
+    related_question_handles: Optional[tuple[QuestionHandle, ...]] = None
 
 
 class AddFindingReferenceActionV2(_ActionV2):
     action_type: Literal["add_finding_reference"] = "add_finding_reference"
-    finding_handle: str
+    finding_handle: FindingHandle
 
 
 class AddPendingProposalReferenceActionV2(_ActionV2):
     action_type: Literal["add_pending_proposal_reference"] = (
         "add_pending_proposal_reference"
     )
-    proposal_handle: str
+    proposal_handle: ProposalHandle
 
 
 IntegrationActionV2 = Union[
@@ -191,7 +215,7 @@ class SupervisorIntegrationDecisionV2(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    decision_version: str = INTEGRATION_DECISION_VERSION_V2
+    decision_version: str = INTEGRATION_DECISION_VERSION
     actions: tuple[IntegrationActionV2, ...] = ()
     integration_summary: str = ""
     limitations: tuple[str, ...] = ()
@@ -400,7 +424,7 @@ def resolve_integration_proposal_v2(
     violations: list[ResolutionViolation] = []
     summaries: list[str] = []
 
-    if decision.decision_version != INTEGRATION_DECISION_VERSION_V2:
+    if decision.decision_version != INTEGRATION_DECISION_VERSION:
         violations.append(
             ResolutionViolation(
                 code=ResolutionViolationCode.RESOLUTION_VERSION_UNSUPPORTED,
@@ -857,6 +881,41 @@ def _question_projection(
     }
 
 
+def availability_projection(table: ReferenceBindingTableV1) -> dict:
+    """Deterministic A1-H admissibility projection (§17/§18): handle
+    counts per kind and the action variants whose operand domains are
+    non-empty.  Pure function of the frozen table — no semantic
+    reasoning; branches with empty domains are not offered."""
+    counts = {
+        "E": 0, "Q": 0, "COV": 0, "D": 0, "F": 0, "P": 0, "H": 0, "X": 0,
+    }
+    for binding in table.bindings:
+        handle = binding.handle
+        if handle.startswith("COV"):
+            counts["COV"] += 1
+        else:
+            counts[handle[0]] = counts.get(handle[0], 0) + 1
+    available = ["update_question", "create_question"]
+    if counts["E"]:
+        available.append("update_evidence_relevance")
+    available.append("create_hypothesis")
+    if counts["H"]:
+        available.append("update_hypothesis")
+    available.append("create_contradiction")
+    if counts["X"]:
+        available.append("update_contradiction")
+    if counts["COV"]:
+        available.append("update_coverage")
+    if counts["F"]:
+        available.append("add_finding_reference")
+    if counts["P"]:
+        available.append("add_pending_proposal_reference")
+    return {
+        "handle_counts_by_kind": counts,
+        "available_actions": available,
+    }
+
+
 def render_integration_context_v2(
     context: IntegrationContextPack,
     state: AgentWorkingStateV1,
@@ -981,12 +1040,16 @@ def render_integration_context_v2(
         if item.evidence_key in e_map
     ]
 
+    availability = availability_projection(table)
     return {
-        "projection_version": "integration-context-v2-projection:v1",
+        "projection_version": "integration-context-v2-projection:v2",
         "binding_table_id": table.binding_table_id,
         "handle_kinds": {
             binding.handle: binding.kind.value for binding in table.bindings
         },
+        # A1-H §17/§18: the model chooses ONLY from these action variants
+        # and ONLY among the handles listed in handle_kinds.
+        **availability,
         "fresh_results": fresh,
         "stale_results": stale,
         "failure_digests": failures,
@@ -1083,6 +1146,9 @@ def render_plan_context_v2(
 
 __all__ = [
     "INTEGRATION_DECISION_VERSION_V2",
+    "INTEGRATION_DECISION_VERSION_V3",
+    "INTEGRATION_DECISION_VERSION",
+    "availability_projection",
     "PLAN_DECISION_VERSION_V2",
     "AddFindingReferenceActionV2",
     "AddPendingProposalReferenceActionV2",

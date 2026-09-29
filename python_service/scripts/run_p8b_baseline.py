@@ -861,6 +861,70 @@ def _extract_trajectory_digest(task_store: Path, out_dir: Path) -> None:
     """
     import sqlite3
 
+    # field-path -> expected handle kind (A1-H §21): used to compute
+    # legal_operand_available for HANDLE_UNKNOWN events whose message
+    # does not name an expected kind.
+    _FIELD_KIND = {
+        "basis_handles": "evidence",
+        "supporting_handles": "evidence",
+        "refs_handles": "evidence",
+        "resolution_basis_handles": "evidence",
+        "evidence_handle": "evidence",
+        "question_handle": "question",
+        "superseded_by_handle": "question",
+        "parent_question_handle": "question",
+        "related_question_handles": "question",
+        "coverage_handle": "coverage",
+        "hypothesis_handle": "hypothesis",
+        "contradiction_handle": "contradiction",
+        "finding_handle": "finding",
+        "proposal_handle": "claim_proposal",
+    }
+
+    def _result_semantic_projection(conn, delegation_id):
+        """§22 benchmark-only semantic snapshot projection: enough
+        content to review identity/temporal/overclaim behaviour after
+        task cleanup.  Never Evidence; never consumed by production."""
+        try:
+            row = conn.execute(
+                "select result_json from agent_delegation_results "
+                "where delegation_id = ?",
+                (delegation_id,),
+            ).fetchone()
+        except Exception:
+            return None
+        if not row:
+            return None
+        try:
+            result = json.loads(row[0])
+        except Exception:
+            return None
+        return {
+            "summary": result.get("summary"),
+            "evidence_refs": list(result.get("evidence_refs") or ()),
+            "claim_candidates": [
+                {
+                    "candidate_id": c.get("candidate_id"),
+                    "text": str(c.get("text", ""))[:400],
+                    "assertion_class": c.get("assertion_class"),
+                    "evidence_refs": list(c.get("evidence_refs") or ()),
+                    "limitations": list(c.get("limitations") or ()),
+                }
+                for c in (result.get("claim_candidates") or ())
+            ],
+            "entity_candidates": [
+                {
+                    "candidate_id": c.get("candidate_id"),
+                    "raw_value": c.get("raw_value"),
+                    "normalized_candidate": c.get("normalized_candidate"),
+                    "entity_type_candidate": c.get("entity_type_candidate"),
+                }
+                for c in (result.get("entity_candidates") or ())
+            ],
+            "limitations": list(result.get("limitations") or ()),
+            "warnings": list(result.get("warnings") or ()),
+        }
+
     try:
         conn = sqlite3.connect(task_store)
         rows = conn.execute(
@@ -870,7 +934,6 @@ def _extract_trajectory_digest(task_store: Path, out_dir: Path) -> None:
             "'delegation_failed','delegation_admitted','delegation_completed',"
             "'finalization_denied','finalization_completed') order by seq"
         ).fetchall()
-        conn.close()
         rejection_codes: list[str] = []
         rejections: list[dict] = []
         supervisor_failures: list[dict] = []
@@ -897,6 +960,12 @@ def _extract_trajectory_digest(task_store: Path, out_dir: Path) -> None:
                         ),
                         "specialist_proposal_contract": p.get(
                             "specialist_proposal_contract"
+                        ),
+                        # §22 benchmark-only semantic projection
+                        "result_semantic_payload": (
+                            _result_semantic_projection(
+                                conn, delegation_id
+                            )
                         ),
                     }
                 )
@@ -938,21 +1007,61 @@ def _extract_trajectory_digest(task_store: Path, out_dir: Path) -> None:
             codes = list(p.get("violation_codes", []) or [])
             rejection_codes.extend(codes)
             resolution = p.get("resolution_record") or {}
+            counts = p.get("available_handles_by_kind") or {}
+            resolved_violations = []
+            for v in (resolution.get("violations") or []):
+                if not isinstance(v, dict):
+                    continue
+                item = {
+                    "code": v.get("code"),
+                    "message": str(v.get("message", ""))[:200],
+                    "location": v.get("location", ""),
+                }
+                # §21: was a legal operand of the expected kind offered?
+                expected = None
+                message = item["message"]
+                if ", expected " in message:
+                    expected = message.split(", expected ")[
+                        1
+                    ].strip().rstrip(".")
+                else:
+                    location_tail = item["location"].rsplit(".", 1)[-1]
+                    expected = _FIELD_KIND.get(
+                        location_tail.split("[")[0]
+                    )
+                if expected is not None:
+                    item["expected_kind"] = expected
+                    item["legal_operand_available"] = (
+                        counts.get(
+                            {
+                                "evidence": "E",
+                                "question": "Q",
+                                "coverage": "COV",
+                                "finding": "F",
+                                "claim_proposal": "P",
+                                "hypothesis": "H",
+                                "contradiction": "X",
+                                "delegation_result": "D",
+                            }.get(expected, expected),
+                            0,
+                        )
+                        > 0
+                    )
+                resolved_violations.append(item)
             entry = {
                 "seq": seq,
                 "stage": p.get("stage"),
                 "violation_codes": codes,
                 "delegations_admitted_before": admitted,
                 "delegations_completed_before": completed,
-                "resolution_violations": [
-                    {
-                        "code": v.get("code"),
-                        "message": str(v.get("message", ""))[:200],
-                        "location": v.get("location", ""),
-                    }
-                    for v in (resolution.get("violations") or [])
-                    if isinstance(v, dict)
-                ],
+                "available_handles_by_kind": counts,
+                "offered_action_variants": list(
+                    p.get("offered_action_variants") or ()
+                ),
+                "resolution_violations": resolved_violations,
+                "raw_model_proposal_v2": p.get(
+                    "raw_model_proposal_v2"
+                ),
                 "raw_action_signatures": [
                     {
                         "action_type": a.get("action_type"),
@@ -970,7 +1079,7 @@ def _extract_trajectory_digest(task_store: Path, out_dir: Path) -> None:
         (out_dir / "trajectory_digest.json").write_text(
             json.dumps(
                 {
-                    "digest_version": 3,
+                    "digest_version": 4,
                     "rejection_codes": rejection_codes,
                     "rejections": rejections,
                     "supervisor_failures": supervisor_failures,
