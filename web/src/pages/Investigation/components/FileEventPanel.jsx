@@ -88,9 +88,9 @@ export default function FileEventPanel({ file, events, taskEventCount = 0, selec
         ) : (
           <div className="max-w-xs rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-5 text-center text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/50">
             <p className="font-medium text-slate-700 dark:text-slate-200">
-              {!file ? '请在时间线中选择文件' : taskEventCount === 0 ? '当前任务尚未生成调查事件' : '该文件尚未关联调查事件'}
+              {!file ? '请在时间线中选择文件' : taskEventCount === 0 ? '暂无调查事件' : '暂无关联事件'}
             </p>
-            {file && <p className="mt-2 leading-5">上方展示的是文件时间戳；原始文件活动记录不等同于已建立关联的调查事件。</p>}
+            {file && <p className="mt-2 leading-5" title="文件时间戳和调查事件分别展示，时间戳不作为事件结论。">文件时间信息见上方</p>}
           </div>
         )}
       </div>

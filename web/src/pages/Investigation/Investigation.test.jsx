@@ -102,6 +102,32 @@ test('shows a task-selection placeholder without task context', () => {
   expect(service.getOverview).not.toHaveBeenCalled();
 });
 
+test('historical read-only mode uses a compact badge and cannot start write actions', async () => {
+  service.getOverview.mockResolvedValue({ initialized: true, read_only: true, store_schema_version: 7,
+    event_count: 2, analysis_count: 0, report_evidence_count: 0 });
+  renderPage();
+  expect(await screen.findByTestId('historical-readonly-badge')).toHaveTextContent('历史版本 · 只读');
+  expect(screen.queryByText(/历史 v7 调查库仅可读/)).not.toBeInTheDocument();
+  await screen.findByTestId('evidence-analysis-panel');
+  expect(screen.getByRole('button', { name: '保存备注' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '执行二次分析' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '正文' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '附件' })).toBeDisabled();
+  expect(service.bootstrapInvestigation).not.toHaveBeenCalled();
+});
+
+test('translation failure preserves the original instead of fabricating a Chinese result', async () => {
+  const original = 'This configuration file defines a cleanup operation and preserves the original evidence filename a.txt.';
+  service.getEvidenceDetail.mockResolvedValue({ evidence: { evidence_key: 'file:/case/a.txt', title: 'a.txt',
+    snapshot: { payload: { initial_description: original } }, metadata: {}, related_event_ids: [] } });
+  service.translateInitialAnalysis.mockRejectedValueOnce(new Error('unavailable'));
+  renderPage();
+  expect(await screen.findByText('分析原文')).toBeInTheDocument();
+  expect(screen.getByTestId('initial-analysis-description')).toHaveTextContent(original);
+  expect(screen.queryByText('中文阅读')).not.toBeInTheDocument();
+  expect(screen.queryByText(/中文翻译暂不可用/)).not.toBeInTheDocument();
+});
+
 test('defaults to the timeline tab in a three-column layout', async () => {
   const { container } = renderPage();
   await screen.findByTestId('file-node-/case/a.txt');
@@ -179,8 +205,8 @@ test('explains an empty task event list without calling file timestamps investig
   });
   renderPage();
   await screen.findByTestId('file-event-panel-name');
-  expect(screen.getByText('当前任务尚未生成调查事件')).toBeInTheDocument();
-  expect(screen.getByText('上方展示的是文件时间戳；原始文件活动记录不等同于已建立关联的调查事件。')).toBeInTheDocument();
+  expect(screen.getByText('暂无调查事件')).toBeInTheDocument();
+  expect(screen.getByText('文件时间信息见上方')).toHaveAttribute('title', expect.stringContaining('不作为事件结论'));
   expect(screen.queryByText('在上方选择一个关联事件，查看它的佐证证据与 Claim 引用。')).not.toBeInTheDocument();
 });
 
@@ -190,8 +216,8 @@ test('distinguishes an unlinked file from a task with no investigation events', 
   });
   renderPage();
   await screen.findByTestId('file-event-panel-name');
-  expect(screen.getByText('该文件尚未关联调查事件')).toBeInTheDocument();
-  expect(screen.queryByText('当前任务尚未生成调查事件')).not.toBeInTheDocument();
+  expect(screen.getByText('暂无关联事件')).toBeInTheDocument();
+  expect(screen.queryByText('暂无调查事件')).not.toBeInTheDocument();
 });
 
 test('shows the immutable snapshot payload description and requests this evidence local graph', async () => {
@@ -219,9 +245,9 @@ test('renders Chinese reading overlay and keeps immutable English source collaps
   } });
   renderPage();
   expect(await screen.findByTestId('initial-analysis-description')).toHaveTextContent('摘要：中文译文。');
-  expect(screen.getByText('2. 初次分析（快照，只读）')).toBeInTheDocument();
+  expect(screen.getByText('2. 初次分析')).toHaveAttribute('title', expect.stringContaining('只读分析快照'));
   expect(service.translateInitialAnalysis).toHaveBeenCalledWith('t1', 'file:/case/a.txt');
-  expect(screen.getByText('查看英文原文（不可变快照）')).toBeInTheDocument();
+  expect(screen.getByText('查看分析原文')).toBeInTheDocument();
   expect(screen.getByTestId('initial-analysis-description')).not.toHaveTextContent('SUMMARY:');
 });
 
@@ -234,7 +260,7 @@ test('shows an existing secondary analysis even when new LLM actions are disable
   try {
     renderPage();
     expect(await screen.findByText('已有二次分析结论')).toBeInTheDocument();
-    expect(screen.getByText(/历史二次分析记录/)).toBeInTheDocument();
+    expect(screen.getByText('历史分析')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '执行二次分析' })).not.toBeInTheDocument();
   } finally {
     featuresState.workbench_llm_enabled = true;

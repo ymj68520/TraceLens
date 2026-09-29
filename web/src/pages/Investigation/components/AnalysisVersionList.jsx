@@ -2,7 +2,7 @@ import Badge from '../../../components/common/Badge';
 import { ANALYSIS_STATUS } from '../utils/investigationConstants';
 
 export default function AnalysisVersionList({ versions = [], selectedId, onSelect }) {
-  if (!versions.length) return <p className="text-sm text-slate-500">暂无二次分析历史。</p>;
+  if (!versions.length) return <p className="text-sm text-slate-500">暂无历史版本</p>;
   return (
     <div className="space-y-2">
       {versions.map((version) => {

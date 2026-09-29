@@ -28,5 +28,5 @@ test('shows task-scoped local entities and readable directed relations', () => {
 
 test('does not invent a graph when no exact evidence relation exists', () => {
   render(<LocalKnowledgeGraph graph={{ base_available: true, nodes: [], links: [] }} />);
-  expect(screen.getByText('当前证据没有可核实的局部图谱关系。')).toBeInTheDocument();
+  expect(screen.getByText('暂无关联关系')).toHaveAttribute('title', '当前证据没有已记录的可核实关系。');
 });

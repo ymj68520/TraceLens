@@ -33,13 +33,13 @@ export default function LocalKnowledgeGraph({ graph }) {
     return () => observer.disconnect();
   }, [graph]);
 
-  if (!graph) return <p className="text-sm text-slate-500">尚未加载局部图谱。</p>;
+  if (!graph) return <p className="text-sm text-slate-500" title="当前没有可读取的图谱投影。">暂无关联数据</p>;
   if (!graph.nodes?.length) {
-    return <div className="rounded-xl bg-slate-50 dark:bg-slate-900/40 p-5 text-center text-sm text-slate-500">{graph.base_available === false ? '知识图谱服务不可用，且当前证据尚无调查关系。' : '当前证据没有可核实的局部图谱关系。'}</div>;
+    return <div className="rounded-xl bg-slate-50 dark:bg-slate-900/40 p-5 text-center text-sm text-slate-500" title={graph.base_available === false ? '当前读取本地调查投影，基础图谱服务未连接。' : '当前证据没有已记录的可核实关系。'}>暂无关联关系</div>;
   }
   return (
     <div ref={container} data-testid="local-evidence-graph" className="overflow-hidden rounded-xl border border-slate-200/60 dark:border-slate-700/60 bg-slate-50/70 dark:bg-slate-950/40">
-      {graph.base_available === false && <div className="px-3 py-2 text-xs text-amber-600 bg-amber-50 dark:bg-amber-950/20">Base KG 不可用，当前仅展示 Investigation Overlay。</div>}
+      {graph.base_available === false && <div className="px-3 py-2 text-xs text-slate-500" title="当前仅展示本地调查投影，未加载基础知识图谱。">本地调查视图</div>}
       <div className="px-3 pt-2 text-xs text-slate-500">当前证据关联图 · {graph.nodes.length} 节点 / {(graph.links || []).length} 关系。悬停查看实体和关系详情。</div>
       <ForceGraph2D
         ref={canvas}

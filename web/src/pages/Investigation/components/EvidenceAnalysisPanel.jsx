@@ -21,8 +21,8 @@ import LocalKnowledgeGraph from './LocalKnowledgeGraph';
 import ReportEvidenceJudgment from '../../../components/investigation/ReportEvidenceJudgment';
 import { getFrozenAndroidArtifact } from '../../../services/evidenceIntakeService';
 
-function Section({ title, children }) {
-  return <section className="rounded-xl border border-slate-200/60 dark:border-slate-700/60 p-4"><h3 className="mb-3 text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</h3>{children}</section>;
+function Section({ title, hint, children }) {
+  return <section className="rounded-xl border border-slate-200/60 dark:border-slate-700/60 p-4"><h3 title={hint} className="mb-3 text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</h3>{children}</section>;
 }
 
 // 文件上下文头（点击时间线文件节点时展示）：MACB 四时间与身份信息，
@@ -93,7 +93,7 @@ function CorroboratingEventsSection({ file, events = [], onSelectEvent }) {
  * 末尾追加佐证事件 section——功能与关联证据入口完全一致，只是多了文件
  * 上下文。判定（第 7 节）复用全局唯一的 ReportEvidenceJudgment。
  */
-export default function EvidenceAnalysisPanel({ taskId, eventId, evidenceKey, onEvidenceChanged, fileContext }) {
+export default function EvidenceAnalysisPanel({ taskId, eventId, evidenceKey, onEvidenceChanged, fileContext, readOnly = false }) {
   const file = fileContext?.file || null;
   const { detail, versions, graph, loading, error, refresh } = useEvidenceAnalysis(taskId, evidenceKey);
   // MVP (mvp-phase1-acceptance §4.4): the secondary-analysis action is trimmed;
@@ -172,7 +172,7 @@ export default function EvidenceAnalysisPanel({ taskId, eventId, evidenceKey, on
         <p className="mt-1 text-xs text-slate-500 break-all">{androidEvidence || detail.evidence_type === 'event_cluster' ? detail.evidence_key : detail.file_path}</p>
       </div>
 
-      <Section title="1. Evidence Metadata">
+      <Section title="1. 证据信息">
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
           {androidEvidence ? <>
             <dt className="text-slate-500">结果版本</dt><dd className="break-all">{initialAnalysis.result_set_id}</dd>
@@ -187,10 +187,10 @@ export default function EvidenceAnalysisPanel({ taskId, eventId, evidenceKey, on
             <dt className="text-slate-500">Cluster Snapshot Digest (SHA-256)</dt><dd className="break-all">{detail.snapshot?.source_hash || '—'}</dd>
           </> : <>
             <dt className="text-slate-500">MD5</dt><dd className="break-all">{detail.md5 || '—'}</dd>
-            <dt className="text-slate-500">Size</dt><dd>{detail.size ?? '—'} bytes</dd>
+            <dt className="text-slate-500">文件大小</dt><dd>{detail.size != null ? `${detail.size} 字节` : '—'}</dd>
           </>}
-          <dt className="text-slate-500">Timestamp</dt><dd>{formatTimestamp(detail.timestamp)}</dd>
-          <dt className="text-slate-500">Snapshot captured</dt><dd>{formatTimestamp(detail.snapshot?.captured_at)}</dd>
+          <dt className="text-slate-500">证据时间</dt><dd>{formatTimestamp(detail.timestamp)}</dd>
+          <dt className="text-slate-500">快照时间</dt><dd>{formatTimestamp(detail.snapshot?.captured_at)}</dd>
         </dl>
       </Section>
 
@@ -206,43 +206,43 @@ export default function EvidenceAnalysisPanel({ taskId, eventId, evidenceKey, on
         {frozenRow && <pre className="mt-2 whitespace-pre-wrap break-all text-xs">{JSON.stringify({record: frozenRow.record, source: frozenRow.source, record_hash: frozenRow.record_hash}, null, 2)}</pre>}
       </Section>}
 
-      <Section title="2. 初次分析（快照，只读）">
-        {!initialSourceText ? <p className="text-sm text-slate-500">初次流水线未生成描述。</p> : <>
+      <Section title="2. 初次分析" hint="来自已保存的只读分析快照，中文译文仅辅助阅读。">
+        {!initialSourceText ? <p className="text-sm text-slate-500">暂无分析描述</p> : <>
           {translatedAnalysis.loading ? <p role="status" className="text-sm text-slate-500">正在本地生成中文译文，请稍候……</p> : <>
-            {translatedAnalysis.error && <p role="alert" className="mb-2 text-xs text-amber-700 dark:text-amber-300">中文翻译暂不可用，当前显示快照原文；可稍后刷新重试。</p>}
+            {translatedAnalysis.error && <div className="mb-2"><Badge variant="gray" size="sm" title="中文阅读服务未返回译文，当前保留分析原文，未改写证据快照。">分析原文</Badge></div>}
             <p className="text-sm leading-6 whitespace-pre-wrap" lang={translatedAnalysis.translated ? 'zh-CN' : undefined} data-testid="initial-analysis-description">{translatedAnalysis.text || initialSourceText}</p>
           </>}
           {(translatedAnalysis.translated || translatedAnalysis.loading) && <>
-            {translatedAnalysis.translated && <p className="mt-3 text-xs text-slate-500">本地机器译文仅供阅读；文件名、路径等技术标识保留原文，取证结论以不可变快照原文为准。</p>}
+            {translatedAnalysis.translated && <div className="mt-3"><Badge variant="blue" size="sm" title="本地机器译文仅辅助阅读，不替代分析快照或原始证据。">中文阅读</Badge></div>}
             <details className="mt-3 text-xs text-slate-500">
-              <summary className="cursor-pointer">查看英文原文（不可变快照）</summary>
+              <summary className="cursor-pointer">查看分析原文</summary>
               <p className="mt-2 whitespace-pre-wrap break-words" lang="en">{initialSourceText}</p>
             </details>
           </>}
         </>}
       </Section>
 
-      <Section title="3. Analyst Note（调查上下文，不是证据）">
-        <AnalystNoteEditor taskId={taskId} evidenceKey={evidenceKey} initialValue={detail.analyst_note?.content} onSaved={refresh} />
+      <Section title="3. 调查备注" hint="调查上下文与个人分析思路，不作为证据事实。">
+        <AnalystNoteEditor taskId={taskId} evidenceKey={evidenceKey} initialValue={detail.analyst_note?.content} onSaved={refresh} readOnly={readOnly} />
       </Section>
 
-      <Section title="4. Secondary Analysis">
-        {workbenchLlmEnabled && <Button icon={BrainCircuit} loading={analyzing} disabled={analyzing} onClick={analyze}>执行二次分析</Button>}
+      <Section title="4. 二次分析">
+        {workbenchLlmEnabled && <Button icon={BrainCircuit} loading={analyzing} disabled={readOnly || analyzing} onClick={analyze}>执行二次分析</Button>}
         {workbenchLlmEnabled && job && <span className="ml-3 text-xs text-slate-500">{job.status} · {job.progress || 0}%</span>}
-        {!workbenchLlmEnabled && !version && <p className="text-xs text-slate-500">该证据暂无二次分析记录；当前版本不提供新建 LLM 二次分析。</p>}
-        {!workbenchLlmEnabled && version && <p className="text-xs text-slate-500">历史二次分析记录；当前版本不提供新建分析。</p>}
+        {!version && <p className="text-xs text-slate-500">暂无分析记录</p>}
+        {!workbenchLlmEnabled && version && <Badge variant="gray" size="sm" title="已保存的二次分析版本">历史分析</Badge>}
         {actionError && <p className="mt-3 text-sm text-rose-600">操作失败：{actionError?.data?.detail || actionError.message}</p>}
         {version && <div className="mt-4 rounded-xl bg-slate-50 dark:bg-slate-900/40 p-4">
           <div className="flex items-center gap-2"><strong>v{version.version}</strong><Badge variant={status.variant}>{status.label}</Badge>{version.grounding_status && <Badge variant={version.grounding_status === 'valid' ? 'green' : 'yellow'} title="Grounded 仅表示 Evidence ID 真实存在，不代表事实已被充分证明。">{version.grounding_status}</Badge>}</div>
           <p className="mt-3 text-sm leading-6 whitespace-pre-wrap">{version.description || version.summary}</p>
           {!!warnings.length && <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/20 p-3 text-xs text-amber-700"><div className="font-semibold">Grounding Warning</div>{warnings.map((w) => <div key={w}>• {w}</div>)}{version.grounding_status === 'partially_grounded' && <label className="mt-2 flex gap-2"><input type="checkbox" checked={acknowledge} onChange={(e) => setAcknowledge(e.target.checked)} />我已人工复核并确认接受这些警告</label>}</div>}
-          {version.status === 'review_pending' && <div className="mt-3 flex gap-2"><Button size="sm" variant="success" icon={CheckCircle2} disabled={version.grounding_status === 'partially_grounded' && !acknowledge} onClick={accept}>接受该分析</Button><Button size="sm" variant="danger" icon={CircleX} onClick={reject}>拒绝</Button></div>}
+          {version.status === 'review_pending' && <div className="mt-3 flex gap-2"><Button size="sm" variant="success" icon={CheckCircle2} disabled={readOnly || (version.grounding_status === 'partially_grounded' && !acknowledge)} onClick={accept}>接受该分析</Button><Button size="sm" variant="danger" icon={CircleX} disabled={readOnly} onClick={reject}>拒绝</Button></div>}
         </div>}
       </Section>
 
-      <Section title="5. Claims"><ClaimList claims={version?.claims || []} /></Section>
-      <Section title="6. Local Investigation Graph">{androidEvidence ? <p className="text-xs text-slate-500">该单条 Android 工件尚未形成已核实的图谱关系。</p> : <LocalKnowledgeGraph graph={graph} />}</Section>
-      <Section title="7. Report Evidence"><ReportEvidenceJudgment taskId={taskId} evidenceKey={evidenceKey} status={detail.report_evidence?.report_status || null} onChanged={async () => { await refresh(); onEvidenceChanged?.(); }} /></Section>
+      <Section title="5. 结论引用"><ClaimList claims={version?.claims || []} /></Section>
+      <Section title="6. 关联图谱">{androidEvidence ? <p className="text-xs text-slate-500">暂无已核实的关联关系</p> : <LocalKnowledgeGraph graph={graph} />}</Section>
+      <Section title="7. 报告证据"><ReportEvidenceJudgment taskId={taskId} evidenceKey={evidenceKey} status={detail.report_evidence?.report_status || null} readOnly={readOnly} onChanged={async () => { await refresh(); onEvidenceChanged?.(); }} /></Section>
       {androidEvidence && acceptedVersions.length > 0 && <Section title="报告引用的分析版本（显式绑定）">
         <p className="mb-2 text-xs text-slate-600">只有已接受的同一证据分析可绑定；新分析被接受不会自动替换本报告的旧绑定。</p>
         <p className="mb-2 text-xs">当前绑定：{detail.report_evidence?.analysis_id || '无（仅引用冻结工件，不代表 AI 结论已采纳）'}</p>
@@ -251,7 +251,7 @@ export default function EvidenceAnalysisPanel({ taskId, eventId, evidenceKey, on
             onChange={(event) => setBindingId(event.target.value)} aria-label="选择已接受分析版本">
             {acceptedVersions.map((item) => <option key={item.id} value={item.id}>v{item.version} · {item.id}</option>)}
           </select>
-          <Button size="sm" disabled={!detail.report_evidence || !selectedBinding || selectedBinding === detail.report_evidence.analysis_id}
+          <Button size="sm" disabled={readOnly || !detail.report_evidence || !selectedBinding || selectedBinding === detail.report_evidence.analysis_id}
             onClick={async () => {
               setActionError(null);
               try { await bindReportEvidenceAnalysis(taskId, evidenceKey, selectedBinding); await refresh(); onEvidenceChanged?.(); }
@@ -260,7 +260,7 @@ export default function EvidenceAnalysisPanel({ taskId, eventId, evidenceKey, on
         </div>
         {!detail.report_evidence && <p className="mt-2 text-xs text-amber-700">请先把这条工件判定为正文或附件证据，再显式绑定分析。</p>}
       </Section>}
-      <Section title="8. Analysis History"><AnalysisVersionList versions={versions} selectedId={version?.id} onSelect={setSelectedVersionId} /></Section>
+      <Section title="8. 分析历史"><AnalysisVersionList versions={versions} selectedId={version?.id} onSelect={setSelectedVersionId} /></Section>
       {file && (
         <CorroboratingEventsSection
           file={file}

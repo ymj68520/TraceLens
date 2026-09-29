@@ -24,9 +24,7 @@ function App() {
   return (
     <ErrorBoundary>
       <Layout>
-        {LOCAL_AUTO_SESSION_ENABLED && <p className="text-xs text-amber-700 dark:text-amber-300 mb-3">
-          本机免登录调试模式 · 仅本机访问 · 操作身份：本机调试操作员
-        </p>}
+        {LOCAL_AUTO_SESSION_ENABLED && <span className="sr-only">本机免登录调试模式，操作身份为本机调试操作员。</span>}
         <Outlet />
       </Layout>
     </ErrorBoundary>

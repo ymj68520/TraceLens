@@ -189,9 +189,11 @@ function InvestigationForTask({ taskId, searchParams }) {
 
   return (
     <div className="h-[calc(100vh-6.5rem)] flex flex-col gap-3">
-      {overview?.read_only && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">历史 v7 调查库仅可读；浏览不会自动初始化或迁移。写入前需要备份并完成受控 v8 迁移。</div>}
       <header className="flex items-center justify-between rounded-2xl glass px-5 py-3">
-        <div><h1 className="text-xl font-bold text-slate-900 dark:text-white">Investigation / 二次调查分析</h1><p className="text-xs text-slate-500">初次证据只读 · 分析员上下文 · 版本化二次分析 · 可追溯到真实 Evidence</p></div>
+        <div><div className="flex items-center gap-2"><h1 className="text-xl font-bold text-slate-900 dark:text-white">调查分析工作台</h1>
+          {overview?.read_only && <span role="status" data-testid="historical-readonly-badge" className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500 dark:bg-slate-800"
+            title="此历史版本只读；写入需另行备份并受控迁移，浏览不会修改原库。">历史版本 · 只读</span>}
+        </div><p className="text-xs text-slate-500">证据梳理 · 分析版本 · 关联线索 · 报告追溯</p></div>
         <div className="flex items-center gap-4 text-xs text-slate-500"><span>{overview?.event_count || 0} Events</span><span>{overview?.analysis_count || 0} Analyses</span><span data-testid="cited-file-count">{files.length} 引用文件</span><Link to={`/case-intelligence?task_id=${encodeURIComponent(taskId)}&tab=forensic${reportId ? `&report_id=${encodeURIComponent(reportId)}` : ''}`} className="font-semibold text-primary-600 hover:text-primary-500 dark:text-primary-300">查看最终报告</Link><Button size="sm" variant="ghost" icon={RefreshCw} onClick={refreshEventsAndGraph}>刷新</Button></div>
       </header>
       <main className={`grid min-h-0 flex-1 gap-3 ${graphActive ? 'grid-cols-[minmax(250px,0.8fr)_minmax(640px,2.45fr)]' : 'grid-cols-[minmax(250px,0.8fr)_minmax(300px,0.9fr)_minmax(440px,1.45fr)]'}`}>
@@ -250,6 +252,7 @@ function InvestigationForTask({ taskId, searchParams }) {
             onSelectEvent={selectEvent}
             onBackToFile={backToFile}
             onEvidenceChanged={handleEvidenceChanged}
+            readOnly={Boolean(overview?.read_only)}
           />
         </section>
       </main>

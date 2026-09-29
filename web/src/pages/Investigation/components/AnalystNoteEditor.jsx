@@ -3,7 +3,7 @@ import { Save } from 'lucide-react';
 import Button from '../../../components/common/Button';
 import { saveAnalystNote } from '../../../services/investigationService';
 
-export default function AnalystNoteEditor({ taskId, evidenceKey, initialValue = '', onSaved }) {
+export default function AnalystNoteEditor({ taskId, evidenceKey, initialValue = '', onSaved, readOnly = false }) {
   const [value, setValue] = useState(initialValue);
   const [saving, setSaving] = useState(false);
 
@@ -21,8 +21,8 @@ export default function AnalystNoteEditor({ taskId, evidenceKey, initialValue = 
 
   return (
     <div>
-      <textarea value={value} onChange={(e) => setValue(e.target.value)} rows={5} placeholder="补充案件上下文、调查假设或需要模型重点判断的问题。注意：Analyst Note 不是证据。" className="w-full rounded-xl border-slate-300 dark:border-slate-700 dark:bg-slate-900/50 text-sm" />
-      <div className="mt-2 flex justify-end"><Button size="sm" variant="secondary" icon={Save} loading={saving} onClick={save}>保存 Note</Button></div>
+      <textarea value={value} readOnly={readOnly} onChange={(e) => setValue(e.target.value)} rows={5} placeholder="补充调查背景、分析思路与核对说明（备注不作为证据）。" className="w-full rounded-xl border-slate-300 dark:border-slate-700 dark:bg-slate-900/50 text-sm" />
+      <div className="mt-2 flex justify-end"><Button size="sm" variant="secondary" icon={Save} loading={saving} disabled={readOnly} title={readOnly ? '历史版本只读' : undefined} onClick={save}>保存备注</Button></div>
     </div>
   );
 }

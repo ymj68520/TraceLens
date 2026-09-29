@@ -23,9 +23,10 @@ export default function AnalysisWorkspace({
   onTraceEvidence,
   onSelectEvent,
   onBackToFile,
+  readOnly = false,
 }) {
   if (evidenceKey) {
-    return <EvidenceAnalysisPanel key={`${taskId}:${evidenceKey}`} taskId={taskId} eventId={eventId} evidenceKey={evidenceKey} onEvidenceChanged={onEvidenceChanged} />;
+    return <EvidenceAnalysisPanel key={`${taskId}:${evidenceKey}`} taskId={taskId} eventId={eventId} evidenceKey={evidenceKey} onEvidenceChanged={onEvidenceChanged} readOnly={readOnly} />;
   }
   if (rightPane === 'event' && event) {
     return (
@@ -47,6 +48,7 @@ export default function AnalysisWorkspace({
         evidenceKey={`file:${file.path}`}
         onEvidenceChanged={onEvidenceChanged}
         fileContext={{ file, events, onSelectEvent }}
+        readOnly={readOnly}
       />
     );
   }

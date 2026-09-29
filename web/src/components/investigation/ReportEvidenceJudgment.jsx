@@ -40,7 +40,7 @@ const BTN = 'text-[10px] font-bold px-2 py-1 rounded-lg transition-colors inline
  * @param {string|null} status   当前判定；null = 未判定
  * @param {Function} onChanged   判定成功后的回调（参数为新的三态值）
  */
-export default function ReportEvidenceJudgment({ taskId, evidenceKey, status = null, onChanged }) {
+export default function ReportEvidenceJudgment({ taskId, evidenceKey, status = null, onChanged, readOnly = false }) {
   const toast = useToast();
   const [saving, setSaving] = useState(false);
 
@@ -55,7 +55,7 @@ export default function ReportEvidenceJudgment({ taskId, evidenceKey, status = n
 
   const current = status || 'unjudged';
   const judge = async (next) => {
-    if (saving) return;
+    if (readOnly || saving) return;
     setSaving(true);
     try {
       if (status) await updateReportEvidenceStatus(taskId, evidenceKey, next);
@@ -77,7 +77,7 @@ export default function ReportEvidenceJudgment({ taskId, evidenceKey, status = n
         key="main"
         type="button"
         onClick={() => judge('main')}
-        disabled={saving}
+        disabled={readOnly || saving}
         title={current === 'excluded' ? '恢复为正文证据' : '作为报告正文证据'}
         className={`${BTN} text-purple-600 hover:text-purple-700 bg-purple-50 hover:bg-purple-100`}
       >
@@ -92,7 +92,7 @@ export default function ReportEvidenceJudgment({ taskId, evidenceKey, status = n
         key="appendix"
         type="button"
         onClick={() => judge('appendix')}
-        disabled={saving}
+        disabled={readOnly || saving}
         title={current === 'excluded' ? '恢复为附件证据' : '作为报告附件证据'}
         className={`${BTN} text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100`}
       >
@@ -107,7 +107,7 @@ export default function ReportEvidenceJudgment({ taskId, evidenceKey, status = n
         key="excluded"
         type="button"
         onClick={() => judge('excluded')}
-        disabled={saving}
+        disabled={readOnly || saving}
         title="移出报告（保留判定痕迹）"
         className={`${BTN} text-slate-500 bg-slate-100 hover:bg-red-50 hover:text-red-600`}
       >

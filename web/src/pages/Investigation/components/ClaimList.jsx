@@ -3,7 +3,7 @@ import Badge from '../../../components/common/Badge';
 const variants = { fact: 'green', inference: 'yellow', hypothesis: 'purple' };
 
 export default function ClaimList({ claims = [], onTraceClaim, onTraceEvidence, onAccept, onReject, canReview = false }) {
-  if (!claims.length) return <p className="text-sm text-slate-500">该版本未生成 Claims。</p>;
+  if (!claims.length) return <p className="text-sm text-slate-500">暂无结论引用</p>;
   return (
     <div className="space-y-2">
       {claims.map((claim) => (
