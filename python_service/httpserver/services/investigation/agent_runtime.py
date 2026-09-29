@@ -31,6 +31,9 @@ from typing import Any, Mapping, Optional, Sequence
 
 from pydantic import BaseModel, ConfigDict
 
+from .acquisition import canonical_json
+from .models import SnapshotCandidate
+
 logger = logging.getLogger(__name__)
 
 
@@ -486,6 +489,52 @@ class FinalizationRecord(BaseModel):
     finalization_policy_version: str
     input_hash: str
     completed_at: str
+
+
+def _insert_snapshot_candidates_with_conn(conn, candidates) -> int:
+    """A1-S: insert fully-built immutable snapshot candidates into the
+    OPEN investigation transaction (idempotent, first-write-wins).
+
+    Candidates MUST be pre-built in Phase A from canonically resolved
+    Evidence (never model text); this helper only writes.  Returns the
+    number of rows actually inserted (existing snapshots are left alone).
+    """
+    inserted = 0
+    for candidate in candidates:
+        if candidate.task_id != conn_task_id(conn):
+            raise ValueError(
+                "snapshot candidate belongs to a different task: "
+                f"{candidate.task_id!r}"
+            )
+        cur = conn.execute(
+            """
+            INSERT INTO evidence_snapshots
+                (task_id, evidence_key, evidence_type, normalized_path,
+                 unix_minute, event_type, snapshot_json, captured_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(task_id, evidence_key) DO NOTHING
+            """,
+            (
+                candidate.task_id,
+                candidate.evidence_key,
+                candidate.evidence_type,
+                candidate.normalized_path,
+                candidate.unix_minute,
+                candidate.event_type,
+                canonical_json(candidate.payload),
+                candidate.captured_at,
+            ),
+        )
+        inserted += cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+    return inserted
+
+
+def conn_task_id(conn):
+    """The task_id this investigation database is scoped to."""
+    row = conn.execute(
+        "SELECT task_id FROM agent_investigations LIMIT 1"
+    ).fetchone()
+    return row[0] if row else None
 
 
 class AgentRuntimeRepository:
@@ -5245,6 +5294,7 @@ class AgentRuntimeRepository:
         model_config_hash: Optional[str] = None,
         usage: Optional[Mapping[str, Any]] = None,
         trajectory_payload: Optional[Mapping[str, Any]] = None,
+        evidence_snapshots: Sequence["SnapshotCandidate"] = (),
     ) -> tuple[DelegationResult, AgentDelegation]:
         """Atomic terminal success (P4A): the result row and the delegation's
         ``completed`` transition land in one transaction — a completed
@@ -5258,6 +5308,14 @@ class AgentRuntimeRepository:
         """
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
+            # A1-S admission boundary: the completed result's evidence refs
+            # become immutable Investigation provenance IN THE SAME
+            # transaction — a crash can never leave a completed result
+            # without its snapshots, and any insert failure rolls back the
+            # completion entirely (spec §4/§10).
+            snapshot_count = _insert_snapshot_candidates_with_conn(
+                conn, evidence_snapshots
+            )
             stored = self._insert_delegation_result_with_conn(
                 conn, delegation_id,
                 result_version=result_version, result=result,
@@ -5273,6 +5331,7 @@ class AgentRuntimeRepository:
             )
             payload = dict(trajectory_payload or {})
             payload.setdefault("result_hash", result_hash)
+            payload["evidence_snapshots_admitted"] = snapshot_count
             self._append_trajectory_with_conn(
                 conn, delegation.investigation_id,
                 _DELEGATION_TRAJECTORY_EVENT[DelegationStatus.completed],

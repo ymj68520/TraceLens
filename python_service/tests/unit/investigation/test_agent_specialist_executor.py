@@ -69,13 +69,43 @@ pytestmark = pytest.mark.migration_matrix
 # ---------------------------------------------------------------------------
 
 
+import os
+import tempfile as _tempfile
+
+_FILES_DB = os.path.join(_tempfile.mkdtemp(prefix="a1s-files-"), "files.db")
+
+# A1-S: the specialist completion boundary canonically resolves every
+# promoted evidence ref against the REAL task store — provide one with the
+# production files schema (acquisition._FILE_COLUMNS).
+import sqlite3 as _sqlite3
+
+_conn = _sqlite3.connect(_FILES_DB)
+_conn.execute(
+    """CREATE TABLE IF NOT EXISTS files (
+        path TEXT PRIMARY KEY, name TEXT, extension TEXT,
+        category TEXT, type TEXT, size INTEGER, mtime INTEGER,
+        ctime INTEGER, is_deleted INTEGER DEFAULT 0, md5 TEXT,
+        llm_summary TEXT, llm_description TEXT, llm_keywords TEXT,
+        llm_analyzed_at INTEGER, llm_model_used TEXT,
+        scene_type TEXT, scene_priority INTEGER,
+        scene_relevant INTEGER DEFAULT 0)"""
+)
+_conn.execute(
+    """INSERT OR IGNORE INTO files (path, name, extension, category, type,
+        size, mtime, ctime, is_deleted, md5)
+        VALUES ('C/logon_4624.doc', 'logon_4624.doc', '.doc', 'document',
+        'file', 1024, 1690000000, 1690000000, 0, 'testmd5')"""
+)
+_conn.commit()
+_conn.close()
+
 TASK = {
     "id": "task-A",
     "image_name": "disk.E01",
     "status": "done",
     "scenarios": ["windows"],
     "scenario_databases": {"windows": "/fake/windows.db"},
-    "output_files_db": "/fake/task-A_files.db",
+    "output_files_db": _FILES_DB,
     "output_events_db": "/fake/task-A_events.db",
 }
 

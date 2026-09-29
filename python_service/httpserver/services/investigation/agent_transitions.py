@@ -57,6 +57,9 @@ class EvidenceRefStatus(str, Enum):
     resolved = "resolved"
     not_found = "not_found"      # syntactically valid, absent from THIS task
     malformed = "malformed"
+    # A1-S §14 additive classification: same-task ref, agent-visible, but no
+    # immutable EvidenceSnapshot — distinct from a foreign-task reference
+    snapshot_missing = "snapshot_missing"
 
 
 EvidenceRefResolver = Callable[[str], EvidenceRefStatus]
@@ -104,6 +107,9 @@ REQUIRED_QUESTION_CANNOT_DEFER = "REQUIRED_QUESTION_CANNOT_DEFER"
 QUESTION_SUPERSESSION_PROVENANCE_REQUIRED = "QUESTION_SUPERSESSION_PROVENANCE_REQUIRED"
 EVIDENCE_REF_INVALID = "EVIDENCE_REF_INVALID"
 EVIDENCE_REF_CROSS_TASK = "EVIDENCE_REF_CROSS_TASK"
+# A1-S §14: same-task, agent-visible, but admitted provenance (snapshot)
+# absent — never used to relax validation; CROSS_TASK stays foreign-task-only
+EVIDENCE_SNAPSHOT_MISSING = "EVIDENCE_SNAPSHOT_MISSING"
 COVERAGE_DIMENSION_NOT_FOUND = "COVERAGE_DIMENSION_NOT_FOUND"
 COVERAGE_ILLEGAL_STATUS_TRANSITION = "COVERAGE_ILLEGAL_STATUS_TRANSITION"
 COVERAGE_BASIS_REQUIRED = "COVERAGE_BASIS_REQUIRED"
@@ -369,6 +375,15 @@ def _refute_evidence_refs(
             violations.append(PolicyViolation(
                 code=EVIDENCE_REF_CROSS_TASK,
                 message=f"evidence ref does not resolve inside this task: {ref!r}",
+                transition_index=index,
+            ))
+        elif status == EvidenceRefStatus.snapshot_missing:
+            violations.append(PolicyViolation(
+                code=EVIDENCE_SNAPSHOT_MISSING,
+                message=(
+                    f"evidence ref is task-visible but has no admitted "
+                    f"investigation snapshot: {ref!r}"
+                ),
                 transition_index=index,
             ))
 

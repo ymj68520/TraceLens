@@ -23,6 +23,7 @@ is marked ready.  Task stores are resolved exclusively through the trusted
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from enum import Enum
 from typing import Any, Mapping, Optional, Sequence
@@ -248,6 +249,34 @@ class CycleOutcome(BaseModel):
 def pack_hash_key(pack) -> str:
     """Short stable key of a planning context (admission idempotency)."""
     return pack.input_hash()[:16]
+
+
+def _ref_is_agent_visible(runtime, key) -> bool:
+    """A1-S §14 helper: was this ref exposed to an agent delegation —
+    frozen delegation scope refs or a successful tool observation?"""
+    with runtime._connect() as conn:
+        for (payload,) in conn.execute(
+            "select initial_evidence_refs_json from "
+            "agent_delegation_evidence_scopes where task_id = ?",
+            (runtime.task_id,),
+        ).fetchall():
+            try:
+                data = json.loads(payload or "{}")
+            except Exception:
+                continue
+            if key in (data.get("refs") or []):
+                return True
+        for (refs_json,) in conn.execute(
+            "select evidence_refs_json from agent_tool_observations "
+            "where task_id = ?",
+            (runtime.task_id,),
+        ).fetchall():
+            try:
+                if key in json.loads(refs_json or "[]"):
+                    return True
+            except Exception:
+                continue
+    return False
 
 
 class AgentOrchestrator:
@@ -1822,7 +1851,10 @@ class AgentOrchestrator:
     @staticmethod
     def _evidence_ref_resolver(runtime: AgentRuntimeRepository):
         """Deterministic resolver backed by the EXISTING evidence store —
-        not a second resolver (P2 §7)."""
+        not a second resolver (P2 §7).  A1-S §14: a same-task ref that is
+        agent-visible but lacks its admitted snapshot classifies as
+        EVIDENCE_SNAPSHOT_MISSING instead of CROSS_TASK (additive; never
+        relaxes validation)."""
 
         def resolve(key: str) -> EvidenceRefStatus:
             try:
@@ -1830,13 +1862,15 @@ class AgentOrchestrator:
             except Exception:
                 return EvidenceRefStatus.malformed
             snapshot = runtime._repo.get_snapshot(key)
-            return (
-                EvidenceRefStatus.resolved
-                if snapshot is not None
-                else EvidenceRefStatus.not_found
-            )
+            if snapshot is not None:
+                return EvidenceRefStatus.resolved
+            if _ref_is_agent_visible(runtime, key):
+                return EvidenceRefStatus.snapshot_missing
+            return EvidenceRefStatus.not_found
 
         return resolve
+
+
 
     async def _run_final_semantic_review(
         self,

@@ -62,6 +62,39 @@ def _initial_state(task_id, investigation_id):
 class FakeCppBackend:
     def __init__(self, base_dir):
         self._base_dir = base_dir
+        # A1-S: the specialist completion boundary canonically resolves every
+        # promoted evidence ref against the REAL task store — provide one.
+        self._ensure_files_db()
+
+    def _ensure_files_db(self):
+        import sqlite3
+
+        db = self._base_dir / "files.db"
+        conn = sqlite3.connect(db)
+        try:
+            # mirror the production files table columns the snapshot
+            # acquisition reads (A1-S Phase A resolves against the REAL
+            # source schema — see acquisition._FILE_COLUMNS)
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS files (
+                    path TEXT PRIMARY KEY, name TEXT, extension TEXT,
+                    category TEXT, type TEXT, size INTEGER, mtime INTEGER,
+                    ctime INTEGER, is_deleted INTEGER DEFAULT 0, md5 TEXT,
+                    llm_summary TEXT, llm_description TEXT, llm_keywords TEXT,
+                    llm_analyzed_at INTEGER, llm_model_used TEXT,
+                    scene_type TEXT, scene_priority INTEGER,
+                    scene_relevant INTEGER DEFAULT 0)"""
+            )
+            conn.execute(
+                """INSERT OR IGNORE INTO files (path, name, extension,
+                    category, type, size, mtime, ctime, is_deleted, md5)
+                    VALUES ('C/logon_4624.doc', 'logon_4624.doc', '.doc',
+                    'document', 'file', 1024, 1690000000, 1690000000, 0,
+                    'testmd5')""",
+            )
+            conn.commit()
+        finally:
+            conn.close()
 
     async def get_task(self, task_id, **kwargs):
         return {

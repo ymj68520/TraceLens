@@ -56,6 +56,10 @@ class DelegationFailureCode(str, Enum):
     # binding mismatch before execution (P4A §36); precise stale
     # classification is P4B MergeGuard work
     INPUT_CONTRACT_CHANGED = "input_contract_changed"
+    # A1-S §9/§12: a promoted evidence ref could not be canonically
+    # resolved into an immutable snapshot candidate before completion —
+    # the delegation fails closed, never completes partially
+    EVIDENCE_RESOLUTION_FAILED = "evidence_resolution_failed"
 
 
 _RETRYABLE_PROVIDER_CODES = frozenset(
@@ -713,6 +717,47 @@ class SpecialistDelegationExecutor:
                 validation_codes=validation.codes,
             )
 
+        # A1-S Phase A (§5): resolve every PROMOTED evidence ref
+        # (result.evidence_refs — never raw ToolObservation refs, §6/§11)
+        # canonically and build immutable snapshot candidates entirely
+        # outside any write transaction.  Any resolution failure fails the
+        # delegation closed (§9/§12): no completed result, no snapshots.
+        snapshot_candidates, resolution_error = (
+            await self._resolve_result_evidence(pack.task_id, result)
+        )
+        if resolution_error is not None:
+            runtime.record_delegation_result(
+                delegation_id,
+                result_version=result.result_version,
+                result=result.model_dump(),
+                result_hash=result.result_hash(),
+                context_hash=envelope.context_hash,
+                tool_registry_hash=envelope.tool_registry_hash,
+                model_name=execution_digest.model_name,
+                model_config_hash=envelope.model_config_digest,
+                usage=self._usage_payload(usage),
+                validation_status="invalid",
+            )
+            runtime.transition_delegation_terminal(
+                delegation_id,
+                "failed",
+                failure_code=(
+                    DelegationFailureCode.EVIDENCE_RESOLUTION_FAILED.value
+                ),
+                failure_message="evidence resolution failed: "
+                + resolution_error,
+            )
+            return DispatchOutcome(
+                delegation_id=delegation_id,
+                status=DispatchStatus.FAILED,
+                failure_code=(
+                    DelegationFailureCode.EVIDENCE_RESOLUTION_FAILED.value
+                ),
+                failure_message="evidence resolution failed",
+            )
+
+        # A1-S Phase B (§4): snapshots + result + completed transition in
+        # ONE investigation transaction — crash cannot split them.
         stored, _delegation = runtime.complete_delegation_with_result(
             delegation_id,
             result_version=result.result_version,
@@ -723,6 +768,7 @@ class SpecialistDelegationExecutor:
             model_name=execution_digest.model_name,
             model_config_hash=envelope.model_config_digest,
             usage=self._usage_payload(usage),
+            evidence_snapshots=tuple(snapshot_candidates),
             trajectory_payload={
                 "execution_input_hash": envelope.execution_input_hash(),
                 "context_hash": envelope.context_hash,
@@ -741,6 +787,37 @@ class SpecialistDelegationExecutor:
             status=DispatchStatus.COMPLETED,
             result_hash=stored.result_hash,
         )
+
+    # -- A1-S evidence admission (Phase A) -------------------------------
+
+    async def _resolve_result_evidence(self, task_id: str, result):
+        """Resolve every promoted evidence ref canonically and build the
+        immutable snapshot candidates for the completion transaction.
+
+        Source payloads come ONLY from resolve_evidence + the source stores
+        (spec §12) — model/tool summaries never enter a snapshot.  Returns
+        (candidates, None) or ([], failure_message) fail-closed.
+        """
+        import asyncio as _asyncio
+
+        from ..evidence.resolver import EvidenceResolver
+        from .acquisition import build_snapshot_candidate
+
+        resolver = EvidenceResolver(self._cpp_backend)
+        candidates: dict[str, object] = {}
+        for ref in result.iter_evidence_refs():
+            if not ref or ref in candidates:
+                continue
+            try:
+                resolved = await resolver.resolve_evidence(task_id, ref)
+                candidate = await _asyncio.to_thread(
+                    build_snapshot_candidate, resolved
+                )
+            except Exception as exc:  # noqa: BLE001 — fail closed (§9)
+                return [], f"{ref!r}: {type(exc).__name__}: {exc}"[:280]
+            # canonical key wins over any raw variant the model echoed
+            candidates[resolved.evidence_key] = candidate
+        return list(candidates.values()), None
 
     # -- helpers --------------------------------------------------------
 
