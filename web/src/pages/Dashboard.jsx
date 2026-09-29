@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { fetchTasks, fetchTaskStatistics } from '../store/taskSlice';
-import { getSystemHealth, getPythonHealth, getRedisStatus, exportToon } from '../services/systemService';
+import { getSystemHealth, getPythonHealth, getAnalysisHealth, exportToon } from '../services/systemService';
 import { getLLMStatus } from '../services/llmService';
 import { getGraphitiStatus } from '../services/graphitiService';
 import Card from '../components/common/Card';
@@ -26,7 +26,7 @@ const Dashboard = () => {
     python: { status: 'checking', label: 'Python 服务', Icon: Server, latency: null },
     neo4j: { status: 'checking', label: 'Neo4j 图数据库', Icon: Database, latency: null },
     redis: { status: 'checking', label: 'Redis 缓存', Icon: HardDrive, latency: null },
-    llm: { status: 'checking', label: 'LLM 服务', Icon: Brain, latency: null },
+    llm: { status: 'checking', label: '本地翻译模型', Icon: Brain, latency: null },
   });
   const [exporting, setExporting] = useState(false);
   const toast = useToast();
@@ -53,11 +53,17 @@ const Dashboard = () => {
       }
       const neoStart = Date.now();
       try {
-        const gStatus = await getGraphitiStatus();
+        const services = await getAnalysisHealth();
+        const gStatus = { neo4j_connected: services.neo4j?.connected };
+        setDepHealth((prev) => ({ ...prev,
+          redis: { ...prev.redis, status: services.redis?.connected ? 'online' : 'offline' },
+          llm: { ...prev.llm, status: services.translation?.connected ? 'online' : 'offline' },
+        }));
         setDepHealth((prev) => ({ ...prev, neo4j: { ...prev.neo4j, status: gStatus?.neo4j_connected ? 'online' : 'offline', latency: Date.now() - neoStart } }));
       } catch {
         setDepHealth((prev) => ({ ...prev, neo4j: { ...prev.neo4j, status: 'offline' } }));
       }
+      /* Model-free read services are checked together, without bootstrapping LLM/ingestion.
       const llmStart = Date.now();
       try {
         const llmStatus = await getLLMStatus();
@@ -72,6 +78,7 @@ const Dashboard = () => {
       } catch {
         setDepHealth((prev) => ({ ...prev, redis: { ...prev.redis, status: 'offline' } }));
       }
+      */
     };
     checkAllHealth();
   }, [dispatch]);

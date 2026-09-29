@@ -1,4 +1,5 @@
 import api, { pythonApi } from './api';
+export const getAnalysisHealth = () => pythonApi.get('/api/system/analysis-health');
 
 export const getSystemHealth = async () => {
   return await api.get('/api/system/health');
@@ -66,4 +67,3 @@ export const exportToon = async (taskId) => {
   URL.revokeObjectURL(url);
   return data;
 };
-

@@ -214,7 +214,7 @@ export default function KnowledgeGraph() {
     const hadKgJobRef = useRef(false);
 
     const fetchKgJob = useCallback(async () => {
-        if (!taskId) { setKgJob(null); return; }
+        if (!taskId || status?.read_only) { setKgJob(null); return; }
         try {
             const res = await listIngestionJobs(taskId, 5);
             const jobs = res.jobs || [];
@@ -223,7 +223,7 @@ export default function KnowledgeGraph() {
             );
             setKgJob(active || null);
         } catch { /* jobs endpoint unavailable — banner simply stays hidden */ }
-    }, [taskId]);
+    }, [taskId, status?.read_only]);
 
     useEffect(() => {
         fetchKgJob();
@@ -530,7 +530,7 @@ export default function KnowledgeGraph() {
                         仅重新摄入包含AI分析结果的文件和事件簇
                     </p>
                 </div>
-                <Button onClick={handleReingestAnalyzed} disabled={!taskId || reingesting || ingesting}>
+                <Button onClick={handleReingestAnalyzed} disabled={status?.read_only || !taskId || reingesting || ingesting}>
                     {reingesting ? <Spinner size="sm" /> : '📥 重新摄入已分析数据'}
                 </Button>
             </div>
@@ -594,7 +594,7 @@ export default function KnowledgeGraph() {
                         <div className="text-sm text-slate-500">关系</div>
                     </div>
                     <div className="flex gap-2">
-                        <Button size="sm" onClick={handleIngest} disabled={!taskId || ingesting || reingesting}>
+                        <Button size="sm" onClick={handleIngest} disabled={status?.read_only || !taskId || ingesting || reingesting}>
                             {ingesting ? <Spinner size="sm" /> : '导入数据'}
                         </Button>
                         {taskGraphs.includes(taskId) && (
