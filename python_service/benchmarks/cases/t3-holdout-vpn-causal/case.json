@@ -36,6 +36,9 @@
   "platform_composition": [
     "linux"
   ],
+  "required_coverage_dimensions": [
+    "shared-egress-assessment"
+  ],
   "tier": "T3",
   "negative_flags": {
     "no_incriminating_evidence": false,
@@ -54,6 +57,6 @@
     "holdout",
     "sealed"
   ],
-  "input_hash": "2145aa2367ca36565b9009b186cad3b6693bbc7ba2efddd3d8570b85f4437abb",
+  "input_hash": "d09eb7139eb98fade007278edfaedecfc96cd4c47f20ff5c408819e68664bd8b",
   "created_at": "2026-09-28T11:15:36.705356+00:00"
 }

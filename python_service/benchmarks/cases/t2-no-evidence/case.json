@@ -36,6 +36,9 @@
   "platform_composition": [
     "linux"
   ],
+  "required_coverage_dimensions": [
+    "volume-content-assessment"
+  ],
   "tier": "T2",
   "negative_flags": {
     "no_incriminating_evidence": true,
@@ -56,6 +59,6 @@
     "no-evidence",
     "t2"
   ],
-  "input_hash": "18cacc41f87bc70639561ad6efb1099ec798c57cd62f6986ba65833b51a99ae7",
+  "input_hash": "51e3a0051d18230c6ece1adcb2a4a4397a2f80478d1a5bd8b40ad97994be30ac",
   "created_at": "2026-09-28T01:00:00+00:00"
 }

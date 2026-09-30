@@ -1,0 +1,54 @@
+{
+  "artifact_version": "AcceptanceProfileAdmissionRecordV1",
+  "created_at": "2026-09-30T00:00:00+00:00",
+  "profile_artifact": "benchmarks/profiles/agent-v0-acceptance-profile-v1.json",
+  "profile_artifact_immutable": true,
+  "status": "FROZEN_PENDING_SEMANTIC_CLOSURE",
+  "admission": "WITHHELD",
+  "withhold_reason": (
+    "B5.5 audit (docs/specs/agent-b55-acceptance-semantics-audit.md): the "
+    "23/23 incomplete CaseOutcome distribution decomposed into benchmark-"
+    "semantics defects (A: disposition vocabulary), a harness bootstrap "
+    "defect (B: required coverage never seeded), and genuine model "
+    "failures (D). Fixes are benchmark/truth/evaluator/harness layer "
+    "only; the production runtime is unchanged. Admission requires the "
+    "post-fix B2 rerun so CaseOutcome becomes meaningful."
+  ),
+  "pending_amendments_effective_at_rerun": [
+    {
+      "axis": "functional_case_outcome",
+      "amendment": "add truth-based floor: cases with CaseOutcome in "
+      "{success, success_with_limitations} >= 3 of 8 (exact number set "
+      "from the corrected-evaluator calibration distribution at rerun "
+      "completion, before holdout execution)",
+      "basis": "spec B5.5 §19 — functional axis must include the "
+      "truth-based metric, not only integration/finalization rates"
+    }
+  ],
+  "admission_conditions": [
+    "post-fix B2 rerun (8 cases x 3, corpus v2, seeded coverage, "
+    "evaluator v2) completed with structural gates clean",
+    "CaseOutcome distribution re-derived under evaluator v2",
+    "pending functional floor amendment frozen into the profile "
+    "evaluation protocol",
+    "holdout still SEALED / NEVER RUN"
+  ],
+  "holdout_reference": {
+    "static_audit": "docs/specs/agent-b55-acceptance-semantics-audit.md §15/§16",
+    "case_contract_revisions": {
+      "t3-holdout-refund-fraud": {
+        "case_hash_old": "6e7268a90ef8",
+        "case_hash_new": "5d139609d06e",
+        "executed": false
+      },
+      "t3-holdout-vpn-causal": {
+        "case_hash_old": "2145aa2367ca",
+        "case_hash_new": "d09eb7139eb9",
+        "executed": false
+      }
+    },
+    "note": "holdout case contract v2 revisions made WITHOUT any "
+    "execution; old hashes preserved in benchmarks/cases/b55-case-"
+    "revision.json; derivation solely from the frozen product contract"
+  }
+}

@@ -36,6 +36,9 @@
   "platform_composition": [
     "linux"
   ],
+  "required_coverage_dimensions": [
+    "export-attribution"
+  ],
   "tier": "T2",
   "negative_flags": {
     "no_incriminating_evidence": false,
@@ -55,6 +58,6 @@
     "misleading-note",
     "t2"
   ],
-  "input_hash": "9fa6314842a1156b3bd0e23036d386d2d347624fc47e063e41ff3243c541c093",
+  "input_hash": "e925ae55ba296141fd8c8b83ddf3cfbc15bfe8bdecf7c6b1dcd14cea0c13ee14",
   "created_at": "2026-09-28T11:15:36.285665+00:00"
 }

@@ -248,6 +248,11 @@ def _run_one(
         goal=case_payload["goal"],
         case_context=case_payload.get("case_context", ""),
         seed_questions=SEED_QUESTIONS[case_id],
+        # B5.5: charter-level Required Coverage from the public case
+        # surface (names only)
+        seed_coverage_dimensions=tuple(
+            case_payload.get("required_coverage_dimensions", ())
+        ),
         source_scope_ids=("windows",),
     )
 
@@ -357,6 +362,8 @@ def _execute_with_wiring(
     )
     from httpserver.services.investigation.agent_working_state import (
         AgentWorkingStateV1,
+        CoverageDimension,
+        CoverageStatus,
         QuestionPriority,
         QuestionSource,
         WorkingQuestion,
@@ -391,11 +398,23 @@ def _execute_with_wiring(
             )
             for index, text in enumerate(ci.seed_questions, start=1)
         )
+        # B5.5 §4/§11: seed the charter-level Required Coverage declared
+        # on the public case surface.  Production is CoverageTransition-
+        # only (update semantics) — the bootstrap owns dimension creation.
+        coverage = tuple(
+            CoverageDimension(
+                dimension_id=dimension_id,
+                required=True,
+                status=CoverageStatus.not_started,
+            )
+            for dimension_id in (ci.seed_coverage_dimensions or ())
+        )
         return AgentWorkingStateV1(
             task_id=task_id,
             investigation_id=investigation_id,
             objective=ci.goal,
             questions=questions,
+            coverage=coverage,
         )
 
     def _finalization_request_factory(state):

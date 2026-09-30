@@ -36,6 +36,9 @@
   "platform_composition": [
     "linux"
   ],
+  "required_coverage_dimensions": [
+    "assertion-strength"
+  ],
   "tier": "T2",
   "negative_flags": {
     "no_incriminating_evidence": false,
@@ -55,6 +58,6 @@
     "semantic-verification",
     "t2"
   ],
-  "input_hash": "086b56da0a05387742c017eda28fd0b88b1edb2b31ff67d3289a8ce8b99e01fe",
+  "input_hash": "437c1137167878b3591f9fbef19d0d0b07fa0987b8fd90936a22d529006e3126",
   "created_at": "2026-09-28T11:15:36.494282+00:00"
 }

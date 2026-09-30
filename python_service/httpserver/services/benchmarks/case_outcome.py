@@ -410,3 +410,245 @@ __all__ = [
     "CaseOutcomeValue",
     "evaluate_case_outcome",
 ]
+
+
+# ---------------------------------------------------------------------------
+# B5.5 evaluator v2 — acceptance-semantics closure (spec §5/§9/§14 Case A)
+#
+# Root causes fixed relative to v1 (see
+# benchmarks/results/agent-v0/b2-restart/b2-post-h/
+# case-outcome-incomplete-audit-v1.json):
+#
+# 1. disposition vocabulary (A_BENCHMARK_SEMANTICS_DEFECT): v1 counted
+#    terminal rows whose DISPOSITION literal is "answered", a token that
+#    does not exist in the frozen production contract
+#    (QuestionStatus.answered is the answered terminal;
+#    QuestionDisposition ∈ {supported, not_supported, inconclusive,
+#    unavailable, not_applicable}).  v2 maps the truth vocabulary onto
+#    the production (status, disposition) pair:
+#      truth "answered"   ⇔ status == answered AND disposition recorded
+#      truth "unresolved" ⇔ status ∈ {unresolved, blocked, deferred}
+#                           OR answered with disposition ∈
+#                           {not_supported, inconclusive}
+#    The unresolved acceptable-set is derived from the frozen product
+#    semantics: refusing an unknowable question (not_supported /
+#    inconclusive) is a justified unresolved-type terminal — it is NOT an
+#    inflation of the acceptable set (merge/causal assertions remain
+#    policed by the overclaim and negative-case components).
+#
+# 2. overclaim channel (A_BENCHMARK_SEMANTICS_DEFECT, narrowed by
+#    reevaluation evidence): the findings channel remains structurally
+#    empty in benchmark runs (component unavailable), but extending the
+#    substring matcher to raw claim texts is INVALID — it flags correct
+#    negations as violations (16/23 false positives in the zero-model-
+#    call reevaluation).  v2 therefore keeps v1's findings-only
+#    semantics and documents that claim-level overclaim adjudication
+#    belongs to the case-level negative gates (product semantics).
+#
+# Coverage requirements are UNCHANGED: they are real truth expectations
+# and are satisfiable only after the harness seeds the charter coverage
+# (B5.5 §11 harness fix) — deliberate.
+# ---------------------------------------------------------------------------
+
+CASE_OUTCOME_VERSION_V2 = "benchmark-case-outcome:v2"
+
+_ANSWERED = "answered"
+_UNRESOLVED_STATUSES = {"unresolved", "blocked", "deferred"}
+_UNRESOLVED_REFUSAL_DISPOSITIONS = {"not_supported", "inconclusive"}
+
+
+def evaluate_case_outcome_v2(
+    *,
+    truth: Any,
+    snapshot: Any,
+    hard_gates: list[dict],
+    semantic_payloads: Optional[list[dict]] = None,
+) -> BenchmarkCaseOutcomeV1:
+    """v2 evaluator: v1 components with the production-faithful
+    disposition semantics and the digest-payload overclaim channel."""
+    v1 = evaluate_case_outcome(
+        truth=truth, snapshot=snapshot, hard_gates=hard_gates
+    )
+    snapshot_dict = (
+        snapshot
+        if isinstance(snapshot, dict)
+        else snapshot.model_dump(mode="json")
+    )
+    questions = snapshot_dict.get("questions") or ()
+    terminal_open_statuses = {"open", "in_progress"}
+    terminal_rows = [
+        q for q in questions if q.get("status") not in terminal_open_statuses
+    ]
+
+    def _is_answered_terminal(q: dict) -> bool:
+        return (q.get("status") or "").lower() == _ANSWERED and bool(
+            q.get("disposition")
+        )
+
+    def _is_unresolved_terminal(q: dict) -> bool:
+        status = (q.get("status") or "").lower()
+        disposition = (q.get("disposition") or "").lower()
+        return status in _UNRESOLVED_STATUSES or (
+            status == _ANSWERED
+            and disposition in _UNRESOLVED_REFUSAL_DISPOSITIONS
+        )
+
+    answered_rows = [q for q in terminal_rows if _is_answered_terminal(q)]
+    unresolved_rows = [q for q in terminal_rows if _is_unresolved_terminal(q)]
+    expected_answered = [
+        q
+        for q in truth.expected_questions
+        if q.expected_disposition.value == "answered"
+    ]
+    expected_unresolved = [
+        q
+        for q in truth.expected_questions
+        if q.expected_disposition.value == "unresolved"
+    ]
+
+    # carry v1's NON-question reasons (critical evidence, coverage) —
+    # they are recomputed identically by v1 and are NOT superseded by the
+    # v2 disposition semantics.
+    incomplete_reasons: list[str] = [
+        c.detail
+        for c in v1.components
+        if c.component.startswith("coverage:")
+        and c.status in ("failed", "unavailable")
+        and not c.detail.startswith("expected=")
+    ]
+    if any(
+        c.component == "critical_evidence_discovery"
+        and c.status == "failed"
+        for c in v1.components
+    ):
+        incomplete_reasons.append("critical evidence not discovered")
+    incorrect_reasons: list[str] = []
+    components = [
+        c for c in v1.components if c.component != "question_dispositions"
+    ]
+    components.append(
+        CaseOutcomeComponentV1(
+            component="question_dispositions",
+            status="unavailable" if not terminal_rows else "satisfied",
+            detail=(
+                f"terminal={len(terminal_rows)} "
+                f"answered-terminals={len(answered_rows)} "
+                f"unresolved-terminals={len(unresolved_rows)}; truth "
+                f"expects answered={len(expected_answered)} "
+                f"unresolved={len(expected_unresolved)} "
+                "(v2 production semantics)"
+            ),
+        )
+    )
+    if not terminal_rows:
+        incomplete_reasons.append(
+            "no terminal question dispositions recorded"
+        )
+    else:
+        if expected_answered and not answered_rows:
+            incomplete_reasons.append(
+                "truth expects an answered question; none terminal-answered"
+            )
+        if expected_unresolved:
+            if unresolved_rows:
+                pass  # satisfied
+            elif answered_rows and not expected_answered:
+                incorrect_reasons.append(
+                    "premature closure: all-truth-unresolved questions answered"
+                )
+            else:
+                incomplete_reasons.append(
+                    "truth expects an unresolved disposition; none recorded"
+                )
+
+    # overclaim: findings channel ONLY (v1 semantics deliberately kept).
+    # B5.5 reevaluation PROVED that extending the substring matcher to
+    # raw claim texts is invalid: the token-overlap check flags correct
+    # NEGATIONS ("CANNOT be treated as the same person") as violations —
+    # 16/23 false-positives in the zero-model-call reevaluation.  Claim
+    # level overclaim/negation adjudication belongs to the case-level
+    # negative gates (AcceptanceProfile §30, product semantics), not to
+    # string equality (spec §5).
+    payloads = semantic_payloads or []
+    prohibited = [
+        c.proposition for c in truth.unsupported_or_prohibited_overclaims
+    ]
+    findings = v1_findings(snapshot_dict)
+    if not findings:
+        overclaim_status = "unavailable"
+        overclaim_detail = (
+            "no findings produced on the findings channel; claim-level "
+            "overclaim is adjudicated by the case-level negative gates, "
+            "not by substring matching"
+        )
+        overclaim_violations: list[str] = []
+    else:
+        overclaim_violations = []
+        for finding in findings:
+            text = str(finding.get("text") or "")
+            for prop in prohibited:
+                if prop and _normalized_overlap(text, prop):
+                    overclaim_violations.append(prop)
+        overclaim_status = (
+            "failed" if overclaim_violations else "satisfied"
+        )
+        overclaim_detail = (
+            f"{len(overclaim_violations)} prohibited overclaim(s) asserted"
+            if overclaim_violations
+            else f"{len(findings)} finding(s), none prohibited"
+        )
+    components = [
+        c for c in components if c.component != "overclaim_constraints"
+    ]
+    components.append(
+        CaseOutcomeComponentV1(
+            component="overclaim_constraints",
+            status=overclaim_status,
+            detail=overclaim_detail,
+        )
+    )
+    if overclaim_violations:
+        incorrect_reasons.append("prohibited overclaim asserted")
+
+    # re-derive the outcome with v1's ordering but v2's reasons
+    semantic_available = bool(
+        any(
+            d.get("integrated_revision")
+            for d in (snapshot_dict.get("delegations") or ())
+        )
+    ) or bool(snapshot_dict.get("findings")) or bool(payloads)
+    if incorrect_reasons:
+        outcome = CaseOutcomeValue.incorrect
+        rationale = "; ".join(incorrect_reasons)
+    elif not semantic_available:
+        outcome = CaseOutcomeValue.incomplete
+        rationale = (
+            "no integrated semantic output; gate-pass alone is not case "
+            "success (§2/§4/§40)"
+        )
+    elif incomplete_reasons:
+        outcome = CaseOutcomeValue.incomplete
+        rationale = "; ".join(incomplete_reasons)
+    elif snapshot_dict.get("limitations"):
+        outcome = CaseOutcomeValue.success_with_limitations
+        rationale = "all components satisfied with recorded limitations"
+    else:
+        outcome = CaseOutcomeValue.success
+        rationale = "all components satisfied"
+
+    return BenchmarkCaseOutcomeV1(
+        case_id=truth.case_id,
+        run_id=str(snapshot_dict.get("run_id") or ""),
+        outcome=outcome,
+        snapshot_hash=str(snapshot_dict.get("snapshot_hash") or ""),
+        finalization_pass=bool(snapshot_dict.get("finalization_id")),
+        components=tuple(components),
+        limitations=tuple(snapshot_dict.get("limitations") or ()),
+        rationale=rationale,
+    ).model_copy(
+        update={"outcome_version": CASE_OUTCOME_VERSION_V2}
+    )
+
+
+def v1_findings(snapshot_dict: dict) -> list:
+    return list(snapshot_dict.get("findings") or ())

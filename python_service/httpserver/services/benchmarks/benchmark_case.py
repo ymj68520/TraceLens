@@ -123,6 +123,13 @@ class BenchmarkCaseV1(BaseModel):
 
     platform_composition: tuple[str, ...] = ()
 
+    # B5.5 §4/§11: charter-level Required Coverage declarations (names
+    # only — no expected statuses, no truth evidence bindings).  Seeded
+    # into the initial working state by the harness; closed by the
+    # production CoverageTransition flow.  Derived from the case framing,
+    # never from execution results.
+    required_coverage_dimensions: tuple[str, ...] = ()
+
     tier: BenchmarkTier
     negative_flags: NegativeCaseFlagsV1 = Field(
         default_factory=NegativeCaseFlagsV1
@@ -151,6 +158,7 @@ class BenchmarkCaseV1(BaseModel):
         data.setdefault("expected_parser_profile", "")
         data.setdefault("case_context", "")
         data.setdefault("title", "")
+        data.setdefault("required_coverage_dimensions", ())
         data["dataset"] = DatasetManifestV1.model_validate(
             data.get("dataset")
         )

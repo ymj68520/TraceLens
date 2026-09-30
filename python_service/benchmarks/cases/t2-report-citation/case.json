@@ -42,6 +42,9 @@
   "platform_composition": [
     "linux"
   ],
+  "required_coverage_dimensions": [
+    "citation-discipline"
+  ],
   "tier": "T2",
   "negative_flags": {
     "no_incriminating_evidence": false,
@@ -61,6 +64,6 @@
     "report-path",
     "t2"
   ],
-  "input_hash": "3966a333470550d28bdeba3ddf9bbbe185a7cec9ac9a305661a05ea46040066b",
+  "input_hash": "1b180cd71987c9f3d40a6a91297a40d98dc99be9061ff140ef40164243030ecd",
   "created_at": "2026-09-28T11:15:36.605283+00:00"
 }

@@ -1,0 +1,98 @@
+{
+  "cases": [
+    {
+      "case_id": "t1-fraud-script-usb",
+      "coverage_dimensions": [
+        "fraud-operation-materials"
+      ],
+      "case_hash_old": "877b171b12b9f06d8c2ba68551e702461b3d33b3251a47d5b18b0e069ea22f39",
+      "case_hash_new": "fbca8f95c1343b5bb82bee0f72d7379334abb632168ae07393bddf27a86efaa5",
+      "derivation": "charter-level required coverage names derived from the case framing (goal/seed question already demands these assessments publicly); statuses/evidence bindings remain truth-side"
+    },
+    {
+      "case_id": "t2-cross-source-correlation",
+      "coverage_dimensions": [
+        "cross-source-settlement"
+      ],
+      "case_hash_old": "231e2750a7f5ada68950779c653b9882332083ec9276c53d5b48454053dc0a8e",
+      "case_hash_new": "ff2ec8b90e0aaf7f5b69ecf1e079fe1cf3bd0ed916350db5c3c3bbbd682c9ad8",
+      "derivation": "charter-level required coverage names derived from the case framing (goal/seed question already demands these assessments publicly); statuses/evidence bindings remain truth-side"
+    },
+    {
+      "case_id": "t2-identity-trap",
+      "coverage_dimensions": [
+        "identity-assessment",
+        "transfer-activity"
+      ],
+      "case_hash_old": "10276402b9829d9e73a1e2a3e31c98b679f6243716f67b6312b8fe686dfc5ce9",
+      "case_hash_new": "cde8b335c8096da0d2e441af6ae6cbab509f0b66d8c1f63d99384682138e5867",
+      "derivation": "charter-level required coverage names derived from the case framing (goal/seed question already demands these assessments publicly); statuses/evidence bindings remain truth-side"
+    },
+    {
+      "case_id": "t2-misleading-note",
+      "coverage_dimensions": [
+        "export-attribution"
+      ],
+      "case_hash_old": "9fa6314842a1156b3bd0e23036d386d2d347624fc47e063e41ff3243c541c093",
+      "case_hash_new": "e925ae55ba296141fd8c8b83ddf3cfbc15bfe8bdecf7c6b1dcd14cea0c13ee14",
+      "derivation": "charter-level required coverage names derived from the case framing (goal/seed question already demands these assessments publicly); statuses/evidence bindings remain truth-side"
+    },
+    {
+      "case_id": "t2-no-evidence",
+      "coverage_dimensions": [
+        "volume-content-assessment"
+      ],
+      "case_hash_old": "18cacc41f87bc70639561ad6efb1099ec798c57cd62f6986ba65833b51a99ae7",
+      "case_hash_new": "51e3a0051d18230c6ece1adcb2a4a4397a2f80478d1a5bd8b40ad97994be30ac",
+      "derivation": "charter-level required coverage names derived from the case framing (goal/seed question already demands these assessments publicly); statuses/evidence bindings remain truth-side"
+    },
+    {
+      "case_id": "t2-report-citation",
+      "coverage_dimensions": [
+        "citation-discipline"
+      ],
+      "case_hash_old": "3966a333470550d28bdeba3ddf9bbbe185a7cec9ac9a305661a05ea46040066b",
+      "case_hash_new": "1b180cd71987c9f3d40a6a91297a40d98dc99be9061ff140ef40164243030ecd",
+      "derivation": "charter-level required coverage names derived from the case framing (goal/seed question already demands these assessments publicly); statuses/evidence bindings remain truth-side"
+    },
+    {
+      "case_id": "t2-temporal-trap",
+      "coverage_dimensions": [
+        "owner-activity",
+        "recovered-log-assessment"
+      ],
+      "case_hash_old": "41362f57fa21d926601f7670ee6a015bbfc39134501e6900b50bd4e84f488d0f",
+      "case_hash_new": "0cbe8750d518e174140d172b73a08f888fb74132f0da983e2feaa9d3339bb353",
+      "derivation": "charter-level required coverage names derived from the case framing (goal/seed question already demands these assessments publicly); statuses/evidence bindings remain truth-side"
+    },
+    {
+      "case_id": "t2-verification-temptation",
+      "coverage_dimensions": [
+        "assertion-strength"
+      ],
+      "case_hash_old": "086b56da0a05387742c017eda28fd0b88b1edb2b31ff67d3289a8ce8b99e01fe",
+      "case_hash_new": "437c1137167878b3591f9fbef19d0d0b07fa0987b8fd90936a22d529006e3126",
+      "derivation": "charter-level required coverage names derived from the case framing (goal/seed question already demands these assessments publicly); statuses/evidence bindings remain truth-side"
+    }
+  ],
+  "holdout_cases": [
+    {
+      "case_id": "t3-holdout-refund-fraud",
+      "coverage_dimensions": [
+        "payout-attribution"
+      ],
+      "case_hash_old": "6e7268a90ef8f86ee9e1e64f7aa9af3425960b2f1dae11bda94f7a42118341b6",
+      "case_hash_new": "5d139609d06ebab8d237818a9cce8fd7134414766460279de52625dd9dda0f79",
+      "derivation": "charter-level required coverage names derived from the case framing (goal/seed question already demands these assessments publicly); statuses/evidence bindings remain truth-side"
+    },
+    {
+      "case_id": "t3-holdout-vpn-causal",
+      "coverage_dimensions": [
+        "shared-egress-assessment"
+      ],
+      "case_hash_old": "2145aa2367ca36565b9009b186cad3b6693bbc7ba2efddd3d8570b85f4437abb",
+      "case_hash_new": "d09eb7139eb98fade007278edfaedecfc96cd4c47f20ff5c408819e68664bd8b",
+      "derivation": "charter-level required coverage names derived from the case framing (goal/seed question already demands these assessments publicly); statuses/evidence bindings remain truth-side"
+    }
+  ]
+}

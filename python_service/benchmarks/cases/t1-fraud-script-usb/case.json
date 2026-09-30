@@ -48,6 +48,9 @@
   "platform_composition": [
     "linux"
   ],
+  "required_coverage_dimensions": [
+    "fraud-operation-materials"
+  ],
   "tier": "T1",
   "negative_flags": {
     "no_incriminating_evidence": false,
@@ -68,6 +71,6 @@
     "single-device",
     "t1"
   ],
-  "input_hash": "877b171b12b9f06d8c2ba68551e702461b3d33b3251a47d5b18b0e069ea22f39",
+  "input_hash": "fbca8f95c1343b5bb82bee0f72d7379334abb632168ae07393bddf27a86efaa5",
   "created_at": "2026-09-27T14:45:20.183242+00:00"
 }

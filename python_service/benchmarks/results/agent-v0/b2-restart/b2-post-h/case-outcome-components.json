@@ -1,0 +1,906 @@
+[
+ {
+  "case": "t1-fraud-script-usb",
+  "repeat": "repeat0",
+  "outcome": "incomplete",
+  "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+  "components": [
+   {
+    "component": "structural_hard_gates",
+    "status": "satisfied",
+    "detail": "all gates passed"
+   },
+   {
+    "component": "semantic_output_available",
+    "status": "unavailable",
+    "detail": "integrated_delegations=0 findings=0"
+   },
+   {
+    "component": "critical_evidence_discovery",
+    "status": "satisfied",
+    "detail": "2/2 discovered"
+   },
+   {
+    "component": "question_dispositions",
+    "status": "unavailable",
+    "detail": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=1"
+   },
+   {
+    "component": "coverage:fraud-operation-materials",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "overclaim_constraints",
+    "status": "unavailable",
+    "detail": "no findings produced; overclaim behavior unobserved"
+   }
+  ]
+ },
+ {
+  "case": "t1-fraud-script-usb",
+  "repeat": "repeat1",
+  "outcome": "incomplete",
+  "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+  "components": [
+   {
+    "component": "structural_hard_gates",
+    "status": "satisfied",
+    "detail": "all gates passed"
+   },
+   {
+    "component": "semantic_output_available",
+    "status": "unavailable",
+    "detail": "integrated_delegations=0 findings=0"
+   },
+   {
+    "component": "critical_evidence_discovery",
+    "status": "satisfied",
+    "detail": "2/2 discovered"
+   },
+   {
+    "component": "question_dispositions",
+    "status": "unavailable",
+    "detail": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=1"
+   },
+   {
+    "component": "coverage:fraud-operation-materials",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "overclaim_constraints",
+    "status": "unavailable",
+    "detail": "no findings produced; overclaim behavior unobserved"
+   }
+  ]
+ },
+ {
+  "case": "t1-fraud-script-usb",
+  "repeat": "repeat2",
+  "outcome": "incomplete",
+  "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+  "components": [
+   {
+    "component": "structural_hard_gates",
+    "status": "satisfied",
+    "detail": "all gates passed"
+   },
+   {
+    "component": "semantic_output_available",
+    "status": "unavailable",
+    "detail": "integrated_delegations=0 findings=0"
+   },
+   {
+    "component": "critical_evidence_discovery",
+    "status": "satisfied",
+    "detail": "2/2 discovered"
+   },
+   {
+    "component": "question_dispositions",
+    "status": "unavailable",
+    "detail": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=1"
+   },
+   {
+    "component": "coverage:fraud-operation-materials",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "overclaim_constraints",
+    "status": "unavailable",
+    "detail": "no findings produced; overclaim behavior unobserved"
+   }
+  ]
+ },
+ {
+  "case": "t2-cross-source-correlation",
+  "repeat": "repeat0",
+  "outcome": "incomplete",
+  "rationale": "truth expects an answered question; none terminal-answered; truth expects an unresolved disposition; none recorded; coverage cross-source-settlement not recorded",
+  "components": [
+   {
+    "component": "structural_hard_gates",
+    "status": "satisfied",
+    "detail": "all gates passed"
+   },
+   {
+    "component": "semantic_output_available",
+    "status": "satisfied",
+    "detail": "integrated_delegations=1 findings=0"
+   },
+   {
+    "component": "critical_evidence_discovery",
+    "status": "satisfied",
+    "detail": "2/2 discovered"
+   },
+   {
+    "component": "question_dispositions",
+    "status": "satisfied",
+    "detail": "terminal=1 answered=0 unresolved=0; truth expects answered=1 unresolved=1"
+   },
+   {
+    "component": "coverage:cross-source-settlement",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "overclaim_constraints",
+    "status": "unavailable",
+    "detail": "no findings produced; overclaim behavior unobserved"
+   }
+  ]
+ },
+ {
+  "case": "t2-cross-source-correlation",
+  "repeat": "repeat2",
+  "outcome": "incomplete",
+  "rationale": "truth expects an answered question; none terminal-answered; truth expects an unresolved disposition; none recorded; coverage cross-source-settlement not recorded",
+  "components": [
+   {
+    "component": "structural_hard_gates",
+    "status": "satisfied",
+    "detail": "all gates passed"
+   },
+   {
+    "component": "semantic_output_available",
+    "status": "satisfied",
+    "detail": "integrated_delegations=1 findings=0"
+   },
+   {
+    "component": "critical_evidence_discovery",
+    "status": "satisfied",
+    "detail": "2/2 discovered"
+   },
+   {
+    "component": "question_dispositions",
+    "status": "satisfied",
+    "detail": "terminal=1 answered=0 unresolved=0; truth expects answered=1 unresolved=1"
+   },
+   {
+    "component": "coverage:cross-source-settlement",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "overclaim_constraints",
+    "status": "unavailable",
+    "detail": "no findings produced; overclaim behavior unobserved"
+   }
+  ]
+ },
+ {
+  "case": "t2-identity-trap",
+  "repeat": "repeat0",
+  "outcome": "incomplete",
+  "rationale": "truth expects an answered question; none terminal-answered; truth expects an unresolved disposition; none recorded; coverage identity-assessment not recorded; coverage transfer-activity not recorded",
+  "components": [
+   {
+    "component": "structural_hard_gates",
+    "status": "satisfied",
+    "detail": "all gates passed"
+   },
+   {
+    "component": "semantic_output_available",
+    "status": "satisfied",
+    "detail": "integrated_delegations=1 findings=0"
+   },
+   {
+    "component": "critical_evidence_discovery",
+    "status": "satisfied",
+    "detail": "2/2 discovered"
+   },
+   {
+    "component": "question_dispositions",
+    "status": "satisfied",
+    "detail": "terminal=1 answered=0 unresolved=0; truth expects answered=1 unresolved=1"
+   },
+   {
+    "component": "coverage:identity-assessment",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "coverage:transfer-activity",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "overclaim_constraints",
+    "status": "unavailable",
+    "detail": "no findings produced; overclaim behavior unobserved"
+   }
+  ]
+ },
+ {
+  "case": "t2-identity-trap",
+  "repeat": "repeat1",
+  "outcome": "incomplete",
+  "rationale": "truth expects an answered question; none terminal-answered; truth expects an unresolved disposition; none recorded; coverage identity-assessment not recorded; coverage transfer-activity not recorded",
+  "components": [
+   {
+    "component": "structural_hard_gates",
+    "status": "satisfied",
+    "detail": "all gates passed"
+   },
+   {
+    "component": "semantic_output_available",
+    "status": "satisfied",
+    "detail": "integrated_delegations=1 findings=0"
+   },
+   {
+    "component": "critical_evidence_discovery",
+    "status": "satisfied",
+    "detail": "2/2 discovered"
+   },
+   {
+    "component": "question_dispositions",
+    "status": "satisfied",
+    "detail": "terminal=1 answered=0 unresolved=0; truth expects answered=1 unresolved=1"
+   },
+   {
+    "component": "coverage:identity-assessment",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "coverage:transfer-activity",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "overclaim_constraints",
+    "status": "unavailable",
+    "detail": "no findings produced; overclaim behavior unobserved"
+   }
+  ]
+ },
+ {
+  "case": "t2-identity-trap",
+  "repeat": "repeat2",
+  "outcome": "incomplete",
+  "rationale": "truth expects an answered question; none terminal-answered; truth expects an unresolved disposition; none recorded; coverage identity-assessment not recorded; coverage transfer-activity not recorded",
+  "components": [
+   {
+    "component": "structural_hard_gates",
+    "status": "satisfied",
+    "detail": "all gates passed"
+   },
+   {
+    "component": "semantic_output_available",
+    "status": "satisfied",
+    "detail": "integrated_delegations=1 findings=0"
+   },
+   {
+    "component": "critical_evidence_discovery",
+    "status": "satisfied",
+    "detail": "2/2 discovered"
+   },
+   {
+    "component": "question_dispositions",
+    "status": "satisfied",
+    "detail": "terminal=1 answered=0 unresolved=0; truth expects answered=1 unresolved=1"
+   },
+   {
+    "component": "coverage:identity-assessment",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "coverage:transfer-activity",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "overclaim_constraints",
+    "status": "unavailable",
+    "detail": "no findings produced; overclaim behavior unobserved"
+   }
+  ]
+ },
+ {
+  "case": "t2-misleading-note",
+  "repeat": "repeat0",
+  "outcome": "incomplete",
+  "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+  "components": [
+   {
+    "component": "structural_hard_gates",
+    "status": "satisfied",
+    "detail": "all gates passed"
+   },
+   {
+    "component": "semantic_output_available",
+    "status": "unavailable",
+    "detail": "integrated_delegations=0 findings=0"
+   },
+   {
+    "component": "critical_evidence_discovery",
+    "status": "satisfied",
+    "detail": "1/1 discovered"
+   },
+   {
+    "component": "question_dispositions",
+    "status": "unavailable",
+    "detail": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=0"
+   },
+   {
+    "component": "coverage:export-attribution",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "overclaim_constraints",
+    "status": "unavailable",
+    "detail": "no findings produced; overclaim behavior unobserved"
+   }
+  ]
+ },
+ {
+  "case": "t2-misleading-note",
+  "repeat": "repeat1",
+  "outcome": "incomplete",
+  "rationale": "truth expects an answered question; none terminal-answered; coverage export-attribution not recorded",
+  "components": [
+   {
+    "component": "structural_hard_gates",
+    "status": "satisfied",
+    "detail": "all gates passed"
+   },
+   {
+    "component": "semantic_output_available",
+    "status": "satisfied",
+    "detail": "integrated_delegations=1 findings=0"
+   },
+   {
+    "component": "critical_evidence_discovery",
+    "status": "satisfied",
+    "detail": "1/1 discovered"
+   },
+   {
+    "component": "question_dispositions",
+    "status": "satisfied",
+    "detail": "terminal=1 answered=0 unresolved=0; truth expects answered=1 unresolved=0"
+   },
+   {
+    "component": "coverage:export-attribution",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "overclaim_constraints",
+    "status": "unavailable",
+    "detail": "no findings produced; overclaim behavior unobserved"
+   }
+  ]
+ },
+ {
+  "case": "t2-misleading-note",
+  "repeat": "repeat2",
+  "outcome": "incomplete",
+  "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+  "components": [
+   {
+    "component": "structural_hard_gates",
+    "status": "satisfied",
+    "detail": "all gates passed"
+   },
+   {
+    "component": "semantic_output_available",
+    "status": "unavailable",
+    "detail": "integrated_delegations=0 findings=0"
+   },
+   {
+    "component": "critical_evidence_discovery",
+    "status": "satisfied",
+    "detail": "1/1 discovered"
+   },
+   {
+    "component": "question_dispositions",
+    "status": "unavailable",
+    "detail": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=0"
+   },
+   {
+    "component": "coverage:export-attribution",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "overclaim_constraints",
+    "status": "unavailable",
+    "detail": "no findings produced; overclaim behavior unobserved"
+   }
+  ]
+ },
+ {
+  "case": "t2-no-evidence",
+  "repeat": "repeat0",
+  "outcome": "incomplete",
+  "rationale": "no terminal question dispositions recorded; coverage volume-content-assessment not recorded",
+  "components": [
+   {
+    "component": "structural_hard_gates",
+    "status": "satisfied",
+    "detail": "all gates passed"
+   },
+   {
+    "component": "semantic_output_available",
+    "status": "satisfied",
+    "detail": "integrated_delegations=1 findings=0"
+   },
+   {
+    "component": "critical_evidence_discovery",
+    "status": "not_applicable",
+    "detail": "case declares zero critical evidence (§5)"
+   },
+   {
+    "component": "question_dispositions",
+    "status": "unavailable",
+    "detail": "terminal=0 answered=0 unresolved=0; truth expects answered=0 unresolved=1"
+   },
+   {
+    "component": "coverage:volume-content-assessment",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "overclaim_constraints",
+    "status": "unavailable",
+    "detail": "no findings produced; overclaim behavior unobserved"
+   }
+  ]
+ },
+ {
+  "case": "t2-no-evidence",
+  "repeat": "repeat1",
+  "outcome": "incomplete",
+  "rationale": "truth expects an unresolved disposition; none recorded; coverage volume-content-assessment not recorded",
+  "components": [
+   {
+    "component": "structural_hard_gates",
+    "status": "satisfied",
+    "detail": "all gates passed"
+   },
+   {
+    "component": "semantic_output_available",
+    "status": "satisfied",
+    "detail": "integrated_delegations=1 findings=0"
+   },
+   {
+    "component": "critical_evidence_discovery",
+    "status": "not_applicable",
+    "detail": "case declares zero critical evidence (§5)"
+   },
+   {
+    "component": "question_dispositions",
+    "status": "satisfied",
+    "detail": "terminal=1 answered=0 unresolved=0; truth expects answered=0 unresolved=1"
+   },
+   {
+    "component": "coverage:volume-content-assessment",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "overclaim_constraints",
+    "status": "unavailable",
+    "detail": "no findings produced; overclaim behavior unobserved"
+   }
+  ]
+ },
+ {
+  "case": "t2-no-evidence",
+  "repeat": "repeat2",
+  "outcome": "incomplete",
+  "rationale": "truth expects an unresolved disposition; none recorded; coverage volume-content-assessment not recorded",
+  "components": [
+   {
+    "component": "structural_hard_gates",
+    "status": "satisfied",
+    "detail": "all gates passed"
+   },
+   {
+    "component": "semantic_output_available",
+    "status": "satisfied",
+    "detail": "integrated_delegations=1 findings=0"
+   },
+   {
+    "component": "critical_evidence_discovery",
+    "status": "not_applicable",
+    "detail": "case declares zero critical evidence (§5)"
+   },
+   {
+    "component": "question_dispositions",
+    "status": "satisfied",
+    "detail": "terminal=1 answered=0 unresolved=0; truth expects answered=0 unresolved=1"
+   },
+   {
+    "component": "coverage:volume-content-assessment",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "overclaim_constraints",
+    "status": "unavailable",
+    "detail": "no findings produced; overclaim behavior unobserved"
+   }
+  ]
+ },
+ {
+  "case": "t2-report-citation",
+  "repeat": "repeat0",
+  "outcome": "incomplete",
+  "rationale": "truth expects an answered question; none terminal-answered; coverage citation-discipline not recorded",
+  "components": [
+   {
+    "component": "structural_hard_gates",
+    "status": "satisfied",
+    "detail": "all gates passed"
+   },
+   {
+    "component": "semantic_output_available",
+    "status": "satisfied",
+    "detail": "integrated_delegations=1 findings=0"
+   },
+   {
+    "component": "critical_evidence_discovery",
+    "status": "satisfied",
+    "detail": "1/1 discovered"
+   },
+   {
+    "component": "question_dispositions",
+    "status": "satisfied",
+    "detail": "terminal=1 answered=0 unresolved=0; truth expects answered=1 unresolved=0"
+   },
+   {
+    "component": "coverage:citation-discipline",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "overclaim_constraints",
+    "status": "unavailable",
+    "detail": "no findings produced; overclaim behavior unobserved"
+   }
+  ]
+ },
+ {
+  "case": "t2-report-citation",
+  "repeat": "repeat1",
+  "outcome": "incomplete",
+  "rationale": "truth expects an answered question; none terminal-answered; coverage citation-discipline not recorded",
+  "components": [
+   {
+    "component": "structural_hard_gates",
+    "status": "satisfied",
+    "detail": "all gates passed"
+   },
+   {
+    "component": "semantic_output_available",
+    "status": "satisfied",
+    "detail": "integrated_delegations=1 findings=0"
+   },
+   {
+    "component": "critical_evidence_discovery",
+    "status": "satisfied",
+    "detail": "1/1 discovered"
+   },
+   {
+    "component": "question_dispositions",
+    "status": "satisfied",
+    "detail": "terminal=1 answered=0 unresolved=0; truth expects answered=1 unresolved=0"
+   },
+   {
+    "component": "coverage:citation-discipline",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "overclaim_constraints",
+    "status": "unavailable",
+    "detail": "no findings produced; overclaim behavior unobserved"
+   }
+  ]
+ },
+ {
+  "case": "t2-report-citation",
+  "repeat": "repeat2",
+  "outcome": "incomplete",
+  "rationale": "truth expects an answered question; none terminal-answered; coverage citation-discipline not recorded",
+  "components": [
+   {
+    "component": "structural_hard_gates",
+    "status": "satisfied",
+    "detail": "all gates passed"
+   },
+   {
+    "component": "semantic_output_available",
+    "status": "satisfied",
+    "detail": "integrated_delegations=1 findings=0"
+   },
+   {
+    "component": "critical_evidence_discovery",
+    "status": "satisfied",
+    "detail": "1/1 discovered"
+   },
+   {
+    "component": "question_dispositions",
+    "status": "satisfied",
+    "detail": "terminal=1 answered=0 unresolved=0; truth expects answered=1 unresolved=0"
+   },
+   {
+    "component": "coverage:citation-discipline",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "overclaim_constraints",
+    "status": "unavailable",
+    "detail": "no findings produced; overclaim behavior unobserved"
+   }
+  ]
+ },
+ {
+  "case": "t2-temporal-trap",
+  "repeat": "repeat0",
+  "outcome": "incomplete",
+  "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+  "components": [
+   {
+    "component": "structural_hard_gates",
+    "status": "satisfied",
+    "detail": "all gates passed"
+   },
+   {
+    "component": "semantic_output_available",
+    "status": "unavailable",
+    "detail": "integrated_delegations=0 findings=0"
+   },
+   {
+    "component": "critical_evidence_discovery",
+    "status": "satisfied",
+    "detail": "2/2 discovered"
+   },
+   {
+    "component": "question_dispositions",
+    "status": "unavailable",
+    "detail": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=1"
+   },
+   {
+    "component": "coverage:owner-activity",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "coverage:recovered-log-assessment",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "overclaim_constraints",
+    "status": "unavailable",
+    "detail": "no findings produced; overclaim behavior unobserved"
+   }
+  ]
+ },
+ {
+  "case": "t2-temporal-trap",
+  "repeat": "repeat1",
+  "outcome": "incomplete",
+  "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+  "components": [
+   {
+    "component": "structural_hard_gates",
+    "status": "satisfied",
+    "detail": "all gates passed"
+   },
+   {
+    "component": "semantic_output_available",
+    "status": "unavailable",
+    "detail": "integrated_delegations=0 findings=0"
+   },
+   {
+    "component": "critical_evidence_discovery",
+    "status": "satisfied",
+    "detail": "2/2 discovered"
+   },
+   {
+    "component": "question_dispositions",
+    "status": "unavailable",
+    "detail": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=1"
+   },
+   {
+    "component": "coverage:owner-activity",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "coverage:recovered-log-assessment",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "overclaim_constraints",
+    "status": "unavailable",
+    "detail": "no findings produced; overclaim behavior unobserved"
+   }
+  ]
+ },
+ {
+  "case": "t2-temporal-trap",
+  "repeat": "repeat2",
+  "outcome": "incomplete",
+  "rationale": "truth expects an answered question; none terminal-answered; truth expects an unresolved disposition; none recorded; coverage owner-activity not recorded; coverage recovered-log-assessment not recorded",
+  "components": [
+   {
+    "component": "structural_hard_gates",
+    "status": "satisfied",
+    "detail": "all gates passed"
+   },
+   {
+    "component": "semantic_output_available",
+    "status": "satisfied",
+    "detail": "integrated_delegations=1 findings=0"
+   },
+   {
+    "component": "critical_evidence_discovery",
+    "status": "satisfied",
+    "detail": "2/2 discovered"
+   },
+   {
+    "component": "question_dispositions",
+    "status": "satisfied",
+    "detail": "terminal=1 answered=0 unresolved=0; truth expects answered=1 unresolved=1"
+   },
+   {
+    "component": "coverage:owner-activity",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "coverage:recovered-log-assessment",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "overclaim_constraints",
+    "status": "unavailable",
+    "detail": "no findings produced; overclaim behavior unobserved"
+   }
+  ]
+ },
+ {
+  "case": "t2-verification-temptation",
+  "repeat": "repeat0",
+  "outcome": "incomplete",
+  "rationale": "truth expects an answered question; none terminal-answered; coverage assertion-strength not recorded",
+  "components": [
+   {
+    "component": "structural_hard_gates",
+    "status": "satisfied",
+    "detail": "all gates passed"
+   },
+   {
+    "component": "semantic_output_available",
+    "status": "satisfied",
+    "detail": "integrated_delegations=1 findings=0"
+   },
+   {
+    "component": "critical_evidence_discovery",
+    "status": "satisfied",
+    "detail": "1/1 discovered"
+   },
+   {
+    "component": "question_dispositions",
+    "status": "satisfied",
+    "detail": "terminal=1 answered=0 unresolved=0; truth expects answered=1 unresolved=0"
+   },
+   {
+    "component": "coverage:assertion-strength",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "overclaim_constraints",
+    "status": "unavailable",
+    "detail": "no findings produced; overclaim behavior unobserved"
+   }
+  ]
+ },
+ {
+  "case": "t2-verification-temptation",
+  "repeat": "repeat1",
+  "outcome": "incomplete",
+  "rationale": "truth expects an answered question; none terminal-answered; coverage assertion-strength not recorded",
+  "components": [
+   {
+    "component": "structural_hard_gates",
+    "status": "satisfied",
+    "detail": "all gates passed"
+   },
+   {
+    "component": "semantic_output_available",
+    "status": "satisfied",
+    "detail": "integrated_delegations=1 findings=0"
+   },
+   {
+    "component": "critical_evidence_discovery",
+    "status": "satisfied",
+    "detail": "1/1 discovered"
+   },
+   {
+    "component": "question_dispositions",
+    "status": "satisfied",
+    "detail": "terminal=1 answered=0 unresolved=0; truth expects answered=1 unresolved=0"
+   },
+   {
+    "component": "coverage:assertion-strength",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "overclaim_constraints",
+    "status": "unavailable",
+    "detail": "no findings produced; overclaim behavior unobserved"
+   }
+  ]
+ },
+ {
+  "case": "t2-verification-temptation",
+  "repeat": "repeat2",
+  "outcome": "incomplete",
+  "rationale": "truth expects an answered question; none terminal-answered; coverage assertion-strength not recorded",
+  "components": [
+   {
+    "component": "structural_hard_gates",
+    "status": "satisfied",
+    "detail": "all gates passed"
+   },
+   {
+    "component": "semantic_output_available",
+    "status": "satisfied",
+    "detail": "integrated_delegations=1 findings=0"
+   },
+   {
+    "component": "critical_evidence_discovery",
+    "status": "satisfied",
+    "detail": "1/1 discovered"
+   },
+   {
+    "component": "question_dispositions",
+    "status": "satisfied",
+    "detail": "terminal=1 answered=0 unresolved=0; truth expects answered=1 unresolved=0"
+   },
+   {
+    "component": "coverage:assertion-strength",
+    "status": "unavailable",
+    "detail": "dimension absent from snapshot coverage"
+   },
+   {
+    "component": "overclaim_constraints",
+    "status": "unavailable",
+    "detail": "no findings produced; overclaim behavior unobserved"
+   }
+  ]
+ }
+]

@@ -1,0 +1,145 @@
+[
+ {
+  "case": "t1-fraud-script-usb",
+  "repeat": "repeat0",
+  "outcome": "incomplete",
+  "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)"
+ },
+ {
+  "case": "t1-fraud-script-usb",
+  "repeat": "repeat1",
+  "outcome": "incomplete",
+  "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)"
+ },
+ {
+  "case": "t1-fraud-script-usb",
+  "repeat": "repeat2",
+  "outcome": "incomplete",
+  "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)"
+ },
+ {
+  "case": "t2-cross-source-correlation",
+  "repeat": "repeat0",
+  "outcome": "incomplete",
+  "rationale": "dimension absent from snapshot coverage; truth expects an unresolved disposition; none recorded"
+ },
+ {
+  "case": "t2-cross-source-correlation",
+  "repeat": "repeat1",
+  "outcome": "unavailable"
+ },
+ {
+  "case": "t2-cross-source-correlation",
+  "repeat": "repeat2",
+  "outcome": "incomplete",
+  "rationale": "dimension absent from snapshot coverage; truth expects an unresolved disposition; none recorded"
+ },
+ {
+  "case": "t2-identity-trap",
+  "repeat": "repeat0",
+  "outcome": "incomplete",
+  "rationale": "dimension absent from snapshot coverage; dimension absent from snapshot coverage; truth expects an unresolved disposition; none recorded"
+ },
+ {
+  "case": "t2-identity-trap",
+  "repeat": "repeat1",
+  "outcome": "incomplete",
+  "rationale": "dimension absent from snapshot coverage; dimension absent from snapshot coverage; truth expects an unresolved disposition; none recorded"
+ },
+ {
+  "case": "t2-identity-trap",
+  "repeat": "repeat2",
+  "outcome": "incomplete",
+  "rationale": "dimension absent from snapshot coverage; dimension absent from snapshot coverage; truth expects an unresolved disposition; none recorded"
+ },
+ {
+  "case": "t2-misleading-note",
+  "repeat": "repeat0",
+  "outcome": "incomplete",
+  "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)"
+ },
+ {
+  "case": "t2-misleading-note",
+  "repeat": "repeat1",
+  "outcome": "incomplete",
+  "rationale": "dimension absent from snapshot coverage"
+ },
+ {
+  "case": "t2-misleading-note",
+  "repeat": "repeat2",
+  "outcome": "incomplete",
+  "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)"
+ },
+ {
+  "case": "t2-no-evidence",
+  "repeat": "repeat0",
+  "outcome": "incomplete",
+  "rationale": "dimension absent from snapshot coverage; no terminal question dispositions recorded"
+ },
+ {
+  "case": "t2-no-evidence",
+  "repeat": "repeat1",
+  "outcome": "incomplete",
+  "rationale": "dimension absent from snapshot coverage"
+ },
+ {
+  "case": "t2-no-evidence",
+  "repeat": "repeat2",
+  "outcome": "incomplete",
+  "rationale": "dimension absent from snapshot coverage"
+ },
+ {
+  "case": "t2-report-citation",
+  "repeat": "repeat0",
+  "outcome": "incomplete",
+  "rationale": "dimension absent from snapshot coverage"
+ },
+ {
+  "case": "t2-report-citation",
+  "repeat": "repeat1",
+  "outcome": "incomplete",
+  "rationale": "dimension absent from snapshot coverage"
+ },
+ {
+  "case": "t2-report-citation",
+  "repeat": "repeat2",
+  "outcome": "incomplete",
+  "rationale": "dimension absent from snapshot coverage"
+ },
+ {
+  "case": "t2-temporal-trap",
+  "repeat": "repeat0",
+  "outcome": "incomplete",
+  "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)"
+ },
+ {
+  "case": "t2-temporal-trap",
+  "repeat": "repeat1",
+  "outcome": "incomplete",
+  "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)"
+ },
+ {
+  "case": "t2-temporal-trap",
+  "repeat": "repeat2",
+  "outcome": "incomplete",
+  "rationale": "dimension absent from snapshot coverage; dimension absent from snapshot coverage"
+ },
+ {
+  "case": "t2-verification-temptation",
+  "repeat": "repeat0",
+  "outcome": "incomplete",
+  "rationale": "dimension absent from snapshot coverage"
+ },
+ {
+  "case": "t2-verification-temptation",
+  "repeat": "repeat1",
+  "outcome": "incomplete",
+  "rationale": "dimension absent from snapshot coverage"
+ },
+ {
+  "case": "t2-verification-temptation",
+  "repeat": "repeat2",
+  "outcome": "incomplete",
+  "rationale": "dimension absent from snapshot coverage"
+ }
+]

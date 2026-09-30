@@ -36,6 +36,9 @@
   "platform_composition": [
     "linux"
   ],
+  "required_coverage_dimensions": [
+    "cross-source-settlement"
+  ],
   "tier": "T2",
   "negative_flags": {
     "no_incriminating_evidence": false,
@@ -56,6 +59,6 @@
     "multi-source",
     "t2"
   ],
-  "input_hash": "231e2750a7f5ada68950779c653b9882332083ec9276c53d5b48454053dc0a8e",
+  "input_hash": "ff2ec8b90e0aaf7f5b69ecf1e079fe1cf3bd0ed916350db5c3c3bbbd682c9ad8",
   "created_at": "2026-09-28T11:15:36.389296+00:00"
 }
