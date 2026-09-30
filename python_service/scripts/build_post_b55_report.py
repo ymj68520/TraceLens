@@ -37,7 +37,8 @@ if str(PYTHON_SERVICE_ROOT) not in sys.path:
 ROOT = (
     PYTHON_SERVICE_ROOT / "benchmarks" / "results" / "agent-v0" / "b2-restart"
 )
-RUNS_ROOT = ROOT / "b2-post-b55"
+import os
+RUNS_ROOT = ROOT / os.environ.get("POST_B55_RUNS_ROOT", "b2-post-b55")
 CASES_ROOT = PYTHON_SERVICE_ROOT / "benchmarks" / "cases"
 BASELINE = (
     PYTHON_SERVICE_ROOT / "benchmarks" / "profiles"

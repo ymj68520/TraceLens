@@ -1,0 +1,53 @@
+{
+  "artifact_version": "AgentV0AcceptanceProfileAdmissionRecordV2",
+  "created_at": "2026-10-01T00:00:00+00:00",
+  "supersedes": "agent-v0-acceptance-profile-admission-record.v1.json (WITHHELD — closed by the B5.5-final closure)",
+  "profile_artifact": "benchmarks/profiles/agent-v0-acceptance-profile-v2.json",
+  "profile_artifact_immutable": true,
+  "superseded_profile": "benchmarks/profiles/agent-v0-acceptance-profile-v1.json (retained immutable)",
+  "status": "ADMITTED_FOR_B6",
+  "admission": "ADMITTED_FOR_B6",
+  "admission_conditions_check": {
+    "measurement_valid": {
+      "value": true,
+      "evidence": "b2-post-b55-final: 24/24 runner-completed, 24/24 structural hard gates PASS, 24/24 evaluate-only deterministic, coverage bootstrap join 24/24 expected==seeded, PLAN_DUPLICATE_DELEGATION 0, provider failures 0"
+    },
+    "case_outcome_v2_meaningful": {
+      "value": true,
+      "evidence": "distribution {success:4, incomplete:20} with per-run reason codes and failed required obligations; coverage terminalization and question terminalization measured separately under the production-faithful disposition semantics"
+    },
+    "coverage_semantics_closed": {
+      "value": true,
+      "evidence": "association contract frozen (Case A), bootstrap preflight 8/8 G1-G7, all required dimensions terminalizable (covered/partial observed), partial/unavailable legal terminals with provenance"
+    },
+    "functional_threshold_frozen_with_independent_rationale": {
+      "value": true,
+      "evidence": "AcceptanceProfileV2 truth-based floor: ALL holdout case families x >=2/3 reps at CaseOutcomeV2 in {success, success_with_limitations}; rationale = case coverage requirement + product minimum (every represented capability must work in a majority of repeats); explicitly NOT derived from the calibration distribution (ThresholdProvenanceV1)"
+    },
+    "negative_case_gates_frozen": {
+      "value": true,
+      "evidence": "AcceptanceProfileV2 case-level gates: identity false merge=0, temporal causal escalation=0, no-evidence fabrication=0, Analyst-Note-as-Evidence=0 (zero tolerance, aggregate-independent)"
+    },
+    "calibration_evidence_rebound": {
+      "value": true,
+      "evidence": "CalibrationEvidenceBindingV2 binds ZERO_CHANGE to baseline V6 + the final 24-run set + CaseOutcomeV2 + corpus v2"
+    },
+    "holdout_static_audit_pass": {
+      "value": true,
+      "evidence": "holdout-static-validation-v1.json: both holdout case contracts v2-valid, dimensions declared and matching truth, truth hashes bound, evaluator-v2 vocabulary compatible, never executed; B6-entry deterministic preflight (zero model calls) recorded as a HARD entry condition (charter questions are sealed -> Case B linkage resolves there)"
+    }
+  },
+  "feasibility_note_not_a_threshold_source": (
+    "calibration feasibility context: the current model achieved "
+    "CaseOutcomeV2 success in 4/24 calibration runs (3 distinct case "
+    "families fully succeeding at least once). The frozen holdout floor "
+    "(all families x >=2/3) is therefore expected to be demanding for "
+    "this model; failing it in B6 is a MODEL QUALIFICATION OUTCOME under "
+    "the frozen profile, not grounds for renegotiation."
+  ),
+  "b6_preconditions": [
+    "explicit B6 authorization (never auto-executed)",
+    "holdout bootstrap preflight G1-G7 PASS at entry (zero model calls)",
+    "holdout remains SEALED until the first authorized run"
+  ]
+}

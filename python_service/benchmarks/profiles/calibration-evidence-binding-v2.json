@@ -1,0 +1,37 @@
+{
+  "artifact_version": "CalibrationEvidenceBindingV2",
+  "created_at": "2026-10-01T00:00:00+00:00",
+  "supersedes": "the V5-epoch evidence binding (b2-post-h series — historical, benchmark bootstrap defect)",
+  "frozen_calibration_decision": "ZERO_CHANGE (production_changes = []) — unchanged by the reruns; no numeric-causal evidence emerged in any epoch",
+  "binds": {
+    "measurement_baseline": "benchmarks/profiles/benchmark-measurement-baseline-v6.json",
+    "b2_run_set": {
+      "results_root": "benchmarks/results/agent-v0/b2-restart/b2-post-b55-final",
+      "runs": 24,
+      "completed": 24,
+      "provider_failures": 0,
+      "hard_gate_violations": 0,
+      "measurement_report": "benchmarks/results/agent-v0/b2-restart/b2-post-b55-final/post-b55-measurement-report-v1.json",
+      "bootstrap_preflight": "benchmarks/results/agent-v0/b2-restart/b2-post-b55-final/bootstrap-preflight-v1.json (8/8 G1-G7 PASS)"
+    },
+    "case_outcome_version": "benchmark-case-outcome:v2",
+    "corpus": "benchmarks/corpus/corpus-agent-v0-calibration.v2.json",
+    "model": "sensenova-6.8-flash-lite (adapter digest ba51d65e…; generation params in baseline v6)"
+  },
+  "calibration_distribution_recorded": {
+    "case_outcome_v2": {"success": 4, "incomplete": 20, "incorrect": 0, "unavailable": 0},
+    "runs_with_integrated_delegation": "20/24",
+    "finalization_pass": "11/24",
+    "specialist_structured_output_failures": "2/24 (8.3%)",
+    "supervisor_plan_integrate_failures": "0/24",
+    "P_H_S_G": [0, 3, 0, 0],
+    "PLAN_DUPLICATE_DELEGATION": 0,
+    "coverage_bootstrap_join": "24/24 expected==seeded",
+    "H_residual": "3x HANDLE_UNKNOWN (model invented H1/X1 handles for not-yet-existing hypothesis/contradiction objects; legal_operand_available=false; fail-closed; 2 runs lost integration)",
+    "known_limitations": [
+      "CaseOutcomeV2 success 4/24: residual gap = supervisor question-closure discipline (REQUIRED_QUESTION_OPEN) + 2 specialist output failures + 2 handle-invention integration failures",
+      "truth-expectation capability gap (coverage records now exercised and terminalizing; full success requires closing every required dimension + all questions)"
+    ],
+    "usage": "qualification feasibility / variance estimation / known-limitation context ONLY — never a threshold source (AcceptanceThresholdProvenanceV1 §forbidden)"
+  }
+}

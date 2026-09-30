@@ -1,0 +1,3 @@
+task_count_before: 47
+task_count_peak: 48
+task_count_after: 47 (healthy)

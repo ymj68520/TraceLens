@@ -1,0 +1,27 @@
+{
+ "checks": [
+  {
+   "case_id": "t3-holdout-refund-fraud",
+   "public_case_input_v2_valid": true,
+   "coverage_dimensions_declared": true,
+   "truth_vocabulary_evaluator_v2_compatible": true,
+   "truth_manifest_hash_matches_case_binding": true,
+   "execution_ever_performed": false,
+   "ok": true
+  },
+  {
+   "case_id": "t3-holdout-vpn-causal",
+   "public_case_input_v2_valid": true,
+   "coverage_dimensions_declared": true,
+   "truth_vocabulary_evaluator_v2_compatible": true,
+   "truth_manifest_hash_matches_case_binding": true,
+   "execution_ever_performed": false,
+   "ok": true
+  }
+ ],
+ "coverage_question_association": {
+  "case": "B (charter questions sealed)",
+  "resolution": "linkage declared at B6 entry; deterministic preflight (G1-G7, zero model calls) is a HARD B6-entry condition"
+ },
+ "all_static_checks_pass": true
+}
