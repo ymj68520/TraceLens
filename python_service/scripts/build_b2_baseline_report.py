@@ -39,13 +39,42 @@ REPO_ROOT = PYTHON_SERVICE_ROOT.parent
 ROOT = (
     PYTHON_SERVICE_ROOT / "benchmarks" / "results" / "agent-v0" / "b2-restart"
 )
-B2_ROOT = ROOT / "b2"
 CASES_ROOT = PYTHON_SERVICE_ROOT / "benchmarks" / "cases"
-BASELINE_V3 = (
-    PYTHON_SERVICE_ROOT / "benchmarks" / "profiles"
-    / "precalibration-runtime-baseline-v3.json"
-)
-OUT_FILE = ROOT / "baseline-measurement-report-v3.json"
+
+import argparse as _argparse
+
+
+def _paths() -> tuple[Path, Path, Path]:
+    parser = _argparse.ArgumentParser(prog="build_b2_baseline_report")
+    parser.add_argument(
+        "--runs-root",
+        default=str(ROOT / "b2"),
+        help="directory containing case_id/repeat<k>/ run artifacts",
+    )
+    parser.add_argument(
+        "--baseline",
+        default=(
+            "benchmarks/profiles/precalibration-runtime-baseline-v3.json"
+        ),
+    )
+    parser.add_argument("--out", default=None)
+    args, _unknown = parser.parse_known_args()
+    runs_root = Path(args.runs_root)
+    if not runs_root.is_absolute():
+        runs_root = PYTHON_SERVICE_ROOT / runs_root
+    baseline = Path(args.baseline)
+    if not baseline.is_absolute():
+        baseline = PYTHON_SERVICE_ROOT / baseline
+    out = (
+        Path(args.out)
+        if args.out
+        else runs_root.parent
+        / f"{runs_root.name}-measurement-report.json"
+    )
+    return runs_root, baseline, out
+
+
+B2_ROOT, BASELINE_V3, OUT_FILE = _paths()
 
 P_CODES = {
     "PLAN_IDENTITY_MISMATCH", "PLAN_ATTENTION_HASH_MISMATCH",
@@ -539,7 +568,7 @@ def main() -> int:
         )
 
     report = {
-        "artifact_version": "BaselineMeasurementReportV3",
+        "artifact_version": "BaselineMeasurementReportV4",
         "round": "p8b-b2-restart",
         "runtime_baseline": {
             "profile_version": baseline["profile_version"],

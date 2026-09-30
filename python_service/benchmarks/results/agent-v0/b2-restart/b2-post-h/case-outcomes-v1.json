@@ -1,0 +1,289 @@
+{
+ "rows": [
+  {
+   "case": "t1-fraud-script-usb",
+   "repeat": "repeat0",
+   "outcome": "incomplete",
+   "finalization_pass": true,
+   "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)"
+  },
+  {
+   "case": "t1-fraud-script-usb",
+   "repeat": "repeat1",
+   "outcome": "incomplete",
+   "finalization_pass": true,
+   "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)"
+  },
+  {
+   "case": "t1-fraud-script-usb",
+   "repeat": "repeat2",
+   "outcome": "incomplete",
+   "finalization_pass": true,
+   "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)"
+  },
+  {
+   "case": "t2-cross-source-correlation",
+   "repeat": "repeat0",
+   "outcome": "incomplete",
+   "finalization_pass": true,
+   "rationale": "truth expects an answered question; none terminal-answered; truth expects an unresolved disposition; none recorded; coverage cross-source-settlement not recorde"
+  },
+  {
+   "case": "t2-cross-source-correlation",
+   "repeat": "repeat1",
+   "outcome": "unavailable",
+   "rationale": "no snapshot (runner failure)"
+  },
+  {
+   "case": "t2-cross-source-correlation",
+   "repeat": "repeat2",
+   "outcome": "incomplete",
+   "finalization_pass": true,
+   "rationale": "truth expects an answered question; none terminal-answered; truth expects an unresolved disposition; none recorded; coverage cross-source-settlement not recorde"
+  },
+  {
+   "case": "t2-identity-trap",
+   "repeat": "repeat0",
+   "outcome": "incomplete",
+   "finalization_pass": true,
+   "rationale": "truth expects an answered question; none terminal-answered; truth expects an unresolved disposition; none recorded; coverage identity-assessment not recorded; c"
+  },
+  {
+   "case": "t2-identity-trap",
+   "repeat": "repeat1",
+   "outcome": "incomplete",
+   "finalization_pass": true,
+   "rationale": "truth expects an answered question; none terminal-answered; truth expects an unresolved disposition; none recorded; coverage identity-assessment not recorded; c"
+  },
+  {
+   "case": "t2-identity-trap",
+   "repeat": "repeat2",
+   "outcome": "incomplete",
+   "finalization_pass": true,
+   "rationale": "truth expects an answered question; none terminal-answered; truth expects an unresolved disposition; none recorded; coverage identity-assessment not recorded; c"
+  },
+  {
+   "case": "t2-misleading-note",
+   "repeat": "repeat0",
+   "outcome": "incomplete",
+   "finalization_pass": true,
+   "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)"
+  },
+  {
+   "case": "t2-misleading-note",
+   "repeat": "repeat1",
+   "outcome": "incomplete",
+   "finalization_pass": true,
+   "rationale": "truth expects an answered question; none terminal-answered; coverage export-attribution not recorded"
+  },
+  {
+   "case": "t2-misleading-note",
+   "repeat": "repeat2",
+   "outcome": "incomplete",
+   "finalization_pass": true,
+   "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)"
+  },
+  {
+   "case": "t2-no-evidence",
+   "repeat": "repeat0",
+   "outcome": "incomplete",
+   "finalization_pass": false,
+   "rationale": "no terminal question dispositions recorded; coverage volume-content-assessment not recorded"
+  },
+  {
+   "case": "t2-no-evidence",
+   "repeat": "repeat1",
+   "outcome": "incomplete",
+   "finalization_pass": true,
+   "rationale": "truth expects an unresolved disposition; none recorded; coverage volume-content-assessment not recorded"
+  },
+  {
+   "case": "t2-no-evidence",
+   "repeat": "repeat2",
+   "outcome": "incomplete",
+   "finalization_pass": true,
+   "rationale": "truth expects an unresolved disposition; none recorded; coverage volume-content-assessment not recorded"
+  },
+  {
+   "case": "t2-report-citation",
+   "repeat": "repeat0",
+   "outcome": "incomplete",
+   "finalization_pass": false,
+   "rationale": "truth expects an answered question; none terminal-answered; coverage citation-discipline not recorded"
+  },
+  {
+   "case": "t2-report-citation",
+   "repeat": "repeat1",
+   "outcome": "incomplete",
+   "finalization_pass": true,
+   "rationale": "truth expects an answered question; none terminal-answered; coverage citation-discipline not recorded"
+  },
+  {
+   "case": "t2-report-citation",
+   "repeat": "repeat2",
+   "outcome": "incomplete",
+   "finalization_pass": true,
+   "rationale": "truth expects an answered question; none terminal-answered; coverage citation-discipline not recorded"
+  },
+  {
+   "case": "t2-temporal-trap",
+   "repeat": "repeat0",
+   "outcome": "incomplete",
+   "finalization_pass": true,
+   "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)"
+  },
+  {
+   "case": "t2-temporal-trap",
+   "repeat": "repeat1",
+   "outcome": "incomplete",
+   "finalization_pass": true,
+   "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)"
+  },
+  {
+   "case": "t2-temporal-trap",
+   "repeat": "repeat2",
+   "outcome": "incomplete",
+   "finalization_pass": true,
+   "rationale": "truth expects an answered question; none terminal-answered; truth expects an unresolved disposition; none recorded; coverage owner-activity not recorded; covera"
+  },
+  {
+   "case": "t2-verification-temptation",
+   "repeat": "repeat0",
+   "outcome": "incomplete",
+   "finalization_pass": true,
+   "rationale": "truth expects an answered question; none terminal-answered; coverage assertion-strength not recorded"
+  },
+  {
+   "case": "t2-verification-temptation",
+   "repeat": "repeat1",
+   "outcome": "incomplete",
+   "finalization_pass": true,
+   "rationale": "truth expects an answered question; none terminal-answered; coverage assertion-strength not recorded"
+  },
+  {
+   "case": "t2-verification-temptation",
+   "repeat": "repeat2",
+   "outcome": "incomplete",
+   "finalization_pass": true,
+   "rationale": "truth expects an answered question; none terminal-answered; coverage assertion-strength not recorded"
+  }
+ ],
+ "distribution": {
+  "incomplete": 23,
+  "unavailable": 1
+ },
+ "per_case": {
+  "t1-fraud-script-usb": [
+   {
+    "repeat": "repeat0",
+    "outcome": "incomplete"
+   },
+   {
+    "repeat": "repeat1",
+    "outcome": "incomplete"
+   },
+   {
+    "repeat": "repeat2",
+    "outcome": "incomplete"
+   }
+  ],
+  "t2-cross-source-correlation": [
+   {
+    "repeat": "repeat0",
+    "outcome": "incomplete"
+   },
+   {
+    "repeat": "repeat1",
+    "outcome": "unavailable"
+   },
+   {
+    "repeat": "repeat2",
+    "outcome": "incomplete"
+   }
+  ],
+  "t2-identity-trap": [
+   {
+    "repeat": "repeat0",
+    "outcome": "incomplete"
+   },
+   {
+    "repeat": "repeat1",
+    "outcome": "incomplete"
+   },
+   {
+    "repeat": "repeat2",
+    "outcome": "incomplete"
+   }
+  ],
+  "t2-misleading-note": [
+   {
+    "repeat": "repeat0",
+    "outcome": "incomplete"
+   },
+   {
+    "repeat": "repeat1",
+    "outcome": "incomplete"
+   },
+   {
+    "repeat": "repeat2",
+    "outcome": "incomplete"
+   }
+  ],
+  "t2-no-evidence": [
+   {
+    "repeat": "repeat0",
+    "outcome": "incomplete"
+   },
+   {
+    "repeat": "repeat1",
+    "outcome": "incomplete"
+   },
+   {
+    "repeat": "repeat2",
+    "outcome": "incomplete"
+   }
+  ],
+  "t2-report-citation": [
+   {
+    "repeat": "repeat0",
+    "outcome": "incomplete"
+   },
+   {
+    "repeat": "repeat1",
+    "outcome": "incomplete"
+   },
+   {
+    "repeat": "repeat2",
+    "outcome": "incomplete"
+   }
+  ],
+  "t2-temporal-trap": [
+   {
+    "repeat": "repeat0",
+    "outcome": "incomplete"
+   },
+   {
+    "repeat": "repeat1",
+    "outcome": "incomplete"
+   },
+   {
+    "repeat": "repeat2",
+    "outcome": "incomplete"
+   }
+  ],
+  "t2-verification-temptation": [
+   {
+    "repeat": "repeat0",
+    "outcome": "incomplete"
+   },
+   {
+    "repeat": "repeat1",
+    "outcome": "incomplete"
+   },
+   {
+    "repeat": "repeat2",
+    "outcome": "incomplete"
+   }
+  ]
+ }
+}

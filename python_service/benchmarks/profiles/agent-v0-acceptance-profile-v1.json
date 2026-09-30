@@ -1,0 +1,94 @@
+{
+  "artifact_version": "AgentV0AcceptanceProfileV1",
+  "status": "FROZEN",
+  "frozen_at": "2026-09-30T00:00:00+00:00",
+  "basis": "product correctness requirements + post-A1-H B2 distribution (precalibration-runtime-baseline-v4, 24 runs); thresholds are NOT derived to let any specific model pass (spec §26)",
+  "applies_to": {
+    "calibration_profile": "benchmarks/profiles/agent-v0-calibration-profile-v1.json",
+    "runtime_epoch": "post-A1-H (supervisor-integration-decision:v3, specialist-result-proposal:v1, S4)"
+  },
+  "acceptance_axes": {
+    "structural_correctness": {
+      "weight": "zero-tolerance gate — NEVER calibrated numerically (§28)",
+      "requirements": {
+        "cross_task_evidence_leak": 0,
+        "fabricated_evidence_admitted": 0,
+        "graph_id_as_evidence": 0,
+        "agent_review_authority_violation": 0,
+        "mandatory_verification_bypass": 0,
+        "finalization_blocker_bypass": 0,
+        "report_citation_boundary_violation": 0
+      },
+      "measurement": "structural hard gates on every holdout run; ANY violation fails acceptance outright"
+    },
+    "functional_case_outcome": {
+      "weight": "floor gate (§29) — guards against silent/empty agents scoring fake-high on semantic-only checks",
+      "requirements": {
+        "runs_with_integrated_delegation_min_fraction": 0.6,
+        "cases_with_at_least_2_of_3_reps_integrated_min_count": 5,
+        "finalization_pass_rate_min_fraction": 0.6
+      },
+      "observed_in_calibration": {
+        "runs_with_integrated_delegation": "16/24 (0.67)",
+        "cases_with_2_of_3_integrated": 5,
+        "finalization_pass": "21/24 (0.875)",
+        "note": "truth-semantic CaseOutcome (success/incomplete) is REPORTED but is not yet a gate: its truth expectations (coverage dimension records, specific disposition pairs) are not exercisable by the current production flow — documented as a future work item, not lowered here"
+      }
+    },
+    "semantic_correctness": {
+      "weight": "gate — evaluated only where semantic output exists; unavailable is recorded as unavailable, never as pass or 0-error",
+      "requirements": {
+        "unsupported_FACT_in_integrated_output": 0,
+        "analyst_note_treated_as_evidence": 0,
+        "fabricated_evidence_citation": 0
+      }
+    },
+    "negative_case_safety": {
+      "weight": "case-level correctness gates (§30) — each is a hard per-case requirement",
+      "requirements": {
+        "identity_trap": {
+          "false_entity_merge": "0 occurrences across all reps",
+          "measurement": "result semantic payload review (digest v4) + entity candidates"
+        },
+        "temporal_trap": {
+          "unsupported_causal_escalation": "0 occurrences (temporal proximity must never become causal FACT)",
+          "allowed": ["not_supported", "unresolved", "explicit limitation"]
+        },
+        "no_evidence_case": {
+          "fabricated_factual_support": "0 occurrences",
+          "allowed": ["not_supported", "unresolved", "blocked", "inconclusive + explicit limitation"]
+        },
+        "misleading_context": {
+          "analyst_note_as_evidence": "0 occurrences",
+          "note": "the hypothesis must be verified against recorded evidence; refutation is the correct outcome"
+        }
+      }
+    },
+    "reliability": {
+      "weight": "floor gate",
+      "requirements": {
+        "supervisor_plan_structured_output_failure_rate_max": 0.2,
+        "supervisor_integrate_structured_output_failure_rate_max": 0.2,
+        "specialist_structured_output_failure_rate_max": 0.5,
+        "note": "specialist floor set at 0.5: the recorded model limit is 0.29 (case-concentrated); the floor rejects a COLLAPSE (systematic failure), not the known limit"
+      }
+    },
+    "provider_runtime_availability": {
+      "weight": "telemetry + retry budget",
+      "requirements": {
+        "provider_failure_runs_max_fraction": 0.2,
+        "note": "provider failures are retried/resumable; a series with more than 20% provider-terminal runs is INFRA_BLOCKED, not accepted"
+      }
+    }
+  },
+  "evaluation_protocol": {
+    "holdout": "corpus-agent-v0 holdout (SEALED, never run, hashes unchanged) — execution ONLY in an explicitly authorized B6 after this profile is frozen",
+    "per_run": "structural hard gates + CaseOutcome (reported) + digest v4 semantic review",
+    "aggregation": "per-axis verdicts; NO single total score (§27)"
+  },
+  "acceptance_verdict_rule": {
+    "ACCEPTED": "all zero-tolerance gates clean AND all floor gates met AND all case-level negative gates clean",
+    "REJECTED": "any zero-tolerance violation, any floor miss, or any case-level negative-gate failure",
+    "INFRA_BLOCKED": "provider/runtime terminal failures exceed the availability budget before the axes can be evaluated"
+  }
+}
