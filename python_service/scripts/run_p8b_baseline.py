@@ -401,11 +401,24 @@ def _execute_with_wiring(
         # B5.5 §4/§11: seed the charter-level Required Coverage declared
         # on the public case surface.  Production is CoverageTransition-
         # only (update semantics) — the bootstrap owns dimension creation.
+        # B5.5-post finding: a coverage dimension seeded WITHOUT
+        # related_question_ids becomes a separate delegable attention item
+        # (frozen policy: _COVERAGE_ACTIONS includes delegate_source); the
+        # model then serves both the question item and the coverage item
+        # with delegate actions on the same question x scope and the frozen
+        # plan validator rejects the plan (PLAN_DUPLICATE_DELEGATION).
+        # The charter coalescing path is related_question_ids — declared
+        # here from the public case framing (every seeded dimension
+        # assesses the charter questions).
         coverage = tuple(
             CoverageDimension(
                 dimension_id=dimension_id,
                 required=True,
                 status=CoverageStatus.not_started,
+                related_question_ids=tuple(
+                    f"q-{index}"
+                    for index, _ in enumerate(ci.seed_questions, start=1)
+                ),
             )
             for dimension_id in (ci.seed_coverage_dimensions or ())
         )
@@ -957,7 +970,7 @@ def _extract_trajectory_digest(task_store: Path, out_dir: Path) -> None:
 
         try:
             manifest_row = conn.execute(
-                "select state_json from agent_working_states "
+                "select state_json from agent_working_state_revisions "
                 "order by revision asc limit 1"
             ).fetchone()
             if manifest_row:

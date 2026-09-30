@@ -166,3 +166,68 @@ execution.
 → **B2_RERUN_REQUIRED**: rerun B2 8×3 on corpus v2 with the seeding
 driver and evaluator v2; then re-derive the B4-adjacent distributions,
 admit the AcceptanceProfile, and only then B6.
+
+---
+
+# B5.5-post ADDENDUM — coverage bootstrap rerun finding (post-B5.5 B2)
+
+Status: series executed (24 runs) → disposition **BENCHMARK_CORRECTNESS_STOP**
+(spec §26 menu); AcceptanceProfile admission stays WITHHELD; holdout still
+NEVER RUN.
+
+## What the rerun proved
+
+1. Coverage bootstrap WORKS: revision-1 working states carry the seeded
+   required dimensions (live-store verification; digest probe itself was
+   broken mid-series — wrong table name `agent_working_states`, fixed to
+   `agent_working_state_revisions`; telemetry-only, agent never saw it).
+2. Evaluator v2 + coverage machinery WORK: dimensions terminalize
+   (covered/partial observed), question semantics measure correctly,
+   CaseOutcomeV2 distinguishes success/incomplete with reason codes
+   (success ×3, incomplete ×20).
+3. Specialist output failures: **0/24** (the 29% MODEL_RELIABILITY_LIMIT
+   did not reproduce — episodic, not stable).
+4. P = H = S = G = 0 on the full distribution; hard gates 23/23 PASS
+   (+1 provider 429).
+
+## The new dominant failure — precise defect chain
+
+16/24 runs died before doing any work: `PLAN_DUPLICATE_DELEGATION`
+(18 events) → zero delegations → `COVERAGE_NOT_TERMINAL` finalization
+denial. Chain (all steps verified in frozen code + surviving store):
+
+1. The harness seeded coverage dimensions WITHOUT
+   `related_question_ids`.
+2. The frozen attention policy (`agent_attention._coverage_items`)
+   coalesces a coverage dimension into its question's attention item
+   ONLY when `related_question_ids` links them; unlinked required
+   dimensions become SEPARATE `coverage:<dim>` attention items
+   (p2_investigation_obligation).
+3. The frozen policy makes that item delegable
+   (`_COVERAGE_ACTIONS = (delegate_source, direct_read)`).
+4. The model — semantically correctly — served BOTH attention items
+   with `delegate_investigation` on the same question × scope.
+5. The frozen plan validator rejects two delegate actions with the same
+   (question, scope) fingerprint in one plan (`PLAN_DUPLICATE_DELEGATION`).
+
+Root cause: **the benchmark bootstrap was incomplete relative to the
+product contract** — the charter declares which questions a coverage
+assessment serves, and the attention coalescing path depends on it.
+NOT a model failure (the served intent was correct), NOT a production
+correctness gap (each frozen contract behaved as designed; the design's
+own coalescing path simply was not fed), NOT evaluator.
+
+## Fix applied (benchmark initialization only)
+
+`_seed_state` now declares `related_question_ids` = the charter
+questions for every seeded coverage dimension (derived from the public
+case framing). With linkage present, the frozen coalescing merges the
+coverage obligations into the question attention item and the trap is
+structurally absent.
+
+## Consequence
+
+The b2-post-b55 series is superseded for acceptance calibration
+(historical). One more B2 rerun (8×3) on the linkage-fixed bootstrap is
+required before AcceptanceProfile admission; CaseOutcomeV2 machinery is
+proven and unchanged; every other frozen basis is unchanged.

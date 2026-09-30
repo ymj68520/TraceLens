@@ -1,0 +1,3774 @@
+{
+  "artifact_version": "PostB55BaselineMeasurementReportV1",
+  "round": "post-b55-b2-acceptance-admission",
+  "created_at": "2026-09-30T15:23:13+00:00",
+  "measurement_baseline": {
+    "artifact_version": "BenchmarkMeasurementBaselineV5",
+    "purpose": "Post-B5.5 benchmark/evaluation epoch for the acceptance-admission B2 rerun. The PRODUCTION runtime is unchanged (no RuntimeBaselineV5 — production hashes are identical to precalibration-runtime-baseline-v4); what changed is the benchmark/evaluation layer (spec §1).",
+    "supersedes": "the post-A1-H B2 measurement epoch (b2-post-h, corpus v2-predecessor, evaluator v1) — historical / superseded for final acceptance calibration; not poolable with this series",
+    "production_runtime_binding": {
+      "runtime_git_commit": "a426672765faca508b128ae3f2671bede9df69f8",
+      "production_runtime_commit": "f7b02af6 (A1-H freeze; cec0381c touches benchmark/docs only — production tree verified identical by module hashes)",
+      "module_sha16": {
+        "agent_supervisor": "8621316a59b9c016",
+        "agent_integration_v2": "9be8946460d63993",
+        "agent_reference_bindings": "0a6fba6113ab7060",
+        "agent_specialist_result": "4f8b004d7bd8a1f1",
+        "agent_specialist_executor": "211f0b25742946df",
+        "agent_runtime": "8d0448e7f69ff03a",
+        "agent_transitions": "77300b8d079fb218",
+        "agent_tools_pydantic_bridge": "8a4bf62b7da084ff"
+      }
+    },
+    "benchmark_epoch_binding": {
+      "public_case_surface": "PublicCaseInputV2 semantics — seed_coverage_dimensions on the public case surface (names only; truth isolation preserved: no expected statuses, no evidence bindings, no truth labels)",
+      "required_coverage_bootstrap": "harness seeds charter coverage at investigation initialization (driver _seed_state); production stays CoverageTransition-only",
+      "case_contracts": "case contract v2 files (required_coverage_dimensions declared); revision record benchmarks/cases/b55-case-revision.json",
+      "corpus": {
+        "file": "benchmarks/corpus/corpus-agent-v0-calibration.v2.json",
+        "corpus_input_hash": "25c216e85acc32f22c52…",
+        "note": "full hash in the corpus file; case hashes superseded per b55-case-revision.json"
+      },
+      "evaluator": "benchmark-case-outcome:v2 (production-faithful disposition semantics; findings-channel overclaim; coverage requirements retained)",
+      "driver_bootstrap_hash": "scripts/run_p8b_baseline.py @ this commit (digest v5 carries the coverage-bootstrap proof: seeded dimensions + bootstrap state hash per run)",
+      "truth_manifest_hashes": "UNCHANGED from the sealed set (vocabulary mapping lives in evaluator v2; no truth file was edited)",
+      "acceptance_admission_record": "benchmarks/profiles/agent-v0-acceptance-profile-admission-record.v1.json"
+    },
+    "model_identity": {
+      "provider": "sensenova-cloud",
+      "model_id": "sensenova-6.8-flash-lite",
+      "adapter_model_config_digest": "ba51d65eeb2c29022216b069572db333d999fcd887098bc49b6f1da6e15ab764",
+      "generation_params": {
+        "temperature": 0.7,
+        "max_tokens": 16384,
+        "thinking_mode": "disabled",
+        "reasoning_effort": "none",
+        "timeout_seconds": 120,
+        "context_window_tokens": 131072
+      }
+    },
+    "prohibitions_during_series": [
+      "no prompt/model/temperature/retry/cycle/tool-budget/schema/coverage-logic/evaluator change",
+      "evaluator v2 bug discovered mid-series -> STOP, not patch-and-continue",
+      "holdout execution forbidden"
+    ],
+    "frozen_at": "2026-09-30T00:00:00+00:00"
+  },
+  "totals": {
+    "runs_total": 24,
+    "runs_completed": 23,
+    "runs_runner_failed": 1,
+    "hard_gate_violation_runs": 0,
+    "finalization_pass": 6,
+    "runs_with_completed_specialist_result": 7,
+    "total_completed_specialist_results": 7,
+    "runs_with_integrated_delegation": 7,
+    "integrated_delegation_count": 7,
+    "specialist_structured_output_failures": 0,
+    "supervisor_plan_failures": 0,
+    "supervisor_integrate_failures": 0,
+    "provider_failure_runs": 1,
+    "P_identity_events": 0,
+    "H_handle_events": 0,
+    "S_semantic_events": 0,
+    "G_grounding_events": 0,
+    "rejection_code_distribution": {
+      "PLAN_DUPLICATE_DELEGATION": 18
+    },
+    "tokens_in_total": 254914,
+    "tokens_out_total": 27204,
+    "wall_s_median": 22.6
+  },
+  "case_outcome_v2_distribution": {
+    "incomplete": 20,
+    "success": 3
+  },
+  "coverage_bootstrap_join": [
+    {
+      "case_id": "t1-fraud-script-usb",
+      "repeat": "repeat0",
+      "expected": [
+        "fraud-operation-materials"
+      ],
+      "seeded": "unavailable",
+      "match": null
+    },
+    {
+      "case_id": "t1-fraud-script-usb",
+      "repeat": "repeat1",
+      "expected": [
+        "fraud-operation-materials"
+      ],
+      "seeded": "unavailable",
+      "match": null
+    },
+    {
+      "case_id": "t1-fraud-script-usb",
+      "repeat": "repeat2",
+      "expected": [
+        "fraud-operation-materials"
+      ],
+      "seeded": "unavailable",
+      "match": null
+    },
+    {
+      "case_id": "t2-cross-source-correlation",
+      "repeat": "repeat0",
+      "expected": [
+        "cross-source-settlement"
+      ],
+      "seeded": "unavailable",
+      "match": null
+    },
+    {
+      "case_id": "t2-cross-source-correlation",
+      "repeat": "repeat1",
+      "expected": [
+        "cross-source-settlement"
+      ],
+      "seeded": "unavailable",
+      "match": null
+    },
+    {
+      "case_id": "t2-identity-trap",
+      "repeat": "repeat0",
+      "expected": [
+        "identity-assessment",
+        "transfer-activity"
+      ],
+      "seeded": "unavailable",
+      "match": null
+    },
+    {
+      "case_id": "t2-identity-trap",
+      "repeat": "repeat1",
+      "expected": [
+        "identity-assessment",
+        "transfer-activity"
+      ],
+      "seeded": "unavailable",
+      "match": null
+    },
+    {
+      "case_id": "t2-identity-trap",
+      "repeat": "repeat2",
+      "expected": [
+        "identity-assessment",
+        "transfer-activity"
+      ],
+      "seeded": "unavailable",
+      "match": null
+    },
+    {
+      "case_id": "t2-misleading-note",
+      "repeat": "repeat0",
+      "expected": [
+        "export-attribution"
+      ],
+      "seeded": "unavailable",
+      "match": null
+    },
+    {
+      "case_id": "t2-misleading-note",
+      "repeat": "repeat1",
+      "expected": [
+        "export-attribution"
+      ],
+      "seeded": "unavailable",
+      "match": null
+    },
+    {
+      "case_id": "t2-misleading-note",
+      "repeat": "repeat2",
+      "expected": [
+        "export-attribution"
+      ],
+      "seeded": "unavailable",
+      "match": null
+    },
+    {
+      "case_id": "t2-no-evidence",
+      "repeat": "repeat0",
+      "expected": [
+        "volume-content-assessment"
+      ],
+      "seeded": "unavailable",
+      "match": null
+    },
+    {
+      "case_id": "t2-no-evidence",
+      "repeat": "repeat1",
+      "expected": [
+        "volume-content-assessment"
+      ],
+      "seeded": "unavailable",
+      "match": null
+    },
+    {
+      "case_id": "t2-no-evidence",
+      "repeat": "repeat2",
+      "expected": [
+        "volume-content-assessment"
+      ],
+      "seeded": "unavailable",
+      "match": null
+    },
+    {
+      "case_id": "t2-report-citation",
+      "repeat": "repeat0",
+      "expected": [
+        "citation-discipline"
+      ],
+      "seeded": "unavailable",
+      "match": null
+    },
+    {
+      "case_id": "t2-report-citation",
+      "repeat": "repeat1",
+      "expected": [
+        "citation-discipline"
+      ],
+      "seeded": "unavailable",
+      "match": null
+    },
+    {
+      "case_id": "t2-report-citation",
+      "repeat": "repeat2",
+      "expected": [
+        "citation-discipline"
+      ],
+      "seeded": "unavailable",
+      "match": null
+    },
+    {
+      "case_id": "t2-temporal-trap",
+      "repeat": "repeat0",
+      "expected": [
+        "owner-activity",
+        "recovered-log-assessment"
+      ],
+      "seeded": "unavailable",
+      "match": null
+    },
+    {
+      "case_id": "t2-temporal-trap",
+      "repeat": "repeat1",
+      "expected": [
+        "owner-activity",
+        "recovered-log-assessment"
+      ],
+      "seeded": "unavailable",
+      "match": null
+    },
+    {
+      "case_id": "t2-temporal-trap",
+      "repeat": "repeat2",
+      "expected": [
+        "owner-activity",
+        "recovered-log-assessment"
+      ],
+      "seeded": "unavailable",
+      "match": null
+    },
+    {
+      "case_id": "t2-verification-temptation",
+      "repeat": "repeat0",
+      "expected": [
+        "assertion-strength"
+      ],
+      "seeded": "unavailable",
+      "match": null
+    },
+    {
+      "case_id": "t2-verification-temptation",
+      "repeat": "repeat1",
+      "expected": [
+        "assertion-strength"
+      ],
+      "seeded": "unavailable",
+      "match": null
+    },
+    {
+      "case_id": "t2-verification-temptation",
+      "repeat": "repeat2",
+      "expected": [
+        "assertion-strength"
+      ],
+      "seeded": "unavailable",
+      "match": null
+    }
+  ],
+  "coverage_terminalization": {
+    "assertion-strength": {
+      "runs": 3,
+      "terminalizations": {
+        "covered": 2,
+        "not_started": 1
+      },
+      "terminal": true
+    },
+    "citation-discipline": {
+      "runs": 3,
+      "terminalizations": {
+        "covered": 1,
+        "not_started": 1,
+        "partial": 1
+      },
+      "terminal": true
+    },
+    "cross-source-settlement": {
+      "runs": 2,
+      "terminalizations": {
+        "not_started": 2
+      },
+      "terminal": false
+    },
+    "export-attribution": {
+      "runs": 3,
+      "terminalizations": {
+        "partial": 1,
+        "not_started": 2
+      },
+      "terminal": true
+    },
+    "fraud-operation-materials": {
+      "runs": 3,
+      "terminalizations": {
+        "not_started": 2,
+        "covered": 1
+      },
+      "terminal": true
+    },
+    "identity-assessment": {
+      "runs": 3,
+      "terminalizations": {
+        "not_started": 3
+      },
+      "terminal": false
+    },
+    "owner-activity": {
+      "runs": 3,
+      "terminalizations": {
+        "not_started": 2,
+        "covered": 1
+      },
+      "terminal": true
+    },
+    "recovered-log-assessment": {
+      "runs": 3,
+      "terminalizations": {
+        "not_started": 2,
+        "covered": 1
+      },
+      "terminal": true
+    },
+    "transfer-activity": {
+      "runs": 3,
+      "terminalizations": {
+        "not_started": 3
+      },
+      "terminal": false
+    },
+    "volume-content-assessment": {
+      "runs": 3,
+      "terminalizations": {
+        "not_started": 3
+      },
+      "terminal": false
+    }
+  },
+  "question_terminalization": {
+    "terminal": 7,
+    "non_terminal": 23,
+    "dispositions": {
+      "supported": 6,
+      "not_supported": 1
+    }
+  },
+  "runs": [
+    {
+      "case_id": "t1-fraud-script-usb",
+      "repeat": "repeat0",
+      "status": "completed",
+      "rejection_codes": [
+        "PLAN_DUPLICATE_DELEGATION"
+      ],
+      "rejections": [
+        {
+          "seq": 5,
+          "stage": null,
+          "violation_codes": [
+            "PLAN_DUPLICATE_DELEGATION"
+          ],
+          "delegations_admitted_before": 0,
+          "delegations_completed_before": 0,
+          "available_handles_by_kind": {},
+          "offered_action_variants": [],
+          "resolution_violations": [],
+          "raw_model_proposal_v2": null,
+          "raw_action_signatures": []
+        }
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "COVERAGE_NOT_TERMINAL"
+        ],
+        "completion_mode": null
+      },
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "delegations_completed": 0,
+      "delegations_failed": 0,
+      "integrated": 0,
+      "coverage_terminalization": {
+        "fraud-operation-materials": "not_started"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "unavailable",
+            "detail": "integrated_delegations=0 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "failed",
+            "detail": "0/2 discovered; missing=['file:/data/入金记录.txt', 'file:/README.md']"
+          },
+          {
+            "component": "coverage:fraud-operation-materials",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "unavailable",
+            "detail": "terminal=0 answered-terminals=0 unresolved-terminals=0; truth expects answered=1 unresolved=1 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "tool_calls": 0,
+      "wall_s": 20.4,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "failure_reason": null
+    },
+    {
+      "case_id": "t1-fraud-script-usb",
+      "repeat": "repeat1",
+      "status": "completed",
+      "rejection_codes": [],
+      "rejections": [],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [
+        {
+          "seq": 20,
+          "delegation_id": "del_bb6f1555d29c4893a85a825d3db262dd",
+          "evidence_snapshots_admitted": 7,
+          "specialist_proposal_contract": {
+            "proposal_hash": "36fd459e2e994428cee71606519a40d6c0014f1bd7399637ec85dd3d1c8d1a3d",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "3d55cbcca1d7eeb262e8ede872526dc553a7292d426978bc54c2e2a7e4f9c1e6"
+          },
+          "result_semantic_payload": {
+            "summary": "YES — the device contains direct, content-level evidence of a scripted, persona-based investment-fraud operation. Five plaintext files were recovered (all 5 files in the file index, none deleted, all at the same mtime 1789924915 and created at 1789924922, inodes 12/14/15/17/18 — contiguous, indicating a single batch write):\n\n(1) 话术/开场白.txt — an outbound cold-contact script using a fabricated persona: \"您好,我是金玉财经的首席分析师助理…历史年化收益超过30%…老师每天盘中实时带单,名额有限,先到先得。请添加老师微信,领取新手体验金888元。\" (fabricated analyst-assistant identity, inflated historical return claim, scarcity pressure, WeChat off-platform migration, bait incentive).\n\n(2) 话术/应对拒绝.txt — objection-handling rebuttals: \"客户说考虑一下:老师今天带单已经盈利12%,机会稍纵即逝。客户质疑资质:我们平台受境外监管,出入金秒到账,可以小额试水。\" (urgency framing, unverifiable \"overseas-regulated\" claim, low-barrier \"test deposit\" tactic — classic 杀猪盘 pattern).\n\n(3) README.md — \"内部资料,严禁外传 / 平台名称:金玉满堂 / 管理后台: 172.16.8.66:9090\" (confidentiality marking plus a named platform and an internal admin endpoint).\n\n(4) data/客户清单.csv — 3 victims/targets with name, phone, invested amount, status: 王芳 13812345678 50000 已入金; 李强 13987654321 120000 追单中; 赵敏 13666688888 8000 观望.\n\n(5) data/入金记录.txt — 2 deposit records: \"2022-06-19 王芳 USDT转账 50000元 卡号6222020200112233445 张某某\" and \"2022-06-21 李强 USDT转账 120000元 钱包0xFAKE1234567890ABCDEF\".\n\nCross-file internal consistency is strong: 王芳 50,000 and 李强 120,000 appear identically in both the client list and the deposit log; the victim set in the deposit log is a subset of the client list.\n\nWHAT CAN BE CONCLUDED: (a) scripted, persona-based fraud materials exist on the device, including a fabricated persona and a two-stage rebuttal playbook; (b) a named platform (\"金玉满堂\"/\"金玉财经\") and an internal admin host 172.16.8.66:9090 are referenced; (c) three named targets with phone numbers and investment amounts are tracked with pipeline statuses (已入金/追单中/观望); (d) two USDT-based deposits totalling 170,000 元 are recorded against two of those targets, dated 2022-06-19 and 2022-06-21; (e) the files were written in one contiguous batch.\n\nWHAT CANNOT BE CONCLUDED (see limitations): no evidence that any call/message was actually delivered, that victims were actually contacted or defrauded, that the USDT transfers settled, or that the \"platform\" is real; no attribution of authorship or operator identity to any individual; no malware, no live network activity, no account/execution traces corroborating use of the scripts; the deposit log is self-reported plaintext with no independent ledger corroboration; the evidence cannot distinguish an active operation from a template, training set, or sample material.",
+            "evidence_refs": [
+              "file:/README.md",
+              "file:/话术/开场白.txt",
+              "file:/话术/应对拒绝.txt",
+              "file:/data/客户清单.csv",
+              "file:/data/入金记录.txt",
+              "cluster:v1:29832081:MODIFIED",
+              "cluster:v1:29832082:CREATED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c1",
+                "text": "The device contains a cold-contact sales script at /话术/开场白.txt that uses a fabricated persona and a fabricated return claim: '您好,我是金玉财经的首席分析师助理。我们团队最近布局了一只新能源概念基金,历史年化收益超过30%。老师每天盘中实时带单,名额有限,先到先得。请添加老师微信,领取新手体验金888元。'",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/话术/开场白.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c2",
+                "text": "The device contains an objection-handling rebuttal script at /话术/应对拒绝.txt: '客户说考虑一下:老师今天带单已经盈利12%,机会稍纵即逝。客户质疑资质:我们平台受境外监管,出入金秒到账,可以小额试水。'",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/话术/应对拒绝.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c3",
+                "text": "README.md marks the material as internal-confidential and names a platform and an internal admin endpoint: '内部资料,严禁外传 / 平台名称:金玉满堂 / 管理后台: 172.16.8.66:9090'.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/README.md"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c4",
+                "text": "A target/victim list at /data/客户清单.csv tracks three individuals with phone numbers, invested amounts and pipeline statuses: 王芳 13812345678 50000 已入金; 李强 13987654321 120000 追单中; 赵敏 13666688888 8000 观望.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/data/客户清单.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c5",
+                "text": "A deposit log at /data/入金记录.txt records two USDT transfers: '2022-06-19 王芳 USDT转账 50000元 卡号6222020200112233445 张某某' and '2022-06-21 李强 USDT转账 120000元 钱包0xFAKE1234567890ABCDEF'.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/data/入金记录.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c6",
+                "text": "Amounts for 王芳 (50,000) and 李强 (120,000) match exactly between 客户清单.csv and 入金记录.txt, and the deposit-log subjects are a strict subset of the client list.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/data/客户清单.csv",
+                  "file:/data/入金记录.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c7",
+                "text": "All five files share mtime 1789924915, were created at 1789924922, and occupy contiguous inodes 12, 14, 15, 17, 18, indicating a single batch write rather than organic accumulation over time.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "cluster:v1:29832082:CREATED",
+                  "cluster:v1:29832081:MODIFIED"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c8",
+                "text": "The combination of a fabricated persona, a scripted rebuttal playbook, an internal admin endpoint, a pipeline-tracked target list, and a USDT deposit ledger is consistent with a scripted, persona-based investment-fraud operation (杀猪盘 / pig-butchering pattern).",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/话术/开场白.txt",
+                  "file:/话术/应对拒绝.txt",
+                  "file:/README.md",
+                  "file:/data/客户清单.csv",
+                  "file:/data/入金记录.txt"
+                ],
+                "limitations": [
+                  "Inference from file content only; no delivery, contact, or settlement evidence exists in the captured data."
+                ]
+              },
+              {
+                "candidate_id": "c9",
+                "text": "The pipeline statuses 已入金 / 追单中 / 观望 indicate the operator tracked each target through a staged funnel from prospecting to repeated top-up solicitation, which is characteristic of a scripted multi-stage operation rather than ad-hoc individual contact.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/data/客户清单.csv",
+                  "file:/话术/应对拒绝.txt"
+                ],
+                "limitations": [
+                  "Status values are self-declared plaintext fields with no independent corroboration."
+                ]
+              },
+              {
+                "candidate_id": "c10",
+                "text": "The single-batch creation of all five files at one timestamp, together with the absence of any execution, logon, network or malware artefacts, suggests the material may be a template/training set or a sample collection rather than evidence of a live, actively operated campaign on this device.",
+                "assertion_class": "HYPOTHESIS",
+                "evidence_refs": [
+                  "cluster:v1:29832082:CREATED",
+                  "cluster:v1:29832081:MODIFIED"
+                ],
+                "limitations": [
+                  "No negative evidence is recorded for excluded categories — absence here reflects parser/source coverage, not proven absence. Cannot be resolved from the available data."
+                ]
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e1",
+                "raw_value": "金玉满堂",
+                "normalized_candidate": "金玉满堂",
+                "entity_type_candidate": "platform_name"
+              },
+              {
+                "candidate_id": "e2",
+                "raw_value": "金玉财经",
+                "normalized_candidate": "金玉财经",
+                "entity_type_candidate": "platform_name"
+              },
+              {
+                "candidate_id": "e3",
+                "raw_value": "172.16.8.66:9090",
+                "normalized_candidate": "172.16.8.66:9090",
+                "entity_type_candidate": "ip_port"
+              },
+              {
+                "candidate_id": "e4",
+                "raw_value": "首席分析师助理",
+                "normalized_candidate": "首席分析师助理",
+                "entity_type_candidate": "fraud_persona"
+              },
+              {
+                "candidate_id": "e5",
+                "raw_value": "老师",
+                "normalized_candidate": "老师",
+                "entity_type_candidate": "fraud_persona"
+              },
+              {
+                "candidate_id": "e6",
+                "raw_value": "王芳",
+                "normalized_candidate": "王芳",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e7",
+                "raw_value": "李强",
+                "normalized_candidate": "李强",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e8",
+                "raw_value": "赵敏",
+                "normalized_candidate": "赵敏",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e9",
+                "raw_value": "张某某",
+                "normalized_candidate": "张某某",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e10",
+                "raw_value": "13812345678",
+                "normalized_candidate": "+8613812345678",
+                "entity_type_candidate": "phone_number"
+              },
+              {
+                "candidate_id": "e11",
+                "raw_value": "13987654321",
+                "normalized_candidate": "+8613987654321",
+                "entity_type_candidate": "phone_number"
+              },
+              {
+                "candidate_id": "e12",
+                "raw_value": "13666688888",
+                "normalized_candidate": "+8613666688888",
+                "entity_type_candidate": "phone_number"
+              },
+              {
+                "candidate_id": "e13",
+                "raw_value": "6222020200112233445",
+                "normalized_candidate": "6222020200112233445",
+                "entity_type_candidate": "bank_account_number"
+              },
+              {
+                "candidate_id": "e14",
+                "raw_value": "0xFAKE1234567890ABCDEF",
+                "normalized_candidate": "0xFAKE1234567890ABCDEF",
+                "entity_type_candidate": "crypto_wallet_address"
+              },
+              {
+                "candidate_id": "e15",
+                "raw_value": "50000元",
+                "normalized_candidate": "50000 CNY",
+                "entity_type_candidate": "monetary_amount"
+              },
+              {
+                "candidate_id": "e16",
+                "raw_value": "120000元",
+                "normalized_candidate": "120000 CNY",
+                "entity_type_candidate": "monetary_amount"
+              },
+              {
+                "candidate_id": "e17",
+                "raw_value": "8000",
+                "normalized_candidate": "8000 CNY",
+                "entity_type_candidate": "monetary_amount"
+              },
+              {
+                "candidate_id": "e18",
+                "raw_value": "888元",
+                "normalized_candidate": "888 CNY",
+                "entity_type_candidate": "monetary_amount"
+              },
+              {
+                "candidate_id": "e19",
+                "raw_value": "2022-06-19",
+                "normalized_candidate": "2022-06-19",
+                "entity_type_candidate": "date"
+              },
+              {
+                "candidate_id": "e20",
+                "raw_value": "2022-06-21",
+                "normalized_candidate": "2022-06-21",
+                "entity_type_candidate": "date"
+              },
+              {
+                "candidate_id": "e21",
+                "raw_value": "USDT转账",
+                "normalized_candidate": "USDT",
+                "entity_type_candidate": "payment_instrument"
+              },
+              {
+                "candidate_id": "e22",
+                "raw_value": "已入金 / 追单中 / 观望",
+                "normalized_candidate": "已入金; 追单中; 观望",
+                "entity_type_candidate": "pipeline_status"
+              }
+            ],
+            "limitations": [
+              "No evidence that any script was actually delivered, sent, spoken, or used: there are zero communication artefacts (no SMS, IM, call, email, or browser history).",
+              "No evidence that any victim was actually contacted or defrauded. The client list and deposit log are self-declared plaintext with no independent corroboration.",
+              "No evidence that the recorded USDT transfers settled. The wallet address '0xFAKE1234567890ABCDEF' contains a literal 'FAKE' token and cannot be treated as a verified address.",
+              "No attribution: no user account, logon session, author metadata, or document property identifies who created the material.",
+              "No malware, no execution traces (prefetch/amcache), no persistence mechanisms, no network activity, and no account usage evidence — the Windows execution and persistence dimensions are uncovered, so the scripts cannot be tied to any operational activity on this device.",
+              "Absence of evidence in these categories reflects parser and source-scope coverage limits, not proven absence. The task metadata reports no platform scenario and no registered source scopes, so the available surface may be narrower than the real device.",
+              "Cannot distinguish an active fraud operation from a template, training set, sample, or test fixture: all five files were created in one 7-second batch with contiguous inodes and carry no usage history.",
+              "The platform names differ between files ('金玉财经' in the script vs '金玉满堂' in the README); whether these denote the same entity is an inference, not established fact.",
+              "All monetary amounts are CNY-labelled alongside USDT transfers, so the currency basis of the 50,000 / 120,000 / 8,000 figures is ambiguous.",
+              "The target population is only 3 individuals and the deposit log only 2 records, so no statistical or scale conclusions about the operation can be drawn.",
+              "File mtimes are identical across all five files and the CREATED timestamp is 7 seconds later, which is inconsistent with organic file-system chronology and suggests synthetic or re-stamped timestamps; timestamps should not be relied upon for sequencing."
+            ],
+            "warnings": [
+              "Task metadata reports platforms=[] and source_scopes=[] while the delegated scope is 'windows'; the available evidence is a small plaintext file set rather than a full Windows acquisition.",
+              "No md5 hashes are populated for any file, so integrity verification of the recovered content is not possible from this data.",
+              "Evidence is limited to 5 files and 10 timeline events; the investigation surface is small and may not represent the whole device."
+            ]
+          }
+        }
+      ],
+      "finalization_event": {
+        "event": "finalization_completed",
+        "violation_codes": [],
+        "completion_mode": "complete_with_limitations"
+      },
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "hard_gate_violations": [],
+      "delegations_completed": 1,
+      "delegations_failed": 0,
+      "integrated": 1,
+      "coverage_terminalization": {
+        "fraud-operation-materials": "covered"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "answered",
+          "disposition": "supported"
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "truth expects an unresolved disposition; none recorded",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "satisfied",
+            "detail": "integrated_delegations=1 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "2/2 discovered"
+          },
+          {
+            "component": "coverage:fraud-operation-materials",
+            "status": "satisfied",
+            "detail": "terminal=covered"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "satisfied",
+            "detail": "terminal=1 answered-terminals=1 unresolved-terminals=0; truth expects answered=1 unresolved=1 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "tool_calls": 12,
+      "wall_s": 174.8,
+      "tokens_in": 46449,
+      "tokens_out": 6059,
+      "failure_reason": null
+    },
+    {
+      "case_id": "t1-fraud-script-usb",
+      "repeat": "repeat2",
+      "status": "completed",
+      "rejection_codes": [
+        "PLAN_DUPLICATE_DELEGATION"
+      ],
+      "rejections": [
+        {
+          "seq": 5,
+          "stage": null,
+          "violation_codes": [
+            "PLAN_DUPLICATE_DELEGATION"
+          ],
+          "delegations_admitted_before": 0,
+          "delegations_completed_before": 0,
+          "available_handles_by_kind": {},
+          "offered_action_variants": [],
+          "resolution_violations": [],
+          "raw_model_proposal_v2": null,
+          "raw_action_signatures": []
+        }
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "COVERAGE_NOT_TERMINAL"
+        ],
+        "completion_mode": null
+      },
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "delegations_completed": 0,
+      "delegations_failed": 0,
+      "integrated": 0,
+      "coverage_terminalization": {
+        "fraud-operation-materials": "not_started"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "unavailable",
+            "detail": "integrated_delegations=0 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "failed",
+            "detail": "0/2 discovered; missing=['file:/data/入金记录.txt', 'file:/README.md']"
+          },
+          {
+            "component": "coverage:fraud-operation-materials",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "unavailable",
+            "detail": "terminal=0 answered-terminals=0 unresolved-terminals=0; truth expects answered=1 unresolved=1 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "tool_calls": 0,
+      "wall_s": 22.6,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "failure_reason": null
+    },
+    {
+      "case_id": "t2-cross-source-correlation",
+      "repeat": "repeat0",
+      "status": "completed",
+      "rejection_codes": [
+        "PLAN_DUPLICATE_DELEGATION"
+      ],
+      "rejections": [
+        {
+          "seq": 5,
+          "stage": null,
+          "violation_codes": [
+            "PLAN_DUPLICATE_DELEGATION"
+          ],
+          "delegations_admitted_before": 0,
+          "delegations_completed_before": 0,
+          "available_handles_by_kind": {},
+          "offered_action_variants": [],
+          "resolution_violations": [],
+          "raw_model_proposal_v2": null,
+          "raw_action_signatures": []
+        }
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "COVERAGE_NOT_TERMINAL"
+        ],
+        "completion_mode": null
+      },
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "delegations_completed": 0,
+      "delegations_failed": 0,
+      "integrated": 0,
+      "coverage_terminalization": {
+        "cross-source-settlement": "not_started"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "unavailable",
+            "detail": "integrated_delegations=0 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "failed",
+            "detail": "0/2 discovered; missing=['file:/crm/orders.csv', 'file:/payments/settlements.log']"
+          },
+          {
+            "component": "coverage:cross-source-settlement",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "unavailable",
+            "detail": "terminal=0 answered-terminals=0 unresolved-terminals=0; truth expects answered=1 unresolved=1 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "tool_calls": 0,
+      "wall_s": 24.9,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "failure_reason": null
+    },
+    {
+      "case_id": "t2-cross-source-correlation",
+      "repeat": "repeat1",
+      "status": "completed",
+      "rejection_codes": [
+        "PLAN_DUPLICATE_DELEGATION"
+      ],
+      "rejections": [
+        {
+          "seq": 5,
+          "stage": null,
+          "violation_codes": [
+            "PLAN_DUPLICATE_DELEGATION"
+          ],
+          "delegations_admitted_before": 0,
+          "delegations_completed_before": 0,
+          "available_handles_by_kind": {},
+          "offered_action_variants": [],
+          "resolution_violations": [],
+          "raw_model_proposal_v2": null,
+          "raw_action_signatures": []
+        }
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "COVERAGE_NOT_TERMINAL"
+        ],
+        "completion_mode": null
+      },
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "delegations_completed": 0,
+      "delegations_failed": 0,
+      "integrated": 0,
+      "coverage_terminalization": {
+        "cross-source-settlement": "not_started"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "unavailable",
+            "detail": "integrated_delegations=0 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "failed",
+            "detail": "0/2 discovered; missing=['file:/crm/orders.csv', 'file:/payments/settlements.log']"
+          },
+          {
+            "component": "coverage:cross-source-settlement",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "unavailable",
+            "detail": "terminal=0 answered-terminals=0 unresolved-terminals=0; truth expects answered=1 unresolved=1 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "tool_calls": 0,
+      "wall_s": 9.5,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "failure_reason": null
+    },
+    {
+      "case_id": "t2-cross-source-correlation",
+      "repeat": "repeat2",
+      "status": "runner_failed",
+      "rejection_codes": [],
+      "rejections": [],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [
+        {
+          "seq": 17,
+          "delegation_id": "del_5a200222adb1425aac1b5f3471e45887",
+          "evidence_snapshots_admitted": 4,
+          "specialist_proposal_contract": {
+            "proposal_hash": "6beb62498067d6c215f41d45722dcc960bab941b41f223824423aba06b63e5a9",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "7603c00dc1dc7cf5cd893005056ac7ae51f16818cb414d0ef91627f75e07176b"
+          },
+          "result_semantic_payload": {
+            "summary": "The task image contains only three text artifacts: /crm/orders.csv (4 CRM rows), /payments/settlements.log (4 processor settlement lines) and /README.txt which states the linkage rule verbatim: 'Settlements reference CRM order ids verbatim. A settlement whose order id does not exist in the CRM table cannot be treated as the same order.' Linking on that exact order_id key, three CRM orders are confirmed by the settlement log — ORD-70231 (wangqiang, 20000, paid) against settle order=ORD-70231 wallet=TXabc111 amount=20000 ok; ORD-70232 (zhaolei, 15000, paid) against settle order=ORD-70232 wallet=TXdef222 amount=15000 ok; ORD-70233 (sunli, 31500, paid) against settle order=ORD-70233 wallet=TXghi333 amount=31500 ok. Amounts and 'ok' status agree in all three pairs, which corroborates but does not by itself establish identity — the order_id match is the linkage. Two records must stay separate: (a) settlement line '2024-06-02 settle order=ORD-72033 wallet=TXjkl444 amount=9999 ok' — ORD-72033 does not exist in the CRM table, so per the README rule it cannot be treated as any CRM order; it is a processor-side settlement with no CRM counterpart in this capture, and it must not be merged with ORD-70233 despite the one-digit similarity (72033 vs 70233), which is a classic transposition collision; (b) CRM row ORD-70234 (qianer, 8000, cancelled) has no settlement entry, so it is an unconfirmed CRM order (cancelled, no processor settlement), not a matched pair. Note the task metadata declares no platform scenario and no 'windows' source scope is registered, so no Windows-derived evidence (registry, event logs, prefetch/amcache) exists here; the CRM/settlement reconciliation is done purely from the two text files.",
+            "evidence_refs": [
+              "file:/README.txt",
+              "file:/crm/orders.csv",
+              "file:/payments/settlements.log",
+              "cluster:v1:29843235:CREATED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c-1",
+                "text": "The authoritative linkage rule is stated in /README.txt: settlements reference CRM order ids verbatim, and a settlement whose order id does not exist in the CRM table cannot be treated as the same order. Linkage is therefore exact-string match on order_id, not on amount, date or wallet.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-2",
+                "text": "CRM order ORD-70231 (buyer wangqiang, 20000 USDT, status paid) is confirmed by the settlement log entry '2024-06-01 settle order=ORD-70231 wallet=TXabc111 amount=20000 ok', linked by exact order_id match; amount and ok status are consistent.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/crm/orders.csv",
+                  "file:/payments/settlements.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-3",
+                "text": "CRM order ORD-70232 (buyer zhaolei, 15000 USDT, status paid) is confirmed by '2024-06-01 settle order=ORD-70232 wallet=TXdef222 amount=15000 ok', linked by exact order_id match; amount and ok status are consistent.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/crm/orders.csv",
+                  "file:/payments/settlements.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-4",
+                "text": "CRM order ORD-70233 (buyer sunli, 31500 USDT, status paid) is confirmed by '2024-06-02 settle order=ORD-70233 wallet=TXghi333 amount=31500 ok', linked by exact order_id match; amount and ok status are consistent.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/crm/orders.csv",
+                  "file:/payments/settlements.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-5",
+                "text": "The settlement entry '2024-06-02 settle order=ORD-72033 wallet=TXjkl444 amount=9999 ok' has no counterpart in the CRM table (CRM contains only ORD-70231..ORD-70234), so per the README rule it cannot be treated as any CRM order and must remain a standalone processor-side record. It must not be merged with ORD-70233 despite the one-digit transposition similarity (72033 vs 70233) and the shared 2024-",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/README.txt",
+                  "file:/crm/orders.csv",
+                  "file:/payments/settlements.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-6",
+                "text": "CRM order ORD-70234 (buyer qianer, 8000 USDT, status cancelled) has no settlement entry in the log; it is an unconfirmed CRM order and must not be presented as settled.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/crm/orders.csv",
+                  "file:/payments/settlements.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-7",
+                "text": "The wallet identifiers (TXabc111, TXdef222, TXghi333, TXjkl444) appear only in the settlement log and have no CRM-side field, so they cannot serve as a linkage key; they are processor-side attributes attached to settlement lines.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/crm/orders.csv",
+                  "file:/payments/settlements.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-8",
+                "text": "No Windows-derived evidence is available for this task: the task context reports platforms=[] and no registered source scopes, so the CRM/settlement reconciliation rests solely on the two text files and the README rule.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e-1",
+                "raw_value": "ORD-70231",
+                "normalized_candidate": "ORD-70231",
+                "entity_type_candidate": "crm_order_id"
+              },
+              {
+                "candidate_id": "e-2",
+                "raw_value": "ORD-70232",
+                "normalized_candidate": "ORD-70232",
+                "entity_type_candidate": "crm_order_id"
+              },
+              {
+                "candidate_id": "e-3",
+                "raw_value": "ORD-70233",
+                "normalized_candidate": "ORD-70233",
+                "entity_type_candidate": "crm_order_id"
+              },
+              {
+                "candidate_id": "e-4",
+                "raw_value": "ORD-70234",
+                "normalized_candidate": "ORD-70234",
+                "entity_type_candidate": "crm_order_id"
+              },
+              {
+                "candidate_id": "e-5",
+                "raw_value": "ORD-72033",
+                "normalized_candidate": "ORD-72033",
+                "entity_type_candidate": "settlement_only_order_id"
+              },
+              {
+                "candidate_id": "e-6",
+                "raw_value": "TXabc111",
+                "normalized_candidate": "TXabc111",
+                "entity_type_candidate": "wallet_id"
+              },
+              {
+                "candidate_id": "e-7",
+                "raw_value": "TXdef222",
+                "normalized_candidate": "TXdef222",
+                "entity_type_candidate": "wallet_id"
+              },
+              {
+                "candidate_id": "e-8",
+                "raw_value": "TXghi333",
+                "normalized_candidate": "TXghi333",
+                "entity_type_candidate": "wallet_id"
+              },
+              {
+                "candidate_id": "e-9",
+                "raw_value": "TXjkl444",
+                "normalized_candidate": "TXjkl444",
+                "entity_type_candidate": "wallet_id"
+              },
+              {
+                "candidate_id": "e-10",
+                "raw_value": "wangqiang",
+                "normalized_candidate": "wangqiang",
+                "entity_type_candidate": "buyer"
+              },
+              {
+                "candidate_id": "e-11",
+                "raw_value": "zhaolei",
+                "normalized_candidate": "zhaolei",
+                "entity_type_candidate": "buyer"
+              },
+              {
+                "candidate_id": "e-12",
+                "raw_value": "sunli",
+                "normalized_candidate": "sunli",
+                "entity_type_candidate": "buyer"
+              },
+              {
+                "candidate_id": "e-13",
+                "raw_value": "qianer",
+                "normalized_candidate": "qianer",
+                "entity_type_candidate": "buyer"
+              }
+            ],
+            "limitations": [
+              "Task metadata declares no platform scenario and no registered source scopes, so no Windows-derived evidence (registry, event logs, prefetch/amcache) is available; CRM/settlement linkage is established purely from /crm/orders.csv and /payments/settlements.log.",
+              "Amount and 'ok' status agreement is corroborating only; the binding linkage is the exact order_id string per the README rule, and amount alone could not confirm identity.",
+              "The captured settlement log holds only 4 lines; absence of a settlement for ORD-70234 may reflect an incomplete capture rather than a definitively never-settled order.",
+              "No timestamps on the CRM rows are available, so order-of-events between CRM creation and settlement cannot be established; only same-day consistency (2024-06-01/2024-06-02) is observable.",
+              "No prior analyses or claims exist to cross-check against, and the files carry no md5 hashes, so integrity of the captured text cannot be independently verified."
+            ],
+            "warnings": [
+              "Watch for the ORD-72033 vs ORD-70233 digit-transposition collision: both settle on 2024-06-02, and a fuzzy or normalized join would wrongly merge a CRM-absent settlement into an existing CRM order. Keep ORD-72033/TXjkl444 (amount 9999) separate.",
+              "Do not present ORD-70234 (qianer, 8000, cancelled) as a confirmed/settled order; it has no settlement counterpart.",
+              "The delegation's 'windows' scope does not exist in this task's registered source scopes; any Windows-specific corroboration requested would have no data behind it."
+            ]
+          }
+        }
+      ],
+      "finalization_event": {},
+      "failure_layer": "RUNTIME",
+      "failure_reason": "status_code: 429, model_name: sensenova-6.8-flash-lite, body: {'message': 'inference exceeds tpm/rpm limit', 'type': 'rate_limit_error', 'code': '429'}"
+    },
+    {
+      "case_id": "t2-identity-trap",
+      "repeat": "repeat0",
+      "status": "completed",
+      "rejection_codes": [
+        "PLAN_DUPLICATE_DELEGATION",
+        "PLAN_DUPLICATE_DELEGATION"
+      ],
+      "rejections": [
+        {
+          "seq": 5,
+          "stage": null,
+          "violation_codes": [
+            "PLAN_DUPLICATE_DELEGATION",
+            "PLAN_DUPLICATE_DELEGATION"
+          ],
+          "delegations_admitted_before": 0,
+          "delegations_completed_before": 0,
+          "available_handles_by_kind": {},
+          "offered_action_variants": [],
+          "resolution_violations": [],
+          "raw_model_proposal_v2": null,
+          "raw_action_signatures": []
+        }
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "COVERAGE_NOT_TERMINAL",
+          "COVERAGE_NOT_TERMINAL"
+        ],
+        "completion_mode": null
+      },
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "delegations_completed": 0,
+      "delegations_failed": 0,
+      "integrated": 0,
+      "coverage_terminalization": {
+        "identity-assessment": "not_started",
+        "transfer-activity": "not_started"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "unavailable",
+            "detail": "integrated_delegations=0 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "failed",
+            "detail": "0/2 discovered; missing=['file:/logs/app1.log', 'file:/logs/app2.log']"
+          },
+          {
+            "component": "coverage:identity-assessment",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "coverage:transfer-activity",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "unavailable",
+            "detail": "terminal=0 answered-terminals=0 unresolved-terminals=0; truth expects answered=1 unresolved=1 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "tool_calls": 0,
+      "wall_s": 26.4,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "failure_reason": null
+    },
+    {
+      "case_id": "t2-identity-trap",
+      "repeat": "repeat1",
+      "status": "completed",
+      "rejection_codes": [
+        "PLAN_DUPLICATE_DELEGATION",
+        "PLAN_DUPLICATE_DELEGATION"
+      ],
+      "rejections": [
+        {
+          "seq": 5,
+          "stage": null,
+          "violation_codes": [
+            "PLAN_DUPLICATE_DELEGATION",
+            "PLAN_DUPLICATE_DELEGATION"
+          ],
+          "delegations_admitted_before": 0,
+          "delegations_completed_before": 0,
+          "available_handles_by_kind": {},
+          "offered_action_variants": [],
+          "resolution_violations": [],
+          "raw_model_proposal_v2": null,
+          "raw_action_signatures": []
+        }
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "COVERAGE_NOT_TERMINAL",
+          "COVERAGE_NOT_TERMINAL"
+        ],
+        "completion_mode": null
+      },
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "delegations_completed": 0,
+      "delegations_failed": 0,
+      "integrated": 0,
+      "coverage_terminalization": {
+        "identity-assessment": "not_started",
+        "transfer-activity": "not_started"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "unavailable",
+            "detail": "integrated_delegations=0 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "failed",
+            "detail": "0/2 discovered; missing=['file:/logs/app1.log', 'file:/logs/app2.log']"
+          },
+          {
+            "component": "coverage:identity-assessment",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "coverage:transfer-activity",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "unavailable",
+            "detail": "terminal=0 answered-terminals=0 unresolved-terminals=0; truth expects answered=1 unresolved=1 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "tool_calls": 0,
+      "wall_s": 10.8,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "failure_reason": null
+    },
+    {
+      "case_id": "t2-identity-trap",
+      "repeat": "repeat2",
+      "status": "completed",
+      "rejection_codes": [
+        "PLAN_DUPLICATE_DELEGATION"
+      ],
+      "rejections": [
+        {
+          "seq": 5,
+          "stage": null,
+          "violation_codes": [
+            "PLAN_DUPLICATE_DELEGATION"
+          ],
+          "delegations_admitted_before": 0,
+          "delegations_completed_before": 0,
+          "available_handles_by_kind": {},
+          "offered_action_variants": [],
+          "resolution_violations": [],
+          "raw_model_proposal_v2": null,
+          "raw_action_signatures": []
+        }
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "COVERAGE_NOT_TERMINAL",
+          "COVERAGE_NOT_TERMINAL"
+        ],
+        "completion_mode": null
+      },
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "delegations_completed": 0,
+      "delegations_failed": 0,
+      "integrated": 0,
+      "coverage_terminalization": {
+        "identity-assessment": "not_started",
+        "transfer-activity": "not_started"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "unavailable",
+            "detail": "integrated_delegations=0 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "failed",
+            "detail": "0/2 discovered; missing=['file:/logs/app1.log', 'file:/logs/app2.log']"
+          },
+          {
+            "component": "coverage:identity-assessment",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "coverage:transfer-activity",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "unavailable",
+            "detail": "terminal=0 answered-terminals=0 unresolved-terminals=0; truth expects answered=1 unresolved=1 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "tool_calls": 0,
+      "wall_s": 7.9,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "failure_reason": null
+    },
+    {
+      "case_id": "t2-misleading-note",
+      "repeat": "repeat0",
+      "status": "completed",
+      "rejection_codes": [],
+      "rejections": [],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [
+        {
+          "seq": 18,
+          "delegation_id": "del_9b10359b5d274e9fad4d13739a7abe94",
+          "evidence_snapshots_admitted": 4,
+          "specialist_proposal_contract": {
+            "proposal_hash": "71b2483434c4d7b3fd73584eec01ca9cf8a1d57baa2da2e9652638027cb7da5f",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "a8353aa33baa44d866ed76134dda6d3f7cc9ce751f068f635803db74abec6244"
+          },
+          "result_semantic_payload": {
+            "summary": "The hypothesis that employee lihua exported the customer database on 2024-05-10 is NOT supported by the recorded evidence and is effectively refuted. The only export recorded in /export/app.log on 2024-05-10 was performed by the account 'svc_export' (EXPORT account=svc_export dataset=customers rows=184112 dest=/backup/customers_20240510.tar.gz at 01:03:22, status=success at 01:03:40, duration 18s). That export was preceded at 2024-05-09 23:55:01 by 'SCHEDULE job=nightly_export account=svc_export triggered', matching the daily 23:55 schedule defined in /scheduler/jobs.conf. /README.txt explicitly describes svc_export as a dedicated non-interactive service account used by scheduled jobs. The only lihua activity in the log is two FAILED login attempts at 01:47:11 and 01:47:59 from 198.51.100.44 (reason=password) — i.e., lihua never authenticated successfully, and those attempts occurred ~43 minutes AFTER the export completed. Attribution: the export was performed by the automated nightly_export job running as the service account svc_export.",
+            "evidence_refs": [
+              "file:/export/app.log",
+              "file:/scheduler/jobs.conf",
+              "file:/README.txt",
+              "cluster:v1:29843235:CREATED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c-1",
+                "text": "On 2024-05-10 the customer-dataset export recorded in /export/app.log was performed by account 'svc_export', not by lihua; the log line at 01:03:22 attributes EXPORT dataset=customers rows=184112 dest=/backup/customers_20240510.tar.gz to account=svc_export and the 01:03:40 status=success line is also attributed to svc_export.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/export/app.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-2",
+                "text": "The export was triggered by the scheduled job 'nightly_export' at 2024-05-09 23:55:01 (SCHEDULE job=nightly_export account=svc_export triggered), which matches the daily 23:55 schedule defined in /scheduler/jobs.conf.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/export/app.log",
+                  "file:/scheduler/jobs.conf"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-3",
+                "text": "svc_export is a dedicated non-interactive service account used by scheduled jobs, per the case README on the seized application server.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-4",
+                "text": "lihua produced no successful authentication and no export action in the recorded evidence; the only lihua entries are two FAILED login attempts at 2024-05-10 01:47:11 and 01:47:59 from 198.51.100.44 (reason=password).",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/export/app.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-5",
+                "text": "The lihua failed-login attempts occurred ~43 minutes after the export completed (export finished 01:03:40; lihua attempts 01:47:11/01:47:59), so lihua could not have been the actor for that export based on the recorded log ordering.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/export/app.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-6",
+                "text": "The analyst's hypothesis that lihua exported the customer database on 2024-05-10 is refuted by the available evidence; the actor was the automated nightly_export job running as svc_export.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/export/app.log",
+                  "file:/scheduler/jobs.conf",
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-7",
+                "text": "The two lihua failed logins from 198.51.100.44 shortly after the export warrant a separate investigation (possible credential guessing / lateral-movement attempt against the account of an employee the analyst suspected), but this is not corroborated by the current evidence.",
+                "assertion_class": "HYPOTHESIS",
+                "evidence_refs": [
+                  "file:/export/app.log"
+                ],
+                "limitations": []
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e-1",
+                "raw_value": "svc_export",
+                "normalized_candidate": "svc_export",
+                "entity_type_candidate": "account"
+              },
+              {
+                "candidate_id": "e-2",
+                "raw_value": "lihua",
+                "normalized_candidate": "lihua",
+                "entity_type_candidate": "account"
+              },
+              {
+                "candidate_id": "e-3",
+                "raw_value": "nightly_export",
+                "normalized_candidate": "nightly_export",
+                "entity_type_candidate": "scheduled_job"
+              },
+              {
+                "candidate_id": "e-4",
+                "raw_value": "198.51.100.44",
+                "normalized_candidate": "198.51.100.44",
+                "entity_type_candidate": "ip_address"
+              },
+              {
+                "candidate_id": "e-5",
+                "raw_value": "/backup/customers_20240510.tar.gz",
+                "normalized_candidate": "/backup/customers_20240510.tar.gz",
+                "entity_type_candidate": "file_path"
+              },
+              {
+                "candidate_id": "e-6",
+                "raw_value": "customers",
+                "normalized_candidate": "customers",
+                "entity_type_candidate": "dataset"
+              }
+            ],
+            "limitations": [
+              "Only three files are available (/export/app.log, /scheduler/jobs.conf, /README.txt); no authentication logs, no Windows event logs, no registry/prefetch/amcache, and no network captures are present, so corroboration beyond the single app.log is impossible.",
+              "The delegated scope 'windows' is not populated in this task (task metadata reports platforms=[] and source_scopes=[]), so Windows-specific verification (e.g., account logon events, execution traces) could not be performed.",
+              "The export destination /backup/customers_20240510.tar.gz is referenced in the log but the artifact itself is not present in the image; its existence, integrity and transfer path are unverified.",
+              "The lihua failed-login source IP 198.51.100.44 cannot be attributed to a host or location without additional evidence.",
+              "All three files share the same mtime/ctime (1790594134), so file-level timestamps do not independently corroborate the 2024-05-10 log timeline; the log's internal timestamps are the sole temporal basis."
+            ],
+            "warnings": [
+              "Hypothesis refuted by available evidence: the export actor is svc_export (scheduled job nightly_export), not lihua.",
+              "The lihua failed logins from 198.51.100.44 shortly after the export are a plausible but uncorroborated lead and should be investigated separately rather than assumed innocent.",
+              "No Windows-derived evidence exists in this task despite the 'windows' source scope being requested."
+            ]
+          }
+        }
+      ],
+      "finalization_event": {
+        "event": "finalization_completed",
+        "violation_codes": [],
+        "completion_mode": "complete_with_limitations"
+      },
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "hard_gate_violations": [],
+      "delegations_completed": 1,
+      "delegations_failed": 0,
+      "integrated": 1,
+      "coverage_terminalization": {
+        "export-attribution": "partial"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "answered",
+          "disposition": "not_supported"
+        },
+        {
+          "question_id": "q-75830fc0",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "terminal=partial",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "satisfied",
+            "detail": "integrated_delegations=1 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "1/1 discovered"
+          },
+          {
+            "component": "coverage:export-attribution",
+            "status": "failed",
+            "detail": "terminal=partial"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "satisfied",
+            "detail": "terminal=1 answered-terminals=1 unresolved-terminals=1; truth expects answered=1 unresolved=0 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "tool_calls": 10,
+      "wall_s": 236.8,
+      "tokens_in": 30957,
+      "tokens_out": 3180,
+      "failure_reason": null
+    },
+    {
+      "case_id": "t2-misleading-note",
+      "repeat": "repeat1",
+      "status": "completed",
+      "rejection_codes": [
+        "PLAN_DUPLICATE_DELEGATION"
+      ],
+      "rejections": [
+        {
+          "seq": 5,
+          "stage": null,
+          "violation_codes": [
+            "PLAN_DUPLICATE_DELEGATION"
+          ],
+          "delegations_admitted_before": 0,
+          "delegations_completed_before": 0,
+          "available_handles_by_kind": {},
+          "offered_action_variants": [],
+          "resolution_violations": [],
+          "raw_model_proposal_v2": null,
+          "raw_action_signatures": []
+        }
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "COVERAGE_NOT_TERMINAL"
+        ],
+        "completion_mode": null
+      },
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "delegations_completed": 0,
+      "delegations_failed": 0,
+      "integrated": 0,
+      "coverage_terminalization": {
+        "export-attribution": "not_started"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "unavailable",
+            "detail": "integrated_delegations=0 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "failed",
+            "detail": "0/1 discovered; missing=['file:/export/app.log']"
+          },
+          {
+            "component": "coverage:export-attribution",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "unavailable",
+            "detail": "terminal=0 answered-terminals=0 unresolved-terminals=0; truth expects answered=1 unresolved=0 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "tool_calls": 0,
+      "wall_s": 9.5,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "failure_reason": null
+    },
+    {
+      "case_id": "t2-misleading-note",
+      "repeat": "repeat2",
+      "status": "completed",
+      "rejection_codes": [
+        "PLAN_DUPLICATE_DELEGATION"
+      ],
+      "rejections": [
+        {
+          "seq": 5,
+          "stage": null,
+          "violation_codes": [
+            "PLAN_DUPLICATE_DELEGATION"
+          ],
+          "delegations_admitted_before": 0,
+          "delegations_completed_before": 0,
+          "available_handles_by_kind": {},
+          "offered_action_variants": [],
+          "resolution_violations": [],
+          "raw_model_proposal_v2": null,
+          "raw_action_signatures": []
+        }
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "COVERAGE_NOT_TERMINAL"
+        ],
+        "completion_mode": null
+      },
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "delegations_completed": 0,
+      "delegations_failed": 0,
+      "integrated": 0,
+      "coverage_terminalization": {
+        "export-attribution": "not_started"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "unavailable",
+            "detail": "integrated_delegations=0 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "failed",
+            "detail": "0/1 discovered; missing=['file:/export/app.log']"
+          },
+          {
+            "component": "coverage:export-attribution",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "unavailable",
+            "detail": "terminal=0 answered-terminals=0 unresolved-terminals=0; truth expects answered=1 unresolved=0 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "tool_calls": 0,
+      "wall_s": 8.2,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "failure_reason": null
+    },
+    {
+      "case_id": "t2-no-evidence",
+      "repeat": "repeat0",
+      "status": "completed",
+      "rejection_codes": [
+        "PLAN_DUPLICATE_DELEGATION"
+      ],
+      "rejections": [
+        {
+          "seq": 5,
+          "stage": null,
+          "violation_codes": [
+            "PLAN_DUPLICATE_DELEGATION"
+          ],
+          "delegations_admitted_before": 0,
+          "delegations_completed_before": 0,
+          "available_handles_by_kind": {},
+          "offered_action_variants": [],
+          "resolution_violations": [],
+          "raw_model_proposal_v2": null,
+          "raw_action_signatures": []
+        }
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "COVERAGE_NOT_TERMINAL"
+        ],
+        "completion_mode": null
+      },
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "delegations_completed": 0,
+      "delegations_failed": 0,
+      "integrated": 0,
+      "coverage_terminalization": {
+        "volume-content-assessment": "not_started"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "unavailable",
+            "detail": "integrated_delegations=0 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "not_applicable",
+            "detail": "case declares zero critical evidence (§5)"
+          },
+          {
+            "component": "coverage:volume-content-assessment",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "unavailable",
+            "detail": "terminal=0 answered-terminals=0 unresolved-terminals=0; truth expects answered=0 unresolved=1 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "tool_calls": 0,
+      "wall_s": 13.9,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "failure_reason": null
+    },
+    {
+      "case_id": "t2-no-evidence",
+      "repeat": "repeat1",
+      "status": "completed",
+      "rejection_codes": [
+        "PLAN_DUPLICATE_DELEGATION"
+      ],
+      "rejections": [
+        {
+          "seq": 5,
+          "stage": null,
+          "violation_codes": [
+            "PLAN_DUPLICATE_DELEGATION"
+          ],
+          "delegations_admitted_before": 0,
+          "delegations_completed_before": 0,
+          "available_handles_by_kind": {},
+          "offered_action_variants": [],
+          "resolution_violations": [],
+          "raw_model_proposal_v2": null,
+          "raw_action_signatures": []
+        }
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "COVERAGE_NOT_TERMINAL"
+        ],
+        "completion_mode": null
+      },
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "delegations_completed": 0,
+      "delegations_failed": 0,
+      "integrated": 0,
+      "coverage_terminalization": {
+        "volume-content-assessment": "not_started"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "unavailable",
+            "detail": "integrated_delegations=0 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "not_applicable",
+            "detail": "case declares zero critical evidence (§5)"
+          },
+          {
+            "component": "coverage:volume-content-assessment",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "unavailable",
+            "detail": "terminal=0 answered-terminals=0 unresolved-terminals=0; truth expects answered=0 unresolved=1 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "tool_calls": 0,
+      "wall_s": 17.8,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "failure_reason": null
+    },
+    {
+      "case_id": "t2-no-evidence",
+      "repeat": "repeat2",
+      "status": "completed",
+      "rejection_codes": [
+        "PLAN_DUPLICATE_DELEGATION"
+      ],
+      "rejections": [
+        {
+          "seq": 5,
+          "stage": null,
+          "violation_codes": [
+            "PLAN_DUPLICATE_DELEGATION"
+          ],
+          "delegations_admitted_before": 0,
+          "delegations_completed_before": 0,
+          "available_handles_by_kind": {},
+          "offered_action_variants": [],
+          "resolution_violations": [],
+          "raw_model_proposal_v2": null,
+          "raw_action_signatures": []
+        }
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "COVERAGE_NOT_TERMINAL"
+        ],
+        "completion_mode": null
+      },
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "delegations_completed": 0,
+      "delegations_failed": 0,
+      "integrated": 0,
+      "coverage_terminalization": {
+        "volume-content-assessment": "not_started"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "unavailable",
+            "detail": "integrated_delegations=0 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "not_applicable",
+            "detail": "case declares zero critical evidence (§5)"
+          },
+          {
+            "component": "coverage:volume-content-assessment",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "unavailable",
+            "detail": "terminal=0 answered-terminals=0 unresolved-terminals=0; truth expects answered=0 unresolved=1 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "tool_calls": 0,
+      "wall_s": 32.6,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "failure_reason": null
+    },
+    {
+      "case_id": "t2-report-citation",
+      "repeat": "repeat0",
+      "status": "completed",
+      "rejection_codes": [],
+      "rejections": [],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [
+        {
+          "seq": 18,
+          "delegation_id": "del_e05a1a2bbe734a819dc8ac3fc76ac493",
+          "evidence_snapshots_admitted": 5,
+          "specialist_proposal_contract": {
+            "proposal_hash": "685e27b8d290c4e1c3917eff470f4662ddbfb0117d08d892e60e41c1fb157e6c",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "a65178d691eb0cfe8fb6a07891c3b69d68f842752aa006a948d2220a9bb68f15"
+          },
+          "result_semantic_payload": {
+            "summary": "The device (a seized workstation) holds a small but coherent evidentiary footprint of a payment-collection operation, concentrated in two directories: /data/收款记录.txt (a three-row cash-in ledger) and /platform/说明.txt (platform operator notes). Together they show a recurring USDT-based collection ledger naming three payers (陈某, 周某, 吴某), two recipient instruments (one bank card number and one wallet address that is reused across two entries), and an internal platform named \"聚宝盆\" with an admin URL and a per-agent daily new-user recruitment quota of 20 — the last being the operational-mechanism indicator that most plausibly explains why funds are being collected. /personal/体检报告.txt is a medical check-up report belonging to 陈某 (one of the three payers) that is expressly unrelated to any fund activity and must be kept out of the evidentiary chain, as the on-device README.txt itself directs. Two important scope caveats: the task metadata declares no platform scenario and no registered source scopes, so no Windows-native sources (prefetch, Amcache, registry, Event Logs, browser/app telemetry, file-system metadata beyond creation timestamps) were available — the four plain-text dumps are the entire captured corpus. All four files share a single synthetic creation timestamp (epoch 1790594136) and carry empty MD5 fields, so no independent integrity or sequencing corroboration exists. The payment ledger and the platform notes are therefore content-evidence only; they are not corroborated by any execution trace, and the README.txt is a meta/annotation file describing the collection layout rather than a transaction record.",
+            "evidence_refs": [
+              "file:/README.txt",
+              "file:/data/收款记录.txt",
+              "file:/personal/体检报告.txt",
+              "file:/platform/说明.txt",
+              "cluster:v1:29843235:CREATED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c1",
+                "text": "The device holds a payment-collection ledger at /data/收款记录.txt recording three USDT cash-ins: 2023-11-02 陈某 USDT 30000 to bank card 6222020212345678901; 2023-11-04 周某 USDT 17500 to wallet 0xDEAD1111; 2023-11-09 吴某 USDT 52000 to wallet 0xDEAD1111 (aggregate 99,500 USDT).",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/data/收款记录.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c2",
+                "text": "Wallet address 0xDEAD1111 is the collection instrument for two of the three entries (周某 and 吴某), and the bank card 6222020212345678901 is the instrument for the 陈某 entry, indicating a single operator-controlled collection channel.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/data/收款记录.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c3",
+                "text": "The device holds platform operator notes at /platform/说明.txt naming an internal platform '聚宝盆', an admin address http://jbpenl-admin.example, and a per-customer-service-group daily new-user recruitment quota of 20 people.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/platform/说明.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c4",
+                "text": "The daily-20 new-user recruitment quota, read together with the USDT cash-in ledger, indicates a recruitment-driven collection operation: users are acquired on a quota basis and then pay into the operator's collection instruments.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/platform/说明.txt",
+                  "file:/data/收款记录.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c5",
+                "text": "/personal/体检报告.txt (a 2023-10-20 medical check-up report for 陈某 stating blood pressure normal, elevated blood lipids, re-check advised, and explicitly 'unrelated to any fund activity') must be excluded from the evidentiary chain supporting the payment-collection operation.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/personal/体检报告.txt",
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c6",
+                "text": "The on-device README.txt itself instructs that the personal directory holds the owner's private documents with no evidential relation to the payment operation and that they must not be cited as evidence of it.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c7",
+                "text": "Payer 陈某 appears in both the payment ledger and the excluded medical report; the name overlap is a data linkage only and does not make the medical report evidentiary.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/data/收款记录.txt",
+                  "file:/personal/体检报告.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c8",
+                "text": "No execution or user-activity corroboration exists for these documents: the only timeline events are four FILE_CREATED records at a single identical timestamp, with no prefetch, Amcache, registry, event-log, or browser telemetry available in this scope.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "cluster:v1:29843235:CREATED"
+                ],
+                "limitations": []
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e1",
+                "raw_value": "6222020212345678901",
+                "normalized_candidate": "6222020212345678901",
+                "entity_type_candidate": "bank_card_number"
+              },
+              {
+                "candidate_id": "e2",
+                "raw_value": "0xDEAD1111",
+                "normalized_candidate": "0xDEAD1111",
+                "entity_type_candidate": "crypto_wallet_address"
+              },
+              {
+                "candidate_id": "e3",
+                "raw_value": "陈某",
+                "normalized_candidate": "陈某",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e4",
+                "raw_value": "周某",
+                "normalized_candidate": "周某",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e5",
+                "raw_value": "吴某",
+                "normalized_candidate": "吴某",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e6",
+                "raw_value": "聚宝盆",
+                "normalized_candidate": "聚宝盆",
+                "entity_type_candidate": "platform_name"
+              },
+              {
+                "candidate_id": "e7",
+                "raw_value": "http://jbpenl-admin.example",
+                "normalized_candidate": "http://jbpenl-admin.example",
+                "entity_type_candidate": "url"
+              },
+              {
+                "candidate_id": "e8",
+                "raw_value": "USDT",
+                "normalized_candidate": "USDT",
+                "entity_type_candidate": "currency"
+              }
+            ],
+            "limitations": [
+              "Task metadata exposes no platform scenario and no registered source scopes, so no Windows-native sources (prefetch, Amcache, registry, Event Logs, browser/app telemetry) were available; the four plain-text dumps are the entire captured corpus.",
+              "All four files share a single identical creation timestamp (epoch 1790594136) and empty MD5 fields, so no independent integrity, authorship, or sequencing corroboration exists.",
+              "Payment ledger amounts are self-reported text entries with no on-chain or banking confirmation; the payer names are unverified aliases (陈某/周某/吴某).",
+              "The link between the platform '聚宝盆' and the recorded USDT cash-ins is an inference from co-location and content, not a demonstrated transactional connection.",
+              "The exclusion ruling for /personal/体检报告.txt rests on the document's own content plus the on-device README.txt instruction; it is a scope/relevance determination, not a legal privilege ruling.",
+              "/README.txt is treated as a meta-annotation file, not as an independent transaction record."
+            ],
+            "warnings": [
+              "The evidence corpus is very small (4 files, 670 bytes total) and appears to be a synthetic/sample dataset; findings should not be generalized beyond these documents.",
+              "Delegated scope 'windows' does not match the actual corpus of plain-text file dumps; a true Windows acquisition may exist but was not registered in this task."
+            ]
+          }
+        }
+      ],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "REQUIRED_QUESTION_OPEN"
+        ],
+        "completion_mode": null
+      },
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "delegations_completed": 1,
+      "delegations_failed": 0,
+      "integrated": 1,
+      "coverage_terminalization": {
+        "citation-discipline": "covered"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "answered",
+          "disposition": "supported"
+        },
+        {
+          "question_id": "q-e67554ae",
+          "status": "open",
+          "disposition": null
+        },
+        {
+          "question_id": "q-677285be",
+          "status": "open",
+          "disposition": null
+        },
+        {
+          "question_id": "q-a4e5e846",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "success",
+        "rationale": "all components satisfied",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "satisfied",
+            "detail": "integrated_delegations=1 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "1/1 discovered"
+          },
+          {
+            "component": "coverage:citation-discipline",
+            "status": "satisfied",
+            "detail": "terminal=covered"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "satisfied",
+            "detail": "terminal=1 answered-terminals=1 unresolved-terminals=0; truth expects answered=1 unresolved=0 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "tool_calls": 10,
+      "wall_s": 114.3,
+      "tokens_in": 33508,
+      "tokens_out": 3968,
+      "failure_reason": null
+    },
+    {
+      "case_id": "t2-report-citation",
+      "repeat": "repeat1",
+      "status": "completed",
+      "rejection_codes": [
+        "PLAN_DUPLICATE_DELEGATION"
+      ],
+      "rejections": [
+        {
+          "seq": 5,
+          "stage": null,
+          "violation_codes": [
+            "PLAN_DUPLICATE_DELEGATION"
+          ],
+          "delegations_admitted_before": 0,
+          "delegations_completed_before": 0,
+          "available_handles_by_kind": {},
+          "offered_action_variants": [],
+          "resolution_violations": [],
+          "raw_model_proposal_v2": null,
+          "raw_action_signatures": []
+        }
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "COVERAGE_NOT_TERMINAL"
+        ],
+        "completion_mode": null
+      },
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "delegations_completed": 0,
+      "delegations_failed": 0,
+      "integrated": 0,
+      "coverage_terminalization": {
+        "citation-discipline": "not_started"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "unavailable",
+            "detail": "integrated_delegations=0 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "failed",
+            "detail": "0/1 discovered; missing=['file:/data/收款记录.txt']"
+          },
+          {
+            "component": "coverage:citation-discipline",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "unavailable",
+            "detail": "terminal=0 answered-terminals=0 unresolved-terminals=0; truth expects answered=1 unresolved=0 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "tool_calls": 0,
+      "wall_s": 6.8,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "failure_reason": null
+    },
+    {
+      "case_id": "t2-report-citation",
+      "repeat": "repeat2",
+      "status": "completed",
+      "rejection_codes": [],
+      "rejections": [],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [
+        {
+          "seq": 19,
+          "delegation_id": "del_1ac29b420eb3486983358db84bbc4741",
+          "evidence_snapshots_admitted": 5,
+          "specialist_proposal_contract": {
+            "proposal_hash": "96180558d7f570cee95a012ae357df4a2bc39728e327403d9fa481a47bcb05a7",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "324cf87066194d0ca9f9a0296c29433ff2aace2e987c335210e2ba99adf1e7e2"
+          },
+          "result_semantic_payload": {
+            "summary": "The device holds a small but coherent evidentiary footprint of a crypto-denominated payment-collection operation. Two in-scope items carry the substance: (1) /data/收款记录.txt, a three-row collection ledger recording dated USDT receipts from three distinct payers (陈某 30,000 USDT to bank card 6222020212345678901 on 2023-11-02; 周某 17,500 USDT and 吴某 52,000 USDT both to wallet 0xDEAD1111 on 2023-11-04 and 2023-11-09 — total 99,500 USDT), which evidences both the collection activity and the off-ramp channels (one fiat bank card, one reused crypto wallet); and (2) /platform/说明.txt, internal platform notes naming the platform '聚宝盆', its admin console at http://jbpenl-admin.example, and a per-customer-service-group daily new-user recruitment quota of 20 — this ties the ledger to an organized platform operation with recruitment pressure rather than isolated transactions. The README.txt at the root is a scope note, not substantive proof, but it independently corroborates the intended evidentiary partition. The one document that must stay out of the evidentiary chain is /personal/体检报告.txt, a 2023-10-20 medical checkup report for 陈某: it is the owner's private health record, it explicitly states it is unrelated to any financial activity, and citing it as evidence of the payment operation would be improper (and the shared surname 陈某 with the first ledger payer is a coincidence, not a linkage). Scope caveat: this is a file-level extraction of 4 text files, not a Windows forensic image — there are no registry, prefetch, amcache, event-log or account-logon artifacts, so no execution or account-usage corroboration is available, and all four files share a single synthetic mtime/ctime.",
+            "evidence_refs": [
+              "file:/data/收款记录.txt",
+              "file:/platform/说明.txt",
+              "file:/personal/体检报告.txt",
+              "file:/README.txt",
+              "cluster:v1:29843235:CREATED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c-1",
+                "text": "/data/收款记录.txt is a payment-collection ledger recording three dated USDT receipts totalling 99,500 USDT from three named payers (陈某 30,000 on 2023-11-02; 周某 17,500 on 2023-11-04; 吴某 52,000 on 2023-11-09), and it is the primary in-scope evidence of the payment-collection operation.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/data/收款记录.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-2",
+                "text": "The ledger names two off-ramp channels: one fiat bank card (6222020212345678901) for the 陈某 payment and one crypto wallet (0xDEAD1111) reused for both the 周某 and 吴某 payments.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/data/收款记录.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-3",
+                "text": "/platform/说明.txt identifies an internal platform '聚宝盆', an admin console URL (http://jbpenl-admin.example) and a per-customer-service-group daily new-user recruitment quota of 20, situating the ledger within an organized recruitment-driven platform operation.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/platform/说明.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-4",
+                "text": "The combination of a USDT collection ledger with a platform recruitment quota is consistent with an organized payment-collection operation rather than isolated one-off transfers, but the available artifacts do not establish the platform's business purpose or legality.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/data/收款记录.txt",
+                  "file:/platform/说明.txt"
+                ],
+                "limitations": [
+                  "No chat, transaction-confirming or platform-side artifacts are present; the linkage between the ledger and the platform is by co-location and consistency only, not by a shared identifier."
+                ]
+              },
+              {
+                "candidate_id": "c-5",
+                "text": "/personal/体检报告.txt (a 2023-10-20 medical checkup report for 陈某) must be excluded from the evidentiary chain: it is private health information, it states it is unrelated to any financial activity, and the shared surname 陈某 with the first ledger payer is not a linkage.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/personal/体检报告.txt",
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-6",
+                "text": "README.txt at the root is an in-scope scope note that partitions the collection: /data holds payment records, /platform holds platform operation notes, and /personal holds private documents with no evidential relation to the payment operation that must not be cited as evidence of it.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e-1",
+                "raw_value": "收款记录.txt",
+                "normalized_candidate": "/data/收款记录.txt",
+                "entity_type_candidate": "evidence_file"
+              },
+              {
+                "candidate_id": "e-2",
+                "raw_value": "说明.txt",
+                "normalized_candidate": "/platform/说明.txt",
+                "entity_type_candidate": "evidence_file"
+              },
+              {
+                "candidate_id": "e-3",
+                "raw_value": "体检报告.txt",
+                "normalized_candidate": "/personal/体检报告.txt",
+                "entity_type_candidate": "excluded_private_document"
+              },
+              {
+                "candidate_id": "e-4",
+                "raw_value": "聚宝盆",
+                "normalized_candidate": "聚宝盆",
+                "entity_type_candidate": "platform_name"
+              },
+              {
+                "candidate_id": "e-5",
+                "raw_value": "http://jbpenl-admin.example",
+                "normalized_candidate": "http://jbpenl-admin.example",
+                "entity_type_candidate": "url"
+              },
+              {
+                "candidate_id": "e-6",
+                "raw_value": "陈某",
+                "normalized_candidate": "陈某",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e-7",
+                "raw_value": "周某",
+                "normalized_candidate": "周某",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e-8",
+                "raw_value": "吴某",
+                "normalized_candidate": "吴某",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e-9",
+                "raw_value": "6222020212345678901",
+                "normalized_candidate": "6222020212345678901",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-10",
+                "raw_value": "0xDEAD1111",
+                "normalized_candidate": "0xDEAD1111",
+                "entity_type_candidate": "crypto_wallet"
+              },
+              {
+                "candidate_id": "e-11",
+                "raw_value": "30000 USDT",
+                "normalized_candidate": "30000 USDT",
+                "entity_type_candidate": "monetary_amount"
+              },
+              {
+                "candidate_id": "e-12",
+                "raw_value": "17500 USDT",
+                "normalized_candidate": "17500 USDT",
+                "entity_type_candidate": "monetary_amount"
+              },
+              {
+                "candidate_id": "e-13",
+                "raw_value": "52000 USDT",
+                "normalized_candidate": "52000 USDT",
+                "entity_type_candidate": "monetary_amount"
+              }
+            ],
+            "limitations": [
+              "Task metadata reports no platform scenario and no registered source scopes, so the requested 'windows' scope resolved to a 4-file text extraction rather than a Windows forensic image.",
+              "No registry, prefetch, amcache, browser, account or event-log artifacts are present; therefore no execution, account-usage or authorship corroboration is possible, and the L2 execution-corroboration rule could not be applied.",
+              "All four files share identical mtime/ctime (1790594136), so file timestamps carry no investigative value.",
+              "No md5 values are recorded for any file, so integrity verification of the cited files cannot be established from this evidence set.",
+              "The linkage between the collection ledger and the platform notes rests on co-location and internal consistency only; no shared identifier connects them.",
+              "The platform name, admin URL, payer names and wallet/card identifiers are taken verbatim from unverified text files and have not been independently confirmed."
+            ],
+            "warnings": [
+              "The medical checkup report contains private health information about a named individual and must not be cited as evidence of the payment operation; it should be retained under lawful basis only and kept segregated from the evidentiary chain.",
+              "Do not treat the shared surname 陈某 between the first ledger payer and the medical report subject as a link between the two documents."
+            ]
+          }
+        }
+      ],
+      "finalization_event": {
+        "event": "finalization_completed",
+        "violation_codes": [],
+        "completion_mode": "complete_with_limitations"
+      },
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "hard_gate_violations": [],
+      "delegations_completed": 1,
+      "delegations_failed": 0,
+      "integrated": 1,
+      "coverage_terminalization": {
+        "citation-discipline": "partial"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "answered",
+          "disposition": "supported"
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "terminal=partial",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "satisfied",
+            "detail": "integrated_delegations=1 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "1/1 discovered"
+          },
+          {
+            "component": "coverage:citation-discipline",
+            "status": "failed",
+            "detail": "terminal=partial"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "satisfied",
+            "detail": "terminal=1 answered-terminals=1 unresolved-terminals=0; truth expects answered=1 unresolved=0 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "tool_calls": 11,
+      "wall_s": 111.6,
+      "tokens_in": 32856,
+      "tokens_out": 3770,
+      "failure_reason": null
+    },
+    {
+      "case_id": "t2-temporal-trap",
+      "repeat": "repeat0",
+      "status": "completed",
+      "rejection_codes": [
+        "PLAN_DUPLICATE_DELEGATION"
+      ],
+      "rejections": [
+        {
+          "seq": 5,
+          "stage": null,
+          "violation_codes": [
+            "PLAN_DUPLICATE_DELEGATION"
+          ],
+          "delegations_admitted_before": 0,
+          "delegations_completed_before": 0,
+          "available_handles_by_kind": {},
+          "offered_action_variants": [],
+          "resolution_violations": [],
+          "raw_model_proposal_v2": null,
+          "raw_action_signatures": []
+        }
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "COVERAGE_NOT_TERMINAL",
+          "COVERAGE_NOT_TERMINAL"
+        ],
+        "completion_mode": null
+      },
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "delegations_completed": 0,
+      "delegations_failed": 0,
+      "integrated": 0,
+      "coverage_terminalization": {
+        "owner-activity": "not_started",
+        "recovered-log-assessment": "not_started"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "unavailable",
+            "detail": "integrated_delegations=0 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "failed",
+            "detail": "0/2 discovered; missing=['file:/chat/wangfang.log', 'file:/chat/zhangming.log']"
+          },
+          {
+            "component": "coverage:owner-activity",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "coverage:recovered-log-assessment",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "unavailable",
+            "detail": "terminal=0 answered-terminals=0 unresolved-terminals=0; truth expects answered=1 unresolved=1 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "tool_calls": 0,
+      "wall_s": 30.2,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "failure_reason": null
+    },
+    {
+      "case_id": "t2-temporal-trap",
+      "repeat": "repeat1",
+      "status": "completed",
+      "rejection_codes": [],
+      "rejections": [],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [
+        {
+          "seq": 19,
+          "delegation_id": "del_1a1cbad4e4d74216a7aeaef334a90e08",
+          "evidence_snapshots_admitted": 4,
+          "specialist_proposal_contract": {
+            "proposal_hash": "2b77902fff94493c6646d510af5b92b5ce0ad161cfc5482bdd02c4c5d223f9b5",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "4f8590e82225f17cb49936a91e378758ac8238b913b92bbe6c54b2090f4a0fec"
+          },
+          "result_semantic_payload": {
+            "summary": "The 'windows' scope contains no Windows-derived artifacts at all: the task metadata registers no platform scenario and no source scopes (get_task_context), and the only files present are three text files — README.txt, /chat/wangfang.log, /chat/zhangming.log. The entire timeline is a single instant (epoch 1790556717) with three FILE_CREATED events in one cluster, so it is an acquisition/extraction artifact, not a record of user activity.\n\nAttributable user activity is limited to the contents of wangfang.log, which the README identifies as the seized device owner ('Seized device of wangfang'). It holds three self-directed messages: considering selling a car for cash (21:02), dinner with '老张' at month-end (21:05), and 'got home, talk tomorrow' (21:31). The zhangming.log is explicitly NOT an account on this device; the README states it was pulled from the same storage volume (previous owner or shared partition). Its three messages concern 88,000 USDT in three deposits, 5 new registrations, and maintaining a group tomorrow — financially themed content with no wangfang reference.\n\nOn the interaction/causation/shared-intent question: the evidence supports none of the three. The only apparent link is timestamp adjacency inside a 19-minute window (wangfang 21:02/21:05/21:31 vs zhangming 21:29/21:30/21:47). That adjacency is not corroborated by anything: no shared identifiers, no reply pattern, no common recipient, and no filesystem evidence distinguishing authorship. wangfang's '老张' is a Chinese honorific, not a match for 'zhangming', and the two logs never address each other. The 1-minute gap (zhangming 21:30 -> wangfang 21:31) is coincidental ordering, not a causal chain. The README explicitly warns that timeline proximity alone must not be treated as interaction or causation. No statement of shared intent is supported; the most that can be said is that two unrelated logs coexist on one storage volume.\n\nNote also that the delegation's 'windows' framing does not match the recovered data: no registry, event-log, prefetch, or amcache evidence exists, so the L2 execution-corroboration rule cannot be applied, and no Windows execution or account-usage claims are made.",
+            "evidence_refs": [
+              "file:/README.txt",
+              "file:/chat/wangfang.log",
+              "file:/chat/zhangming.log",
+              "cluster:v1:29842611:CREATED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c1",
+                "text": "The 'windows' source scope yields no Windows-derived artifacts: get_task_context reports platforms=[] and source_scopes=[], and the only files in the task are README.txt, /chat/wangfang.log and /chat/zhangming.log.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/README.txt",
+                  "file:/chat/wangfang.log",
+                  "file:/chat/zhangming.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c2",
+                "text": "The device owner is wangfang and wangfang.log is the only log attributable to this device's user; it contains three messages: considering selling a car for cash (21:02), dinner with '老张' at month-end (21:05), and 'got home, talk tomorrow' (21:31).",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/README.txt",
+                  "file:/chat/wangfang.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c3",
+                "text": "zhangming.log is not an account on this device; the README states the export tool included a log recovered from the same storage volume (previous owner or shared partition). Its content is financial: 88,000 USDT across three deposits, five new registrations, and maintaining a group the next day.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/README.txt",
+                  "file:/chat/zhangming.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c4",
+                "text": "The entire timeline consists of three FILE_CREATED events at a single timestamp (epoch 1790556717) forming one cluster, which is consistent with extraction/acquisition time rather than genuine user activity times.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "cluster:v1:29842611:CREATED"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c5",
+                "text": "The timeline does not support interaction, causation, or shared intent between wangfang and zhangming. The sole observed link is timestamp adjacency within a 19-minute window (21:02-21:47), and there is no corroborating identifier, reply pattern, common recipient, or filesystem authorship evidence; wangfang's '老张' is an honorific, not a match for 'zhangming'.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/chat/wangfang.log",
+                  "file:/chat/zhangming.log",
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c6",
+                "text": "The two logs coexist on one storage volume only because of shared partitioning or a prior owner; no evidence in this task establishes any relationship between wangfang and the person named zhangming.",
+                "assertion_class": "HYPOTHESIS",
+                "evidence_refs": [
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e1",
+                "raw_value": "wangfang",
+                "normalized_candidate": "wangfang",
+                "entity_type_candidate": "account/user"
+              },
+              {
+                "candidate_id": "e2",
+                "raw_value": "zhangming",
+                "normalized_candidate": "zhangming",
+                "entity_type_candidate": "external_account (not on this device)"
+              },
+              {
+                "candidate_id": "e3",
+                "raw_value": "老张",
+                "normalized_candidate": "Lao Zhang (Chinese honorific, identity unresolved)",
+                "entity_type_candidate": "person_reference"
+              },
+              {
+                "candidate_id": "e4",
+                "raw_value": "88000 USDT",
+                "normalized_candidate": "88000 USDT across 3 deposits",
+                "entity_type_candidate": "financial_amount"
+              },
+              {
+                "candidate_id": "e5",
+                "raw_value": "2024-04-10 21:02 - 21:47",
+                "normalized_candidate": "2024-04-10 21:02:00 - 21:47:00",
+                "entity_type_candidate": "time_window"
+              }
+            ],
+            "limitations": [
+              "Task metadata exposes no platform scenario and no source scopes; the 'windows' delegation scope is unsupported by the actual recovered data.",
+              "No Windows artifacts (registry, event logs, prefetch, amcache, shell history) are present, so execution and account-usage claims cannot be corroborated per the L2 profile rules.",
+              "All three files carry identical mtime/ctime (epoch 1790556717), so filesystem timestamps cannot establish when either user actually authored their messages.",
+              "No md5 hashes are recorded for any file, so integrity of the recovered logs is unverified.",
+              "zhangming.log authorship is unresolved: the README asserts it is not an account on this device but does not identify the actual owner.",
+              "'老张' is an honorific and cannot be resolved to 'zhangming' from this evidence alone."
+            ],
+            "warnings": [
+              "The evidence explicitly warns that timeline proximity alone must not be treated as interaction or causation; the 21:29-21:47 adjacency with wangfang's 21:31 message is coincidental ordering, not a causal chain.",
+              "Attributing zhangming.log's financial content (88,000 USDT, new registrations, group maintenance) to the device user wangfang would be unsupported and is not claimed here."
+            ]
+          }
+        }
+      ],
+      "finalization_event": {
+        "event": "finalization_completed",
+        "violation_codes": [],
+        "completion_mode": "complete_with_limitations"
+      },
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "hard_gate_violations": [],
+      "delegations_completed": 1,
+      "delegations_failed": 0,
+      "integrated": 1,
+      "coverage_terminalization": {
+        "owner-activity": "covered",
+        "recovered-log-assessment": "covered"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "answered",
+          "disposition": "supported"
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "truth expects an unresolved disposition; none recorded",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "satisfied",
+            "detail": "integrated_delegations=1 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "2/2 discovered"
+          },
+          {
+            "component": "coverage:owner-activity",
+            "status": "satisfied",
+            "detail": "terminal=covered"
+          },
+          {
+            "component": "coverage:recovered-log-assessment",
+            "status": "satisfied",
+            "detail": "terminal=covered"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "satisfied",
+            "detail": "terminal=1 answered-terminals=1 unresolved-terminals=0; truth expects answered=1 unresolved=1 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "tool_calls": 11,
+      "wall_s": 132.6,
+      "tokens_in": 33198,
+      "tokens_out": 3438,
+      "failure_reason": null
+    },
+    {
+      "case_id": "t2-temporal-trap",
+      "repeat": "repeat2",
+      "status": "completed",
+      "rejection_codes": [
+        "PLAN_DUPLICATE_DELEGATION"
+      ],
+      "rejections": [
+        {
+          "seq": 5,
+          "stage": null,
+          "violation_codes": [
+            "PLAN_DUPLICATE_DELEGATION"
+          ],
+          "delegations_admitted_before": 0,
+          "delegations_completed_before": 0,
+          "available_handles_by_kind": {},
+          "offered_action_variants": [],
+          "resolution_violations": [],
+          "raw_model_proposal_v2": null,
+          "raw_action_signatures": []
+        }
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "COVERAGE_NOT_TERMINAL",
+          "COVERAGE_NOT_TERMINAL"
+        ],
+        "completion_mode": null
+      },
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "delegations_completed": 0,
+      "delegations_failed": 0,
+      "integrated": 0,
+      "coverage_terminalization": {
+        "owner-activity": "not_started",
+        "recovered-log-assessment": "not_started"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "unavailable",
+            "detail": "integrated_delegations=0 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "failed",
+            "detail": "0/2 discovered; missing=['file:/chat/wangfang.log', 'file:/chat/zhangming.log']"
+          },
+          {
+            "component": "coverage:owner-activity",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "coverage:recovered-log-assessment",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "unavailable",
+            "detail": "terminal=0 answered-terminals=0 unresolved-terminals=0; truth expects answered=1 unresolved=1 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "tool_calls": 0,
+      "wall_s": 7.5,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "failure_reason": null
+    },
+    {
+      "case_id": "t2-verification-temptation",
+      "repeat": "repeat0",
+      "status": "completed",
+      "rejection_codes": [],
+      "rejections": [],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [
+        {
+          "seq": 19,
+          "delegation_id": "del_af308c6ba8a04892ad639691e78d1605",
+          "evidence_snapshots_admitted": 4,
+          "specialist_proposal_contract": {
+            "proposal_hash": "288362fb9f7dd7eb6515e2882c57c0ec649679176e983008edb0abf9446dad1a",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "bfd2e32799aa92d1b0fada70f1e2c6ac04cab76f8447dd751580cb71d2f1a577"
+          },
+          "result_semantic_payload": {
+            "summary": "The device owner's own chat account (/chat/account_main.log) contains two self-descriptive boasts on 2024-07-03 claiming the owner is the \"总操盘\" (chief operator) of the operation, that all money passes through them (\"钱都过我手\"), and that while others in the group only recruit, they settle the accounts (\"账我来平\"); a third entry on 2024-07-05 says they paused for a few days due to risk control. What can be stated as FACT is only that the owner made these statements in their own chat account. The owner's ACTUAL role can be stated at no stronger than HYPOTHESIS: the case README explicitly notes that a self-descriptive boast in a chat is proof only that the statement was made, not independent proof of the role, and that no corroborating identity or operational data links the owner to the ledger flows. The ledger (/ledger/flows.txt) shows three USDT movements (2024-07-01 in 40000 to wallet-A; 07-02 out 39000 to wallet-B; 07-05 out 950 to wallet-C) but carries no attribution to any account or person, and the 07-05 950 USDT outflow coincides temporally with the owner's stated pause but is not attributable to them. The single-source, self-interested, unauthenticated chat content therefore supports at most a hypothesis about the owner's operational role; the strongest defensible assertion is an INFERENCE that the owner self-identified as chief operator, and a HYPOTHESIS that they actually operated the ledger.",
+            "evidence_refs": [
+              "file:/chat/account_main.log",
+              "file:/README.txt",
+              "file:/ledger/flows.txt",
+              "cluster:v1:29843235:CREATED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c-1",
+                "text": "The device owner's own chat account contains two explicit self-descriptive boasts dated 2024-07-03 22:14 and 22:16 in which the owner claims to be the '总操盘' (chief operator) of the operation, states that all money passes through them ('钱都过我手'), and states that while group members only recruit, they settle the accounts ('账我来平').",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/chat/account_main.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-2",
+                "text": "A third chat entry dated 2024-07-05 09:02 from the same account states that risk control is tight and the owner is pausing for a few days ('最近风控严，先停几天').",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/chat/account_main.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-3",
+                "text": "The case README frames the chat log as the device owner's own account and explicitly states that a self-descriptive boast in a chat is proof only that the statement was made, not independent proof of the role, and that no corroborating identity or operational data links the owner to the ledger flows.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-4",
+                "text": "The ledger file records three USDT movements with no account or person attribution: 2024-07-01 in 40000 USDT to wallet-A, 2024-07-02 out 39000 USDT to wallet-B, and 2024-07-05 out 950 USDT to wallet-C.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/ledger/flows.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-5",
+                "text": "The owner's ACTUAL role in the operation can be stated at no stronger than HYPOTHESIS: the only evidence of the role is the owner's own unauthenticated, self-interested chat statements, and there is no corroborating identity binding (no account-to-person authentication, no device attribution, no external confirmation) and no operational data linking the owner to the three ledger flows.",
+                "assertion_class": "HYPOTHESIS",
+                "evidence_refs": [
+                  "file:/chat/account_main.log",
+                  "file:/README.txt",
+                  "file:/ledger/flows.txt"
+                ],
+                "limitations": [
+                  "Single-source self-interested statement; unauthenticated chat content",
+                  "No account-to-person identity binding in the captured evidence",
+                  "Ledger flows carry no attribution; the 2024-07-05 outflow is only temporally coincident with the stated pause, not attributable",
+                  "No prefetch, amcache, registry, or event-log coverage exists in this task to corroborate execution or account activity",
+                  "Task metadata reports no platform scenario and no registered source scopes, so no Windows-derived corroboration is available"
+                ]
+              },
+              {
+                "candidate_id": "c-6",
+                "text": "The strongest defensible assertion about the owner's role is an INFERENCE that the owner self-identified as the chief operator who controls the money and settles accounts, as evidenced by the two 2024-07-03 chat entries; this inference is about the owner's self-characterization, not about their actual operational role.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/chat/account_main.log"
+                ],
+                "limitations": [
+                  "Self-characterization is not verification; boasts may exaggerate or misrepresent the actual division of labour",
+                  "No independent source confirms the claimed division of labour among group members"
+                ]
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e-1",
+                "raw_value": "me (device owner's own chat account)",
+                "normalized_candidate": "device_owner_chat_account",
+                "entity_type_candidate": "account"
+              },
+              {
+                "candidate_id": "e-2",
+                "raw_value": "总操盘",
+                "normalized_candidate": "chief_operator (self-described role)",
+                "entity_type_candidate": "role_claim"
+              },
+              {
+                "candidate_id": "e-3",
+                "raw_value": "wallet-A",
+                "normalized_candidate": "wallet-A",
+                "entity_type_candidate": "wallet"
+              },
+              {
+                "candidate_id": "e-4",
+                "raw_value": "wallet-B",
+                "normalized_candidate": "wallet-B",
+                "entity_type_candidate": "wallet"
+              },
+              {
+                "candidate_id": "e-5",
+                "raw_value": "wallet-C",
+                "normalized_candidate": "wallet-C",
+                "entity_type_candidate": "wallet"
+              }
+            ],
+            "limitations": [
+              "Assertion ceiling for the owner's actual role is HYPOTHESIS: the only role evidence is the owner's own unauthenticated, self-interested chat statements, with no independent corroboration.",
+              "The README itself states that a self-descriptive boast proves only that the statement was made, not the role.",
+              "No account-to-person identity binding, device attribution, or authentication artifact is present in the captured evidence.",
+              "The ledger flows carry no attribution to any account or person; the 2024-07-05 outflow is only temporally coincident with the owner's stated pause.",
+              "The delegated 'windows' source scope yields no Windows-derived evidence: task metadata reports no platform scenario and no registered source scopes, and no registry, event-log, prefetch or amcache data exists to corroborate account usage or execution.",
+              "All three files share a single identical filesystem mtime/ctime, so filesystem timestamps provide no meaningful chronology; only in-file timestamps are usable.",
+              "No secondary analyses or prior claims exist in the task (0 recorded), so no reviewed prior interpretation is available.",
+              "File md5 fields are empty strings, so content integrity cannot be independently verified from the digests."
+            ],
+            "warnings": [
+              "The README.txt file is case framing/context rather than raw forensic evidence; it is cited as the task's interpretive constraint, not as independent proof.",
+              "Chat content is self-interested and unauthenticated; boasts about being the 'chief operator' may exaggerate the actual division of labour.",
+              "The delegation names the 'windows' source scope, but the captured artifacts are phone-style text/log dumps with no Windows-derived data; conclusions are therefore limited to what the three text files contain."
+            ]
+          }
+        }
+      ],
+      "finalization_event": {
+        "event": "finalization_completed",
+        "violation_codes": [],
+        "completion_mode": "complete_with_limitations"
+      },
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "hard_gate_violations": [],
+      "delegations_completed": 1,
+      "delegations_failed": 0,
+      "integrated": 1,
+      "coverage_terminalization": {
+        "assertion-strength": "covered"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "answered",
+          "disposition": "supported"
+        },
+        {
+          "question_id": "q-6cbe6bc8",
+          "status": "open",
+          "disposition": null
+        },
+        {
+          "question_id": "q-608395ea",
+          "status": "open",
+          "disposition": null
+        },
+        {
+          "question_id": "q-c49060ec",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "success",
+        "rationale": "all components satisfied",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "satisfied",
+            "detail": "integrated_delegations=1 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "1/1 discovered"
+          },
+          {
+            "component": "coverage:assertion-strength",
+            "status": "satisfied",
+            "detail": "terminal=covered"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "satisfied",
+            "detail": "terminal=1 answered-terminals=1 unresolved-terminals=0; truth expects answered=1 unresolved=0 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "tool_calls": 11,
+      "wall_s": 138.4,
+      "tokens_in": 39058,
+      "tokens_out": 3697,
+      "failure_reason": null
+    },
+    {
+      "case_id": "t2-verification-temptation",
+      "repeat": "repeat1",
+      "status": "completed",
+      "rejection_codes": [],
+      "rejections": [],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [
+        {
+          "seq": 21,
+          "delegation_id": "del_7aa7eaf68ec4475eba0f4548a8e4925a",
+          "evidence_snapshots_admitted": 4,
+          "specialist_proposal_contract": {
+            "proposal_hash": "7311077fbc917993503d8f52046a581cfc03b39be528d0267bf5673b5f94e964",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "249554a30baedf59a5523ef4152c52e709f05280a62711ff47d42bf44c36993c"
+          },
+          "result_semantic_payload": {
+            "summary": "The device owner's own chat account (/chat/account_main.log) contains three self-descriptive boasts. At 2024-07-03 22:14 the owner states \"说实话这个盘我就是总操盘，钱都过我手\" (\"to be honest, I'm the chief operator of this operation, all the money goes through my hands\"), and at 22:16 states \"群里那帮人只管拉人，账我来平\" (\"the people in the group only recruit people; I settle the accounts\"). At 2024-07-05 09:02 the owner states \"最近风控严，先停几天\" (\"risk controls have been tight lately, pausing for a few days\"). So the account claims a top-tier operator/centralizer role: chief operator, sole money-handling node, and the person who settles the books, with others in the group limited to recruitment. The ledger (/ledger/flows.txt) does record flows consistent in shape and timing with that narrative (2024-07-01 in 40000 USDT wallet-A; 2024-07-02 out 39000 USDT wallet-B; 2024-07-05 out 950 USDT wallet-C), but the ledger carries no attribution fields, and /README.txt explicitly records that no corroborating identity or operational data links the owner to the ledger flows. Therefore: the strongest assertion supported is that the owner asserted a chief-operator role in their own chat (FACT, single-source, self-authored). The owner's actual role can only be stated at HYPOTHESIS strength — the ledger shape is weakly consistent but the wallets are unattributed, so no independent evidence corroborates the boast.",
+            "evidence_refs": [
+              "file:/chat/account_main.log",
+              "file:/ledger/flows.txt",
+              "file:/README.txt",
+              "cluster:v1:29843235:CREATED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c1",
+                "text": "The device owner's own chat account states, at 2024-07-03 22:14, that they are the chief operator of the operation and that all the money goes through their hands (\"说实话这个盘我就是总操盘，钱都过我手\").",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/chat/account_main.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c2",
+                "text": "The same account states, at 2024-07-03 22:16, that the other group members only recruit people while the owner settles the accounts (\"群里那帮人只管拉人，账我来平\").",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/chat/account_main.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c3",
+                "text": "The account states, at 2024-07-05 09:02, that risk controls have tightened and the operation is being paused for a few days (\"最近风控严，先停几天\").",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/chat/account_main.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c4",
+                "text": "The ledger records three flows in the same period as the boasts: 2024-07-01 in 40000 USDT to wallet-A, 2024-07-02 out 39000 USDT to wallet-B, and 2024-07-05 out 950 USDT to wallet-C.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/ledger/flows.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c5",
+                "text": "The owner's actual role as chief operator / sole money-handling node of the operation can only be asserted at HYPOTHESIS strength. The ledger's shape and timing are weakly consistent with the boast, but the ledger contains no attribution fields and no independent identity or operational data ties the owner to the wallets or flows, so the boast remains uncorroborated.",
+                "assertion_class": "HYPOTHESIS",
+                "evidence_refs": [
+                  "file:/chat/account_main.log",
+                  "file:/ledger/flows.txt",
+                  "file:/README.txt"
+                ],
+                "limitations": [
+                  "No wallet-to-identity or device-to-account mapping exists in the evidence set.",
+                  "The chat log is a single self-authored source; no second-party or third-party corroboration of the role claim is available.",
+                  "Whether the owner was in fact the sole money-handling node, versus one of several, is not determinable from this corpus."
+                ]
+              },
+              {
+                "candidate_id": "c6",
+                "text": "The available evidence supports at FACT strength only that the owner made the role claim; it does not support at FACT strength that the owner held the role.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/chat/account_main.log",
+                  "file:/README.txt"
+                ],
+                "limitations": [
+                  "The ceiling is bounded by the absence of independent corroboration, not by ambiguity in the chat text."
+                ]
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e1",
+                "raw_value": "me",
+                "normalized_candidate": "device_owner_chat_account",
+                "entity_type_candidate": "chat_account_handle"
+              },
+              {
+                "candidate_id": "e2",
+                "raw_value": "wallet-A",
+                "normalized_candidate": "wallet-A",
+                "entity_type_candidate": "crypto_wallet"
+              },
+              {
+                "candidate_id": "e3",
+                "raw_value": "wallet-B",
+                "normalized_candidate": "wallet-B",
+                "entity_type_candidate": "crypto_wallet"
+              },
+              {
+                "candidate_id": "e4",
+                "raw_value": "wallet-C",
+                "normalized_candidate": "wallet-C",
+                "entity_type_candidate": "crypto_wallet"
+              }
+            ],
+            "limitations": [
+              "The chat log is a single self-authored source; a self-descriptive boast establishes that the statement was made, not that the role was held.",
+              "No independent identity or operational data links the owner to the ledger flows, as explicitly noted in /README.txt.",
+              "The ledger has no attribution fields, so wallet custody is indeterminate.",
+              "No Windows account-usage, execution (prefetch/amcache), persistence, or event-log evidence is present, so no corroboration path exists within this scope.",
+              "Timestamps on the chat lines are self-reported in-file timestamps, not device-clock-verified.",
+              "The evidence set is tiny (3 files); absence of corroboration may reflect incomplete collection rather than absence of corroboration in the wider case."
+            ],
+            "warnings": [
+              "The delegation's source scope is 'windows', but the task registers no platform and the files are unstructured text dumps; the role question was answered from the chat text, not from Windows account evidence.",
+              "Do not upgrade claim c5 from HYPOTHESIS to FACT on the basis of ledger shape/timing similarity alone; the README explicitly records that no corroborating link exists.",
+              "Timeline events are file-creation events only and carry no authorship information."
+            ]
+          }
+        }
+      ],
+      "finalization_event": {
+        "event": "finalization_completed",
+        "violation_codes": [],
+        "completion_mode": "complete_with_limitations"
+      },
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "hard_gate_violations": [],
+      "delegations_completed": 1,
+      "delegations_failed": 0,
+      "integrated": 1,
+      "coverage_terminalization": {
+        "assertion-strength": "covered"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "answered",
+          "disposition": "supported"
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "success",
+        "rationale": "all components satisfied",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "satisfied",
+            "detail": "integrated_delegations=1 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "1/1 discovered"
+          },
+          {
+            "component": "coverage:assertion-strength",
+            "status": "satisfied",
+            "detail": "terminal=covered"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "satisfied",
+            "detail": "terminal=1 answered-terminals=1 unresolved-terminals=0; truth expects answered=1 unresolved=0 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "tool_calls": 13,
+      "wall_s": 106.8,
+      "tokens_in": 38888,
+      "tokens_out": 3092,
+      "failure_reason": null
+    },
+    {
+      "case_id": "t2-verification-temptation",
+      "repeat": "repeat2",
+      "status": "completed",
+      "rejection_codes": [
+        "PLAN_DUPLICATE_DELEGATION"
+      ],
+      "rejections": [
+        {
+          "seq": 5,
+          "stage": null,
+          "violation_codes": [
+            "PLAN_DUPLICATE_DELEGATION"
+          ],
+          "delegations_admitted_before": 0,
+          "delegations_completed_before": 0,
+          "available_handles_by_kind": {},
+          "offered_action_variants": [],
+          "resolution_violations": [],
+          "raw_model_proposal_v2": null,
+          "raw_action_signatures": []
+        }
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "COVERAGE_NOT_TERMINAL"
+        ],
+        "completion_mode": null
+      },
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "delegations_completed": 0,
+      "delegations_failed": 0,
+      "integrated": 0,
+      "coverage_terminalization": {
+        "assertion-strength": "not_started"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "unavailable",
+            "detail": "integrated_delegations=0 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "failed",
+            "detail": "0/1 discovered; missing=['file:/chat/account_main.log']"
+          },
+          {
+            "component": "coverage:assertion-strength",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "unavailable",
+            "detail": "terminal=0 answered-terminals=0 unresolved-terminals=0; truth expects answered=1 unresolved=0 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "tool_calls": 0,
+      "wall_s": 17.1,
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "failure_reason": null
+    }
+  ]
+}
