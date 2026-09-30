@@ -1,0 +1,76 @@
+{
+  "profile_version": "precalibration-runtime-baseline:v4",
+  "supersedes": "precalibration-runtime-baseline:v3 (272dfb53, pre-A1-H — now HISTORICAL per A1-H §41; its B2 series 7195a43c is a pre-A1-H baseline, descriptive only)",
+  "purpose": "Post-A1-H P8B B2 restart: frozen runtime identity for ALL 24 baseline runs feeding the B4 Calibration Decision. No prompt/schema/handle-contract/retry/cycle/budget/temperature/model change is permitted for the duration of the series; any production change invalidates the entire series.",
+  "runtime_git_commit": "a426672765faca508b128ae3f2671bede9df69f8",
+  "production_runtime_commit": "f7b02af6 (A1-H freeze; a4266727 adds only benchmark artifacts — production tree identical)",
+  "commit_lineage_note": "ed382cbb (supervisor v2 freeze) + A1-T 0833e4f9 (SpecialistResultProposalV1 + deterministic finalizer) + A1-H 0d938eba (typed handle fields + availability projection + v3 decision epoch). S4 (f711851c) unchanged; StateTransitionPolicy / FinalizationGate unchanged; retries (2) / cycles / budgets unchanged.",
+  "model_identity": {
+    "provider": "sensenova-cloud",
+    "requested_model_id": "sensenova-6.8-flash-lite",
+    "api_reported_model_id": "sensenova-6.8-flash-lite",
+    "endpoint_host_class": "token.sensenova.cn (openai-compatible /v1/chat/completions)",
+    "qualification": "QUALIFIED_FOR_B2 (A1-T canary, §26 Scenario A; re-confirmed by A1-H canary §40 Scenario A)",
+    "generation_params": {
+      "temperature": 0.7,
+      "max_tokens": 16384,
+      "thinking_mode": "disabled",
+      "reasoning_effort": "none (adapter mapping; provider-verified reasoning_tokens -> 0)",
+      "timeout_seconds": 120,
+      "context_window_tokens": 131072
+    },
+    "adapter_model_config_digest": "ba51d65eeb2c29022216b069572db333d999fcd887098bc49b6f1da6e15ab764"
+  },
+  "contract_identity": {
+    "supervisor_integration_contract": "v2 (FROZEN, production default)",
+    "integration_decision_schema": "supervisor-integration-decision:v3 (A1-H typed handle epoch, FROZEN f7b02af6)",
+    "supervisor_module_sha16": "8621316a59b9c016",
+    "supervisor_integration_v2_module_sha16": "9be8946460d63993",
+    "reference_bindings_module_sha16": "0a6fba6113ab7060",
+    "evidence_snapshot_admission": "S4 (FROZEN f711851c)",
+    "transitions_module_sha16": "77300b8d079fb218",
+    "agent_runtime_module_sha16": "8d0448e7f69ff03a",
+    "specialist_result_proposal": "specialist-result-proposal:v1 (A1-T FROZEN)",
+    "specialist_canonical_result": "specialist-result:v1 (UNCHANGED)",
+    "specialist_result_module_sha16": "4f8b004d7bd8a1f1",
+    "specialist_executor_module_sha16": "211f0b25742946df",
+    "pydantic_bridge_module_sha16": "8a4bf62b7da084ff",
+    "tool_registry_schema_hash": "2583c323521aff470ed0cd464ace102f15420a1114d9c24a004bd1893f643bcf"
+  },
+  "prompt_versions": {
+    "supervisor-plan-decision-v2": "handle-based plan instructions (A1, frozen)",
+    "supervisor-integrate-decision-v2": "handle-based integrate instructions + A1-H typed-handle/availability rules (f7b02af6)",
+    "specialist-instructions": "compiled from frozen SpecialistContextPack layers (A1-T model-facing contract)"
+  },
+  "policy_versions": {
+    "supervisor_cycle_policy": "SupervisorCyclePolicy defaults (max_cycles_per_invocation=1, max_cycles_per_run=20, final_review_mode=best_effort)",
+    "agent_run_policy": "AgentRunPolicy max_output_retries=2 (unchanged)",
+    "correlation_bounds": "max_candidates=200, temporal_window_seconds=3600",
+    "graph_admission": "graph-admission:v15 (max_candidates_per_cycle=32, max_parallel_materializations=2)",
+    "report_retrieval": "RetrievalBudgetV1 max_evidence_items=24, max_detailed_items=4, max_context_chars=48000, max_graph_expansion=8",
+    "assertion_policy": "P5B AssertionPolicy frozen (semantic invariants NEVER calibratable)",
+    "finalization_policy": "FinalizationGate frozen (UNINTEGRATED_COMPLETED_DELEGATION hard blocker)"
+  },
+  "corpus": {
+    "corpus_id": "corpus-agent-v0-calibration",
+    "corpus_hash": "52e70af32e1af861c85e03d03635147d528c39926d917af197f46dbf04170dc7",
+    "calibration_cases": 8,
+    "holdout": "SEALED / NEVER RUN"
+  },
+  "artifacts": {
+    "model_validation_record": "benchmarks/results/agent-v0/b2-restart/model-validation-record.v2.json",
+    "model_config": "benchmarks/results/agent-v0/b2-restart/sensenova-6.8-flash-lite.model-config.json",
+    "a1t_qualification_canary": "benchmarks/results/agent-v0/b2-restart/canary-a1t-aggregate.v1.json",
+    "a1h_canary": "benchmarks/results/agent-v0/b2-restart/canary-a1h-aggregate.v1.json",
+    "pre_a1h_b2_baseline_HISTORICAL": "benchmarks/results/agent-v0/b2-restart/baseline-measurement-report-v3.json",
+    "a1h_audit": "docs/specs/agent-a1h-handle-operand-audit.md"
+  },
+  "historical_benchmarks": "ALL pre-A1-H epochs (P8B v1 baseline, model qualifications, A1/A1-R/A1-S/R2, SenseNova pre-T and pre-H canaries, B2 7195a43c): descriptive comparisons only; NEVER pooled into this baseline distribution, calibration statistics or acceptance thresholds.",
+  "prohibitions_after_freeze": [
+    "no prompt edits", "no Agent instruction edits", "no tool description edits",
+    "no runtime budget edits", "no temperature edits", "no model parameter edits",
+    "no semantic policy edits", "no schema/handle-protocol/A1-T/S4/A1-H edits",
+    "no retry or cycle changes", "no provider/model switch mid-series"
+  ],
+  "frozen_at": "2026-09-30T00:00:00+00:00"
+}
