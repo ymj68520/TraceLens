@@ -946,6 +946,34 @@ def _extract_trajectory_digest(task_store: Path, out_dir: Path) -> None:
 
     try:
         conn = sqlite3.connect(task_store)
+        # B5.5-post §7 coverage bootstrap proof: the REQUIRED dimensions
+        # are read from the run manifest's case surface; the SEEDED
+        # dimensions from revision-1 of the durable working state.
+        bootstrap = {}
+        from httpserver.services.investigation.agent_runtime import (
+            canonical_state_json as _csj,
+            state_hash_of as _sho,
+        )
+
+        try:
+            manifest_row = conn.execute(
+                "select state_json from agent_working_states "
+                "order by revision asc limit 1"
+            ).fetchone()
+            if manifest_row:
+                state0 = json.loads(manifest_row[0] or "{}")
+                seeded = sorted(
+                    c.get("dimension_id")
+                    for c in (state0.get("coverage") or ())
+                )
+                bootstrap = {
+                    "seeded_coverage_dimensions": seeded,
+                    "bootstrap_state_hash": _sho(
+                        _csj(state0)
+                    ),
+                }
+        except Exception:
+            bootstrap = {"seeded_coverage_dimensions": "unavailable"}
         rows = conn.execute(
             "select seq, event_type, payload_json, delegation_id from "
             "agent_trajectory_events where event_type in "
@@ -1098,7 +1126,8 @@ def _extract_trajectory_digest(task_store: Path, out_dir: Path) -> None:
         (out_dir / "trajectory_digest.json").write_text(
             json.dumps(
                 {
-                    "digest_version": 4,
+                    "digest_version": 5,
+                    "coverage_bootstrap": bootstrap,
                     "rejection_codes": rejection_codes,
                     "rejections": rejections,
                     "supervisor_failures": supervisor_failures,
