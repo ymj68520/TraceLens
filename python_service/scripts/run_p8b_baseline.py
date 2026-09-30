@@ -187,6 +187,60 @@ def _provision_fresh_task(case_id: str, repeat: str) -> dict:
 
 # -- per-run execution (reuses the canary-proven wiring) --------------------
 
+def build_benchmark_seed_state(task_id: str, investigation_id: str, ci):
+    """Single source of truth for the benchmark initial Working State.
+
+    B5.5-final §1 association contract (Case A): every calibration case
+    declares exactly ONE charter question, so every required coverage
+    dimension links to it deterministically
+    (related_question_ids = [q-1, ...] over the seeded questions).  The
+    linkage is REQUIRED: the frozen attention policy only coalesces a
+    coverage dimension into its question's attention item through it;
+    unlinked dimensions become separate delegable coverage attention
+    items and the frozen plan duplicate rule then rejects the natural
+    two-item plan (PLAN_DUPLICATE_DELEGATION, see
+    docs/specs/agent-b55-acceptance-semantics-audit.md addendum).
+    Public-surface content only: names + structure, never truth."""
+    from httpserver.services.investigation.agent_working_state import (
+        AgentWorkingStateV1,
+        CoverageDimension,
+        CoverageStatus,
+        QuestionPriority,
+        QuestionSource,
+        WorkingQuestion,
+    )
+
+    questions = tuple(
+        WorkingQuestion(
+            question_id=f"q-{index}",
+            text=text,
+            source=QuestionSource.charter,
+            priority=QuestionPriority.high,
+        )
+        for index, text in enumerate(ci.seed_questions, start=1)
+    )
+    related = tuple(
+        f"q-{index}"
+        for index, _ in enumerate(ci.seed_questions, start=1)
+    )
+    coverage = tuple(
+        CoverageDimension(
+            dimension_id=dimension_id,
+            required=True,
+            status=CoverageStatus.not_started,
+            related_question_ids=related,
+        )
+        for dimension_id in (ci.seed_coverage_dimensions or ())
+    )
+    return AgentWorkingStateV1(
+        task_id=task_id,
+        investigation_id=investigation_id,
+        objective=ci.goal,
+        questions=questions,
+        coverage=coverage,
+    )
+
+
 class _ModelOverrideSettings:
     """Benchmark-harness settings view overriding ONLY the experiment axis
     allowed by the model-qualification spec (§3): provider/model identity
@@ -389,46 +443,7 @@ def _execute_with_wiring(
         )
 
     def _seed_state(task_id: str, investigation_id: str, ci):
-        questions = tuple(
-            WorkingQuestion(
-                question_id=f"q-{index}",
-                text=text,
-                source=QuestionSource.charter,
-                priority=QuestionPriority.high,
-            )
-            for index, text in enumerate(ci.seed_questions, start=1)
-        )
-        # B5.5 §4/§11: seed the charter-level Required Coverage declared
-        # on the public case surface.  Production is CoverageTransition-
-        # only (update semantics) — the bootstrap owns dimension creation.
-        # B5.5-post finding: a coverage dimension seeded WITHOUT
-        # related_question_ids becomes a separate delegable attention item
-        # (frozen policy: _COVERAGE_ACTIONS includes delegate_source); the
-        # model then serves both the question item and the coverage item
-        # with delegate actions on the same question x scope and the frozen
-        # plan validator rejects the plan (PLAN_DUPLICATE_DELEGATION).
-        # The charter coalescing path is related_question_ids — declared
-        # here from the public case framing (every seeded dimension
-        # assesses the charter questions).
-        coverage = tuple(
-            CoverageDimension(
-                dimension_id=dimension_id,
-                required=True,
-                status=CoverageStatus.not_started,
-                related_question_ids=tuple(
-                    f"q-{index}"
-                    for index, _ in enumerate(ci.seed_questions, start=1)
-                ),
-            )
-            for dimension_id in (ci.seed_coverage_dimensions or ())
-        )
-        return AgentWorkingStateV1(
-            task_id=task_id,
-            investigation_id=investigation_id,
-            objective=ci.goal,
-            questions=questions,
-            coverage=coverage,
-        )
+        return build_benchmark_seed_state(task_id, investigation_id, ci)
 
     def _finalization_request_factory(state):
         from httpserver.services.investigation.agent_finalization import (

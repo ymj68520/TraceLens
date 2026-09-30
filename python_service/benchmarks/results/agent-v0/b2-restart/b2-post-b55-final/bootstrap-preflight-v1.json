@@ -1,0 +1,191 @@
+{
+  "artifact_version": "BootstrapPreflightV1",
+  "round": "b2-post-b55-final",
+  "created_at": "2026-09-30T22:26:39+00:00",
+  "association_contract": {
+    "case": "A (single charter question per case)",
+    "rule": "all required coverage dimensions -> related_question_ids = the seeded charter questions (q-1, ...); deterministic, public-surface derived, no truth content",
+    "implemented_in": "run_p8b_baseline.build_benchmark_seed_state"
+  },
+  "cases": [
+    {
+      "case_id": "t1-fraud-script-usb",
+      "expected_coverage_dimensions": [
+        "fraud-operation-materials"
+      ],
+      "charter_questions": [
+        "q-1"
+      ],
+      "attention_item_ids": [
+        "question:q-1"
+      ],
+      "checks": {
+        "G1_dims_present": true,
+        "G2_required_true": true,
+        "G3_initial_not_started": true,
+        "G4_related_question_ids_exact": true,
+        "G5_related_questions_exist": true,
+        "G6_no_standalone_coverage_item": true,
+        "G7_no_duplicate_delegable_topology": true
+      },
+      "ok": true
+    },
+    {
+      "case_id": "t2-cross-source-correlation",
+      "expected_coverage_dimensions": [
+        "cross-source-settlement"
+      ],
+      "charter_questions": [
+        "q-1"
+      ],
+      "attention_item_ids": [
+        "question:q-1"
+      ],
+      "checks": {
+        "G1_dims_present": true,
+        "G2_required_true": true,
+        "G3_initial_not_started": true,
+        "G4_related_question_ids_exact": true,
+        "G5_related_questions_exist": true,
+        "G6_no_standalone_coverage_item": true,
+        "G7_no_duplicate_delegable_topology": true
+      },
+      "ok": true
+    },
+    {
+      "case_id": "t2-identity-trap",
+      "expected_coverage_dimensions": [
+        "identity-assessment",
+        "transfer-activity"
+      ],
+      "charter_questions": [
+        "q-1"
+      ],
+      "attention_item_ids": [
+        "question:q-1"
+      ],
+      "checks": {
+        "G1_dims_present": true,
+        "G2_required_true": true,
+        "G3_initial_not_started": true,
+        "G4_related_question_ids_exact": true,
+        "G5_related_questions_exist": true,
+        "G6_no_standalone_coverage_item": true,
+        "G7_no_duplicate_delegable_topology": true
+      },
+      "ok": true
+    },
+    {
+      "case_id": "t2-misleading-note",
+      "expected_coverage_dimensions": [
+        "export-attribution"
+      ],
+      "charter_questions": [
+        "q-1"
+      ],
+      "attention_item_ids": [
+        "question:q-1"
+      ],
+      "checks": {
+        "G1_dims_present": true,
+        "G2_required_true": true,
+        "G3_initial_not_started": true,
+        "G4_related_question_ids_exact": true,
+        "G5_related_questions_exist": true,
+        "G6_no_standalone_coverage_item": true,
+        "G7_no_duplicate_delegable_topology": true
+      },
+      "ok": true
+    },
+    {
+      "case_id": "t2-no-evidence",
+      "expected_coverage_dimensions": [
+        "volume-content-assessment"
+      ],
+      "charter_questions": [
+        "q-1"
+      ],
+      "attention_item_ids": [
+        "question:q-1"
+      ],
+      "checks": {
+        "G1_dims_present": true,
+        "G2_required_true": true,
+        "G3_initial_not_started": true,
+        "G4_related_question_ids_exact": true,
+        "G5_related_questions_exist": true,
+        "G6_no_standalone_coverage_item": true,
+        "G7_no_duplicate_delegable_topology": true
+      },
+      "ok": true
+    },
+    {
+      "case_id": "t2-report-citation",
+      "expected_coverage_dimensions": [
+        "citation-discipline"
+      ],
+      "charter_questions": [
+        "q-1"
+      ],
+      "attention_item_ids": [
+        "question:q-1"
+      ],
+      "checks": {
+        "G1_dims_present": true,
+        "G2_required_true": true,
+        "G3_initial_not_started": true,
+        "G4_related_question_ids_exact": true,
+        "G5_related_questions_exist": true,
+        "G6_no_standalone_coverage_item": true,
+        "G7_no_duplicate_delegable_topology": true
+      },
+      "ok": true
+    },
+    {
+      "case_id": "t2-temporal-trap",
+      "expected_coverage_dimensions": [
+        "owner-activity",
+        "recovered-log-assessment"
+      ],
+      "charter_questions": [
+        "q-1"
+      ],
+      "attention_item_ids": [
+        "question:q-1"
+      ],
+      "checks": {
+        "G1_dims_present": true,
+        "G2_required_true": true,
+        "G3_initial_not_started": true,
+        "G4_related_question_ids_exact": true,
+        "G5_related_questions_exist": true,
+        "G6_no_standalone_coverage_item": true,
+        "G7_no_duplicate_delegable_topology": true
+      },
+      "ok": true
+    },
+    {
+      "case_id": "t2-verification-temptation",
+      "expected_coverage_dimensions": [
+        "assertion-strength"
+      ],
+      "charter_questions": [
+        "q-1"
+      ],
+      "attention_item_ids": [
+        "question:q-1"
+      ],
+      "checks": {
+        "G1_dims_present": true,
+        "G2_required_true": true,
+        "G3_initial_not_started": true,
+        "G4_related_question_ids_exact": true,
+        "G5_related_questions_exist": true,
+        "G6_no_standalone_coverage_item": true,
+        "G7_no_duplicate_delegable_topology": true
+      },
+      "ok": true
+    }
+  ],
+  "all_passed": true
+}
