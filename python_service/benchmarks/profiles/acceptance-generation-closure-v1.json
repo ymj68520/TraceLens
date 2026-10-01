@@ -1,0 +1,62 @@
+{
+  "artifact_version": "AcceptanceGenerationClosureV1",
+  "created_at": "2026-10-01T00:00:00+00:00",
+  "generation": {
+    "generation_id": "acceptance-generation-1",
+    "protocol_era": "corpus v2 / PublicCaseInput v2 surface + B6-entry charter authoring",
+    "status": "CLOSED",
+    "retry_policy": "NO RETRY"
+  },
+  "closure_reason": "B6_INVALID (HOLDOUT_AGENT_INPUT_NOT_PRESEALED): the Agent-visible holdout inputs were authored at execution entry instead of being presealed and hash-bound before admission; the executed Agent input was not the admitted Agent input",
+  "runtime_generation": {
+    "architecture": "Agent v0 (P1-P7 frozen; A1-S / Supervisor v2 / A1-T / A1-H amendments frozen)",
+    "production_runtime_commit_at_b6": "49e8172eea55abf45ddf13bda95715506da4b872",
+    "state": "FROZEN / UNCHANGED by this closure",
+    "calibration": "ZERO_CHANGE"
+  },
+  "calibration_profile": {
+    "artifact": "benchmarks/profiles/agent-v0-calibration-profile-v1.json",
+    "sha256": "2469fb7ed5c317ba7c78c00e93a225dd56f82bbdd6831ff32d9acba6e63a83c9",
+    "evidence_binding": {
+      "artifact": "benchmarks/profiles/calibration-evidence-binding-v2.json",
+      "sha256": "e2c35c4e0fa744a5aa49a9b4b4ac1ec990999107ea1ac4eafa7e41645f94c038",
+      "state": "REMAINS BINDING for the calibration epoch (runtime/model/config unchanged; Gen-1 B6 invalidity does not invalidate calibration)"
+    }
+  },
+  "acceptance_profile": {
+    "artifact": "benchmarks/profiles/agent-v0-acceptance-profile-v2.json",
+    "sha256": "c40f1adcad816e433f7edfc6cbc0b56dc32c031bf1fcb31528523ffa62f0e98d",
+    "state": "CLOSED with Generation 1 (semantics carried forward unchanged; Generation 2 binds it via AcceptanceProfileGenerationBindingV2)"
+  },
+  "benchmark_epochs": [
+    {"artifact": "benchmarks/profiles/precalibration-runtime-baseline.v1.json", "sha256": "3b3d15fe8de5c7a7ac0aeb523732e703548bfb1f1f2baa96ba252a1702f74174"},
+    {"artifact": "benchmarks/profiles/precalibration-runtime-baseline-v3.json", "sha256": "b7ef22d65f85c8dcd951ef5c636705d56f86ed6490f670ec24abafd7a91daca5"},
+    {"artifact": "benchmarks/profiles/precalibration-runtime-baseline-v4.json", "sha256": "bc3f6fa9cf0f3aae77fac60c3b40510c6c5513e470fc05817fdca6818731c33c"},
+    {"artifact": "benchmarks/profiles/agent-v0-runtime-baseline-v2.json", "sha256": "48e4bc5c730bae022b72176fb7096923ffe2fa3e1158699b6f40bd235b65646b"},
+    {"artifact": "benchmarks/profiles/benchmark-measurement-baseline-v5.json", "sha256": "c0d233a802f44a82e8e5d6d11539216f14e498e7b76d04574ce7e6cdc5f185d3"},
+    {"artifact": "benchmarks/profiles/benchmark-measurement-baseline-v6.json", "sha256": "2256268583b62bacfc42de244ed13d586bdcccf9eef5ca2999df09097ae8b970"},
+    {"artifact": "benchmarks/profiles/acceptance-threshold-provenance-v1.json", "sha256": "53c35b6bc9249e401e2d6681ab56ccfc65cb6ff8fe539f8483da3d7657267642"},
+    {"artifact": "benchmarks/profiles/agent-v0-acceptance-profile-v1.json", "sha256": "95f529d55938401b581d23a6293f8b0dad2c71507a2cf5d8dfb330f81610a612"},
+    {"artifact": "benchmarks/profiles/agent-v0-acceptance-profile-admission-record.v1.json", "sha256": "a1f89c6864c3b90697c8de9dd42a3c580a1d77249ea601ece65e428fee24e9ec"},
+    {"artifact": "benchmarks/profiles/agent-v0-acceptance-profile-admission-record.v2.json", "sha256": "11bfe19686d8a2a6cbb3fa69a9d84019a6a1545a8166ecf352232fc45b5efded"}
+  ],
+  "b6_execution": {
+    "decision_artifact": "benchmarks/results/agent-v0/b6-holdout/agent-v0-acceptance-decision-v1.json",
+    "decision_sha256": "03a7cd461a50efe7cc534a60fac1ee032afe84574bd6933960397a20a76181b5",
+    "reported_verdict": "REJECTED",
+    "run_set_hash": "58f418ec1308680b8616c6971a414ba464515d44637d94faf0b0c860d9156ec0",
+    "formal_measurement_status": "B6_INVALID"
+  },
+  "b6_interpretation_amendment": {
+    "artifact": "benchmarks/profiles/b6-interpretation-amendment-v1.json",
+    "formal_acceptance_status": "NOT_ESTABLISHED",
+    "reason": "HOLDOUT_AGENT_INPUT_NOT_PRESEALED"
+  },
+  "consumed_holdout_ids": [
+    "t3-holdout-refund-fraud",
+    "t3-holdout-vpn-causal",
+    "t1-usb-collector"
+  ],
+  "consumption_note": "the two executed members are CONSUMED by execution; t1-usb-collector is RETIRED_WITH_GENERATION_1 after a never-executed / never-inspected audit (see amendment §generation1_holdout_consumption); re-execution or re-use of any pool member is permanently prohibited",
+  "legacy_artifacts": "all Generation-1 run artifacts, the decision, the entry charter, execution manifests and semantic payloads remain immutable in place (benchmarks/results/agent-v0/b2-restart/b2-post-b55-final/, benchmarks/results/agent-v0/b6-holdout/); they must not be moved, rewritten, or re-issued as a new holdout"
+}

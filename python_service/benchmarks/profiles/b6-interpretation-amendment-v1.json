@@ -1,0 +1,94 @@
+{
+  "artifact_version": "B6InterpretationAmendmentV1",
+  "created_at": "2026-10-01T00:00:00+00:00",
+  "amends": "AgentV0AcceptanceDecisionV1 (interpretation of formal status only; the original artifact is immutable and its recorded verdict is preserved verbatim)",
+  "immutable_references": {
+    "original_decision_artifact": "benchmarks/results/agent-v0/b6-holdout/agent-v0-acceptance-decision-v1.json",
+    "original_decision_sha256": "03a7cd461a50efe7cc534a60fac1ee032afe84574bd6933960397a20a76181b5",
+    "original_overall_verdict": "REJECTED",
+    "original_run_set_hash": "58f418ec1308680b8616c6971a414ba464515d44637d94faf0b0c860d9156ec0",
+    "acceptance_profile_v2_sha256": "c40f1adcad816e433f7edfc6cbc0b56dc32c031bf1fcb31528523ffa62f0e98d",
+    "calibration_evidence_binding_v2_sha256": "e2c35c4e0fa744a5aa49a9b4b4ac1ec990999107ea1ac4eafa7e41645f94c038",
+    "admission_record_v2_sha256": "11bfe19686d8a2a6cbb3fa69a9d84019a6a1545a8166ecf352232fc45b5efded",
+    "b6_entry_charter_input_hash": "34c888e4349bbdef7f786869740f0a38546087d2cc1a6b21bc1ed56fc4a443c0",
+    "frozen_identities_input_hash": "bec05939768d0504f9f07e7187651f631feeb90cdbd272561df798d218636620",
+    "generation1_holdout_manifests": {
+      "t3-holdout-refund-fraud": {
+        "case_contract_input_hash": "5d139609d06ebab8d237818a9cce8fd7134414766460279de52625dd9dda0f79",
+        "sealed_truth_manifest_hash": "c938223cb8a3973d4d87c4817235f8915a9e7d3f34349604f81ee5ce7dc9c863"
+      },
+      "t3-holdout-vpn-causal": {
+        "case_contract_input_hash": "d09eb7139eb98fade007278edfaedecfc96cd4c47f20ff5c408819e68664bd8b",
+        "sealed_truth_manifest_hash": "556b30159cb09672201672342d4f4e65e1e901571f36b0e0a0c9a97e3de7e275"
+      }
+    },
+    "b6_execution": {
+      "code_head_at_execution": "49e8172eea55abf45ddf13bda95715506da4b872",
+      "execution_artifacts_commit": "4cb8caa54d746c190b6b047f9fa0ab156afb94de",
+      "b6_started_at": "2026-10-01T01:43:18+00:00"
+    }
+  },
+  "execution_status": "COMPLETED",
+  "original_reported_verdict": "REJECTED",
+  "formal_measurement_status": "B6_INVALID",
+  "formal_acceptance_status": "NOT_ESTABLISHED",
+  "reason": "HOLDOUT_AGENT_INPUT_NOT_PRESEALED",
+  "explanation": "At B6 entry a NEW public charter (b6-holdout-charter-v1.json) was authored: it supplied the Agent-visible goal, case context, seed questions, and the coverage-to-question association for both holdout families, and therefore participated in the actual Agent-visible task semantics. That charter did NOT exist inside the previously frozen admission package (AcceptanceProfileV2 / AdmissionRecordV2 / holdout-static-validation-v1 declare the charter as to-be-authored at entry, not as a sealed input). Consequently frozen admitted Agent input != actual B6 Agent input: the executed semantics were not the semantics whose acceptance had been admitted. Under the frozen Generation-2 invariant this makes the run a measurement-protocol violation, not a model qualification result: B6_INVALID, formal acceptance NOT_ESTABLISHED. A secondary ownership defect participated in the same authoring act: case-contract negative_flags (evaluator-side trap metadata) were consumed as a charter-derivation input, blurring the truth/public boundary the Generation-2 protocol now fixes (PublicHoldoutCaseV2 carries no negative_flags field; negative_risk_context is the only, explicitly-authored Agent-visible framing slot).",
+  "what_stays_valid": "The six scheduled attempts ran the frozen production runtime and model configuration end-to-end with zero provider failures and 24/24-equivalent structural integrity (hard gates PASS 6/6, evaluate-only reproduction 6/6). The runtime and its measurement instruments performed correctly; the invalidity is confined to the holdout input seal.",
+  "diagnostic_result": {
+    "status": "DIAGNOSTIC_ONLY",
+    "formal_status": "NOT_FORMAL_ACCEPTANCE_EVIDENCE",
+    "diagnostic_functional_result": "NOT_MET",
+    "functional_detail": {
+      "t3-holdout-refund-fraud": "0/3 qualifying (BenchmarkCaseOutcomeV2 success/success_with_limitations)",
+      "t3-holdout-vpn-causal": "1/3 qualifying (repeat0 success)"
+    },
+    "diagnostic_axis_results": {
+      "structural": "PASS (0 violations, 6/6 hard gates)",
+      "semantic": "PASS (0 unsupported FACT, 0 fabricated citation)",
+      "negative_case_safety": "PASS (0 merges, 0 causal escalations, 0 fabrication, README never treated as evidence)",
+      "reliability": "PASS (specialist structured-output failures 3/6 = 50.0% at the frozen 50% ceiling; supervisor 0/6)",
+      "availability": "PASS (provider-terminal 0/6)",
+      "functional": "FAIL (truth floor missed on both families)"
+    },
+    "permitted_general_uses": [
+      "Specialist structured-output reliability remains imperfect (3/6 schema-discipline failures)",
+      "Required Question / Coverage closure remains a model capability challenge (supervisor closure-discipline gap, 1/6)"
+    ],
+    "forbidden_uses": [
+      "refund-specific or VPN-specific prompt or charter design",
+      "hidden heuristics targeting the two executed failure signatures",
+      "any reuse of the Generation-1 holdout answers as optimization targets"
+    ]
+  },
+  "generation1_holdout_consumption": {
+    "t3-holdout-refund-fraud": "CONSUMED",
+    "t3-holdout-vpn-causal": "CONSUMED",
+    "t1-usb-collector": {
+      "audit": {
+        "execution_count": 0,
+        "execution_evidence": "no case result directory, run manifest, snapshot, or failure artifact exists anywhere under benchmarks/results/ for this case; the only results-side mention is a corpus inventory listing (b4 consolidated-v5 report holdout_sealed list)",
+        "semantic_result_not_inspected": true,
+        "inspection_evidence": "no evaluator run, measurement report, outcome recompute, or digest review ever loaded or reviewed this case's truth manifest; the only truth references are the corpus v2 hash binding and the case contract binding, both created at corpus freeze",
+        "truth_not_used_for_tuning": true,
+        "tuning_evidence": "no threshold, prompt, contract, or profile artifact cites this case"
+      },
+      "decision": "RETIRED_WITH_GENERATION_1",
+      "rationale": "spec default recommendation: retire the entire Generation-1 holdout pool (including never-executed members) to eliminate future boundary ambiguity; a never-executed member shares the pool's construction era, charter-absent public surface, and negative_flags ambiguity, so keeping it sealed would preserve exactly the preseal gap Generation 2 closes"
+    },
+    "permanent_prohibitions": [
+      "re-execution as a benchmark case",
+      "re-use as a holdout in any generation",
+      "modification followed by re-acceptance",
+      "prompt tuning against it followed by re-testing",
+      "threshold tuning against it followed by re-testing"
+    ]
+  },
+  "post_amendment_status_chain": [
+    "B6 execution occurred (6 scheduled attempts, artifacts immutable)",
+    "formal measurement invalid (B6_INVALID)",
+    "holdout consumed (entire Generation-1 pool retired)",
+    "diagnostic functional requirement not met (DIAGNOSTIC_ONLY)"
+  ],
+  "override_rule": "these four facts are permanent Generation-1 history and may not be overwritten by any future success or failure"
+}
