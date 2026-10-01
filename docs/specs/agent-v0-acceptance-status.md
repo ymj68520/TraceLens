@@ -1,7 +1,8 @@
 # Agent v0 Project Status — Acceptance Track
 
-Updated: 2026-10-01 (Acceptance Generation 3 executed → B6_INVALID;
-Generation 3 CLOSED_INVALID, holdout CONSUMED; formal acceptance still
+Updated: 2026-10-01 (Production evidence content hydration remediation
+FROZEN — the Gen-3 prerequisite work item is complete; runtime epoch
+advanced to AgentV0RuntimeBaselineV3; formal acceptance still
 NOT ESTABLISHED).
 
 ```text
@@ -9,7 +10,9 @@ Agent v0 Architecture:
 FROZEN
 
 Calibration:
-COMPLETE / ZERO_CHANGE
+HISTORICAL (CalibrationEvidenceBindingV2 — cannot serve future
+Gen-4 admission after the production runtime change; requalification
++ new B2 required, separately directed)
 
 Acceptance Generation 1:
 CLOSED_INVALID
@@ -25,20 +28,25 @@ B6_INVALID (SUBSTRATE_EVIDENCE_SURFACE_MISMATCH)
 holdout CONSUMED
 NO RETRY
 
-Formal Agent v0 acceptance:
-NOT ESTABLISHED
-
 Acceptance Generation 3:
 CLOSED_INVALID
 B6_INVALID (EVIDENCE_CONTENT_SURFACE_TRANSIENT)
 holdout CONSUMED
 NO RETRY
 
-Formal acceptance remains NOT ESTABLISHED. Any Generation 4 requires the
-production content-store work item first (see below).
+Content hydration remediation (Gen-3 prerequisite):
+CONTENT_HYDRATION_CONTRACT = FROZEN
+(evidence-content-hydration:v1; canaries PASS; canary was NOT a
+calibration measurement)
+
+Formal Agent v0 acceptance:
+NOT ESTABLISHED
 
 Production runtime:
-UNCHANGED
+CHANGED (AgentV0RuntimeBaselineV3)
+Gen-4 PROHIBITED until: model/runtime requalification + new valid B2
++ CalibrationEvidence rebinding + AcceptanceProfile review/binding,
+each separately directed
 ```
 
 ## Model status (exact wording, superseding earlier summaries)
@@ -68,10 +76,15 @@ five other axes clean).
 - `formal acceptance not established` does NOT unfreeze the architecture:
   there is no Evidence Integrity / StateTransition / Grounding / Handle
   correctness regression.  Architecture stays FROZEN.
-- Production runtime (A1-S, Supervisor v2, A1-T, A1-H, StateTransitionPolicy,
-  FinalizationGate) and the ZERO_CHANGE calibration stay UNCHANGED.  Any
-  future runtime change requires a new runtime generation → calibration
-  requalification → a new acceptance generation, driven by general
+- Agent runtime semantics (A1-S, Supervisor v2, A1-T, A1-H,
+  StateTransitionPolicy, FinalizationGate) stay UNCHANGED.  The one
+  sanctioned production change is the durable evidence content backing
+  (`evidence-content-hydration:v1`, FROZEN — see
+  `docs/specs/evidence-content-hydration-contract.md`); the runtime
+  epoch is now `AgentV0RuntimeBaselineV3`
+  (`benchmarks/profiles/agent-v0-runtime-baseline-v3.json`).  Any next
+  acceptance generation requires calibration requalification → a new
+  valid B2 → a new acceptance generation, driven by general
   product/calibration evidence — never by consumed holdout answers.
 
 ## Generation-1 permanent history (never to be overwritten)
