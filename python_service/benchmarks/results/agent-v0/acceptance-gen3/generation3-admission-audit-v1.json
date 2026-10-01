@@ -1,0 +1,98 @@
+{
+  "artifact_version": "Generation3AdmissionAuditV1",
+  "generation_id": "acceptance-generation-3",
+  "created_at": "2026-10-01T00:00:00+00:00",
+  "zero_model_calls": true,
+  "status": "ADMITTED_FOR_B6",
+  "admission": "ADMITTED_FOR_B6",
+  "checks": {
+    "all_public_and_substrate_inputs_presealed": {
+      "ok": true,
+      "seal_hash": "d11a17e1a7f45e115fcca4ce4617265f7ab453bfb5e679ddd78f3432c9cf040b",
+      "violations": []
+    },
+    "truth_public_substrate_isolation": {
+      "ok": true,
+      "relation": "public contract = what the Agent is asked; substrate = what the Agent can observe; truth = how the result is evaluated — mutually consistent at construction, strictly separated at execution",
+      "cases": [
+        {
+          "case_id": "gen3-failover-causality",
+          "violations": []
+        },
+        {
+          "case_id": "gen3-ledger-identity",
+          "violations": []
+        }
+      ]
+    },
+    "provisioning_reproducible_and_equivalent": {
+      "ok": true,
+      "repetitions_per_case": 2,
+      "cases": [
+        {
+          "case_id": "gen3-failover-causality",
+          "digests": [
+            "d68811a6fec887e6b2aa4d5b30b75536cf7fe7283d69faaafb15f10f7b691b0e",
+            "d68811a6fec887e6b2aa4d5b30b75536cf7fe7283d69faaafb15f10f7b691b0e"
+          ],
+          "violations": [],
+          "ok": true
+        },
+        {
+          "case_id": "gen3-ledger-identity",
+          "digests": [
+            "6faa0265df5ddccde7de4cb1ce6994e64eba4ba96c8672373d48568736216d15",
+            "6faa0265df5ddccde7de4cb1ce6994e64eba4ba96c8672373d48568736216d15"
+          ],
+          "violations": [],
+          "ok": true
+        }
+      ]
+    },
+    "attention_preflight_clean": {
+      "ok": true,
+      "cases": [
+        {
+          "case_id": "gen3-failover-causality",
+          "deterministic_and_folded": true,
+          "attention_item_ids": [
+            "question:q-1"
+          ]
+        },
+        {
+          "case_id": "gen3-ledger-identity",
+          "deterministic_and_folded": true,
+          "attention_item_ids": [
+            "question:q-1",
+            "question:q-2"
+          ]
+        }
+      ]
+    },
+    "acceptance_profile_frozen": {
+      "ok": true,
+      "expected_sha256": "c40f1adcad816e433f7edfc6cbc0b56dc32c031bf1fcb31528523ffa62f0e98d"
+    },
+    "runtime_frozen": {
+      "ok": true,
+      "investigation_subtree_hash": "ab8a5f1758da73bb394d375e32969a0cb248a59e",
+      "calibration_epoch_reference": "ab8a5f1758da73bb394d375e32969a0cb248a59e"
+    },
+    "model_frozen": {
+      "ok": true,
+      "expected_sha256": "9cdcb1fde1cdf6ca25067c0436bbc83618fcf3708b3fd4cc49207ba4b2d130fb",
+      "model": "sensenova-6.8-flash-lite (CALIBRATION-QUALIFIED; formal sealed acceptance NOT ESTABLISHED)"
+    },
+    "execution_count_zero": {
+      "ok": true,
+      "execution_count": 0,
+      "stray_artifacts": []
+    }
+  },
+  "all_passed": true,
+  "b6_preconditions": [
+    "explicit user authorization for B6 (never auto-executed)",
+    "Gen-3 execution preflight at entry: load/validate/hash-check/bootstrap + FRESH provisioning equivalence (zero model calls) feeding enforce_execution_gate_v3",
+    "population at execution: 2 families x 3 repetitions = 6 scheduled runs under the frozen AcceptanceProfileV2"
+  ]
+}

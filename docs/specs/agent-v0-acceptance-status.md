@@ -1,8 +1,7 @@
 # Agent v0 Project Status — Acceptance Track
 
-Updated: 2026-10-01 (Acceptance Generation 2 executed → B6_INVALID;
-Generation 2 CLOSED_INVALID, holdout CONSUMED; Generation 3 required for
-any future acceptance).
+Updated: 2026-10-01 (Acceptance Generation 3 sealed and admitted;
+execution count 0; awaiting explicit B6 authorization).
 
 ```text
 Agent v0 Architecture:
@@ -12,7 +11,7 @@ Calibration:
 COMPLETE / ZERO_CHANGE
 
 Acceptance Generation 1:
-CLOSED
+CLOSED_INVALID
 B6_INVALID
 holdout CONSUMED
 
@@ -27,6 +26,10 @@ NO RETRY
 
 Formal Agent v0 acceptance:
 NOT ESTABLISHED
+
+Acceptance Generation 3:
+SEALED / ADMITTED_FOR_B6
+execution_count = 0
 
 Production runtime:
 UNCHANGED
@@ -162,3 +165,43 @@ Generation-1 permanent history, protocol era, closure record and the
 `benchmarks/profiles/acceptance-generation-closure-v1.json`,
 `benchmarks/results/agent-v0/b6-holdout/` (immutable),
 `docs/specs/agent-b6-holdout-acceptance-audit.md` (execution-era record).
+
+## Acceptance Generation 3 (sealed, admitted, NOT executed)
+
+Preparation commit chain: `0144636d` (Gen-2 addendum) → `3312e9b9`
+(substrate contract + tests) → `224c3c97` (construct + seal) → admission.
+
+**Supreme invariant (frozen)**: "If the Agent can observe it, directly
+or through parsing/indexing, it must be frozen and hash-bound before
+admission." The evidence-bearing substrate image is now a formal sealed
+protocol object (`SealedEvidenceSubstrateV1` + `SealedEvidenceManifestV1`,
+contract module `holdout_contract_v3.py`); post-extraction file
+injection is not legal provisioning; the execution gate gained
+SUBSTRATE_IMAGE_HASH_MATCH / EVIDENCE_WORLD_DIGEST_MATCH /
+EXPECTED_EVIDENCE_KEYS_PRESENT / UNEXPECTED_SEMANTIC_EVIDENCE_ABSENT /
+PARSER_CONFIG_HASH_MATCH.
+
+Holdout set `holdout-set-gen3-v1` (2 new families, entirely new
+instances):
+
+| case | family | public hash | image hash | evidence-world digest |
+|---|---|---|---|---|
+| gen3-ledger-identity | identity_ambiguity | `f5d5c09abdcd…` | `5202a1513e3b…` | `6faa0265df5d…` |
+| gen3-failover-causality | causal_ambiguity | `f3c254fdb13e…` | `0aa0e4c4d064…` | `d68811a6fec8…` |
+
+Seal `HoldoutSealV3` = `d11a17e1a7f45e11…`; construction validation
+(EvidenceWorldValidationV1) ALL PASS with real provisioning ×2 per case
+(zero model calls); admission audit `Generation3AdmissionAuditV1` 8/8
+PASS → **ADMITTED_FOR_B6**, **execution_count = 0**. AcceptanceProfileV2
+unchanged, bound via `acceptance-profile-generation-binding-v3.json`;
+calibration NOT rerun.
+
+Regression: 2680 passed (34 Gen-2/Gen-3 contract tests; the 2 known
+pre-existing environment failures excluded — local Postgres auth, CORS
+origin).
+
+**B6 execution entry (next round, explicit authorization required)**:
+Gen-3 execution preflight (load/validate/hash-check/bootstrap + FRESH
+provisioning equivalence, zero model calls) → `enforce_execution_gate_v3`
+→ 2 families × 3 repetitions = 6 scheduled runs → six-axis verdict under
+the frozen profile.
