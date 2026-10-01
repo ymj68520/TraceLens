@@ -11,8 +11,10 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ....evidence.content_store import ContentUnavailableError
 from ....evidence.exceptions import InvalidEvidenceKeyError
 from ....evidence.keys import parse_evidence_key
+from ....investigation_evidence import ResolvedEvidence
 from ..errors import ToolErrorCode, ToolExecutionError
 from ..registry import ToolExecutionOutcome
 from .base import ToolCatalogConfig, bounded_page_size
@@ -158,6 +160,8 @@ class GetEvidenceOutput(BaseModel):
     end_time: int | None = None
     metadata: dict[str, Any] = {}
     content_preview: str | None = None
+    content_available: bool | None = None
+    content_unavailable_reason: str | None = None
     md5: str | None = None
     size: int | None = None
     extension: str | None = None
@@ -196,25 +200,42 @@ def build_get_evidence_tool(
                 "evidence key did not resolve in this task scope",
             )
         content = None
+        content_available: bool | None = None
+        content_unavailable_reason: str | None = None
+        provider_configured = False
         if args.hydration_level == "preview":
             raw = resolved.get("content")
-            if not isinstance(raw, str):
+            if not isinstance(raw, str) or not raw:
                 # the workbench resolver resolves file content through
-                # bounded_content (files carry only content_path); the
-                # preview promise requires actually reading the bounded text
+                # bounded_content (files carry only content_path; the durable
+                # content store backs everything else). Pass an attribute
+                # view of the resolved dict so the resolver (and its content
+                # provider) can act on the full identity.
                 resolver = getattr(
                     services.investigation_service, "_evidence_resolver", None
                 )
                 bounded = getattr(resolver, "bounded_content", None)
+                provider_configured = bool(
+                    getattr(resolver, "content_provider", None)
+                )
                 if bounded is not None:
                     try:
-                        raw = await bounded(resolved)
+                        raw = await bounded(ResolvedEvidence.from_dict(resolved))
+                    except ContentUnavailableError as exc:
+                        # honest unavailability with reason code — never an
+                        # ambiguous null (content hydration contract §22/§23)
+                        content_available = False
+                        content_unavailable_reason = exc.reason
+                        raw = None
                     except Exception:  # noqa: BLE001 - preview is best-effort
-                        raw = await bounded(
-                            type("_R", (), {"evidence_type": resolved.get("evidence_type"), "content": None, "content_path": resolved.get("content_path")})()
-                        )
+                        if provider_configured:
+                            content_available = False
+                            content_unavailable_reason = "CONTENT_READ_FAILED"
+                        raw = None
             if isinstance(raw, str):
                 content = raw[: config.max_preview_chars]
+                if content_unavailable_reason is None and (content or provider_configured):
+                    content_available = True
         output = GetEvidenceOutput(
             evidence_key=resolved.get("evidence_key") or args.evidence_key,
             kind=str(resolved.get("evidence_type") or "file"),
@@ -224,6 +245,8 @@ def build_get_evidence_tool(
             end_time=resolved.get("end_time"),
             metadata=dict(resolved.get("metadata") or {}),
             content_preview=content,
+            content_available=content_available,
+            content_unavailable_reason=content_unavailable_reason,
             md5=resolved.get("md5"),
             size=resolved.get("size"),
             extension=resolved.get("extension"),
@@ -258,7 +281,10 @@ def build_get_evidence_tool(
             "Resolves a canonical evidence_key (file:... or cluster:v1:...) "
             "within this task and returns its digest or bounded content "
             "preview. The key must come from search_evidence, search_timeline "
-            "or find_related_evidence."
+            "or find_related_evidence. At preview level, content_available "
+            "states whether file content was readable; when false, "
+            "content_unavailable_reason carries the explicit reason code "
+            "(content is never fabricated)."
         ),
         input_model=GetEvidenceInput,
         output_model=GetEvidenceOutput,
