@@ -1,0 +1,190 @@
+{
+  "record": "gen4-runtime-identity-closure:v1",
+  "created_at": "2026-10-01T22:21:15+00:00",
+  "head": "d591a3ff6d69180f4392441053a628730eeb027c",
+  "frozen_head": "09c74e96fe511aef18d8a909870255cd48ee20d7",
+  "component_hashes": {
+    "content_store": {
+      "path": "python_service/httpserver/services/evidence/content_store.py",
+      "head": "sha256:a85048ba1cb8e50764e462f2fc815d3e5228afc350c02e053dee5b06867fc809",
+      "at_frozen_09c74e96": "sha256:1a29f5064fa0908c1f79542d322e4cab4698caec36c53aa4a022d5a56b9f7cd2",
+      "at_race_fix_1b6c0a88": "sha256:a85048ba1cb8e50764e462f2fc815d3e5228afc350c02e053dee5b06867fc809",
+      "changed_since_frozen": true,
+      "stabilized_at_race_fix": true
+    },
+    "evidence_resolver_identity": {
+      "path": "python_service/httpserver/services/evidence/resolver.py",
+      "head": "sha256:ad627645ee6731415141e606fce7c810cbc60cc3da54c9b8f7b943ad616d65e0",
+      "at_frozen_09c74e96": "sha256:ad627645ee6731415141e606fce7c810cbc60cc3da54c9b8f7b943ad616d65e0",
+      "at_race_fix_1b6c0a88": "sha256:ad627645ee6731415141e606fce7c810cbc60cc3da54c9b8f7b943ad616d65e0",
+      "changed_since_frozen": false,
+      "stabilized_at_race_fix": true
+    },
+    "evidence_resolver_workbench": {
+      "path": "python_service/httpserver/services/investigation_evidence.py",
+      "head": "sha256:67833591340d93da3aa8df702ad30c9277c8ed6d15a39b48b27f424754eb58b5",
+      "at_frozen_09c74e96": "sha256:67833591340d93da3aa8df702ad30c9277c8ed6d15a39b48b27f424754eb58b5",
+      "at_race_fix_1b6c0a88": "sha256:67833591340d93da3aa8df702ad30c9277c8ed6d15a39b48b27f424754eb58b5",
+      "changed_since_frozen": false,
+      "stabilized_at_race_fix": true
+    },
+    "get_evidence_tool": {
+      "path": "python_service/httpserver/services/investigation/agent_tools/adapters/evidence.py",
+      "head": "sha256:fe7411119185f6ed628c6f3f76d4d6e40e803b947a253cd0620abacda378914c",
+      "at_frozen_09c74e96": "sha256:fe7411119185f6ed628c6f3f76d4d6e40e803b947a253cd0620abacda378914c",
+      "at_race_fix_1b6c0a88": "sha256:fe7411119185f6ed628c6f3f76d4d6e40e803b947a253cd0620abacda378914c",
+      "changed_since_frozen": false,
+      "stabilized_at_race_fix": true
+    },
+    "tool_registry": {
+      "path": "python_service/httpserver/services/investigation/agent_tools/registry.py",
+      "head": "sha256:3d682dd59e7800cf0e09345a31952085ab868e8755eeb475b0092807ab59ce72",
+      "at_frozen_09c74e96": "sha256:3d682dd59e7800cf0e09345a31952085ab868e8755eeb475b0092807ab59ce72",
+      "at_race_fix_1b6c0a88": "sha256:3d682dd59e7800cf0e09345a31952085ab868e8755eeb475b0092807ab59ce72",
+      "changed_since_frozen": false,
+      "stabilized_at_race_fix": true
+    },
+    "tool_definitions": {
+      "path": "python_service/httpserver/services/investigation/agent_tools/definitions.py",
+      "head": "sha256:0bd9854c9935678ee1050c15bbda660edb3bb459a4004e39f1dec89bde77f0ba",
+      "at_frozen_09c74e96": "sha256:0bd9854c9935678ee1050c15bbda660edb3bb459a4004e39f1dec89bde77f0ba",
+      "at_race_fix_1b6c0a88": "sha256:0bd9854c9935678ee1050c15bbda660edb3bb459a4004e39f1dec89bde77f0ba",
+      "changed_since_frozen": false,
+      "stabilized_at_race_fix": true
+    },
+    "agent_runtime": {
+      "path": "python_service/httpserver/services/investigation/agent_runtime.py",
+      "head": "sha256:8d0448e7f69ff03a1f1545d6fd23b1ae888e589093f07f9f362f51ab93c2fb00",
+      "at_frozen_09c74e96": "sha256:8d0448e7f69ff03a1f1545d6fd23b1ae888e589093f07f9f362f51ab93c2fb00",
+      "at_race_fix_1b6c0a88": "sha256:8d0448e7f69ff03a1f1545d6fd23b1ae888e589093f07f9f362f51ab93c2fb00",
+      "changed_since_frozen": false,
+      "stabilized_at_race_fix": true
+    },
+    "supervisor": {
+      "path": "python_service/httpserver/services/investigation/agent_supervisor.py",
+      "head": "sha256:8621316a59b9c016c6eacbe9742eb439532af26b401f09d0eef3c263acd8cd25",
+      "at_frozen_09c74e96": "sha256:8621316a59b9c016c6eacbe9742eb439532af26b401f09d0eef3c263acd8cd25",
+      "at_race_fix_1b6c0a88": "sha256:8621316a59b9c016c6eacbe9742eb439532af26b401f09d0eef3c263acd8cd25",
+      "changed_since_frozen": false,
+      "stabilized_at_race_fix": true
+    },
+    "specialist_executor": {
+      "path": "python_service/httpserver/services/investigation/agent_specialist_executor.py",
+      "head": "sha256:211f0b25742946dfbe89e5b8e1995fa48867af8b41be849ee88c5ae4eb37cf4e",
+      "at_frozen_09c74e96": "sha256:211f0b25742946dfbe89e5b8e1995fa48867af8b41be849ee88c5ae4eb37cf4e",
+      "at_race_fix_1b6c0a88": "sha256:211f0b25742946dfbe89e5b8e1995fa48867af8b41be849ee88c5ae4eb37cf4e",
+      "changed_since_frozen": false,
+      "stabilized_at_race_fix": true
+    },
+    "specialist_result_contract": {
+      "path": "python_service/httpserver/services/investigation/agent_specialist_result.py",
+      "head": "sha256:4f8b004d7bd8a1f1cd6237a4f31db15cba8153fc8b6d884d807939a7868968dd",
+      "at_frozen_09c74e96": "sha256:4f8b004d7bd8a1f1cd6237a4f31db15cba8153fc8b6d884d807939a7868968dd",
+      "at_race_fix_1b6c0a88": "sha256:4f8b004d7bd8a1f1cd6237a4f31db15cba8153fc8b6d884d807939a7868968dd",
+      "changed_since_frozen": false,
+      "stabilized_at_race_fix": true
+    },
+    "state_transition_policy": {
+      "path": "python_service/httpserver/services/investigation/agent_transitions.py",
+      "head": "sha256:77300b8d079fb21891ac59dd14732a5f1b611c719e2c5bfc924637166f250e54",
+      "at_frozen_09c74e96": "sha256:77300b8d079fb21891ac59dd14732a5f1b611c719e2c5bfc924637166f250e54",
+      "at_race_fix_1b6c0a88": "sha256:77300b8d079fb21891ac59dd14732a5f1b611c719e2c5bfc924637166f250e54",
+      "changed_since_frozen": false,
+      "stabilized_at_race_fix": true
+    },
+    "finalization_gate": {
+      "path": "python_service/httpserver/services/investigation/agent_finalization.py",
+      "head": "sha256:505b0f566b2bd91822c8f150fc093fafcff4634b994b4bc2fda469df8caaaf4a",
+      "at_frozen_09c74e96": "sha256:505b0f566b2bd91822c8f150fc093fafcff4634b994b4bc2fda469df8caaaf4a",
+      "at_race_fix_1b6c0a88": "sha256:505b0f566b2bd91822c8f150fc093fafcff4634b994b4bc2fda469df8caaaf4a",
+      "changed_since_frozen": false,
+      "stabilized_at_race_fix": true
+    },
+    "snapshot_admission": {
+      "path": "python_service/httpserver/services/investigation/acquisition.py",
+      "head": "sha256:54ccfc765c2f34d2320a76174da4cdae1bcbf8857e6bceb2ddd1546fe1ee84f0",
+      "at_frozen_09c74e96": "sha256:54ccfc765c2f34d2320a76174da4cdae1bcbf8857e6bceb2ddd1546fe1ee84f0",
+      "at_race_fix_1b6c0a88": "sha256:54ccfc765c2f34d2320a76174da4cdae1bcbf8857e6bceb2ddd1546fe1ee84f0",
+      "changed_since_frozen": false,
+      "stabilized_at_race_fix": true
+    },
+    "orchestrator": {
+      "path": "python_service/httpserver/services/investigation/agent_orchestrator.py",
+      "head": "sha256:86bc33b5b984336ad1968b8831b2ba1be405a39d13fc97cf47eae1198941663e",
+      "at_frozen_09c74e96": "sha256:86bc33b5b984336ad1968b8831b2ba1be405a39d13fc97cf47eae1198941663e",
+      "at_race_fix_1b6c0a88": "sha256:86bc33b5b984336ad1968b8831b2ba1be405a39d13fc97cf47eae1198941663e",
+      "changed_since_frozen": false,
+      "stabilized_at_race_fix": true
+    },
+    "hydration_contract_doc": {
+      "path": "docs/specs/evidence-content-hydration-contract.md",
+      "head": "sha256:8dfd55ab959263781af22be11dfc8bf8c5038c70818df9ce3fe46f9944090363",
+      "at_frozen_09c74e96": "absent@09c74e96",
+      "at_race_fix_1b6c0a88": "sha256:8dfd55ab959263781af22be11dfc8bf8c5038c70818df9ce3fe46f9944090363",
+      "changed_since_frozen": true,
+      "stabilized_at_race_fix": true
+    },
+    "runtime_baseline_v3": {
+      "path": "python_service/benchmarks/profiles/agent-v0-runtime-baseline-v3.json",
+      "head": "sha256:e18b6e6ab26c1d59f93798785947331e3338af63151612d56e350986f883451a",
+      "at_frozen_09c74e96": "absent@09c74e96",
+      "at_race_fix_1b6c0a88": "sha256:e18b6e6ab26c1d59f93798785947331e3338af63151612d56e350986f883451a",
+      "changed_since_frozen": true,
+      "stabilized_at_race_fix": true
+    }
+  },
+  "deltas_since_frozen": [
+    "content_store",
+    "hydration_contract_doc",
+    "runtime_baseline_v3"
+  ],
+  "disposition": "CASE_C_SUPERSEDING_RECORD (fix predated qualification AND all 24 B2 runs)",
+  "superseding_record": {
+    "artifact_version": "AgentV0RuntimeBaselineV3SupersedingRecord",
+    "created_at": "2026-10-01T22:21:15+00:00",
+    "supersedes_hash_of": "agent-v0-runtime-baseline-v3.json frozen_at_commit 09c74e96 (baseline artifact itself unchanged and still current)",
+    "measured_runtime_commit": "1b6c0a88",
+    "measured_runtime_head_at_series": {
+      "qualification_canary": "1b6c0a88 tree (commit landed before canary launch)",
+      "b2_24_run_series": "985f09e1 tree (production files identical to 1b6c0a88 — verified by empty diff 1b6c0a88..d591a3ff on httpserver/src/config)"
+    },
+    "changed_components": [
+      "content_store",
+      "hydration_contract_doc",
+      "runtime_baseline_v3"
+    ],
+    "production_code_deltas": [
+      "content_store"
+    ],
+    "freeze_artifacts_not_production": [
+      "hydration_contract_doc",
+      "runtime_baseline_v3"
+    ],
+    "change_classification": {
+      "e021ee04": "§2 Case B measurement instrumentation: additive in-memory hydration telemetry (read-only observability) + driver --no-dataset-staging flag; no Agent-visible input, decision, tool, or hydration semantics change; covered by the 75-test evidence unit suite",
+      "1b6c0a88": "§2 Case C production defect fix in content_store.py: locator-column migration race (duplicate ALTER) and shared blob .tmp staging race; both defects were loss-causing concurrency bugs whose fix is required for the frozen §48 hydration invariant to hold under concurrent hydration; committed BEFORE the qualification canary AND before all 24 B2 runs; every measurement artifact (preflight hashes, run manifests, result hashes) was produced on this exact content_store content"
+    },
+    "timing_proof": {
+      "race_fix_committed_before_qualification": true,
+      "race_fix_committed_before_b2": true,
+      "production_delta_after_race_fix_through_head": "none (git diff 1b6c0a88..HEAD on httpserver/src/config is empty)",
+      "conclusion": "qualification canary and the full B2 series exercised the superseded (measured) runtime; no mid-series change; B2 remains MEASUREMENT_VALID"
+    },
+    "binding": {
+      "runtime_baseline": "AgentV0RuntimeBaselineV3 (artifact unchanged)",
+      "measured_content_store_sha256": "sha256:a85048ba1cb8e50764e462f2fc815d3e5228afc350c02e053dee5b06867fc809",
+      "measured_investigation_subtree": "2913506cb862f868a079b7dc9c57dd1e3d2d386a",
+      "head_investigation_subtree": "2913506cb862f868a079b7dc9c57dd1e3d2d386a"
+    }
+  },
+  "measurement_addendum": {
+    "artifact_version": "RuntimeBaselineV3MeasurementAddendum",
+    "created_at": "2026-10-01T22:21:15+00:00",
+    "instrumentation_delta": [
+      "httpserver/services/evidence/content_store.py: TELEMETRY dict + snapshot/reset helpers + counter instrumentation (additive observability; never run-fatal; snapshot_telemetry consumed by drivers only)",
+      "scripts/run_p8b_baseline.py: --no-dataset-staging content mode (§9 durable content path authoritative) + per-run hydration_telemetry.json snapshot",
+      "scripts/preflight_runtime_v3_requalification.py, scripts/smoke_model_adapter_v3.py, scripts/check_dataset_in_image_v3.py, scripts/evaluate_runtime_v3_qualification.py, scripts/build_b2_runtime_v3_report.py, scripts/build_runtime_v3_bindings.py, scripts/canary_content_hydration.py: measurement/reporting only"
+    ],
+    "invariants": "no Agent-visible input, runtime decision, tool behavior, or evidence hydration behavior changed (§2 Case B verified by the full unit suite at every commit)"
+  }
+}
