@@ -1,52 +1,52 @@
 {
-  "record": "ModelRuntimeQualificationRecordV3:adapter-smoke",
+  "record": "ModelRuntimeQualificationRecordV3",
+  "created_at": "2026-10-01T14:10:30+00:00",
   "binding": {
     "runtime_baseline": "AgentV0RuntimeBaselineV3",
     "runtime_baseline_sha256": "e18b6e6ab26c1d59f93798785947331e3338af63151612d56e350986f883451a",
+    "content_hydration_contract": "evidence-content-hydration:v1 (FROZEN d213145d)",
     "provider": "sensenova-cloud",
     "model_id": "sensenova-6.8-flash-lite",
-    "base_url": "https://token.sensenova.cn",
-    "temperature": 0.7,
-    "max_tokens": 16384,
-    "thinking_mode": "disabled",
-    "timeout_seconds": 120
+    "configuration_id": "bconf-runtime-v3-qualification",
+    "corpus_id": "corpus-agent-v0-calibration",
+    "corpus_hash": "25c216e85acc32f22c5231924730956c24de6a04cc2c4f7173483c9b557916c4"
   },
-  "checks": {
-    "basic_completion": {
-      "pass": true,
-      "response_excerpt": "QUALIFIED",
-      "latency_seconds": 1.8
-    },
-    "usage_metadata": {
-      "pass": true,
-      "usage": "RunUsage(details={'reasoning_tokens': 0}, input_tokens=64, output_tokens=3, requests=1)"
-    },
-    "structured_output": {
-      "pass": true,
-      "output": {
-        "statement": "Unverifiable — no device, ledger, or entries are described in the provided context, so the claim 'The device contains a ",
-        "confidence": "low"
-      }
-    },
-    "zero_arg_tool_call": {
-      "pass": true,
-      "calls": [
-        ""
-      ]
-    },
-    "normal_tool_call": {
-      "pass": true,
-      "calls": [
-        "canary"
-      ]
-    },
-    "api_model_identity": {
-      "pass": true,
-      "http_status": 200,
-      "reported_model": "sensenova-6.8-flash-lite",
-      "configured_model": "sensenova-6.8-flash-lite",
-      "base_url_host": "https://token.sensenova.cn"
-    }
+  "adapter_smoke": "CONTINUE (6/6 checks, see model-runtime-qualification-v3.json)",
+  "deep_smokes": {
+    "content_hydration": "PASS (image→parse→no staging→hydration; sha256==source ×3)",
+    "restart_hydration": "PASS (same keys/sha256/preview semantics after real restart)",
+    "agent_deep_smoke": "PASS (image-exclusive markers in SpecialistResult + trajectory)"
   },
-  "disposition": "CONTINUE"
+  "runs": [],
+  "hydration_totals": {
+    "hydration_attempted": 0,
+    "hydration_success": 0,
+    "reacquire_count": 0,
+    "locator_hit_count": 0,
+    "adopted_legacy_count": 0,
+    "content_integrity_failure_count": 0,
+    "unavailable_reasons": {},
+    "first_hydration_latency_seconds": []
+  },
+  "content_correctness_gate": {
+    "content_integrity_mismatch": 0,
+    "unavailable_reasons": {},
+    "legacy_fallback_adopted": 0
+  },
+  "content_gate_pass": true,
+  "rejection_code_totals": {},
+  "output_reliability": {
+    "supervisor_failures": 0,
+    "delegation_failures": 0,
+    "specialist_structured_output_failures": 0
+  },
+  "minimum_evidence": {
+    "content_hydration_exercised_runs": 0,
+    "runs_total": 0,
+    "specialist_consumed_content": true,
+    "supervisor_structured_output_not_systemically_broken": true,
+    "cases_with_valid_integrated_delegation": 0,
+    "structural_hard_gates_clean": true
+  },
+  "disposition": "MODEL_NOT_QUALIFIED"
 }

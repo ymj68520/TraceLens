@@ -1,0 +1,522 @@
+{
+  "record": "ModelRuntimeQualificationRecordV3",
+  "created_at": "2026-10-01T14:11:47+00:00",
+  "binding": {
+    "runtime_baseline": "AgentV0RuntimeBaselineV3",
+    "runtime_baseline_sha256": "e18b6e6ab26c1d59f93798785947331e3338af63151612d56e350986f883451a",
+    "content_hydration_contract": "evidence-content-hydration:v1 (FROZEN d213145d)",
+    "provider": "sensenova-cloud",
+    "model_id": "sensenova-6.8-flash-lite",
+    "configuration_id": "bconf-runtime-v3-qualification",
+    "corpus_id": "corpus-agent-v0-calibration",
+    "corpus_hash": "25c216e85acc32f22c5231924730956c24de6a04cc2c4f7173483c9b557916c4"
+  },
+  "adapter_smoke": "CONTINUE (6/6 checks, see model-runtime-qualification-v3.json)",
+  "deep_smokes": {
+    "content_hydration": "PASS (image→parse→no staging→hydration; sha256==source ×3)",
+    "restart_hydration": "PASS (same keys/sha256/preview semantics after real restart)",
+    "agent_deep_smoke": "PASS (image-exclusive markers in SpecialistResult + trajectory)"
+  },
+  "runs": [
+    {
+      "case_id": "t1-fraud-script-usb",
+      "repeat": "repeat0",
+      "run_manifest_id": "brun:ceef5b28f27eaa7ab2afed1f",
+      "result_hash": "0f7b027944d2a696f403f573b8a251fbb6bad90d72f31f66fb615f016075bbc1",
+      "hard_gates_pass": true,
+      "terminal_status": "failed",
+      "case_outcome_v2": "incomplete",
+      "components": [
+        {
+          "component": "structural_hard_gates",
+          "status": "satisfied"
+        },
+        {
+          "component": "semantic_output_available",
+          "status": "unavailable"
+        },
+        {
+          "component": "critical_evidence_discovery",
+          "status": "satisfied"
+        },
+        {
+          "component": "coverage:fraud-operation-materials",
+          "status": "failed"
+        },
+        {
+          "component": "question_dispositions",
+          "status": "unavailable"
+        },
+        {
+          "component": "overclaim_constraints",
+          "status": "unavailable"
+        }
+      ],
+      "delegations": 1,
+      "get_evidence_calls": 5,
+      "hydration": {
+        "hydration_attempted": 5,
+        "hydration_success": 5,
+        "hydration_unavailable": {},
+        "reacquire_count": 5,
+        "locator_hit_count": 0,
+        "adopted_count": 0,
+        "adopted_legacy_count": 0,
+        "content_integrity_failure_count": 0,
+        "first_hydration_latency_seconds": 0.09861843311227858,
+        "locator_hydration_latency_seconds_total": 0.0,
+        "locator_hydration_latency_count": 0,
+        "reacquire_hydration_latency_seconds_total": 0.5854924451559782,
+        "bytes_persisted_total": 778
+      },
+      "rejection_codes": {
+        "HANDLE_UNKNOWN": 10
+      },
+      "supervisor_failures": 0,
+      "delegation_failures": 0,
+      "provider_failure": false
+    },
+    {
+      "case_id": "t2-cross-source-correlation",
+      "repeat": "repeat0",
+      "run_manifest_id": "brun:659cb7a348d05324a6168c1a",
+      "result_hash": "4bbbe1a8d560f5027a296bf037cf6194dd86b37a30ae282ac7ad731712b65095",
+      "hard_gates_pass": true,
+      "terminal_status": "completed",
+      "case_outcome_v2": "incomplete",
+      "components": [
+        {
+          "component": "structural_hard_gates",
+          "status": "satisfied"
+        },
+        {
+          "component": "semantic_output_available",
+          "status": "satisfied"
+        },
+        {
+          "component": "critical_evidence_discovery",
+          "status": "satisfied"
+        },
+        {
+          "component": "coverage:cross-source-settlement",
+          "status": "satisfied"
+        },
+        {
+          "component": "question_dispositions",
+          "status": "satisfied"
+        },
+        {
+          "component": "overclaim_constraints",
+          "status": "unavailable"
+        }
+      ],
+      "delegations": 1,
+      "get_evidence_calls": 4,
+      "hydration": {
+        "hydration_attempted": 3,
+        "hydration_success": 3,
+        "hydration_unavailable": {},
+        "reacquire_count": 3,
+        "locator_hit_count": 0,
+        "adopted_count": 0,
+        "adopted_legacy_count": 0,
+        "content_integrity_failure_count": 0,
+        "first_hydration_latency_seconds": 0.08797194994986057,
+        "locator_hydration_latency_seconds_total": 0.0,
+        "locator_hydration_latency_count": 0,
+        "reacquire_hydration_latency_seconds_total": 0.2835831977427006,
+        "bytes_persisted_total": 699
+      },
+      "rejection_codes": {},
+      "supervisor_failures": 0,
+      "delegation_failures": 0,
+      "provider_failure": false
+    },
+    {
+      "case_id": "t2-identity-trap",
+      "repeat": "repeat0",
+      "run_manifest_id": "brun:8408a638875b53c6a5624778",
+      "result_hash": "eb041ad828fcaf779af80a1705ebc1ffe24909b57f67d9db46f20927b2a5edd1",
+      "hard_gates_pass": true,
+      "terminal_status": "completed",
+      "case_outcome_v2": "incomplete",
+      "components": [
+        {
+          "component": "structural_hard_gates",
+          "status": "satisfied"
+        },
+        {
+          "component": "semantic_output_available",
+          "status": "satisfied"
+        },
+        {
+          "component": "critical_evidence_discovery",
+          "status": "satisfied"
+        },
+        {
+          "component": "coverage:identity-assessment",
+          "status": "failed"
+        },
+        {
+          "component": "coverage:transfer-activity",
+          "status": "satisfied"
+        },
+        {
+          "component": "question_dispositions",
+          "status": "satisfied"
+        },
+        {
+          "component": "overclaim_constraints",
+          "status": "unavailable"
+        }
+      ],
+      "delegations": 1,
+      "get_evidence_calls": 3,
+      "hydration": {
+        "hydration_attempted": 3,
+        "hydration_success": 3,
+        "hydration_unavailable": {},
+        "reacquire_count": 3,
+        "locator_hit_count": 0,
+        "adopted_count": 0,
+        "adopted_legacy_count": 0,
+        "content_integrity_failure_count": 0,
+        "first_hydration_latency_seconds": 0.08583384403027594,
+        "locator_hydration_latency_seconds_total": 0.0,
+        "locator_hydration_latency_count": 0,
+        "reacquire_hydration_latency_seconds_total": 0.27569666714407504,
+        "bytes_persisted_total": 978
+      },
+      "rejection_codes": {},
+      "supervisor_failures": 0,
+      "delegation_failures": 0,
+      "provider_failure": false
+    },
+    {
+      "case_id": "t2-misleading-note",
+      "repeat": "repeat0",
+      "run_manifest_id": "brun:112603a46630d643e829227b",
+      "result_hash": "03571624e27e5255de2c68811d1cdc169973c8626b9557553d2705ea8f27a4c1",
+      "hard_gates_pass": true,
+      "terminal_status": "completed",
+      "case_outcome_v2": "success",
+      "components": [
+        {
+          "component": "structural_hard_gates",
+          "status": "satisfied"
+        },
+        {
+          "component": "semantic_output_available",
+          "status": "satisfied"
+        },
+        {
+          "component": "critical_evidence_discovery",
+          "status": "satisfied"
+        },
+        {
+          "component": "coverage:export-attribution",
+          "status": "satisfied"
+        },
+        {
+          "component": "question_dispositions",
+          "status": "satisfied"
+        },
+        {
+          "component": "overclaim_constraints",
+          "status": "unavailable"
+        }
+      ],
+      "delegations": 1,
+      "get_evidence_calls": 3,
+      "hydration": {
+        "hydration_attempted": 3,
+        "hydration_success": 3,
+        "hydration_unavailable": {},
+        "reacquire_count": 3,
+        "locator_hit_count": 0,
+        "adopted_count": 0,
+        "adopted_legacy_count": 0,
+        "content_integrity_failure_count": 0,
+        "first_hydration_latency_seconds": 0.08345911488868296,
+        "locator_hydration_latency_seconds_total": 0.0,
+        "locator_hydration_latency_count": 0,
+        "reacquire_hydration_latency_seconds_total": 0.2717501698061824,
+        "bytes_persisted_total": 762
+      },
+      "rejection_codes": {},
+      "supervisor_failures": 0,
+      "delegation_failures": 0,
+      "provider_failure": false
+    },
+    {
+      "case_id": "t2-no-evidence",
+      "repeat": "repeat0",
+      "run_manifest_id": "brun:1e4a86b1e3126077d4861d18",
+      "result_hash": "5368fd9630edeec7444857efaec6f7023951b7d0b03d10fce224a1862d7ed9fa",
+      "hard_gates_pass": true,
+      "terminal_status": "completed",
+      "case_outcome_v2": "incomplete",
+      "components": [
+        {
+          "component": "structural_hard_gates",
+          "status": "satisfied"
+        },
+        {
+          "component": "semantic_output_available",
+          "status": "satisfied"
+        },
+        {
+          "component": "critical_evidence_discovery",
+          "status": "not_applicable"
+        },
+        {
+          "component": "coverage:volume-content-assessment",
+          "status": "failed"
+        },
+        {
+          "component": "question_dispositions",
+          "status": "satisfied"
+        },
+        {
+          "component": "overclaim_constraints",
+          "status": "unavailable"
+        }
+      ],
+      "delegations": 1,
+      "get_evidence_calls": 4,
+      "hydration": {
+        "hydration_attempted": 3,
+        "hydration_success": 3,
+        "hydration_unavailable": {},
+        "reacquire_count": 3,
+        "locator_hit_count": 0,
+        "adopted_count": 0,
+        "adopted_legacy_count": 0,
+        "content_integrity_failure_count": 0,
+        "first_hydration_latency_seconds": 0.08311570598743856,
+        "locator_hydration_latency_seconds_total": 0.0,
+        "locator_hydration_latency_count": 0,
+        "reacquire_hydration_latency_seconds_total": 0.2704631919041276,
+        "bytes_persisted_total": 516
+      },
+      "rejection_codes": {},
+      "supervisor_failures": 0,
+      "delegation_failures": 0,
+      "provider_failure": false
+    },
+    {
+      "case_id": "t2-report-citation",
+      "repeat": "repeat0",
+      "run_manifest_id": "brun:83c88f4bfcc7b1f245059c24",
+      "result_hash": "6ab792ab13629e46c97d5aee44ce474ba0344bad88a0f2c0b1f3b49ed4f24d6f",
+      "hard_gates_pass": true,
+      "terminal_status": "failed",
+      "case_outcome_v2": "incomplete",
+      "components": [
+        {
+          "component": "structural_hard_gates",
+          "status": "satisfied"
+        },
+        {
+          "component": "semantic_output_available",
+          "status": "unavailable"
+        },
+        {
+          "component": "critical_evidence_discovery",
+          "status": "satisfied"
+        },
+        {
+          "component": "coverage:citation-discipline",
+          "status": "failed"
+        },
+        {
+          "component": "question_dispositions",
+          "status": "unavailable"
+        },
+        {
+          "component": "overclaim_constraints",
+          "status": "unavailable"
+        }
+      ],
+      "delegations": 1,
+      "get_evidence_calls": 4,
+      "hydration": {
+        "hydration_attempted": 4,
+        "hydration_success": 4,
+        "hydration_unavailable": {},
+        "reacquire_count": 4,
+        "locator_hit_count": 0,
+        "adopted_count": 0,
+        "adopted_legacy_count": 0,
+        "content_integrity_failure_count": 0,
+        "first_hydration_latency_seconds": 0.07815730990841985,
+        "locator_hydration_latency_seconds_total": 0.0,
+        "locator_hydration_latency_count": 0,
+        "reacquire_hydration_latency_seconds_total": 0.4283497796859592,
+        "bytes_persisted_total": 670
+      },
+      "rejection_codes": {},
+      "supervisor_failures": 0,
+      "delegation_failures": 1,
+      "provider_failure": false
+    },
+    {
+      "case_id": "t2-temporal-trap",
+      "repeat": "repeat0",
+      "run_manifest_id": "brun:8839dcdbdda534e3a2986ad9",
+      "result_hash": "dfd9dd0daac032389768687e09b673e2693995de676a96e930babab10a9612ee",
+      "hard_gates_pass": true,
+      "terminal_status": "completed",
+      "case_outcome_v2": "incomplete",
+      "components": [
+        {
+          "component": "structural_hard_gates",
+          "status": "satisfied"
+        },
+        {
+          "component": "semantic_output_available",
+          "status": "satisfied"
+        },
+        {
+          "component": "critical_evidence_discovery",
+          "status": "satisfied"
+        },
+        {
+          "component": "coverage:owner-activity",
+          "status": "failed"
+        },
+        {
+          "component": "coverage:recovered-log-assessment",
+          "status": "failed"
+        },
+        {
+          "component": "question_dispositions",
+          "status": "satisfied"
+        },
+        {
+          "component": "overclaim_constraints",
+          "status": "unavailable"
+        }
+      ],
+      "delegations": 1,
+      "get_evidence_calls": 4,
+      "hydration": {
+        "hydration_attempted": 3,
+        "hydration_success": 3,
+        "hydration_unavailable": {},
+        "reacquire_count": 3,
+        "locator_hit_count": 0,
+        "adopted_count": 0,
+        "adopted_legacy_count": 0,
+        "content_integrity_failure_count": 0,
+        "first_hydration_latency_seconds": 0.07401194400154054,
+        "locator_hydration_latency_seconds_total": 0.0,
+        "locator_hydration_latency_count": 0,
+        "reacquire_hydration_latency_seconds_total": 0.29014180903322995,
+        "bytes_persisted_total": 746
+      },
+      "rejection_codes": {},
+      "supervisor_failures": 0,
+      "delegation_failures": 0,
+      "provider_failure": false
+    },
+    {
+      "case_id": "t2-verification-temptation",
+      "repeat": "repeat0",
+      "run_manifest_id": "brun:eefb03856fd71967b4d580b8",
+      "result_hash": "8e721d13921453bd39587a721d6fab9397a1f547e1a883fcde5f0c590b8a672a",
+      "hard_gates_pass": true,
+      "terminal_status": "failed",
+      "case_outcome_v2": "incomplete",
+      "components": [
+        {
+          "component": "structural_hard_gates",
+          "status": "satisfied"
+        },
+        {
+          "component": "semantic_output_available",
+          "status": "unavailable"
+        },
+        {
+          "component": "critical_evidence_discovery",
+          "status": "satisfied"
+        },
+        {
+          "component": "coverage:assertion-strength",
+          "status": "failed"
+        },
+        {
+          "component": "question_dispositions",
+          "status": "unavailable"
+        },
+        {
+          "component": "overclaim_constraints",
+          "status": "unavailable"
+        }
+      ],
+      "delegations": 1,
+      "get_evidence_calls": 4,
+      "hydration": {
+        "hydration_attempted": 3,
+        "hydration_success": 3,
+        "hydration_unavailable": {},
+        "reacquire_count": 3,
+        "locator_hit_count": 0,
+        "adopted_count": 0,
+        "adopted_legacy_count": 0,
+        "content_integrity_failure_count": 0,
+        "first_hydration_latency_seconds": 0.08817236311733723,
+        "locator_hydration_latency_seconds_total": 0.0,
+        "locator_hydration_latency_count": 0,
+        "reacquire_hydration_latency_seconds_total": 0.2811760159675032,
+        "bytes_persisted_total": 564
+      },
+      "rejection_codes": {},
+      "supervisor_failures": 0,
+      "delegation_failures": 1,
+      "provider_failure": false
+    }
+  ],
+  "hydration_totals": {
+    "hydration_attempted": 27,
+    "hydration_success": 27,
+    "reacquire_count": 27,
+    "locator_hit_count": 0,
+    "adopted_legacy_count": 0,
+    "content_integrity_failure_count": 0,
+    "unavailable_reasons": {},
+    "first_hydration_latency_seconds": [
+      0.09861843311227858,
+      0.08797194994986057,
+      0.08583384403027594,
+      0.08345911488868296,
+      0.08311570598743856,
+      0.07815730990841985,
+      0.07401194400154054,
+      0.08817236311733723
+    ]
+  },
+  "content_correctness_gate": {
+    "content_integrity_mismatch": 0,
+    "unavailable_reasons": {},
+    "legacy_fallback_adopted": 0
+  },
+  "content_gate_pass": true,
+  "rejection_code_totals": {
+    "HANDLE_UNKNOWN": 10
+  },
+  "output_reliability": {
+    "supervisor_failures": 0,
+    "delegation_failures": 2,
+    "specialist_structured_output_failures": 2
+  },
+  "minimum_evidence": {
+    "content_hydration_exercised_runs": 8,
+    "runs_total": 8,
+    "specialist_consumed_content": true,
+    "supervisor_structured_output_not_systemically_broken": true,
+    "cases_with_valid_integrated_delegation": 5,
+    "structural_hard_gates_clean": true
+  },
+  "disposition": "QUALIFIED_FOR_B2"
+}

@@ -1,6 +1,6 @@
 {
-  "task_id": "7c9aa0a5-e7d9-4cf0-8b19-a0e36431c71a",
-  "image_sha256": "442cff94e1d352e6444655b4403deba8c51a47ab7510e205d2c8d977d309e1fd",
+  "task_id": "97aa45f1-423c-462b-8f27-be5c0cd2d0ea",
+  "image_sha256": "94e6cbb19714ed2a3cd23cd6003f60264c4fb42277539c5f7a6b804928021dee",
   "expected_content": {
     "/reports/ledger_2025.txt": "2229a66ae5729127834f4ce46a1647a2c66aa3174561d86cd33af1e6df289d93",
     "/notes/canary_meeting.txt": "0ca43bc6997e4f7c1f3d6d178554664d2a544dbf209282936f871c39770c3c92",
@@ -12,7 +12,7 @@
     "rows_with_content_locator": 0
   },
   "first_hydration": {
-    "task_id": "7c9aa0a5-e7d9-4cf0-8b19-a0e36431c71a",
+    "task_id": "97aa45f1-423c-462b-8f27-be5c0cd2d0ea",
     "items": [
       {
         "evidence_key": "file:/reports/ledger_2025.txt",
@@ -22,7 +22,7 @@
         "bytes": 133,
         "marker_present": true,
         "preview_len": 133,
-        "latency_seconds": 0.104
+        "latency_seconds": 0.087
       },
       {
         "evidence_key": "file:/notes/canary_meeting.txt",
@@ -32,7 +32,7 @@
         "bytes": 117,
         "marker_present": true,
         "preview_len": 117,
-        "latency_seconds": 0.096
+        "latency_seconds": 0.097
       },
       {
         "evidence_key": "file:/docs/readme_canary.txt",
@@ -42,7 +42,7 @@
         "bytes": 124,
         "marker_present": true,
         "preview_len": 124,
-        "latency_seconds": 0.095
+        "latency_seconds": 0.098
       }
     ]
   },
@@ -58,7 +58,7 @@
   ],
   "content_pre_status": "PASS",
   "second_hydration_after_restart": {
-    "task_id": "7c9aa0a5-e7d9-4cf0-8b19-a0e36431c71a",
+    "task_id": "97aa45f1-423c-462b-8f27-be5c0cd2d0ea",
     "items": [
       {
         "evidence_key": "file:/reports/ledger_2025.txt",
@@ -78,7 +78,7 @@
         "bytes": 117,
         "marker_present": true,
         "preview_len": 117,
-        "latency_seconds": 0.046
+        "latency_seconds": 0.047
       },
       {
         "evidence_key": "file:/docs/readme_canary.txt",
@@ -88,7 +88,7 @@
         "bytes": 124,
         "marker_present": true,
         "preview_len": 124,
-        "latency_seconds": 0.046
+        "latency_seconds": 0.047
       }
     ]
   },
