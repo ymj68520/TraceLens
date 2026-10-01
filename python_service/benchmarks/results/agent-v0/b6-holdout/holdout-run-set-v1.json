@@ -1,0 +1,73 @@
+{
+  "artifact_version": "HoldoutRunSetV1",
+  "created_at": "2026-10-01T01:57:34+00:00",
+  "population": {
+    "families": [
+      "t3-holdout-refund-fraud",
+      "t3-holdout-vpn-causal"
+    ],
+    "repetitions_per_family": 3,
+    "scheduled_runs": 6,
+    "fresh_task_per_attempt": true
+  },
+  "b6_started_at": "2026-10-01T01:43:18+00:00",
+  "frozen_identities_input_hash": "bec05939768d0504f9f07e7187651f631feeb90cdbd272561df798d218636620",
+  "charter_input_hash": "34c888e4349bbdef7f786869740f0a38546087d2cc1a6b21bc1ed56fc4a443c0",
+  "runs": [
+    {
+      "case_id": "t3-holdout-refund-fraud",
+      "repeat": "repeat0",
+      "status": "completed",
+      "run_manifest_id": "brun:65415fb71e6b70fec2f031f4",
+      "result_hash": "7def9340185535363760effbfc84feefec13318bf9e273c71db421566ec7e105",
+      "snapshot_hash": "36b8d33a23a5f56840f6fe4d3117c11c9698d8d4c11af8adb31a9bdad842f423",
+      "failure_reason": null
+    },
+    {
+      "case_id": "t3-holdout-refund-fraud",
+      "repeat": "repeat1",
+      "status": "completed",
+      "run_manifest_id": "brun:fea067fed1c9e9886b111cfc",
+      "result_hash": "bb2cb0c76cd9961b3ea2ef41cd9265c72d726ab4b7d65250ab7c2f38faa6f81b",
+      "snapshot_hash": "0202b12103b1024c1c48f89d04eb2870445bd34ab4240ae5784360126fcae38c",
+      "failure_reason": null
+    },
+    {
+      "case_id": "t3-holdout-refund-fraud",
+      "repeat": "repeat2",
+      "status": "completed",
+      "run_manifest_id": "brun:c8b2eb66a0b72e81d1108dbd",
+      "result_hash": "c8619819be2faedbe98b5dc403c059166c3c4179c457188307ae35f4a08a0e8c",
+      "snapshot_hash": "308e50ae145e924e07b7b8cfc804ac5ef8ce83425d8b3ee0c7beb90b9bd9614d",
+      "failure_reason": null
+    },
+    {
+      "case_id": "t3-holdout-vpn-causal",
+      "repeat": "repeat0",
+      "status": "completed",
+      "run_manifest_id": "brun:63208d777b4d00592c1152e1",
+      "result_hash": "e5672e82662f5369fdc013d07646215ed64d5cd2b514439d704461ed926a5a35",
+      "snapshot_hash": "d79f42a3a659ccb6bdfe57ffd361bd737dc5acc9cd329b87c48dad58ad03a8ad",
+      "failure_reason": null
+    },
+    {
+      "case_id": "t3-holdout-vpn-causal",
+      "repeat": "repeat1",
+      "status": "completed",
+      "run_manifest_id": "brun:bea8e5d8e3a53d404b58947b",
+      "result_hash": "024b4af1b48396e3422d8e45e25fff48c64b11f41e2874195f3a13af8da1a4b3",
+      "snapshot_hash": "12c3d92855c782da483db378f240ec2eb9b79330e26956928759d36f4c1e2196",
+      "failure_reason": null
+    },
+    {
+      "case_id": "t3-holdout-vpn-causal",
+      "repeat": "repeat2",
+      "status": "completed",
+      "run_manifest_id": "brun:4bc0f60643bbeeb63a965b16",
+      "result_hash": "19b49780566cf5b6bf23fc6510f6141e1e52d26d834fa1f956fd5230743ba430",
+      "snapshot_hash": "1974a6d2533e98cb027937012bc7ebe3ef5aca001a866e3e9489fe07c5f7f726",
+      "failure_reason": null
+    }
+  ],
+  "run_set_hash": "58f418ec1308680b8616c6971a414ba464515d44637d94faf0b0c860d9156ec0"
+}
