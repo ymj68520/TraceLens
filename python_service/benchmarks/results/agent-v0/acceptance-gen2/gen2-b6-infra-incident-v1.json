@@ -21,7 +21,8 @@
   "resolution": [
     "driver dataset manifest now derives size_bytes from the sealed files (deterministic projection)",
     "series relaunched with execution_count still 0; the true B6 start boundary is the first actual model request of the relaunched series",
-    "no seal, public input, truth, profile, threshold, or runtime change"
+    "no seal, public input, truth, profile, threshold, or runtime change",
+    "post-script: the execution manifest survived a mis-pathed cleanup (rm ran from the wrong cwd) and briefly mixed the incident's phantom entries with the real series; the manifest was corrected in place — stale entries moved to this incident record's custody, b6_started_at set to the current series' first provisioning. This note supersedes the earlier 'manifest was not rewritten' statement."
   ],
   "spec_basis": "pre-model benchmark infrastructure repair is not a generation retry; §5/§12 distinguish measurement defects from agent failures, and §35's no-second-B6 counts FORMAL executions (model requests against the sealed holdout), which remain zero"
 }

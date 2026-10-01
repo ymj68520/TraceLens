@@ -1,0 +1,65 @@
+{
+  "artifact_version": "HoldoutRunSetV2",
+  "generation_id": "acceptance-generation-2",
+  "created_at": "2026-10-01T05:45:20+00:00",
+  "b6_started_at": "2026-10-01T05:21:28+00:00",
+  "seal_hash": "a7b9d1ea92166d0ab56d4ab65cd5a40b530638eaec5a7954dc565801c59773e0",
+  "preflight_input_hash": "0daa01720dc7256e52431bd10506e6c2ff6c861ecad7e1cb802fbf5891da854c",
+  "runs": [
+    {
+      "case_id": "gen2-analyst-refutation",
+      "repeat": "repeat0",
+      "status": "completed",
+      "run_manifest_id": "brun:f8e1692925810736b1295dd3",
+      "result_hash": "5d9a2c4b07b8f41e44bd3b1b3ccb9f1b10cb9e597a1cb9c645ef1e869cb2b4f9",
+      "snapshot_hash": "14ae314a7d31b6b2421c357c529dae089c5a4f295603befe547669c147ca338d",
+      "failure_reason": null
+    },
+    {
+      "case_id": "gen2-analyst-refutation",
+      "repeat": "repeat1",
+      "status": "completed",
+      "run_manifest_id": "brun:2881213d9a66647a0668ef94",
+      "result_hash": "064e8c4a44de76002e2b0501b229dc5f52b3bdc5be9f984569a30d6d3aba0766",
+      "snapshot_hash": "842e8856907446e630b12fa896ac96bef9a907c7c64af50e12f96f5e166927f2",
+      "failure_reason": null
+    },
+    {
+      "case_id": "gen2-analyst-refutation",
+      "repeat": "repeat2",
+      "status": "completed",
+      "run_manifest_id": "brun:95eb03cc01905b2d94fcb8f6",
+      "result_hash": "5b800abc7a2f49917eebf0da1b1005444fdb5525079190a1fe4dd08aecfc4cff",
+      "snapshot_hash": "b1a4ee2ade9e94be0398706a638c70c0f0bd9b1ae0657210e525dc941d99f0ff",
+      "failure_reason": null
+    },
+    {
+      "case_id": "gen2-attribution-contradiction",
+      "repeat": "repeat0",
+      "status": "completed",
+      "run_manifest_id": "brun:ad2c50009757d150322c2b51",
+      "result_hash": "cc75ddab259a8b4e9305ad6351beeebecf6574fdf870a789b7c1dbb269731570",
+      "snapshot_hash": "9ad87d0da22a3ed9afa7c67ad542ee63184b59b4979851c0ab6c1988a7f92e1d",
+      "failure_reason": null
+    },
+    {
+      "case_id": "gen2-attribution-contradiction",
+      "repeat": "repeat1",
+      "status": "completed",
+      "run_manifest_id": "brun:397223260c2b345ecb1f9be3",
+      "result_hash": "b70b5583072da4ef5e7a3673c1ae38276663aaebf9e77133601fa18fc985f27b",
+      "snapshot_hash": "7e365a77d461ea6b9654ed518f9d9883d492e754a0ee8cf78c6834b7b9d69ed9",
+      "failure_reason": null
+    },
+    {
+      "case_id": "gen2-attribution-contradiction",
+      "repeat": "repeat2",
+      "status": "completed",
+      "run_manifest_id": "brun:afb001a1d7274b606598bdbe",
+      "result_hash": "8f5eb61e6afc8716a17a846a0f36289fd6b20021027357e3839937b35f018775",
+      "snapshot_hash": "fb2c7996764bf32e2e2f261c8767948ed8cd53405b5fe36c8c58cb5d2cadaa5c",
+      "failure_reason": null
+    }
+  ],
+  "run_set_hash": "7b63834bc088b0fd7797225073bc781d9565fd84d3a8e45fb18cdcad16272fec"
+}

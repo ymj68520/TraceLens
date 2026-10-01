@@ -1,7 +1,8 @@
 # Agent v0 Project Status — Acceptance Track
 
-Updated: 2026-10-01 (Acceptance Generation 1 closed; Generation 2 sealed
-and admitted; no execution).
+Updated: 2026-10-01 (Acceptance Generation 2 executed → B6_INVALID;
+Generation 2 CLOSED_INVALID, holdout CONSUMED; Generation 3 required for
+any future acceptance).
 
 ```text
 Agent v0 Architecture:
@@ -18,12 +19,14 @@ holdout CONSUMED
 Generation-1 diagnostic:
 functional requirement NOT MET
 
+Acceptance Generation 2:
+CLOSED_INVALID
+B6_INVALID (SUBSTRATE_EVIDENCE_SURFACE_MISMATCH)
+holdout CONSUMED
+NO RETRY
+
 Formal Agent v0 acceptance:
 NOT ESTABLISHED
-
-Acceptance Generation 2:
-SEALED / ADMITTED_FOR_B6
-execution count = 0
 
 Production runtime:
 UNCHANGED
@@ -75,7 +78,43 @@ Primary records:
 `benchmarks/results/agent-v0/b6-holdout/` (immutable),
 `docs/specs/agent-b6-holdout-acceptance-audit.md` (execution-era record).
 
-## Acceptance Generation 2 (sealed, admitted, NOT executed)
+## Acceptance Generation 2 (executed → B6_INVALID, CLOSED_INVALID)
+
+B6 was executed 2026-10-01 under explicit authorization: preflight ALL
+PASS, execution gate passed, 6/6 scheduled attempts terminal, hard gates
+PASS 6/6, evaluate-only 6/6 reproduced, zero provider failures,
+P/H/S/G = 0, run-set `7b63834b…`.
+
+**Verdict: B6_INVALID** (`SUBSTRATE_EVIDENCE_SURFACE_MISMATCH`).  The
+agents' indexed evidence universe derives from the provisioning
+substrate image's extraction; the generic minimal-validation substrate
+delivered its own five fraud-demo files instead of the sealed public
+assets (staging copies land after the completion-time evidence index).
+The sealed capability traps were never exercised — the measurement is a
+benchmark defect (§12), NOT an agent failure (the agents refused to
+fabricate against the mismatched evidence and reported absence
+honestly).  Consequences per §34/§35: both Gen-2 holdout families are
+**CONSUMED**; **no second Gen-2 B6**; any future acceptance requires an
+**Acceptance Generation 3** whose per-case evidence-bearing substrates
+are constructed and sealed as Agent-visible inputs at generation
+construction time (the substrate IS Agent-visible input under the
+frozen invariant).
+
+Diagnostic (NOT formal evidence): functional 0/3 + 0/3 qualifying;
+structural/semantic/negative-case/reliability/availability clean;
+fabricated citations 0/6 (deterministic); assertion ceilings and
+analyst-note discipline correct throughout.
+
+Records: `benchmarks/results/agent-v0/acceptance-gen2/` —
+`agent-v0-acceptance-decision-v2.json`,
+`acceptance-generation-closure-v2.json` (CLOSED_INVALID / NO RETRY),
+`holdout-run-set-v2.json`, `holdout-acceptance-evaluation-v2.json`,
+`holdout-execution-manifest-v2.json`,
+`holdout-bootstrap-preflight-v2.json`, `gen2-b6-infra-incident-v1.json`
+(two pre-model driver defects, fixed before any model request;
+execution count was 0 until the real series).
+
+## Generation-2 protocol (frozen, carried into Generation 3)
 
 Protocol (`acceptance-generation-2-protocol:v1`, contract module
 `httpserver/services/benchmarks/holdout_contract.py`):
@@ -102,18 +141,24 @@ Protocol (`acceptance-generation-2-protocol:v1`, contract module
   inherited from the product contract — NOT adjusted for the Gen-1
   diagnostic). Calibration NOT rerun (runtime/model/corpus unchanged).
 
-Holdout set `holdout-set-gen2-v1` (2 new families, entirely new
-instances, product-capability design basis):
+Holdout set `holdout-set-gen2-v1` (2 families — now CONSUMED):
 
 | case | family | public hash |
 |---|---|---|
 | gen2-attribution-contradiction | cross_source_attribution_contradiction | `416ed6ccf90e3cfa…` |
 | gen2-analyst-refutation | misleading_analyst_context | `e7d31f6aef7c7939…` |
 
-Static validation ALL PASS (zero model calls); admission audit 8/8 PASS →
-**ADMITTED_FOR_B6**; **execution count = 0**. B6 execution requires
-explicit user authorization, the entry preflight, and the execution gate.
+Construction-time static validation ALL PASS; admission audit 8/8 PASS →
+ADMITTED_FOR_B6 (superseded by execution → B6_INVALID, see above).
+Regression at preparation: 2676 passed (22 new Gen-2 contract tests; 2
+pre-existing environment-dependent failures unrelated: local Postgres
+auth, CORS origin — both fail on a clean tree).
 
-Regression: 2676 passed (22 new Gen-2 contract tests; 2 pre-existing
-environment-dependent failures unrelated: local Postgres auth, CORS
-origin — both fail on a clean tree).
+## Acceptance Generation 1 (closed — unchanged)
+
+Generation-1 permanent history, protocol era, closure record and the
+ SenseNova wording block above remain the authoritative Gen-1 record:
+`benchmarks/profiles/b6-interpretation-amendment-v1.json`,
+`benchmarks/profiles/acceptance-generation-closure-v1.json`,
+`benchmarks/results/agent-v0/b6-holdout/` (immutable),
+`docs/specs/agent-b6-holdout-acceptance-audit.md` (execution-era record).
