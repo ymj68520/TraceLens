@@ -347,9 +347,7 @@ def provisioning_equivalence_check(
     # unexpected indexed Evidence (semantic-bearing) is a seal failure;
     # the parsed stores are the durable Evidence world
     expected_paths = {e.normalized_path for e in manifest.entries}
-    extra_indexed = {
-        f"/{p}" for p in payload.get("indexed_paths", [])
-    } - expected_paths
+    extra_indexed = set(payload.get("indexed_paths", [])) - expected_paths
     if extra_indexed:
         violations.append(
             f"unexpected indexed evidence: {sorted(extra_indexed)}"
