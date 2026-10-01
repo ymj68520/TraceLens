@@ -205,10 +205,17 @@ class PublicHoldoutCaseV2(BaseModel):
 
     @model_validator(mode="after")
     def _validate_structure(self):
-        if not self.case_id.startswith("gen2-"):
+        # Generation namespaces: 'gen<N>-' (Gen-1 predates the namespace;
+        # Gen-2 sealed 'gen2-' originally — the widening to 'gen\d+-' is
+        # recorded in generation2-interpretation-addendum-v1.json; the
+        # closed Gen-2 generation's seal-gate fail-closed state is
+        # harmless and its artifacts are unchanged)
+        import re as _re
+
+        if not _re.match(r"^gen\d+-", self.case_id):
             raise HoldoutContractError(
-                "Generation-2 case ids must be namespaced 'gen2-…' (the "
-                "Generation-1 pool is retired and its namespace is closed)"
+                "holdout case ids must be generation-namespaced "
+                "'gen<N>-…' (consumed generations' namespaces are closed)"
             )
         question_ids = [q.question_id for q in self.charter]
         if len(set(question_ids)) != len(question_ids):
