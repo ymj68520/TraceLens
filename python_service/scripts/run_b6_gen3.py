@@ -63,6 +63,14 @@ DEFAULT_MODEL_CONFIG = (
 REPEATS = 3
 
 
+def _git(*args: str) -> str:
+    import subprocess
+
+    return subprocess.run(
+        ["git", *args], capture_output=True, text=True, cwd=REPO_ROOT
+    ).stdout.strip()
+
+
 def _write_execution_manifest(action: str, **extra) -> None:
     preflight = json.loads(PREFLIGHT_FILE.read_text(encoding="utf-8"))
     seal = json.loads(SEAL_FILE.read_text(encoding="utf-8"))
