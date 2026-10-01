@@ -1,6 +1,7 @@
 # Agent v0 Project Status — Acceptance Track
 
-Updated: 2026-10-01 (Acceptance Generation 1 closure / Generation 2 preparation).
+Updated: 2026-10-01 (Acceptance Generation 1 closed; Generation 2 sealed
+and admitted; no execution).
 
 ```text
 Agent v0 Architecture:
@@ -21,7 +22,8 @@ Formal Agent v0 acceptance:
 NOT ESTABLISHED
 
 Acceptance Generation 2:
-IN PREPARATION
+SEALED / ADMITTED_FOR_B6
+execution count = 0
 
 Production runtime:
 UNCHANGED
@@ -72,3 +74,46 @@ Primary records:
 `benchmarks/profiles/acceptance-generation-closure-v1.json`,
 `benchmarks/results/agent-v0/b6-holdout/` (immutable),
 `docs/specs/agent-b6-holdout-acceptance-audit.md` (execution-era record).
+
+## Acceptance Generation 2 (sealed, admitted, NOT executed)
+
+Protocol (`acceptance-generation-2-protocol:v1`, contract module
+`httpserver/services/benchmarks/holdout_contract.py`):
+
+- **Core invariants** — "If the Agent can see it, it must already have
+  been sealed before acceptance admission" and "B6 executes frozen
+  semantics; B6 never authors semantics."
+- `PublicHoldoutCaseV2` (`public-holdout-case:v2`): goal, context,
+  charter questions, required coverage dimensions, coverage→question
+  links, public assets, `negative_risk_context` (the ONLY Agent-visible
+  framing slot), source scopes — all hash-bound at construction.
+- `negative_flags` ownership RESOLVED: **evaluator-only truth metadata**
+  (structurally absent from the public contract and bootstrap).
+- Charter authored ONLY at construction time (Holdout Author role);
+  B6 preflight loads / validates / hash-checks / bootstraps — never
+  authors.
+- Bootstrap = pure deterministic projection (frozen, seal-bound);
+  TruthManifestV2 bundle = TruthManifestV1 schema (evaluator-bound) with
+  truth/public separation enforced by deterministic tests.
+- `HoldoutSealV2` seal `a7b9d1ea92166d0a…`; seal mismatch or post-seal
+  mutation BLOCKS execution (`enforce_execution_gate`).
+- AcceptanceProfileV2 continues unchanged, bound to Gen 2 via
+  `acceptance-profile-generation-binding-v2.json` (per-family ≥2/3 floor
+  inherited from the product contract — NOT adjusted for the Gen-1
+  diagnostic). Calibration NOT rerun (runtime/model/corpus unchanged).
+
+Holdout set `holdout-set-gen2-v1` (2 new families, entirely new
+instances, product-capability design basis):
+
+| case | family | public hash |
+|---|---|---|
+| gen2-attribution-contradiction | cross_source_attribution_contradiction | `416ed6ccf90e3cfa…` |
+| gen2-analyst-refutation | misleading_analyst_context | `e7d31f6aef7c7939…` |
+
+Static validation ALL PASS (zero model calls); admission audit 8/8 PASS →
+**ADMITTED_FOR_B6**; **execution count = 0**. B6 execution requires
+explicit user authorization, the entry preflight, and the execution gate.
+
+Regression: 2676 passed (22 new Gen-2 contract tests; 2 pre-existing
+environment-dependent failures unrelated: local Postgres auth, CORS
+origin — both fail on a clean tree).
