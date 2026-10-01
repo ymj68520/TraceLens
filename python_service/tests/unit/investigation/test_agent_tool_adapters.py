@@ -29,6 +29,11 @@ from httpserver.services.investigation.agent_tools.registry import (
     ToolExecutionOutcome,
 )
 from httpserver.services.investigation.models import EvidenceSummary
+from httpserver.services.evidence.content_store import (
+    CONTENT_SOURCE_MISSING,
+    CONTENT_UNSUPPORTED_TYPE,
+    ContentUnavailableError,
+)
 
 
 FORBIDDEN_SCHEMA_FIELDS = (
@@ -326,6 +331,126 @@ async def test_find_related_evidence_cluster_members():
     )
     assert result["data"]["related_evidence_keys"] == ("file:C/Users/tea/y.doc",)
     assert result["evidence_refs"][0] == "file:C/Users/tea/x.doc"
+
+
+# ---------------------------------------------------------------------------
+# get_evidence content availability (evidence content hydration contract)
+# ---------------------------------------------------------------------------
+
+
+class FakeResolverWithContentBacking:
+    """Mimics the workbench resolver wired to the durable content store."""
+
+    def __init__(self, behavior: str):
+        self.behavior = behavior
+        self.seen_refs = []
+        self.content_provider = object()  # truthy: backing configured
+
+    async def bounded_content(self, ref):
+        from httpserver.services.investigation_evidence import ResolvedEvidence
+
+        assert isinstance(ref, ResolvedEvidence)
+        self.seen_refs.append(ref)
+        if self.behavior == "unavailable":
+            raise ContentUnavailableError(CONTENT_SOURCE_MISSING, "no artifact, no image")
+        if self.behavior == "binary":
+            raise ContentUnavailableError(CONTENT_UNSUPPORTED_TYPE, "binary")
+        return "REHYDRATED TEXT"
+
+
+class FakeInvestigationServiceWithResolver(FakeInvestigationService):
+    def __init__(self, resolved, resolver):
+        super().__init__(resolved)
+        self._evidence_resolver = resolver
+
+
+def _resolved_without_content() -> dict[str, Any]:
+    return {
+        "evidence_key": "file:C/Users/tea/x.doc",
+        "evidence_type": "file",
+        "title": "x.doc",
+        "task_id": "task-A",
+        "metadata": {"path": "C/Users/tea/x.doc", "md5": "deadbeef", "size": 100},
+        "source_files_db": "/db/files.db",
+        "content": None,
+        "md5": "deadbeef",
+        "size": 100,
+        "is_deleted": 0,
+        "related_evidence_keys": [],
+        "initial_summary": None,
+        "initial_description": None,
+    }
+
+
+async def test_get_evidence_content_available_via_store():
+    resolver = FakeResolverWithContentBacking("available")
+    services = make_services(
+        investigation_service=FakeInvestigationServiceWithResolver(
+            _resolved_without_content(), resolver
+        )
+    )
+    registry = build_read_only_registry(services)
+    result = await registry.execute(
+        make_context(),
+        "get_evidence",
+        {"evidence_key": "file:C/Users/tea/x.doc", "hydration_level": "preview"},
+    )
+    assert result["data"]["content_preview"] == "REHYDRATED TEXT"
+    assert result["data"]["content_available"] is True
+    assert result["data"]["content_unavailable_reason"] is None
+    # the store sees the full identity (files.db binding), not a stub
+    assert resolver.seen_refs[0].source_files_db == "/db/files.db"
+    assert resolver.seen_refs[0].metadata["md5"] == "deadbeef"
+
+
+async def test_get_evidence_unavailable_content_has_reason_code():
+    resolver = FakeResolverWithContentBacking("unavailable")
+    services = make_services(
+        investigation_service=FakeInvestigationServiceWithResolver(
+            _resolved_without_content(), resolver
+        )
+    )
+    registry = build_read_only_registry(services)
+    result = await registry.execute(
+        make_context(),
+        "get_evidence",
+        {"evidence_key": "file:C/Users/tea/x.doc", "hydration_level": "preview"},
+    )
+    assert result["data"]["content_preview"] is None
+    assert result["data"]["content_available"] is False
+    assert result["data"]["content_unavailable_reason"] == CONTENT_SOURCE_MISSING
+
+
+async def test_get_evidence_binary_content_reports_unsupported():
+    resolver = FakeResolverWithContentBacking("binary")
+    services = make_services(
+        investigation_service=FakeInvestigationServiceWithResolver(
+            _resolved_without_content(), resolver
+        )
+    )
+    registry = build_read_only_registry(services)
+    result = await registry.execute(
+        make_context(),
+        "get_evidence",
+        {"evidence_key": "file:C/Users/tea/x.doc", "hydration_level": "preview"},
+    )
+    assert result["data"]["content_available"] is False
+    assert result["data"]["content_unavailable_reason"] == CONTENT_UNSUPPORTED_TYPE
+
+
+async def test_get_evidence_digest_level_does_not_consult_content():
+    resolver = FakeResolverWithContentBacking("available")
+    services = make_services(
+        investigation_service=FakeInvestigationServiceWithResolver(
+            _resolved_without_content(), resolver
+        )
+    )
+    registry = build_read_only_registry(services)
+    result = await registry.execute(
+        make_context(), "get_evidence", {"evidence_key": "file:C/Users/tea/x.doc"}
+    )
+    assert result["data"]["content_available"] is None
+    assert resolver.seen_refs == []
 
 
 # ---------------------------------------------------------------------------
