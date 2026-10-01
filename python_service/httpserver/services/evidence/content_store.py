@@ -454,13 +454,22 @@ class TaskContentStore:
 
     @staticmethod
     def _write_blob_atomic(blob: Path, artifact_path: str) -> None:
-        blob.parent.mkdir(parents=True, exist_ok=True)
-        tmp = blob.with_name(blob.name + ".tmp")
         import shutil
+        import uuid
 
+        blob.parent.mkdir(parents=True, exist_ok=True)
+        if blob.exists():
+            return  # same hash-addressed blob already persisted
+        # unique tmp per writer: concurrent first-hydrations of the same
+        # content must not overwrite each other's staging file
+        tmp = blob.with_name(f"{blob.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
         try:
             shutil.copyfile(artifact_path, tmp)
-            os.replace(tmp, blob)
+            try:
+                os.replace(tmp, blob)
+            except OSError:
+                if not blob.exists():  # lost a benign replace race only
+                    raise
         finally:
             if tmp.exists():
                 try:
@@ -537,9 +546,9 @@ class TaskContentStore:
             except ContentUnavailableError:
                 return
             try:
+                conn.execute("PRAGMA busy_timeout = 10000")
                 self._ensure_locator_columns(conn)
                 stored_at = int(time.time())
-                conn.execute("PRAGMA busy_timeout = 10000")
                 cursor = conn.execute(
                     "UPDATE files SET content_sha256 = ?, content_size = ?, "
                     "content_stored_at = ? WHERE path = ? AND content_sha256 IS NULL",
@@ -561,14 +570,37 @@ class TaskContentStore:
 
         await asyncio.to_thread(_write)
 
-    @staticmethod
-    def _ensure_locator_columns(conn: sqlite3.Connection) -> None:
-        existing = {
-            row[1] for row in conn.execute("PRAGMA table_info(files)").fetchall()
-        }
-        for name, decl in LOCATOR_COLUMNS:
-            if name not in existing:
-                conn.execute(f"ALTER TABLE files ADD COLUMN {name} {decl}")
+    # Serialize locator-column migration per task DB: concurrent first
+    # hydrations would otherwise race ALTER TABLE against each other.
+    _SCHEMA_LOCKS_GUARD = threading.Lock()
+    _SCHEMA_LOCKS: dict[str, threading.Lock] = {}
+
+    @classmethod
+    def _schema_lock(cls, files_db: str) -> threading.Lock:
+        with cls._SCHEMA_LOCKS_GUARD:
+            lock = cls._SCHEMA_LOCKS.get(files_db)
+            if lock is None:
+                lock = threading.Lock()
+                cls._SCHEMA_LOCKS[files_db] = lock
+            return lock
+
+    @classmethod
+    def _ensure_locator_columns(cls, conn: sqlite3.Connection) -> None:
+        db = conn.execute("PRAGMA database_list").fetchall()
+        db_path = next((row[2] for row in db if row[2]), "files")
+        with cls._schema_lock(db_path):
+            existing = {
+                row[1] for row in conn.execute("PRAGMA table_info(files)").fetchall()
+            }
+            for name, decl in LOCATOR_COLUMNS:
+                if name not in existing:
+                    try:
+                        conn.execute(f"ALTER TABLE files ADD COLUMN {name} {decl}")
+                    except sqlite3.OperationalError as exc:
+                        # another connection added it between our PRAGMA and
+                        # the ALTER (cross-process): tolerate and continue
+                        if "duplicate column" not in str(exc).lower():
+                            raise
 
 
 def _remove_tree(path: str) -> None:

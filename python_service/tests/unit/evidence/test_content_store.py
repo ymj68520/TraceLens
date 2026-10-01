@@ -512,3 +512,32 @@ def test_resolved_evidence_from_dict_roundtrip_and_extra_keys():
     ref = ResolvedEvidence.from_dict(base)
     assert ref.source_files_db == "/x/files.db"
     assert ref.metadata == {"path": "/a"}
+
+
+async def test_concurrent_first_hydration_locator_race(tmp_path):
+    """Two simultaneous first hydrations must not lose locators to the
+    ALTER TABLE race (found by the runtime-v3 qualification canary)."""
+    import asyncio as _aio
+
+    data = b"race-migration\n"
+    task_dir = _make_task(tmp_path, "t-race2", [{"path": "/a.txt", "content": data}])
+    leftover = task_dir / "extracted_files" / "a.txt"
+    leftover.parent.mkdir(parents=True)
+    leftover.write_bytes(data)
+
+    store = TaskContentStore(_backend())
+
+    async def hydrate():
+        return await store.locate_for_resolved(
+            _resolved(task_dir, "t-race2", {"path": "/a.txt", "content": data},
+                      content_path=str(leftover))
+        )
+
+    first, second = await _aio.gather(hydrate(), hydrate())
+    assert first.persisted and second.persisted
+    conn = sqlite3.connect(task_dir / "files.db")
+    row = conn.execute(
+        "SELECT content_sha256 FROM files WHERE path = '/a.txt'"
+    ).fetchone()
+    conn.close()
+    assert row is not None and row[0] == hashlib.sha256(data).hexdigest()
