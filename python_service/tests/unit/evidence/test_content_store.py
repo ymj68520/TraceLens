@@ -200,23 +200,64 @@ async def test_hash_mismatched_artifact_is_never_adopted(tmp_path):
     assert not (task_dir / "content").exists()
 
 
-async def test_row_without_parser_hash_fails_closed(tmp_path):
+async def test_row_without_parser_hash_prefers_reacquisition(tmp_path):
+    data = b"unhashed row\n"
     task_dir = tmp_path / "t-nohash"
     task_dir.mkdir()
     conn = sqlite3.connect(task_dir / "files.db")
     conn.execute(FILES_SCHEMA)
-    conn.execute("INSERT INTO files (path, name, size, is_deleted, md5) VALUES ('/a.txt','a.txt',3,0,NULL)", ())
+    conn.execute(
+        "INSERT INTO files (path, name, size, is_deleted, md5) VALUES ('/a.txt','a.txt',13,0,NULL)"
+    )
     conn.commit()
     conn.close()
-    store = TaskContentStore(_backend())
+    leftover = task_dir / "extracted_files" / "a.txt"
+    leftover.parent.mkdir(parents=True)
+    leftover.write_bytes(b"possibly stale artifact\n")  # cannot be verified
+    materialized = task_dir / "extracted_files" / "a.txt"
+
+    def materialize(task_id, path):
+        # image-derived bytes overwrite the artifact (same extractor)
+        materialized.write_bytes(data)
+        return {"success": True, "materialized_path": str(materialized), "bytes": len(data)}
+
+    store = TaskContentStore(_backend(materialize))
     resolved = ResolvedEvidence(
         task_id="t-nohash", evidence_key="file:/a.txt", evidence_type="file",
-        metadata={"path": "/a.txt", "md5": None, "size": 3},
+        metadata={"path": "/a.txt", "md5": None, "size": 13},
         source_files_db=str(task_dir / "files.db"),
+        content_path=str(leftover),
     )
-    with pytest.raises(ContentUnavailableError) as excinfo:
-        await store.locate_for_resolved(resolved)
-    assert excinfo.value.reason == CONTENT_INTEGRITY_MISMATCH
+    located = await store.locate_for_resolved(resolved)
+    assert located.persisted and located.provenance == "reacquired"
+    assert Path(located.path).read_bytes() == data
+    store._cpp_backend.materialize_file.assert_awaited_once()
+
+
+async def test_row_without_hash_and_without_image_adopts_legacy_artifact(tmp_path):
+    data = b"legacy artifact bytes\n"
+    task_dir = tmp_path / "t-nohash-legacy"
+    task_dir.mkdir()
+    conn = sqlite3.connect(task_dir / "files.db")
+    conn.execute(FILES_SCHEMA)
+    conn.execute(
+        "INSERT INTO files (path, name, size, is_deleted, md5) VALUES ('/a.txt','a.txt',22,0,NULL)"
+    )
+    conn.commit()
+    conn.close()
+    leftover = task_dir / "extracted_files" / "a.txt"
+    leftover.parent.mkdir(parents=True)
+    leftover.write_bytes(data)
+    store = TaskContentStore(_backend(lambda tid, p: {"success": False, "status": 404}))
+    resolved = ResolvedEvidence(
+        task_id="t-nohash-legacy", evidence_key="file:/a.txt", evidence_type="file",
+        metadata={"path": "/a.txt", "md5": None, "size": 22},
+        source_files_db=str(task_dir / "files.db"),
+        content_path=str(leftover),
+    )
+    located = await store.locate_for_resolved(resolved)
+    assert located.persisted and located.provenance == "adopted-legacy"
+    assert Path(located.path).read_bytes() == data
 
 
 # ---------- §35: cross-task isolation ----------

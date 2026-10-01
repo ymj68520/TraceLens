@@ -21,9 +21,13 @@ Boundaries (must hold):
   directory plus additive locator columns in the task's own files.db;
 - A1-S EvidenceSnapshot stays metadata-only; Initial AI Analysis is
   never a content source; agent reads never mutate Evidence;
-- every stored byte is verified against ``files.db.md5``/``size`` at
-  write and re-verified (sha256 locator) at read; mismatches fail
-  closed instead of serving content.
+- when the parser recorded a content hash (``files.db.md5``), every
+  stored byte is verified against it at write; a stored blob is
+  re-verified (sha256 locator) at read; mismatches fail closed instead
+  of serving content. When the walk recorded no hash (the norm — the
+  image walk leaves ``md5`` NULL), provenance rests on the raw-DB
+  membership gate of the reacquisition primitive and the sha256 bound
+  at first acquisition.
 """
 
 from __future__ import annotations
@@ -181,13 +185,13 @@ class TaskContentStore:
             raise ContentUnavailableError(
                 CONTENT_SOURCE_MISSING, "files row has no path"
             )
+        # Parser-produced content hash when the walk recorded one. The image
+        # walk does not currently compute md5 (it is NULL on all audited
+        # tasks), so absence is the norm: verification is conditional per the
+        # hydration contract, and provenance then rests on the raw-DB
+        # membership gate of the C++ materialize primitive.
         expected_md5 = row.get("md5") or None
         expected_size = row.get("size")
-        if not expected_md5:
-            raise ContentUnavailableError(
-                CONTENT_INTEGRITY_MISMATCH,
-                "files row has no parser md5 to verify content against",
-            )
 
         # 1. durable blob via locator
         locator = await self._read_locator(files_db, stored_path)
@@ -207,22 +211,33 @@ class TaskContentStore:
                 )
             # stale locator (blob lost) — fall through and re-derive
 
-        # 2/3. candidate on disk (leftover artifact), then image reacquisition
+        # 2/3. hash-verified adoption first when a parser hash exists;
+        # otherwise raw-DB-gated reacquisition first (the image is the
+        # authoritative source when nothing can be verified against).
         candidate = await self._extraction_candidate(resolved, stored_path)
-        source = candidate
+        source: Optional[str] = None
         provenance = "adopted"
+        if expected_md5 and candidate is not None:
+            source = candidate
+            provenance = "adopted"
+        if source is None:
+            materialized = await self._reacquire(resolved.task_id, stored_path)
+            if materialized is not None:
+                source = materialized
+                provenance = "reacquired"
+            elif candidate is not None:
+                # no parser hash and no reacquirable image: serve the
+                # extraction artifact best-effort (recorded assurance level)
+                source = candidate
+                provenance = "adopted-legacy"
+        if source is None:
+            raise ContentUnavailableError(
+                CONTENT_NOT_PERSISTED_LEGACY,
+                f"no extraction artifact and no reacquirable image for {stored_path!r}",
+            )
         persisted = True
         limit = persistence_limit_bytes()
         oversized = expected_size is not None and int(expected_size) > limit
-        if source is None:
-            materialized = await self._reacquire(resolved.task_id, stored_path)
-            if materialized is None:
-                raise ContentUnavailableError(
-                    CONTENT_NOT_PERSISTED_LEGACY,
-                    f"no extraction artifact and no reacquirable image for {stored_path!r}",
-                )
-            source = materialized
-            provenance = "reacquired"
         if oversized:
             # serve bounded reads from the artifact; do not retain (§21/§55)
             return LocatedContent(
@@ -299,7 +314,7 @@ class TaskContentStore:
             sha256, md5, size = await asyncio.to_thread(_hash_file, artifact_path)
         except OSError as exc:
             raise ContentUnavailableError(CONTENT_READ_FAILED, str(exc)) from exc
-        if md5 != expected_md5:
+        if expected_md5 is not None and md5 != expected_md5:
             return None
         if expected_size is not None and int(expected_size) != size:
             return None
