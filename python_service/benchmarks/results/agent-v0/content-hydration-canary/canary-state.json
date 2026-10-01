@@ -1,0 +1,97 @@
+{
+  "task_id": "7c9aa0a5-e7d9-4cf0-8b19-a0e36431c71a",
+  "image_sha256": "442cff94e1d352e6444655b4403deba8c51a47ab7510e205d2c8d977d309e1fd",
+  "expected_content": {
+    "/reports/ledger_2025.txt": "2229a66ae5729127834f4ce46a1647a2c66aa3174561d86cd33af1e6df289d93",
+    "/notes/canary_meeting.txt": "0ca43bc6997e4f7c1f3d6d178554664d2a544dbf209282936f871c39770c3c92",
+    "/docs/readme_canary.txt": "592e54fd63d518723f4a5ad42d97e2ed9551d86c33c85ae5172aec5972583e47"
+  },
+  "pre_hydration_db_stats": {
+    "files_rows": 3,
+    "rows_with_parser_md5": 0,
+    "rows_with_content_locator": 0
+  },
+  "first_hydration": {
+    "task_id": "7c9aa0a5-e7d9-4cf0-8b19-a0e36431c71a",
+    "items": [
+      {
+        "evidence_key": "file:/reports/ledger_2025.txt",
+        "provenance": "reacquired",
+        "persisted": true,
+        "sha256": "2229a66ae5729127834f4ce46a1647a2c66aa3174561d86cd33af1e6df289d93",
+        "bytes": 133,
+        "marker_present": true,
+        "preview_len": 133,
+        "latency_seconds": 0.104
+      },
+      {
+        "evidence_key": "file:/notes/canary_meeting.txt",
+        "provenance": "reacquired",
+        "persisted": true,
+        "sha256": "0ca43bc6997e4f7c1f3d6d178554664d2a544dbf209282936f871c39770c3c92",
+        "bytes": 117,
+        "marker_present": true,
+        "preview_len": 117,
+        "latency_seconds": 0.096
+      },
+      {
+        "evidence_key": "file:/docs/readme_canary.txt",
+        "provenance": "reacquired",
+        "persisted": true,
+        "sha256": "592e54fd63d518723f4a5ad42d97e2ed9551d86c33c85ae5172aec5972583e47",
+        "bytes": 124,
+        "marker_present": true,
+        "preview_len": 124,
+        "latency_seconds": 0.095
+      }
+    ]
+  },
+  "post_hydration_db_stats": {
+    "files_rows": 3,
+    "rows_with_parser_md5": 0,
+    "rows_with_content_locator": 3
+  },
+  "blobs_after_first_hydration": [
+    "0ca43bc6997e4f7c1f3d6d178554664d2a544dbf209282936f871c39770c3c92",
+    "2229a66ae5729127834f4ce46a1647a2c66aa3174561d86cd33af1e6df289d93",
+    "592e54fd63d518723f4a5ad42d97e2ed9551d86c33c85ae5172aec5972583e47"
+  ],
+  "content_pre_status": "PASS",
+  "second_hydration_after_restart": {
+    "task_id": "7c9aa0a5-e7d9-4cf0-8b19-a0e36431c71a",
+    "items": [
+      {
+        "evidence_key": "file:/reports/ledger_2025.txt",
+        "provenance": "locator",
+        "persisted": true,
+        "sha256": "2229a66ae5729127834f4ce46a1647a2c66aa3174561d86cd33af1e6df289d93",
+        "bytes": 133,
+        "marker_present": true,
+        "preview_len": 133,
+        "latency_seconds": 0.016
+      },
+      {
+        "evidence_key": "file:/notes/canary_meeting.txt",
+        "provenance": "locator",
+        "persisted": true,
+        "sha256": "0ca43bc6997e4f7c1f3d6d178554664d2a544dbf209282936f871c39770c3c92",
+        "bytes": 117,
+        "marker_present": true,
+        "preview_len": 117,
+        "latency_seconds": 0.046
+      },
+      {
+        "evidence_key": "file:/docs/readme_canary.txt",
+        "provenance": "locator",
+        "persisted": true,
+        "sha256": "592e54fd63d518723f4a5ad42d97e2ed9551d86c33c85ae5172aec5972583e47",
+        "bytes": 124,
+        "marker_present": true,
+        "preview_len": 124,
+        "latency_seconds": 0.046
+      }
+    ]
+  },
+  "task_dir_removed_after_delete": true,
+  "content_post_status": "PASS"
+}
