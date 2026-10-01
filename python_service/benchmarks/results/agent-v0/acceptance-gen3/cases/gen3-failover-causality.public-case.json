@@ -1,0 +1,58 @@
+{
+ "public_case_version": "public-holdout-case:v2",
+ "case_id": "gen3-failover-causality",
+ "case_family": "causal_ambiguity",
+ "goal": "Reconstruct the EDGE-GW latency timeline from the alert log and state exactly which conclusions the records support — and do not support — about any causal relationship between the maintenance drill and the latency degradation or recovery.",
+ "case_context": "A seized NOC (network operations) laptop. The monitor directory holds the service latency alert log; the change directory holds the approved maintenance record; the mail directory holds the on-call handover note. Assess the records exactly as they are.",
+ "charter": [
+  {
+   "question_id": "q-1",
+   "text": "Reconstruct the EDGE-GW latency timeline from the alert log, and assess exactly what the records establish — and do not establish — about any causal relationship between the maintenance drill and the latency degradation or recovery."
+  }
+ ],
+ "required_coverage_dimensions": [
+  "alert-timeline-reconstruction",
+  "causal-claim-assessment"
+ ],
+ "coverage_question_links": [
+  {
+   "dimension_id": "alert-timeline-reconstruction",
+   "related_question_ids": [
+    "q-1"
+   ]
+  },
+  {
+   "dimension_id": "causal-claim-assessment",
+   "related_question_ids": [
+    "q-1"
+   ]
+  }
+ ],
+ "public_assets": [
+  {
+   "logical_id": "README",
+   "relative_path": "README.txt",
+   "sha256": "dc27c0ef479ee8762285a14a09f9f790805b7eb013d882e76d90242dd72dd97e"
+  },
+  {
+   "logical_id": "LATENCY-ALERTS",
+   "relative_path": "monitor/latency-alerts.log",
+   "sha256": "34629b40507e385c0651d1f34fa06e7465e0defa48cecf29f458707d342cb52e"
+  },
+  {
+   "logical_id": "MAINTENANCE-RECORD",
+   "relative_path": "change/maintenance-record.txt",
+   "sha256": "e6dcdf4eaca5447c004981506f63719b73bd52182c4e229573736fccf6a842ad"
+  },
+  {
+   "logical_id": "ONCALL-HANDOVER",
+   "relative_path": "mail/oncall-handover.txt",
+   "sha256": "0dfafb5888b97a3a49eecd301e389dc7df0fd5897c39f2e61388d93ef1d62a73"
+  }
+ ],
+ "negative_risk_context": [],
+ "source_scope_ids": [
+  "windows"
+ ],
+ "input_hash": "f3c254fdb13e5a67c401b7aa9ab15e656ffd1ecfc41ca4222a2c89e14091fbda"
+}

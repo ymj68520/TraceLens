@@ -198,19 +198,26 @@ def compute_evidence_world_digest(task_dir: Path) -> dict:
         "system_context from events order by timestamp, file_path, "
         "event_type",
     )
+    # NOTE: the backend removes extracted_files shortly after completion;
+    # the parsed stores ARE the durable Evidence world.  The listing is
+    # captured best-effort when still present.
+    extracted_dir = task_dir / "extracted_files"
     extracted = sorted(
-        str(p.relative_to(task_dir / "extracted_files"))
-        for p in (task_dir / "extracted_files").rglob("*")
+        str(p.relative_to(extracted_dir))
+        for p in extracted_dir.rglob("*")
         if p.is_file()
-    )
+    ) if extracted_dir.is_dir() else []
     extracted_hashes = {
         rel: hashlib.sha256(
-            (task_dir / "extracted_files" / rel).read_bytes()
+            (extracted_dir / rel).read_bytes()
         ).hexdigest()
         for rel in extracted
     }
     evidence_keys = sorted(
         f"file:{row['path']}" for row in files_rows if not row["is_deleted"]
+    )
+    indexed_paths = sorted(
+        row["path"] for row in files_rows if not row["is_deleted"]
     )
     payload = {
         "files_rows": files_rows,
@@ -218,6 +225,7 @@ def compute_evidence_world_digest(task_dir: Path) -> dict:
         "extracted_files": extracted,
         "extracted_hashes": extracted_hashes,
         "evidence_keys": evidence_keys,
+        "indexed_paths": indexed_paths,
     }
     return {
         "digest": sha256_hex(payload),
@@ -248,14 +256,25 @@ def provision_and_digest(
             "priority": "high",
         }
     ).encode("utf-8")
-    req = urllib.request.Request(
-        f"{service_base_url}/api/tasks",
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        task_id = json.loads(resp.read().decode("utf-8"))["id"]
+    task_id = None
+    for attempt in range(4):
+        req = urllib.request.Request(
+            f"{service_base_url}/api/tasks",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                task_id = json.loads(resp.read().decode("utf-8"))["id"]
+            break
+        except urllib.error.HTTPError as exc:
+            if exc.code in (400, 500, 502, 503) and attempt < 3:
+                time.sleep(5 * (attempt + 1))
+                continue
+            raise
+    if task_id is None:
+        raise RuntimeError("provisioning task creation failed after retries")
     deadline = time.monotonic() + 600
     record = {}
     while time.monotonic() < deadline:
@@ -325,14 +344,22 @@ def provisioning_equivalence_check(
     missing = expected_keys - actual_keys
     if missing:
         violations.append(f"missing expected evidence keys: {sorted(missing)}")
-    actual_files = set(payload["extracted_files"])
-    expected_files = {
+    # unexpected indexed Evidence (semantic-bearing) is a seal failure;
+    # the parsed stores are the durable Evidence world
+    expected_paths = {e.normalized_path for e in manifest.entries}
+    extra_indexed = {
+        f"/{p}" for p in payload.get("indexed_paths", [])
+    } - expected_paths
+    if extra_indexed:
+        violations.append(
+            f"unexpected indexed evidence: {sorted(extra_indexed)}"
+        )
+    extra_extracted = set(payload.get("extracted_files", [])) - {
         e.normalized_path.lstrip("/") for e in manifest.entries
     }
-    extra = actual_files - expected_files
-    if extra:
+    if extra_extracted:
         violations.append(
-            f"unexpected files in evidence world: {sorted(extra)}"
+            f"unexpected extracted files: {sorted(extra_extracted)}"
         )
     return {
         "case_id": substrate.case_id,
@@ -519,6 +546,10 @@ def build_gen3_seal(
 
     module_path = Path(__file__).resolve()
     return HoldoutSealV3(
+        artifact_version="HoldoutSealV3",
+        generation_id=GEN3_GENERATION_ID,
+        holdout_set_id=GEN3_HOLDOUT_SET_ID,
+        protocol_version=GEN3_PROTOCOL_VERSION,
         public_case_hashes=public_case_hashes,
         public_asset_hashes=public_asset_hashes,
         truth_hashes=truth_hashes,
@@ -755,8 +786,9 @@ def enforce_execution_gate_v3(
 ) -> None:
     """§20 substrate gate.  ``evidence_world_*`` are supplied by the
     caller's freshly executed provisioning_equivalence_check (recorded
-    in the preflight artifact); this gate refuses to pass unless they
-    match the seal exactly.
+    in the preflight artifact); ``evidence_world_files`` must contain
+    the DURABLE indexed paths (files.db) plus any extracted listing.
+    This gate refuses to pass unless everything matches the seal.
 
     Checks:
       SUBSTRATE_IMAGE_HASH_MATCH        (in verify_holdout_seal_v3)

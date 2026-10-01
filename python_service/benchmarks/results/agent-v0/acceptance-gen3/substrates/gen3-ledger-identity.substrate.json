@@ -1,0 +1,13 @@
+{
+ "substrate_version": "sealed-evidence-substrate:v1",
+ "substrate_id": "sub-gen3-ledger-identity",
+ "case_id": "gen3-ledger-identity",
+ "image_relative_path": "gen3-ledger-identity.img",
+ "image_sha256": "5202a1513e3b6c55d68a9226817f3f51e2073720d1b46ce7a366a85d65f565a0",
+ "image_size_bytes": 16777216,
+ "expected_public_asset_manifest_hash": "f5d5c09abdcd2e2c19716e5f31f9069a0268ab588e97536187e4aaf2ca36e31f",
+ "parser_config_hash": "a45695aae0930bb81c56f5a533b028340f6da141b186a12abfe5423c71ce9961",
+ "expected_evidence_manifest_hash": "ad4e33691ef4f4aa318fd5dce7eb73804f3c572e917fede131ac35be1169bbe4",
+ "build_tool": "ext4 (dd + mke2fs + debugfs), inode times pinned",
+ "input_hash": "ff6268d2b05fd0094658c91dc741b04d4fb14419d8b6d83da4509a6e04520ac4"
+}

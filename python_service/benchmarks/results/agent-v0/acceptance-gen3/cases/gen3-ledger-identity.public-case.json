@@ -1,0 +1,62 @@
+{
+ "public_case_version": "public-holdout-case:v2",
+ "case_id": "gen3-ledger-identity",
+ "case_family": "identity_ambiguity",
+ "goal": "Identify the participants in the internal chat export and the operator accounts in the billing records, and state exactly which identities can and cannot be linked across the two record sets.",
+ "case_context": "A seized billing workstation used at a logistics depot. The chat directory holds an internal chat export; the billing directory holds the payment-gateway operator account list; the ops directory holds the shift roster. The record sets come from different systems and share no identifier fields.",
+ "charter": [
+  {
+   "question_id": "q-1",
+   "text": "Who are the participants in the internal chat export, and can any chat participant be identified as any specific operator account in the billing records? State exactly what the records establish and do not establish."
+  },
+  {
+   "question_id": "q-2",
+   "text": "Which operator accounts appear in the billing and roster records, and what exactly do those records attribute to each account?"
+  }
+ ],
+ "required_coverage_dimensions": [
+  "chat-actor-identification",
+  "ledger-entry-attribution"
+ ],
+ "coverage_question_links": [
+  {
+   "dimension_id": "chat-actor-identification",
+   "related_question_ids": [
+    "q-1"
+   ]
+  },
+  {
+   "dimension_id": "ledger-entry-attribution",
+   "related_question_ids": [
+    "q-2"
+   ]
+  }
+ ],
+ "public_assets": [
+  {
+   "logical_id": "README",
+   "relative_path": "README.txt",
+   "sha256": "ed9ab2844d1c089705b0462854df0c9bd9dc9a1367e7f92271e281bbcccdcad9"
+  },
+  {
+   "logical_id": "TEAM-CHAT-EXPORT",
+   "relative_path": "chat/team-chat-export.txt",
+   "sha256": "e156891a8e282f23f28a0c89f4379574a2fcf83b42245093e82a0375a3e657f2"
+  },
+  {
+   "logical_id": "OPERATOR-ACCOUNTS",
+   "relative_path": "billing/operator-accounts.csv",
+   "sha256": "f20b217c9deae1511fbb8ba5e32b599f4cea3409c761ad82af7bc42dc55f3b14"
+  },
+  {
+   "logical_id": "SHIFT-ROSTER",
+   "relative_path": "ops/shift-roster.txt",
+   "sha256": "c557f551f241f4044398e33f2fd21998f266ed5a644155f481cabc1c0ab68ba8"
+  }
+ ],
+ "negative_risk_context": [],
+ "source_scope_ids": [
+  "windows"
+ ],
+ "input_hash": "f5d5c09abdcd2e2c19716e5f31f9069a0268ab588e97536187e4aaf2ca36e31f"
+}

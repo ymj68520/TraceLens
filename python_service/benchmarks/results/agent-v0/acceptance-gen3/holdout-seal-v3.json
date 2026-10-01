@@ -1,0 +1,79 @@
+{
+ "artifact_version": "HoldoutSealV3",
+ "generation_id": "acceptance-generation-3",
+ "holdout_set_id": "holdout-set-gen3-v1",
+ "protocol_version": "acceptance-generation-3-protocol:v1",
+ "public_case_hashes": {
+  "gen3-failover-causality": "f3c254fdb13e5a67c401b7aa9ab15e656ffd1ecfc41ca4222a2c89e14091fbda",
+  "gen3-ledger-identity": "f5d5c09abdcd2e2c19716e5f31f9069a0268ab588e97536187e4aaf2ca36e31f"
+ },
+ "public_asset_hashes": {
+  "gen3-failover-causality": {
+   "README.txt": "dc27c0ef479ee8762285a14a09f9f790805b7eb013d882e76d90242dd72dd97e",
+   "monitor/latency-alerts.log": "34629b40507e385c0651d1f34fa06e7465e0defa48cecf29f458707d342cb52e",
+   "change/maintenance-record.txt": "e6dcdf4eaca5447c004981506f63719b73bd52182c4e229573736fccf6a842ad",
+   "mail/oncall-handover.txt": "0dfafb5888b97a3a49eecd301e389dc7df0fd5897c39f2e61388d93ef1d62a73"
+  },
+  "gen3-ledger-identity": {
+   "README.txt": "ed9ab2844d1c089705b0462854df0c9bd9dc9a1367e7f92271e281bbcccdcad9",
+   "chat/team-chat-export.txt": "e156891a8e282f23f28a0c89f4379574a2fcf83b42245093e82a0375a3e657f2",
+   "billing/operator-accounts.csv": "f20b217c9deae1511fbb8ba5e32b599f4cea3409c761ad82af7bc42dc55f3b14",
+   "ops/shift-roster.txt": "c557f551f241f4044398e33f2fd21998f266ed5a644155f481cabc1c0ab68ba8"
+  }
+ },
+ "truth_hashes": {
+  "gen3-failover-causality": {
+   "truth_manifest_input_hash": "23783fb457d719e146788c63ed122352cd728207cd533a3e9c28b26cb6f61d16",
+   "truth_manifest_file_sha256": "823ae0795e4cffb0d29c60916afca856a4c57cb53cc683bcc4d753f3fc9eab1f",
+   "reachability_file_sha256": "a192a493d0ebbe34ba8f640cbbb745cfdd04b579461f032f9742e6908a7b02b2"
+  },
+  "gen3-ledger-identity": {
+   "truth_manifest_input_hash": "ae839246a3369a0f79a290859e176ef7015d429ec88b56dd102b51b43cafd467",
+   "truth_manifest_file_sha256": "873bc2be0f0e596cce763ed8099fcd491e431abe09d3152834cc69342f3c91a7",
+   "reachability_file_sha256": "da403a588ed5f1d123f9343556ade570d417fff87018a36543ce4ad364f1447f"
+  }
+ },
+ "evidence_substrate_hashes": {
+  "gen3-failover-causality": {
+   "substrate_input_hash": "9f287d644d215c4ec2022e7b71ff539eac9787f0e5c56cf56b370e2a6745e3b8",
+   "image_sha256": "0aa0e4c4d0640affd5a59b73ac44e22e37fa1711cbee6f0b3c4d0c3db8a38cfd",
+   "image_size_bytes": 16777216,
+   "expected_evidence_manifest_hash": "d55475d0caa783307605cf3b4761faa7186d165337b3c6d0aa9969de3149c5ab",
+   "parser_config_hash": "a45695aae0930bb81c56f5a533b028340f6da141b186a12abfe5423c71ce9961",
+   "expected_public_asset_manifest_hash": "f3c254fdb13e5a67c401b7aa9ab15e656ffd1ecfc41ca4222a2c89e14091fbda"
+  },
+  "gen3-ledger-identity": {
+   "substrate_input_hash": "ff6268d2b05fd0094658c91dc741b04d4fb14419d8b6d83da4509a6e04520ac4",
+   "image_sha256": "5202a1513e3b6c55d68a9226817f3f51e2073720d1b46ce7a366a85d65f565a0",
+   "image_size_bytes": 16777216,
+   "expected_evidence_manifest_hash": "ad4e33691ef4f4aa318fd5dce7eb73804f3c572e917fede131ac35be1169bbe4",
+   "parser_config_hash": "a45695aae0930bb81c56f5a533b028340f6da141b186a12abfe5423c71ce9961",
+   "expected_public_asset_manifest_hash": "f5d5c09abdcd2e2c19716e5f31f9069a0268ab588e97536187e4aaf2ca36e31f"
+  }
+ },
+ "evidence_world_digests": {
+  "gen3-failover-causality": "d68811a6fec887e6b2aa4d5b30b75536cf7fe7283d69faaafb15f10f7b691b0e",
+  "gen3-ledger-identity": "6faa0265df5ddccde7de4cb1ce6994e64eba4ba96c8672373d48568736216d15"
+ },
+ "evidence_manifest_hashes": {
+  "gen3-failover-causality": "d55475d0caa783307605cf3b4761faa7186d165337b3c6d0aa9969de3149c5ab",
+  "gen3-ledger-identity": "ad4e33691ef4f4aa318fd5dce7eb73804f3c572e917fede131ac35be1169bbe4"
+ },
+ "parser_config_hash": "a45695aae0930bb81c56f5a533b028340f6da141b186a12abfe5423c71ce9961",
+ "bootstrap_transform": {
+  "module": "httpserver/services/benchmarks/holdout_contract.py",
+  "code_sha256": "d965d90be852f09a438f9de4c303a4d9ad0caa14993ab7b4fa1d97c1d51cc31a"
+ },
+ "evaluator": {
+  "module": "httpserver/services/benchmarks/case_outcome.py",
+  "code_sha256": "67b9a11752de62d7732e1a109b9217392ee39f5141e6d15a6a2a4936bb6739a4"
+ },
+ "acceptance_profile_sha256": "c40f1adcad816e433f7edfc6cbc0b56dc32c031bf1fcb31528523ffa62f0e98d",
+ "calibration_binding_sha256": "e2c35c4e0fa744a5aa49a9b4b4ac1ec990999107ea1ac4eafa7e41645f94c038",
+ "acceptance_profile_generation_binding_sha256": "8ddf0d61a05474b129166035afcd2ecd3ab031b9f21e2594d92caf8ed59b58d7",
+ "runtime_investigation_subtree_hash": "ab8a5f1758da73bb394d375e32969a0cb248a59e",
+ "model_config_hash": "9cdcb1fde1cdf6ca25067c0436bbc83618fcf3708b3fd4cc49207ba4b2d130fb",
+ "sealed_at": "2026-10-01T09:48:51.195010+00:00",
+ "seal_reason": "Acceptance Generation 3 sealed at construction time: every Agent-observable input — public semantics, evidence-bearing substrate images, expected Evidence world, parser configuration — frozen and hash-bound before admission (spec §4/§14/§38)",
+ "seal_hash": "d11a17e1a7f45e115fcca4ce4617265f7ab453bfb5e679ddd78f3432c9cf040b"
+}

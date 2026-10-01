@@ -1,0 +1,4 @@
+change-id CHG-2025-0305
+window: 2025-03-05 02:55 - 03:10
+action: scheduled failover drill for EDGE-GW (route shift exercise)
+approved-by: on-call network supervisor
