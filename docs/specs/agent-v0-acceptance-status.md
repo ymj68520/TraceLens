@@ -12,49 +12,38 @@ FROZEN
 
 Runtime:
 AgentV0RuntimeBaselineV3 CURRENT / QUALIFIED
-(v2-era baselines HISTORICAL)
+(identity closed for Gen-4: superseding record binds the measured
+runtime — race fix 1b6c0a88 predates qualification + all 24 B2 runs)
 
 Model (SenseNova sensenova-6.8-flash-lite):
 QUALIFIED on RuntimeBaselineV3
-(ModelRuntimeQualificationRecordV3)
 
 Calibration:
-MEASUREMENT_VALID (b2-runtime-v3, 8×3=24 runs,
-all gates PASS, 24/24 evaluate-only reproduced)
-ZERO_CHANGE
-CalibrationEvidenceBindingV3 FROZEN
-(V2 HISTORICAL / immutable)
+MEASUREMENT_VALID (b2-runtime-v3, 24 runs)
+ZERO_CHANGE / CalibrationEvidenceBindingV3 FROZEN
 
 AcceptanceProfileV2:
-SEMANTICS / THRESHOLDS UNCHANGED
-BOUND_TO_RUNTIME_V3 (compatibility review: all six axes NO change;
-AcceptanceProfileRuntimeBindingV3)
+UNCHANGED / BOUND_TO_RUNTIME_V3
+(AcceptanceProfileRuntimeBindingV3 FROZEN)
 
 Content hydration:
 evidence-content-hydration:v1 FROZEN
-(B2 hydration: 22/24 runs exercised, 75 items, 0 unavailable,
-0 integrity failures, 0 legacy fallbacks)
 
-Acceptance Generation 1:
-CLOSED_INVALID / B6_INVALID / CONSUMED
+Acceptance Generation 1-3:
+CLOSED_INVALID / CONSUMED (immutable history)
 
-Acceptance Generation 2:
-CLOSED_INVALID (SUBSTRATE_EVIDENCE_SURFACE_MISMATCH) / CONSUMED
-
-Acceptance Generation 3:
-CLOSED_INVALID (EVIDENCE_CONTENT_SURFACE_TRANSIENT — remediated) /
-CONSUMED
+Acceptance Generation 4:
+SEALED (holdout-seal-v3 1c0f685e…)
+ADMITTED_FOR_B6 (Generation4AdmissionAuditV1 23/23 PASS)
+families: fund_flow_layering, bulk_staging_discrimination
+(brand-new instances; independence audit confirmed)
+execution_count = 0
 
 Formal Agent v0 acceptance:
 NOT ESTABLISHED
 
-Generation 4:
-NOT CREATED
-Prerequisites now satisfied:
-CONTENT_HYDRATION_FROZEN ✓ RuntimeBaselineV3 ✓ model QUALIFIED ✓
-valid new B2 ✓ CalibrationEvidenceBindingV3 ✓
-AcceptanceProfileRuntimeBindingV3 ✓
-Any Gen-4 preparation still requires explicit user authorization.
+B6 execution:
+AWAITING EXPLICIT USER AUTHORIZATION
 ```
 
 ## Model status (exact wording, superseding earlier summaries)
