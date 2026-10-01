@@ -1,0 +1,52 @@
+{
+  "record": "ModelRuntimeQualificationRecordV3:adapter-smoke",
+  "binding": {
+    "runtime_baseline": "AgentV0RuntimeBaselineV3",
+    "runtime_baseline_sha256": "e18b6e6ab26c1d59f93798785947331e3338af63151612d56e350986f883451a",
+    "provider": "sensenova-cloud",
+    "model_id": "sensenova-6.8-flash-lite",
+    "base_url": "https://token.sensenova.cn",
+    "temperature": 0.7,
+    "max_tokens": 16384,
+    "thinking_mode": "disabled",
+    "timeout_seconds": 120
+  },
+  "checks": {
+    "basic_completion": {
+      "pass": true,
+      "response_excerpt": "QUALIFIED",
+      "latency_seconds": 1.8
+    },
+    "usage_metadata": {
+      "pass": true,
+      "usage": "RunUsage(details={'reasoning_tokens': 0}, input_tokens=64, output_tokens=3, requests=1)"
+    },
+    "structured_output": {
+      "pass": true,
+      "output": {
+        "statement": "Unverifiable — no device, ledger, or entries are described in the provided context, so the claim 'The device contains a ",
+        "confidence": "low"
+      }
+    },
+    "zero_arg_tool_call": {
+      "pass": true,
+      "calls": [
+        ""
+      ]
+    },
+    "normal_tool_call": {
+      "pass": true,
+      "calls": [
+        "canary"
+      ]
+    },
+    "api_model_identity": {
+      "pass": true,
+      "http_status": 200,
+      "reported_model": "sensenova-6.8-flash-lite",
+      "configured_model": "sensenova-6.8-flash-lite",
+      "base_url_host": "https://token.sensenova.cn"
+    }
+  },
+  "disposition": "CONTINUE"
+}

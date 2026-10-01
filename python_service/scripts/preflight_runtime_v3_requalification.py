@@ -57,6 +57,7 @@ def main() -> int:
         # instrumentation; no semantics change — enforced by unit suite)
         "python_service/httpserver/services/evidence/content_store.py",
         "python_service/scripts/run_p8b_baseline.py",
+        "python_service/scripts/preflight_runtime_v3_requalification.py",
     }
     runtime_delta = []
     if not runtime_is_frozen_head:

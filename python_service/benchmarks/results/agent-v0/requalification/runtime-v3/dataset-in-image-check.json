@@ -1,0 +1,268 @@
+{
+  "record": "runtime-v3-dataset-in-image-check:v1",
+  "created_at": "2026-10-01T13:33:11+00:00",
+  "cases": [
+    {
+      "case_id": "t1-fraud-script-usb",
+      "task_id": "e1150a0a-cc76-481f-a49e-677715c1fb2c",
+      "image": "/home/ymj68520/projects/testimgs/最小验证镜像.img",
+      "task_status": "completed",
+      "files": [
+        {
+          "relative_path": "data/客户清单.csv",
+          "indexed": true,
+          "reacquired_sha256": "877afd0c50c667d057df12c422a7236c9ce8517adadbc6be6826425d7e8a4ee4",
+          "sha256_matches_manifest": true,
+          "ok": true
+        },
+        {
+          "relative_path": "data/入金记录.txt",
+          "indexed": true,
+          "reacquired_sha256": "cd9a9e87c1dbe1d707bf9b9c8b865197a9312247940263dc5ccff6523060f867",
+          "sha256_matches_manifest": true,
+          "ok": true
+        },
+        {
+          "relative_path": "话术/开场白.txt",
+          "indexed": true,
+          "reacquired_sha256": "003278ed3755077160f76aa5f902e1ac329e8d8999f8dbcb16f3da8d375a37a3",
+          "sha256_matches_manifest": true,
+          "ok": true
+        },
+        {
+          "relative_path": "README.md",
+          "indexed": true,
+          "reacquired_sha256": "e32079aef581a3dd0788e9a3d2d833e4bced6309c7e21eec7f9fc6f1437c29c3",
+          "sha256_matches_manifest": true,
+          "ok": true
+        },
+        {
+          "relative_path": "话术/应对拒绝.txt",
+          "indexed": true,
+          "reacquired_sha256": "cfa106e2d42837ba7c9bb9a8bad438b833fbffb1b4e09bea0fed414c464838b6",
+          "sha256_matches_manifest": true,
+          "ok": true
+        }
+      ],
+      "pass": true
+    },
+    {
+      "case_id": "t2-cross-source-correlation",
+      "task_id": "2db3d23b-2a95-48e1-9e4a-77ab7ebdff78",
+      "image": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/images/t2-cross-source.img",
+      "task_status": "completed",
+      "files": [
+        {
+          "relative_path": "README.txt",
+          "indexed": true,
+          "reacquired_sha256": "e41b6b8a96cb6c8274210cb431cf0ecaca0be03383748cb7bef9f3ef3b40ebcb",
+          "sha256_matches_manifest": true,
+          "ok": true
+        },
+        {
+          "relative_path": "crm/orders.csv",
+          "indexed": true,
+          "reacquired_sha256": "d48fa64145784ad9aa88c0d2b4d4b605052fa010b64c12e1ae8ab7fb839e345d",
+          "sha256_matches_manifest": true,
+          "ok": true
+        },
+        {
+          "relative_path": "payments/settlements.log",
+          "indexed": true,
+          "reacquired_sha256": "76fbd5f4dcb24db326e6e4329de6b9281d90c3218ee04ae6599c79f3a0f2a71c",
+          "sha256_matches_manifest": true,
+          "ok": true
+        }
+      ],
+      "pass": true
+    },
+    {
+      "case_id": "t2-identity-trap",
+      "task_id": "966c70ff-3346-4b19-a8e6-9bad5a75aebc",
+      "image": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/images/t2-identity-trap.img",
+      "task_status": "completed",
+      "files": [
+        {
+          "relative_path": "README.txt",
+          "indexed": true,
+          "reacquired_sha256": "1962686c069860d5b56ea33d9f5d19f2f69d615de502412f852b53ce0c387c37",
+          "sha256_matches_manifest": true,
+          "ok": true
+        },
+        {
+          "relative_path": "logs/app1.log",
+          "indexed": true,
+          "reacquired_sha256": "f87d5b51c8c064c37eef122de694cd4806afb15f0af3c39f39e64aa09882d3b6",
+          "sha256_matches_manifest": true,
+          "ok": true
+        },
+        {
+          "relative_path": "logs/app2.log",
+          "indexed": true,
+          "reacquired_sha256": "8b8d75ecefdafe16e144e87bbeb9a3041c31156e9e66fcca0ee03264c7811c20",
+          "sha256_matches_manifest": true,
+          "ok": true
+        }
+      ],
+      "pass": true
+    },
+    {
+      "case_id": "t2-misleading-note",
+      "task_id": "f5a43f81-246b-42df-811d-9052a620bb4d",
+      "image": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/images/t2-misleading-note.img",
+      "task_status": "completed",
+      "files": [
+        {
+          "relative_path": "README.txt",
+          "indexed": true,
+          "reacquired_sha256": "b5701aa7227a0aac8637234b3cb7d05b9256e04b3cc80949d81f6f598296cf45",
+          "sha256_matches_manifest": true,
+          "ok": true
+        },
+        {
+          "relative_path": "export/app.log",
+          "indexed": true,
+          "reacquired_sha256": "2b465ddc03ffd3dfd826d49b08b9fe7a147ec105104a8c7441c19c71102eb695",
+          "sha256_matches_manifest": true,
+          "ok": true
+        },
+        {
+          "relative_path": "scheduler/jobs.conf",
+          "indexed": true,
+          "reacquired_sha256": "13a172b9790bb2fd5fb60297c7bbe3fb53a06a102370947fccf3f0c0d449af28",
+          "sha256_matches_manifest": true,
+          "ok": true
+        }
+      ],
+      "pass": true
+    },
+    {
+      "case_id": "t2-no-evidence",
+      "task_id": "071ddc00-ce88-4162-bf3d-7a792ceae949",
+      "image": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/images/t2-no-evidence.img",
+      "task_status": "completed",
+      "files": [
+        {
+          "relative_path": "expense_policy.txt",
+          "indexed": true,
+          "reacquired_sha256": "c3508d9b600dc788931c1dd3abedd716a766d858005226d0df135fdc3b96ebb2",
+          "sha256_matches_manifest": true,
+          "ok": true
+        },
+        {
+          "relative_path": "notes.txt",
+          "indexed": true,
+          "reacquired_sha256": "ff0c2975b93e95f1b63d25db3e00d0e861ba220d655dc3930fd58741c0dc7c81",
+          "sha256_matches_manifest": true,
+          "ok": true
+        },
+        {
+          "relative_path": "docs/travel_reimbursement_form.txt",
+          "indexed": true,
+          "reacquired_sha256": "024f0825c61b944365d841258c5397330e0b9fff5dcb6ad25c520814619f0b4f",
+          "sha256_matches_manifest": true,
+          "ok": true
+        }
+      ],
+      "pass": true
+    },
+    {
+      "case_id": "t2-report-citation",
+      "task_id": "46f6bf5f-a79e-4dff-acdd-3c566c844f8f",
+      "image": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/images/t2-report-citation.img",
+      "task_status": "completed",
+      "files": [
+        {
+          "relative_path": "README.txt",
+          "indexed": true,
+          "reacquired_sha256": "fa4466c96ba0009742ec12565250d3a94c975584c3ac4b4038bc4600c16a3237",
+          "sha256_matches_manifest": true,
+          "ok": true
+        },
+        {
+          "relative_path": "personal/体检报告.txt",
+          "indexed": true,
+          "reacquired_sha256": "a1a5204ae7afa75c49ae3e597a6b8f4b8d10b7933777374139299499b59e547c",
+          "sha256_matches_manifest": true,
+          "ok": true
+        },
+        {
+          "relative_path": "data/收款记录.txt",
+          "indexed": true,
+          "reacquired_sha256": "5fb5a4914e8380733b723e3bc29cfc653462d2e3e94e9bf93f2f6607bb21474c",
+          "sha256_matches_manifest": true,
+          "ok": true
+        },
+        {
+          "relative_path": "platform/说明.txt",
+          "indexed": true,
+          "reacquired_sha256": "1790402bc8f3e9326028d86dc3304b64905e2b76478dd9ac59da505fdb3d235f",
+          "sha256_matches_manifest": true,
+          "ok": true
+        }
+      ],
+      "pass": true
+    },
+    {
+      "case_id": "t2-temporal-trap",
+      "task_id": "aabff796-79a8-42ad-b627-d26a0c3d84e9",
+      "image": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/images/t2-temporal-trap.img",
+      "task_status": "completed",
+      "files": [
+        {
+          "relative_path": "README.txt",
+          "indexed": true,
+          "reacquired_sha256": "16d12be9ed9ecd87b59fb4dc0a6a2510cb50142f5cb9fec16f9ce6311dc65560",
+          "sha256_matches_manifest": true,
+          "ok": true
+        },
+        {
+          "relative_path": "chat/wangfang.log",
+          "indexed": true,
+          "reacquired_sha256": "e0db063ca49cdaa868bae7329b0c4be4841975ebc5f2d73af8e795910e32c284",
+          "sha256_matches_manifest": true,
+          "ok": true
+        },
+        {
+          "relative_path": "chat/zhangming.log",
+          "indexed": true,
+          "reacquired_sha256": "d3ba7ca351d325ddc15faae6a2273b9a897a18e1ccbaa82a2b580eb36f9f541b",
+          "sha256_matches_manifest": true,
+          "ok": true
+        }
+      ],
+      "pass": true
+    },
+    {
+      "case_id": "t2-verification-temptation",
+      "task_id": "5bf27637-db34-4ef4-8d97-75ba0b5de3e7",
+      "image": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/images/t2-verify-temptation.img",
+      "task_status": "completed",
+      "files": [
+        {
+          "relative_path": "README.txt",
+          "indexed": true,
+          "reacquired_sha256": "48d7fa36a99fcb03b825129b1fab720c725ebc9e9671cd891d90fdf0765bf01e",
+          "sha256_matches_manifest": true,
+          "ok": true
+        },
+        {
+          "relative_path": "chat/account_main.log",
+          "indexed": true,
+          "reacquired_sha256": "cffe7e493e95cf4c3cca1724ac287b5fb41cd3c4ba7c1c8d8915822899eb69d7",
+          "sha256_matches_manifest": true,
+          "ok": true
+        },
+        {
+          "relative_path": "ledger/flows.txt",
+          "indexed": true,
+          "reacquired_sha256": "ddda12e12a6894047a874da0c0312f49e78ea53f4045544b653c38cf27c04070",
+          "sha256_matches_manifest": true,
+          "ok": true
+        }
+      ],
+      "pass": true
+    }
+  ],
+  "all_pass": true
+}
