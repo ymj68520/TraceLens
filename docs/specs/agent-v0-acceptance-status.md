@@ -1,7 +1,8 @@
 # Agent v0 Project Status — Acceptance Track
 
-Updated: 2026-10-01 (Acceptance Generation 3 sealed and admitted;
-execution count 0; awaiting explicit B6 authorization).
+Updated: 2026-10-01 (Acceptance Generation 3 executed → B6_INVALID;
+Generation 3 CLOSED_INVALID, holdout CONSUMED; formal acceptance still
+NOT ESTABLISHED).
 
 ```text
 Agent v0 Architecture:
@@ -28,8 +29,13 @@ Formal Agent v0 acceptance:
 NOT ESTABLISHED
 
 Acceptance Generation 3:
-SEALED / ADMITTED_FOR_B6
-execution_count = 0
+CLOSED_INVALID
+B6_INVALID (EVIDENCE_CONTENT_SURFACE_TRANSIENT)
+holdout CONSUMED
+NO RETRY
+
+Formal acceptance remains NOT ESTABLISHED. Any Generation 4 requires the
+production content-store work item first (see below).
 
 Production runtime:
 UNCHANGED
@@ -205,3 +211,44 @@ Gen-3 execution preflight (load/validate/hash-check/bootstrap + FRESH
 provisioning equivalence, zero model calls) → `enforce_execution_gate_v3`
 → 2 families × 3 repetitions = 6 scheduled runs → six-axis verdict under
 the frozen profile.
+
+
+## Acceptance Generation 3 (executed → B6_INVALID, CLOSED_INVALID)
+
+B6 was executed 2026-10-01 under explicit authorization after the §1
+Case-B superseding record (`d05f402d` re-run, 8/8 PASS): preflight ALL
+PASS, execution gate passed, 6/6 scheduled attempts terminal, hard gates
+PASS 6/6, evaluate-only 6/6 reproduced, run-set `3d3ee2e1…`, and **6/6
+evidence-world run proofs** — every run's parsed evidence world matched
+the sealed world exactly (the Gen-2 substrate defect was fixed).
+
+**Verdict: B6_INVALID** (`EVIDENCE_CONTENT_SURFACE_TRANSIENT`).  The
+production read surface cannot hydrate plain-text file content after the
+pipeline's post-extraction cleanup of `extracted_files` (verified on a
+production task as well): every delegation in every run found the files
+indexed but content_preview null at both hydration levels, and honestly
+reported BLOCKED — refusing to fabricate (0/6 fabricated citations,
+P/H/S/G = 0, hard gates clean).  The sealed capability traps were
+unreachable; the failure is the measurement's content layer, not agent
+discipline (§11).  Generation-1's readable content had been an artifact
+of the now-forbidden late injection.
+
+Consequences per §34/§35: both Gen-3 families **CONSUMED**; **no second
+Gen-3 B6**; formal acceptance **NOT ESTABLISHED**.  Generation 4 has a
+PREREQUISITE: an independent production work item — a persistent/
+hydratable content store for indexed loose-file evidence (the §25
+STOP-and-separate-project rule) — then a new sealed generation with
+fresh instances and explicit authorization.
+
+Diagnostic (NOT formal evidence): functional 0/3 + 0/3; availability 1/6
+(429) within budget; reliability clean; semantic/negative-case clean
+(merges refused, causality refused in both directions, metadata
+anomalies flagged not abused).
+
+Records: `benchmarks/results/agent-v0/acceptance-gen3/` —
+`agent-v0-acceptance-decision-v3.json`,
+`acceptance-generation-closure-v3.json` (CLOSED_INVALID / NO RETRY),
+`holdout-run-set-v3.json`, `holdout-acceptance-evaluation-v3.json`,
+`holdout-execution-manifest-v3.json`, `holdout-bootstrap-preflight-v3.json`,
+`gen3-b6-frozen-inputs-v1.json`,
+`generation3-admission-audit-v1-superseding-record.json`.

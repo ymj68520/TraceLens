@@ -1,0 +1,72 @@
+{
+  "artifact_version": "HoldoutRunSetV3",
+  "generation_id": "acceptance-generation-3",
+  "created_at": "2026-10-01T11:03:42+00:00",
+  "b6_started_at": "2026-10-01T10:33:33+00:00",
+  "seal_hash": "d11a17e1a7f45e115fcca4ce4617265f7ab453bfb5e679ddd78f3432c9cf040b",
+  "preflight_input_hash": "c4bb855194c69d2cc017606dc1f257805176b4cbd71e1e0a0e445b6415454947",
+  "frozen_inputs_input_hash": "1a4da50dfe96a1c1789dd0fc0620dc6c839770a6a8099c79809197d91adcd646",
+  "runs": [
+    {
+      "case_id": "gen3-failover-causality",
+      "repeat": "repeat0",
+      "status": "completed",
+      "run_manifest_id": "brun:fb2897860ed42c87e5cf39f6",
+      "result_hash": "e7cd46e6c5e02aa4a7214dea6d76f801516f1ca470d098f0e356bab150e439c3",
+      "snapshot_hash": "13dbbe49e5d72e9f5fbd55c1659184ed61d7dce9cecd15d4cb352d631c72ebd2",
+      "evidence_world_match": true,
+      "failure_reason": null
+    },
+    {
+      "case_id": "gen3-failover-causality",
+      "repeat": "repeat1",
+      "status": "completed",
+      "run_manifest_id": "brun:04392cf3bd4d2caa804e22f5",
+      "result_hash": "6909649ac604a7b9ba860a12ab214a8f056bc09ca182116caf89bddb7691d11f",
+      "snapshot_hash": "eaeb805aba6e1e6a9c95d731a8508e364cf622ba2deb0bdb6babb3167fe3bbd5",
+      "evidence_world_match": true,
+      "failure_reason": null
+    },
+    {
+      "case_id": "gen3-failover-causality",
+      "repeat": "repeat2",
+      "status": "completed",
+      "run_manifest_id": "brun:41160e6e996b0d50c1872506",
+      "result_hash": "782eacd4bddd6e64e057026e741f38bdbbb7edf103486f4de6fdd02ddad45968",
+      "snapshot_hash": "66c66e004b9dfa2e9c44510de15a4404e156c30fe54d5a094ddebfaeb106e015",
+      "evidence_world_match": true,
+      "failure_reason": null
+    },
+    {
+      "case_id": "gen3-ledger-identity",
+      "repeat": "repeat0",
+      "status": "runner_failed",
+      "run_manifest_id": null,
+      "result_hash": null,
+      "snapshot_hash": null,
+      "evidence_world_match": true,
+      "failure_reason": "status_code: 429, model_name: sensenova-6.8-flash-lite, body: {'message': 'inference exceeds tpm/rpm limit', 'type': 'rate_limit_error', 'code': '429'}"
+    },
+    {
+      "case_id": "gen3-ledger-identity",
+      "repeat": "repeat1",
+      "status": "completed",
+      "run_manifest_id": "brun:e773b21fbe9884358ee5994e",
+      "result_hash": "4b72d70d03be63572ccc5b3e95cb1181fdebfbfdccf723b4f2e57ed3050f8c3f",
+      "snapshot_hash": "c21bc43c0ef6052004e527f6b4c749961da34c710e2d0e35600f4839bac47045",
+      "evidence_world_match": true,
+      "failure_reason": null
+    },
+    {
+      "case_id": "gen3-ledger-identity",
+      "repeat": "repeat2",
+      "status": "completed",
+      "run_manifest_id": "brun:b47f1c7dc6c28b13825168d0",
+      "result_hash": "133acaf95d8c842e33983d52a30f9a2605b484c8ea65f20c2d020dbea1777ffd",
+      "snapshot_hash": "f9b0a624f333f2275f9782e29cd21ce93db2279f44370c8f657d8ef2e83b1b78",
+      "evidence_world_match": true,
+      "failure_reason": null
+    }
+  ],
+  "run_set_hash": "3d3ee2e17d5a4f75a8ef48f856255b0b8141a8939ef7b79cf59bb44ada43e65a"
+}

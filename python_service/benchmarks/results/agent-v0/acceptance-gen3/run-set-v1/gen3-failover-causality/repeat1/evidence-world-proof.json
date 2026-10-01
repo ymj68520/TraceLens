@@ -1,0 +1,7 @@
+{
+ "substrate_id": "sub-gen3-failover-causality",
+ "image_sha256": "0aa0e4c4d0640affd5a59b73ac44e22e37fa1711cbee6f0b3c4d0c3db8a38cfd",
+ "actual_parsed_evidence_world_digest": "d68811a6fec887e6b2aa4d5b30b75536cf7fe7283d69faaafb15f10f7b691b0e",
+ "expected_sealed_evidence_world_digest": "d68811a6fec887e6b2aa4d5b30b75536cf7fe7283d69faaafb15f10f7b691b0e",
+ "match": true
+}
