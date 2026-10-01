@@ -341,3 +341,28 @@ lazy materialization produces only a verified derived content cache (§25).
 No C++ changes. No benchmark changes. No agent contract changes beyond the
 two additive `get_evidence` output fields. No changes to Evidence identity,
 normalization, snapshots, or A1-T/A1-H contracts.
+
+---
+
+## Addendum (2026-10-01, post-implementation measurement)
+
+Empirical correction to §4.1/§5: the image walk does **not** compute
+`md5`. Every audited task (`600cd187`, `08a92dd8`, `2bab5e0f`,
+`442400ab`) has `files.db.md5` NULL for **100% of rows**; the C++
+analyzers only *read* the column (NULL passthrough). Consequently:
+
+- the §5 provenance rule "a stored blob is accepted only after
+  `md5(bytes) == files.db.md5`" is applied **conditionally**: when the
+  parser recorded a hash it is verified (mismatch fails closed); when
+  it is absent (the norm), provenance rests on the raw-DB membership
+  gate of the C++ materialize primitive plus the sha256 bound at first
+  acquisition, and reacquisition is preferred over adoption of
+  unverifiable extraction artifacts (an unverifiable artifact is served
+  only when reacquisition is impossible, with explicit
+  `adopted-legacy` provenance);
+- tamper detection (§13/§37) is fully preserved post-persistence via
+  the sha256 locator re-verified on every read.
+
+This matches the directive's own wording (§11: "如果 files.db 已有原
+hash：必须验证一致性" — verification is required *when the hash
+exists*).
