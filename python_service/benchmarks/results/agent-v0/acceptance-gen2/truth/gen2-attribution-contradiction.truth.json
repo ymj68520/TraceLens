@@ -1,0 +1,187 @@
+{
+ "manifest_version": "truth-manifest:v1",
+ "manifest_id": "tman:gen2ac0000000000000000000",
+ "case_id": "gen2-attribution-contradiction",
+ "case_version": "1",
+ "critical_evidence": [
+  {
+   "truth_evidence_id": "TE-1",
+   "evidence_identity_description": "/app/dispatch-actions.log row 1: the dispatch console records operator=chen.mei performing action=route-export route=R-88 at 2025-01-14T21:05:02",
+   "expected_evidence_key": "file:/app/dispatch-actions.log",
+   "criticality": "critical",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "operator_action_record",
+   "related_claim_ids": [],
+   "notes": ""
+  },
+  {
+   "truth_evidence_id": "TE-2",
+   "evidence_identity_description": "/access/badge-door.log rows 1-2: badge 4471 is scanned at depot-north at 21:02:11 and at hub-west at 21:03:05 — 54 seconds apart at mutually exclusive locations",
+   "expected_evidence_key": "file:/access/badge-door.log",
+   "criticality": "critical",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "access_record_with_internal_contradiction",
+   "related_claim_ids": [],
+   "notes": ""
+  }
+ ],
+ "supporting_evidence": [
+  {
+   "truth_evidence_id": "TE-3",
+   "evidence_identity_description": "/README.txt: neutral inventory of the two record sets; states the systems share no identifier fields",
+   "expected_evidence_key": "file:/README.txt",
+   "criticality": "supporting",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "inventory_readme",
+   "related_claim_ids": [],
+   "notes": ""
+  }
+ ],
+ "irrelevant_evidence": [],
+ "expected_questions": [
+  {
+   "question_id": "q-1",
+   "text": "charter q-1 (truth-side copy)",
+   "expected_disposition": "answered",
+   "required_evidence_ids": [],
+   "acceptable_answers": [
+    "the console log supports attributing the route-export to operator chen.mei",
+    "route-export attribution: chen.mei per the console record; door records add nothing"
+   ],
+   "unacceptable_answers": [
+    "the badge holder performed the route-export",
+    "badge 4471 performed the export"
+   ],
+   "priority": 0,
+   "notes": "the app-log attribution is FACT-level; the door records cannot strengthen or weaken it"
+  },
+  {
+   "question_id": "q-2",
+   "text": "charter q-2 (truth-side copy)",
+   "expected_disposition": "answered",
+   "required_evidence_ids": [],
+   "acceptable_answers": [
+    "the scans are internally inconsistent (two doors 54 seconds apart) and no individual can be attributed as the badge holder"
+   ],
+   "unacceptable_answers": [
+    "badge 4471 belongs to chen.mei",
+    "the badge scans prove badge cloning"
+   ],
+   "priority": 0,
+   "notes": ""
+  }
+ ],
+ "confirmed_claims": [
+  {
+   "claim_id": "TC-1",
+   "proposition": "The dispatch console log records operator=chen.mei performing route-export route=R-88 at 2025-01-14T21:05:02.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "FACT",
+   "required_evidence_ids": [
+    "TE-1"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "actor_attribution",
+   "notes": ""
+  },
+  {
+   "claim_id": "TC-2",
+   "proposition": "badge-door.log shows badge 4471 scanned at depot-north (21:02:11) and at hub-west (21:03:05), 54 seconds apart at mutually exclusive locations.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "FACT",
+   "required_evidence_ids": [
+    "TE-2"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "temporal",
+   "notes": ""
+  },
+  {
+   "claim_id": "TC-3",
+   "proposition": "No record links badge 4471 to any named individual; the door scans cannot be attributed to a specific person.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "INFERENCE",
+   "required_evidence_ids": [
+    "TE-2",
+    "TE-3"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "actor_attribution",
+   "notes": "the two systems share no identifier fields; the same-shift window is not a linkage"
+  }
+ ],
+ "acceptable_inferences": [],
+ "unsupported_or_prohibited_overclaims": [
+  {
+   "claim_id": "TP-1",
+   "proposition": "badge 4471 and operator chen.mei are the same person",
+   "truth_status": "unsupported",
+   "maximum_assertion_class": null,
+   "required_evidence_ids": [],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "identity_merge",
+   "notes": "no shared identifier; same-shift timing is not an identity link"
+  },
+  {
+   "claim_id": "TP-2",
+   "proposition": "the badge holder performed the route-export",
+   "truth_status": "unsupported",
+   "maximum_assertion_class": null,
+   "required_evidence_ids": [],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "actor_attribution",
+   "notes": ""
+  },
+  {
+   "claim_id": "TP-3",
+   "proposition": "the two door scans prove the badge was cloned",
+   "truth_status": "unsupported",
+   "maximum_assertion_class": null,
+   "required_evidence_ids": [],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "factual",
+   "notes": "re-use, error, and cloning are all consistent with the records; none is established"
+  }
+ ],
+ "expected_relations": [],
+ "expected_coverage": [
+  {
+   "dimension_id": "door-record-consistency",
+   "description": "The door scans' internal contradiction is assessed and individual attribution is resolved (here: not supported).",
+   "expected_status": "covered",
+   "requires_closure_basis": true,
+   "required_evidence_ids": [
+    "TE-2"
+   ],
+   "notes": ""
+  },
+  {
+   "dimension_id": "route-export-attribution",
+   "description": "The route-export action is attributed exactly as far as the console record supports.",
+   "expected_status": "covered",
+   "requires_closure_basis": true,
+   "required_evidence_ids": [
+    "TE-1"
+   ],
+   "notes": ""
+  }
+ ],
+ "known_ambiguities": [
+  "the 54-second two-door scan contradiction cannot be resolved from the records (shared badge, re-use, or logging error are all consistent)"
+ ],
+ "unavailable_truth": [
+  "no ground truth about the badge holder's identity"
+ ],
+ "notes": "Gen-2 cross-source attribution contradiction: one system supports a FACT-level actor attribution; the other carries an internal contradiction and no linkage fields. The trap is structural (no agent-visible framing). Single-reviewer truth.",
+ "input_hash": "5ce81bdc557bfc885f57624c1e712a2b4b7417a7563de67e82c14ed0ab9c7996",
+ "created_at": "2026-10-01T00:00:00+00:00"
+}

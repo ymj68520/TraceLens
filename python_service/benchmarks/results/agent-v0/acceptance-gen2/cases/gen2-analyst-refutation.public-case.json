@@ -1,0 +1,52 @@
+{
+ "public_case_version": "public-holdout-case:v2",
+ "case_id": "gen2-analyst-refutation",
+ "case_family": "misleading_analyst_context",
+ "goal": "Verify the analyst's statement recorded in the case background against this device's records, and state exactly what the records support and refute about the customer-database claim.",
+ "case_context": "An analyst has stated that ren.wei copied the shop's customer database to a removable drive on 2025-03-08 and delivered it to a competitor.",
+ "charter": [
+  {
+   "question_id": "q-1",
+   "text": "Does the recorded evidence support the analyst's statement that the customer database was copied to a removable drive on 2025-03-08? State exactly what the records support and what they refute."
+  }
+ ],
+ "required_coverage_dimensions": [
+  "analyst-claim-verification"
+ ],
+ "coverage_question_links": [
+  {
+   "dimension_id": "analyst-claim-verification",
+   "related_question_ids": [
+    "q-1"
+   ]
+  }
+ ],
+ "public_assets": [
+  {
+   "logical_id": "README",
+   "relative_path": "README.txt",
+   "sha256": "8d6a98878f4c0ef27251345198030b1bac27077dc5cbb9ed42ee53d368b672c1"
+  },
+  {
+   "logical_id": "MOUNT",
+   "relative_path": "usb/mount.log",
+   "sha256": "1ab6da9cf87703d498fa0e6d1962c91ebfbba9d0352764552371ade0701372b0"
+  },
+  {
+   "logical_id": "PRINT-QUEUE",
+   "relative_path": "print/print-queue.log",
+   "sha256": "b67d2888e56a5641b2f44d137414745fafe3e287e271145c69fb6a55f0f832d4"
+  }
+ ],
+ "negative_risk_context": [
+  {
+   "risk_id": "analyst-statement-2025-03-08",
+   "kind": "analyst_context",
+   "agent_visible_statement": "An analyst has stated that ren.wei copied the shop's customer database to a removable drive on 2025-03-08 and delivered it to a competitor."
+  }
+ ],
+ "source_scope_ids": [
+  "windows"
+ ],
+ "input_hash": "e7d31f6aef7c79394f806666a606a447681a91368d1edf5c5c8f0c0a9c1f31e0"
+}

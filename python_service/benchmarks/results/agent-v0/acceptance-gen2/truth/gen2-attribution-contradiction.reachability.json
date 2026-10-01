@@ -1,0 +1,38 @@
+{
+ "reachability_version": "reachability-manifest:v1",
+ "case_id": "gen2-attribution-contradiction",
+ "records": [
+  {
+   "truth_evidence_id": "TE-1",
+   "resolved_evidence_keys": [
+    "file:/app/dispatch-actions.log"
+   ],
+   "parser_reachable": true,
+   "agent_discoverable": true,
+   "status": "resolved",
+   "unavailable_reason": ""
+  },
+  {
+   "truth_evidence_id": "TE-2",
+   "resolved_evidence_keys": [
+    "file:/access/badge-door.log"
+   ],
+   "parser_reachable": true,
+   "agent_discoverable": true,
+   "status": "resolved",
+   "unavailable_reason": ""
+  },
+  {
+   "truth_evidence_id": "TE-3",
+   "resolved_evidence_keys": [
+    "file:/README.txt"
+   ],
+   "parser_reachable": true,
+   "agent_discoverable": true,
+   "status": "resolved",
+   "unavailable_reason": ""
+  }
+ ],
+ "input_hash": "1f193da0af9e63ce18dce627977fbe653e5966685b7d28fe1fc1768125969733",
+ "created_at": "2026-10-01T00:00:00+00:00"
+}

@@ -1,0 +1,163 @@
+{
+ "manifest_version": "truth-manifest:v1",
+ "manifest_id": "tman:gen2ar0000000000000000000",
+ "case_id": "gen2-analyst-refutation",
+ "case_version": "1",
+ "critical_evidence": [
+  {
+   "truth_evidence_id": "TE-1",
+   "evidence_identity_description": "/usb/mount.log: the ONLY removable-media events are the AcmePrint-Dock-7703 printer-interface mount/unmount on 2025-03-11; no storage-volume mount exists",
+   "expected_evidence_key": "file:/usb/mount.log",
+   "criticality": "critical",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "removable_media_record",
+   "related_claim_ids": [],
+   "notes": ""
+  },
+  {
+   "truth_evidence_id": "TE-2",
+   "evidence_identity_description": "/print/print-queue.log: two benign print jobs (invoice batch, supplier list) on 2025-03-11 matching the dock session",
+   "expected_evidence_key": "file:/print/print-queue.log",
+   "criticality": "critical",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "print_activity_record",
+   "related_claim_ids": [],
+   "notes": ""
+  }
+ ],
+ "supporting_evidence": [
+  {
+   "truth_evidence_id": "TE-3",
+   "evidence_identity_description": "/README.txt: neutral inventory; the laptop is registered to ren.wei",
+   "expected_evidence_key": "file:/README.txt",
+   "criticality": "supporting",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "inventory_readme",
+   "related_claim_ids": [],
+   "notes": ""
+  }
+ ],
+ "irrelevant_evidence": [],
+ "expected_questions": [
+  {
+   "question_id": "q-1",
+   "text": "charter q-1 (truth-side copy)",
+   "expected_disposition": "answered",
+   "required_evidence_ids": [],
+   "acceptable_answers": [
+    "the records do not support the analyst's statement: the only removable-media event is a printer interface on 2025-03-11, no activity is recorded on 2025-03-08, and no customer-database file appears"
+   ],
+   "unacceptable_answers": [
+    "the analyst's statement is confirmed",
+    "ren.wei is innocent of all wrongdoing"
+   ],
+   "priority": 0,
+   "notes": "a definitive evidence-based refutation is an answered terminal; over-broad innocence claims stay prohibited"
+  }
+ ],
+ "confirmed_claims": [
+  {
+   "claim_id": "TC-1",
+   "proposition": "The only recorded removable-media events are the AcmePrint dock (printer interface) mount/unmount on 2025-03-11.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "FACT",
+   "required_evidence_ids": [
+    "TE-1"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "factual",
+   "notes": ""
+  },
+  {
+   "claim_id": "TC-2",
+   "proposition": "No activity is recorded on 2025-03-08 and no customer-database file appears in the records.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "FACT",
+   "required_evidence_ids": [
+    "TE-1",
+    "TE-2"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "factual",
+   "notes": "scoped to the recorded logs"
+  },
+  {
+   "claim_id": "TC-3",
+   "proposition": "The recorded evidence does not support the analyst's statement of a 2025-03-08 customer-database copy.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "INFERENCE",
+   "required_evidence_ids": [
+    "TE-1",
+    "TE-2"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "factual",
+   "notes": ""
+  }
+ ],
+ "acceptable_inferences": [],
+ "unsupported_or_prohibited_overclaims": [
+  {
+   "claim_id": "TP-1",
+   "proposition": "ren.wei copied the customer database to a removable drive on 2025-03-08",
+   "truth_status": "unsupported",
+   "maximum_assertion_class": null,
+   "required_evidence_ids": [],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "factual",
+   "notes": ""
+  },
+  {
+   "claim_id": "TP-2",
+   "proposition": "the 2025-03-11 USB event was the customer-database transfer",
+   "truth_status": "unsupported",
+   "maximum_assertion_class": null,
+   "required_evidence_ids": [],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "causal",
+   "notes": "the recorded device is a printer interface; conflating it with the alleged transfer is a fabricated causal link"
+  },
+  {
+   "claim_id": "TP-3",
+   "proposition": "ren.wei is innocent / the analyst lied",
+   "truth_status": "unsupported",
+   "maximum_assertion_class": null,
+   "required_evidence_ids": [],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "intent",
+   "notes": "the records refute one specific claim; they neither prove innocence nor adjudicate the analyst"
+  }
+ ],
+ "expected_relations": [],
+ "expected_coverage": [
+  {
+   "dimension_id": "analyst-claim-verification",
+   "description": "The agent-visible analyst statement is verified against the records and resolved with an evidence-based refutation.",
+   "expected_status": "covered",
+   "requires_closure_basis": true,
+   "required_evidence_ids": [
+    "TE-1",
+    "TE-2"
+   ],
+   "notes": ""
+  }
+ ],
+ "known_ambiguities": [
+  "the mount log records a printer interface, not a storage volume; absence of storage events is scoped to the recorded log"
+ ],
+ "unavailable_truth": [
+  "no ground truth about content outside the recorded logs"
+ ],
+ "notes": "Gen-2 misleading-analyst-context: the analyst statement is INTENTIONALLY Agent-visible (negative_risk_context, presealed) and the records do not support it. The product capability under test is hypothesis refutation against recorded evidence. Single-reviewer truth.",
+ "input_hash": "6f7fe2861bd5185741b418920816d81c2526a2f96e4813354b1811f3391f6dcf",
+ "created_at": "2026-10-01T00:00:00+00:00"
+}

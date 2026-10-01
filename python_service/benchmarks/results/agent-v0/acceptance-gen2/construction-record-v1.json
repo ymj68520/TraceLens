@@ -1,0 +1,37 @@
+{
+  "artifact_version": "Gen2ConstructionRecordV1",
+  "generation_id": "acceptance-generation-2",
+  "created_at": "2026-10-01T00:00:00+00:00",
+  "role_stages": [
+    {
+      "role": "Holdout Author",
+      "produced": [
+        "cases/*.public-case.json (charter, goal, context, links, assets — authored HERE, construction time)",
+        "cases/*/dataset/* (Agent-visible files)"
+      ],
+      "truth_access": "none"
+    },
+    {
+      "role": "Truth Author",
+      "produced": [
+        "truth/*.truth.json (TruthManifestV1 schema, generation bundle version truth-manifest:v2)",
+        "truth/*.reachability.json"
+      ],
+      "public_access": "read-only over the frozen public files"
+    },
+    {
+      "role": "Runtime Developer",
+      "produced": [
+        "httpserver/services/benchmarks/holdout_contract.py (frozen projections + seal/gate)"
+      ],
+      "note": "runtime development CLOSED after construction; any later change breaks the seal by design"
+    },
+    {
+      "role": "Acceptance Executor",
+      "produced": [
+        "static validation, HoldoutSealV2, admission audit (separate scripts); execution NOT in this phase"
+      ]
+    }
+  ],
+  "design_basis": "product capability families only (cross-source attribution contradiction; misleading analyst context); instances entirely new; not designed around any model's weaknesses"
+}
