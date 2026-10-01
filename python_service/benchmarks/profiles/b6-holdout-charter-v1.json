@@ -1,0 +1,57 @@
+{
+  "artifact_version": "B6HoldoutCharterV1",
+  "created_at": "2026-10-01T00:00:00+00:00",
+  "purpose": "B6-entry public charter for the sealed holdout cases. The holdout case contracts carry sealed placeholder goal/context and no charter questions by design (SEALED / NEVER RUN); the AcceptanceProfileV2 evaluation protocol requires the coverage-to-question association to be declared at B6 entry from the PUBLIC surface only, before the first holdout model call. This artifact is that declaration.",
+  "association_contract": {
+    "case": "B (charter questions were sealed; declared here at B6 entry)",
+    "rule": "each holdout case declares exactly ONE charter question; every required coverage dimension of the case links to it exactly (related_question_ids = ['q-1']). The linkage is declared here, deterministic, derived from the public surface — never guessed by the driver at runtime and never reverse-derived from a TruthManifest.",
+    "style_precedent": "single charter question covering the paired assessments, as in the calibration cases t2-identity-trap / t2-temporal-trap"
+  },
+  "derivation": "Public surface ONLY: the agent-visible dataset README (part of the staged dataset the specialist tools read), the case contract v2 required_coverage_dimensions, and the case contract v2 negative_flags. Charter phrasing follows the frozen calibration style: a neutral assessment demand that states the task and requires exactly-evidence-supported conclusions without asserting any expected conclusion. Truth manifests were NOT consulted; no expected answer, disposition, or evidence binding entered this artifact.",
+  "truth_access": "none (zero truth reads; derivation sources hashed below)",
+  "cases": {
+    "t3-holdout-refund-fraud": {
+      "goal": "Determine how the refund records and the payout records on this device relate, and state exactly what can and cannot be attributed about who received the payouts.",
+      "case_context": "A seized bookkeeping server volume. The shop directory holds a refund table; the finance directory holds payout records. Assess the records exactly as recorded.",
+      "seed_questions": [
+        "How do the shop refund records relate to the finance payout records on this device, and can any specific individual be attributed as the payout recipient? State exactly what the evidence supports and what it cannot."
+      ],
+      "coverage_association": {
+        "payout-attribution": [
+          "q-1"
+        ]
+      },
+      "derivation_sources": {
+        "dataset_readme_sha256": "f94f3afabbb166d65255112acc1a4e77ae7390f0088be214a697d3d28b76890c",
+        "case_contract_sha256": "6f29b52dee389bd4eefe6ee8aa4b596be43fb3030b666c3ca885eba1ff22fdb3",
+        "case_contract_input_hash": "5d139609d06ebab8d237818a9cce8fd7134414766460279de52625dd9dda0f79"
+      }
+    },
+    "t3-holdout-vpn-causal": {
+      "goal": "Determine whether the laptop owner's account and the recovered exchange account can be treated as the same person, and state exactly which identity and causal conclusions the session evidence supports and does not support.",
+      "case_context": "A seized laptop. The vpn directory holds the laptop's own VPN session log; the exchange directory holds an exchange record log recovered from the same volume. Assess the records exactly as recorded.",
+      "seed_questions": [
+        "Can the laptop owner's account and the recovered exchange account be treated as the same person given the shared VPN egress IP and the matching username, and does the session timeline establish any interaction or causal link between the two accounts? State exactly what the evidence supports and what it cannot."
+      ],
+      "coverage_association": {
+        "shared-egress-assessment": [
+          "q-1"
+        ]
+      },
+      "derivation_sources": {
+        "dataset_readme_sha256": "e3930444d1cd41e684170066bcac85e7f1d6b304c90d9dbf5f810daa864d0919",
+        "case_contract_sha256": "b9957a8356fe54b79144333023fcf51ba474be99287e131167b58fa1ba65d408",
+        "case_contract_input_hash": "d09eb7139eb98fade007278edfaedecfc96cd4c47f20ff5c408819e68664bd8b"
+      }
+    }
+  },
+  "holdout_population": {
+    "families": [
+      "t3-holdout-refund-fraud",
+      "t3-holdout-vpn-causal"
+    ],
+    "note": "the B6 authorization defines the holdout population as these two families x 3 repetitions = 6 scheduled runs; the corpus's third acceptance_cases entry (t1-usb-collector) is NOT in the B6 population and remains SEALED / NEVER RUN"
+  },
+  "input_hash": "34c888e4349bbdef7f786869740f0a38546087d2cc1a6b21bc1ed56fc4a443c0",
+  "created_by": "B6 entry per spec §2-§4; deterministic preflight (G1-G7, zero model calls) is the next gate"
+}
