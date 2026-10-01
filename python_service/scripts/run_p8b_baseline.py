@@ -171,7 +171,7 @@ def _stage_dataset(task_id: str, extraction_dir: Path, case_id: str) -> list[str
     return staged
 
 
-def _provision_fresh_task(case_id: str, repeat: str) -> dict:
+def _provision_fresh_task(case_id: str, repeat: str, *, stage: bool = True) -> dict:
     image = IMAGES[case_id]
     task_id = _create_task(image, case_id, repeat)
     record = _wait_task(task_id)
@@ -181,7 +181,13 @@ def _provision_fresh_task(case_id: str, repeat: str) -> dict:
             f"{record.get('error_details', '')[:200]}"
         )
     extraction_dir = Path(record["extraction_directory"])
-    staged = _stage_dataset(task_id, extraction_dir, case_id)
+    if stage:
+        staged = _stage_dataset(task_id, extraction_dir, case_id)
+    else:
+        # durable content mode (RuntimeBaselineV3): no post-parse copy —
+        # content reaches the agent only through the production content
+        # path (locator / deterministic image reacquisition).
+        staged = []
     return {"task_id": task_id, "record": record, "staged": staged}
 
 
@@ -1226,6 +1232,13 @@ def main(argv=None) -> int:
         "--configuration-label",
         default="b2-baseline-full-architecture",
     )
+    parser.add_argument(
+        "--no-dataset-staging",
+        action="store_true",
+        help="RuntimeBaselineV3 durable content mode: skip the post-parse "
+        "dataset copy; agent content arrives only via the production "
+        "content path (locator / deterministic image reacquisition).",
+    )
     args = parser.parse_args(argv)
 
     model_config = None
@@ -1310,10 +1323,13 @@ def main(argv=None) -> int:
                 print(f"[skip] {case_id}/{tag} already persisted")
                 continue
             print(f"[run ] {case_id}/{tag}: provisioning fresh task...")
-            provision = _provision_fresh_task(case_id, tag)
+            provision = _provision_fresh_task(
+                case_id, tag, stage=not args.no_dataset_staging
+            )
             fresh_task_id = provision["task_id"]
             print(
                 f"       task={fresh_task_id} staged={len(provision['staged'])} files"
+                + (" (durable content mode: no staging)" if args.no_dataset_staging else "")
             )
             experiment["fresh_task_ids"].setdefault(case_id, {})[tag] = (
                 fresh_task_id
@@ -1349,6 +1365,24 @@ def main(argv=None) -> int:
                 )
                 continue
             _persist(out_dir, outcome)
+            # RuntimeBaselineV3 hydration telemetry (§10 of the
+            # requalification directive): per-run snapshot of the durable
+            # content store observability for this task.
+            try:
+                from httpserver.services.evidence.content_store import (
+                    snapshot_telemetry,
+                )
+
+                (out_dir / "hydration_telemetry.json").write_text(
+                    json.dumps(
+                        snapshot_telemetry(fresh_task_id),
+                        indent=2,
+                        ensure_ascii=False,
+                    ),
+                    encoding="utf-8",
+                )
+            except Exception as exc:  # telemetry is never run-fatal
+                print(f"       [telemetry] snapshot failed: {exc}")
             # B3.5 measurement hygiene: extract the trajectory digest (§11
             # reason-level rejection codes) BEFORE any §18 cleanup deletes
             # the source task store.

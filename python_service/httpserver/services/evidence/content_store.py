@@ -37,6 +37,8 @@ import hashlib
 import logging
 import os
 import sqlite3
+import copy
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -79,6 +81,63 @@ class ContentUnavailableError(Exception):
         self.reason = reason
         self.detail = detail
         super().__init__(f"{reason}: {detail}" if detail else reason)
+
+
+# ---------------------------------------------------------------------------
+# Hydration telemetry (additive observability; never changes semantics).
+# Keyed by task_id, snapshottable by measurement drivers. In-memory only:
+# survives across runs within one process, resets on restart.
+# ---------------------------------------------------------------------------
+
+_TELEMETRY_LOCK = threading.Lock()
+TELEMETRY: dict[str, dict] = {}
+
+_TELEMETRY_SLOT = {
+    "hydration_attempted": 0,
+    "hydration_success": 0,
+    "hydration_unavailable": {},
+    "reacquire_count": 0,
+    "locator_hit_count": 0,
+    "adopted_count": 0,
+    "adopted_legacy_count": 0,
+    "content_integrity_failure_count": 0,
+    "first_hydration_latency_seconds": None,
+    "locator_hydration_latency_seconds_total": 0.0,
+    "locator_hydration_latency_count": 0,
+    "reacquire_hydration_latency_seconds_total": 0.0,
+    "bytes_persisted_total": 0,
+}
+
+
+def _telemetry_slot(task_id: str) -> dict:
+    with _TELEMETRY_LOCK:
+        slot = TELEMETRY.get(task_id)
+        if slot is None:
+            slot = copy.deepcopy(_TELEMETRY_SLOT)
+            TELEMETRY[task_id] = slot
+        return slot
+
+
+def snapshot_telemetry(task_id: str) -> dict:
+    with _TELEMETRY_LOCK:
+        slot = TELEMETRY.get(task_id)
+        return copy.deepcopy(slot) if slot is not None else copy.deepcopy(_TELEMETRY_SLOT)
+
+
+def reset_telemetry(task_id: str | None = None) -> None:
+    with _TELEMETRY_LOCK:
+        if task_id is None:
+            TELEMETRY.clear()
+        else:
+            TELEMETRY.pop(task_id, None)
+
+
+def _note_unavailable(task_id: str, reason: str) -> None:
+    slot = _telemetry_slot(task_id)
+    with _TELEMETRY_LOCK:
+        slot["hydration_unavailable"][reason] = (
+            slot["hydration_unavailable"].get(reason, 0) + 1
+        )
 
 
 def persistence_limit_bytes() -> int:
@@ -170,18 +229,25 @@ class TaskContentStore:
         cannot be served honestly.
         """
         if getattr(resolved, "evidence_type", "file") not in (None, "file"):
+            _note_unavailable(resolved.task_id, CONTENT_UNSUPPORTED_TYPE)
             raise ContentUnavailableError(
                 CONTENT_UNSUPPORTED_TYPE,
                 f"evidence_type {resolved.evidence_type!r} has no file content",
             )
+        slot = _telemetry_slot(resolved.task_id)
+        t0 = time.monotonic()
+        with _TELEMETRY_LOCK:
+            slot["hydration_attempted"] += 1
         files_db = getattr(resolved, "source_files_db", None) or ""
         if not files_db or not os.path.isfile(files_db):
+            _note_unavailable(resolved.task_id, CONTENT_SOURCE_MISSING)
             raise ContentUnavailableError(
                 CONTENT_SOURCE_MISSING, f"files.db unavailable: {files_db!r}"
             )
         row = dict(getattr(resolved, "metadata", None) or {})
         stored_path = str(row.get("path") or "")
         if not stored_path:
+            _note_unavailable(resolved.task_id, CONTENT_SOURCE_MISSING)
             raise ContentUnavailableError(
                 CONTENT_SOURCE_MISSING, "files row has no path"
             )
@@ -201,10 +267,14 @@ class TaskContentStore:
             if blob.is_file():
                 actual = await asyncio.to_thread(self._verify_sha256, str(blob), sha256)
                 if not actual:
+                    with _TELEMETRY_LOCK:
+                        slot["content_integrity_failure_count"] += 1
+                    _note_unavailable(resolved.task_id, CONTENT_INTEGRITY_MISMATCH)
                     raise ContentUnavailableError(
                         CONTENT_INTEGRITY_MISMATCH,
                         f"stored blob does not match locator sha256 for {stored_path!r}",
                     )
+                self._note_success(resolved.task_id, "locator", t0, latency_key="locator")
                 return LocatedContent(
                     path=str(blob), sha256=sha256, size=size,
                     persisted=True, provenance="locator",
@@ -231,6 +301,7 @@ class TaskContentStore:
                 source = candidate
                 provenance = "adopted-legacy"
         if source is None:
+            _note_unavailable(resolved.task_id, CONTENT_NOT_PERSISTED_LEGACY)
             raise ContentUnavailableError(
                 CONTENT_NOT_PERSISTED_LEGACY,
                 f"no extraction artifact and no reacquirable image for {stored_path!r}",
@@ -240,6 +311,7 @@ class TaskContentStore:
         oversized = expected_size is not None and int(expected_size) > limit
         if oversized:
             # serve bounded reads from the artifact; do not retain (§21/§55)
+            self._note_success(resolved.task_id, provenance, t0)
             return LocatedContent(
                 path=str(source), sha256="", size=int(expected_size),
                 persisted=False, provenance=provenance,
@@ -248,14 +320,18 @@ class TaskContentStore:
         located = await self._persist_verified(
             files_db, stored_path, str(source),
             expected_md5=expected_md5, expected_size=expected_size,
-            provenance=provenance,
+            provenance=provenance, task_id=resolved.task_id,
         )
         if located is None:
             # verification failed on the artifact — never serve it (§13)
+            with _TELEMETRY_LOCK:
+                slot["content_integrity_failure_count"] += 1
+            _note_unavailable(resolved.task_id, CONTENT_INTEGRITY_MISMATCH)
             raise ContentUnavailableError(
                 CONTENT_INTEGRITY_MISMATCH,
                 f"artifact for {stored_path!r} does not match parser md5/size",
             )
+        self._note_success(resolved.task_id, provenance, t0)
         return located
 
     # ------------------------------------------------------------------
@@ -295,6 +371,26 @@ class TaskContentStore:
     # persistence (verified first-write; §12/§13/§31)
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _note_success(task_id: str, provenance: str, t0: float, latency_key: str = "") -> None:
+        slot = _telemetry_slot(task_id)
+        latency = time.monotonic() - t0
+        with _TELEMETRY_LOCK:
+            slot["hydration_success"] += 1
+            if slot["first_hydration_latency_seconds"] is None:
+                slot["first_hydration_latency_seconds"] = latency
+            if provenance == "locator":
+                slot["locator_hit_count"] += 1
+                slot["locator_hydration_latency_seconds_total"] += latency
+                slot["locator_hydration_latency_count"] += 1
+            elif provenance == "reacquired":
+                slot["reacquire_count"] += 1
+                slot["reacquire_hydration_latency_seconds_total"] += latency
+            elif provenance == "adopted":
+                slot["adopted_count"] += 1
+            elif provenance == "adopted-legacy":
+                slot["adopted_legacy_count"] += 1
+
     async def _persist_verified(
         self,
         files_db: str,
@@ -304,15 +400,20 @@ class TaskContentStore:
         expected_md5: str,
         expected_size,
         provenance: str,
+        task_id: str = "",
     ) -> Optional[LocatedContent]:
         if not os.path.isfile(files_db):
             # task deleted before we started: never recreate its store (§31)
+            if task_id:
+                _note_unavailable(task_id, CONTENT_SOURCE_MISSING)
             raise ContentUnavailableError(
                 CONTENT_SOURCE_MISSING, "task deleted before content persistence"
             )
         try:
             sha256, md5, size = await asyncio.to_thread(_hash_file, artifact_path)
         except OSError as exc:
+            if task_id:
+                _note_unavailable(task_id, CONTENT_READ_FAILED)
             raise ContentUnavailableError(CONTENT_READ_FAILED, str(exc)) from exc
         if expected_md5 is not None and md5 != expected_md5:
             return None
@@ -330,10 +431,16 @@ class TaskContentStore:
             # task deleted while we worked: never leave a recreated store (§31)
             if created_top:
                 await asyncio.to_thread(_remove_tree, created_top)
+            if task_id:
+                _note_unavailable(task_id, CONTENT_SOURCE_MISSING)
             raise ContentUnavailableError(
                 CONTENT_SOURCE_MISSING, "task deleted during content persistence"
             )
         await self._write_locator(files_db, stored_path, sha256, size)
+        if task_id:
+            slot = _telemetry_slot(task_id)
+            with _TELEMETRY_LOCK:
+                slot["bytes_persisted_total"] += size
         return LocatedContent(
             path=str(blob), sha256=sha256, size=size,
             persisted=True, provenance=provenance,
