@@ -1,0 +1,72 @@
+{
+  "artifact_version": "CalibrationEvidenceBindingV3",
+  "created_at": "2026-10-01T15:42:25+00:00",
+  "supersedes": "CalibrationEvidenceBindingV2 (kept immutable, HISTORICAL: its measurement predates the production content hydration change)",
+  "frozen_calibration_decision": "ZERO_CHANGE (production_changes = []) — the V3 B2 provided no causal evidence that any numeric limit directly caused an otherwise-valid run failure (§30); success-rate level alone is not a tuning trigger",
+  "binds": {
+    "runtime_baseline": {
+      "artifact": "benchmarks/profiles/agent-v0-runtime-baseline-v3.json",
+      "sha256": "e18b6e6ab26c1d59f93798785947331e3338af63151612d56e350986f883451a"
+    },
+    "content_hydration_contract": {
+      "id": "evidence-content-hydration:v1",
+      "status": "FROZEN (d213145d)",
+      "contract_doc_sha256": "8dfd55ab959263781af22be11dfc8bf8c5038c70818df9ce3fe46f9944090363",
+      "store_module_sha256": "a85048ba1cb8e50764e462f2fc815d3e5228afc350c02e053dee5b06867fc809"
+    },
+    "model_config": {
+      "provider": "sensenova-cloud",
+      "model_id": "sensenova-6.8-flash-lite",
+      "base_url": "https://token.sensenova.cn",
+      "temperature": 0.7,
+      "max_tokens": 16384,
+      "thinking_mode": "disabled (reasoning_effort=none)",
+      "qualification_record_sha256": "c3dc3d55ee6cefd0ad7b0ed170201477138826c12852ca9b942809bc49de676e"
+    },
+    "b2_run_set": {
+      "results_root": "benchmarks/results/agent-v0/b2-runtime-v3",
+      "configuration_id": "bconf-b2-runtime-v3",
+      "runs": 24,
+      "completed": 17,
+      "hard_gate_violations": 0,
+      "evaluate_only_reproduced": 24,
+      "measurement_report": "benchmarks/results/agent-v0/b2-runtime-v3/b2-runtime-v3-measurement-report.json",
+      "measurement_report_sha256": "62bce5b6163e70a0b42f93a92741335cc61fc11f933c1e35144559ae830eb466",
+      "measurement_verdict": "MEASUREMENT_VALID",
+      "case_outcome_counts": {
+        "incomplete": 18,
+        "success": 4,
+        "incorrect": 2
+      },
+      "commit_at_series_close": "6f2556a687b82d48b7ea40b7b0c6a4c347674a03"
+    },
+    "case_outcome_version": "benchmark-case-outcome:v2 (unchanged; no evaluator bump — §27)",
+    "corpus": {
+      "corpus_id": "corpus-agent-v0-calibration",
+      "corpus_version": "v2 (B5.5 acceptance-semantics closure)",
+      "corpus_hash": "25c216e85acc32f22c5231924730956c24de6a04cc2c4f7173483c9b557916c4",
+      "calibration_cases": [
+        "t1-fraud-script-usb",
+        "t2-cross-source-correlation",
+        "t2-identity-trap",
+        "t2-misleading-note",
+        "t2-no-evidence",
+        "t2-report-citation",
+        "t2-temporal-trap",
+        "t2-verification-temptation"
+      ]
+    },
+    "calibration_profile": {
+      "artifact": "benchmarks/profiles/agent-v0-calibration-profile-v1.json",
+      "note": "profile schema carries no embedded runtime identity; kept unchanged and re-bound through this artifact (§32)"
+    }
+  },
+  "calibration_distribution_recorded": {
+    "provider_failures": 0,
+    "timeout_failures": 0,
+    "five_xx_failures": 0,
+    "specialist_structured_output_failures": 1,
+    "supervisor_plan_failures": 0,
+    "supervisor_integrate_failures": 0
+  }
+}

@@ -1,52 +1,60 @@
 # Agent v0 Project Status — Acceptance Track
 
-Updated: 2026-10-01 (Production evidence content hydration remediation
-FROZEN — the Gen-3 prerequisite work item is complete; runtime epoch
-advanced to AgentV0RuntimeBaselineV3; formal acceptance still
-NOT ESTABLISHED).
+Updated: 2026-10-01 (Runtime V3 requalification + recalibration
+complete: model QUALIFIED on RuntimeBaselineV3, B2 MEASUREMENT_VALID,
+CalibrationEvidenceBindingV3 ZERO_CHANGE, AcceptanceProfileV2
+reviewed unchanged and bound to Runtime V3; formal acceptance still
+NOT ESTABLISHED; Gen-4 NOT CREATED).
 
 ```text
 Agent v0 Architecture:
 FROZEN
 
+Runtime:
+AgentV0RuntimeBaselineV3 CURRENT / QUALIFIED
+(v2-era baselines HISTORICAL)
+
+Model (SenseNova sensenova-6.8-flash-lite):
+QUALIFIED on RuntimeBaselineV3
+(ModelRuntimeQualificationRecordV3)
+
 Calibration:
-HISTORICAL (CalibrationEvidenceBindingV2 — cannot serve future
-Gen-4 admission after the production runtime change; requalification
-+ new B2 required, separately directed)
+MEASUREMENT_VALID (b2-runtime-v3, 8×3=24 runs,
+all gates PASS, 24/24 evaluate-only reproduced)
+ZERO_CHANGE
+CalibrationEvidenceBindingV3 FROZEN
+(V2 HISTORICAL / immutable)
+
+AcceptanceProfileV2:
+SEMANTICS / THRESHOLDS UNCHANGED
+BOUND_TO_RUNTIME_V3 (compatibility review: all six axes NO change;
+AcceptanceProfileRuntimeBindingV3)
+
+Content hydration:
+evidence-content-hydration:v1 FROZEN
+(B2 hydration: 22/24 runs exercised, 75 items, 0 unavailable,
+0 integrity failures, 0 legacy fallbacks)
 
 Acceptance Generation 1:
-CLOSED_INVALID
-B6_INVALID
-holdout CONSUMED
-
-Generation-1 diagnostic:
-functional requirement NOT MET
+CLOSED_INVALID / B6_INVALID / CONSUMED
 
 Acceptance Generation 2:
-CLOSED_INVALID
-B6_INVALID (SUBSTRATE_EVIDENCE_SURFACE_MISMATCH)
-holdout CONSUMED
-NO RETRY
+CLOSED_INVALID (SUBSTRATE_EVIDENCE_SURFACE_MISMATCH) / CONSUMED
 
 Acceptance Generation 3:
-CLOSED_INVALID
-B6_INVALID (EVIDENCE_CONTENT_SURFACE_TRANSIENT)
-holdout CONSUMED
-NO RETRY
-
-Content hydration remediation (Gen-3 prerequisite):
-CONTENT_HYDRATION_CONTRACT = FROZEN
-(evidence-content-hydration:v1; canaries PASS; canary was NOT a
-calibration measurement)
+CLOSED_INVALID (EVIDENCE_CONTENT_SURFACE_TRANSIENT — remediated) /
+CONSUMED
 
 Formal Agent v0 acceptance:
 NOT ESTABLISHED
 
-Production runtime:
-CHANGED (AgentV0RuntimeBaselineV3)
-Gen-4 PROHIBITED until: model/runtime requalification + new valid B2
-+ CalibrationEvidence rebinding + AcceptanceProfile review/binding,
-each separately directed
+Generation 4:
+NOT CREATED
+Prerequisites now satisfied:
+CONTENT_HYDRATION_FROZEN ✓ RuntimeBaselineV3 ✓ model QUALIFIED ✓
+valid new B2 ✓ CalibrationEvidenceBindingV3 ✓
+AcceptanceProfileRuntimeBindingV3 ✓
+Any Gen-4 preparation still requires explicit user authorization.
 ```
 
 ## Model status (exact wording, superseding earlier summaries)
@@ -82,10 +90,13 @@ five other axes clean).
   (`evidence-content-hydration:v1`, FROZEN — see
   `docs/specs/evidence-content-hydration-contract.md`); the runtime
   epoch is now `AgentV0RuntimeBaselineV3`
-  (`benchmarks/profiles/agent-v0-runtime-baseline-v3.json`).  Any next
-  acceptance generation requires calibration requalification → a new
-  valid B2 → a new acceptance generation, driven by general
-  product/calibration evidence — never by consumed holdout answers.
+  (`benchmarks/profiles/agent-v0-runtime-baseline-v3.json`), QUALIFIED
+  with a valid recalibration (see
+  `benchmarks/profiles/calibration-evidence-binding-v3.json` and
+  `benchmarks/profiles/acceptance-profile-runtime-binding-v3.json`).
+  Any next acceptance generation (Gen-4) is gated on explicit user
+  authorization — all six §42 prerequisites are now satisfied — and
+  must use brand-new holdout instances, never consumed holdout answers.
 
 ## Generation-1 permanent history (never to be overwritten)
 
