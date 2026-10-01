@@ -63,6 +63,76 @@ DEFAULT_MODEL_CONFIG = (
 REPEATS = 3
 
 
+def _provision_fresh_task_gen2(sealed, substrate: Path, tag: str) -> dict:
+    """Gen-2 provisioning: fresh task from the sealed substrate, then
+    stage the SEALED public assets into extracted_files (hash-verified
+    against PublicHoldoutCaseV2.public_assets).  Equivalent to the frozen
+    driver's provisioning, but the staged set is exactly the sealed
+    asset list — no dataset_manifest.json exists for Gen-2 cases."""
+    import hashlib
+    import shutil
+    import urllib.request
+
+    def _create_task() -> str:
+        body = json.dumps(
+            {
+                "image_path": str(substrate),
+                "case_description": (
+                    f"Gen-2 B6 acceptance case {sealed.case_id} "
+                    f"repeat {tag}. Benchmark purpose: agent "
+                    f"investigation quality measurement."
+                ),
+                "llm_analyze": False,
+                "llm_event_analyze": False,
+                "priority": "high",
+            }
+        ).encode("utf-8")
+        req = urllib.request.Request(
+            "http://127.0.0.1:8666/api/tasks",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode("utf-8"))["id"]
+
+    def _wait_task(task_id: str, timeout_s: int = 600) -> dict:
+        deadline = time.monotonic() + timeout_s
+        last = {}
+        while time.monotonic() < deadline:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:8666/api/tasks/{task_id}", timeout=15
+            ) as resp:
+                last = json.loads(resp.read().decode("utf-8"))
+            if last.get("status") in ("completed", "failed", "cancelled"):
+                return last
+            time.sleep(3)
+        raise TimeoutError(f"task {task_id} not terminal in {timeout_s}s")
+
+    task_id = _create_task()
+    record = _wait_task(task_id)
+    if record.get("status") != "completed":
+        raise RuntimeError(
+            f"fresh task {task_id} terminal={record.get('status')}: "
+            f"{str(record.get('error_details', ''))[:200]}"
+        )
+    extraction_dir = Path(record["extraction_directory"])
+    staged = []
+    for asset in sealed.public_assets:
+        src = CASES_DIR / sealed.case_id / "dataset" / asset.relative_path
+        dst = extraction_dir / asset.relative_path
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dst)
+        digest = hashlib.sha256(dst.read_bytes()).hexdigest()
+        if digest != asset.sha256:
+            raise RuntimeError(
+                f"staged sealed asset hash mismatch: "
+                f"{asset.relative_path}"
+            )
+        staged.append(asset.relative_path)
+    return {"task_id": task_id, "record": record, "staged": staged}
+
+
 def _write_execution_manifest(action: str, **extra) -> None:
     """HoldoutExecutionManifestV2 (spec §6/§36): B6 start boundary +
     attempt log, hash-linked to preflight/seal."""
@@ -202,6 +272,12 @@ def _run_one_gen2(case_id, repeat, fresh_task_id, sealed, model_config):
             {
                 "logical_id": asset.logical_id,
                 "relative_path": asset.relative_path,
+                "size_bytes": (
+                    CASES_DIR
+                    / case_id
+                    / "dataset"
+                    / asset.relative_path
+                ).stat().st_size,
                 "sha256": asset.sha256,
             }
             for asset in sealed.public_assets
@@ -391,7 +467,7 @@ def main(argv=None) -> int:
                 )
                 continue
             print(f"[run ] {case_id}/{tag}: provisioning fresh task...")
-            provision = driver._provision_fresh_task(case_id, tag)
+            provision = _provision_fresh_task_gen2(sealed, substrate, tag)
             fresh_task_id = provision["task_id"]
             print(
                 f"       task={fresh_task_id} "
