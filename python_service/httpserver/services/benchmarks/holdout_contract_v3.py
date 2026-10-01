@@ -367,6 +367,47 @@ def provisioning_equivalence_check(
     }
 
 
+def derive_runner_case_for_gen3(public_case, truth, reach, cases_dataset_dir: Path):
+    """Frozen projection: the sealed public contract + hash-only truth
+    bindings -> the runner's BenchmarkCaseV1 (Gen-3 variant with the
+    substrate-anchored dataset manifest)."""
+    from .benchmark_case import BenchmarkCaseV1, DatasetManifestV1
+
+    dataset_manifest = {
+        "dataset_version": "benchmark-dataset:v1",
+        "dataset_id": f"ds-{public_case.case_id}",
+        "files": [
+            {
+                "logical_id": asset.logical_id,
+                "relative_path": asset.relative_path,
+                "size_bytes": (
+                    cases_dataset_dir / asset.relative_path
+                ).stat().st_size,
+                "sha256": asset.sha256,
+            }
+            for asset in public_case.public_assets
+        ],
+        "created_at": "2026-10-01T00:00:00+00:00",
+    }
+    return BenchmarkCaseV1(
+        case_id=public_case.case_id,
+        case_version="1",
+        title=f"GEN3 SEALED {public_case.case_id}",
+        dataset=DatasetManifestV1(**dataset_manifest),
+        truth_manifest_id=truth.manifest_id,
+        truth_manifest_hash=truth.input_hash,
+        goal=public_case.goal,
+        case_context=public_case.case_context,
+        platform_composition=("linux",),
+        required_coverage_dimensions=tuple(
+            public_case.required_coverage_dimensions
+        ),
+        tier="T2",
+        expected_parser_profile="linux",
+        benchmark_tags=("acceptance-gen3", "sealed", "holdout"),
+    )
+
+
 # -- HoldoutSealV3 + gates (spec §38-§40) -------------------------------------
 
 
