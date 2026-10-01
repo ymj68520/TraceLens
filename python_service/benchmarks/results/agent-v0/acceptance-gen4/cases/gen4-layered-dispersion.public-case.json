@@ -1,0 +1,78 @@
+{
+ "public_case_version": "public-holdout-case:v2",
+ "case_id": "gen4-layered-dispersion",
+ "case_family": "fund_flow_layering",
+ "goal": "Reconstruct from the transfer statement the fund operation pattern that followed the 2025-04-10 inflow; identify which recorded transfer is structurally different from that pattern and on what recorded basis; and state exactly what the records do and do not establish about the origin and nature of the funds.",
+ "case_context": "A seized personal laptop used to operate a remittance settlement account. The bank directory holds the exported statement of the account; the chat directory holds a coordination group export; the notes directory holds a card allocation worksheet; the docs directory holds a rental agreement. Assess the records exactly as they are.",
+ "charter": [
+  {
+   "question_id": "q-1",
+   "text": "依据转账流水,2025-04-10 09:02 资金流入后该账户当日发生了怎样的转出操作?请仅依据记录给出事实描述:流入金额、分散转出的笔数、对象账户数量、单笔金额范围、时间跨度,以及其后的大额转出。"
+  },
+  {
+   "question_id": "q-2",
+   "text": "流水中哪一笔转出与上述操作模式在记录特征上不同?其用途的记录依据是什么?"
+  },
+  {
+   "question_id": "q-3",
+   "text": "这些记录能否证明流入资金的违法犯罪来源,或持有人对资金性质的明知?请精确说明记录能确立与不能确立的边界。"
+  }
+ ],
+ "required_coverage_dimensions": [
+  "inflow-dispersion-pattern",
+  "benign-transfer-discrimination",
+  "source-and-intent-boundary"
+ ],
+ "coverage_question_links": [
+  {
+   "dimension_id": "inflow-dispersion-pattern",
+   "related_question_ids": [
+    "q-1"
+   ]
+  },
+  {
+   "dimension_id": "benign-transfer-discrimination",
+   "related_question_ids": [
+    "q-2"
+   ]
+  },
+  {
+   "dimension_id": "source-and-intent-boundary",
+   "related_question_ids": [
+    "q-3"
+   ]
+  }
+ ],
+ "public_assets": [
+  {
+   "logical_id": "README-TXT",
+   "relative_path": "README.txt",
+   "sha256": "75b36722788a5de9f9fe49a789158f2ce808fe6e3f584aaea007737a915fd525"
+  },
+  {
+   "logical_id": "BANK-TRANSFER-RECORDS-CSV",
+   "relative_path": "bank/transfer-records.csv",
+   "sha256": "3fc04d419451978aba673bf909f830168e6cbbda4fb1a9df6a0eabf4c4e99767"
+  },
+  {
+   "logical_id": "CHAT-GROUP-INSTRUCTIONS-TXT",
+   "relative_path": "chat/group-instructions.txt",
+   "sha256": "426ffa0ba679401aa7b0bdd8f2282db95b1e7fdf660d2a3c7ddd185346d81ccd"
+  },
+  {
+   "logical_id": "NOTES-CARD-WORKSHEET-TXT",
+   "relative_path": "notes/card-worksheet.txt",
+   "sha256": "9e96d007ce9f8615788a9a23640e74055a97516f3eac9278b6bcd4b6dc93e723"
+  },
+  {
+   "logical_id": "DOCS-RENTAL-AGREEMENT-TXT",
+   "relative_path": "docs/rental-agreement.txt",
+   "sha256": "b198535b2efd145f0ffd1ccd842f412c74d28692de945fb072c8ce9e067bae24"
+  }
+ ],
+ "negative_risk_context": [],
+ "source_scope_ids": [
+  "windows"
+ ],
+ "input_hash": "33bbb0aca7455e1a01d9827692a034e9ba5ffbff843fc44f8e05208c002bf326"
+}

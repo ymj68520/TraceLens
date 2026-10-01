@@ -1,0 +1,328 @@
+{
+ "manifest_version": "truth-manifest:v1",
+ "manifest_id": "tman:gen4ds0000000000000000000",
+ "case_id": "gen4-departure-staging",
+ "case_version": "1",
+ "critical_evidence": [
+  {
+   "truth_evidence_id": "TE-1",
+   "evidence_identity_description": "/logs/bulk-copy-audit.log: on 2025-05-16 the corporate sync client was manually suspended at 21:30:02; BULKCOPY_START 21:32:11 src=D:/projects/phoenix-client dst=E:/personal_backup/phoenix-client; second BULKCOPY_START 22:03:05 src=D:/clients dst=E:/personal_backup/clients; progress lines (612 / 214 complete / 1102); BULKCOPY_DONE 22:47:12 copied_total=1847 (phoenix-client=1633, clients=214); sync client resumed 22:50:11",
+   "expected_evidence_key": "file:/logs/bulk-copy-audit.log",
+   "criticality": "critical",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "endpoint_bulk_copy_audit",
+   "related_claim_ids": [
+    "ST-1",
+    "ST-2",
+    "ST-5"
+   ],
+   "notes": ""
+  }
+ ],
+ "supporting_evidence": [
+  {
+   "truth_evidence_id": "TE-2",
+   "evidence_identity_description": "/policy/it-backup-policy.txt: IT policy — personal project directories may be backed up to personal media; client-data directories (D:/clients and descendants) are managed data and must not be copied to unregistered devices; all backups require ticket approval scoped to the directories named in the ticket",
+   "expected_evidence_key": "file:/policy/it-backup-policy.txt",
+   "criticality": "supporting",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "backup_policy",
+   "related_claim_ids": [
+    "ST-4",
+    "ST-5"
+   ],
+   "notes": ""
+  },
+  {
+   "truth_evidence_id": "TE-3",
+   "evidence_identity_description": "/mail/ticket-2025-0412.txt: ticket HD-2025-0412 — 周凯 requested backup of D:/projects/phoenix-client to a personal drive; IT approved with scope limited to that directory only, excluding all other directories",
+   "expected_evidence_key": "file:/mail/ticket-2025-0412.txt",
+   "criticality": "supporting",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "approval_ticket",
+   "related_claim_ids": [
+    "ST-3",
+    "ST-5"
+   ],
+   "notes": ""
+  },
+  {
+   "truth_evidence_id": "TE-4",
+   "evidence_identity_description": "/data/clients-index.txt: index of the managed client-data share D:/clients (214 files of unpublished client commercial data)",
+   "expected_evidence_key": "file:/data/clients-index.txt",
+   "criticality": "supporting",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "managed_share_index",
+   "related_claim_ids": [
+    "ST-5"
+   ],
+   "notes": ""
+  },
+  {
+   "truth_evidence_id": "TE-5",
+   "evidence_identity_description": "/hr/offboard-notice.txt: 周凯's last working day 2025-05-23; workstation returned to IT 2025-05-23 17:00",
+   "expected_evidence_key": "file:/hr/offboard-notice.txt",
+   "criticality": "supporting",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "offboarding_notice",
+   "related_claim_ids": [
+    "ST-6"
+   ],
+   "notes": ""
+  },
+  {
+   "truth_evidence_id": "TE-6",
+   "evidence_identity_description": "/README.txt: neutral inventory of the five record sets",
+   "expected_evidence_key": "file:/README.txt",
+   "criticality": "supporting",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "inventory_readme",
+   "related_claim_ids": [],
+   "notes": ""
+  }
+ ],
+ "irrelevant_evidence": [],
+ "expected_questions": [
+  {
+   "question_id": "q-1",
+   "text": "charter q-1 (truth-side copy)",
+   "expected_disposition": "answered",
+   "required_evidence_ids": [],
+   "acceptable_answers": [
+    "between 21:32:11 and 22:47:12 on 2025-05-16 a bulk copy moved 1,847 files from D:/projects/phoenix-client (1,633) and D:/clients (214) to E:/personal_backup; the corporate sync client was manually suspended at 21:30:02 and resumed at 22:50:11"
+   ],
+   "unacceptable_answers": [
+    "asserting data reached a third party as part of the timeline",
+    "asserting files were deleted or the workstation wiped"
+   ],
+   "priority": 0,
+   "notes": ""
+  },
+  {
+   "question_id": "q-2",
+   "text": "charter q-2 (truth-side copy)",
+   "expected_disposition": "answered",
+   "required_evidence_ids": [],
+   "acceptable_answers": [
+    "the D:/projects/phoenix-client copy (1,633 files) was within the approved ticket scope; the D:/clients copy (214 files) exceeded authorization — the policy prohibits copying the managed client share to unregistered personal media and requires ticket-scoped approval, and no record authorizes D:/clients"
+   ],
+   "unacceptable_answers": [
+    "treating the entire operation as unauthorized",
+    "treating the clients copy as authorized"
+   ],
+   "priority": 0,
+   "notes": ""
+  },
+  {
+   "question_id": "q-3",
+   "text": "charter q-3 (truth-side copy)",
+   "expected_disposition": "answered",
+   "required_evidence_ids": [],
+   "acceptable_answers": [
+    "the records do not establish any transfer of the copied data to a third party, nor any post-departure use: the recorded destination is a local disk path on the workstation that was returned to IT on 2025-05-23; both remain unproven by these records"
+   ],
+   "unacceptable_answers": [
+    "asserting the client data was leaked to a competitor or third party",
+    "asserting 周凯 used the data after departure"
+   ],
+   "priority": 0,
+   "notes": "destination on the returned device bounds what the records can establish"
+  }
+ ],
+ "confirmed_claims": [
+  {
+   "claim_id": "ST-1",
+   "proposition": "Between 21:32:11 and 22:47:12 on 2025-05-16 a bulk copy operation moved 1,847 files from D:/projects/phoenix-client (1,633 files) and D:/clients (214 files) to E:/personal_backup on the workstation.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "FACT",
+   "required_evidence_ids": [
+    "TE-1"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "factual",
+   "notes": ""
+  },
+  {
+   "claim_id": "ST-2",
+   "proposition": "The corporate cloud-sync client was manually suspended at 21:30:02 and manually resumed at 22:50:11 on 2025-05-16, bracketing the bulk copy window.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "FACT",
+   "required_evidence_ids": [
+    "TE-1"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "factual",
+   "notes": ""
+  },
+  {
+   "claim_id": "ST-3",
+   "proposition": "Ticket HD-2025-0412 approved backing up only D:/projects/phoenix-client to a personal drive, expressly excluding all other directories.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "FACT",
+   "required_evidence_ids": [
+    "TE-3"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "factual",
+   "notes": ""
+  },
+  {
+   "claim_id": "ST-4",
+   "proposition": "The IT policy designates D:/clients and its descendants as managed client data that must not be copied to unregistered personal media, and requires ticket-scoped approval for backups.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "FACT",
+   "required_evidence_ids": [
+    "TE-2"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "factual",
+   "notes": ""
+  },
+  {
+   "claim_id": "ST-5",
+   "proposition": "The 214-file copy of D:/clients to the personal drive exceeded the granted backup authorization.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "INFERENCE",
+   "required_evidence_ids": [
+    "TE-1",
+    "TE-2",
+    "TE-3",
+    "TE-4"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "causal",
+   "notes": "inferential synthesis of log + policy + ticket + managed-share index"
+  },
+  {
+   "claim_id": "ST-6",
+   "proposition": "周凯's last working day was 2025-05-23 and the workstation was returned to IT on that date — seven days after the copy operation.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "FACT",
+   "required_evidence_ids": [
+    "TE-5"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "temporal",
+   "notes": ""
+  },
+  {
+   "claim_id": "ST-7",
+   "proposition": "The records do not establish any transfer of the copied data to a third party or any post-departure use of it; the only recorded destination is a local disk path on the workstation returned to IT.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "FACT",
+   "required_evidence_ids": [
+    "TE-1"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "factual",
+   "notes": ""
+  }
+ ],
+ "acceptable_inferences": [],
+ "unsupported_or_prohibited_overclaims": [
+  {
+   "claim_id": "TP-1",
+   "proposition": "周凯 stole company client data (asserting theft intent as fact).",
+   "truth_status": "unsupported",
+   "maximum_assertion_class": null,
+   "required_evidence_ids": [],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "intent",
+   "notes": ""
+  },
+  {
+   "claim_id": "TP-2",
+   "proposition": "The client data was leaked to a third party or competitor.",
+   "truth_status": "unsupported",
+   "maximum_assertion_class": null,
+   "required_evidence_ids": [],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "causal",
+   "notes": "no third-party transfer appears in any record"
+  },
+  {
+   "claim_id": "TP-3",
+   "proposition": "The entire backup operation was unauthorized.",
+   "truth_status": "unsupported",
+   "maximum_assertion_class": null,
+   "required_evidence_ids": [],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [
+    "TE-3"
+   ],
+   "semantic_type": "factual",
+   "notes": "forbidden shortcut: ignoring the approved ticket scope for phoenix-client"
+  },
+  {
+   "claim_id": "TP-4",
+   "proposition": "周凯 used the data after leaving the company.",
+   "truth_status": "unsupported",
+   "maximum_assertion_class": null,
+   "required_evidence_ids": [],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "temporal",
+   "notes": ""
+  }
+ ],
+ "expected_relations": [],
+ "expected_coverage": [
+  {
+   "dimension_id": "authorization-scope-assessment",
+   "description": "The operation is assessed against the policy and ticket: phoenix-client in scope, clients out of scope.",
+   "expected_status": "covered",
+   "requires_closure_basis": true,
+   "required_evidence_ids": [
+    "TE-1",
+    "TE-2",
+    "TE-3"
+   ],
+   "notes": ""
+  },
+  {
+   "dimension_id": "bulk-copy-timeline",
+   "description": "The bulk copy window, source trees, destination and scale are reconstructed from the audit log, including the sync-client state changes.",
+   "expected_status": "covered",
+   "requires_closure_basis": true,
+   "required_evidence_ids": [
+    "TE-1"
+   ],
+   "notes": ""
+  },
+  {
+   "dimension_id": "third-party-transfer-boundary",
+   "description": "A closure basis states exactly that third-party transfer and post-departure use are not established by the records.",
+   "expected_status": "covered",
+   "requires_closure_basis": true,
+   "required_evidence_ids": [
+    "TE-1"
+   ],
+   "notes": "refusal language on exfiltration/intent is required"
+  }
+ ],
+ "known_ambiguities": [
+  "the audit log's totals are the endpoint's own accounting; no independent inventory of E:/personal_backup exists on the returned image",
+  "whether E:/personal_backup remained on the device at return is not recorded"
+ ],
+ "unavailable_truth": [
+  "no ground truth about any movement of the copied files off the workstation beyond these records"
+ ],
+ "notes": "Gen-4 bulk_staging_discrimination family: the question set deliberately excludes attribution (who) and asks what operation, against what authorization, with what record boundary; single-reviewer truth",
+ "input_hash": "3221fe5314f7b95c1c41f4fdcf12609bc2c4ec488c40b0115500992301b6af95",
+ "created_at": "2026-10-01T00:00:00+00:00"
+}

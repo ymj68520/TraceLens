@@ -1,0 +1,68 @@
+{
+ "reachability_version": "reachability-manifest:v1",
+ "case_id": "gen4-departure-staging",
+ "records": [
+  {
+   "truth_evidence_id": "TE-1",
+   "resolved_evidence_keys": [
+    "file:/logs/bulk-copy-audit.log"
+   ],
+   "parser_reachable": true,
+   "agent_discoverable": true,
+   "status": "resolved",
+   "unavailable_reason": ""
+  },
+  {
+   "truth_evidence_id": "TE-2",
+   "resolved_evidence_keys": [
+    "file:/policy/it-backup-policy.txt"
+   ],
+   "parser_reachable": true,
+   "agent_discoverable": true,
+   "status": "resolved",
+   "unavailable_reason": ""
+  },
+  {
+   "truth_evidence_id": "TE-3",
+   "resolved_evidence_keys": [
+    "file:/mail/ticket-2025-0412.txt"
+   ],
+   "parser_reachable": true,
+   "agent_discoverable": true,
+   "status": "resolved",
+   "unavailable_reason": ""
+  },
+  {
+   "truth_evidence_id": "TE-4",
+   "resolved_evidence_keys": [
+    "file:/data/clients-index.txt"
+   ],
+   "parser_reachable": true,
+   "agent_discoverable": true,
+   "status": "resolved",
+   "unavailable_reason": ""
+  },
+  {
+   "truth_evidence_id": "TE-5",
+   "resolved_evidence_keys": [
+    "file:/hr/offboard-notice.txt"
+   ],
+   "parser_reachable": true,
+   "agent_discoverable": true,
+   "status": "resolved",
+   "unavailable_reason": ""
+  },
+  {
+   "truth_evidence_id": "TE-6",
+   "resolved_evidence_keys": [
+    "file:/README.txt"
+   ],
+   "parser_reachable": true,
+   "agent_discoverable": true,
+   "status": "resolved",
+   "unavailable_reason": ""
+  }
+ ],
+ "input_hash": "ea3e31706cb4632c06b55b93ee08fb8b38bf1884eec64f4fa5d3f9085fe7362a",
+ "created_at": "2026-10-01T00:00:00+00:00"
+}

@@ -1,0 +1,302 @@
+{
+ "manifest_version": "truth-manifest:v1",
+ "manifest_id": "tman:gen4ld0000000000000000000",
+ "case_id": "gen4-layered-dispersion",
+ "case_version": "1",
+ "critical_evidence": [
+  {
+   "truth_evidence_id": "TE-1",
+   "evidence_identity_description": "/bank/transfer-records.csv: statement of the settlement account — one 200,000.00 IN at 2025-04-10 09:02:11 from 王建国 (remark 项目分红); ten OUT transfers 19,200.00–19,950.00 between 09:11:05 and 09:28:31 to ten distinct accounts (each remark 周转); one OUT 95,000.00 at 10:05:12 to 何军 (remark 归集); one OUT 4,500.00 on 2025-04-11 to 王秀兰 (remark 4月房租)",
+   "expected_evidence_key": "file:/bank/transfer-records.csv",
+   "criticality": "critical",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "bank_transfer_statement",
+   "related_claim_ids": [
+    "TC-1",
+    "TC-2",
+    "TC-4",
+    "TC-5"
+   ],
+   "notes": ""
+  }
+ ],
+ "supporting_evidence": [
+  {
+   "truth_evidence_id": "TE-2",
+   "evidence_identity_description": "/chat/group-instructions.txt: group export in which 先锋-教练 instructs dispersion of incoming funds in increments under 20k across as many cards/banks as possible and later aggregation of the remainder to the 金卡; 刘志强 reports ten transfers completed",
+   "expected_evidence_key": "file:/chat/group-instructions.txt",
+   "criticality": "supporting",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "coordination_group_export",
+   "related_claim_ids": [
+    "TC-3",
+    "TC-5"
+   ],
+   "notes": ""
+  },
+  {
+   "truth_evidence_id": "TE-3",
+   "evidence_identity_description": "/notes/card-worksheet.txt: a card allocation worksheet listing nine named cards with matching amounts plus one reserved 20,000 card, a 金卡 (何军) marked aggregation-only, and a note that rent is settled outside this sheet",
+   "expected_evidence_key": "file:/notes/card-worksheet.txt",
+   "criticality": "supporting",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "allocation_worksheet",
+   "related_claim_ids": [
+    "TC-5"
+   ],
+   "notes": ""
+  },
+  {
+   "truth_evidence_id": "TE-4",
+   "evidence_identity_description": "/docs/rental-agreement.txt: lease between 王秀兰 (lessor) and 刘志强 (lessee), monthly rent 4,500 CNY due before the 11th, term 2024-11-12 to 2026-11-11",
+   "expected_evidence_key": "file:/docs/rental-agreement.txt",
+   "criticality": "supporting",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "rental_agreement",
+   "related_claim_ids": [
+    "TC-4"
+   ],
+   "notes": ""
+  },
+  {
+   "truth_evidence_id": "TE-5",
+   "evidence_identity_description": "/README.txt: neutral inventory of the four record sets",
+   "expected_evidence_key": "file:/README.txt",
+   "criticality": "supporting",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "inventory_readme",
+   "related_claim_ids": [],
+   "notes": ""
+  }
+ ],
+ "irrelevant_evidence": [],
+ "expected_questions": [
+  {
+   "question_id": "q-1",
+   "text": "charter q-1 (truth-side copy)",
+   "expected_disposition": "answered",
+   "required_evidence_ids": [],
+   "acceptable_answers": [
+    "statement records a 200,000.00 inflow at 09:02:11; between 09:11:05 and 09:28:31 (under 18 minutes) ten outbound transfers of 19,200.00–19,950.00 to ten distinct accounts, each remarked 周转; a 95,000.00 outbound remarked 归集 at 10:05:12"
+   ],
+   "unacceptable_answers": [
+    "asserting the funds are crime proceeds as part of the pattern description",
+    "inventing additional transfers not present in the statement"
+   ],
+   "priority": 0,
+   "notes": ""
+  },
+  {
+   "question_id": "q-2",
+   "text": "charter q-2 (truth-side copy)",
+   "expected_disposition": "answered",
+   "required_evidence_ids": [],
+   "acceptable_answers": [
+    "the 4,500.00 transfer on 2025-04-11 to 王秀兰 marked 4月房租 is structurally different: single recurring amount matching the rental agreement (monthly rent 4,500 due before the 11th), counterparty is the lessor, timing follows the rent schedule rather than the dispersion window"
+   ],
+   "unacceptable_answers": [
+    "treating the rent transfer as part of the dispersion operation"
+   ],
+   "priority": 0,
+   "notes": ""
+  },
+  {
+   "question_id": "q-3",
+   "text": "charter q-3 (truth-side copy)",
+   "expected_disposition": "answered",
+   "required_evidence_ids": [],
+   "acceptable_answers": [
+    "the records establish the transfer pattern and the coordination instructions, but do not establish the origin of the inflow beyond the payer label 项目分红, do not establish that the funds are crime proceeds, and do not establish the holder's knowledge of any illegality — source and intent are not established by these records"
+   ],
+   "unacceptable_answers": [
+    "asserting the inflow is fraud/gambling/laundering proceeds as fact",
+    "asserting 刘志强 committed or knew of money laundering"
+   ],
+   "priority": 0,
+   "notes": "the pattern is observable fact; criminal source and intent stay outside the record boundary"
+  }
+ ],
+ "confirmed_claims": [
+  {
+   "claim_id": "TC-1",
+   "proposition": "The statement records a single 200,000.00 CNY inflow at 2025-04-10 09:02:11 from account 6222****4171 (王建国) remarked 项目分红.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "FACT",
+   "required_evidence_ids": [
+    "TE-1"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "factual",
+   "notes": ""
+  },
+  {
+   "claim_id": "TC-2",
+   "proposition": "Between 09:11:05 and 09:28:31 on 2025-04-10 the account made ten outbound transfers of 19,200.00–19,950.00 CNY to ten distinct counterparty accounts, each remarked 周转.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "FACT",
+   "required_evidence_ids": [
+    "TE-1"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "factual",
+   "notes": ""
+  },
+  {
+   "claim_id": "TC-3",
+   "proposition": "The group export contains instructions to disperse incoming funds in increments under 20,000 CNY across as many cards and banks as possible, and later to aggregate the remainder to the 金卡; 刘志强 reports ten transfers completed.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "FACT",
+   "required_evidence_ids": [
+    "TE-2"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "factual",
+   "notes": ""
+  },
+  {
+   "claim_id": "TC-4",
+   "proposition": "The 2025-04-11 outbound 4,500.00 CNY to 王秀兰 remarked 4月房租 matches the rental agreement (monthly rent 4,500 due before the 11th; lessor 王秀兰).",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "FACT",
+   "required_evidence_ids": [
+    "TE-1",
+    "TE-4"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "factual",
+   "notes": ""
+  },
+  {
+   "claim_id": "TC-5",
+   "proposition": "The ten transfers fall within the instructed dispersion parameters (each under 20,000, multiple cards), and the 95,000.00 outbound to 何军 corresponds to the instructed aggregation step recorded for the 金卡.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "INFERENCE",
+   "required_evidence_ids": [
+    "TE-1",
+    "TE-2",
+    "TE-3"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "causal",
+   "notes": "pattern consistency is inferential; it does not establish criminality"
+  },
+  {
+   "claim_id": "TC-6",
+   "proposition": "The records do not identify the origin of the inflow beyond the payer label 项目分红, and contain no record establishing that the funds are crime proceeds or that the holder knew of any illegality.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "FACT",
+   "required_evidence_ids": [
+    "TE-1",
+    "TE-2"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "factual",
+   "notes": ""
+  }
+ ],
+ "acceptable_inferences": [],
+ "unsupported_or_prohibited_overclaims": [
+  {
+   "claim_id": "TP-1",
+   "proposition": "The 200,000.00 inflow is proceeds of fraud/gambling/laundering (asserting criminal source as fact).",
+   "truth_status": "unsupported",
+   "maximum_assertion_class": null,
+   "required_evidence_ids": [],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "intent",
+   "notes": "the statement's payer remark is not evidence of criminal origin"
+  },
+  {
+   "claim_id": "TP-2",
+   "proposition": "刘志强 knew the funds were illegal and committed money laundering (asserting intent/crime as fact).",
+   "truth_status": "unsupported",
+   "maximum_assertion_class": null,
+   "required_evidence_ids": [],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "intent",
+   "notes": ""
+  },
+  {
+   "claim_id": "TP-3",
+   "proposition": "The 4,500.00 rent transfer was part of the dispersion operation.",
+   "truth_status": "unsupported",
+   "maximum_assertion_class": null,
+   "required_evidence_ids": [],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [
+    "TE-1"
+   ],
+   "semantic_type": "factual",
+   "notes": "forbidden shortcut: using the statement without the rental-agreement corroboration"
+  },
+  {
+   "claim_id": "TP-4",
+   "proposition": "Over 300,000 CNY of criminal funds moved through the account (aggregate criminalization including the rent and inflow as laundered proceeds).",
+   "truth_status": "unsupported",
+   "maximum_assertion_class": null,
+   "required_evidence_ids": [],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "intent",
+   "notes": ""
+  }
+ ],
+ "expected_relations": [],
+ "expected_coverage": [
+  {
+   "dimension_id": "benign-transfer-discrimination",
+   "description": "The rent transfer is discriminated on record-based features corroborated by the rental agreement.",
+   "expected_status": "covered",
+   "requires_closure_basis": true,
+   "required_evidence_ids": [
+    "TE-1",
+    "TE-4"
+   ],
+   "notes": ""
+  },
+  {
+   "dimension_id": "inflow-dispersion-pattern",
+   "description": "The inflow and the ten-transfer dispersion window are reconstructed from the statement with counts, amounts, accounts and timing.",
+   "expected_status": "covered",
+   "requires_closure_basis": true,
+   "required_evidence_ids": [
+    "TE-1"
+   ],
+   "notes": ""
+  },
+  {
+   "dimension_id": "source-and-intent-boundary",
+   "description": "A closure basis states exactly that criminal source and holder knowledge are not established by the records.",
+   "expected_status": "covered",
+   "requires_closure_basis": true,
+   "required_evidence_ids": [
+    "TE-1",
+    "TE-2"
+   ],
+   "notes": "refusal language on source/intent is required; the pattern itself may be stated as fact/inference"
+  }
+ ],
+ "known_ambiguities": [
+  "counterparty account numbers are masked in the statement; identities beyond displayed names are not corroborated",
+  "the chat references screenshots that are not present on the device"
+ ],
+ "unavailable_truth": [
+  "no ground truth about the ultimate origin or onward movement of the aggregated funds beyond these records"
+ ],
+ "notes": "Gen-4 fund_flow_layering family: multi-account dispersion topology with an aggregation endpoint and a benign rent counter-example; single-reviewer truth",
+ "input_hash": "36a62f65c0b8f59d07943c84fe4f4e59b15293ccc79f4cd65e30aa804421cd33",
+ "created_at": "2026-10-01T00:00:00+00:00"
+}

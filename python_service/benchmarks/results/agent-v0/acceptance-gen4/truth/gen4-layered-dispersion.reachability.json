@@ -1,0 +1,58 @@
+{
+ "reachability_version": "reachability-manifest:v1",
+ "case_id": "gen4-layered-dispersion",
+ "records": [
+  {
+   "truth_evidence_id": "TE-1",
+   "resolved_evidence_keys": [
+    "file:/bank/transfer-records.csv"
+   ],
+   "parser_reachable": true,
+   "agent_discoverable": true,
+   "status": "resolved",
+   "unavailable_reason": ""
+  },
+  {
+   "truth_evidence_id": "TE-2",
+   "resolved_evidence_keys": [
+    "file:/chat/group-instructions.txt"
+   ],
+   "parser_reachable": true,
+   "agent_discoverable": true,
+   "status": "resolved",
+   "unavailable_reason": ""
+  },
+  {
+   "truth_evidence_id": "TE-3",
+   "resolved_evidence_keys": [
+    "file:/notes/card-worksheet.txt"
+   ],
+   "parser_reachable": true,
+   "agent_discoverable": true,
+   "status": "resolved",
+   "unavailable_reason": ""
+  },
+  {
+   "truth_evidence_id": "TE-4",
+   "resolved_evidence_keys": [
+    "file:/docs/rental-agreement.txt"
+   ],
+   "parser_reachable": true,
+   "agent_discoverable": true,
+   "status": "resolved",
+   "unavailable_reason": ""
+  },
+  {
+   "truth_evidence_id": "TE-5",
+   "resolved_evidence_keys": [
+    "file:/README.txt"
+   ],
+   "parser_reachable": true,
+   "agent_discoverable": true,
+   "status": "resolved",
+   "unavailable_reason": ""
+  }
+ ],
+ "input_hash": "d7297040dcfe9032ac782e56099b66f764c9942589bef2d331fb8a205ba9fe0a",
+ "created_at": "2026-10-01T00:00:00+00:00"
+}
