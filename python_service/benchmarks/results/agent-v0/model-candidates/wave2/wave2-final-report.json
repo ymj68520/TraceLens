@@ -1,7 +1,7 @@
 {
   "report_version": "agent-v0-model-candidate-wave2-report:v1",
-  "created_at": "2026-10-02T07:30:29+00:00",
-  "git_commit": "42ce8649c3047e2cc1e4ea13b50d38a3c1aead79",
+  "created_at": "2026-10-02T09:05:35+00:00",
+  "git_commit": "ec3fb1bd1297ef0aad5cc0661b987fff29c21ebf",
   "current_control": {
     "model": "sensenova-6.8-flash-lite",
     "runtime": "RuntimeBaselineV3 QUALIFIED/FROZEN",
@@ -95,16 +95,62 @@
     }
   },
   "excluded": {
-    "glm-5.2": "§27: exact config NOT_QUALIFIED (wave-1); no re-run, no seed change, no temperature tweak under same identity",
-    "sensenova-6.8-flash-lite": "frozen control (§26)"
+    "glm-5.2": "historical NOT_QUALIFIED record retained; AUTHORITATIVE interpretation = PROVIDER_QUOTA_BLOCKED / semantic qualification NOT_ESTABLISHED (ModelCandidateQualification-AmendmentV1, append-only); capacity-clean re-entry with the same exact config permitted in future (§13) — not automatic",
+    "sensenova-6.8-flash-lite": "frozen control (§26/§15, no re-run)"
+  },
+  "glm5_amendment": {
+    "artifact_version": "ModelCandidateQualificationAmendmentV1",
+    "amendment_kind": "failure_attribution_correction_append_only",
+    "created_at": "2026-10-02T00:00:00+00:00",
+    "authorized_by": "Wave-2 Provider Capacity Recovery → Candidate Re-entry directive §1",
+    "candidate": "glm-5.2",
+    "original_artifact": {
+      "path": "benchmarks/results/agent-v0/model-candidates/glm-5.2/ModelCandidateQualificationV1.json",
+      "sha256": "a674b74082e674d76fa69cb67a76f3b4018359c988479ae0cef4c8c9dce336fb",
+      "untouched": true,
+      "note": "append-only amendment; the original qualification artifact is retained byte-for-byte as historical record"
+    },
+    "original_disposition": "NOT_QUALIFIED",
+    "original_reason": "14/24 Specialist structured-output failures interpreted as schema failures (58.3% > frozen 0.5 collapse ceiling)",
+    "corrected_failure_attribution": {
+      "delegation_failures_8x3": 14,
+      "agent_rate_limited": 14,
+      "schema_failures": 0,
+      "evidence": "benchmarks/results/agent-v0/b2-runtime-v3-glm52/t*/repeat*/trajectory_digest.json delegation_failures[].failure_code — all 14 are agent_rate_limited (provider quota events)",
+      "why_original_attribution_failed": "the frozen reliability ceiling (Specialist schema failure <= 50%) applies ONLY to true structured-output/schema failures; provider quota events (agent_rate_limited / 429 / TPM-RPM exhaustion) must never enter the schema numerator — §7 provider-failure taxonomy"
+    },
+    "authoritative_candidate_status": "PROVIDER_QUOTA_BLOCKED",
+    "semantic_qualification": "NOT_ESTABLISHED",
+    "promotion_status": "NOT_PROMOTED",
+    "measurement_interpretation": {
+      "wave1_8x3_series": "quota-degraded (MEASUREMENT_VALID as a measurement, but provider-capacity dominated on the delegation axis); NOT a semantic reliability collapse",
+      "consequence": "the 8x1-to-8x3 falsification narrative is withdrawn; the 8x3 remains valid evidence that the candidate could not be semantically qualified under the account capacity of the day",
+      "re_entry_rule": "capacity-clean re-entry allowed in the future with the SAME exact glm-5.2 config (§13): fresh 8x1 → mandatory fresh 8x3 as a NEW capacity-clean qualification — never a retry-until-pass of the old one; §14: any parameter/endpoint/revision change requires a new candidate_config_id"
+    },
+    "wave2_disposition_unchanged": "PROVIDER_CAPACITY_BLOCKED (§3/§22): no candidate has completed a capacity-clean semantic qualification",
+    "frozen_axes_untouched": "runtime / prompt / policy / ToolRegistry / AcceptanceProfile unchanged; holdouts Gen-1/2/3/4 untouched"
+  },
+  "provider_capacity_protocol": {
+    "probing": "STOPPED (§4): no watchdogs, no window hunting — one-call successes prove insufficient capacity and probing consumes scarce quota",
+    "reentry_triggers": [
+      "A: explicit provider recovery (quota reset / tier upgrade / provider-confirmed RPM/TPM)",
+      "B: reliable readable quota telemetry showing capacity sufficient for a full screening",
+      "C: explicit human authorization of a new capacity window"
+    ],
+    "reentry_order": [
+      "1. deepseek-v4-flash: fresh 8x1 (smoke PASS stands, §6) → mandatory fresh 8x3",
+      "2. kimi-k3/temp=1: own smoke 6/6 first (§12) → 8x1 → 8x3",
+      "3. glm-5.2: only if capacity remains sufficient (§13)"
+    ]
   },
   "wave1_accounting_correction": {
     "finding": "wave-1 counted ALL delegation failures as 'specialist structured-output failures'; failure_code breakdown shows glm-5.2's 8x3 14 failures were ALL agent_rate_limited (provider quota events, §7), not schema failures",
     "glm_5.2_8x3_delegation_failure_codes": {
       "agent_rate_limited": 14
     },
-    "disposition_impact": "none: glm-5.2 remains NOT_QUALIFIED under §27 (frozen), and under the corrected §7 reading the series was quota-degraded (PROVIDER_QUOTA_BLOCKED semantics) — either way never QUALIFIED_FOR_PROMOTION",
-    "wave2_practice": "schema-only reliability counting (failure_code-based) in all wave-2 disposition scripts"
+    "authoritative_status": "PROVIDER_QUOTA_BLOCKED / semantic qualification NOT_ESTABLISHED — recorded as append-only ModelCandidateQualificationAmendmentV1; the original artifact is untouched",
+    "disposition_impact": "the 8x1→8x3 'repeatability collapse' falsification narrative is withdrawn; promotion status remains NOT_PROMOTED (no capacity-clean qualification ever existed)",
+    "wave2_practice": "schema-only reliability counting (failure_code-based) in all wave-2 disposition scripts; §8 mixed classes never again"
   },
   "runtime": "unchanged (RuntimeBaselineV3 FROZEN)",
   "prompt": "unchanged (§3 gate closed)",

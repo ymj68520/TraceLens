@@ -68,11 +68,16 @@ def main() -> int:
             entry["final_8x3"] = final
         candidates[cid] = entry
 
-    # wave-1 accounting correction (transparent, disposition unchanged)
+    # wave-1 accounting correction — now AUTHORITATIVE via the §1
+    # append-only amendment (NOT_QUALIFIED → PROVIDER_QUOTA_BLOCKED)
     glm_codes = {}
     for f in (RESULTS / "b2-runtime-v3-glm52").glob("t*/repeat*/trajectory_digest.json"):
         for x in _load(f).get("delegation_failures", []):
             glm_codes[x.get("failure_code")] = glm_codes.get(x.get("failure_code"), 0) + 1
+    glm_amendment = _maybe(
+        RESULTS / "model-candidates" / "glm-5.2" /
+        "ModelCandidateQualificationAmendmentV1.json"
+    )
 
     # §26 frozen control (no re-run)
     control = _load(RESULTS / "b2-runtime-v3" /
@@ -151,9 +156,33 @@ def main() -> int:
             for cid, e in candidates.items()
         },
         "excluded": {
-            "glm-5.2": "§27: exact config NOT_QUALIFIED (wave-1); no re-run, "
-                       "no seed change, no temperature tweak under same identity",
-            "sensenova-6.8-flash-lite": "frozen control (§26)",
+            "glm-5.2": (
+                "historical NOT_QUALIFIED record retained; AUTHORITATIVE "
+                "interpretation = PROVIDER_QUOTA_BLOCKED / semantic "
+                "qualification NOT_ESTABLISHED (ModelCandidateQualification-"
+                "AmendmentV1, append-only); capacity-clean re-entry with the "
+                "same exact config permitted in future (§13) — not automatic"
+            ),
+            "sensenova-6.8-flash-lite": "frozen control (§26/§15, no re-run)",
+        },
+        "glm5_amendment": glm_amendment,
+        "provider_capacity_protocol": {
+            "probing": "STOPPED (§4): no watchdogs, no window hunting — "
+                       "one-call successes prove insufficient capacity and "
+                       "probing consumes scarce quota",
+            "reentry_triggers": [
+                "A: explicit provider recovery (quota reset / tier upgrade / "
+                "provider-confirmed RPM/TPM)",
+                "B: reliable readable quota telemetry showing capacity "
+                "sufficient for a full screening",
+                "C: explicit human authorization of a new capacity window",
+            ],
+            "reentry_order": [
+                "1. deepseek-v4-flash: fresh 8x1 (smoke PASS stands, §6) "
+                "→ mandatory fresh 8x3",
+                "2. kimi-k3/temp=1: own smoke 6/6 first (§12) → 8x1 → 8x3",
+                "3. glm-5.2: only if capacity remains sufficient (§13)",
+            ],
         },
         "wave1_accounting_correction": {
             "finding": (
@@ -163,15 +192,21 @@ def main() -> int:
                 "(provider quota events, §7), not schema failures"
             ),
             "glm_5.2_8x3_delegation_failure_codes": glm_codes,
+            "authoritative_status": (
+                "PROVIDER_QUOTA_BLOCKED / semantic qualification "
+                "NOT_ESTABLISHED — recorded as append-only "
+                "ModelCandidateQualificationAmendmentV1; the original "
+                "artifact is untouched"
+            ),
             "disposition_impact": (
-                "none: glm-5.2 remains NOT_QUALIFIED under §27 (frozen), and "
-                "under the corrected §7 reading the series was quota-degraded "
-                "(PROVIDER_QUOTA_BLOCKED semantics) — either way never "
-                "QUALIFIED_FOR_PROMOTION"
+                "the 8x1→8x3 'repeatability collapse' falsification "
+                "narrative is withdrawn; promotion status remains "
+                "NOT_PROMOTED (no capacity-clean qualification ever "
+                "existed)"
             ),
             "wave2_practice": (
                 "schema-only reliability counting (failure_code-based) in all "
-                "wave-2 disposition scripts"
+                "wave-2 disposition scripts; §8 mixed classes never again"
             ),
         },
         "runtime": "unchanged (RuntimeBaselineV3 FROZEN)",
