@@ -1,0 +1,119 @@
+{
+  "report_version": "agent-v0-model-candidate-wave2-report:v1",
+  "created_at": "2026-10-02T07:30:29+00:00",
+  "git_commit": "42ce8649c3047e2cc1e4ea13b50d38a3c1aead79",
+  "current_control": {
+    "model": "sensenova-6.8-flash-lite",
+    "runtime": "RuntimeBaselineV3 QUALIFIED/FROZEN",
+    "calibration_qualified": true,
+    "formal_acceptance": "REJECTED (Gen-4 DecisionV4 authoritative)",
+    "frozen_measurement": {
+      "series": "b2-runtime-v3 (24 runs, MEASUREMENT_VALID)",
+      "case_outcome_v2": {
+        "incomplete": 18,
+        "success": 4,
+        "incorrect": 2
+      },
+      "finalization_completed": 17,
+      "question_terminalization": "20/24 (charter required question per run)",
+      "specialist_schema_failures": 1,
+      "provider_failures": 0
+    },
+    "no_rerun": "§26: control retained without re-execution"
+  },
+  "candidates_tested": {
+    "kimi-k3": {
+      "smoke": {
+        "all_pass": false,
+        "classification": "PROVIDER_QUOTA_BLOCKED"
+      },
+      "screenings": [],
+      "final_8x3": null
+    },
+    "deepseek-v4-flash": {
+      "smoke": {
+        "all_pass": true,
+        "classification": null
+      },
+      "screenings": [
+        {
+          "root": "candidate-root",
+          "disposition": "PROVIDER_QUOTA_BLOCKED",
+          "reason": "8x1 quota-starved (majority delegation failures {'agent_rate_limited': 3}); semantic qualification NOT ESTABLISHED — re-enter in a clear window (§7/§28)",
+          "runs": 8,
+          "structural_hard_gates": "8/8 clean",
+          "delegation_failures": {
+            "delegation_failures_by_code": {
+              "agent_rate_limited": 3
+            },
+            "quota_delegation_failures": 3,
+            "total_delegation_failures": 3
+          }
+        }
+      ],
+      "final_8x3": null
+    },
+    "deepseek-v4-pro": {
+      "smoke": {
+        "all_pass": false,
+        "classification": "PROVIDER_QUOTA_BLOCKED"
+      },
+      "screenings": [],
+      "final_8x3": null
+    },
+    "deepseek-flash": {
+      "smoke": {
+        "all_pass": false,
+        "classification": "PROVIDER_QUOTA_BLOCKED"
+      },
+      "screenings": [],
+      "final_8x3": null
+    },
+    "sensenova-u1-fast": {
+      "smoke": {
+        "all_pass": false,
+        "classification": "PROVIDER_MODEL_UNAVAILABLE"
+      },
+      "screenings": [],
+      "final_8x3": null
+    },
+    "sensenova-u1.5-lite": {
+      "smoke": {
+        "all_pass": false,
+        "classification": "PROVIDER_MODEL_UNAVAILABLE"
+      },
+      "screenings": [],
+      "final_8x3": null
+    },
+    "deepseek-v4.1-flash": {
+      "smoke": {
+        "all_pass": false,
+        "classification": "PROVIDER_AUTH_BLOCKED"
+      },
+      "screenings": [],
+      "final_8x3": null
+    }
+  },
+  "excluded": {
+    "glm-5.2": "§27: exact config NOT_QUALIFIED (wave-1); no re-run, no seed change, no temperature tweak under same identity",
+    "sensenova-6.8-flash-lite": "frozen control (§26)"
+  },
+  "wave1_accounting_correction": {
+    "finding": "wave-1 counted ALL delegation failures as 'specialist structured-output failures'; failure_code breakdown shows glm-5.2's 8x3 14 failures were ALL agent_rate_limited (provider quota events, §7), not schema failures",
+    "glm_5.2_8x3_delegation_failure_codes": {
+      "agent_rate_limited": 14
+    },
+    "disposition_impact": "none: glm-5.2 remains NOT_QUALIFIED under §27 (frozen), and under the corrected §7 reading the series was quota-degraded (PROVIDER_QUOTA_BLOCKED semantics) — either way never QUALIFIED_FOR_PROMOTION",
+    "wave2_practice": "schema-only reliability counting (failure_code-based) in all wave-2 disposition scripts"
+  },
+  "runtime": "unchanged (RuntimeBaselineV3 FROZEN)",
+  "prompt": "unchanged (§3 gate closed)",
+  "acceptance_profile": "unchanged (AcceptanceProfileV2 FROZEN)",
+  "consumed_holdouts": "untouched (Gen-1/2/3/4 zero access, §31)",
+  "provider_constraints": {
+    "endpoint": "token.sensenova.cn (single cloud credential)",
+    "observed": "account-level TPM/RPM exhaustion from 14:15 local after three 24-run-class series earlier today; brief recovery windows (~10 min quiet); smoke+sustained runs re-exhaust it"
+  },
+  "disposition": "PROVIDER_CAPACITY_BLOCKED",
+  "disposition_basis": "candidate outcomes: {\"kimi-k3\": \"SMOKE_FAIL:PROVIDER_QUOTA_BLOCKED\", \"deepseek-v4-flash\": \"PROVIDER_QUOTA_BLOCKED\", \"deepseek-v4-pro\": \"SMOKE_FAIL:PROVIDER_QUOTA_BLOCKED\", \"deepseek-flash\": \"SMOKE_FAIL:PROVIDER_QUOTA_BLOCKED\", \"sensenova-u1-fast\": \"SMOKE_FAIL:PROVIDER_MODEL_UNAVAILABLE\", \"sensenova-u1.5-lite\": \"SMOKE_FAIL:PROVIDER_MODEL_UNAVAILABLE\", \"deepseek-v4.1-flash\": \"SMOKE_FAIL:PROVIDER_AUTH_BLOCKED\"}"
+}
