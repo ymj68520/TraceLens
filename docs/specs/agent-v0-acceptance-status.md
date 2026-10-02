@@ -12,38 +12,47 @@ FROZEN
 
 Runtime:
 AgentV0RuntimeBaselineV3 CURRENT / QUALIFIED
-(identity closed for Gen-4: superseding record binds the measured
-runtime — race fix 1b6c0a88 predates qualification + all 24 B2 runs)
+(superseding record binds the measured runtime)
 
 Model (SenseNova sensenova-6.8-flash-lite):
-QUALIFIED on RuntimeBaselineV3
+MEASURED ON SEALED GEN-4 HOLDOUT — functional floor NOT met
+(valid qualification outcome; not benchmark error)
 
 Calibration:
-MEASUREMENT_VALID (b2-runtime-v3, 24 runs)
-ZERO_CHANGE / CalibrationEvidenceBindingV3 FROZEN
+CalibrationEvidenceBindingV3 FROZEN (ZERO_CHANGE)
 
 AcceptanceProfileV2:
-UNCHANGED / BOUND_TO_RUNTIME_V3
-(AcceptanceProfileRuntimeBindingV3 FROZEN)
+UNCHANGED (thresholds untouched by the Gen-4 verdict)
 
 Content hydration:
 evidence-content-hydration:v1 FROZEN
+(proved in production: 34/34 hydrated items == sealed hashes,
+0 integrity failures across the 6 Gen-4 runs)
 
-Acceptance Generation 1-3:
-CLOSED_INVALID / CONSUMED (immutable history)
+Acceptance Generation 1:
+CLOSED_INVALID / B6_INVALID / CONSUMED
+
+Acceptance Generation 2:
+CLOSED_INVALID / CONSUMED
+
+Acceptance Generation 3:
+CLOSED_INVALID / CONSUMED
 
 Acceptance Generation 4:
-SEALED (holdout-seal-v3 1c0f685e…)
-ADMITTED_FOR_B6 (Generation4AdmissionAuditV1 23/23 PASS)
-families: fund_flow_layering, bulk_staging_discrimination
-(brand-new instances; independence audit confirmed)
-execution_count = 0
+CLOSED_REJECTED / CONSUMED
+B6 executed (6/6 scheduled attempts, execution_count = 6)
+Overall: REJECTED — Functional axis FAIL
+(layered-dispersion 1/3, departure-staging 0/3 vs frozen >= 2/3)
+all other five axes PASS; P/H/S/G = 0; evaluate-only 6/6
 
 Formal Agent v0 acceptance:
 NOT ESTABLISHED
+(current frozen runtime/model configuration does not satisfy
+AcceptanceProfileV2 — AgentV0AcceptanceDecisionV4)
 
-B6 execution:
-AWAITING EXPLICIT USER AUTHORIZATION
+Generation 5:
+NOT CREATED; any future generation requires a new sealed holdout
+(new instances) and explicit authorization; NO RETRY on Gen-4
 ```
 
 ## Model status (exact wording, superseding earlier summaries)
