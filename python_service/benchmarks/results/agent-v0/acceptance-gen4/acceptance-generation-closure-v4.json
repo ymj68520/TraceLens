@@ -1,0 +1,17 @@
+{
+  "artifact_version": "AcceptanceGenerationClosureV4",
+  "generation_id": "acceptance-generation-4",
+  "created_at": "2026-10-02T04:25:52+00:00",
+  "closure_state": "CLOSED_REJECTED",
+  "no_retry": "spec §31: no second Gen-4 B6 under any verdict; B6_INVALID would force Generation 5",
+  "consumption": "Gen-4 holdout pool CONSUMED (all 6 scheduled attempts executed against the sealed cases)",
+  "historical": {
+    "Gen-1": "CLOSED_INVALID / CONSUMED",
+    "Gen-2": "CLOSED_INVALID / CONSUMED",
+    "Gen-3": "CLOSED_INVALID / CONSUMED",
+    "Gen-4": "CLOSED_REJECTED / CONSUMED (verdict: REJECTED)"
+  },
+  "decision_ref": "agent-v0-acceptance-decision-v4.json",
+  "evaluation_ref": "holdout-acceptance-evaluation-v4.json",
+  "run_set_ref": "holdout-run-set-v4.json"
+}

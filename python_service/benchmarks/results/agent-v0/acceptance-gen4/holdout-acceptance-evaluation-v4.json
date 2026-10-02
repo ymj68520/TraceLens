@@ -1,0 +1,3942 @@
+{
+  "artifact_version": "HoldoutAcceptanceEvaluationV4",
+  "generation_id": "acceptance-generation-4",
+  "created_at": "2026-10-02T04:25:52+00:00",
+  "run_set_hash": "533a88d2e8c9565ca79b332890e184d571adf78282f51673655aecfe23096f2a",
+  "seal_hash": "1c0f685e7a3f4e4079b0a0ca22c72e3ae9e4d276c9937a53b8fdecda3e7906ed",
+  "frozen_inputs_input_hash": "89c015ed06a6e2e570f4c5a6455fda65093b443dd776b34e2b34bdfb3b46dd29",
+  "preflight_input_hash": "be9d5a940439045158157e3ca0c9534dbb8a0f7c295c7949495e73c071f079e9",
+  "profile": "benchmarks/profiles/agent-v0-acceptance-profile-v2.json",
+  "evaluator": "benchmark-case-outcome:v2 (deterministic; zero LLM)",
+  "per_run": [
+    {
+      "case_id": "gen4-departure-staging",
+      "repeat": "repeat0",
+      "status": "completed",
+      "rejection_codes": [],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [
+        {
+          "seq": 36,
+          "delegation_id": "del_5ab473304a8a41b8880dd444d0fccd3f",
+          "evidence_snapshots_admitted": 8,
+          "specialist_proposal_contract": {
+            "proposal_hash": "6f0eff7bcc5fd9cd8d6dae56687b4ffe2c71749bcf02673301c0961c2385f93d",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "9535d3539a0c27cf78573a7f5122d922dbf330dee8e85b83cdcb0d48cbbe0d9f"
+          },
+          "result_semantic_payload": {
+            "summary": "x",
+            "evidence_refs": [
+              "file:/logs/bulk-copy-audit.log",
+              "file:/policy/it-backup-policy.txt",
+              "file:/mail/ticket-2025-0412.txt",
+              "file:/data/clients-index.txt",
+              "file:/hr/offboard-notice.txt",
+              "file:/README.txt"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c-01-time-window",
+                "text": "2025-05-16 晚间批量复制操作的时间窗为 21:32:11(首个 BULKCOPY_START)至 22:47:12(BULKCOPY_DONE),日志自述 duration=75m01s。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-02-sync-suspended-before",
+                "text": "批量复制开始前 2 分 09 秒,云盘同步客户端被手动挂起:2025-05-16 21:30:02 EVENT sync-client SUSPENDED user=zhoukai reason=manual。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-03-sync-resumed-after",
+                "text": "批量复制完成后 2 分 59 秒,云盘同步客户端被手动恢复:2025-05-16 22:50:11 EVENT sync-client RESUMED user=zhoukai reason=manual。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-04-source-dirs",
+                "text": "本次批量复制涉及两个源目录:D:/projects/phoenix-client 与 D:/clients。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-05-target-location",
+                "text": "两个源目录均被复制至 E:/personal_backup/ 下的同名子目录(E:/personal_backup/phoenix-client 与 E:/personal_backup/clients)。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-06-file-scale",
+                "text": "批量复制完成时共复制 1847 个文件,其中 phoenix-client 1633 个、clients 214 个;审计日志仅记录文件计数,未记录字节/容量。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-07-two-sequential-copies",
+                "text": "日志记录两次独立的 BULKCOPY_START 事件(21:32:11 与 22:03:05),最终由单一 BULKCOPY_DONE 汇总收尾,表明为同一次会话内的两个顺序批量复制任务。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-08-progress-counter-nonmonotonic",
+                "text": "phoenix-client 的进度计数非单调:21:47:40 files=612、22:31:57 files=1102、最终 1633;22:18:22 行标注 clients 的 214 为 source complete。日志未给出计数语义定义。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": [
+                  "日志未定义 progress 计数的统计口径,无法确认其单调性或是否包含重试/重复计数"
+                ]
+              },
+              {
+                "candidate_id": "c-09-operator-identity",
+                "text": "同步客户端挂起/恢复事件的 user 字段为 zhoukai;旁证 HR 离职通知与工单显示 zhoukai 对应周凯(研发部),最后工作日 2025-05-23。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log",
+                  "file:/hr/offboard-notice.txt",
+                  "file:/mail/ticket-2025-0412.txt"
+                ],
+                "limitations": [
+                  "审计日志未记录批量复制进程的账户/进程标识,BULKCOPY_START 行无 user 字段;将 zhoukai 与批量复制操作关联系基于同一工作站的旁证推断,非日志直接陈述"
+                ]
+              },
+              {
+                "candidate_id": "c-10-ticket-scope-mismatch",
+                "text": "工单 HD-2025-0412 的 IT 批准范围仅限 D:/projects/phoenix-client 目录本身、不含其他目录;而日志显示 D:/clients 亦被复制至 E:/personal_backup/clients。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/mail/ticket-2025-0412.txt",
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-11-clients-is-managed-data",
+                "text": "IT 备份政策(2024-12 修订)第 2 条将 D:/clients 及其后代目录列为受管数据,禁止复制至未经 IT 登记的设备、禁止通过个人渠道传输;第 3 条要求备份须经工单审批且范围以工单载明目录为准。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/policy/it-backup-policy.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-12-e-drive-registration-unknown",
+                "text": "记录中未出现 E: 盘设备的 IT 登记状态或介质登记信息,因此无法从现有记录判定 E:/personal_backup 是否属已登记设备。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": [
+                  "当前证据集不含设备登记台账或 USB 存储审计记录"
+                ]
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e-01",
+                "raw_value": "zhoukai",
+                "normalized_candidate": "zhoukai",
+                "entity_type_candidate": "account_username"
+              },
+              {
+                "candidate_id": "e-02",
+                "raw_value": "周凯",
+                "normalized_candidate": "周凯 (Zhou Kai)",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e-03",
+                "raw_value": "D:/projects/phoenix-client",
+                "normalized_candidate": "D:\\projects\\phoenix-client",
+                "entity_type_candidate": "file_path"
+              },
+              {
+                "candidate_id": "e-04",
+                "raw_value": "D:/clients",
+                "normalized_candidate": "D:\\clients",
+                "entity_type_candidate": "file_path"
+              },
+              {
+                "candidate_id": "e-05",
+                "raw_value": "E:/personal_backup/phoenix-client",
+                "normalized_candidate": "E:\\personal_backup\\phoenix-client",
+                "entity_type_candidate": "file_path"
+              },
+              {
+                "candidate_id": "e-06",
+                "raw_value": "E:/personal_backup/clients",
+                "normalized_candidate": "E:\\personal_backup\\clients",
+                "entity_type_candidate": "file_path"
+              },
+              {
+                "candidate_id": "e-07",
+                "raw_value": "HD-2025-0412",
+                "normalized_candidate": "HD-2025-0412",
+                "entity_type_candidate": "ticket_id"
+              },
+              {
+                "candidate_id": "e-08",
+                "raw_value": "2025-05-16 21:32:11 ~ 22:47:12",
+                "normalized_candidate": "2025-05-16T21:32:11/22:47:12",
+                "entity_type_candidate": "time_window"
+              },
+              {
+                "candidate_id": "e-09",
+                "raw_value": "sync-client",
+                "normalized_candidate": "sync-client",
+                "entity_type_candidate": "software_component"
+              }
+            ],
+            "limitations": [],
+            "warnings": []
+          }
+        },
+        {
+          "seq": 42,
+          "delegation_id": "del_5441f9bba09346eb83f48f0c7580851b",
+          "evidence_snapshots_admitted": 0,
+          "specialist_proposal_contract": {
+            "proposal_hash": "3bf35a7f8ccda37ea7aedf4bdb3a928db8786b99b6ae44fc0509eae1bc14a1f2",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "046b0d79a32767d12d5cd2fd43e8ac9016e22376681aad1c315a560168849e98"
+          },
+          "result_semantic_payload": {
+            "summary": "对照已批准的备份授权(工单 HD-2025-0412 与 IT 备份政策 2024-12 修订版),2025-05-16 21:30–22:50 由 zhoukai(周凯)执行的批量复制操作可拆分为「授权范围内」与「超出授权范围」两部分。\n\n【授权范围内】\n1) 将 D:/projects/phoenix-client 备份至个人移动硬盘 E:/personal_backup/phoenix-client。工单 HD-2025-0412 明确批复「同意。批准范围仅限 D:/projects/phoenix-client 目录本身」,且政策第 1 条允许员工将本人名下个人项目目录备份至个人移动存储介质。日志 BULKCOPY_START src=D:/projects/phoenix-client dst=E:/personal_backup/phoenix-client(21:32:11)与该授权一一对应;BULKCOPY_DONE 汇总 phoenix-client=1633 文件即本次授权范围内的实际复制量。\n2) 该部分操作在时间、源目录、目的介质三类要件上均落在工单与政策交叉许可的交集内。\n\n【超出授权范围】\n1) 复制 D:/clients 全部 214 个文件至 E:/personal_backup/clients(22:03:05 BULKCOPY_START,22:18:22 显示 source complete,最终 clients=214)。工单批复文字明确「批准范围仅限 D:/projects/phoenix-client 目录本身,不含其他目录」,D:/clients 不在批准清单内;政策第 3 条要求「批准范围以工单载明目录为准」,因此该目录的复制缺乏工单授权。\n2) 政策第 2 条将 D:/clients 及其后代目录列为受管数据,「禁止复制至未经 IT 登记的设备;禁止通过个人渠道传输」。E:/personal_backup 为个人移动硬盘路径,属个人渠道/个人介质,叠加第 2 条禁令,构成对受管客户数据的违规外带。clients-index.txt 进一步确认该目录含未公开客户商务数据(合同、对账单、方案书等 214 项)。\n3) 时间窗异常:21:30:02 sync-client SUSPENDED(user=zhoukai, reason=manual),22:50:11 RESUMED。同步客户端在复制窗口内被手动停用,规避了受管同步通道,与政策第 2 条「禁止通过个人渠道传输」在行为模式上相互印证,构成「超出授权」的旁证而非独立授权项。\n4) 离职背景:offboard-notice.txt 显示周凯最后工作日 2025-05-23、工作站于 2025-05-23 17:00 交回 IT 验收。2025-05-16 的复制发生在离职前 7 天,时间点与离职交接窗口高度重合,是评估「超出授权」动机与风险的重要情境(此点为 INFERENCE,不作 FACT 断言)。\n\n【合计】BULKCOPY_DONE 记录 copied_total=1847(phoenix-client=1633 + clients=214),其中 1633 项在授权范围内,214 项超出授权范围,占比约 11.6%。",
+            "evidence_refs": [
+              "file:/logs/bulk-copy-audit.log",
+              "file:/policy/it-backup-policy.txt",
+              "file:/mail/ticket-2025-0412.txt",
+              "file:/hr/offboard-notice.txt",
+              "file:/data/clients-index.txt",
+              "file:/README.txt"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c-1",
+                "text": "工单 HD-2025-0412 批准的备份范围仅限 D:/projects/phoenix-client 目录本身,不含其他目录;批准时间为 2025-04-12。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/mail/ticket-2025-0412.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-2",
+                "text": "IT 备份政策(2024-12 修订)第 2 条将 D:/clients 及其后代目录列为受管数据,禁止复制至未经 IT 登记的设备,禁止通过个人渠道传输;第 3 条规定任何备份须经工单审批,批准范围以工单载明目录为准。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/policy/it-backup-policy.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-3",
+                "text": "2025-05-16 21:32:11 至 22:47:12,用户 zhoukai 执行批量复制,共 copied_total=1847 文件,其中 phoenix-client=1633、clients=214,目标路径为 E:/personal_backup/。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-4",
+                "text": "将 D:/projects/phoenix-client 备份至 E:/personal_backup/phoenix-client 的 1633 个文件复制行为,同时满足工单 HD-2025-0412 的批准范围与政策第 1 条对员工个人项目目录备份至个人移动介质的许可,属于授权范围内。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/mail/ticket-2025-0412.txt",
+                  "file:/policy/it-backup-policy.txt",
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-5",
+                "text": "将 D:/clients 的 214 个文件复制至 E:/personal_backup/clients 超出工单授权范围:工单明文排除该目录,政策第 3 条要求以工单载明目录为准。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/mail/ticket-2025-0412.txt",
+                  "file:/policy/it-backup-policy.txt",
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-6",
+                "text": "该 D:/clients 复制同时违反政策第 2 条:目标 E:/personal_backup 为个人移动硬盘路径,属未经 IT 登记设备/个人渠道,而源目录为受管客户数据。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/policy/it-backup-policy.txt",
+                  "file:/logs/bulk-copy-audit.log",
+                  "file:/data/clients-index.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-7",
+                "text": "clients-index.txt 显示 D:/clients 含 214 项未公开客户商务数据(合同、对账单、方案书等),与日志中 clients=214 的复制量一致,佐证被外带数据属受管敏感数据。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/data/clients-index.txt",
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-8",
+                "text": "21:30:02 sync-client 被 zhoukai 手动 SUSPENDED,22:50:11 才 RESUMED,复制窗口(21:32–22:47)完全落在同步停用期间,构成规避受管同步通道的行为模式,与政策第 2 条禁令相互印证。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log",
+                  "file:/policy/it-backup-policy.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-9",
+                "text": "复制发生于 2025-05-16,周凯最后工作日为 2025-05-23(工作站当日 17:00 交回 IT 验收),复制行为落在离职前 7 天的交接窗口内,是评估超出授权行为动机与风险的重要情境。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/hr/offboard-notice.txt",
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-10",
+                "text": "授权范围内复制量为 1633 项(phoenix-client),超出授权范围复制量为 214 项(clients),超出部分占总复制量约 11.6%(214/1847)。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e-1",
+                "raw_value": "zhoukai",
+                "normalized_candidate": "zhoukai",
+                "entity_type_candidate": "user_account"
+              },
+              {
+                "candidate_id": "e-2",
+                "raw_value": "周凯",
+                "normalized_candidate": "zhoukai",
+                "entity_type_candidate": "employee_name"
+              },
+              {
+                "candidate_id": "e-3",
+                "raw_value": "HD-2025-0412",
+                "normalized_candidate": "HD-2025-0412",
+                "entity_type_candidate": "ticket_id"
+              },
+              {
+                "candidate_id": "e-4",
+                "raw_value": "D:/projects/phoenix-client",
+                "normalized_candidate": "D:/projects/phoenix-client",
+                "entity_type_candidate": "file_path"
+              },
+              {
+                "candidate_id": "e-5",
+                "raw_value": "D:/clients",
+                "normalized_candidate": "D:/clients",
+                "entity_type_candidate": "file_path"
+              },
+              {
+                "candidate_id": "e-6",
+                "raw_value": "E:/personal_backup/phoenix-client",
+                "normalized_candidate": "E:/personal_backup/phoenix-client",
+                "entity_type_candidate": "file_path"
+              },
+              {
+                "candidate_id": "e-7",
+                "raw_value": "E:/personal_backup/clients",
+                "normalized_candidate": "E:/personal_backup/clients",
+                "entity_type_candidate": "file_path"
+              },
+              {
+                "candidate_id": "e-8",
+                "raw_value": "2025-05-16 21:30:02 - 22:50:11",
+                "normalized_candidate": "2025-05-16T21:30:02/22:50:11",
+                "entity_type_candidate": "time_range"
+              },
+              {
+                "candidate_id": "e-9",
+                "raw_value": "2025-05-23",
+                "normalized_candidate": "2025-05-23",
+                "entity_type_candidate": "date"
+              },
+              {
+                "candidate_id": "e-10",
+                "raw_value": "copied_total=1847 (phoenix-client=1633, clients=214)",
+                "normalized_candidate": "1847_total/1633_in_scope/214_out_of_scope",
+                "entity_type_candidate": "metric"
+              }
+            ],
+            "limitations": [
+              "证据集不含 Windows 事件日志、注册表、Amcache/Prefetch 等执行痕迹,无法独立验证 bulk-copy-audit.log 的自述计数与时间戳。",
+              "无 E:/personal_backup 目的端文件清单或哈希,无法确认受管客户数据实际落盘规模与完整性。",
+              "无 IT 设备登记清单,E: 盘是否属「未经 IT 登记的设备」无法从证据内直接确认,政策第 2 条该要件为推定。",
+              "无其他工单或审批系统记录,「不存在针对 D:/clients 的另行授权」属证据集内缺失,而非证据内否定。",
+              "所有文件 mtime/ctime 均为同一时间戳(1740787200),与日志内事件时间不一致,文件时间戳不可用于时序重建。",
+              "任务元数据未声明平台场景,本结果基于文本/日志证据的政策-工单-操作三方对照得出,未执行 L2 profile 中针对 Windows 执行痕迹的强制佐证规则。",
+              "离职背景与越权动机之间的关联属情境推断(INFERENCE),不构成对主观意图的 FACT 断言。"
+            ],
+            "warnings": [
+              "证据集内文件时间戳(mtime/ctime=1740787200)与日志内容所述事件时间(2025-05-16)存在明显不一致,时序分析应以日志内部时间戳为准。",
+              "授权/越权判定完全依赖单一审计日志与政策、工单文本的对照,缺乏独立第二来源(如 EDR、DLP、Windows 事件日志)交叉验证。",
+              "任务元数据 platforms 与 source_scopes 均为空,与委派声明的 'windows' 源范围不一致;本结果按实际可得证据作答。"
+            ]
+          }
+        },
+        {
+          "seq": 51,
+          "delegation_id": "del_23e667680f114e4895408ed7639b8be7",
+          "evidence_snapshots_admitted": 0,
+          "specialist_proposal_contract": {
+            "proposal_hash": "577c289585465bb42b03a911dcf1a1d56ecf5dc9a46b3f0a7c2730fc3bcd2a20",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "c6e35db3be3f4dca764be9ea026d58df5fbac7e77cc70c6bd499467794b17f94"
+          },
+          "result_semantic_payload": {
+            "summary": "现有 6 份记录**不能**证明被复制的客户数据已被传输给第三方，也**不能**证明其已被用于离职后的用途；它们只能确立\"受管客户数据在未经工单批准的情况下被批量复制到一台未登记的个人介质上，且发生在离职前 7 天\"这一本地复制事实。\n\n【能确立的边界（有直接记录支撑）】\n1. 复制事件本身：2025-05-16 21:32:11 起从 D:/projects/phoenix-client 复制到 E:/personal_backup/phoenix-client；22:03:05 起从 D:/clients 复制到 E:/personal_backup/clients；22:47:12 BULKCOPY_DONE，copied_total=1847（phoenix-client=1633，clients=214），duration=75m01s。复制源、目的、文件数、时间均为日志明文。\n2. 客户数据属受管数据且本次复制超出批准范围：政策第 2 条禁止将 D:/clients 复制至未经 IT 登记设备、禁止个人渠道传输；第 3 条要求工单审批且以工单载明目录为准。工单 HD-2025-0412 明确\"批准范围仅限 D:/projects/phoenix-client 目录本身，不含其他目录\"。故 214 个客户档案文件的复制无批准依据，属越权。\n3. 时间上位于在职期内：复制发生于 2025-05-16 21:30–22:50，最后工作日为 2025-05-23，工作站于 2025-05-23 17:00 交回。\n4. 复制前 21:30:02 出现 sync-client SUSPENDED user=zhoukai reason=manual，22:50:11 RESUMED reason=manual，即复制全程（21:32–22:47）与云同步停用区间重合，且为手动操作——提示操作者主动规避同步类外传通道，但该日志未记录任何同步成功或失败条目。\n5. 数据敏感度：clients-index.txt 列明 214 个文件（C-1001 合同-华信贸易、C-1002 对账单-宏远物流、C-1003 方案书-蓝湾酒店等），备注\"未公开客户商务数据\"，数量与日志 clients=214 完全吻合。\n\n【不能确立的边界（记录中不存在任何支撑）】\n1. 无法证明\"传输给第三方\"：全部记录中没有任何网络出站、邮件外发、IM/云盘上传、DLP 告警、防火墙/代理流量、目标主机接收或第三方访问记录。E:/ 仅能识别为本地盘符，无法从现有记录判定其为移动介质、还是本地分区或虚拟机磁盘；无任何序列号、设备指纹、卷标或 USB/Thunderbolt 插拔事件。\n2. 无法证明\"离职后用途\"：无 2025-05-23 之后的任何访问、读取、修改、外发或该介质的使用记录；无介质在交回时是否在场、是否已清除的证据；无周凯离职后账号、设备、邮箱、社交或竞业相关活动记录。\n3. 无法证明\"复制完成即等于数据落盘可用\"：日志只给出文件计数，无逐文件哈希、无失败/跳过条目、无目标内容校验，无法确认 214 个客户文件内容完整。\n4. 无法证明主观意图（恶意、竞业、泄密、牟利）：无动机证据、无沟通记录、无交易或招聘线索；SUSPENDED/RESUMED 只能作为规避同步的间接线索，不能单独推定意图。\n5. 无法归因到自然人：日志仅给出 user=zhoukai，无登录事件、无 Kerberos/4624、无进程树、无命令行参数、无屏幕/输入法或用户行为佐证，无法排除他人使用该账户或自动化工具。\n6. 无法证明日志本身的完整性与真实性：无签名、无哈希链、无时间戳认证；且本任务中 6 个文件的 mtime/ctime 均为同一时刻（1740787200），CREATED 事件时间戳为 1790893942（约 2026-10-02，晚于 mtime），文件系统时间线自相矛盾，无法据此重建真实事件时序。\n7. 无法评估完整暴露面：仅有 3 条客户文件索引节选，完整清单\"存于受管存储\"未纳入取证范围；D:/projects/phoenix-client 的 1633 个文件内容未知，无法判断其中是否混入客户数据。\n\n【结论】记录可支撑的定性上限是\"未经批准的受管客户数据本地批量复制（越权导出）\"，属于数据外泄的前置条件；对\"已传输给第三方\"和\"已用于离职后用途\"两项指控，现有证据为空白，应作为待查假设而非事实。",
+            "evidence_refs": [
+              "file:/logs/bulk-copy-audit.log",
+              "file:/policy/it-backup-policy.txt",
+              "file:/mail/ticket-2025-0412.txt",
+              "file:/data/clients-index.txt",
+              "file:/hr/offboard-notice.txt",
+              "file:/README.txt",
+              "cluster:v1:29013120:MODIFIED",
+              "cluster:v1:29848232:CREATED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c1",
+                "text": "2025-05-16 21:32:11 至 22:47:12，一台工作站上执行了批量复制，共 1847 个文件，其中 D:/clients 的 214 个客户档案文件被复制到 E:/personal_backup/clients。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c2",
+                "text": "D:/clients 属受管客户数据，政策禁止复制至未经 IT 登记设备与个人渠道传输；工单 HD-2025-0412 批准范围仅限 D:/projects/phoenix-client 且明确不含其他目录，故 214 个客户文件的复制无批准依据，构成越权导出。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/policy/it-backup-policy.txt",
+                  "file:/mail/ticket-2025-0412.txt",
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c3",
+                "text": "复制全程（21:32–22:47）落在 sync-client 手动停用区间内（21:30:02 SUSPENDED 至 22:50:11 RESUMED，reason=manual），提示操作者主动规避云同步通道；但日志未记录任何同步成功或失败条目，无法据此证明数据经同步通道外传。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": [
+                  "日志仅含 SUSPENDED/RESUMED 两条状态记录，无传输结果记录",
+                  "reason=manual 不能单独推定主观意图"
+                ]
+              },
+              {
+                "candidate_id": "c4",
+                "text": "现有记录不能证明被复制的客户数据已被传输给第三方：全部 6 份记录中不存在任何网络出站、邮件/IM/云盘上传、DLP 告警、代理或防火墙流量、目标主机接收或第三方访问的证据。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/README.txt",
+                  "file:/logs/bulk-copy-audit.log",
+                  "file:/data/clients-index.txt"
+                ],
+                "limitations": [
+                  "证据缺失不等于事件未发生，仅表示本任务取证范围内无相关记录"
+                ]
+              },
+              {
+                "candidate_id": "c5",
+                "text": "现有记录不能证明数据已被用于离职后的用途：复制发生于 2025-05-16，最后工作日为 2025-05-23，工作站于 2025-05-23 17:00 交回，记录中不存在 2025-05-23 之后的任何访问、读取、修改、外发或该介质使用记录。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/hr/offboard-notice.txt",
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": [
+                  "无离职后监控数据，无法排除或确认后续使用"
+                ]
+              },
+              {
+                "candidate_id": "c6",
+                "text": "E: 卷的真实介质类型无法从现有记录判定：仅有盘符，无序列号、设备指纹、卷标、USB/Thunderbolt 插拔事件或磁盘序列信息，故不能确定其为个人移动硬盘还是本地分区/虚拟机磁盘。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log",
+                  "file:/README.txt"
+                ],
+                "limitations": [
+                  "工单中'个人移动硬盘'仅描述 phoenix-client 的备份目的地，不能直接等同于 E: 卷的物理属性"
+                ]
+              },
+              {
+                "candidate_id": "c7",
+                "text": "日志可确认 214 个客户文件被计数复制，但无法确认内容完整落盘：日志无逐文件哈希、无失败或跳过条目、无目标内容校验。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log",
+                  "file:/data/clients-index.txt"
+                ],
+                "limitations": [
+                  "clients-index.txt 仅含 3 条节选，完整清单存于受管存储，未纳入取证范围"
+                ]
+              },
+              {
+                "candidate_id": "c8",
+                "text": "无法将复制行为归因到自然人周凯：日志仅有 user=zhoukai 字段，无登录事件、无进程树、无命令行参数或用户行为佐证，不能排除他人使用该账户或自动化工具。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": [
+                  "本任务未捕获任何 Windows 事件日志（4624/4625/4672 等）"
+                ]
+              },
+              {
+                "candidate_id": "c9",
+                "text": "文件系统时间线自相矛盾，不足以支撑时序重建：6 个文件的 mtime/ctime 均为同一时刻 1740787200，而 CREATED 事件时间戳为 1790893942（约 2026-10-02，晚于 mtime），日志自身完整性无签名、无哈希链、无时间戳认证。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "cluster:v1:29013120:MODIFIED",
+                  "cluster:v1:29848232:CREATED",
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": [
+                  "时间戳异常可能源于取证镜像打包过程，需与原始采集记录核对"
+                ]
+              },
+              {
+                "candidate_id": "c10",
+                "text": "记录可支撑的定性上限为'未经批准的受管客户数据本地批量复制（越权导出）'，这是数据外泄的前置条件，而非外泄既遂。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log",
+                  "file:/policy/it-backup-policy.txt",
+                  "file:/mail/ticket-2025-0412.txt"
+                ],
+                "limitations": [
+                  "该结论依赖对政策与工单批准范围的文本解释"
+                ]
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e1",
+                "raw_value": "zhoukai",
+                "normalized_candidate": "周凯",
+                "entity_type_candidate": "user_account"
+              },
+              {
+                "candidate_id": "e2",
+                "raw_value": "周凯 (研发部)",
+                "normalized_candidate": "周凯 / R&D",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e3",
+                "raw_value": "D:/clients",
+                "normalized_candidate": "D:/clients",
+                "entity_type_candidate": "managed_data_directory"
+              },
+              {
+                "candidate_id": "e4",
+                "raw_value": "D:/projects/phoenix-client",
+                "normalized_candidate": "D:/projects/phoenix-client",
+                "entity_type_candidate": "personal_project_directory"
+              },
+              {
+                "candidate_id": "e5",
+                "raw_value": "E:/personal_backup/clients",
+                "normalized_candidate": "E:/personal_backup/clients",
+                "entity_type_candidate": "copy_destination_path"
+              },
+              {
+                "candidate_id": "e6",
+                "raw_value": "E:/personal_backup/phoenix-client",
+                "normalized_candidate": "E:/personal_backup/phoenix-client",
+                "entity_type_candidate": "copy_destination_path"
+              },
+              {
+                "candidate_id": "e7",
+                "raw_value": "HD-2025-0412",
+                "normalized_candidate": "HD-2025-0412",
+                "entity_type_candidate": "approval_ticket_id"
+              },
+              {
+                "candidate_id": "e8",
+                "raw_value": "2025-05-16 21:32:11 / 22:03:05 / 22:47:12",
+                "normalized_candidate": "2025-05-16T21:32:11 / 22:03:05 / 22:47:12",
+                "entity_type_candidate": "event_timestamp"
+              },
+              {
+                "candidate_id": "e9",
+                "raw_value": "2025-05-23 17:00",
+                "normalized_candidate": "2025-05-23T17:00",
+                "entity_type_candidate": "asset_return_timestamp"
+              },
+              {
+                "candidate_id": "e10",
+                "raw_value": "copied_total=1847 (phoenix-client=1633, clients=214)",
+                "normalized_candidate": "1847 total; 1633 phoenix-client; 214 clients",
+                "entity_type_candidate": "copy_volume_metric"
+              },
+              {
+                "candidate_id": "e11",
+                "raw_value": "C-1001/合同-华信贸易.docx, C-1002/对账单-宏远物流.xlsx, C-1003/方案书-蓝湾酒店.pptx",
+                "normalized_candidate": "C-1001 华信贸易; C-1002 宏远物流; C-1003 蓝湾酒店",
+                "entity_type_candidate": "client_identifier"
+              },
+              {
+                "candidate_id": "e12",
+                "raw_value": "sync-client",
+                "normalized_candidate": "sync-client",
+                "entity_type_candidate": "software_component"
+              },
+              {
+                "candidate_id": "e13",
+                "raw_value": "E: (卷/盘符)",
+                "normalized_candidate": "E:",
+                "entity_type_candidate": "volume_label"
+              }
+            ],
+            "limitations": [
+              "本结论仅基于本任务取证范围内的 6 份文本文件；证据缺失不等于事件未发生，仅表示该范围内无相关记录。",
+              "无法从现有记录判定 E: 卷的物理介质类型（移动硬盘/本地分区/虚拟机磁盘），因无序列号、卷标或插拔事件。",
+              "无 Windows 事件日志，无法将复制行为归因到自然人，也无法排除他人使用账户或自动化工具。",
+              "无网络层证据，'传输给第三方'维度完全无数据支撑，只能列为待查假设。",
+              "无 2025-05-23 之后的任何记录，'离职后用途'维度完全无数据支撑。",
+              "日志无签名、无哈希链、无时间戳认证，真实性与完整性未经独立验证。",
+              "文件系统时间戳自相矛盾（mtime 全同、CREATED 晚于 mtime），不能用于时序重建。",
+              "客户文件清单仅 3 条节选，实际外泄范围与内容无法核实。",
+              "政策与工单的批准范围判断依赖文本解释，非法律定性结论。",
+              "任务元数据未声明平台场景，实际捕获内容与 Windows 取证画像不匹配，可能影响证据采集的完整性与代表性。"
+            ],
+            "warnings": [
+              "问题预设了'被复制的客户数据已被传输给第三方/已用于离职后用途'两个待证命题；现有证据对二者均无支撑，任何肯定性结论都会超出证据边界。",
+              "sync-client SUSPENDED/RESUMED 与复制时间窗重合是最强的间接线索，但仅能支持'规避同步'的推断，不能作为外传既遂或主观恶意的证据。",
+              "复制发生在离职前 7 天，时间接近性不构成离职后使用的证据。",
+              "bulk-copy-audit.log 为单一来源且无独立校验，若该日志系事后生成或被编辑，越权复制的定性将随之动摇；建议优先完成 f5 的日志完整性核查。"
+            ]
+          }
+        }
+      ],
+      "finalization_event": {
+        "event": "finalization_completed",
+        "violation_codes": [],
+        "completion_mode": "complete_with_limitations"
+      },
+      "evidence_world_proof": {
+        "substrate_id": "sub-gen4-departure-staging",
+        "sealed_image_hash": "302435a5d9512cc2415f3ba81ee413ee6551539f375fdfb34cc468b42affcf8c",
+        "actual_image_hash": "302435a5d9512cc2415f3ba81ee413ee6551539f375fdfb34cc468b42affcf8c",
+        "sealed_world_digest": "42b5ffbb52cb4ab7b81f9df14f817db88b9f4dfea47a131d40b080edcc16b9a1",
+        "parsed_world_match": "indirect",
+        "indirect_note": "task store was cleaned by the recovery pass before parsed-digest comparison existed; sealed-world equivalence is covered by construction x2, preflight x2, and the direct parsed-world proofs on the other runs; this run's hydration audit (captured pre-cleanup) and snapshot evidence refs are the surviving direct evidence",
+        "snapshot_evidence_refs_within_sealed_keys": true,
+        "match": true,
+        "hydration": {
+          "hydrated_evidence_count": 6,
+          "sealed_evidence_count": 6,
+          "all_matches_sealed": true,
+          "content_integrity_failures": 0
+        },
+        "recovered_after_driver_defect": true
+      },
+      "run_manifest_id": "brun:ba5327cd5fe33e8d904b4afa",
+      "result_hash": "db79779effb1703ae159592c9ba1241da6106473ea5e295ee4d02fde9471b8bf",
+      "snapshot_hash": "5883f724827f5c7e44f2abf1a84a5f8de8c4b6a23eaf9372d39b0813b283ae6a",
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "hard_gate_violations": [],
+      "hard_gate_recompute_violations": [],
+      "evaluate_only_reproduced": true,
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "terminal=unavailable",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "satisfied",
+            "detail": "integrated_delegations=3 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "1/1 discovered"
+          },
+          {
+            "component": "coverage:authorization-scope-assessment",
+            "status": "satisfied",
+            "detail": "terminal=covered"
+          },
+          {
+            "component": "coverage:bulk-copy-timeline",
+            "status": "satisfied",
+            "detail": "terminal=covered"
+          },
+          {
+            "component": "coverage:third-party-transfer-boundary",
+            "status": "failed",
+            "detail": "terminal=unavailable"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "satisfied",
+            "detail": "terminal=3 answered-terminals=3 unresolved-terminals=1; truth expects answered=3 unresolved=0 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "delegations_completed": 3,
+      "delegations_failed": 0,
+      "integrated": 3,
+      "coverage_terminalization": {
+        "bulk-copy-timeline": "covered",
+        "authorization-scope-assessment": "covered",
+        "third-party-transfer-boundary": "unavailable"
+      },
+      "question_terminalization": {
+        "q-1": "answered",
+        "q-2": "answered",
+        "q-3": "answered"
+      },
+      "tokens_in": 102172,
+      "tokens_out": 16649,
+      "wall_s": 241.089
+    },
+    {
+      "case_id": "gen4-departure-staging",
+      "repeat": "repeat1",
+      "status": "completed",
+      "rejection_codes": [],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [
+        {
+          "seq": 36,
+          "delegation_id": "del_45b487fc5432490394208aa9e0499842",
+          "evidence_snapshots_admitted": 6,
+          "specialist_proposal_contract": {
+            "proposal_hash": "0ef11c27805c993ffa3fa2e681fa9c5683e5f70bade223bdd9b6afc7c0617d1f",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "82909b4cc616fef35edea955bb24fbb0ca8ef5278030c1c31f9b5df637c67972"
+          },
+          "result_semantic_payload": {
+            "summary": "对照工单 HD-2025-0412 与《IT 资产与备份管理政策(2024-12 修订)》,2025-05-16 21:30–22:50 期间由周凯执行的批量复制操作可拆分为三个部分:(1) 将 D:/projects/phoenix-client 备份至个人移动存储介质 E:/personal_backup/phoenix-client —— 在授权范围内(工单批准 + 政策第1条);(2) 将受管客户数据目录 D:/clients 完整复制至同一未登记的个人介质 —— 超出授权范围,同时违反政策第2条与第3条,且工单明确排除该目录;(3) 复制前后手动暂停/恢复 sync-client —— 未见任何授权依据,属授权范围外的操作。授权范围内约 1,633 个文件(占总量 1,847 的 88.4%);超出范围 214 个客户商务文件(11.6%),内容经索引确认为未公开客户合同/对账单/方案书。",
+            "evidence_refs": [
+              "file:/logs/bulk-copy-audit.log",
+              "file:/policy/it-backup-policy.txt",
+              "file:/mail/ticket-2025-0412.txt",
+              "file:/data/clients-index.txt",
+              "file:/hr/offboard-notice.txt",
+              "file:/README.txt"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c1-in-scope-phoenix",
+                "text": "将 D:/projects/phoenix-client 备份至 E:/personal_backup/phoenix-client 属于授权范围内:工单 HD-2025-0412 明确批准该目录备份至个人移动硬盘,且政策第1条允许员工备份本人名下个人项目目录至个人移动存储介质;审计日志显示该目录共复制 1,633 个文件。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/mail/ticket-2025-0412.txt",
+                  "file:/policy/it-backup-policy.txt",
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c2-out-of-scope-clients",
+                "text": "将 D:/clients 复制至 E:/personal_backup/clients 超出授权范围:工单批复明确写明'批准范围仅限 D:/projects/phoenix-client 目录本身,不含其他目录',而政策第3条规定批准范围以工单载明目录为准;审计日志显示 D:/clients 于 22:03:05 启动复制,共 214 个文件被完整复制。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/mail/ticket-2025-0412.txt",
+                  "file:/policy/it-backup-policy.txt",
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c3-policy-article-2-violation",
+                "text": "D:/clients 复制行为同时违反政策第2条:该目录被政策定义为受管数据(含 D:/clients 及其后代目录),禁止复制至未经 IT 登记的设备、禁止通过个人渠道传输;目标介质 E:/personal_backup 为个人移动存储介质,工单仅将其登记为个人项目备份用途。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/policy/it-backup-policy.txt",
+                  "file:/logs/bulk-copy-audit.log",
+                  "file:/mail/ticket-2025-0412.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c4-sensitive-content",
+                "text": "被越权复制的 214 个文件内容为未公开客户商务数据,索引显示包括 C-1001 华信贸易合同、C-1002 宏远物流对账单、C-1003 蓝湾酒店方案书,索引备注明确标注'该目录内容为未公开客户商务数据';索引与审计日志的文件计数(214)完全一致。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/data/clients-index.txt",
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c5-sync-client-toggle",
+                "text": "复制操作前后由周凯手动暂停(21:30:02)并在结束后恢复(22:50:11) sync-client,理由均标注为 manual;该行为未出现在工单 HD-2025-0412 的批准内容中,政策亦未授权员工自行停用同步客户端,故属授权范围外的伴随操作。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log",
+                  "file:/mail/ticket-2025-0412.txt",
+                  "file:/policy/it-backup-policy.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c6-sequence-inference",
+                "text": "操作时序显示:先暂停同步客户端(21:30:02),2 分钟后启动授权目录复制(21:32:11),约 31 分钟后追加启动未授权的客户目录复制(22:03:05),全部完成后再恢复同步(22:50:11);该顺序表明暂停同步覆盖并包裹了越权复制时段,而非仅服务于已授权备份。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": [
+                  "日志仅含时间戳与事件名,不含进程 ID、命令行或操作者认证记录;因果与意图性判断超出日志可证明范围"
+                ]
+              },
+              {
+                "candidate_id": "c7-timing-context",
+                "text": "复制发生于 2025-05-16,周凯最后工作日为 2025-05-23、工作站于 2025-05-23 17:00 交回 IT 验收;即该操作发生在其离职前 7 天,且介质在离职后未随工作站交回 IT。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/hr/offboard-notice.txt",
+                  "file:/logs/bulk-copy-audit.log",
+                  "file:/README.txt"
+                ],
+                "limitations": [
+                  "证据不含介质交回记录或资产盘点数据,无法直接证明介质去向"
+                ]
+              },
+              {
+                "candidate_id": "c8-ticket-validity-window",
+                "text": "工单 HD-2025-0412 于 2025-04-12 批复,操作发生于 2025-05-16,间隔约 34 天;工单与政策文本均未载明有效期或一次性/单次使用限制,故不能据此认定该工单在操作时已失效。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/mail/ticket-2025-0412.txt",
+                  "file:/policy/it-backup-policy.txt"
+                ],
+                "limitations": [
+                  "工单文本可能为节选,完整工单可能含有效期条款"
+                ]
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e1-person",
+                "raw_value": "周凯 / zhoukai",
+                "normalized_candidate": "zhoukai",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e2-ticket",
+                "raw_value": "HD-2025-0412",
+                "normalized_candidate": "HD-2025-0412",
+                "entity_type_candidate": "ticket_id"
+              },
+              {
+                "candidate_id": "e3-approved-path",
+                "raw_value": "D:/projects/phoenix-client",
+                "normalized_candidate": "D:/projects/phoenix-client",
+                "entity_type_candidate": "file_path"
+              },
+              {
+                "candidate_id": "e4-managed-path",
+                "raw_value": "D:/clients",
+                "normalized_candidate": "D:/clients",
+                "entity_type_candidate": "file_path"
+              },
+              {
+                "candidate_id": "e5-device-path",
+                "raw_value": "E:/personal_backup",
+                "normalized_candidate": "E:/personal_backup",
+                "entity_type_candidate": "storage_device_path"
+              },
+              {
+                "candidate_id": "e6-policy",
+                "raw_value": "IT 资产与备份管理政策(2024-12 修订)",
+                "normalized_candidate": "IT Asset & Backup Management Policy (2024-12 revision)",
+                "entity_type_candidate": "policy_document"
+              },
+              {
+                "candidate_id": "e7-destinations",
+                "raw_value": "E:/personal_backup/phoenix-client; E:/personal_backup/clients",
+                "normalized_candidate": "E:/personal_backup/{phoenix-client,clients}",
+                "entity_type_candidate": "file_path"
+              }
+            ],
+            "limitations": [
+              "任务元数据未登记任何平台场景(source_scopes 为空,platforms 为空),实际可用证据为通用取证文件集,而非 Windows 事件日志/注册表/执行痕迹,故无法提供执行链或账户登录级佐证。",
+              "全部 6 个文件的 mtime/ctime 均为同一时间戳(1740787200),时间线仅含 MODIFIED/CREATED 两类采集事件,无法从文件系统元数据重建操作时序;时序结论完全依赖审计日志文本中的时间戳。",
+              "工单与政策均为节选文本,可能遗漏有效期、介质登记要求、审批链等条款,授权边界的判定以现有文本为准。",
+              "审计日志未记录进程 ID、命令行参数或认证凭据,无法从日志本身确认操作者身份与工具;user=zhoukai 仅出现在 sync-client 事件行。",
+              "无介质序列号、资产登记或离职验收清单,无法验证 E: 盘是否经 IT 登记及离职后去向。",
+              "无 D:/clients 源端访问日志,无法判断其余 213 个文件(索引仅列出 3 个示例)的完整清单与内容。"
+            ],
+            "warnings": [
+              "授权范围内的判定基于工单文本'批准范围仅限 D:/projects/phoenix-client 目录本身'的字面解释;若完整工单另有附件或补充说明,结论可能变化。",
+              "政策第1条允许'本人名下的个人项目目录'备份至个人介质,但 phoenix-client 是否确属周凯本人名下项目,证据中无独立佐证(工单中由申请人自述),属未验证前提。",
+              "越权复制的定性(违规/越权)为基于书面政策与工单的合规判定;是否构成故意泄露或需法律处置,超出本证据集可证明范围。",
+              "本结果为只读分析,未修改任何调查状态,也未生成新的取证采集。"
+            ]
+          }
+        },
+        {
+          "seq": 53,
+          "delegation_id": "del_ea08270681a14edd9284563e694a26fd",
+          "evidence_snapshots_admitted": 2,
+          "specialist_proposal_contract": {
+            "proposal_hash": "48ca1a11ede53ca06f5711a37677721ec099bae3daceb823a4acd4d6bc01fbb2",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "06b89be05bcae2430594ca175157212261161125f38664162394efc5cc6d32f8"
+          },
+          "result_semantic_payload": {
+            "summary": "依据 /logs/bulk-copy-audit.log（649 字节，仅 8 行记录）对 2025-05-16 晚间该工作站发生的批量文件操作给出如下事实描述。时间窗：2025-05-16 21:30:02 至 22:50:11（约 80 分钟）；日志自身在 BULKCOPY_DONE 记录中报告 duration=75m01s（对应 21:32:11→22:47:12）。操作序列：21:30:02 sync-client 被用户 zhoukai 以 reason=manual 手动 SUSPENDED；21:32:11 BULKCOPY_START，源 D:/projects/phoenix-client → 目标 E:/personal_backup/phoenix-client；21:47:40 进度 files=612；22:03:05 第二条 BULKCOPY_START，源 D:/clients → 目标 E:/personal_backup/clients；22:18:22 进度 files=214（source complete）；22:31:57 phoenix-client 进度 files=1102；22:47:12 BULKCOPY_DONE copied_total=1847（phoenix-client=1633, clients=214）；22:50:11 sync-client 被同一用户 zhoukai 以 reason=manual 手动 RESUMED。云盘同步客户端状态变化：SUSPENDED → RESUMED，两次状态变更均由 zhoukai 手动触发、reason 均为 manual，且时间上分别位于整个批量复制窗口的开始之前与结束之后。文件规模：日志仅给出文件计数，未记录字节量；两个源目录合计 1847 个文件（phoenix-client 1633 + clients 214）；目标位置为 E: 盘 personal_backup 下的两个子目录，日志未记录该介质的登记/识别信息。附带记录（非日志本身）：/mail/ticket-2025-0412.txt 载明工单 HD-2025-0412 批准范围\"仅限 D:/projects/phoenix-client 目录本身\"；/policy/it-backup-policy.txt 第 2 条将 D:/clients 列为受管数据、禁止复制至未经 IT 登记的设备；/data/clients-index.txt 记 D:/clients 共 214 个文件，与日志计数一致；/hr/offboard-notice.txt 记周凯最后工作日 2025-05-23。",
+            "evidence_refs": [
+              "file:/logs/bulk-copy-audit.log",
+              "file:/mail/ticket-2025-0412.txt",
+              "file:/policy/it-backup-policy.txt",
+              "file:/data/clients-index.txt",
+              "file:/hr/offboard-notice.txt",
+              "file:/README.txt"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c1-time-window",
+                "text": "2025-05-16 晚间该工作站的批量文件操作发生在 21:30:02 至 22:50:11 之间；日志内 BULKCOPY_DONE 记录自报 duration=75m01s，对应 21:32:11 至 22:47:12 的复制执行段。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c2-sync-suspended-first",
+                "text": "2025-05-16 21:30:02，云盘同步客户端被用户 zhoukai 手动挂起（SUSPENDED，reason=manual），该事件早于第一条 BULKCOPY_START（21:32:11）约 2 分钟。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c3-ops-a",
+                "text": "第一条批量复制：源 D:/projects/phoenix-client，目标 E:/personal_backup/phoenix-client，起始 21:32:11；进度记录 21:47:40 files=612、22:31:57 files=1102；DONE 记录最终计数 phoenix-client=1633。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c4-ops-b",
+                "text": "第二条批量复制：源 D:/clients，目标 E:/personal_backup/clients，起始 22:03:05；进度记录 22:18:22 files=214 且标注 source complete；DONE 记录最终计数 clients=214。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c5-scale",
+                "text": "日志仅以文件个数记录规模：copied_total=1847（phoenix-client=1633，clients=214），duration=75m01s；日志未记录任何字节量或总容量字段。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": [
+                  "无法从现有记录推算字节规模或平均速率"
+                ]
+              },
+              {
+                "candidate_id": "c6-sync-resumed-last",
+                "text": "2025-05-16 22:50:11，同一用户 zhoukai 以 reason=manual 手动 RESUMED 云盘同步客户端；即该客户端在整段批量复制期间处于挂起状态，SUSPENDED 与 RESUMED 均由人工手动触发。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c7-target-medium-unregistered",
+                "text": "目标位置为 E:/personal_backup 下两个子目录；现有记录中没有任何字段说明 E: 介质的类型、序列号或是否经 IT 登记。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": [
+                  "E: 介质的登记状态无法从本任务记录判定"
+                ]
+              },
+              {
+                "candidate_id": "c8-ticket-scope",
+                "text": "工单 HD-2025-0412（2025-04-12 批复）批准范围仅限 D:/projects/phoenix-client 目录本身，不含其他目录；日志中 22:03:05 对 D:/clients 的批量复制不在该工单载明范围内。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/mail/ticket-2025-0412.txt",
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c9-policy-managed",
+                "text": "IT 备份政策（2024-12 修订）第 2 条将 D:/clients 及其后代目录列为受管数据，禁止复制至未经 IT 登记的设备、禁止通过个人渠道传输；第 3 条要求备份须经工单审批且以工单载明目录为准。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/policy/it-backup-policy.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c10-clients-count-corroboration",
+                "text": "受管客户档案索引记 D:/clients 共 214 个文件（含合同、对账单、方案书等未公开客户商务数据），与日志中 clients=214 的计数一致。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/data/clients-index.txt",
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c11-offboard-timeline",
+                "text": "周凯最后工作日为 2025-05-23（工作站当日 17:00 交回 IT 验收），即该批量复制发生于离职前约 7 天。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/hr/offboard-notice.txt",
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c12-actor-attribution",
+                "text": "日志中唯一出现的操作者标识是 sync-client 事件行里的 user=zhoukai；两条 BULKCOPY_START / progress / BULKCOPY_DONE 记录均未携带用户字段，因此'复制操作由 zhoukai 执行'属于基于同一日志与同一时间窗的推断，而非日志直接记载。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": [
+                  "无账户登录/进程级证据（无 Prefetch、Amcache、Event 4624/4688 等）可独立佐证执行主体"
+                ]
+              },
+              {
+                "candidate_id": "c13-no-deletion",
+                "text": "全部 6 个在册文件 is_deleted 均为 0，日志中亦无删除类事件；现有记录未显示源目录内容被删除或清空。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c14-log-integrity-gap",
+                "text": "该审计日志仅 8 行、649 字节，且缺失开始/结束之间的部分进度采样（例如 D:/clients 仅有 1 条进度行）；无法据此判定日志是否被裁剪、截断或事后重建。",
+                "assertion_class": "HYPOTHESIS",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": [
+                  "无日志哈希、无 syslog/ETW 原件、无文件系统时间戳可交叉验证日志完整性"
+                ]
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e1-user",
+                "raw_value": "zhoukai",
+                "normalized_candidate": "zhoukai",
+                "entity_type_candidate": "user_account"
+              },
+              {
+                "candidate_id": "e2-user-cn",
+                "raw_value": "周凯 (研发部)",
+                "normalized_candidate": "周凯",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e3-src-a",
+                "raw_value": "D:/projects/phoenix-client",
+                "normalized_candidate": "D:/projects/phoenix-client",
+                "entity_type_candidate": "directory"
+              },
+              {
+                "candidate_id": "e4-src-b",
+                "raw_value": "D:/clients",
+                "normalized_candidate": "D:/clients",
+                "entity_type_candidate": "directory"
+              },
+              {
+                "candidate_id": "e5-dst-a",
+                "raw_value": "E:/personal_backup/phoenix-client",
+                "normalized_candidate": "E:/personal_backup/phoenix-client",
+                "entity_type_candidate": "directory"
+              },
+              {
+                "candidate_id": "e6-dst-b",
+                "raw_value": "E:/personal_backup/clients",
+                "normalized_candidate": "E:/personal_backup/clients",
+                "entity_type_candidate": "directory"
+              },
+              {
+                "candidate_id": "e7-volume",
+                "raw_value": "E:",
+                "normalized_candidate": "E:",
+                "entity_type_candidate": "volume"
+              },
+              {
+                "candidate_id": "e8-ticket",
+                "raw_value": "HD-2025-0412",
+                "normalized_candidate": "HD-2025-0412",
+                "entity_type_candidate": "ticket_id"
+              },
+              {
+                "candidate_id": "e9-component",
+                "raw_value": "sync-client",
+                "normalized_candidate": "sync-client",
+                "entity_type_candidate": "software_component"
+              },
+              {
+                "candidate_id": "e10-log",
+                "raw_value": "/logs/bulk-copy-audit.log",
+                "normalized_candidate": "bulk-copy-audit.log",
+                "entity_type_candidate": "file"
+              },
+              {
+                "candidate_id": "e11-count-a",
+                "raw_value": "1633",
+                "normalized_candidate": "1633",
+                "entity_type_candidate": "file_count"
+              },
+              {
+                "candidate_id": "e12-count-b",
+                "raw_value": "214",
+                "normalized_candidate": "214",
+                "entity_type_candidate": "file_count"
+              },
+              {
+                "candidate_id": "e13-count-total",
+                "raw_value": "1847",
+                "normalized_candidate": "1847",
+                "entity_type_candidate": "file_count"
+              }
+            ],
+            "limitations": [
+              "本任务平台探测结果为空（platforms=[]、source_scopes=[]），实际可用证据仅为 6 个静态文件；无 Windows 事件日志、注册表、Prefetch/Amcache 或 Sysmon 数据可供交叉验证。",
+              "所有事实性结论仅来自 /logs/bulk-copy-audit.log 的 8 行自述记录，该日志无哈希、无写入进程归属、无外部时间源，无法验证其完整性或真实性。",
+              "日志未记录字节量，'文件规模'只能以文件个数表述，无法给出容量或速率。",
+              "BULKCOPY 事件行不含用户字段，操作主体归属为推断而非日志直载。",
+              "E: 介质属性与 IT 登记状态在现有记录中不可判定。",
+              "全部文件 mtime/ctime 同值且与 CREATED 事件时间戳不一致，文件系统时间戳不可作为独立时间证据。",
+              "任务状态为 completed 且无既有二次分析（0 analyses），本结果为首次分析。"
+            ],
+            "warnings": [
+              "时间戳异常：所有文件 mtime=ctime=1740787200（2025-03-01 00:00:00 UTC），与日志内容所载 2025-05-16 事件日期不一致，建议以日志文本内时间为准并另行核实文件系统时间语义。",
+              "日志内部计数不自洽：phoenix-client 末次 progress=1102（22:31:57）但 DONE 记 1633，中间 431 个文件无进度采样；D:/clients 仅 1 条 progress 即标注 source complete。",
+              "duration=75m01s 与首末 BULKCOPY 事件跨度一致，但与整段 SUSPENDED→RESUMED 窗口（80 分 09 秒）不同，引用时须明确口径。",
+              "政策与工单比对结论（D:/clients 超出批准范围、触及受管数据条款）为记录间比对结果，是否构成违规需由合规/法务结合完整证据链判定。"
+            ]
+          }
+        },
+        {
+          "seq": 54,
+          "delegation_id": "del_8bdf61b94ef841bcab9c34a331bd9347",
+          "evidence_snapshots_admitted": 0,
+          "specialist_proposal_contract": {
+            "proposal_hash": "4bff560477b55be6f99ba0c7a7ed44d2c159c7e4ddcc5cfe3f5ba8db3728a857",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "106c0c8c15f45a83c8ad6814c49d261970dc5f0bab45efe1df44e79708e7d380"
+          },
+          "result_semantic_payload": {
+            "summary": "在 windows 源域内仅发现 6 个文本证据（1 份端点批量复制审计日志、1 份 IT 备份政策、1 份工单、1 份客户目录索引、1 份离职通知、1 份 README），无 Windows 事件日志、无 Prefetch/Amcache、无网络流量、无卷影/USB 记录、无第三方接收方证据。就问题本身：记录【不能】证明被复制的客户数据已被传输给第三方，也【不能】证明数据在离职后被使用；记录【能】证明的是——在离职生效日（2025-05-23）之前的 2025-05-16 22:03–22:47 期间，用户 zhoukai 使用端点批量复制工具将 D:/clients（214 个受管客户数据文件）复制到本机 E:/personal_backup/clients，且该目录不在 2025-04-12 工单 HD-2025-0412 的批准范围内（工单仅批准 D:/projects/phoenix-client），同时违反 IT 政策第 2 条关于客户数据目录的禁止性规定。这是\"未经批准的客户数据本地复制\"这一事实层面的确立，与\"外传第三方\"或\"离职后使用\"是两个不同层次的事实，现有证据不支持后两者。",
+            "evidence_refs": [
+              "file:/logs/bulk-copy-audit.log",
+              "file:/data/clients-index.txt",
+              "file:/hr/offboard-notice.txt",
+              "file:/mail/ticket-2025-0412.txt",
+              "file:/policy/it-backup-policy.txt",
+              "file:/README.txt",
+              "cluster:v1:29013120:MODIFIED",
+              "cluster:v1:29848232:CREATED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c1-approved-scope",
+                "text": "工单 HD-2025-0412（2025-04-12 批复）仅批准将 D:/projects/phoenix-client 备份至个人移动硬盘，明确排除其他目录。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/mail/ticket-2025-0412.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c2-policy-prohibition",
+                "text": "IT 备份政策（2024-12 修订）第 2 条将 D:/clients 及其后代目录列为受管数据，禁止复制至未经 IT 登记的设备、禁止通过个人渠道传输；第 3 条要求备份须经工单审批且范围以工单载明目录为准。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/policy/it-backup-policy.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c3-unapproved-local-copy",
+                "text": "端点审计日志显示 2025-05-16 22:03:05 至 22:47:12 期间，BULKCOPY_DONE 记录 copied_total=1847，其中 clients=214 个文件从 D:/clients 复制到 E:/personal_backup/clients；该目的地为工作站本地 E: 卷的 personal_backup 子目录，不在工单批准范围内，构成对政策第 2、3 条的违反。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log",
+                  "file:/mail/ticket-2025-0412.txt",
+                  "file:/policy/it-backup-policy.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c4-contents-are-client-data",
+                "text": "D:/clients 目录内容为客户商务数据（合同、对账单、方案书等），共 214 个文件，与审计日志中 clients=214 的计数一致；索引自述该目录为未公开客户商务数据。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/data/clients-index.txt",
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c5-copy-precedes-departure",
+                "text": "批量复制发生于 2025-05-16，早于周凯最后工作日 2025-05-23 及工作站交回时间 2025-05-23 17:00，因此该复制行为发生在在职期间，而非离职后。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log",
+                  "file:/hr/offboard-notice.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c6-no-third-party-transfer",
+                "text": "现有记录不能证明被复制的客户数据已被传输给第三方：审计日志仅记录工作站内部 D:→E: 的本地卷间复制，未记录任何出站网络传输、USB 挂载、邮件/IM 外发、云同步或第三方接收方标识；E:/personal_backup/clients 目录本身也未在本证据集中被直接检视其后续内容或外发痕迹。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log",
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c7-no-post-departure-use",
+                "text": "现有记录不能证明数据在离职后被使用：所有可归属到具体时间的行为（2025-05-16 21:30–22:50 的复制与 sync-client SUSPENDED/RESUMED）均发生在最后工作日 2025-05-23 之前；证据集中不含 2025-05-23 之后的任何登录、文件访问、Prefetch、Amcache、网络或外设事件。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log",
+                  "file:/hr/offboard-notice.txt",
+                  "cluster:v1:29848232:CREATED"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c8-sync-client-suspension-inference",
+                "text": "复制窗口 21:30:02 至 22:50:11 内，sync-client 被 user=zhoukai 手动 SUSPENDED（21:30:02）并在复制结束后 RESUMED（22:50:11），时间上与批量复制高度重合；这提示复制过程期间端点同步/备份通道被人为关闭，属于对行为意图的合理推断，但日志本身未记录该操作的目的或理由，不能据此断言其目的即为规避审计。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c9-dest-volume-identity-unknown",
+                "text": "E: 卷的身份（是否为 IT 登记的设备、是否为个人移动硬盘、是否为工作站本地第二块物理盘）在现有证据中未被确定；工单提到'个人移动硬盘'但审计日志未记录介质类型或序列号，因此无法从证据本身判定 E: 是否属于'未经 IT 登记的设备'。",
+                "assertion_class": "HYPOTHESIS",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log",
+                  "file:/mail/ticket-2025-0412.txt",
+                  "file:/policy/it-backup-policy.txt"
+                ],
+                "limitations": []
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e1-user",
+                "raw_value": "zhoukai / 周凯",
+                "normalized_candidate": "zhoukai",
+                "entity_type_candidate": "user_account"
+              },
+              {
+                "candidate_id": "e2-ticket",
+                "raw_value": "HD-2025-0412",
+                "normalized_candidate": "HD-2025-0412",
+                "entity_type_candidate": "ticket_id"
+              },
+              {
+                "candidate_id": "e3-src-clients",
+                "raw_value": "D:/clients",
+                "normalized_candidate": "D:/clients",
+                "entity_type_candidate": "file_path"
+              },
+              {
+                "candidate_id": "e4-dest-clients",
+                "raw_value": "E:/personal_backup/clients",
+                "normalized_candidate": "E:/personal_backup/clients",
+                "entity_type_candidate": "file_path"
+              },
+              {
+                "candidate_id": "e5-src-project",
+                "raw_value": "D:/projects/phoenix-client",
+                "normalized_candidate": "D:/projects/phoenix-client",
+                "entity_type_candidate": "file_path"
+              },
+              {
+                "candidate_id": "e6-departure-date",
+                "raw_value": "2025-05-23",
+                "normalized_candidate": "2025-05-23",
+                "entity_type_candidate": "date"
+              },
+              {
+                "candidate_id": "e7-copy-window",
+                "raw_value": "2025-05-16 21:30:02 – 22:50:11",
+                "normalized_candidate": "2025-05-16T21:30:02Z..22:50:11Z",
+                "entity_type_candidate": "time_range"
+              },
+              {
+                "candidate_id": "e8-client-count",
+                "raw_value": "214",
+                "normalized_candidate": "214",
+                "entity_type_candidate": "count"
+              }
+            ],
+            "limitations": [
+              "任务元数据 platforms 与 source_scopes 均为空，未注册 windows 平台场景；证据以文本文件形式呈现，非原生 Windows 事件日志/注册表/Prefetch 取证产物。",
+              "所有 6 个文件共享同一 mtime（1740787200）与同一 CREATED 时间戳（1790893942），文件系统时间戳无法独立交叉验证日志正文中 2025-05-16 21:30–22:50 的时间线。",
+              "bulk-copy-audit.log 的写入主体、完整性与不可篡改性未在本证据集中得到证明；无法排除事后编辑的可能。",
+              "E: 卷的介质类型、是否经 IT 登记、是否属于'个人移动硬盘'，在证据中均无直接说明。",
+              "证据集不含任何 2025-05-23（最后工作日）之后的事件，因此对'离职后使用'的判断只能给出'无证据支持'，而非'证据排除'。",
+              "证据集不含任何出站网络、邮件、IM、云同步或第三方接收方记录，因此对'传输给第三方'的判断同样只能给出'无证据支持'，而非'证据排除'。",
+              "sync-client SUSPENDED/RESUMED 与复制窗口重合只能作为意图推断，日志未记录操作理由，不能据此断言规避审计的目的。"
+            ],
+            "warnings": [
+              "问题涉及两个法律/事实层次：(a) 数据是否已传输给第三方；(b) 数据是否被用于离职后用途。现有证据对两者均不支持，但对'未经批准的客户数据本地复制'这一前置事实是充分支持的——请勿将'本地未批准复制'与'外传/离职后使用'混同。",
+              "证据集呈现方式（6 个手工整理的文本文件 + README 指示'按记录原样评估'）暗示这是一个证据边界测试场景；结论应严格限于记录文本本身能确立的内容。",
+              "所有 claim 的时间锚点均源自日志正文文本，非文件系统时间戳，交叉验证能力受限。"
+            ]
+          }
+        }
+      ],
+      "finalization_event": {
+        "event": "finalization_completed",
+        "violation_codes": [],
+        "completion_mode": "complete_with_limitations"
+      },
+      "evidence_world_proof": {
+        "substrate_id": "sub-gen4-departure-staging",
+        "sealed_image_hash": "302435a5d9512cc2415f3ba81ee413ee6551539f375fdfb34cc468b42affcf8c",
+        "actual_image_hash": "302435a5d9512cc2415f3ba81ee413ee6551539f375fdfb34cc468b42affcf8c",
+        "sealed_world_digest": "42b5ffbb52cb4ab7b81f9df14f817db88b9f4dfea47a131d40b080edcc16b9a1",
+        "run_full_digest": "1aeecf09d13c347b8f2f0b6df5938a2243abd4b4113ae626f9b5bac47aec8dc5",
+        "parsed_world_digest_run": "776cf000f4df72549b2c9c02a6858db9afb6f2a9d4e1e44993c7dc497a824e45",
+        "parsed_world_match": "direct",
+        "match": true,
+        "hydration": {
+          "hydrated_evidence_count": 6,
+          "sealed_evidence_count": 6,
+          "all_matches_sealed": true,
+          "content_integrity_failures": 0
+        },
+        "recovered_after_driver_defect": true
+      },
+      "run_manifest_id": "brun:1e183262ad14aa14510d4148",
+      "result_hash": "13f1fa7077a4fc38ccdc1dd6177a84e5e47e68044cdb705289af246a82aeba0b",
+      "snapshot_hash": "c959baa2d556969d2b549bf7e0058f9f1653cc128925efd4e3b48e9af04c99bd",
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "hard_gate_violations": [],
+      "hard_gate_recompute_violations": [],
+      "evaluate_only_reproduced": true,
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "terminal=partial",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "satisfied",
+            "detail": "integrated_delegations=3 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "1/1 discovered"
+          },
+          {
+            "component": "coverage:authorization-scope-assessment",
+            "status": "satisfied",
+            "detail": "terminal=covered"
+          },
+          {
+            "component": "coverage:bulk-copy-timeline",
+            "status": "satisfied",
+            "detail": "terminal=covered"
+          },
+          {
+            "component": "coverage:third-party-transfer-boundary",
+            "status": "failed",
+            "detail": "terminal=partial"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "satisfied",
+            "detail": "terminal=3 answered-terminals=3 unresolved-terminals=1; truth expects answered=3 unresolved=0 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "delegations_completed": 3,
+      "delegations_failed": 0,
+      "integrated": 3,
+      "coverage_terminalization": {
+        "bulk-copy-timeline": "covered",
+        "authorization-scope-assessment": "covered",
+        "third-party-transfer-boundary": "partial"
+      },
+      "question_terminalization": {
+        "q-1": "answered",
+        "q-2": "answered",
+        "q-3": "answered"
+      },
+      "tokens_in": 167383,
+      "tokens_out": 15753,
+      "wall_s": 148.086
+    },
+    {
+      "case_id": "gen4-departure-staging",
+      "repeat": "repeat2",
+      "status": "completed",
+      "rejection_codes": [],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [
+        {
+          "seq": 34,
+          "delegation_id": "del_623ca788080049ae90b0b17dceccf63d",
+          "evidence_snapshots_admitted": 6,
+          "specialist_proposal_contract": {
+            "proposal_hash": "c43cdc3318dd4062501c8f4838f82173dc2d03bb40ef77be9d192751a3f7760b",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "e722aad5b49d2d83e956405fa69d14a3ea10e23b7ef5500bc2e7b38974cd9d88"
+          },
+          "result_semantic_payload": {
+            "summary": "授权范围比对结论:2025-05-16 21:30–22:50 期间用户 zhoukai(周凯)在个人工作站执行的两笔批量复制中,仅第一笔(D:/projects/phoenix-client → E:/personal_backup/phoenix-client,1633 个文件)落在已批准范围内;第二笔(D:/clients → E:/personal_backup/clients,214 个文件)完全超出授权范围,同时违反 IT 备份政策的受管数据条款与工单审批条款。依据来自三份相互独立的记录:批量复制审计日志、工单 HD-2025-0412、IT 资产与备份管理政策(2024-12 修订),并由 D:/clients 索引与离职交接通知补充数据性质与时点背景。另有一项行为模式信号(复制前后手动暂停/恢复 sync-client)指向规避同步监控,但现有证据不足以证明主观故意。",
+            "evidence_refs": [
+              "file:/logs/bulk-copy-audit.log",
+              "file:/policy/it-backup-policy.txt",
+              "file:/mail/ticket-2025-0412.txt",
+              "file:/data/clients-index.txt",
+              "file:/hr/offboard-notice.txt",
+              "file:/README.txt"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c-01",
+                "text": "授权基准:工单 HD-2025-0412(IT 批复时间 2025-04-12)明确批准范围仅限 D:/projects/phoenix-client 目录本身,不含其他目录;政策第 3 条要求任何备份须经工单审批且批准范围以工单载明目录为准。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/mail/ticket-2025-0412.txt",
+                  "file:/policy/it-backup-policy.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-02",
+                "text": "授权范围内部分:审计日志 2025-05-16 21:32:11 的 BULKCOPY_START src=D:/projects/phoenix-client dst=E:/personal_backup/phoenix-client,最终统计 phoenix-client=1633 个文件,与工单批准的目录逐字一致,且政策第 1 条允许员工将本人名下个人项目目录备份至个人移动存储介质。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log",
+                  "file:/mail/ticket-2025-0412.txt",
+                  "file:/policy/it-backup-policy.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-03",
+                "text": "超出授权部分:审计日志 2025-05-16 22:03:05 的 BULKCOPY_START src=D:/clients dst=E:/personal_backup/clients 完成 214 个文件,占本次复制总量 1847 个文件的约 11.6%;该源目录未被工单载明,违反政策第 3 条的工单范围限定。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log",
+                  "file:/mail/ticket-2025-0412.txt",
+                  "file:/policy/it-backup-policy.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-04",
+                "text": "超出授权的性质升级:D:/clients 被政策第 2 条明确列为受管数据(含其后代目录),禁止复制至未经 IT 登记的设备、禁止通过个人渠道传输;而目的地 E:/personal_backup 为个人硬盘,因此该 214 个文件的复制同时违反政策第 2 条,而非仅属工单范围外的越权。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/policy/it-backup-policy.txt",
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-05",
+                "text": "被复制数据的敏感属性:D:/clients 索引显示该目录含 214 个文件(合同-华信贸易.docx、对账单-宏远物流.xlsx、方案书-蓝湾酒店.pptx 等),备注明确为未公开客户商务数据,文件数与审计日志统计的 214 完全吻合,说明源目录被完整复制。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/data/clients-index.txt",
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-06",
+                "text": "规避信号:审计日志显示复制前 21:30:02 手动暂停 sync-client(user=zhoukai reason=manual),复制完成 22:47:12 后于 22:50:11 手动恢复,整个 75 分钟复制窗口被夹在暂停与恢复之间;该模式与规避同步/监控的意图一致,但日志未记录操作者陈述,主观故意属推断而非已证事实。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": [
+                  "日志仅记录 reason=manual,未记录暂停目的",
+                  "无用户访谈或工单申请说明可佐证意图"
+                ]
+              },
+              {
+                "candidate_id": "c-07",
+                "text": "时点背景:该复制发生于 2025-05-16,距周凯最后工作日 2025-05-23 及工作站交回(2025-05-23 17:00 IT 验收)仅约 7 天,即复制行为发生在离职交接窗口内,而工单批复日期为 2025-04-12,间隔约 34 天。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/hr/offboard-notice.txt",
+                  "file:/logs/bulk-copy-audit.log",
+                  "file:/mail/ticket-2025-0412.txt"
+                ],
+                "limitations": []
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e-01",
+                "raw_value": "zhoukai",
+                "normalized_candidate": "周凯 / zhoukai",
+                "entity_type_candidate": "user_account"
+              },
+              {
+                "candidate_id": "e-02",
+                "raw_value": "HD-2025-0412",
+                "normalized_candidate": "HD-2025-0412",
+                "entity_type_candidate": "approval_ticket_id"
+              },
+              {
+                "candidate_id": "e-03",
+                "raw_value": "D:/projects/phoenix-client",
+                "normalized_candidate": "D:\\projects\\phoenix-client",
+                "entity_type_candidate": "approved_source_directory"
+              },
+              {
+                "candidate_id": "e-04",
+                "raw_value": "D:/clients",
+                "normalized_candidate": "D:\\clients",
+                "entity_type_candidate": "managed_data_directory"
+              },
+              {
+                "candidate_id": "e-05",
+                "raw_value": "E:/personal_backup/phoenix-client",
+                "normalized_candidate": "E:\\personal_backup\\phoenix-client",
+                "entity_type_candidate": "destination_path"
+              },
+              {
+                "candidate_id": "e-06",
+                "raw_value": "E:/personal_backup/clients",
+                "normalized_candidate": "E:\\personal_backup\\clients",
+                "entity_type_candidate": "destination_path"
+              },
+              {
+                "candidate_id": "e-07",
+                "raw_value": "2025-05-16 21:32:11 BULKCOPY_START",
+                "normalized_candidate": "2025-05-16T21:32:11",
+                "entity_type_candidate": "event_timestamp"
+              },
+              {
+                "candidate_id": "e-08",
+                "raw_value": "2025-05-16 22:03:05 BULKCOPY_START",
+                "normalized_candidate": "2025-05-16T22:03:05",
+                "entity_type_candidate": "event_timestamp"
+              },
+              {
+                "candidate_id": "e-09",
+                "raw_value": "2025-05-16 22:47:12 BULKCOPY_DONE copied_total=1847",
+                "normalized_candidate": "2025-05-16T22:47:12",
+                "entity_type_candidate": "event_timestamp"
+              }
+            ],
+            "limitations": [
+              "任务元数据未暴露平台场景,source_scopes 为空;本分析基于文件级证据,未取得 Windows 注册表、事件日志等原生系统证据,故无法独立验证 E: 盘设备登记状态与 USB 挂载历史。",
+              "政策文本为 2024-12 修订的节选,可能存在未纳入取证范围的条款或例外流程,政策依据以节选所载三条为限。",
+              "工单仅有一份(HD-2025-0412),无法排除存在未被采集的补充批准记录;越权判定以现有工单记录为基准。",
+              "审计日志为端点侧记录,无法证明复制后文件的最终去向或是否已外带/删除。",
+              "文件 mtime/ctime 均为 1740787200 且 md5 为空,时间戳与完整性字段不具备独立校验价值,日志内部时间线以日志文本自身记录为准。",
+              "主观意图(含规避同步监控的推断)无直接证据支持,已在 c-06 标注为 INFERENCE。"
+            ],
+            "warnings": [
+              "README.txt 提示'按记录原样评估',本分析未对日志内容做任何补全或推测性扩展。",
+              "存在一处轻微不一致:日志显示 phoenix-client 进度计数先后为 files=612 与 files=1102,最终统计 1633;两者口径不同(过程计数 vs 最终统计),不影响授权判定,但如需精确文件清单应调取原始复制明细。"
+            ]
+          }
+        },
+        {
+          "seq": 52,
+          "delegation_id": "del_52c2ecccff4b46caa1ab5e26d17362a6",
+          "evidence_snapshots_admitted": 1,
+          "specialist_proposal_contract": {
+            "proposal_hash": "2fa06c1e77674973f271455278b4c719d0894354a6962ee76bf0a84bc5916f27",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "744303d1892fa532850aca9a2550686091f1cde0c642a194395434a8633651e8"
+          },
+          "result_semantic_payload": {
+            "summary": "结论:现有记录**不能**证明被复制的客户数据已传输给第三方,也**不能**证明其已被用于离职后的用途;但**可以**确立\"受管客户数据在审批范围外被批量复制到未登记的个人介质\"这一违规事实。\n\n【能确立】1) 2025-05-16 22:03:05 起 D:/clients 被复制到 E:/personal_backup/clients,22:18:22 源侧完整(214 个文件),22:47:12 完成,合计 1847 文件、历时 75 分 01 秒(bulk-copy-audit.log)。2) 该复制超出工单授权:工单 HD-2025-0412 批准范围\"仅限 D:/projects/phoenix-client 目录本身,不含其他目录\",而 D:/clients 属受管数据,政策禁止复制至未经 IT 登记设备、禁止个人渠道传输,且 D:/clients 无任何工单(it-backup-policy.txt、ticket-2025-0412.txt)。3) 复制对象确为未公开客户商务数据(clients-index.txt)。4) 行为发生于在职期(最后工作日 2025-05-23,工作站 2025-05-23 17:00 交回),即早于离职(offboard-notice.txt)。5) 日志自身显示 sync-client 于 21:30:02 被 manual SUSPENDED、22:50:11 RESUMED,恰包住整段复制窗口——存在主动规避同步/监控的迹象。\n\n【不能确立】1) 无任何出站到第三方的记录:无网络流量、代理/DNS、邮件外发、云盘/IM 上传、USB 挂载与卷序列号、外发设备取证;E: 是本地盘符,日志只证明\"写入了本机 E: 分区\",不证明介质物理去向。2) 无第三方接收方、身份、时间或内容证据。3) 无离职后使用证据:唯一行为时间戳 2025-05-16 在职;离职后无该账户登录、无文件访问、无新复制事件;亦无证据证明 E: 在 5-23 交回前被取走。4) 日志无用户身份字段(仅 SUSPENDED/RESUMED 两处 user=zhoukai),无法把复制动作直接绑定到周凯;无命令行、无哈希,无法证明复制内容完整性。5) 无证明其\"有意\"的证据,也无反证(数据可能仅留存未使用)。\n\n【边界一句话】记录确立了\"违规复制发生\"(事实层),未确立\"数据外流\"与\"离职后使用\"(需网络层、介质层与离职后活动层证据)。",
+            "evidence_refs": [
+              "file:/logs/bulk-copy-audit.log",
+              "file:/policy/it-backup-policy.txt",
+              "file:/mail/ticket-2025-0412.txt",
+              "file:/data/clients-index.txt",
+              "file:/hr/offboard-notice.txt",
+              "file:/README.txt",
+              "cluster:v1:29013120:MODIFIED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c-01",
+                "text": "2025-05-16 22:03:05 起 D:/clients 被批量复制到 E:/personal_backup/clients,22:18:22 源侧完整(214 个文件),22:47:12 完成,合计复制 1847 个文件(phoenix-client=1633, clients=214),历时 75 分 01 秒。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-02",
+                "text": "D:/clients 的复制超出工单授权范围:工单 HD-2025-0412 批准范围仅限 D:/projects/phoenix-client 目录本身、不含其他目录;政策规定 D:/clients 及其后代属受管数据,禁止复制至未经 IT 登记设备、禁止个人渠道传输,且所有备份须经工单审批。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/mail/ticket-2025-0412.txt",
+                  "file:/policy/it-backup-policy.txt",
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-03",
+                "text": "被复制的 D:/clients 目录含 214 个文件,内容为未公开客户商务数据(索引列出合同、对账单、方案书等条目,完整清单存于受管存储)。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/data/clients-index.txt",
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-04",
+                "text": "复制发生于 2025-05-16,早于最后工作日 2025-05-23 及工作站交回时间 2025-05-23 17:00,即属在职期间行为,而非离职后行为。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/hr/offboard-notice.txt",
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-05",
+                "text": "现有记录无法证明客户数据已传输给第三方:全部 6 项证据中不存在任何出站网络、外发渠道、接收方或介质物理去向的记录;E: 为本地盘符,日志仅能证明写入本机分区。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log",
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-06",
+                "text": "现有记录无法证明数据被用于离职后用途:唯一行为时间戳 2025-05-16 在职,无 2025-05-23 之后的登录、文件访问或复制事件,亦无证据显示 E: 介质在交回前被取走。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/hr/offboard-notice.txt",
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-07",
+                "text": "bulk-copy-audit.log 缺少用户身份字段(仅 SUSPENDED/RESUMED 两处出现 user=zhoukai),无命令行与文件哈希,故无法把复制动作直接绑定到周凯,也无法证明复制内容的完整性。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-08",
+                "text": "sync-client 于 21:30:02 被 manual SUSPENDED、22:50:11 RESUMED,恰好包住 21:32–22:47 的整段复制窗口,提示复制期间主动暂停了同步/监控链路。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": [
+                  "日志仅记录 SUSPENDED/RESUMED 与 reason=manual,未记录操作者,亦未记录暂停同步是否导致数据外流;暂停原因亦可能为性能或维护。"
+                ]
+              },
+              {
+                "candidate_id": "c-09",
+                "text": "综合看,记录确立的是'受管客户数据在审批范围外被批量复制到未登记个人介质'的违规事实;是否外流至第三方、是否用于离职后用途均属未证实状态,需网络层、介质层与离职后活动层证据才能定性。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log",
+                  "file:/policy/it-backup-policy.txt",
+                  "file:/mail/ticket-2025-0412.txt",
+                  "file:/hr/offboard-notice.txt",
+                  "file:/data/clients-index.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-10",
+                "text": "假设(未经证实):E:/personal_backup 介质可能已随周凯带离公司并被后续使用——目前无任何证据支持或排除此假设。",
+                "assertion_class": "HYPOTHESIS",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log",
+                  "file:/hr/offboard-notice.txt"
+                ],
+                "limitations": [
+                  "无 USB 挂载记录、无卷序列号、无介质盘点记录、无交回清单、无离职后账户活动记录;此假设仅为调查方向,不得作为结论引用。"
+                ]
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e-01",
+                "raw_value": "zhoukai",
+                "normalized_candidate": "周凯",
+                "entity_type_candidate": "person_account"
+              },
+              {
+                "candidate_id": "e-02",
+                "raw_value": "D:/clients",
+                "normalized_candidate": "D:/clients",
+                "entity_type_candidate": "directory_managed_data"
+              },
+              {
+                "candidate_id": "e-03",
+                "raw_value": "E:/personal_backup/clients",
+                "normalized_candidate": "E:/personal_backup/clients",
+                "entity_type_candidate": "directory_copy_destination"
+              },
+              {
+                "candidate_id": "e-04",
+                "raw_value": "D:/projects/phoenix-client",
+                "normalized_candidate": "D:/projects/phoenix-client",
+                "entity_type_candidate": "directory_approved_scope"
+              },
+              {
+                "candidate_id": "e-05",
+                "raw_value": "HD-2025-0412",
+                "normalized_candidate": "HD-2025-0412",
+                "entity_type_candidate": "ticket_id"
+              },
+              {
+                "candidate_id": "e-06",
+                "raw_value": "2025-05-16 22:47:12 copied_total=1847",
+                "normalized_candidate": "1847 files copied, 75m01s",
+                "entity_type_candidate": "copy_operation_metric"
+              },
+              {
+                "candidate_id": "e-07",
+                "raw_value": "2025-05-23 17:00",
+                "normalized_candidate": "2025-05-23T17:00",
+                "entity_type_candidate": "workstation_return_timestamp"
+              }
+            ],
+            "limitations": [
+              "任务元数据未声明平台场景(platforms 为空、source_scopes 为空),本次分析仅依据实际检索到的 6 个文件,未获得 Windows 注册表、事件日志、Prefetch、Amcache 等原生 Windows 证据源。",
+              "无任何网络层或介质层证据,'已传输给第三方'与'离职后使用'两项均无法证实也无法证伪,结论为'证据缺失',不得表述为'已排除'。",
+              "所有文件 md5 为空、仅存 content_sha256,且日志无独立备份,无法在容器内验证日志未被篡改。",
+              "审计日志缺少复制动作的用户身份字段,复制行为与周凯的直接归因依赖工单申请人与离职通知等间接关联。",
+              "无文件哈希或抽样比对,无法确认 214 个客户文件的复制完整性。",
+              "时间线事件为容器层文件系统事件,其时间戳与业务时间无映射,不能用于业务时序佐证。"
+            ],
+            "warnings": [
+              "不得将'数据已外流至第三方'或'离职后被使用'写入结论:现有记录不支持,只能作为待查方向(f-01 至 f-06)。",
+              "证据边界应表述为'违规复制已发生(事实)',而非'数据泄露已发生(未证实)'。",
+              "sync-client 暂停与复制窗口重合仅为推断(c-08),日志未记录暂停操作者,存在性能/维护等替代解释。",
+              "E:/personal_backup 介质带离公司的假设(c-10)无任何证据支撑,仅可列为假设,禁止作为事实引用。"
+            ]
+          }
+        },
+        {
+          "seq": 53,
+          "delegation_id": "del_0d3d2fb941384921bbe090cfad052070",
+          "evidence_snapshots_admitted": 0,
+          "specialist_proposal_contract": {
+            "proposal_hash": "35cb1342d1c8383be9557f9b0ff4bf52cf270e1c1aaf3cb570bcbeb78a496ff3",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "39f502b0b3531e3cf040a33e34e4795b9c510b0f99b9b3fc304177f8bae396c3"
+          },
+          "result_semantic_payload": {
+            "summary": "依据 /logs/bulk-copy-audit.log(649 字节,8 条时间戳记录,内容为唯一时间线来源),2025-05-16 晚间该工作站发生一次由用户 zhoukai 执行的批量文件复制,共 1847 个文件,持续 75 分 01 秒。\n\n【操作时间窗】21:30:02 云盘同步客户端被手动挂起 → 21:32:11 首个 BULKCOPY_START → 22:47:12 BULKCOPY_DONE → 22:50:11 同步客户端被手动恢复。整个复制窗口为 21:32:11–22:47:12(75m01s),两端各留约 2 分钟(挂起)与 3 分钟(恢复)的同步客户端静默期。\n\n【源目录与目标位置】两条并行批量任务:(1) src=D:/projects/phoenix-client → dst=E:/personal_backup/phoenix-client,21:32:11 启动;(2) src=D:/clients → dst=E:/personal_backup/clients,22:03:05 启动。全部写入同一 E: 盘下的 personal_backup 目录。\n\n【文件规模】最终汇总 copied_total=1847,其中 phoenix-client=1633、clients=214。中途 progress 记录:21:47:40 phoenix-client files=612;22:18:22 clients files=214(标注 source complete);22:31:57 phoenix-client files=1102。日志仅记录文件计数,未记录字节数,故无法给出总数据量。\n\n【云盘同步客户端状态变化】21:30:02 SUSPENDED(user=zhoukai, reason=manual)→ 22:50:11 RESUMED(user=zhoukai, reason=manual),两次状态变更均标注为手动且与复制窗口首尾对齐。\n\n【与审批范围的对应关系(仅陈述记录)】工单 HD-2025-0412(2025-04-12 批复,申请人周凯)批准范围\"仅限 D:/projects/phoenix-client 目录本身,不含其他目录\";IT 备份政策第 2 条将 D:/clients 及其后代列为受管数据,禁止复制至未经 IT 登记的设备;第 3 条要求备份须经工单审批且以工单载明目录为准。/data/clients-index.txt 载明 D:/clients 共 214 个文件(与日志 clients=214 计数一致),内容为未公开客户商务数据。/hr/offboard-notice.txt 载明周凯最后工作日 2025-05-23、工作站 2025-05-23 17:00 交回 IT 验收,即本次操作发生在离职前 7 天。",
+            "evidence_refs": [
+              "file:/logs/bulk-copy-audit.log",
+              "file:/mail/ticket-2025-0412.txt",
+              "file:/policy/it-backup-policy.txt",
+              "file:/data/clients-index.txt",
+              "file:/hr/offboard-notice.txt",
+              "file:/README.txt"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c1",
+                "text": "2025-05-16 该工作站发生一次批量复制,总文件数 1847(phoenix-client=1633, clients=214),完成记录 BULKCOPY_DONE 于 22:47:12,记录自身标注 duration=75m01s。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c2",
+                "text": "操作时间窗为 21:32:11 首个 BULKCOPY_START 至 22:47:12 BULKCOPY_DONE;任务(1)D:/projects/phoenix-client 于 21:32:11 启动,任务(2)D:/clients 于 22:03:05 启动,二者并行执行。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c3",
+                "text": "两批文件的统一目标位置为 E:/personal_backup 下的 phoenix-client 与 clients 子目录,源分别为 D:/projects/phoenix-client 与 D:/clients。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c4",
+                "text": "云盘同步客户端状态由 21:30:02 SUSPENDED(reason=manual, user=zhoukai)变为 22:50:11 RESUMED(reason=manual, user=zhoukai),两次变更均标注手动,分别落在复制窗口开始前约 2 分钟与结束后约 3 分钟。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c5",
+                "text": "中途进度记录:21:47:40 phoenix-client files=612;22:18:22 clients files=214(标注 source complete);22:31:57 phoenix-client files=1102。日志未记录字节数,故总数据量无法从记录得出。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c6",
+                "text": "工单 HD-2025-0412(2025-04-12 批复)批准范围仅限 D:/projects/phoenix-client 目录本身,不含其他目录;IT 备份政策第 2 条将 D:/clients 及其后代列为受管数据,禁止复制至未经 IT 登记的设备,第 3 条要求备份范围以工单载明目录为准。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/mail/ticket-2025-0412.txt",
+                  "file:/policy/it-backup-policy.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c7",
+                "text": "D:/clients 受管索引载明该目录共 214 个文件、内容为未公开客户商务数据,与审计日志 clients=214 的文件计数一致。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/data/clients-index.txt",
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c8",
+                "text": "操作者周凯的最后工作日为 2025-05-23、工作站 2025-05-23 17:00 交回 IT 验收,本次批量复制发生在其离职前 7 天。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/hr/offboard-notice.txt",
+                  "file:/logs/bulk-copy-audit.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c9",
+                "text": "日志中 D:/clients 的复制(214 个文件)不在工单 HD-2025-0412 载明的批准范围内,且落在 IT 政策第 2 条禁止复制的受管数据目录上;同步客户端在复制窗口首尾被手动挂起/恢复,与该复制窗口在时间上对齐。此为记录间的对应关系描述,是否构成违规取决于 IT 登记设备清单与工单效力等本任务未取得的记录。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/logs/bulk-copy-audit.log",
+                  "file:/mail/ticket-2025-0412.txt",
+                  "file:/policy/it-backup-policy.txt"
+                ],
+                "limitations": [
+                  "本任务未取得 E: 盘是否为 IT 登记设备的记录",
+                  "本任务未取得工单有效期或撤销记录",
+                  "同步客户端挂起与复制的因果关系未由任何记录直接说明"
+                ]
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e1",
+                "raw_value": "zhoukai",
+                "normalized_candidate": "周凯 (研发部)",
+                "entity_type_candidate": "user_account"
+              },
+              {
+                "candidate_id": "e2",
+                "raw_value": "D:/projects/phoenix-client",
+                "normalized_candidate": "D:/projects/phoenix-client",
+                "entity_type_candidate": "source_directory"
+              },
+              {
+                "candidate_id": "e3",
+                "raw_value": "D:/clients",
+                "normalized_candidate": "D:/clients",
+                "entity_type_candidate": "source_directory"
+              },
+              {
+                "candidate_id": "e4",
+                "raw_value": "E:/personal_backup/phoenix-client",
+                "normalized_candidate": "E:/personal_backup/phoenix-client",
+                "entity_type_candidate": "destination_directory"
+              },
+              {
+                "candidate_id": "e5",
+                "raw_value": "E:/personal_backup/clients",
+                "normalized_candidate": "E:/personal_backup/clients",
+                "entity_type_candidate": "destination_directory"
+              },
+              {
+                "candidate_id": "e6",
+                "raw_value": "HD-2025-0412",
+                "normalized_candidate": "HD-2025-0412",
+                "entity_type_candidate": "approval_ticket"
+              },
+              {
+                "candidate_id": "e7",
+                "raw_value": "sync-client",
+                "normalized_candidate": "云盘同步客户端",
+                "entity_type_candidate": "software_component"
+              }
+            ],
+            "limitations": [
+              "证据范围仅限 6 个文本文件;无 Windows 事件日志、注册表、prefetch/Amcache、磁盘镜像或卷元数据,无法独立佐证日志所述复制行为",
+              "日志文件 mtime/ctime 均为 1740787200(2025-03-01),与内容所述 2025-05-16 事件时间不一致,存在记录时间戳与内容时间脱节的情况,未做解释性推断",
+              "任务元数据未暴露平台场景与 source scope 注册信息,source scope 'windows' 下无可查询的逻辑数据库",
+              "find_related_evidence 对日志文件返回 0 条关联,无文件到事件簇的读取接口,故未能建立日志与时间线事件的直接关联",
+              "未记录字节数与目标设备标识,文件规模只能以文件计数表述",
+              "违规性判断所需的 IT 登记设备清单、工单有效期等记录不在本任务证据范围内"
+            ],
+            "warnings": [
+              "问题预设的'审计日志'在本任务中对应 /logs/bulk-copy-audit.log 单个文件;时间线中不存在 2025-05-16 的独立事件记录",
+              "所有时间、计数、状态字段均逐字取自该日志,未做外推;政策与工单的对应关系已标注为 INFERENCE"
+            ]
+          }
+        }
+      ],
+      "finalization_event": {
+        "event": "finalization_completed",
+        "violation_codes": [],
+        "completion_mode": "complete_with_limitations"
+      },
+      "evidence_world_proof": {
+        "substrate_id": "sub-gen4-departure-staging",
+        "sealed_image_hash": "302435a5d9512cc2415f3ba81ee413ee6551539f375fdfb34cc468b42affcf8c",
+        "actual_image_hash": "302435a5d9512cc2415f3ba81ee413ee6551539f375fdfb34cc468b42affcf8c",
+        "sealed_world_digest": "42b5ffbb52cb4ab7b81f9df14f817db88b9f4dfea47a131d40b080edcc16b9a1",
+        "reference_fresh_full_digest": "42b5ffbb52cb4ab7b81f9df14f817db88b9f4dfea47a131d40b080edcc16b9a1",
+        "run_full_digest": "1aeecf09d13c347b8f2f0b6df5938a2243abd4b4113ae626f9b5bac47aec8dc5",
+        "run_full_digest_note": "includes the transient extracted_files listing, which working hydration legitimately materializes into; world identity is the parsed digest below",
+        "parsed_world_digest_run": "776cf000f4df72549b2c9c02a6858db9afb6f2a9d4e1e44993c7dc497a824e45",
+        "parsed_world_digest_reference": "776cf000f4df72549b2c9c02a6858db9afb6f2a9d4e1e44993c7dc497a824e45",
+        "evidence_keys_match_sealed": true,
+        "indexed_paths_match_sealed": true,
+        "match": true,
+        "hydration": {
+          "hydrated_evidence_count": 6,
+          "sealed_evidence_count": 6,
+          "all_matches_sealed": true,
+          "content_integrity_failures": 0,
+          "unavailable_reasons": {}
+        }
+      },
+      "run_manifest_id": "brun:fb68fbb4503ca0a646750ed4",
+      "result_hash": "62d47200322eeb6a984552424dfb606025b12b83200a030a3a12d907c78e8117",
+      "snapshot_hash": "ce6b1b241e9ddc7cd61d03a4ba8cc5cd8e3f95175bc58d4eff7c35421d56ebba",
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "hard_gate_violations": [],
+      "hard_gate_recompute_violations": [],
+      "evaluate_only_reproduced": true,
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "terminal=partial",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "satisfied",
+            "detail": "integrated_delegations=3 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "1/1 discovered"
+          },
+          {
+            "component": "coverage:authorization-scope-assessment",
+            "status": "satisfied",
+            "detail": "terminal=covered"
+          },
+          {
+            "component": "coverage:bulk-copy-timeline",
+            "status": "satisfied",
+            "detail": "terminal=covered"
+          },
+          {
+            "component": "coverage:third-party-transfer-boundary",
+            "status": "failed",
+            "detail": "terminal=partial"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "satisfied",
+            "detail": "terminal=3 answered-terminals=3 unresolved-terminals=0; truth expects answered=3 unresolved=0 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "delegations_completed": 3,
+      "delegations_failed": 0,
+      "integrated": 3,
+      "coverage_terminalization": {
+        "bulk-copy-timeline": "covered",
+        "authorization-scope-assessment": "covered",
+        "third-party-transfer-boundary": "partial"
+      },
+      "question_terminalization": {
+        "q-1": "answered",
+        "q-2": "answered",
+        "q-3": "answered"
+      },
+      "tokens_in": 126316,
+      "tokens_out": 17992,
+      "wall_s": 133.383
+    },
+    {
+      "case_id": "gen4-layered-dispersion",
+      "repeat": "repeat0",
+      "status": "completed",
+      "rejection_codes": [
+        "agent_output_invalid"
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [
+        {
+          "seq": 45,
+          "delegation_id": "del_f617481440164142a59b261804ed0c0d",
+          "failure_code": "agent_output_invalid",
+          "message": ""
+        }
+      ],
+      "completions": [
+        {
+          "seq": 31,
+          "delegation_id": "del_169816603a1840e9b5fea0d1c7bb81eb",
+          "evidence_snapshots_admitted": 7,
+          "specialist_proposal_contract": {
+            "proposal_hash": "9871a0de970cdfea834c2e78b0c33d120674d6171d315263aa9e1cd9774fac62",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "3864dcd2acc352c4990e7643d89204ded1ade0079963c679f0fb01427980104c"
+          },
+          "result_semantic_payload": {
+            "summary": "流水中在记录特征上区别于上述操作模式的是 2025-04-11 14:30:00 向 王秀兰(6222****1190)转出的 4,500.00 元、备注\"4月房租\"这一笔。上述操作模式由群聊指令定义:收到分红后立即分散转出、每笔控制在2万以内、卡越多越好、不重复使用同一家银行、转完发截图。该笔转出在六个记录维度上全部偏离该模式:(1)日期不同——它是唯一发生在 2025-04-11 的流水,其余11笔均在 2025-04-10;(2)时间窗不同——距最后一笔\"周转\"转出(09:28:31)已约29小时,完全落在 09:11–09:28 的密集分散时段之外;(3)金额特征不同——4,500 元远低于\"2万以内\"的分散控制目标,也不属于 19,200–19,950 元的集中金额簇;(4)备注不同——\"4月房租\"而非\"周转\",不带资金分流性质标注;(5)不在卡片分配表内——王秀兰未出现在 card-worksheet.txt 的10张卡名单中,且该表明确写明\"房租另算,不动这张表的钱\";(6)无群聊指令对应——群聊仅有分散、换行、归集三类指令,从未提及房租。用途的记录依据是 /docs/rental-agreement.txt:出租方王秀兰、承租方刘志强、月租金人民币4,500元整、每月11日前支付、租期2024-11-12至2026-11-11;收款人姓名、金额4,500元、支付日期(4月11日)三项与流水完全吻合。旁证为 /notes/card-worksheet.txt 中\"房租另算\"的排除条款。需注意:10:05:12 向何军转出的95,000元(备注\"归集\")在金额上同样偏离\"2万以内分散\"模式,但它有群聊10:12指令(\"剩余大头的部分等通知,统一归集到金卡\")和卡片分配表(金卡/何军=归集主卡,只进不出)双重记录支撑,属于方案内的归集环节而非模式外交易;因此房租这笔是唯一既无操作指令、又由民事合同文书支撑其用途的流水。",
+            "evidence_refs": [
+              "file:/bank/transfer-records.csv",
+              "file:/chat/group-instructions.txt",
+              "file:/notes/card-worksheet.txt",
+              "file:/docs/rental-agreement.txt",
+              "file:/README.txt"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c1",
+                "text": "2025-04-11 14:30:00 向王秀兰(6222****1190)转出的4,500.00元、备注'4月房租'是流水中在记录特征上区别于上述分散转出操作模式的唯一一笔。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv",
+                  "file:/chat/group-instructions.txt",
+                  "file:/notes/card-worksheet.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c2",
+                "text": "该笔转出在六个记录维度上偏离模式:唯一跨日(2025-04-11)、脱离09:11–09:28密集时段(距末笔约29小时)、金额4,500远低于2万控制线且不属19,200–19,950金额簇、备注为'4月房租'而非'周转'、收款人不在卡片分配表10张卡名单内、群聊无对应指令。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv",
+                  "file:/chat/group-instructions.txt",
+                  "file:/notes/card-worksheet.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c3",
+                "text": "该笔转出的用途记录依据是 /docs/rental-agreement.txt:出租方王秀兰、承租方刘志强、月租金4,500元整、每月11日前支付、租期2024-11-12至2026-11-11;收款人、金额与日期三项与流水吻合。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/docs/rental-agreement.txt",
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c4",
+                "text": "card-worksheet.txt 明确'房租另算,不动这张表的钱',表明房租支付被排除在分流方案资金池之外,进一步佐证该笔不属于操作模式。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/notes/card-worksheet.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c5",
+                "text": "10:05:12 向何军转出的95,000元(备注'归集')虽在金额上偏离'2万以内分散'模式,但有群聊10:12指令与卡片分配表'金卡(何军):归集主卡,只进不出'双重记录支撑,属方案内归集环节,不应判定为模式外交易。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv",
+                  "file:/chat/group-instructions.txt",
+                  "file:/notes/card-worksheet.txt"
+                ],
+                "limitations": [
+                  "该结论基于'模式'以群聊指令+分配表为边界这一解释;若仅以金额/频率统计特征定义模式,则95,000元归集笔亦属偏离项"
+                ]
+              },
+              {
+                "candidate_id": "c6",
+                "text": "上述操作模式的定义为:收到分红后立即分散转出、每笔控制在2万以内、卡越多越好、不使用同一家银行、转完发截图。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/chat/group-instructions.txt"
+                ],
+                "limitations": []
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e1",
+                "raw_value": "王秀兰",
+                "normalized_candidate": "王秀兰",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e2",
+                "raw_value": "6222****1190",
+                "normalized_candidate": "6222****1190",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e3",
+                "raw_value": "刘志强",
+                "normalized_candidate": "刘志强",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e4",
+                "raw_value": "何军",
+                "normalized_candidate": "何军",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e5",
+                "raw_value": "6222****7788",
+                "normalized_candidate": "6222****7788",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e6",
+                "raw_value": "4500.00 CNY",
+                "normalized_candidate": "4500",
+                "entity_type_candidate": "amount"
+              },
+              {
+                "candidate_id": "e7",
+                "raw_value": "2025-04-11 14:30:00",
+                "normalized_candidate": "2025-04-11T14:30:00",
+                "entity_type_candidate": "timestamp"
+              }
+            ],
+            "limitations": [
+              "无 Windows 原生取证数据:无注册表、事件日志、prefetch、amcache、MFT 时间戳,无法验证账户操作的设备侧执行痕迹。",
+              "无网络流量、银行流水对账单原件或账户主体身份信息,无法确认账户持有人身份与刘志强/群聊参与者的同一性。",
+              "群聊导出仅5条消息,无截图回传记录,无法核实'转完把截图发群里'指令的完成情况。",
+              "transfer-records.csv 中银行卡号均脱敏(****),无法做卡BIN/发卡行比对以验证'不要用同一个银行'的执行情况。",
+              "文件 md5 为空,无法做完整性校验;无法排除文件被事后修改的可能。",
+              "时间线仅有文件级 MODIFIED/CREATED 事件且时间戳为未来值(1790893917),不能作为可靠时序证据。",
+              "'操作模式'的定义依赖对群聊指令的解释;若以纯统计特征(金额、频率)定义模式,则95,000元归集笔同样构成偏离项。"
+            ],
+            "warnings": [
+              "委派指定的 source scope 为 'windows',但任务实际注册的 platform 与 source_scope 均为空,证据内容为财务/聊天/合同类文档,与 Windows 取证维度(账户使用、执行痕迹、持久化、设备活动)无对应数据;结果基于文档证据而非 Windows 原生取证。",
+              "群聊10:12指令('剩余大头的部分等通知,统一归集到金卡')时间晚于10:05:12的归集转出,存在指令与执行的时间倒挂;可能为群聊导出缺失中间消息,或归集为预先安排。",
+              "card-worksheet.txt 第10项为'(备用卡)20000',流水中无对应20,000元转出,备用卡未被使用。"
+            ]
+          }
+        },
+        {
+          "seq": 37,
+          "delegation_id": "del_a4813e56d17c494d99fcb3721d1002c2",
+          "evidence_snapshots_admitted": 0,
+          "specialist_proposal_contract": {
+            "proposal_hash": "e2e3f50645606785a3f43f5983de4a9c1832f1c1398d4e6084e4c24ae7b098ca",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "10e690a7ebaffd4eb00b00067098e87d62f4860727338732f72e203f4e30029c"
+          },
+          "result_semantic_payload": {
+            "summary": "依据 /bank/transfer-records.csv 的 12 条流水记录,2025-04-10 09:02:11 该账户收到一笔 200,000.00 元流入(对方账户 6222****4171,王建国,备注\"项目分红\")。此后当日发生两阶段转出:第一阶段为分散小额转出,共 9 笔,分别指向 9 个互不相同的对方账户(李梅、张强、赵春花、孙德胜、钱多、吴爱华、郑小龙、冯玉、蒋成才),单笔金额介于 19,200.00 至 19,950.00 元(全部低于 2 万元),合计 176,850.00 元,时间跨度为 09:11:05 至 09:28:31(约 17 分 26 秒),备注均为\"周转\";第二阶段为 10:05:12 一笔大额转出 95,000.00 元至 6222****7788(何军),备注\"归集\"。当日该账户转出合计 271,850.00 元,大于当日流入 200,000.00 元。次日 2025-04-11 14:30:00 另有一笔 4,500.00 元转出至 6222****1190(王秀兰),备注\"4月房租\",与 /docs/rental-agreement.txt 中月租金 4,500 元一致。上述笔数、金额、对象与 /notes/card-worksheet.txt 卡片分配表及 /chat/group-instructions.txt 群内指令高度吻合。",
+            "evidence_refs": [
+              "file:/bank/transfer-records.csv",
+              "file:/chat/group-instructions.txt",
+              "file:/notes/card-worksheet.txt",
+              "file:/docs/rental-agreement.txt",
+              "file:/README.txt"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c1",
+                "text": "2025-04-10 09:02:11 该账户发生一笔流入 200,000.00 元,对方账户 6222****4171(王建国),备注'项目分红'。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c2",
+                "text": "流入后当日共发生 9 笔分散小额转出,分别指向 9 个互不相同的对方账户(李梅、张强、赵春花、孙德胜、钱多、吴爱华、郑小龙、冯玉、蒋成才),单笔金额区间为 19,200.00 至 19,950.00 元,均低于 20,000 元,9 笔合计 176,850.00 元,备注均为'周转'。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c3",
+                "text": "9 笔分散转出的时间跨度为 2025-04-10 09:11:05 至 09:28:31,历时约 17 分 26 秒;首笔转出距流入约 8 分 54 秒。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c4",
+                "text": "分散转出结束后,2025-04-10 10:05:12 发生一笔大额转出 95,000.00 元至 6222****7788(何军),备注'归集',距最后一笔小额转出约 36 分 41 秒。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c5",
+                "text": "2025-04-10 当日该账户转出合计 271,850.00 元(176,850.00 + 95,000.00),大于当日流入 200,000.00 元,差额 71,850.00 元。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c6",
+                "text": "2025-04-11 14:30:00 另有一笔 4,500.00 元转出至 6222****1190(王秀兰),备注'4月房租',金额与租赁合同中月租金 4,500 元一致。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv",
+                  "file:/docs/rental-agreement.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c7",
+                "text": "群聊导出显示 2025-04-10 08:55 有人指令'资金立即分散转出,每笔控制在2万以内,卡越多越好'、08:56'不要用同一个银行'、10:12'剩余大头的部分等通知,统一归集到金卡',10:31 有成员回复'已分10笔转出';该指令与当日流水的分笔结构、单笔上限及后续归集动作在时间顺序上一致。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/chat/group-instructions.txt",
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": [
+                  "群聊自述为'10笔',而流水中分散转出仅 9 笔,存在 1 笔差异;备用卡 20,000 元在卡片分配表中列出但流水中未见对应转出。"
+                ]
+              },
+              {
+                "candidate_id": "c8",
+                "text": "卡片分配表列出的 9 张卡金额(19800/19500/19900/19600/19200/19800/19400/19700/19950)与流水中 9 笔分散转出金额逐笔完全对应,且第 10 项'(备用卡)20000'及'金卡(何军):归集主卡'分别对应未见转出的备用卡与 95,000 元归集收款方何军。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/notes/card-worksheet.txt",
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": [
+                  "金额与姓名的对应为逐笔比对结果,但卡片分配表未标注账户号,账户归属为按姓名匹配推断。"
+                ]
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e1",
+                "raw_value": "6222****4171",
+                "normalized_candidate": "6222****4171",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e2",
+                "raw_value": "王建国",
+                "normalized_candidate": "王建国",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e3",
+                "raw_value": "6222****7788",
+                "normalized_candidate": "6222****7788",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e4",
+                "raw_value": "何 军",
+                "normalized_candidate": "何军",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e5",
+                "raw_value": "6222****1190",
+                "normalized_candidate": "6222****1190",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e6",
+                "raw_value": "王秀兰",
+                "normalized_candidate": "王秀兰",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e7",
+                "raw_value": "6217****8834",
+                "normalized_candidate": "6217****8834",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e8",
+                "raw_value": "6217****9926",
+                "normalized_candidate": "6217****9926",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e9",
+                "raw_value": "6228****0045",
+                "normalized_candidate": "6228****0045",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e10",
+                "raw_value": "6217****3312",
+                "normalized_candidate": "6217****3312",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e11",
+                "raw_value": "6228****7741",
+                "normalized_candidate": "6228****7741",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e12",
+                "raw_value": "6217****5560",
+                "normalized_candidate": "6217****5560",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e13",
+                "raw_value": "6222****8813",
+                "normalized_candidate": "6222****8813",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e14",
+                "raw_value": "6217****0029",
+                "normalized_candidate": "6217****0029",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e15",
+                "raw_value": "6228****6674",
+                "normalized_candidate": "6228****6674",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e16",
+                "raw_value": "刘志强",
+                "normalized_candidate": "刘志强",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e17",
+                "raw_value": "先锋-教练",
+                "normalized_candidate": "先锋-教练",
+                "entity_type_candidate": "person_alias"
+              }
+            ],
+            "limitations": [
+              "任务元数据 platforms 为空、source_scopes 未注册,虽委派指定 scope 为 'windows',但实际可用证据仅为 5 个文档类文件,无 Windows 注册表/事件日志/Prefetch/Amcache 等原生 Windows 取证数据,无法做账户登录、程序执行或持久化关联分析。",
+              "流水仅含对方账户后 4 位脱敏号,无法完整还原账户主体或开户行;群聊指令要求'不要用同一个银行',但流水字段中无银行信息,无法验证是否跨行。",
+              "流水记录无期初/期末余额、无手续费、无交易状态字段,无法判断转出是否成功清算,亦无法计算账户净余额变化。",
+              "卡片分配表未标注账户号,9 笔转出与 9 张卡的对应关系为按姓名+金额匹配推断,非直接证据。",
+              "群聊自述 10 笔与流水 9 笔存在差异,备用卡 20,000 元无对应流水,可能为未执行、未导出或存在于其他账户。",
+              "时间戳精度为秒级,分散转出间隔约 1–3 分钟,无法判断操作终端或是否同一设备完成。",
+              "流水文件仅覆盖 2025-04-10 至 2025-04-11 两天,无法判断该模式是否长期存在或是否为唯一一次。"
+            ],
+            "warnings": [
+              "证据内容与委派指定的 'windows' 平台范围不匹配:实际可用证据为银行流水 CSV、群聊导出 TXT、卡片分配表 TXT、租赁合同 TXT,均为文档类文件,无 Windows 原生取证数据。",
+              "群聊中'先锋-教练'与流水操作主体身份未在任何文件中直接绑定,账户持有人身份仅由 README 间接暗示(刘志强为承租方且出现在群聊),属未证实关联。"
+            ]
+          }
+        }
+      ],
+      "finalization_event": {
+        "event": "finalization_completed",
+        "violation_codes": [],
+        "completion_mode": "complete_with_limitations"
+      },
+      "evidence_world_proof": {
+        "substrate_id": "sub-gen4-layered-dispersion",
+        "sealed_image_hash": "847dd6ed16d829161a40989fbc520c65a7d103e0fbb811f6f2e15ab6d2116a91",
+        "actual_image_hash": "847dd6ed16d829161a40989fbc520c65a7d103e0fbb811f6f2e15ab6d2116a91",
+        "sealed_world_digest": "82145b5cfb682925025aa767c21c97a6fb3d7907f580fc0dc7780bb5ac9500fa",
+        "reference_fresh_full_digest": "82145b5cfb682925025aa767c21c97a6fb3d7907f580fc0dc7780bb5ac9500fa",
+        "run_full_digest": "7c18c6d3ea4d2f626b413c984da850951b6519a38ebc21fffddbff009cc5c68f",
+        "run_full_digest_note": "includes the transient extracted_files listing, which working hydration legitimately materializes into; world identity is the parsed digest below",
+        "parsed_world_digest_run": "3240589619bbcda5667d19830fc07e3cc25c60380308093b0d4fd4c0a78845cd",
+        "parsed_world_digest_reference": "3240589619bbcda5667d19830fc07e3cc25c60380308093b0d4fd4c0a78845cd",
+        "evidence_keys_match_sealed": true,
+        "indexed_paths_match_sealed": true,
+        "match": true,
+        "hydration": {
+          "hydrated_evidence_count": 5,
+          "sealed_evidence_count": 5,
+          "all_matches_sealed": true,
+          "content_integrity_failures": 0,
+          "unavailable_reasons": {}
+        }
+      },
+      "run_manifest_id": "brun:48792ec205a89b650bfd7703",
+      "result_hash": "e4cbeebd22a8c93374ce080a296403fe75bd2b80d4ed177d62875473b8829479",
+      "snapshot_hash": "d1846d07d775d2e377272b4fb1c4cefe7c9872c62ca1b2b8d79513c0e247197e",
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "hard_gate_violations": [],
+      "hard_gate_recompute_violations": [],
+      "evaluate_only_reproduced": true,
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "terminal=partial",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "satisfied",
+            "detail": "integrated_delegations=2 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "1/1 discovered"
+          },
+          {
+            "component": "coverage:benign-transfer-discrimination",
+            "status": "satisfied",
+            "detail": "terminal=covered"
+          },
+          {
+            "component": "coverage:inflow-dispersion-pattern",
+            "status": "satisfied",
+            "detail": "terminal=covered"
+          },
+          {
+            "component": "coverage:source-and-intent-boundary",
+            "status": "failed",
+            "detail": "terminal=partial"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "satisfied",
+            "detail": "terminal=2 answered-terminals=2 unresolved-terminals=0; truth expects answered=3 unresolved=0 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "delegations_completed": 2,
+      "delegations_failed": 1,
+      "integrated": 2,
+      "coverage_terminalization": {
+        "inflow-dispersion-pattern": "covered",
+        "benign-transfer-discrimination": "covered",
+        "source-and-intent-boundary": "partial"
+      },
+      "question_terminalization": {
+        "q-1": "answered",
+        "q-2": "answered",
+        "q-3": "open"
+      },
+      "tokens_in": 93954,
+      "tokens_out": 16646,
+      "wall_s": 201.805
+    },
+    {
+      "case_id": "gen4-layered-dispersion",
+      "repeat": "repeat1",
+      "status": "completed",
+      "rejection_codes": [],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [
+        {
+          "seq": 30,
+          "delegation_id": "del_76cb940c86ca45789aff6aee578d64e8",
+          "evidence_snapshots_admitted": 4,
+          "specialist_proposal_contract": {
+            "proposal_hash": "91440c06a14b683fb6b7b7e4b525df52f8dcd2e679280c133c68975be0a65a62",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "1d115df3fcf8679d74e73d1b9d97e08a1ff15db28072119c1e1235481a86f0bf"
+          },
+          "result_semantic_payload": {
+            "summary": "依据 /bank/transfer-records.csv 的转账流水,2025-04-10 09:02:11 账户收到一笔 IN 入账 200,000.00 元(对方 6222****4171 王建国,备注\"项目分红\")。当日该账户随后发生 10 笔 OUT 转出,可分为两组:\n\n【分散转出组】共 9 笔,时间自 09:11:05 至 09:28:31(跨度约 17 分 26 秒),对象为 9 个不同账户/姓名(李梅、张强、赵春花、孙德胜、钱多、吴爱华、郑小龙、冯玉、蒋成才),单笔金额均在 2 万元以下,范围 19,200.00 元至 19,950.00 元,9 笔合计 176,850.00 元;备注统一为\"周转\"。\n\n【其后大额转出】10:05:12 向 6222****7788 何军 转出 95,000.00 元,备注\"归集\",金额约为单分散笔数的 5 倍。\n\n当日 OUT 合计 271,850.00 元(176,850 + 95,000),已超过当日入账 200,000 元,说明账户存在入账前余额或跨日资金。另有一笔 2025-04-11 14:30:00 向 6222****1190 王秀兰 转出 4,500.00 元(备注\"4月房租\"),与上述资金链路无关。\n\n辅助印证(非流水本身):/chat/group-instructions.txt 显示 08:55 群内指令\"资金立即分散转出,每笔控制在2万以内,卡越多越好\"、\"不要用同一个银行\",10:12 指令\"剩余大头的部分等通知,统一归集到金卡\",10:31 刘志强回复\"已分10笔转出\"——与流水中当日 10 笔 OUT 一致。/notes/card-worksheet.txt 列出 9 张分配卡及金额(与 9 笔分散转出金额逐一对应)及\"金卡(何军):归集主卡,只进不出\"。\n\n需注意:上述\"指令/分赃\"性质属聊天与便签的自述,流水本身仅能证明金额、方向、时间与对象。",
+            "evidence_refs": [
+              "file:/bank/transfer-records.csv",
+              "file:/chat/group-instructions.txt",
+              "file:/notes/card-worksheet.txt",
+              "file:/README.txt"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c-01",
+                "text": "2025-04-10 09:02:11 该账户收到一笔 IN 入账,金额 200,000.00 元,对方账户 6222****4171(王建国),备注'项目分红'。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-02",
+                "text": "入账后当日发生 9 笔分散 OUT 转出,时间跨度 2025-04-10 09:11:05 至 09:28:31(约 17 分 26 秒),对象为 9 个不同账户,单笔金额范围 19,200.00–19,950.00 元,合计 176,850.00 元,备注均为'周转'。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-03",
+                "text": "分散转出之后,2025-04-10 10:05:12 发生一笔大额 OUT 转出 95,000.00 元至 6222****7788(何军),备注'归集'。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-04",
+                "text": "当日 OUT 合计 271,850.00 元,大于当日入账 200,000.00 元,表明账户在 09:02 入账前已存在余额或存在跨日资金。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": [
+                  "流水仅含 2025-04-10 至 2025-04-11 共 12 条记录,无期初余额与前后完整流水,无法直接验证余额来源"
+                ]
+              },
+              {
+                "candidate_id": "c-05",
+                "text": "9 笔分散转出的对象与金额与 /notes/card-worksheet.txt 中列出的 9 张卡片分配表逐一对应(李梅 19800、张强 19500、赵春花 19900、孙德胜 19600、钱多 19200、吴爱华 19800、郑小龙 19400、冯玉 19700、蒋成才 19950),便签另注明'金卡(何军):归集主卡,只进不出'。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv",
+                  "file:/notes/card-worksheet.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-06",
+                "text": "聊天记录显示 2025-04-10 08:55 群内指令要求'资金立即分散转出,每笔控制在2万以内,卡越多越好'、'不要用同一个银行',10:12 要求'剩余大头统一归集到金卡',10:31 刘志强回复'已分10笔转出';该自述与流水中当日 10 笔 OUT(9 笔分散 + 1 笔归集)笔数一致。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/chat/group-instructions.txt",
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-07",
+                "text": "该账户呈现'大额入账—短时间内向多个不同账户小额分散—剩余资金归集至单一主卡'的资金流转模式,与聊天记录所称'分红'安排相吻合。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv",
+                  "file:/chat/group-instructions.txt",
+                  "file:/notes/card-worksheet.txt"
+                ],
+                "limitations": [
+                  "模式描述基于单日 12 条记录,无更长周期流水;无法据此认定资金最终去向或用途"
+                ]
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e-01",
+                "raw_value": "6222****4171",
+                "normalized_candidate": "6222****4171",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-02",
+                "raw_value": "王建国",
+                "normalized_candidate": null,
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e-03",
+                "raw_value": "6217****8834 / 李 梅",
+                "normalized_candidate": null,
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-04",
+                "raw_value": "6217****9926 / 张 强",
+                "normalized_candidate": null,
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-05",
+                "raw_value": "6228****0045 / 赵春花",
+                "normalized_candidate": null,
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-06",
+                "raw_value": "6217****3312 / 孙德胜",
+                "normalized_candidate": null,
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-07",
+                "raw_value": "6228****7741 / 钱 多",
+                "normalized_candidate": null,
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-08",
+                "raw_value": "6217****5560 / 吴爱华",
+                "normalized_candidate": null,
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-09",
+                "raw_value": "6222****8813 / 郑小龙",
+                "normalized_candidate": null,
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-10",
+                "raw_value": "6217****0029 / 冯 玉",
+                "normalized_candidate": null,
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-11",
+                "raw_value": "6228****6674 / 蒋成才",
+                "normalized_candidate": null,
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-12",
+                "raw_value": "6222****7788 / 何 军",
+                "normalized_candidate": "6222****7788",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-13",
+                "raw_value": "6222****1190 / 王秀兰",
+                "normalized_candidate": null,
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-14",
+                "raw_value": "先锋-教练",
+                "normalized_candidate": null,
+                "entity_type_candidate": "person_or_alias"
+              },
+              {
+                "candidate_id": "e-15",
+                "raw_value": "刘志强",
+                "normalized_candidate": null,
+                "entity_type_candidate": "person"
+              }
+            ],
+            "limitations": [
+              "流水仅 12 条记录、时间窗口仅约 1 天,无期初余额,无法核实超出当日入账的 71,850.00 元转出来源。",
+              "聊天记录与卡片分配表属当事人自述性材料,可印证模式但不能单独证明资金用途或主观故意。",
+              "账户号中间四位被掩码,无法完成账户唯一性与跨行关联验证。",
+              "任务元数据未声明 windows 平台场景与 source scope,委派范围与文件实际内容存在错配。",
+              "未获取到银行端原始凭证、聊天记录完整导出或账户持有人身份材料,无法进一步确认主体身份。"
+            ],
+            "warnings": [
+              "所有文件时间戳均为 2025-03-01,早于内容所述 2025-04 事件时间,时序分析须以文件内容内嵌时间为准。",
+              "群成员自述'已分10笔转出'与流水当日 10 笔 OUT 一致,但该自述包含 1 笔归集,不能等同于 10 笔分散转出。"
+            ]
+          }
+        },
+        {
+          "seq": 41,
+          "delegation_id": "del_84b87764d683425e97b1e6dd392ad736",
+          "evidence_snapshots_admitted": 3,
+          "specialist_proposal_contract": {
+            "proposal_hash": "5cf24506ee37543eb6580dc1db54bae6124fb0c6aa2ab8f6212f1e67ab8c7537",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "8fecf74436f023935b9d9b92ead9b1d483fc8ab6b896f41c5c91cb9ae13b93e9"
+          },
+          "result_semantic_payload": {
+            "summary": "对 /bank/transfer-records.csv 中 12 笔流水逐条比对\"记录特征\"（时间密度、金额量级、对手方账户段、摘要措辞、时间跨度），可识别出一个高度同质的操作模式与两笔偏离项。主体模式（9 笔 OUT，2025-04-10 09:11:05–09:28:31，17 分 26 秒内完成）：金额集中在 19,200–19,950 元（严格 <20,000）、对手方账户在 6217****/6222****/6228**** 三段间轮换、摘要统一为\"周转\"、节奏为每笔间隔 1–4 分钟，与群聊 08:55\"每笔控制在2万以内\"、08:56\"不要用同一个银行\"、10:31\"已分10笔转出\"以及卡片分配表 1–9 号金额完全吻合。记录特征上最显著的偏离是 2025-04-11 14:30:00 付王秀兰 4,500.00 元、摘要\"4月房租\"这笔：距上一笔间隔 29 小时 3 分 18 秒（唯一跨日）、金额仅为主模式均值的约 23%、摘要为具体用途而非笼统\"周转\"、对手方为自然人房东。其用途的记录依据是 /docs/rental-agreement.txt：出租方王秀兰、承租方刘志强、月租金人民币 4,500 元整、每月 11 日前支付、租期 2024-11-12 至 2026-11-11，出租方姓名、金额与支付时点（4 月 11 日，恰为 11 日当天）三项同时对应；卡片分配表亦明示\"房租另算，不动这张表的钱\"，说明该笔不属于分流资金池。次要偏离为 2025-04-10 10:05:12 付何军 95,000.00 元\"归集\"：金额是主模式均值的约 4.8 倍且 >20,000，发生在 36 分钟静默期之后，摘要与群聊 10:12\"剩余大头…统一归集到金卡\"及卡片表\"金卡(何军)：归集主卡\"一致，方向与性质（向内归集 vs 向外分散）与主模式相反，但它仍属群聊指挥的分流-归集方案内部环节。",
+            "evidence_refs": [
+              "file:/bank/transfer-records.csv",
+              "file:/chat/group-instructions.txt",
+              "file:/notes/card-worksheet.txt",
+              "file:/docs/rental-agreement.txt",
+              "file:/README.txt"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c-001",
+                "text": "transfer-records.csv 中共 12 笔流水：1 笔 IN（2025-04-10 09:02:11 王建国 6222****4171 200,000.00 元，摘要'项目分红'）与 11 笔 OUT，构成'大额入账→快速分散转出→大额归集→次日房租'的时序结构。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-002",
+                "text": "主体操作模式由 9 笔 OUT 组成（2025-04-10 09:11:05 至 09:28:31，历时 17 分 26 秒）：金额区间 19,200–19,950 元（全部 <20,000）、对手方账户在 6217****、6222****、6228**** 三个行段间轮换、摘要统一为'周转'、笔间隔 1–4 分钟。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-003",
+                "text": "9 笔'周转'转出与卡片分配表 1–9 号条目金额逐一对应（李梅 19800、张强 19500、赵春花 19900、孙德胜 19600、钱多 19200、吴爱华 19800、郑小龙 19400、冯玉 19700、蒋成才 19950），姓名去空格后完全匹配，说明该模式是按预先分配的卡清单执行。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv",
+                  "file:/notes/card-worksheet.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-004",
+                "text": "主体模式的记录特征由群聊指令直接约束：2025-04-10 08:55'资金立即分散转出，每笔控制在2万以内，卡越多越好'解释了金额上限与笔数；08:56'不要用同一个银行'解释了账户行段轮换；10:31 刘志强'已分10笔转出'与当日 10 笔 OUT（9 笔周转 + 1 笔归集）数量吻合。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/chat/group-instructions.txt",
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-005",
+                "text": "在记录特征上与上述操作模式不同（偏离度最大）的是 2025-04-11 14:30:00 付王秀兰 6222****1190 4,500.00 元、摘要'4月房租'：距上一笔（10:05:12）间隔 29 小时 3 分 18 秒，是唯一跨日交易；金额 4,500 元仅为主模式均值（约 19,661 元）的约 23%，远低于 20,000 元阈值；摘要为具体用途而非笼统'周转'；对手方为自然人房东而非分流卡持有人。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-006",
+                "text": "该笔 4,500 元转出的用途依据为 /docs/rental-agreement.txt：出租方王秀兰、承租方刘志强、月租金人民币 4,500 元整、每月 11 日前支付、租期 2024-11-12 至 2026-11-11。出租方姓名、金额、支付时点（2025-04-11 14:30，即 11 日当天，满足'11 日前'）三项同时对应。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/docs/rental-agreement.txt",
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-007",
+                "text": "卡片分配表末行'房租另算，不动这张表的钱'进一步佐证该笔房租不属于分流资金池，与主模式的资金来源（项目分红 200,000 元）相互独立。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/notes/card-worksheet.txt",
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-008",
+                "text": "次级偏离项为 2025-04-10 10:05:12 付何军 6222****7788 95,000.00 元、摘要'归集'：金额是主模式均值的约 4.8 倍且突破 20,000 元阈值，发生在 09:28:31 之后 36 分 41 秒的静默期，方向性质与主模式相反（向内归集 vs 向外分散），但摘要与群聊 10:12'剩余大头的部分等通知，统一归集到金卡'及卡片表'金卡(何军)：归集主卡，只进不出'一致，属同一分流-归集方案的收尾环节。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv",
+                  "file:/chat/group-instructions.txt",
+                  "file:/notes/card-worksheet.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-009",
+                "text": "9 笔'周转'合计 177,100 元，加归集 95,000 元共 272,100 元，超出 2025-04-10 当日可见入账 200,000 元约 72,100 元；差额可能来自账户既有余额、表外入账或本 CSV 未完整导出，现有证据无法确证。",
+                "assertion_class": "HYPOTHESIS",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": [
+                  "CSV 仅含 2025-04-10 至 2025-04-11 共 12 行，未见账户期初余额字段",
+                  "无法排除导出被截断或另有入账记录未纳入本镜像"
+                ]
+              },
+              {
+                "candidate_id": "c-010",
+                "text": "卡片分配表第 10 项'（备用卡）20,000'在流水中没有对应转出记录，说明备用卡当日未被启用。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/notes/card-worksheet.txt",
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e-001",
+                "raw_value": "王秀兰",
+                "normalized_candidate": "王秀兰",
+                "entity_type_candidate": "PERSON"
+              },
+              {
+                "candidate_id": "e-002",
+                "raw_value": "6222****1190",
+                "normalized_candidate": "6222****1190",
+                "entity_type_candidate": "BANK_ACCOUNT"
+              },
+              {
+                "candidate_id": "e-003",
+                "raw_value": "刘志强",
+                "normalized_candidate": "刘志强",
+                "entity_type_candidate": "PERSON"
+              },
+              {
+                "candidate_id": "e-004",
+                "raw_value": "何 军 / 何军",
+                "normalized_candidate": "何军",
+                "entity_type_candidate": "PERSON"
+              },
+              {
+                "candidate_id": "e-005",
+                "raw_value": "6222****7788",
+                "normalized_candidate": "6222****7788",
+                "entity_type_candidate": "BANK_ACCOUNT"
+              },
+              {
+                "candidate_id": "e-006",
+                "raw_value": "先锋-教练",
+                "normalized_candidate": "先锋-教练",
+                "entity_type_candidate": "CHAT_ALIAS"
+              },
+              {
+                "candidate_id": "e-007",
+                "raw_value": "王建国 / 6222****4171",
+                "normalized_candidate": "王建国",
+                "entity_type_candidate": "PERSON"
+              },
+              {
+                "candidate_id": "e-008",
+                "raw_value": "4,500.00 CNY",
+                "normalized_candidate": "4500.00 CNY",
+                "entity_type_candidate": "AMOUNT"
+              },
+              {
+                "candidate_id": "e-009",
+                "raw_value": "2025-04-11 14:30:00",
+                "normalized_candidate": "2025-04-11T14:30:00",
+                "entity_type_candidate": "TIMESTAMP"
+              }
+            ],
+            "limitations": [
+              "任务元数据 platforms 与 source_scopes 均为空，未注册 'windows' 场景；委派所指的 windows 来源范围在本任务中无对应已注册能力，全部结论仅基于 5 个文档文件的正文内容。",
+              "无 Windows 系统级证据（注册表、事件日志、Prefetch、Amcache、聊天软件本地数据库），因此无法对'谁在何时用哪台设备操作'给出经核验的结论，也无法验证群聊截图是否被删除。",
+              "流水为 CSV 导出件，仅含 12 行、2025-04-10 至 2025-04-11 两天，无账户期初余额字段；转出合计与可见入账存在约 72,100 元差额，无法在本证据集内闭环。",
+              "文件 mtime/ctime 与正文业务时间不一致，且 /docs/rental-agreement.txt 缺少 content_sha256，文件级完整性与时间锚点均不完整。",
+              "find_related_evidence 对 CSV 返回 0 条且提示 file→cluster 关联无只读门面，跨文件关联由人工比对正文得出，非系统派生。",
+              "对手方账户均为掩码形式（6222****1190 等），无法确证开户行归属与持有人身份；'不要用同一个银行'对应的行段轮换仅为账户号前缀推断。",
+              "群聊指令与卡片分配表均为单方陈述性文件，其内容与流水的吻合度可支持关联性，但不能单独证明行为人主观意图；定性需结合银行侧、身份侧证据。",
+              "本结果为只读观察，未修改任何调查状态；所有 claim 的 assertion_class 上限仅为建议，最终断言策略由 P5 裁定。"
+            ],
+            "warnings": [
+              "委派要求使用 'windows' 来源范围，但 get_task_context 返回 platforms=[] 且 source_scopes=[]，未注册该范围；已在 coverage_observations 与 limitations 中显式记录，结论不依赖 Windows 平台证据。",
+              "问题中的'上述操作模式'未在本任务上下文中给出前序定义；本结果按流水自身呈现的主体模式（9 笔 <20,000 元、摘要'周转'、账户行段轮换、分钟级节奏）自行界定，若前序问题所指模式不同，结论需相应调整。",
+              "若严格取'唯一一笔'，答案为 2025-04-11 14:30:00 王秀兰 4,500 元房租（偏离度最大）；2025-04-10 10:05:12 何军 95,000 元归集在金额量级与时间间隔上同样偏离，但其摘要与群聊指令一致，属同一方案内部环节，故列为次级偏离项而非独立异类。"
+            ]
+          }
+        },
+        {
+          "seq": 48,
+          "delegation_id": "del_f851e9e6e99d4a259ce626a731ef0d9f",
+          "evidence_snapshots_admitted": 0,
+          "specialist_proposal_contract": {
+            "proposal_hash": "25b602a3e8fb1081801e59903a3bfbc380bb905464836a218999c9cb15830402",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "72bd4ade57dac410c526dbc3417e65f1dfe38f364c13dfe866471c806bc15fc8"
+          },
+          "result_semantic_payload": {
+            "summary": "结论（分两层，精确划界）：这批记录【不能】单独证明流入资金的违法犯罪来源，也【不能】单独、直接地证明持有人对资金性质的\"明知\"；但它们能确立\"高度异常且带有规避监管意图的资金处置行为\"，并且能确立\"持有人至少知悉并认可了'分红—拆分—多卡—归集'这一操作指令体系\"这一层面的主观认知。可证明的是行为与操作模式，不能证明的是上游犯罪的法律定性与上游事实。\n\n一、可确立（可作证据使用）\n1. 资金流入事实与金额：2025-04-10 09:02:11 由\"王建国\"账户 6222****4171 转入 200,000 元，备注\"项目分红\"。\"分红\"是收益分配性表述，与工资、货款、借款、还款等合法资金性质不吻合，但\"分红\"本身不指向任何特定上游犯罪。\n2. 拆分（化整为零）行为：09:11:05–09:28:31 共 10 笔转出，分别至李梅、张强、赵春花、孙德胜、钱多、吴爱华、郑小龙、冯玉、蒋成才及一笔 95,000 元归集（何军），单笔 19,200–19,950 元，全部刻意压在 20,000 元以内，10 笔合计 196,950 元，占流入额的 98.5%，时间跨度仅 17 分 26 秒。该模式与群内 08:55 指令\"每笔控制在2万以内，卡越多越好\"逐笔对应。\n3. 规避同一银行识别：指令\"不要用同一个银行\"，转出卡号前缀出现 6217、6222、6228 多组，与指令一致。\n4. 归集结构：何军 6222****7788 于 10:05:12 收到 95,000 元\"归集\"，与卡片分配表\"金卡(何军): 归集主卡，只进不出\"完全吻合；即资金先分散、再向主卡回流，构成典型的\"分散—归集\"资金链路。\n5. 主观认知（指令层面的明知）：群消息显示 04-09 21:47 预告\"重要分红安排\"，04-10 08:55–10:12 由\"先锋-教练\"连续下达\"资金立即分散转出\"\"卡越多越好\"\"不要用同一个银行\"\"转完把截图发群里\"\"剩余大头统一归集到金卡\"，10:31 由刘志强回复\"已分10笔转出\"。这些是持有人本人或同一主体在设备上的操作留痕，足以证明其\"知道自己在做什么、并按指令做了\"。\n6. 合法资金被隔离：2025-04-11 14:30 付王秀兰 4,500 元\"4月房租\"，与租赁合同（王秀兰出租、刘志强承租、月租 4,500 元、每月11日前支付、租期 2024-11-12 至 2026-11-11）在金额、时点、当事人上三方吻合；卡片分配表另注\"房租另算，不动这张表的钱\"。这说明操作者有意区分\"合法支出\"与\"待处置资金\"，是主观认知层面的重要旁证。\n\n二、不能确立（边界，须严格限定）\n1. 不能证明上游犯罪性质：全部记录中无任何上游交易、合同、对价、发票、业务内容或\"项目\"实体信息。\"项目分红\"仅是付款方自填备注，属单方陈述，既不能证明该\"项目\"存在，更不能证明其为传销、诈骗、赌博、洗钱或其他特定犯罪。\"分红\"一词在合法场景（公司分红、投资回报）同样成立。\n2. 不能证明资金数额与上游犯罪所得的对应关系：无上游账目、无对账凭证，无法建立\"该 200,000 元 = 某犯罪所得\"的等式。\n3. 不能证明\"明知系违法犯罪所得\"（洗钱类主观明知的核心要件）：指令中只有\"分红\"\"资金\"\"大头\"\"金卡\"等中性或收益性词汇，全程未出现\"赃款\"\"涉案\"\"跑分\"\"赌资\"\"套现\"\"洗钱\"等指向违法性质的表述，也未出现任何\"上游是谁、钱从哪来\"的信息。指令人只告知\"怎么转\"，未告知\"钱的性质\"。因此现有记录只能证明\"明知存在异常处置需求并予以执行\"，不能证明\"明知资金系违法犯罪所得\"。\n4. 不能证明刘志强与账户/卡片的身份归属：转账记录未标注账户主体，聊天导出未带账号 ID、未含刘志强本人发言以外的成员发言，租赁合同仅显示其为承租方。三者指向同一人的推断属合理但未获直接证据固定。\n5. 不能证明上游指令人身份与责任：\"先锋-教练\"仅为群昵称，无实名、无联系方式、无设备或 IP 关联，无法据此认定其身份或责任。\n6. 不能证明下游 10 名收款人知情：仅有转账与分配表，无收款人侧任何记录（无其聊天、无其设备、无其确认），不能认定其为共犯或知情协助。\n7. 不能证明\"转完把截图发群里\"的履行情况：刘志强自述\"截图稍后补\"，卷内无任何截图，履行状态无法确认。\n8. 不能证明资金最终去向与总量：95,000 元归集后的下游无记录；卡片分配表所列第 10 项\"备用卡 20,000\"在转账记录中无对应支出，存在未落地或未采集部分。\n9. 不能证明记录完整性：CSV 为\"导出的转账流水\"，非银行原始凭证，无银行签章、无流水号、无校验；时间戳仅到秒级，无法排除节选、编辑或事后整理。\n10. 不能以文件时间戳作行为时点：全部 5 个文件 mtime/ctime 均为 1740787200（2025-03-01 00:00:00 UTC），而内容记载的是 2025-04-10 事件；CREATED 事件时间戳 1790893917（约 2026 年）晚于 mtime。文件系统时间元数据与内容时间线相互矛盾，只能用于证明\"卷宗中这些文件被写入/生成于同一时刻\"，不能用于证明行为发生时间；内容时间线（群消息 08:55 → 转账 09:11–09:28 → 归集 10:05 → 回报 10:31）应作为行为时序依据，但需以原始载体或银行/平台原始记录校验。\n11. 无 Windows 原生取证支撑：本卷宗无事件日志、注册表、Prefetch、Amcache、Shellbags、浏览器或输入法历史，无法交叉验证\"该设备确实被用于执行这些转账\"；README 所述\"用于操作汇款结算账户的笔记本电脑\"属说明性陈述，非证据。\n\n三、总体定性建议：现有记录足以支撑\"以化整为零、多卡分散、规避同一银行、指定主卡归集方式处置大额资金\"的客观事实认定，以及\"持有人知悉并执行了该处置指令\"的认知认定；对\"资金系违法犯罪所得\"及\"持有人明知该性质\"两项，须以外围证据补强后方可成立。",
+            "evidence_refs": [
+              "file:/bank/transfer-records.csv",
+              "file:/chat/group-instructions.txt",
+              "file:/notes/card-worksheet.txt",
+              "file:/docs/rental-agreement.txt",
+              "file:/README.txt",
+              "cluster:v1:29013120:MODIFIED",
+              "cluster:v1:29848231:CREATED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c1",
+                "text": "2025-04-10 09:02:11 账户收到王建国（6222****4171）转入 200,000 元，备注'项目分红'；同日 09:11:05–09:28:31 分 10 笔转出至 10 个不同账户，单笔 19,200–19,950 元，均低于 20,000 元，10 笔合计 196,950 元，占流入额 98.5%；10:05:12 何军（6222****7788）收到 95,000 元'归集'；2025-04-11 14:30 向王秀兰支付 4,500 元'4月房租'。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c2",
+                "text": "群内指令要求：'资金立即分散转出，每笔控制在2万以内，卡越多越好'（04-10 08:55）、'不要用同一个银行，转完把截图发群里'（08:56）、'剩余大头的部分等通知，统一归集到金卡'（10:12）；刘志强 10:31 回复'已分10笔转出，截图稍后补'。转账记录中 10 笔出款的金额与节奏与该指令逐笔对应。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/chat/group-instructions.txt",
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c3",
+                "text": "卡片分配表将 10 张卡与转账记录中 10 笔出款的收款人姓名及金额一一对应（李梅19800、张强19500、赵春花19900、孙德胜19600、钱多19200、吴爱华19800、郑小龙19400、冯玉19700、蒋成才19950，另列备用卡20000），并标注'金卡(何军): 归集主卡，只进不出'、'房租另算，不动这张表的钱'。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/notes/card-worksheet.txt",
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c4",
+                "text": "4,500 元房租支付与房屋租赁合同（出租方王秀兰、承租方刘志强、月租 4,500 元、每月11日前支付、租期 2024-11-12 至 2026-11-11）在金额、时点、当事人上三方吻合。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/docs/rental-agreement.txt",
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c5",
+                "text": "现有记录只能确立'持有人知悉并执行了分红—拆分—多卡—归集的资金处置指令'这一层面的主观认知，不能确立其'明知资金系违法犯罪所得'。理由：全部指令与记录中未出现任何指向资金违法性质的表述（无'赃款''涉案''跑分''赌资''套现''洗钱'等词），指令人仅告知操作方式，未告知资金来源或性质。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/chat/group-instructions.txt",
+                  "file:/notes/card-worksheet.txt",
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c6",
+                "text": "现有记录不能确立流入资金的违法犯罪来源。'项目分红'为付款方单方自填备注，卷内无任何上游交易、合同、对价、发票或'项目'实体信息；'分红'在合法场景（公司分红、投资回报）同样成立。因此无法建立'该 200,000 元 = 特定犯罪所得'的对应关系。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c7",
+                "text": "转账记录、聊天导出与租赁合同指向同一自然人（刘志强）属合理推断但未获直接固定：转账记录未标注账户主体，聊天导出未含成员账号 ID，租赁合同仅显示其为承租方。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv",
+                  "file:/chat/group-instructions.txt",
+                  "file:/docs/rental-agreement.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c8",
+                "text": "操作者有意区分'合法支出'与'待处置资金'：房租另付且卡片分配表明确注明'房租另算，不动这张表的钱'，说明其对两类资金作了主动隔离，构成主观认知层面的旁证。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/notes/card-worksheet.txt",
+                  "file:/bank/transfer-records.csv",
+                  "file:/docs/rental-agreement.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c9",
+                "text": "文件时间元数据不可用于证明行为时点：全部 5 个文件 mtime/ctime 均为 1740787200（2025-03-01 00:00:00 UTC），早于内容记载的 2025-04-10 事件；CREATED 事件时间戳 1790893917 又晚于 mtime。文件系统时间与内容时间线相互矛盾，行为时序应以内容时间线为准并需原始载体校验。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "cluster:v1:29013120:MODIFIED",
+                  "cluster:v1:29848231:CREATED"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c10",
+                "text": "卷内无 Windows 原生取证数据（无事件日志、注册表、Prefetch、Amcache、Shellbags、浏览器或输入法历史），无法交叉验证该设备确实被用于执行这些转账；README 中'用于操作汇款结算账户的笔记本电脑'为说明性陈述而非证据。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e1",
+                "raw_value": "6222****4171",
+                "normalized_candidate": "银行账号(部分掩码) 尾号4171",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e2",
+                "raw_value": "王建国",
+                "normalized_candidate": "王建国",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e3",
+                "raw_value": "6222****7788",
+                "normalized_candidate": "银行账号(部分掩码) 尾号7788 金卡/归集主卡",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e4",
+                "raw_value": "何 军",
+                "normalized_candidate": "何军",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e5",
+                "raw_value": "先锋-教练",
+                "normalized_candidate": "群昵称，未实名",
+                "entity_type_candidate": "alias"
+              },
+              {
+                "candidate_id": "e6",
+                "raw_value": "刘志强",
+                "normalized_candidate": "刘志强",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e7",
+                "raw_value": "王秀兰",
+                "normalized_candidate": "王秀兰",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e8",
+                "raw_value": "李梅/张强/赵春花/孙德胜/钱多/吴爱华/郑小龙/冯玉/蒋成才",
+                "normalized_candidate": "10 张卡中的 9 名收款人（第10项为备用卡，无对应转账）",
+                "entity_type_candidate": "person_list"
+              },
+              {
+                "candidate_id": "e9",
+                "raw_value": "200000.00",
+                "normalized_candidate": "CNY 200,000（流入总额）",
+                "entity_type_candidate": "amount"
+              },
+              {
+                "candidate_id": "e10",
+                "raw_value": "196950.00",
+                "normalized_candidate": "CNY 196,950（10 笔拆分出款合计，占流入额 98.5%）",
+                "entity_type_candidate": "amount"
+              },
+              {
+                "candidate_id": "e11",
+                "raw_value": "95000.00",
+                "normalized_candidate": "CNY 95,000（归集至金卡）",
+                "entity_type_candidate": "amount"
+              },
+              {
+                "candidate_id": "e12",
+                "raw_value": "4500.00",
+                "normalized_candidate": "CNY 4,500（月租金）",
+                "entity_type_candidate": "amount"
+              }
+            ],
+            "limitations": [
+              "任务元数据 platforms 与 source_scopes 均为空，未注册任何平台场景；委托的 'windows' 范围下不存在 Windows 原生证据，Windows 专属分析维度（登录、执行、持久化、设备活动）无法开展。",
+              "全部 5 个文件均为导出件或节选件，无银行/平台原始凭证、无签章、无流水号，完整性与真实性无法在本卷宗内验证。",
+              "无事件日志、注册表、Prefetch、Amcache、Shellbags、浏览器或输入法历史，无法交叉验证设备与转账行为的关联。",
+              "文件时间戳与内容时间线相互矛盾（mtime 1740787200 早于内容事件 2025-04-10，CREATED 1790893917 晚于 mtime），文件时间元数据不可用于证明行为时点。",
+              "转账记录未标注账户主体身份，聊天导出未含成员账号 ID，刘志强与账户/卡片的身份归属属推断而非直接证据。",
+              "'先锋-教练'为群昵称，无实名、无联系方式、无设备或 IP 关联，无法据此认定身份或责任。",
+              "无下游 10 名收款人侧的任何记录，无法认定其知情或共犯地位。",
+              "95,000 元归集后的下游去向无记录；卡片分配表第 10 项'备用卡 20000'无对应转账，资金链路存在未采集或未落地部分。",
+              "'项目分红'为付款方单方自填备注，卷内无任何上游交易、合同、对价或项目实体信息，无法据此认定资金性质。",
+              "卷内无任何转账截图，'转完把截图发群里'的履行情况无法确认。",
+              "无既有二次分析或既有主张可对照，本结论为首次分析结果，尚未经复核流程验证。"
+            ],
+            "warnings": [
+              "本结果严格区分了'可确立'与'不可确立'：现有记录可支撑'化整为零、多卡分散、规避同一银行、指定主卡归集'的客观行为认定及'持有人知悉并执行该处置指令'的认知认定，但不足以支撑'资金系违法犯罪所得'或'持有人明知该性质'的定性；后者须以外围证据补强。",
+              "不得将'分红'备注等同于任何特定上游犯罪，也不得将指令中的中性表述（资金、大头、金卡）推定为对违法性质的明知；卷内全程未出现'赃款''涉案''跑分''赌资''套现''洗钱'等指向性词汇。",
+              "不得以文件 mtime/ctime 或 CREATED 事件时间戳作为行为发生时间的证据。",
+              "不得将 README 中'用于操作汇款结算账户的笔记本电脑'当作证据事实，其为说明性陈述。",
+              "不得基于本卷宗认定下游收款人或上游指令人的法律责任，二者均缺乏直接证据。",
+              "本卷宗属中段证据（操作留痕），上游来源与下游去向两端均无证据支撑，任何超出本范围的结论均属越界推断。"
+            ]
+          }
+        }
+      ],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "REQUIRED_QUESTION_OPEN",
+          "REQUIRED_QUESTION_OPEN"
+        ],
+        "completion_mode": null
+      },
+      "evidence_world_proof": {
+        "substrate_id": "sub-gen4-layered-dispersion",
+        "sealed_image_hash": "847dd6ed16d829161a40989fbc520c65a7d103e0fbb811f6f2e15ab6d2116a91",
+        "actual_image_hash": "847dd6ed16d829161a40989fbc520c65a7d103e0fbb811f6f2e15ab6d2116a91",
+        "sealed_world_digest": "82145b5cfb682925025aa767c21c97a6fb3d7907f580fc0dc7780bb5ac9500fa",
+        "reference_fresh_full_digest": "82145b5cfb682925025aa767c21c97a6fb3d7907f580fc0dc7780bb5ac9500fa",
+        "run_full_digest": "7c18c6d3ea4d2f626b413c984da850951b6519a38ebc21fffddbff009cc5c68f",
+        "run_full_digest_note": "includes the transient extracted_files listing, which working hydration legitimately materializes into; world identity is the parsed digest below",
+        "parsed_world_digest_run": "3240589619bbcda5667d19830fc07e3cc25c60380308093b0d4fd4c0a78845cd",
+        "parsed_world_digest_reference": "3240589619bbcda5667d19830fc07e3cc25c60380308093b0d4fd4c0a78845cd",
+        "evidence_keys_match_sealed": true,
+        "indexed_paths_match_sealed": true,
+        "match": true,
+        "hydration": {
+          "hydrated_evidence_count": 5,
+          "sealed_evidence_count": 5,
+          "all_matches_sealed": true,
+          "content_integrity_failures": 0,
+          "unavailable_reasons": {}
+        }
+      },
+      "run_manifest_id": "brun:7b01a021bb5150cbcad71c81",
+      "result_hash": "7e299bc8c21cd04335cd4af0b0075a8321f8a10864a0e2bd003dbe71678ab091",
+      "snapshot_hash": "36c39040686050fa9cc0a09b70d6c7772201128d9cab5b23072dd37a63aa7a2e",
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "hard_gate_recompute_violations": [],
+      "evaluate_only_reproduced": true,
+      "case_outcome_v2": {
+        "outcome": "success",
+        "rationale": "all components satisfied",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "satisfied",
+            "detail": "integrated_delegations=3 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "1/1 discovered"
+          },
+          {
+            "component": "coverage:benign-transfer-discrimination",
+            "status": "satisfied",
+            "detail": "terminal=covered"
+          },
+          {
+            "component": "coverage:inflow-dispersion-pattern",
+            "status": "satisfied",
+            "detail": "terminal=covered"
+          },
+          {
+            "component": "coverage:source-and-intent-boundary",
+            "status": "satisfied",
+            "detail": "terminal=covered"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "satisfied",
+            "detail": "terminal=3 answered-terminals=3 unresolved-terminals=0; truth expects answered=3 unresolved=0 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "delegations_completed": 3,
+      "delegations_failed": 0,
+      "integrated": 3,
+      "coverage_terminalization": {
+        "inflow-dispersion-pattern": "covered",
+        "benign-transfer-discrimination": "covered",
+        "source-and-intent-boundary": "covered"
+      },
+      "question_terminalization": {
+        "q-1": "answered",
+        "q-2": "answered",
+        "q-3": "answered",
+        "q-b8a7b659": "open",
+        "q-117a8f27": "open",
+        "q-ff1494e7": "open",
+        "q-7d1d9cc5": "open",
+        "q-06c22a47": "open",
+        "q-a12b73d5": "open"
+      },
+      "tokens_in": 143250,
+      "tokens_out": 18974,
+      "wall_s": 240.772
+    },
+    {
+      "case_id": "gen4-layered-dispersion",
+      "repeat": "repeat2",
+      "status": "completed",
+      "rejection_codes": [
+        "agent_output_invalid"
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [
+        {
+          "seq": 44,
+          "delegation_id": "del_b49219f162ef49789490d67749deb60e",
+          "failure_code": "agent_output_invalid",
+          "message": ""
+        }
+      ],
+      "completions": [
+        {
+          "seq": 28,
+          "delegation_id": "del_216f8de4df234371bc9fe2b9f852db10",
+          "evidence_snapshots_admitted": 3,
+          "specialist_proposal_contract": {
+            "proposal_hash": "7ed952890680061f22a722288ed8b982fc3ddfa0c8902d765b7f68f8ed3c01b4",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "56ea3fe52c731c3b1fad939657480bb1392bc1f8e7a7e6e680265be6eb52e644"
+          },
+          "result_semantic_payload": {
+            "summary": "依据 /bank/transfer-records.csv 的转账流水,2025-04-10 09:02:11 该账户收到一笔流入 200,000.00 元(对方 6222****4171 王建国,备注\"项目分红\")。随后在当日 09:11:05 至 09:28:31 的约 17 分钟内,发生 9 笔分散转出,合计 176,850.00 元,分别转入 9 个不同对象账户(6217****8834 李梅、6217****9926 张强、6228****0045 赵春花、6217****3312 孙德胜、6228****7741 钱多、6217****5560 吴爱华、6222****8813 郑小龙、6217****0029 冯玉、6228****6674 蒋成才),单笔金额区间为 19,200.00–19,950.00 元,全部低于 2 万元,备注均为\"周转\"。其后于当日 10:05:12 发生一笔大额转出 95,000.00 元至 6222****7788(何军),备注\"归集\"。当日该账户转出合计 271,850.00 元(9 笔分散 176,850 + 1 笔归集 95,000)。次日的 2025-04-11 14:30 转出 4,500.00 元(王秀兰,4月房租)属另一日期,不计入当日转出。",
+            "evidence_refs": [
+              "file:/bank/transfer-records.csv",
+              "file:/chat/group-instructions.txt",
+              "file:/notes/card-worksheet.txt"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c-01-inflow",
+                "text": "2025-04-10 09:02:11 该账户流入 200,000.00 元,对方账户 6222****4171(王建国),备注为'项目分红'。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-02-dispersed-count",
+                "text": "流入后当日共发生 9 笔分散转出,合计 176,850.00 元,备注均为'周转'。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-03-counterparties",
+                "text": "9 笔分散转出分别指向 9 个互不相同的对象账户/姓名:6217****8834 李梅、6217****9926 张强、6228****0045 赵春花、6217****3312 孙德胜、6228****7741 钱多、6217****5560 吴爱华、6222****8813 郑小龙、6217****0029 冯玉、6228****6674 蒋成才。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-04-range",
+                "text": "9 笔分散转出的单笔金额区间为 19,200.00 元至 19,950.00 元,均低于 20,000 元。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-05-timespan",
+                "text": "9 笔分散转出的时间跨度为 2025-04-10 09:11:05 至 09:28:31,约 17 分 26 秒;距 09:02:11 的流入首笔转出间隔约 8 分 54 秒。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-06-large-out",
+                "text": "分散转出之后,2025-04-10 10:05:12 发生一笔大额转出 95,000.00 元至 6222****7788(何军),备注为'归集'。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-07-day-total",
+                "text": "2025-04-10 当日该账户转出合计 271,850.00 元(9 笔分散 176,850.00 + 1 笔归集 95,000.00),高于当日流入的 200,000.00 元。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-08-next-day-excluded",
+                "text": "2025-04-11 14:30:00 的 4,500.00 元转出(6222****1190 王秀兰,4月房租)属次日交易,不属于 04-10 当日转出。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e-01",
+                "raw_value": "6222****4171",
+                "normalized_candidate": "6222****4171",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-02",
+                "raw_value": "王建国",
+                "normalized_candidate": "王建国",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e-03",
+                "raw_value": "6217****8834",
+                "normalized_candidate": "6217****8834",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-04",
+                "raw_value": "李梅",
+                "normalized_candidate": "李梅",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e-05",
+                "raw_value": "6217****9926",
+                "normalized_candidate": "6217****9926",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-06",
+                "raw_value": "张强",
+                "normalized_candidate": "张强",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e-07",
+                "raw_value": "6228****0045",
+                "normalized_candidate": "6228****0045",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-08",
+                "raw_value": "赵春花",
+                "normalized_candidate": "赵春花",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e-09",
+                "raw_value": "6217****3312",
+                "normalized_candidate": "6217****3312",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-10",
+                "raw_value": "孙德胜",
+                "normalized_candidate": "孙德胜",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e-11",
+                "raw_value": "6228****7741",
+                "normalized_candidate": "6228****7741",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-12",
+                "raw_value": "钱多",
+                "normalized_candidate": "钱多",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e-13",
+                "raw_value": "6217****5560",
+                "normalized_candidate": "6217****5560",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-14",
+                "raw_value": "吴爱华",
+                "normalized_candidate": "吴爱华",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e-15",
+                "raw_value": "6222****8813",
+                "normalized_candidate": "6222****8813",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-16",
+                "raw_value": "郑小龙",
+                "normalized_candidate": "郑小龙",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e-17",
+                "raw_value": "6217****0029",
+                "normalized_candidate": "6217****0029",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-18",
+                "raw_value": "冯玉",
+                "normalized_candidate": "冯玉",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e-19",
+                "raw_value": "6228****6674",
+                "normalized_candidate": "6228****6674",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-20",
+                "raw_value": "蒋成才",
+                "normalized_candidate": "蒋成才",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e-21",
+                "raw_value": "6222****7788",
+                "normalized_candidate": "6222****7788",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-22",
+                "raw_value": "何军",
+                "normalized_candidate": "何军",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e-23",
+                "raw_value": "6222****1190",
+                "normalized_candidate": "6222****1190",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e-24",
+                "raw_value": "王秀兰",
+                "normalized_candidate": "王秀兰",
+                "entity_type_candidate": "person"
+              }
+            ],
+            "limitations": [
+              "本任务 source_scopes 为空、platforms 未识别为 windows;实际可用证据为镜像内的文件,不含 Windows 注册表/事件日志等系统证据,故无法提供账户登录、执行痕迹或持久化层面的佐证。",
+              "转账流水文件未记录转出账户(本账户)自身账号,仅记录对方账户且为掩码(****),无法确认本账户身份或完整卡号。",
+              "无法从流水判断各笔转出是否成功到账、是否被退回,亦无余额字段,故当日转出合计 271,850.00 元大于流入 200,000.00 元,差额来源(账户原有余额)无法核实。",
+              "卡片分配表列出的第 10 张'备用卡 20000'在 04-10 流水中无对应转出记录,备用卡是否使用无法确认。",
+              "流水仅覆盖 2025-04-10 至 2025-04-11,04-10 之后是否还有归集/转出不可知。"
+            ],
+            "warnings": [
+              "问题指定 source scope 'windows',但任务元数据 platforms 为空、source_scopes 为空;本次结论完全基于镜像内 /bank/transfer-records.csv 文件内容。",
+              "聊天记录与卡片分配表为辅助材料,已单独标注,事实描述以转账流水为准。"
+            ]
+          }
+        },
+        {
+          "seq": 43,
+          "delegation_id": "del_72ef9b6f8aae4888a3794ab25aa6e2b3",
+          "evidence_snapshots_admitted": 2,
+          "specialist_proposal_contract": {
+            "proposal_hash": "9e4ac322ddddc5fde24df00a2ba28ea86ac0d4f60382e23b04c06ec943009099",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "5be4d45e61b4ad0d7b14370cd4114f05ae16b706c828e883039ca1e4fc5df52f"
+          },
+          "result_semantic_payload": {
+            "summary": "流水中唯一与\"分散转出\"操作模式在记录特征上不同的转出是 2025-04-10 10:05:12 付何军(6222****7788)95,000.00 元、备注\"归集\"这一笔。其余 10 笔转出(09:11:05–09:28:31,收款人李梅/张强/赵春花/孙德胜/钱多/吴爱华/郑小龙/冯玉/蒋成才等,金额 19,200–19,950 元,备注均为\"周转\")构成同一模式:小额(每笔低于 2 万)、笔数多(10 笔)、收款人分散、银行 BIN 混用(6217**** 与 6228****)、时间间隔 1–3 分钟,与群聊指令\"资金立即分散转出,每笔控制在 2 万以内,卡越多越好\"\"不要用同一个银行\"完全对应。异常笔在四个记录特征上同时偏离:金额 95,000 元(约为模式内单笔的 5 倍,远超 2 万上限)、单笔大额而非分散、备注为\"归集\"而非\"周转\"、时间上位于分散批次结束后约 37 分钟(10:05:12,对应群聊 10:12 的指令),且收款银行 BIN 为 6222****(与当日 09:02:11 转入 200,000 元\"项目分红\"的账户 6222****4171 同 BIN)。其用途的记录依据有两处:一是 /chat/group-instructions.txt 中 2025-04-10 10:12 先锋-教练的指令\"剩余大头的部分等通知,统一归集到金卡\";二是 /notes/card-worksheet.txt 卡片分配表末行\"金卡(何军): 归集主卡,只进不出\",直接指明何军账户为归集主卡。两笔记录相互印证,指向该笔 95,000 元为将剩余资金集中归集至金卡主卡的用途,而非小额分散转出。",
+            "evidence_refs": [
+              "file:/bank/transfer-records.csv",
+              "file:/chat/group-instructions.txt",
+              "file:/notes/card-worksheet.txt",
+              "file:/docs/rental-agreement.txt",
+              "file:/README.txt"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c1",
+                "text": "2025-04-10 09:11:05 至 09:28:31 共有 10 笔 OUT 转出,金额区间 19,200–19,950 元,备注全部为\"周转\",收款银行 BIN 混用 6217**** 与 6228****,时间间隔 1–3 分钟,构成同一\"小额分散转出\"操作模式。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv",
+                  "file:/chat/group-instructions.txt",
+                  "file:/notes/card-worksheet.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c2",
+                "text": "2025-04-10 10:05:12 付何军(6222****7788)95,000.00 元、备注\"归集\"这笔转出,在金额、笔数结构、备注文本、时间位置、银行 BIN 五个记录特征上均与上述分散转出模式不同,是流水中唯一的一笔异常转出。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv",
+                  "file:/notes/card-worksheet.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c3",
+                "text": "该笔 95,000 元转出的用途记录依据为:/chat/group-instructions.txt 中 2025-04-10 10:12 先锋-教练的指令\"剩余大头的部分等通知,统一归集到金卡\",以及 /notes/card-worksheet.txt 卡片分配表末行\"金卡(何军): 归集主卡,只进不出\"。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/chat/group-instructions.txt",
+                  "file:/notes/card-worksheet.txt",
+                  "file:/bank/transfer-records.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c4",
+                "text": "该笔转出的用途是将分散转出后剩余的较大金额资金集中归集至何军名下的金卡主卡,而非小额分散转出;群聊 10:12 指令与 10:05:12 实际发生时间存在约 7 分钟的时间先后不一致,提示指令文本可能为事后追记或时间戳记录不精确。",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/chat/group-instructions.txt",
+                  "file:/bank/transfer-records.csv",
+                  "file:/notes/card-worksheet.txt"
+                ],
+                "limitations": [
+                  "群聊消息时间戳 10:12 晚于交易时间 10:05:12,存在约 7 分钟的时间顺序矛盾,无法仅凭现有记录确定指令与执行的真实先后关系"
+                ]
+              },
+              {
+                "candidate_id": "c5",
+                "text": "2025-04-11 14:30:00 付王秀兰(6222****1190)4,500.00 元、备注\"4月房租\"这笔转出,与分散转出模式不同,但其用途有独立的记录依据 /docs/rental-agreement.txt(月租金 4,500 元,每月 11 日前支付,承租方刘志强,出租方王秀兰),属于正常生活开支,且卡片分配表明确注明\"房租另算,不动这张表的钱\"。",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/bank/transfer-records.csv",
+                  "file:/docs/rental-agreement.txt",
+                  "file:/notes/card-worksheet.txt"
+                ],
+                "limitations": [
+                  "该笔虽在记录特征上同样偏离分散转出模式,但存在明确的独立用途记录,不属于异常转出;若问题所指\"上述操作模式\"包含分散转出与归集两类,则本笔不构成异常"
+                ]
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e1",
+                "raw_value": "6222****7788",
+                "normalized_candidate": "6222****7788",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e2",
+                "raw_value": "何军",
+                "normalized_candidate": "何军",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e3",
+                "raw_value": "金卡(何军): 归集主卡,只进不出",
+                "normalized_candidate": "金卡主卡-何军",
+                "entity_type_candidate": "account_role"
+              },
+              {
+                "candidate_id": "e4",
+                "raw_value": "先锋-教练",
+                "normalized_candidate": "先锋-教练",
+                "entity_type_candidate": "person_alias"
+              },
+              {
+                "candidate_id": "e5",
+                "raw_value": "刘志强",
+                "normalized_candidate": "刘志强",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e6",
+                "raw_value": "6222****4171",
+                "normalized_candidate": "6222****4171",
+                "entity_type_candidate": "bank_account"
+              },
+              {
+                "candidate_id": "e7",
+                "raw_value": "王建国",
+                "normalized_candidate": "王建国",
+                "entity_type_candidate": "person"
+              },
+              {
+                "candidate_id": "e8",
+                "raw_value": "王秀兰",
+                "normalized_candidate": "王秀兰",
+                "entity_type_candidate": "person"
+              }
+            ],
+            "limitations": [
+              "任务元数据 platforms 与 source_scopes 均为空,未注册 windows 平台场景,无法执行 windows.specialist 使命中要求的账户使用、执行痕迹、持久化、设备活动与文件活动取证分析。",
+              "可用证据仅为 5 个文档文件,无任何 Windows 原生取证数据(注册表、事件日志、Prefetch、Amcache、Shellbags 等),无法交叉验证文档中所述操作是否实际发生。",
+              "时间线仅含文件级 MODIFIED/CREATED 事件且集中在两个时间戳,无逐文件访问记录,无法重建操作时序或定位操作者身份。",
+              "所有文件 mtime/ctime 均为 1740787200(2025-03-01),与流水中 2025-04-10 的交易日期不一致,文件时间戳不可用于时序分析。",
+              "群聊 10:12 归集指令时间戳晚于 10:05:12 实际交易时间约 7 分钟,存在时间顺序矛盾,无法仅凭现有记录确定指令与执行的真实先后关系。",
+              "bank/transfer-records.csv 中无 find_related_evidence 关联结果,文件与集群之间无读取门面,关联分析依赖人工比对。",
+              "流水仅覆盖 2025-04-10 至 2025-04-11,无法确认归集后资金最终流向或金卡账户的后续状态。",
+              "卡片分配表中列出的备用卡(20000)在流水中无对应转出记录,其实际使用情况无法确认。"
+            ],
+            "warnings": [
+              "问题所问\"上述操作模式\"在本次委派中未附带前序分析上下文,基准模式的界定由本次分析独立重建;若前序分析将\"分散转出\"与\"归集\"均视为同一操作模式,则异常笔的判定结论可能不同。",
+              "2025-04-11 14:30:00 付王秀兰 4,500 元(4月房租)这笔在记录特征上同样偏离分散转出模式,但存在独立且明确的用途记录(租赁合同),不构成异常;已在 claim_candidates 中单独说明以避免误判。",
+              "群聊与卡片分配表均为单方制作文档,无独立第三方记录佐证,用途认定依赖文档内部一致性而非外部验证。"
+            ]
+          }
+        }
+      ],
+      "finalization_event": {
+        "event": "finalization_completed",
+        "violation_codes": [],
+        "completion_mode": "complete_with_limitations"
+      },
+      "evidence_world_proof": {
+        "substrate_id": "sub-gen4-layered-dispersion",
+        "sealed_image_hash": "847dd6ed16d829161a40989fbc520c65a7d103e0fbb811f6f2e15ab6d2116a91",
+        "actual_image_hash": "847dd6ed16d829161a40989fbc520c65a7d103e0fbb811f6f2e15ab6d2116a91",
+        "sealed_world_digest": "82145b5cfb682925025aa767c21c97a6fb3d7907f580fc0dc7780bb5ac9500fa",
+        "reference_fresh_full_digest": "82145b5cfb682925025aa767c21c97a6fb3d7907f580fc0dc7780bb5ac9500fa",
+        "run_full_digest": "7c18c6d3ea4d2f626b413c984da850951b6519a38ebc21fffddbff009cc5c68f",
+        "run_full_digest_note": "includes the transient extracted_files listing, which working hydration legitimately materializes into; world identity is the parsed digest below",
+        "parsed_world_digest_run": "3240589619bbcda5667d19830fc07e3cc25c60380308093b0d4fd4c0a78845cd",
+        "parsed_world_digest_reference": "3240589619bbcda5667d19830fc07e3cc25c60380308093b0d4fd4c0a78845cd",
+        "evidence_keys_match_sealed": true,
+        "indexed_paths_match_sealed": true,
+        "match": true,
+        "hydration": {
+          "hydrated_evidence_count": 5,
+          "sealed_evidence_count": 5,
+          "all_matches_sealed": true,
+          "content_integrity_failures": 0,
+          "unavailable_reasons": {}
+        }
+      },
+      "run_manifest_id": "brun:261244ce24d2745d9fa22bbd",
+      "result_hash": "de65ac8262f8cd9dd727e87fa56e624fce881b884af27edb5f8a2382ac8375f1",
+      "snapshot_hash": "1212f0e8a2e9aea4d0556b66a3d82a41666e132f0746180156b7ab1ffc0fa883",
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "hard_gate_violations": [],
+      "hard_gate_recompute_violations": [],
+      "evaluate_only_reproduced": true,
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "terminal=partial; terminal=partial; terminal=partial",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "satisfied",
+            "detail": "integrated_delegations=2 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "1/1 discovered"
+          },
+          {
+            "component": "coverage:benign-transfer-discrimination",
+            "status": "failed",
+            "detail": "terminal=partial"
+          },
+          {
+            "component": "coverage:inflow-dispersion-pattern",
+            "status": "failed",
+            "detail": "terminal=partial"
+          },
+          {
+            "component": "coverage:source-and-intent-boundary",
+            "status": "failed",
+            "detail": "terminal=partial"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "satisfied",
+            "detail": "terminal=3 answered-terminals=3 unresolved-terminals=0; truth expects answered=3 unresolved=0 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "delegations_completed": 2,
+      "delegations_failed": 1,
+      "integrated": 2,
+      "coverage_terminalization": {
+        "inflow-dispersion-pattern": "partial",
+        "benign-transfer-discrimination": "partial",
+        "source-and-intent-boundary": "partial"
+      },
+      "question_terminalization": {
+        "q-1": "answered",
+        "q-2": "answered",
+        "q-3": "answered"
+      },
+      "tokens_in": 116318,
+      "tokens_out": 16474,
+      "wall_s": 190.104
+    }
+  ],
+  "evaluate_only_reproduction": {
+    "per_run": [
+      {
+        "case_id": "gen4-departure-staging",
+        "repeat": "repeat0",
+        "reproduced": true
+      },
+      {
+        "case_id": "gen4-departure-staging",
+        "repeat": "repeat1",
+        "reproduced": true
+      },
+      {
+        "case_id": "gen4-departure-staging",
+        "repeat": "repeat2",
+        "reproduced": true
+      },
+      {
+        "case_id": "gen4-layered-dispersion",
+        "repeat": "repeat0",
+        "reproduced": true
+      },
+      {
+        "case_id": "gen4-layered-dispersion",
+        "repeat": "repeat1",
+        "reproduced": true
+      },
+      {
+        "case_id": "gen4-layered-dispersion",
+        "repeat": "repeat2",
+        "reproduced": true
+      }
+    ],
+    "all_reproduced": true
+  },
+  "six_axes": {
+    "structural": {
+      "verdict": "PASS",
+      "hard_gate_violations": [],
+      "evidence_world_and_content_integrity": [],
+      "note": "zero tolerance: cross-task leak, fabricated evidence, graph-id-as-evidence, review-authority bypass, verification bypass, finalization-blocker bypass, evidence/content integrity"
+    },
+    "functional": {
+      "verdict": "FAIL",
+      "metric": "BenchmarkCaseOutcomeV2 (sole truth authority, §11)",
+      "floor": "EVERY family >= 2/3 at {success, success_with_limitations}; no cross-family compensation",
+      "families": {
+        "gen4-departure-staging": {
+          "per_repetition": [
+            {
+              "repeat": "repeat0",
+              "outcome": "incomplete",
+              "qualifies": false
+            },
+            {
+              "repeat": "repeat1",
+              "outcome": "incomplete",
+              "qualifies": false
+            },
+            {
+              "repeat": "repeat2",
+              "outcome": "incomplete",
+              "qualifies": false
+            }
+          ],
+          "qualifying_count": 0,
+          "scheduled_reps": 3,
+          "floor_met": false
+        },
+        "gen4-layered-dispersion": {
+          "per_repetition": [
+            {
+              "repeat": "repeat0",
+              "outcome": "incomplete",
+              "qualifies": false
+            },
+            {
+              "repeat": "repeat1",
+              "outcome": "success",
+              "qualifies": true
+            },
+            {
+              "repeat": "repeat2",
+              "outcome": "incomplete",
+              "qualifies": false
+            }
+          ],
+          "qualifying_count": 1,
+          "scheduled_reps": 3,
+          "floor_met": false
+        }
+      },
+      "reporting_metrics_not_gates": {
+        "runs_with_integrated_delegation": 6,
+        "finalization_pass": 5
+      }
+    },
+    "semantic": {
+      "verdict": "PASS",
+      "semantic_component_failures": [],
+      "evaluate_only_all_reproduced": true,
+      "note": "grounding/assertion-strength/question/coverage/limitation semantics computed by the frozen evaluator only; rubric untouched after seal"
+    },
+    "negative_case": {
+      "verdict": "PASS",
+      "negative_gate_failures": [],
+      "gate_classes": [
+        "unsupported entity attribution",
+        "unsupported causality",
+        "fabricated factual support",
+        "Analyst Context treated as Evidence"
+      ]
+    },
+    "reliability": {
+      "verdict": "PASS",
+      "population": 6,
+      "supervisor_plan_failure_runs": 0,
+      "supervisor_integrate_failure_runs": 0,
+      "specialist_structured_output_failure_runs": 2,
+      "thresholds_frozen": {
+        "supervisor_plan_structured_output_failure_rate_max": 0.2,
+        "supervisor_integrate_structured_output_failure_rate_max": 0.2,
+        "specialist_structured_output_failure_rate_max": 0.5
+      }
+    },
+    "availability": {
+      "verdict": "PASS",
+      "provider_terminal_runs": 0,
+      "population": 6,
+      "fraction": 0.0,
+      "threshold_frozen": 0.2
+    }
+  },
+  "diagnosis": {
+    "P_identity_events": 0,
+    "H_handle_events": 0,
+    "S_semantic_events": 0,
+    "G_grounding_events": 0,
+    "rejection_code_distribution": {
+      "agent_output_invalid": 2
+    }
+  },
+  "cost": {
+    "tokens_in_total": 749393,
+    "tokens_out_total": 102488,
+    "wall_s_median": 195.9545
+  },
+  "input_hash": "bfc783acb6415aa60fc723058093c95f65dd595989ed208e434b578fdec2117e"
+}

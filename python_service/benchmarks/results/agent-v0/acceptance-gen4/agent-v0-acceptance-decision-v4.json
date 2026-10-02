@@ -1,0 +1,43 @@
+{
+  "artifact_version": "AgentV0AcceptanceDecisionV4",
+  "generation_id": "acceptance-generation-4",
+  "created_at": "2026-10-02T04:25:52+00:00",
+  "overall_verdict": "REJECTED",
+  "verdict_rule": "spec §27: ACCEPTED only if ALL SIX axes PASS; any acceptance-axis FAIL -> REJECTED; measurement defect -> B6_INVALID",
+  "six_axes": {
+    "structural": "PASS",
+    "functional": "FAIL",
+    "semantic": "PASS",
+    "negative_case": "PASS",
+    "reliability": "PASS",
+    "availability": "PASS"
+  },
+  "scope_limitation": "ACCEPTED (if so) is strictly limited to: RuntimeBaselineV3 exact production runtime (incl. superseding record), evidence-content-hydration:v1, sensenova-6.8-flash-lite exact frozen config, AcceptanceProfileV2, Acceptance Generation 4",
+  "runtime_identity": {
+    "git_head_at_preflight": "253cfac62274fc5d0876ef1686639903e3aebac5",
+    "frozen_inputs_input_hash": "89c015ed06a6e2e570f4c5a6455fda65093b443dd776b34e2b34bdfb3b46dd29",
+    "superseding_record": "runtime-baseline-v3-superseding-record.json"
+  },
+  "model_identity": {
+    "provider": "sensenova-cloud",
+    "model_id": "sensenova-6.8-flash-lite",
+    "model_config_sha256": "a980cafab34bb2c76dfec47edf2604c112a1d7211402ae18cb1760f7e253d8dd"
+  },
+  "frozen_input_hashes": {
+    "acceptance_profile_sha256": "c40f1adcad816e433f7edfc6cbc0b56dc32c031bf1fcb31528523ffa62f0e98d",
+    "calibration_binding_sha256": "4c0235eaa80b8450cc879ebb568aa6c8bafc233c1a6683ad3897323e72cc3823",
+    "generation_binding_sha256": "8d2e3162febd1fa3ee70358b6043037ff1b25ffdfc29a6b5670e25f5ed9d2ad7",
+    "seal_hash": "1c0f685e7a3f4e4079b0a0ca22c72e3ae9e4d276c9937a53b8fdecda3e7906ed",
+    "run_set_hash": "533a88d2e8c9565ca79b332890e184d571adf78282f51673655aecfe23096f2a",
+    "preflight_input_hash": "be9d5a940439045158157e3ca0c9534dbb8a0f7c295c7949495e73c071f079e9"
+  },
+  "population": {
+    "families": [
+      "gen4-departure-staging",
+      "gen4-layered-dispersion"
+    ],
+    "repetitions_per_family": 3,
+    "scheduled_runs": 6
+  },
+  "no_retry": true
+}

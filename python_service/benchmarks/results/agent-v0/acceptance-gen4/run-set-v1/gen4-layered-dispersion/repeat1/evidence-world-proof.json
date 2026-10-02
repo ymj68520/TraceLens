@@ -1,0 +1,21 @@
+{
+ "substrate_id": "sub-gen4-layered-dispersion",
+ "sealed_image_hash": "847dd6ed16d829161a40989fbc520c65a7d103e0fbb811f6f2e15ab6d2116a91",
+ "actual_image_hash": "847dd6ed16d829161a40989fbc520c65a7d103e0fbb811f6f2e15ab6d2116a91",
+ "sealed_world_digest": "82145b5cfb682925025aa767c21c97a6fb3d7907f580fc0dc7780bb5ac9500fa",
+ "reference_fresh_full_digest": "82145b5cfb682925025aa767c21c97a6fb3d7907f580fc0dc7780bb5ac9500fa",
+ "run_full_digest": "7c18c6d3ea4d2f626b413c984da850951b6519a38ebc21fffddbff009cc5c68f",
+ "run_full_digest_note": "includes the transient extracted_files listing, which working hydration legitimately materializes into; world identity is the parsed digest below",
+ "parsed_world_digest_run": "3240589619bbcda5667d19830fc07e3cc25c60380308093b0d4fd4c0a78845cd",
+ "parsed_world_digest_reference": "3240589619bbcda5667d19830fc07e3cc25c60380308093b0d4fd4c0a78845cd",
+ "evidence_keys_match_sealed": true,
+ "indexed_paths_match_sealed": true,
+ "match": true,
+ "hydration": {
+  "hydrated_evidence_count": 5,
+  "sealed_evidence_count": 5,
+  "all_matches_sealed": true,
+  "content_integrity_failures": 0,
+  "unavailable_reasons": {}
+ }
+}

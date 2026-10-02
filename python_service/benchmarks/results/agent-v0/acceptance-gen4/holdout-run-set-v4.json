@@ -1,0 +1,72 @@
+{
+  "artifact_version": "HoldoutRunSetV4",
+  "generation_id": "acceptance-generation-4",
+  "created_at": "2026-10-02T04:25:45+00:00",
+  "seal_hash": "1c0f685e7a3f4e4079b0a0ca22c72e3ae9e4d276c9937a53b8fdecda3e7906ed",
+  "population": {
+    "families": [
+      "gen4-departure-staging",
+      "gen4-layered-dispersion"
+    ],
+    "repetitions_per_family": 3,
+    "scheduled_runs": 6
+  },
+  "no_replacement": true,
+  "attempts": [
+    {
+      "case_id": "gen4-departure-staging",
+      "repeat": "repeat0",
+      "status": "completed",
+      "run_manifest_id": "brun:ba5327cd5fe33e8d904b4afa",
+      "result_hash": "db79779effb1703ae159592c9ba1241da6106473ea5e295ee4d02fde9471b8bf",
+      "world_proof_match": true,
+      "hydrated_evidence_count": 6
+    },
+    {
+      "case_id": "gen4-departure-staging",
+      "repeat": "repeat1",
+      "status": "completed",
+      "run_manifest_id": "brun:1e183262ad14aa14510d4148",
+      "result_hash": "13f1fa7077a4fc38ccdc1dd6177a84e5e47e68044cdb705289af246a82aeba0b",
+      "world_proof_match": true,
+      "hydrated_evidence_count": 6
+    },
+    {
+      "case_id": "gen4-departure-staging",
+      "repeat": "repeat2",
+      "status": "completed",
+      "run_manifest_id": "brun:fb68fbb4503ca0a646750ed4",
+      "result_hash": "62d47200322eeb6a984552424dfb606025b12b83200a030a3a12d907c78e8117",
+      "world_proof_match": true,
+      "hydrated_evidence_count": 6
+    },
+    {
+      "case_id": "gen4-layered-dispersion",
+      "repeat": "repeat0",
+      "status": "completed",
+      "run_manifest_id": "brun:48792ec205a89b650bfd7703",
+      "result_hash": "e4cbeebd22a8c93374ce080a296403fe75bd2b80d4ed177d62875473b8829479",
+      "world_proof_match": true,
+      "hydrated_evidence_count": 5
+    },
+    {
+      "case_id": "gen4-layered-dispersion",
+      "repeat": "repeat1",
+      "status": "completed",
+      "run_manifest_id": "brun:7b01a021bb5150cbcad71c81",
+      "result_hash": "7e299bc8c21cd04335cd4af0b0075a8321f8a10864a0e2bd003dbe71678ab091",
+      "world_proof_match": true,
+      "hydrated_evidence_count": 5
+    },
+    {
+      "case_id": "gen4-layered-dispersion",
+      "repeat": "repeat2",
+      "status": "completed",
+      "run_manifest_id": "brun:261244ce24d2745d9fa22bbd",
+      "result_hash": "de65ac8262f8cd9dd727e87fa56e624fce881b884af27edb5f8a2382ac8375f1",
+      "world_proof_match": true,
+      "hydrated_evidence_count": 5
+    }
+  ],
+  "run_set_hash": "533a88d2e8c9565ca79b332890e184d571adf78282f51673655aecfe23096f2a"
+}

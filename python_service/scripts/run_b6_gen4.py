@@ -404,11 +404,23 @@ def freeze_run_set(seal) -> dict:
                     encoding="utf-8"
                 )
             )
-            hydration = json.loads(
-                (out_dir / "hydration-audit.json").read_text(
-                    encoding="utf-8"
+            hydration_file = out_dir / "hydration-audit.json"
+            if hydration_file.exists():
+                hydration = json.loads(
+                    hydration_file.read_text(encoding="utf-8")
                 )
-            )
+            else:
+                # recovered attempts carry the hydration audit inside
+                # the world proof (driver-incident recovery path)
+                hydration = {
+                    "hydrated_evidence_count": proof["hydration"][
+                        "hydrated_evidence_count"
+                    ],
+                    "items": [],
+                    "content_integrity_failures": proof["hydration"][
+                        "content_integrity_failures"
+                    ],
+                }
             entries.append({
                 "case_id": case_id,
                 "repeat": f"repeat{repeat}",
@@ -864,7 +876,7 @@ def main(argv=None) -> int:
                     image_path.read_bytes()
                 ).hexdigest(),
                 "sealed_world_digest": seal.evidence_world_digests[case_id],
-                "reference_fresh_full_digest": sealed_digest,
+                "reference_fresh_full_digest": seal.evidence_world_digests[case_id],
                 "run_full_digest": world["digest"],
                 "run_full_digest_note": (
                     "includes the transient extracted_files listing, "
