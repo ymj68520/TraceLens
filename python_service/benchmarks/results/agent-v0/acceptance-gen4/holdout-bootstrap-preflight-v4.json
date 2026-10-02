@@ -1,0 +1,65 @@
+{
+  "artifact_version": "HoldoutBootstrapPreflightV4",
+  "generation_id": "acceptance-generation-4",
+  "created_at": "2026-10-02T03:44:49+00:00",
+  "zero_model_calls": true,
+  "seal_hash": "1c0f685e7a3f4e4079b0a0ca22c72e3ae9e4d276c9937a53b8fdecda3e7906ed",
+  "frozen_inputs_ref": "gen4-b6-frozen-inputs-v1.json",
+  "frozen_inputs_input_hash": "89c015ed06a6e2e570f4c5a6455fda65093b443dd776b34e2b34bdfb3b46dd29",
+  "cases": [
+    {
+      "case_id": "gen4-departure-staging",
+      "case_family": "bulk_staging_discrimination",
+      "substrate_id": "sub-gen4-departure-staging",
+      "image_sha256": "302435a5d9512cc2415f3ba81ee413ee6551539f375fdfb34cc468b42affcf8c",
+      "checks": {
+        "sealed_public_case_loads": true,
+        "truth_public_isolation": true,
+        "bootstrap_association_verbatim": true,
+        "attention_deterministic_folded": true,
+        "evidence_world_digest_match_x2": true,
+        "hydration_gate_provisioned": true,
+        "hydration_all_resolved": true,
+        "hydration_content_available_explicit": true,
+        "hydration_sha256_equals_sealed": true
+      },
+      "provisioning": {
+        "digests": [
+          "42b5ffbb52cb4ab7b81f9df14f817db88b9f4dfea47a131d40b080edcc16b9a1",
+          "42b5ffbb52cb4ab7b81f9df14f817db88b9f4dfea47a131d40b080edcc16b9a1"
+        ],
+        "violations": []
+      },
+      "ok": true
+    },
+    {
+      "case_id": "gen4-layered-dispersion",
+      "case_family": "fund_flow_layering",
+      "substrate_id": "sub-gen4-layered-dispersion",
+      "image_sha256": "847dd6ed16d829161a40989fbc520c65a7d103e0fbb811f6f2e15ab6d2116a91",
+      "checks": {
+        "sealed_public_case_loads": true,
+        "truth_public_isolation": true,
+        "bootstrap_association_verbatim": true,
+        "attention_deterministic_folded": true,
+        "evidence_world_digest_match_x2": true,
+        "hydration_gate_provisioned": true,
+        "hydration_all_resolved": true,
+        "hydration_content_available_explicit": true,
+        "hydration_sha256_equals_sealed": true
+      },
+      "provisioning": {
+        "digests": [
+          "82145b5cfb682925025aa767c21c97a6fb3d7907f580fc0dc7780bb5ac9500fa",
+          "82145b5cfb682925025aa767c21c97a6fb3d7907f580fc0dc7780bb5ac9500fa"
+        ],
+        "violations": []
+      },
+      "ok": true
+    }
+  ],
+  "execution_gate_passed": true,
+  "failures": [],
+  "all_passed": true,
+  "input_hash": "be9d5a940439045158157e3ca0c9534dbb8a0f7c295c7949495e73c071f079e9"
+}
