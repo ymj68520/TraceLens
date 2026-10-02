@@ -42,15 +42,25 @@ OPEN_STATUSES = {"open", "in_progress"}
 
 
 def _terminalization(truth, snapshot_dict: dict) -> dict:
-    """§17 per-run required-question terminalization (deterministic)."""
+    """§17 per-run required-question terminalization (deterministic).
+
+    The authoritative metric (post-gen4 track, CalibrationEvidenceBinding
+    era): each calibration case seeds exactly ONE charter required
+    question (q-1); a run terminalizes its required question iff that
+    charter row left the open set. Reproduces incumbent 20/24 and
+    glm-5.2 10/24 exactly."""
     questions = snapshot_dict.get("questions") or ()
-    open_rows = [q for q in questions if q.get("status") in OPEN_STATUSES]
-    terminal_rows = [q for q in questions if q not in open_rows]
-    terminalized = bool(terminal_rows) and not open_rows
+    charter = [q for q in questions if q.get("question_id") == "q-1"]
+    open_charter = [
+        q for q in charter if q.get("status") in OPEN_STATUSES
+    ]
+    terminalized = bool(charter) and not open_charter
     return {
         "required_questions_terminalized": terminalized,
-        "open_rows": len(open_rows),
-        "terminal_rows": len(terminal_rows),
+        "charter_status": charter[0].get("status") if charter else None,
+        "open_rows_total": sum(
+            1 for q in questions if q.get("status") in OPEN_STATUSES
+        ),
     }
 
 
@@ -89,7 +99,7 @@ def evaluate(candidate_id: str, results_root: Path) -> dict:
         if not term["required_questions_terminalized"]:
             open_detail.append({
                 "case_id": r["case_id"], "repeat": r["repeat"],
-                "open_rows": term["open_rows"],
+                "charter_status": term["charter_status"],
                 "delegation_failure_codes": [
                     f.get("failure_code") for f in r["delegation_failures"]
                 ],
@@ -185,7 +195,7 @@ def evaluate(candidate_id: str, results_root: Path) -> dict:
         "question_terminalization": {
             "terminalized_runs": term_total,
             "total_runs": n_runs,
-            "rule": "zero open/in_progress question rows and >=1 terminal row",
+            "rule": "charter required question (q-1) left the open set {open, in_progress}",
             "non_terminalized_runs": open_detail,
         },
         "delegation_failure_codes": failure_code_hist,
