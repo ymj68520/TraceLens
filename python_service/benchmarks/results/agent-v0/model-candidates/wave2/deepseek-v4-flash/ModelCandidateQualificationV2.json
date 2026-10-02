@@ -1,0 +1,30 @@
+{
+  "artifact_version": "ModelCandidateQualificationV2",
+  "wave": 2,
+  "candidate_id": "deepseek-v4-flash",
+  "stage": "8x1_screening",
+  "results_root": "benchmarks/results/agent-v0/model-candidates/wave2/deepseek-v4-flash/qual-8x1",
+  "runs": 8,
+  "structural_hard_gates": "8/8 clean",
+  "case_outcomes": {
+    "incomplete": 8
+  },
+  "delegation_failures": {
+    "delegation_failures_by_code": {
+      "agent_rate_limited": 3
+    },
+    "quota_delegation_failures": 3,
+    "total_delegation_failures": 3
+  },
+  "specialist_schema_output_failures": 0,
+  "specialist_structured_output_failures_incl_quota": 3,
+  "specialist_failure_rate": 0.0,
+  "supervisor_PLAN_failures": 0,
+  "supervisor_INTEGRATE_failures": 0,
+  "grounding_rejection_codes": {},
+  "provider_failures": 0,
+  "disposition": "PROVIDER_QUOTA_BLOCKED",
+  "reason": "8x1 quota-starved (majority delegation failures {'agent_rate_limited': 3}); semantic qualification NOT ESTABLISHED — re-enter in a clear window (§7/§28)",
+  "frozen_axes_untouched": "runtime/prompt/policy/ToolRegistry/AcceptanceProfile unchanged; holdouts untouched (§1/§31)",
+  "created_at": "2026-10-02T06:47:20+00:00"
+}

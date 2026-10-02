@@ -1,0 +1,167 @@
+{
+  "report_version": "b2-runtime-v3-glm52-measurement-report:v1",
+  "created_at": "2026-10-02T06:47:18+00:00",
+  "binding": {
+    "runtime_baseline": "AgentV0RuntimeBaselineV3",
+    "content_hydration_contract": "evidence-content-hydration:v1",
+    "candidate": "glm-5.2 (AgentV0ModelConfigurationV2 promotion candidate)",
+    "model_provider": "sensenova-cloud",
+    "model_id": "glm-5.2",
+    "configuration_id": "bconf-b2-runtime-v3-glm52",
+    "corpus_id": "corpus-agent-v0-calibration",
+    "corpus_hash": "25c216e85acc32f22c5231924730956c24de6a04cc2c4f7173483c9b557916c4",
+    "qualification_record": "benchmarks/results/agent-v0/requalification/runtime-v3/model-runtime-qualification-v3.json (QUALIFIED_FOR_B2)"
+  },
+  "series": {
+    "expected_runs": 24,
+    "recorded_runs": 8,
+    "completed": 0,
+    "gates_all_pass": true,
+    "evaluate_only": "built into --cleanup-tasks (snapshot-verified before delete)"
+  },
+  "hydration_statistics": {
+    "RunsWithHydration": 1,
+    "HydratedEvidenceCount": 3,
+    "LocatorHitCount": 0,
+    "LazyReacquireCount": 3,
+    "HydrationUnavailableCount": 0,
+    "HydrationUnavailableReasons": {},
+    "HydrationIntegrityFailureCount": 0,
+    "CONTENT_NOT_PERSISTED_LEGACY_expectation": {
+      "expected": 0,
+      "observed": 0,
+      "note": "freshly provisioned tasks; nonzero would be wiring defect (§20)"
+    },
+    "by_case": {
+      "t1-fraud-script-usb": {
+        "attempted": 0,
+        "success": 0,
+        "reacquire": 0,
+        "locator_hit": 0
+      },
+      "t2-cross-source-correlation": {
+        "attempted": 0,
+        "success": 0,
+        "reacquire": 0,
+        "locator_hit": 0
+      },
+      "t2-identity-trap": {
+        "attempted": 0,
+        "success": 0,
+        "reacquire": 0,
+        "locator_hit": 0
+      },
+      "t2-misleading-note": {
+        "attempted": 3,
+        "success": 3,
+        "reacquire": 3,
+        "locator_hit": 0
+      },
+      "t2-no-evidence": {
+        "attempted": 0,
+        "success": 0,
+        "reacquire": 0,
+        "locator_hit": 0
+      },
+      "t2-report-citation": {
+        "attempted": 0,
+        "success": 0,
+        "reacquire": 0,
+        "locator_hit": 0
+      },
+      "t2-temporal-trap": {
+        "attempted": 0,
+        "success": 0,
+        "reacquire": 0,
+        "locator_hit": 0
+      },
+      "t2-verification-temptation": {
+        "attempted": 0,
+        "success": 0,
+        "reacquire": 0,
+        "locator_hit": 0
+      }
+    },
+    "first_hydration_latency_seconds_max": 0
+  },
+  "semantic_metrics": {
+    "case_outcome_v2_counts": {
+      "incomplete": 8
+    },
+    "RunsWithCompletedSpecialistResult": 0,
+    "RunsWithIntegratedDelegation_finalization_completed": 0,
+    "FinalizationPass": 0,
+    "question_terminalization_coverage": "per-component statuses recorded per run"
+  },
+  "negative_cases": {
+    "expectations": {
+      "t2-identity-trap": "identity false merge = 0",
+      "t2-temporal-trap": "unsupported causality = 0",
+      "t2-no-evidence": "fabricated support = 0",
+      "t2-misleading-note": "Analyst Note treated as Evidence = 0"
+    },
+    "per_run_overclaim_failures": {
+      "t1-fraud-script-usb": [
+        false
+      ],
+      "t2-cross-source-correlation": [
+        false
+      ],
+      "t2-identity-trap": [
+        false
+      ],
+      "t2-misleading-note": [
+        false
+      ],
+      "t2-no-evidence": [
+        false
+      ],
+      "t2-report-citation": [
+        false
+      ],
+      "t2-temporal-trap": [
+        false
+      ],
+      "t2-verification-temptation": [
+        false
+      ]
+    },
+    "note": "identity/temporal/no-evidence/misleading-note gates are enforced by the CaseOutcomeV2 components; overclaim-channel failures are surfaced in components"
+  },
+  "output_reliability": {
+    "specialist_structured_output_failures": 3,
+    "supervisor_PLAN_failures": 0,
+    "supervisor_INTEGRATE_failures": 0,
+    "provider_failures": 0,
+    "timeout_failures": 0,
+    "five_xx_failures": 0
+  },
+  "rejection_codes": {
+    "None:PLAN_DUPLICATE_DELEGATION": 2
+  },
+  "content_vs_metadata": {
+    "note": "§24: integrated conclusions in hydrated runs cite file evidence served through the durable store; provenance lists per run below (diagnosis use only — citations remain (task_id, evidence_key))",
+    "runs_with_hydrated_integrated_content": []
+  },
+  "citation_identity": "(task_id, evidence_key) unchanged; content blob hashes are storage identifiers only (§25)",
+  "snapshot_expansion_check": {
+    "payload_markers_found": 0,
+    "expectation": 0,
+    "note": "EvidenceSnapshot remains Investigation provenance anchor (§26)"
+  },
+  "cost_latency": {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "requests": 0,
+    "wall_ms_total": 66293,
+    "content_store_first_hydration_latency_seconds_max": 0,
+    "note": "content store latency is local-disk bounded (~0.02-0.1s observed); LLM latency dominates wall time"
+  },
+  "storage_telemetry": {
+    "hydrated_blobs": 3,
+    "total_content_bytes_stored": 762,
+    "dedup_savings": "within-task same-hash blobs shared (hash-addressed); savings not separately metered this round",
+    "lazy_reacquisition_count": 3
+  },
+  "measurement_verdict": "INFRA_BLOCKED"
+}
