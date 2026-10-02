@@ -1,0 +1,59 @@
+{
+  "artifact_version": "PostStartDriverMutationAuditV1",
+  "generation_id": "acceptance-generation-4",
+  "created_at": "2026-10-02T04:42:41+00:00",
+  "window": {
+    "b6_started_at": "2026-10-02T03:47:14+00:00",
+    "run_set_freeze_at": "2026-10-02T04:25:45+00:00",
+    "commits_in_window": [
+      "70e1d954",
+      "595cf251"
+    ]
+  },
+  "changes": [
+    {
+      "id": "CH-1",
+      "when": "between attempt 1 crash and commit 70e1d954",
+      "file": "scripts/run_b6_gen4.py",
+      "change": "_hydration_audit switched from attribute access to dict access for manifest entries (the crash: driver proof generation died on dict-vs-attr AFTER full artifact persistence); dead line removed; --recover-proof / --freeze-only modes added; proof dict restructured to parsed-digest identity + reference provision",
+      "touches_execution": [
+        "_provision_fresh_task_gen4",
+        "_run_one_gen4",
+        "seed lambda",
+        "model config load"
+      ],
+      "classification": "PROOF_ONLY + ARTIFACT_RECOVERY_ONLY",
+      "execution_functions_identical_70e1d954_vs_HEAD": true
+    },
+    {
+      "id": "CH-2",
+      "when": "between commit 70e1d954 and commit 595cf251",
+      "file": "scripts/run_b6_gen4.py",
+      "change": "stale sealed_digest reference in the proof dict fixed to seal.evidence_world_digests[case_id] (second post-persist proof-layer crash); freeze_run_set hydration fallback to the world-proof's hydration block for recovered attempts",
+      "touches_execution": [
+        "_provision_fresh_task_gen4",
+        "_run_one_gen4",
+        "seed lambda",
+        "model config load"
+      ],
+      "classification": "PROOF_ONLY + ARTIFACT_RECOVERY_ONLY",
+      "execution_functions_identical_across_window": true
+    }
+  ],
+  "invariants": {
+    "PublicHoldoutCase_input_unchanged": true,
+    "Evidence_substrate_unchanged": true,
+    "Working_State_bootstrap_unchanged": true,
+    "Agent_runtime_invocation_unchanged": true,
+    "model_config_unchanged": true,
+    "prompt_unchanged": true,
+    "retry_budget_unchanged": true,
+    "tool_results_unchanged": true,
+    "run_inclusion_unchanged": true,
+    "evaluator_unchanged": true,
+    "seal_hash_stable_across_window": true
+  },
+  "scope_note": "attempt 1 ran an uncommitted driver whose execution functions (_provision_fresh_task_gen4, _run_one_gen4) are byte-identical in the 70e1d954 commit and at HEAD — the post-crash edits were confined to proof/recovery code, as disclosed in holdout-execution-manifest-v4.driver_incidents",
+  "audit_result": "PASS",
+  "consequence": "AgentV0AcceptanceDecisionV4 = REJECTED remains authoritative"
+}

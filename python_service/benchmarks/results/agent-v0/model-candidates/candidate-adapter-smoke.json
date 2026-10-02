@@ -1,0 +1,80 @@
+{
+  "artifact_version": "CandidateAdapterSmokeV1",
+  "candidates": {
+    "deepseek-v4.1-flash": {
+      "exception": {
+        "pass": false,
+        "error": "ModelHTTPError: status_code: 403, model_name: deepseek-v4.1-flash, body: {'message': 'model is not available in the current token plan', 'type': 'permission_denied_error', 'code': '7'}"
+      },
+      "all_pass": false
+    },
+    "deepseek-v4-pro": {
+      "exception": {
+        "pass": false,
+        "error": "ModelHTTPError: status_code: 429, model_name: deepseek-v4-pro, body: {'message': 'inference exceeds tpm/rpm limit', 'type': 'rate_limit_error', 'code': 'RateLimitExceeded.EndpointRPMExceeded'}"
+      },
+      "all_pass": false
+    },
+    "deepseek-v4-flash": {
+      "basic_completion": {
+        "pass": true,
+        "latency_s": 2.3
+      },
+      "usage_metadata": {
+        "pass": true,
+        "usage": "RunUsage(details={'reasoning_tokens': 0}, input_tokens=12, output_tokens=2, requests=1)"
+      },
+      "structured_output": {
+        "pass": true,
+        "confidence": "medium"
+      },
+      "tool_calls": {
+        "pass": true,
+        "calls": [
+          "canary"
+        ]
+      },
+      "all_pass": true
+    },
+    "kimi-k3": {
+      "exception": {
+        "pass": false,
+        "error": "ModelHTTPError: status_code: 400, model_name: kimi-k3, body: {'message': 'field Temperature invalid, only 1 is allowed for this model', 'type': 'invalid_request_error', 'param': 'temperature', 'code': '3'}"
+      },
+      "all_pass": false
+    },
+    "glm-5.2": {
+      "basic_completion": {
+        "pass": true,
+        "latency_s": 0.7
+      },
+      "usage_metadata": {
+        "pass": true,
+        "usage": "RunUsage(details={'reasoning_tokens': 0}, input_tokens=14, output_tokens=2, requests=1)"
+      },
+      "structured_output": {
+        "pass": true,
+        "confidence": "high"
+      },
+      "exception": {
+        "pass": false,
+        "error": "ModelHTTPError: status_code: 429, model_name: glm-5.2, body: {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}"
+      },
+      "all_pass": false
+    },
+    "sensenova-u1.5-lite": {
+      "exception": {
+        "pass": false,
+        "error": "ModelHTTPError: status_code: 404, model_name: sensenova-u1.5-lite, body: {'message': 'model is not found', 'type': 'not_found_error', 'code': '5'}"
+      },
+      "all_pass": false
+    },
+    "sensenova-u1-fast": {
+      "exception": {
+        "pass": false,
+        "error": "ModelHTTPError: status_code: 404, model_name: sensenova-u1-fast, body: {'message': 'model is not found', 'type': 'not_found_error', 'code': '5'}"
+      },
+      "all_pass": false
+    }
+  }
+}

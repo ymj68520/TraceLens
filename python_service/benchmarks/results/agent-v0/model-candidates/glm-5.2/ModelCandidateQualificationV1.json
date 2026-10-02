@@ -1,0 +1,35 @@
+{
+  "artifact_version": "ModelCandidateQualificationV1",
+  "candidate_id": "glm-5.2",
+  "created_at": "2026-10-02T00:00:00+00:00",
+  "adapter_smoke": "6/6 PASS after one transient-429 re-run of the tool step (candidate-adapter-smoke.json + re-smoke record)",
+  "qualification_8x1": {
+    "results_root": "benchmarks/results/agent-v0/model-candidates/glm-5.2/qual-8x1",
+    "runs": 8,
+    "structural_hard_gates": "8/8 clean",
+    "content_hydration": "8/8 runs exercised; content gate PASS; 0 integrity failures",
+    "cases_with_finalization_and_integrated_delegation": "7/8",
+    "case_outcomes": {
+      "success": ["t2-misleading-note", "t2-report-citation", "t2-temporal-trap"],
+      "incomplete": ["t1-fraud-script-usb", "t2-cross-source-correlation", "t2-identity-trap", "t2-no-evidence", "t2-verification-temptation"]
+    },
+    "question_terminalization": "6/8 required questions terminalized with valid dispositions, including not_supported on BOTH negative-trap families (misleading-note, temporal-trap); t2-no-evidence honestly deferred (in_progress/inconclusive); the single open question is the one run with a delegation failure",
+    "output_reliability": {
+      "supervisor_plan_failures": 0,
+      "supervisor_integrate_failures": 0,
+      "specialist_structured_output_failures": 0,
+      "delegation_failures": 1,
+      "rejection_codes": "none"
+    },
+    "provider": "no quota events across 8 runs",
+    "comparison_baseline": {
+      "incumbent": "sensenova-6.8-flash-lite (same 8x1, RuntimeBaselineV3)",
+      "incumbent_finalization_completed": "5/8",
+      "incumbent_case_successes": 1,
+      "incumbent_specialist_output_failures": 2,
+      "incumbent_not_supported_dispositions": 0
+    }
+  },
+  "disposition": "QUALIFIED",
+  "promotion": "AgentV0ModelConfigurationV2 + 8x3 calibration + CalibrationEvidenceBindingV4 (spec §22); no holdout creation"
+}

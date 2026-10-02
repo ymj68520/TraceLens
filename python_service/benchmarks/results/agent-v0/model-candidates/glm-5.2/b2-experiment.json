@@ -1,0 +1,20 @@
+{
+  "experiment_id": "bexp-agent-v0-glm-5.2",
+  "code_commit": "edde7eb20387c7df1aee8898fa83dc574f1761b1",
+  "production_runtime_commit": "edde7eb20387c7df1aee8898fa83dc574f1761b1",
+  "pre_calibration_profile_hash": "6dd38a0e0f68704fb881e7e1f78031d58dc54368b6188826a3262660d86b218c",
+  "runtime_baseline_file": "benchmarks/profiles/precalibration-runtime-baseline.v1.json",
+  "model_config_file": "benchmarks/results/agent-v0/model-candidates/glm-5.2.model-config.json",
+  "corpus_id": "corpus-agent-v0-calibration",
+  "corpus_hash": "25c216e85acc32f22c5231924730956c24de6a04cc2c4f7173483c9b557916c4",
+  "repeat_policy": "3 fresh repeats per calibration case (Flash-class model; expand to 5 only on high variance)",
+  "cache_policy": "cold",
+  "graph_mode": "none",
+  "report_mode": "disabled",
+  "started_at": "2026-10-02T05:16:07+00:00",
+  "fresh_task_ids": {
+    "t1-fraud-script-usb": {
+      "repeat0": "73d97a1f-096b-41d0-b23b-9ac2feb9531e"
+    }
+  }
+}
