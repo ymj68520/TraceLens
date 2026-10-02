@@ -18,5 +18,11 @@
     "benchmarks/results/agent-v0/model-candidates/glm-5.2/ModelCandidateQualificationV1.json (QUALIFIED, 8x1)",
     "8x3 calibration b2-runtime-v3-glm52 -> CalibrationEvidenceBindingV4 (in progress)"
   ],
-  "invariants": "same RuntimeBaselineV3, tools, prompts, budgets, evaluator as the incumbent measurements; ONLY the model identity axis changed"
+  "invariants": "same RuntimeBaselineV3, tools, prompts, budgets, evaluator as the incumbent measurements; ONLY the model identity axis changed",
+  "status": "NOT_PROMOTED",
+  "promotion_halted": {
+    "reason": "candidate glm-5.2 failed the 8x3: specialist structured-output failures 14/24 = 58.3% exceed the frozen 0.5 collapse ceiling; question terminalization 10/24 vs incumbent 20/24; case successes 1/24 vs incumbent 4/24",
+    "evidence": "benchmarks/results/agent-v0/b2-runtime-v3-glm52/b2-runtime-v3-glm52-measurement-report.json (MEASUREMENT_VALID)",
+    "incumbent_retained": "sensenova-6.8-flash-lite remains the measured best configuration (Runtime-compatible, calibration-qualified, formal acceptance REJECTED)"
+  }
 }

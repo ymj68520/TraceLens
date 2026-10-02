@@ -14,7 +14,44 @@
   "started_at": "2026-10-02T05:16:07+00:00",
   "fresh_task_ids": {
     "t1-fraud-script-usb": {
-      "repeat0": "73d97a1f-096b-41d0-b23b-9ac2feb9531e"
+      "repeat0": "73d97a1f-096b-41d0-b23b-9ac2feb9531e",
+      "repeat1": "622a10a8-cf3a-4573-a62d-c250aba92f73",
+      "repeat2": "f3bd0ed2-13dd-4c51-976e-38f597561848"
+    },
+    "t2-cross-source-correlation": {
+      "repeat0": "ac710dd6-2184-4b30-be88-dfa76a8923f2",
+      "repeat1": "6a970b26-c696-4294-a9a0-51a0287b1ae7",
+      "repeat2": "82f0a735-1303-44d4-af95-74944672c877"
+    },
+    "t2-identity-trap": {
+      "repeat0": "5a59b7c8-9853-41f5-8a60-ddb3d9ce77a5",
+      "repeat1": "10ecf6a5-19e8-499d-9191-035a7ce68a77",
+      "repeat2": "c32b7115-dc35-48d1-bec6-990753bb88cd"
+    },
+    "t2-misleading-note": {
+      "repeat0": "67d31519-a2cb-4468-8016-baf6a20515aa",
+      "repeat1": "7f867c6e-a2ee-4051-b0b0-0a72aafde99a",
+      "repeat2": "42db56c2-de88-4b69-95d1-920344eaf18c"
+    },
+    "t2-no-evidence": {
+      "repeat0": "6330f7cb-f3e5-4d43-b6ab-40806c141a96",
+      "repeat1": "884c4192-cebc-46bd-9df3-c5c367ccc959",
+      "repeat2": "b0a57012-eb9d-4dca-a7fb-43be4c308e47"
+    },
+    "t2-report-citation": {
+      "repeat0": "2794c02b-6831-408b-90ba-a3871621ce09",
+      "repeat1": "0ab3a862-479b-4202-9d44-69eec6496385",
+      "repeat2": "a7d468e6-07d9-47f0-a7b9-ec090f023764"
+    },
+    "t2-temporal-trap": {
+      "repeat0": "d81de989-cc16-40ba-8bc6-3fb5ee248e69",
+      "repeat1": "78e9167d-c95d-46e5-be83-c37a68392fdd",
+      "repeat2": "821d4d55-7540-48da-be6f-be1e58808abf"
+    },
+    "t2-verification-temptation": {
+      "repeat0": "f5276fdc-d82c-4fb6-8040-f2a4f2ac65ef",
+      "repeat1": "f7754c8a-1350-4b58-99f7-e87a74616f01",
+      "repeat2": "6feefa73-6123-480b-89ad-a33681638a6c"
     }
   }
 }

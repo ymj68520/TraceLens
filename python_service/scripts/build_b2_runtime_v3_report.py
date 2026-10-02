@@ -38,7 +38,7 @@ from httpserver.services.benchmarks.truth_manifest import (  # noqa: E402
 CASES_ROOT = PYTHON_SERVICE_ROOT / "benchmarks" / "cases"
 REPORT_ROOT = (
     PYTHON_SERVICE_ROOT
-    / "benchmarks" / "results" / "agent-v0" / "b2-runtime-v3"
+    / "benchmarks" / "results" / "agent-v0" / "b2-runtime-v3-glm52"
 )
 QUAL_ROOT = (
     PYTHON_SERVICE_ROOT
@@ -260,14 +260,15 @@ def main() -> int:
     ]
 
     report = {
-        "report_version": "b2-runtime-v3-measurement-report:v1",
+        "report_version": "b2-runtime-v3-glm52-measurement-report:v1",
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime()),
         "binding": {
             "runtime_baseline": "AgentV0RuntimeBaselineV3",
             "content_hydration_contract": "evidence-content-hydration:v1",
+            "candidate": "glm-5.2 (AgentV0ModelConfigurationV2 promotion candidate)",
             "model_provider": "sensenova-cloud",
-            "model_id": "sensenova-6.8-flash-lite",
-            "configuration_id": "bconf-b2-runtime-v3",
+            "model_id": "glm-5.2",
+            "configuration_id": "bconf-b2-runtime-v3-glm52",
             "corpus_id": corpus["corpus_id"],
             "corpus_hash": corpus["input_hash"],
             "qualification_record": "benchmarks/results/agent-v0/requalification/runtime-v3/model-runtime-qualification-v3.json (QUALIFIED_FOR_B2)",
@@ -366,7 +367,7 @@ def main() -> int:
         },
         "measurement_verdict": verdict,
     }
-    out = root / "b2-runtime-v3-measurement-report.json"
+    out = root / "b2-runtime-v3-glm52-measurement-report.json"
     out.write_text(json.dumps(report, indent=2, ensure_ascii=False))
     print(json.dumps({
         "verdict": verdict,
