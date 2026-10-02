@@ -1,0 +1,13 @@
+{
+  "candidate_id": "kimi-k3",
+  "overrides": {
+    "llm_text_model": "kimi-k3",
+    "llm_text_temperature": 1,
+    "llm_thinking_mode": "disabled"
+  },
+  "compatibility_notes": "provider mandates temperature=1 only (wave-1 smoke 400 'field Temperature invalid, only 1 is allowed'); §5 provider-mandated parameter difference frozen as candidate-specific config BEFORE qualification",
+  "config_schema": "ModelQualificationConfigV1",
+  "provider": "sensenova-cloud",
+  "endpoint_base_url_class": "token.sensenova.cn (openai-compatible /v1/chat/completions)",
+  "created_at": "2026-10-02T00:00:00+00:00"
+}

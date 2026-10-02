@@ -1,0 +1,13 @@
+{
+  "candidate_id": "sensenova-u1-fast",
+  "overrides": {
+    "llm_text_model": "sensenova-u1-fast",
+    "llm_text_temperature": 0.7,
+    "llm_thinking_mode": "disabled"
+  },
+  "compatibility_notes": "wave-1 smoke 404 not deployed; still listed by /v1/models today — availability re-check",
+  "config_schema": "ModelQualificationConfigV1",
+  "provider": "sensenova-cloud",
+  "endpoint_base_url_class": "token.sensenova.cn (openai-compatible /v1/chat/completions)",
+  "created_at": "2026-10-02T00:00:00+00:00"
+}

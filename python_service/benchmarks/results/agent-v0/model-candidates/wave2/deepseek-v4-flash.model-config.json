@@ -1,0 +1,13 @@
+{
+  "candidate_id": "deepseek-v4-flash",
+  "overrides": {
+    "llm_text_model": "deepseek-v4-flash",
+    "llm_text_temperature": 0.7,
+    "llm_thinking_mode": "disabled"
+  },
+  "compatibility_notes": "wave-1 adapter smoke 6/6 PASS; wave-1 8x1 quota-starved (PROVIDER_QUOTA_BLOCKED, semantic qualification never established) — wave-2 re-entry per §28 re-entry rule, config identity unchanged from wave-1",
+  "config_schema": "ModelQualificationConfigV1",
+  "provider": "sensenova-cloud",
+  "endpoint_base_url_class": "token.sensenova.cn (openai-compatible /v1/chat/completions)",
+  "created_at": "2026-10-02T00:00:00+00:00"
+}

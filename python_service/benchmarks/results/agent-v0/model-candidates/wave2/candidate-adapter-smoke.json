@@ -1,0 +1,141 @@
+{
+  "artifact_version": "CandidateAdapterSmokeV2",
+  "wave": 2,
+  "spec": "§6 six admission checks + §7 provider failure classification",
+  "candidates": {
+    "kimi-k3": {
+      "candidate_id": "kimi-k3",
+      "frozen_config": {
+        "llm_text_model": "kimi-k3",
+        "llm_text_temperature": 1,
+        "llm_thinking_mode": "disabled"
+      },
+      "config_frozen_before_qualification": true,
+      "checks": {},
+      "exception": {
+        "pass": false,
+        "error": "ModelHTTPError: status_code: 429, model_name: kimi-k3, body: {'message': 'inference exceeds tpm/rpm limit', 'type': 'rate_limit_error', 'code': 'ModelAccountTpmRateLimitExceeded'}",
+        "classification": "PROVIDER_QUOTA_BLOCKED"
+      },
+      "all_pass": false
+    },
+    "deepseek-v4-flash": {
+      "candidate_id": "deepseek-v4-flash",
+      "frozen_config": {
+        "llm_text_model": "deepseek-v4-flash",
+        "llm_text_temperature": 0.7,
+        "llm_thinking_mode": "disabled"
+      },
+      "config_frozen_before_qualification": true,
+      "checks": {
+        "basic_completion": {
+          "pass": true,
+          "latency_s": 1.8
+        },
+        "model_identity": {
+          "pass": true,
+          "provider_reported_model": "deepseek-v4-flash",
+          "requested_model": "deepseek-v4-flash"
+        },
+        "usage_accounting": {
+          "pass": true,
+          "usage": "RunUsage(details={'reasoning_tokens': 0}, input_tokens=12, output_tokens=2, requests=1)"
+        },
+        "structured_output": {
+          "pass": true,
+          "confidence": "high"
+        },
+        "tool_call_no_args": {
+          "pass": true,
+          "calls": [
+            ""
+          ]
+        }
+      },
+      "exception": {
+        "pass": false,
+        "error": "ModelHTTPError: status_code: 429, model_name: deepseek-v4-flash, body: {'message': 'rpm exhausted', 'type': 'quota_exceeded_error', 'code': '8'}",
+        "classification": "PROVIDER_QUOTA_BLOCKED"
+      },
+      "all_pass": false
+    },
+    "deepseek-v4-pro": {
+      "candidate_id": "deepseek-v4-pro",
+      "frozen_config": {
+        "llm_text_model": "deepseek-v4-pro",
+        "llm_text_temperature": 0.7,
+        "llm_thinking_mode": "disabled"
+      },
+      "config_frozen_before_qualification": true,
+      "checks": {},
+      "exception": {
+        "pass": false,
+        "error": "ModelHTTPError: status_code: 429, model_name: deepseek-v4-pro, body: {'message': 'inference exceeds tpm/rpm limit', 'type': 'rate_limit_error', 'code': 'RateLimitExceeded.EndpointRPMExceeded'}",
+        "classification": "PROVIDER_QUOTA_BLOCKED"
+      },
+      "all_pass": false
+    },
+    "deepseek-flash": {
+      "candidate_id": "deepseek-flash",
+      "frozen_config": {
+        "llm_text_model": "deepseek-flash",
+        "llm_text_temperature": 0.7,
+        "llm_thinking_mode": "disabled"
+      },
+      "config_frozen_before_qualification": true,
+      "checks": {},
+      "exception": {
+        "pass": false,
+        "error": "ModelHTTPError: status_code: 429, model_name: deepseek-flash, body: {'message': 'inference exceeds tpm/rpm limit', 'type': 'rate_limit_error', 'code': 'RateLimitExceeded.EndpointTPMExceeded'}",
+        "classification": "PROVIDER_QUOTA_BLOCKED"
+      },
+      "all_pass": false
+    },
+    "sensenova-u1-fast": {
+      "candidate_id": "sensenova-u1-fast",
+      "frozen_config": {
+        "llm_text_model": "sensenova-u1-fast",
+        "llm_text_temperature": 0.7,
+        "llm_thinking_mode": "disabled"
+      },
+      "config_frozen_before_qualification": true,
+      "checks": {},
+      "exception": {
+        "pass": false,
+        "error": "ModelHTTPError: status_code: 404, model_name: sensenova-u1-fast, body: {'message': 'model is not found', 'type': 'not_found_error', 'code': '5'}",
+        "classification": "PROVIDER_MODEL_UNAVAILABLE"
+      },
+      "all_pass": false
+    },
+    "sensenova-u1.5-lite": {
+      "candidate_id": "sensenova-u1.5-lite",
+      "frozen_config": {
+        "llm_text_model": "sensenova-u1.5-lite",
+        "llm_text_temperature": 0.7,
+        "llm_thinking_mode": "disabled"
+      },
+      "config_frozen_before_qualification": true,
+      "checks": {},
+      "exception": {
+        "pass": false,
+        "error": "ModelHTTPError: status_code: 404, model_name: sensenova-u1.5-lite, body: {'message': 'model is not found', 'type': 'not_found_error', 'code': '5'}",
+        "classification": "PROVIDER_MODEL_UNAVAILABLE"
+      },
+      "all_pass": false
+    },
+    "deepseek-v4.1-flash": {
+      "candidate_id": "deepseek-v4.1-flash",
+      "frozen_config": {
+        "llm_text_model": "deepseek-v4.1-flash"
+      },
+      "config_frozen_before_qualification": false,
+      "checks": {},
+      "exception": {
+        "pass": false,
+        "error": "ModelHTTPError: status_code: 403, model_name: deepseek-v4.1-flash, body: {'message': 'model is not available in the current token plan', 'type': 'permission_denied_error', 'code': '7'}",
+        "classification": "PROVIDER_AUTH_BLOCKED"
+      },
+      "all_pass": false
+    }
+  }
+}
