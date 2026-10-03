@@ -32,6 +32,37 @@ PYDANTIC_AI_PINNED_VERSION = "2.30.0"
 
 _CHAT_COMPLETIONS_SUFFIX = "/chat/completions"
 
+# Add-provider track: an alternative OpenAI-compatible provider selected via
+# LLM_PROVIDER. OpenRouter needs no endpoint-path derivation (its base_url
+# already carries the /v1 segment) and keeps its credential in a
+# provider-scoped env var; everything else (profile, settings surface,
+# tool-based structured output) is byte-identical to the legacy path.
+OPENROUTER_PROVIDER = "openrouter"
+OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
+GENERIC_PROVIDER = "generic"
+
+
+def classify_provider_http_error(status_code: int | None, text: str = "") -> str:
+    """Map a provider HTTP failure to the §18 wave taxonomy.
+
+    Provider blocks are NEVER capability verdicts: none of these classes may
+    be recorded as a Specialist/Supervisor schema failure or a semantic
+    failure (frozen wave-2 invariant).
+    """
+    body = (text or "").lower()
+    if status_code in (401, 403):
+        return "PROVIDER_AUTH_BLOCKED"
+    if status_code == 404:
+        return "PROVIDER_MODEL_UNAVAILABLE"
+    if status_code == 429 or "rate_limit" in body or "quota" in body:
+        return "PROVIDER_QUOTA_BLOCKED"
+    if status_code is not None and 500 <= status_code <= 599:
+        return "PROVIDER_INFRA_FAILURE"
+    lowered = f"{status_code or ''} {body}"
+    if "timeout" in lowered or "timed out" in lowered:
+        return "PROVIDER_TIMEOUT"
+    return "PROVIDER_INFRA_FAILURE"
+
 
 class ModelAdapterError(Exception):
     """Raised when the TraceLens LLM configuration cannot drive PydanticAI."""
@@ -68,6 +99,7 @@ class ModelAdapterConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    provider: str = GENERIC_PROVIDER
     base_url: str
     model_name: str
     reasoning_effort: Optional[str] = None
@@ -92,8 +124,9 @@ class ModelAdapterConfig(BaseModel):
 
 def resolve_adapter_config(settings: Any) -> ModelAdapterConfig:
     """Project TraceLens ``Settings`` onto adapter inputs (single config source)."""
-    base_url = getattr(settings, "llm_text_base_url", None)
-    endpoint = getattr(settings, "llm_endpoint", None)
+    provider = (
+        getattr(settings, "llm_provider", "") or GENERIC_PROVIDER
+    ).strip().lower() or GENERIC_PROVIDER
     model_name = getattr(settings, "llm_text_model", None)
     # LLM_THINKING_MODE is a DeepSeek-shaped top-level ``thinking`` body
     # field. The PydanticAI chat path has no such field; the OpenAI-standard
@@ -103,8 +136,21 @@ def resolve_adapter_config(settings: Any) -> ModelAdapterConfig:
     # default) and raises nothing.
     thinking_mode = (getattr(settings, "llm_thinking_mode", "") or "").strip().lower()
     reasoning_effort: Optional[str] = "none" if thinking_mode == "disabled" else None
+    if provider == OPENROUTER_PROVIDER:
+        # OpenRouter contract: base_url already contains the /v1 segment; the
+        # legacy LLM_ENDPOINT path derivation does not apply.
+        base_url = (
+            getattr(settings, "openrouter_base_url", "")
+            or OPENROUTER_DEFAULT_BASE_URL
+        ).strip().rstrip("/")
+    else:
+        base_url = derive_openai_base_url(
+            getattr(settings, "llm_text_base_url", "") or "",
+            getattr(settings, "llm_endpoint", "") or "",
+        )
     return ModelAdapterConfig(
-        base_url=derive_openai_base_url(base_url or "", endpoint or ""),
+        provider=provider,
+        base_url=base_url,
         model_name=model_name,  # type: ignore[arg-type]
         reasoning_effort=reasoning_effort,
         timeout_seconds=getattr(settings, "llm_timeout_seconds", None),
@@ -144,10 +190,28 @@ def build_chat_model(settings: Any, *, model_name: Optional[str] = None) -> Open
         # reasoning_effort ("none"): reasoning off, temperature honored.
         model_settings["openai_reasoning_effort"] = config.reasoning_effort
 
-    # Mirror llm_service semantics: only send auth when a key exists. The
-    # OpenAI SDK requires a non-empty string, so local no-key deployments get
-    # the conventional "EMPTY" sentinel (never the real key's absence leak).
-    api_key = getattr(settings, "llm_api_key", "") or "EMPTY"
+    if config.provider == OPENROUTER_PROVIDER:
+        # Provider-scoped credential: OPENROUTER_API_KEY only; the legacy
+        # LLM_API_KEY is never consulted on this path (and vice versa). The
+        # optional attribution headers ride the per-request extra_headers
+        # extension point — no client construction surgery.
+        api_key = getattr(settings, "openrouter_api_key", "") or "EMPTY"
+        extra_headers = {
+            name: value
+            for name, value in (
+                ("HTTP-Referer", getattr(settings, "openrouter_http_referer", "")),
+                ("X-Title", getattr(settings, "openrouter_x_title", "")),
+            )
+            if value
+        }
+        if extra_headers:
+            model_settings["extra_headers"] = extra_headers
+    else:
+        # Mirror llm_service semantics: only send auth when a key exists. The
+        # OpenAI SDK requires a non-empty string, so local no-key deployments
+        # get the conventional "EMPTY" sentinel (never the real key's absence
+        # leak).
+        api_key = getattr(settings, "llm_api_key", "") or "EMPTY"
     provider = OpenAIProvider(base_url=config.base_url, api_key=api_key)
     return OpenAIChatModel(
         config.model_name,
@@ -158,10 +222,14 @@ def build_chat_model(settings: Any, *, model_name: Optional[str] = None) -> Open
 
 
 __all__ = [
+    "GENERIC_PROVIDER",
     "ModelAdapterConfig",
     "ModelAdapterError",
+    "OPENROUTER_DEFAULT_BASE_URL",
+    "OPENROUTER_PROVIDER",
     "PYDANTIC_AI_PINNED_VERSION",
     "build_chat_model",
+    "classify_provider_http_error",
     "derive_openai_base_url",
     "resolve_adapter_config",
 ]

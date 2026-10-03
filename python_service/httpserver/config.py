@@ -169,6 +169,33 @@ class Settings(BaseSettings):
     llm_endpoint: str = Field(default="/v1/chat/completions", alias="LLM_ENDPOINT")
     llm_api_key: str = Field(default="", alias="LLM_API_KEY")
 
+    # Provider selection (add-provider track): empty = legacy single-provider
+    # path (LLM_TEXT_BASE_URL + LLM_ENDPOINT + LLM_API_KEY). "openrouter"
+    # switches the chat adapter to the OpenRouter OpenAI-compatible endpoint;
+    # its credential lives ONLY in OPENROUTER_API_KEY (never in code or
+    # tracked files) and its base_url defaults to the frozen external
+    # contract. Selecting a provider changes nothing else in production
+    # semantics — same adapter, same profile, same settings surface.
+    llm_provider: str = Field(default="", alias="LLM_PROVIDER")
+
+    @field_validator("llm_provider", mode="before")
+    @classmethod
+    def normalize_llm_provider(cls, value: str) -> str:
+        provider = str(value or "").strip().lower()
+        if provider and provider != "openrouter":
+            raise ValueError(f"LLM_PROVIDER must be 'openrouter' or empty, got {value!r}")
+        return provider
+
+    openrouter_api_key: str = Field(default="", alias="OPENROUTER_API_KEY")
+    openrouter_base_url: str = Field(
+        default="https://openrouter.ai/api/v1", alias="OPENROUTER_BASE_URL"
+    )
+    # Optional OpenRouter attribution headers (not required to run); empty
+    # means "do not send". Never hardcode site values here.
+    openrouter_http_referer: str = Field(default="", alias="OPENROUTER_HTTP_REFERER")
+    openrouter_x_title: str = Field(default="", alias="OPENROUTER_X_TITLE")
+
+
     @field_validator("llm_endpoint", mode="before")
     @classmethod
     def normalize_llm_endpoint(cls, value: str) -> str:
