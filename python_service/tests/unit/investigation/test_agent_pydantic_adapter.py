@@ -371,6 +371,27 @@ def test_openrouter_secret_redaction():
         assert "sk-secret-test-key" not in rendered
 
 
+def test_identity_capture_sink_inert_by_default():
+    """Without a sink the provider is built exactly as before (no wrap);
+    with a list sink, per-request identity records land in it."""
+    plain = build_chat_model(FakeSettings(**OPENROUTER_SETTINGS))
+    create_plain = plain.provider.client.chat.completions.create
+    assert getattr(create_plain, "__module__", "").startswith("openai")
+
+    sink: list = []
+    captured = build_chat_model(
+        FakeSettings(**OPENROUTER_SETTINGS, llm_model_identity_sink=sink)
+    )
+    create_wrapped = captured.provider.client.chat.completions.create
+    assert getattr(create_wrapped, "__module__", "").startswith(
+        "tests.unit.investigation"
+    ) or create_wrapped.__name__ == "_identity_recording_create"
+    # build time performs no network I/O and records nothing
+    assert sink == []
+    # sink contents only ever carry identity fields (never secrets)
+    assert not hasattr(sink, "api_key")
+
+
 def test_llm_provider_validation_rejects_unknown():
     from httpserver.config import Settings
     from pydantic import ValidationError

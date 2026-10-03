@@ -212,7 +212,36 @@ def build_chat_model(settings: Any, *, model_name: Optional[str] = None) -> Open
         # get the conventional "EMPTY" sentinel (never the real key's absence
         # leak).
         api_key = getattr(settings, "llm_api_key", "") or "EMPTY"
-    provider = OpenAIProvider(base_url=config.base_url, api_key=api_key)
+
+    # Opt-in per-request routing-identity telemetry (§1 of the screening
+    # gate): when the caller supplies a list-like sink, every chat
+    # completion response's model identity is appended to it. Inert by
+    # default (None) — production behavior is byte-identical without it,
+    # and the wrapper never alters the response.
+    identity_sink = getattr(settings, "llm_model_identity_sink", None)
+    if identity_sink is not None:
+        from openai import AsyncOpenAI
+
+        client = AsyncOpenAI(base_url=config.base_url, api_key=api_key)
+        upstream_create = client.chat.completions.create
+        requested_model = config.model_name
+
+        async def _identity_recording_create(**kwargs):
+            response = await upstream_create(**kwargs)
+            try:
+                identity_sink.append({
+                    "requested_model": requested_model,
+                    "returned_model": getattr(response, "model", None),
+                    "upstream_provider": (getattr(response, "model_extra", None) or {}).get("provider"),
+                })
+            except Exception:  # telemetry is never request-fatal
+                pass
+            return response
+
+        client.chat.completions.create = _identity_recording_create
+        provider = OpenAIProvider(openai_client=client)
+    else:
+        provider = OpenAIProvider(base_url=config.base_url, api_key=api_key)
     return OpenAIChatModel(
         config.model_name,
         provider=provider,

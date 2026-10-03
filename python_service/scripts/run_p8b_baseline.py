@@ -1242,10 +1242,18 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     model_config = None
+    identity_sink: list = []
     if args.model_config:
         model_config = json.loads(
             Path(args.model_config).read_text(encoding="utf-8")
         )
+        # §1 routing-identity telemetry: every chat completion response's
+        # model identity is appended to this list by the adapter's opt-in
+        # capture hook; the per-run section below snapshots it to
+        # identity_telemetry.json. Telemetry only — never alters requests.
+        model_config.setdefault("overrides", {})[
+            "llm_model_identity_sink"
+        ] = identity_sink
     corpus_file = (
         Path(args.corpus) if args.corpus else CORPUS_FILE
     )
@@ -1339,6 +1347,7 @@ def main(argv=None) -> int:
                 encoding="utf-8",
             )
             try:
+                identity_sink.clear()
                 outcome = _run_one(
                     case_id,
                     tag,
@@ -1365,6 +1374,12 @@ def main(argv=None) -> int:
                 )
                 continue
             _persist(out_dir, outcome)
+            # §1 routing-identity telemetry: per-request requested/returned
+            # model identity for this run (screening-gate requirement).
+            out_dir.joinpath("identity_telemetry.json").write_text(
+                json.dumps(identity_sink, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
             # RuntimeBaselineV3 hydration telemetry (§10 of the
             # requalification directive): per-run snapshot of the durable
             # content store observability for this task.

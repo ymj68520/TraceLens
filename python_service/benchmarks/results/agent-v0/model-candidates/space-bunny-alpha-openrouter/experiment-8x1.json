@@ -1,0 +1,41 @@
+{
+  "experiment_id": "bexp-agent-v0-space-bunny-alpha@openrouter",
+  "code_commit": "7b07390f2139a176426fcaf506f53b8f30700c9d",
+  "production_runtime_commit": "7b07390f2139a176426fcaf506f53b8f30700c9d",
+  "pre_calibration_profile_hash": "6dd38a0e0f68704fb881e7e1f78031d58dc54368b6188826a3262660d86b218c",
+  "runtime_baseline_file": "benchmarks/profiles/precalibration-runtime-baseline.v1.json",
+  "model_config_file": "benchmarks/results/agent-v0/model-candidates/space-bunny-alpha-openrouter/model-config-8x1.json",
+  "corpus_id": "corpus-agent-v0-calibration",
+  "corpus_hash": "25c216e85acc32f22c5231924730956c24de6a04cc2c4f7173483c9b557916c4",
+  "repeat_policy": "3 fresh repeats per calibration case (Flash-class model; expand to 5 only on high variance)",
+  "cache_policy": "cold",
+  "graph_mode": "none",
+  "report_mode": "disabled",
+  "started_at": "2026-10-03T02:48:36+00:00",
+  "fresh_task_ids": {
+    "t1-fraud-script-usb": {
+      "repeat0": "3514f7ed-be36-47fd-b351-34d747387ba2"
+    },
+    "t2-cross-source-correlation": {
+      "repeat0": "a1955ca4-4243-40ce-a2b7-a1b8af65f7aa"
+    },
+    "t2-identity-trap": {
+      "repeat0": "f0ea9579-bcb6-40ff-98f9-c298a8e2d612"
+    },
+    "t2-misleading-note": {
+      "repeat0": "e89d7305-5e50-467e-a264-98f5f8976381"
+    },
+    "t2-no-evidence": {
+      "repeat0": "818e705a-d933-4fc4-945a-5fe91ca760ab"
+    },
+    "t2-report-citation": {
+      "repeat0": "c7c8e82e-470f-4f1e-ac16-48f65af9f8ba"
+    },
+    "t2-temporal-trap": {
+      "repeat0": "1cb758ab-e618-41fc-97b9-51e4704e34ca"
+    },
+    "t2-verification-temptation": {
+      "repeat0": "1bd49974-5dc5-41ac-a1d9-7c3afc6b22dd"
+    }
+  }
+}
