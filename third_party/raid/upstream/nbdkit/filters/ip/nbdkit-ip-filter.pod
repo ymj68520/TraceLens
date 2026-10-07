@@ -1,0 +1,362 @@
+=head1 NAME
+
+nbdkit-ip-filter - filter clients by IP address, process ID, user ID,
+group ID and more
+
+=head1 SYNOPSIS
+
+ nbdkit --filter=ip PLUGIN [allow=addr[,addr...]]
+                           [deny=addr[,addr...]]
+
+=head1 DESCRIPTION
+
+C<nbdkit-ip-filter> can allow or deny client connections by their IP
+address.
+
+Usually it is better to control this outside nbdkit, for example using
+TCP wrappers or a firewall, but this filter can be used if these are
+not available.
+
+=head1 EXAMPLES
+
+=head2 Filter by IP address
+
+ nbdkit --filter=ip [...] allow=loopback deny=all
+
+Allow clients to connect on the loopback (IPv4 or IPv6)
+address, deny all other clients.
+
+ nbdkit --filter=ip [...] deny=8.0.0.0/8
+
+Allow any client except connections from the IPv4 C<8.0.0.0/8>
+network.
+
+ nbdkit --filter=ip [...] allow=anyipv6 deny=all
+
+Allow IPv6 clients to connect from anywhere, deny all other sources.
+
+=head2 Filter by Unix domain socket peer
+
+ nbdkit -U $tmpdir/sock --filter=ip [...] allow=uid:`id -u` deny=all
+
+Only allow the current user (S<C<id -u>>) to connect over the socket.
+
+Layer extra security by creating the socket inside a temporary
+directory only accessible by the user.
+
+ nbdkit -U $tmpdir/sock --filter=ip [...] allow=gid:`id -g` deny=all
+
+Allow anyone in the same group as the current user to connect to the
+Unix domain socket.
+
+As in the previous example, layer extra security by creating the
+socket inside a temporary directory only accessible by the group.
+
+=head1 RULES
+
+When a client connects, this filter checks its source address against
+the allow and deny lists as follows:
+
+=over 4
+
+=item 1
+
+If the address matches any in the allow list, permission is granted.
+
+=item 2
+
+If the address matches any in the deny list, permission is denied.
+
+=item 3
+
+Otherwise permission is granted.
+
+=back
+
+If either the C<allow> or C<deny> parameter is not present then it is
+assumed to be an empty list.  The order in which the parameters appear
+on the command line does not matter; the allow list is always
+processed first and the deny list second.
+
+The C<allow> and C<deny> parameters each contain a comma-separated
+list of any of the following:
+
+=over 4
+
+=item B<all>
+
+=item B<any>
+
+These keywords (which both have the same meaning) match any source.
+
+=item B<allipv4>
+
+=item B<anyipv4>
+
+These keywords match any IPv4 address.
+
+=item B<allipv6>
+
+=item B<anyipv6>
+
+These keywords match any IPv6 address.
+
+=item B<allunix>
+
+=item B<anyunix>
+
+These keywords match any connection over a Unix domain socket.
+
+=item B<allvsock>
+
+=item B<anyvsock>
+
+These keywords match any connection over an C<AF_VSOCK> socket.
+
+=item B<loopback>
+
+(nbdkit E<ge> 1.48)
+
+Any loopback address, both IPv4 or IPv6.
+
+=item B<loopbackipv4>
+
+=item B<loopbackv4>
+
+=item B<loopback4>
+
+(nbdkit E<ge> 1.48)
+
+The IPv4 loopback address.
+
+=item B<loopbackipv6>
+
+=item B<loopbackv6>
+
+=item B<loopback6>
+
+(nbdkit E<ge> 1.48)
+
+The IPv6 loopback address.
+
+=item AB<.>BB<.>CB<.>D
+
+This matches the single IPv4 address C<A.B.C.D>, for example
+C<192.168.2.0>
+
+=item AB<.>BB<.>CB<.>DB</>NN
+
+This matches the range of IPv4 addresses C<A.B.C.D/NN>, for example
+C<192.168.2.0/24> or C<10.0.0.0/8>
+
+=item AB<:>BB<:>...
+
+This matches the single IPv6 address C<A:B:...>.  The usual IPv6
+address representations can be used (see S<RFC 5952>).
+
+=item AB<:>BB<:>...B</>NN
+
+This matches a range of IPv6 addresses C<A:B:.../NN>
+
+=item B<dn:>WILDCARD
+
+=item B<issuer-dn:>WILDCARD
+
+(nbdkit E<ge> 1.40, not Windows)
+
+This matches the TLS Distinguished Name (DN) of the client certificate
+or client certificate's issuer against the C<WILDCARD>.  In the
+example below quotes are used to protect the wildcard from the shell,
+they are not part of the matching:
+
+ nbdkit --filter=ip allow=dn:"*,O=BigCo,*" [...]
+
+ nbdkit --filter=ip allow=issuer-dn:"CN=BigCo" [...]
+
+See L<nbdkit_peer_tls_dn(3)>, L<nbdkit_peer_tls_issuer_dn(3)> and
+L<nbdkit-tls(1)> for further information about DNs.
+
+Using this rule has important performance implications, see
+L</Late filtering> below.
+
+Comma splitting is not done inside parameters that start with C<dn:>
+or C<issuer-dn:>.  See L</Comma splitting> below.
+
+=item B<pid:>PID
+
+(nbdkit E<ge> 1.24, Linux only)
+
+This matches the process ID C<PID>, if the client connects over a Unix
+domain socket.
+
+Note that process IDs are recycled so this alone is not secure enough
+to ensure that only a single desired process can connect.  However you
+could use it as an additional check.
+
+=item B<security:>LABEL
+
+(nbdkit E<ge> 1.36, not Windows)
+
+This matches the security context (usually the SELinux label, IPSEC
+label or NetLabel) of the client.
+
+=item B<uid:>UID
+
+(nbdkit E<ge> 1.24)
+
+This matches the numeric user ID C<UID>, if the client connects over a
+Unix domain socket.
+
+=item B<gid:>GID
+
+(nbdkit E<ge> 1.24)
+
+This matches the numeric group ID C<GID>, if the client connects over
+a Unix domain socket.
+
+=item B<vsock-cid:>CID
+
+=item B<vsock-port:>PORT
+
+(nbdkit E<ge> 1.24)
+
+These match the CID or port number for C<AF_VSOCK> sockets.
+
+=back
+
+=head1 PARAMETERS
+
+=over 4
+
+=item B<allow=>addr[B<,>...]
+
+Set list of allow rules.  This parameter is optional, if omitted the
+allow list is empty.
+
+=item B<deny=>addr[B<,>...]
+
+Set list of deny rules.  This parameter is optional, if omitted the
+deny list is empty.
+
+=back
+
+=head1 NOTES
+
+=head2 Not filtered
+
+If neither the C<allow> nor the C<deny> parameter is given the filter
+does nothing.
+
+Unix domain sockets and C<AF_VSOCK> sockets were always unfiltered in
+S<nbdkit E<le> 1.22>.  In S<nbdkit E<ge> 1.24> the ability to filter
+them was added.
+
+In S<nbdkit E<le> 1.38>, connections from non-IP, non-Unix, non-vsock
+sockets (whatever that would be) were allowed unfiltered.  In
+S<nbdkit E<ge> 1.40> unknown socket families are denied.
+
+=head2 Common patterns of usage
+
+Permit known good connections and deny everything else:
+
+ nbdkit --filter=ip ... allow=good1,good2,... deny=all
+
+Block troublemakers but allow everything else:
+
+ nbdkit --filter=ip ... deny=bad1,bad2,...
+
+=head2 Comma splitting
+
+You can supply each C<allow> and C<deny> parameter multiple times.
+The rules are concatenated.
+
+Also each C<allow> or C<deny> parameter can contain multiple rules,
+split at commas (C<,>).
+
+These sets of rules are equivalent:
+
+ nbdkit --filter=ip allow=good1 allow=good2,good3 deny=all
+
+ nbdkit --filter=ip allow=good1,good2 allow=good3 deny=all
+
+Because TLS Distinguished Names (DNs) contain commas, the filter has a
+special exception where if the first characters of the allow or deny
+parameter match C<"dn:"> or C<"issuer-dn:"> then the whole parameter
+is I<not> split.  This lets you match on multiple DNs naturally:
+
+ nbdkit --filter=ip \
+        allow=dn:"*,O=BigCo,*" \
+        allow=issuer-dn:"CN=BigCo" [...]
+
+=head2 Late filtering
+
+This filter normally runs the filtering rules very early in the
+connection, just after nbdkit has received an open socket from the
+client.  Filtering happens in the C<.preconnect> callback.
+
+L<nbdkit-plugin(3)/Callback lifecycle> explains the connection
+lifecycle in more detail.
+
+However if your allow or deny patterns contain any C<dn:> or
+C<issuer-dn:> rules then I<all> filtering has to be done later in the
+connection lifecycle, since we must wait until TLS negotiation has
+been completed.  Filtering happens in the C<.open> or C<.list_exports>
+callback instead.
+
+In practice this makes filtering more expensive and potentially makes
+it easier to cause Denial of Service (DoS) attacks.  You should try to
+combine C<dn:> and C<issuer-dn:> rules with extra filtering outside
+nbdkit, such as using a firewall or VPN.
+
+=head1 DEBUG FLAGS
+
+=over 4
+
+=item B<-D ip.rules=1>
+
+Debug rules and rule matching.  If clients are accepted or rejected
+when they should not be, using S<I<-v -D ip.rules=1>> can help to
+debug the problem.
+
+=back
+
+=head1 FILES
+
+=over 4
+
+=item F<$filterdir/nbdkit-ip-filter.so>
+
+The filter.
+
+Use C<nbdkit --dump-config> to find the location of C<$filterdir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-ip-filter> first appeared in nbdkit 1.18.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-exitlast-filter(1)>,
+L<nbdkit-exitwhen-filter(1)>,
+L<nbdkit-limit-filter(1)>,
+L<nbdkit-time-limit-filter(1)>,
+L<nbdkit-filter(3)>,
+L<nbdkit_peer_name(3)>,
+L<nbdkit_peer_pid(3)>,
+L<nbdkit_peer_uid(3)>,
+L<nbdkit_peer_gid(3)>,
+L<nbdkit_peer_security_context(3)>,
+L<nbdkit_peer_tls_dn(3)>,
+L<nbdkit_peer_tls_issuer_dn(3)>,
+L<nbdkit-tls(1)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

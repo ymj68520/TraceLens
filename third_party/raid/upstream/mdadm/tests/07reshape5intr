@@ -1,0 +1,87 @@
+
+#
+# test interrupting and restarting raid5 reshape.
+set -x
+
+BACKUP_FILE=$targetdir/md-backup
+BACKUP_LINK=/var/lib/mdadm/backup_file-md0
+rm -f $BACKUP_FILE $BACKUP_LINK
+
+wait_for_reshape_start() {
+  local cnt=100
+  while [ $cnt -gt 0 ]
+  do
+    grep -sq reshape /proc/mdstat && return
+    sleep 0.05
+    cnt=$((cnt - 1))
+  done
+  die "reshape did not start"
+}
+
+interrupt_reshape() {
+  $mdadm --stop $md0
+  udevadm settle
+}
+
+assemble_interrupted() {
+  if [ -e "$BACKUP_FILE" ]; then
+    mdadm --assemble $md0 $devs $dev6 --backup-file=$BACKUP_FILE
+  else
+    mdadm --assemble $md0 $devs $dev6
+  fi
+}
+
+request_check() {
+  local i max=5
+
+  for ((i = 0 ; i < max ; i++ )); do
+    if echo check > /sys/block/md0/md/sync_action; then
+      return
+    fi
+    sleep 2
+  done
+
+  die "Timeout waiting for check to succeed"
+}
+
+devs="$dev1"
+st=UU
+for disks in 2 3 4 5
+do
+  rm -f $BACKUP_FILE $BACKUP_LINK
+  eval devs=\"$devs \$dev$disks\"
+  st=U$st
+  for d in $devs
+  do dd if=/dev/urandom of=$d bs=1024 || true
+  done
+
+  case $disks in
+   2 | 3) chunk=1024;;
+   4 ) chunk=512;;
+   5 ) chunk=256;;
+  esac
+
+  mdadm -CR $md0 -amd -l5 -c $chunk -n$disks --assume-clean $devs
+  mdadm $md0 --add $dev6
+  echo 20 > /proc/sys/dev/raid/speed_limit_min
+  echo 20 > /proc/sys/dev/raid/speed_limit_max
+  mdadm --grow $md0 -n $((disks + 1)) --backup-file=$BACKUP_FILE
+  wait_for_reshape_start
+  check reshape
+  check state $st
+  interrupt_reshape
+  assemble_interrupted
+  check reshape
+  echo 1000 > /proc/sys/dev/raid/speed_limit_min
+  echo 2000 > /proc/sys/dev/raid/speed_limit_max
+  check wait
+
+  request_check
+  check wait
+  mm=`cat /sys/block/md0/md/mismatch_cnt`
+  if [ $mm -gt 0 ]
+  then echo >&2 "ERROR mismatch_cnt non-zero : $mm" ; exit 1
+  fi
+  mdadm -S $md0
+  rm -f $BACKUP_FILE $BACKUP_LINK
+done

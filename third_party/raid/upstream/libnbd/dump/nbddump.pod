@@ -1,0 +1,146 @@
+=head1 NAME
+
+nbddump - hexdump the content of a disk over NBD
+
+=head1 SYNOPSIS
+
+ nbddump [-n N|--length N] [-o N|--offset N] NBD
+
+C<NBD> is an NBD URI or subprocess:
+
+ NBD := nbd://... | nbd+unix:// (or other URI formats)
+      | [ CMD ARGS ... ]
+
+=for paragraph
+
+ nbddump --help
+
+=for paragraph
+
+ nbddump --version
+
+=head1 DESCRIPTION
+
+nbddump prints the content of a disk from an NBD server using the
+usual hexdump format:
+
+ $ nbddump nbd://localhost
+ 0000: 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 │················│
+ 0010: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 │················│
+ ☆
+ 0100: 68 65 6c 6c 6f 2c 20 77 6f 72 6c 64 21 00 00 00 │hello, world!···│
+ 0110: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 │················│
+ ☆
+ 1000: 00 00 00 21                                     │···!            │
+
+=head2 Output format
+
+The first field (before the C<:>) is the offset within the file, in
+hexadecimal.
+
+The second field shows the hex codes of bytes read from the file.
+
+The third field shows the ASCII equivalent characters (if printable).
+
+A splat character (C<☆>) indicates lines of repeated output which have
+been squashed.  (Note this is not just for lines of zero bytes, but
+any case where the next line shown would be the same as the previous
+line.)
+
+=head2 Subprocess
+
+nbddump can also run an NBD server as a subprocess.  This requires an
+NBD server which understands systemd socket activation, such as
+L<qemu-nbd(8)> or L<nbdkit(1)>.
+
+For example, to dump out a qcow2 file as raw data:
+
+ $ nbddump -- [ qemu-nbd -r -f qcow2 file.qcow2 ]
+
+To dump out an empty floppy disk created by L<nbdkit-floppy-plugin(1)>:
+
+ $ mkdir /var/tmp/empty
+ $ nbddump -- [ nbdkit floppy /var/tmp/empty ]
+ 0000: 00 00 00 4d 53 57 49 4e 34 2e 31 00 00 00 00 00 |...MSWIN4.1.....|
+ 0010: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 |................|
+ ☆
+ 01b0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 fe |................|
+ 01c0: ff ff 0c fe ff ff 00 08 00 00 80 00 00 00 00 00 |................|
+
+To dump out some test data using L<nbdkit-data-plugin(1)>:
+
+ $ nbddump -- [ nbdkit data ' @0x1000 "hello!" ' ]
+ 0000: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 │················│
+ ☆
+ 1000: 68 65 6c 6c 6f 21                               │hello!          │
+
+Note that S<C<[ ... ]>> are separate parameters, and must be
+surrounded by spaces.  C<--> separates nbddump parameters from
+subprocess parameters.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<--help>
+
+Display brief command line help and exit.
+
+=item B<--color>
+
+=item B<--colour>
+
+=item B<--no-color>
+
+=item B<--no-colour>
+
+Enable or disable ANSI colours in output.  By default we use colours
+if the output seems to be a terminal, and disable them if not.
+
+=item B<--length=>N
+
+=item B<--limit=>N
+
+=item B<-n> N
+
+Dump up to I<N> bytes and then stop.
+
+=item B<--offset=>N
+
+=item B<--skip=>N
+
+=item B<-o> N
+
+Start the dump at offset I<N> bytes.
+
+=item B<-V>
+
+=item B<--version>
+
+Display the package name and version and exit.
+
+=back
+
+=head1 SEE ALSO
+
+L<libnbd(3)>,
+L<nbdcopy(1)>,
+L<nbddiscard(1)>,
+L<nbdfuse(1)>,
+L<nbdinfo(1)>,
+L<nbdsh(1)>,
+L<nbdzero(1)>,
+L<hexdump(1)>,
+L<file(1)>,
+L<qemu-img(1)>,
+L<nbdkit(1)>,
+L<nbdkit_debug_hexdump(3)>,
+L<qemu-nbd(8)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

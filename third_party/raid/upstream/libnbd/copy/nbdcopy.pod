@@ -1,0 +1,373 @@
+=head1 NAME
+
+nbdcopy - copy to and from an NBD server
+
+=head1 SYNOPSIS
+
+ nbdcopy [--allocated] [--blkhash=DIGEST] [--blkhash-file=FILE]
+         [-C N|--connections=N]
+         [--destination-is-zero|--target-is-zero] [--flush]
+         [--no-extents] [-p|--progress|--progress=FD]
+         [--queue-size=N] [--request-size=N] [-R N|--requests=N]
+         [-S N|--sparse=N] [--synchronous] [-T N|--threads=N]
+         [-v|--verbose]
+         SOURCE DESTINATION
+
+=for paragraph
+
+ SOURCE, DESTINATION := - | FILE | DEVICE | NBD-URI | [ CMD ARGS ... ]
+ DESTINATION += null:
+
+=for paragraph
+
+ nbdcopy --help
+
+=for paragraph
+
+ nbdcopy -V|--version
+
+=head1 EXAMPLES
+
+=head2 nbdcopy nbd://example.com local.img
+
+This copies everything from the NBD server at C<example.com> to a
+local file called F<local.img>.
+
+=head2 nbdcopy nbd://example.com - | file -
+
+This streams the first part of the disk on the NBD server at
+C<example.com> into the L<file(1)> command.  Note here that C<-> means
+to stream to stdout (and therefore into the pipe to the file command).
+
+L<nbdinfo(1)> is another way to detect the content on an NBD server.
+
+=head2 nbdcopy -p /dev/sdX "nbd+unix:///?socket=/tmp/unixsock"
+
+Copy the full local hard disk C</dev/sdX> to the NBD server listening
+on the Unix domain socket F</tmp/unixsock>.  Because of the I<-p>
+option this will print a progress bar.
+
+=head2 nbdcopy nbd://server1 nbd://server2
+
+Copy a full disk from one NBD server to another.
+
+=head2 nbdcopy nbd://server1 nbd://server2 --blkhash
+
+Copy a full disk from one NBD server to another, computing the blkhash
+(similar to a checksum) of the disk and printing that.
+
+=head2 nbdcopy -- [ qemu-nbd -r -f qcow2 https://example.com/disk.qcow2 ] -
+
+Run L<qemu-nbd(8)> as a subprocess to open URL
+C<https://example.com/disk.qcow2>, which is then streamed to stdout
+(C<->), converted to blocks of raw format data.  Note C<--> to prevent
+qemu-nbd flags from being interpreted as nbdcopy flags.
+
+=head2 cat disk1 disk2 | nbdcopy -- - [ qemu-nbd -f qcow2 output.qcow2 ]
+
+Concatenate two raw-format disk images into the qcow2 file
+F<output.qcow2>.  The output file has to be precreated.
+
+=head2 nbdcopy nbd://server null:
+
+Read the contents of the NBD server as fast as possible and throw it
+away (write it to a virtual null device).  This is useful for
+benchmarking NBD servers and/or nbdcopy.
+
+=head1 DESCRIPTION
+
+nbdcopy copies to and from an NBD server.  It can upload a local file
+to an NBD server, or download the contents of an NBD server to a local
+file, device or stdin/stdout.  It can also copy between NBD servers.
+
+The local file can be a file, a block device (eg. C</dev/cdrom>), or
+C<-> which means stream in from stdin or stream out to stdout.
+
+The NBD server can be specified using an NBD URI (like
+C<nbd://localhost>).  The NBD server can be local or remote, and
+encryption can be used if libnbd was built with encryption support.
+Alternately you can use square brackets around a L<qemu-nbd(8)> or
+L<nbdkit(1)> command to run the NBD server as a subprocess of nbdcopy.
+
+The destination may be the special word C<null:> to throw away the
+output.
+
+For more complex copying operations including converting between disk
+formats use C<qemu-img convert>, see L<qemu-img(1)>.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<--help>
+
+Display brief command line help and exit.
+
+=item B<--allocated>
+
+Normally nbdcopy tries to create sparse output (with holes) if the
+destination supports that.  It does this in two ways: either using
+extent information from the source to copy holes (see
+I<--no-extents>), or by detecting runs of zeroes (see I<-S>).  If you
+use I<--allocated> then nbdcopy creates a fully allocated, non-sparse
+output on the destination.
+
+=item B<--blkhash>
+
+=item B<--blkhash=md5>
+
+=item B<--blkhash=md5/>SIZE
+
+=item B<--blkhash=sha1>
+
+=item B<--blkhash=sha1/>SIZE
+
+=item B<--blkhash=sha256>
+
+=item B<--blkhash=sha256/>SIZE
+
+=item B<--blkhash=sha512>
+
+=item B<--blkhash=sha512/>SIZE
+
+Compute the blkhash of the disk image during the copy and print it at
+the end.  Blkhash (L<https://gitlab.com/nirs/blkhash>) is an algorithm
+similar to a checksum except that it can be computed in parallel.
+Note that it is not compatible with programs like L<cksum(1)> or
+L<sha256sum(1)>.  Using this option will make nbdcopy slower.
+
+You can choose the digest function from C<md5>, C<sha1>, C<sha256>
+(recommended), or C<sha512>.  You can also choose the block size, the
+default being C<64k> (recommended).
+
+The I<--blkhash> option without parameters selects sha256/64k.
+
+To compute the blkhash of a file without copying it, you can do:
+
+ nbdcopy --blkhash -- disk.raw null:
+
+or if the format is qcow2:
+
+ nbdcopy --blkhash -- [ qemu-nbd -f qcow2 disk.qcow2 ] null:
+
+=item B<--blkhash-file=>FILE
+
+If I<--blkhash> is selected, choose where to print the blkhash to.
+The default is stdout.
+
+=item B<-C> N
+
+=item B<--connections=>N
+
+Set the maximum number of NBD connections ("multi-conn").  By default
+nbdcopy will try to use multi-conn with up to 4 connections if the NBD
+server supports it.  If copying between NBD servers then nbdcopy
+cannot use multi-conn if either of the servers does not support it.
+
+=item B<--destination-is-zero>
+
+=item B<--target-is-zero>
+
+Assume the destination is already zeroed.  This allows nbdcopy to skip
+copying blocks of zeroes from the source to the destination.
+
+This is not safe unless the destination device is already zeroed.
+L<nbddiscard(1)> or L<nbdzero(1)> can be used first.
+
+Alias I<--target-is-zero> is provided for compatibility with
+L<qemu-img(1)>.
+
+=item B<--flush>
+
+Flush writes to ensure that everything is written to persistent
+storage before nbdcopy exits.
+
+=item B<--no-extents>
+
+Normally nbdcopy uses extent metadata to skip over parts of the source
+disk which contain holes.  If you use this flag, nbdcopy ignores
+extent information and reads everything, which is usually slower.  You
+might use this flag in two situations: the source NBD server has
+incorrect metadata information; or the source has very slow extent
+querying so it's faster to simply read all of the data.
+
+=item B<-p>
+
+=item B<--progress>
+
+Display a progress bar.
+
+=item B<--progress=>FD
+
+Write a progress bar to the file descriptor C<FD> (a number) in a
+format which is easily parsable by other programs.  nbdcopy will
+periodically write the string C<"N/100\n"> (where N is an integer
+between 0 and 100) to the file descriptor.
+
+To get nbdcopy to write the progress bar to a file you can use the
+following shell commands:
+
+ exec 3>/tmp/progress
+ nbdcopy --progress=3 ...
+ exec 3>&-
+
+=item B<--queue-size=>N
+
+Set the maximum number of bytes to queue for in flight requests. The
+default value is 16 MiB, allowing up to 64 256k requests per NBD
+connection. If you use larger B<--request-size> you may want to increase
+this value.
+
+=item B<--request-size=>N
+
+Set the maximum request size in bytes. The maximum value is 32 MiB,
+specified by the NBD protocol.
+
+=item B<-R> N
+
+=item B<--requests=>N
+
+Set the maximum number of requests in flight per NBD connection.
+
+=item B<-S> N
+
+=item B<--sparse=>N
+
+Detect all zero blocks of size N (bytes) and make them sparse on the
+output.  You can also turn off sparse detection using S<I<-S 0>>.  The
+default is 4096 bytes, or the destination preferred block size,
+whichever is larger.
+
+=item B<--synchronous>
+
+Force synchronous copying using the L<libnbd(3)> synchronous ("high
+level") API.  This is slow but may be necessary for some broken NBD
+servers which cannot handle multiple requests in flight.  This mode is
+also used when streaming to and from stdio, pipes and sockets.
+
+=item B<-T> N
+
+=item B<--threads=>N
+
+Use up to N threads for copying.  By default this is set to the number
+of processor cores available.
+
+Note I<--threads=0> means autodetect and I<--threads=1> means use a
+single thread.
+
+=item B<-v>
+
+=item B<--verbose>
+
+Verbose output.  This enables debug in libnbd (see
+L<nbd_set_debug(3)>) as well as printing other useful information.
+
+=item B<-V>
+
+=item B<--version>
+
+Display the package name and version and exit.
+
+=back
+
+=head1 MULTI-CONN, THREADS, REQUESTS IN FLIGHT
+
+The three options I<--connections>, I<--threads> and I<--requests> are
+related and control the amount of parallelism available.  The defaults
+should ensure a reasonable amount of parallelism if possible and you
+don’t need to adjust them, but this section tries to describe what is
+going on.
+
+Firstly if either side of the copy is streaming to or from stdio, a
+pipe, or a socket, or if you use the I<--synchronous> option, then
+nbdcopy works in synchronous mode with no parallelism, and nothing
+else in this section applies.
+
+The I<--connections=N> option controls NBD multi-conn (see
+L<libnbd(3)/Multi-conn>), opening up to N connections to the NBD
+server (or to both NBD servers if copying between NBD servers).  This
+defaults to 4.  The NBD servers must support and advertise multi-conn.
+For L<nbdkit(1)> availability of multi-conn can depend on the plugin.
+You can use L<nbdinfo(1)> to find out if a particular NBD server is
+advertising multi-conn.  If the NBD server doesn’t advertise
+multi-conn then only one connection will be opened regardless of the
+I<--connections> flag.
+
+When copying between two NBD servers, the number of connections is
+limited to the minimum multi-conn supported on both sides.  For the
+purposes of this calculation, you can consider local files and block
+devices as supporting infinite multi-conn.
+
+When you run an NBD server as a subprocess (using the S<C<[ ... ]>>
+syntax) multi-conn cannot be used.
+
+The I<--threads=N> option allows nbdcopy to start up to N threads
+(defaulting to the number of cores).  However nbdcopy cannot use more
+threads than the number of NBD connections.
+
+The I<--requests=N> option controls the maximum number of requests in
+flight on each NBD connection.  This enables the NBD server to process
+requests in parallel even when multi-conn isn’t available or when
+using a single thread.  The default is chosen to allow a reasonable
+amount of parallelism without using too much memory.
+
+Because of this parallelism, nbdcopy does not read or write blocks in
+order.  If for some reason you require that blocks are copied in
+strict order then you must use I<--synchronous>.
+
+=head1 RUNNING NBD SERVER AS A SUBPROCESS
+
+Instead of connecting to an already running server using an NBD URI,
+you can run an NBD server as a subprocess using:
+
+ nbdcopy -- [ CMD ARGS ... ] ...
+
+This requires the server to support systemd socket activation, which
+both L<qemu-nbd(8)> and L<nbdkit(1)> support (see also
+L<nbd_connect_systemd_socket_activation(3)>).
+
+C<[> and C<]> must be separate command line parameters.  You will
+usually need to use C<--> to stop nbdcopy from misinterpreting NBD
+server flags as nbdcopy flags.  Both the source and destination may be
+subprocesses.  nbdcopy cleans up the subprocess on exit.
+
+Some examples follow.
+
+=head2 nbdcopy -- [ qemu-nbd -f qcow2 disk.qcow2 ] - | hexdump -C
+
+In this example, L<qemu-nbd(8)> is run as a subprocess.  The
+subprocess opens F<disk.qcow2> and exposes it as NBD to nbdcopy.
+nbdcopy streams this to stdout (C<->) into the pipe which is read by
+L<hexdump(1)>.  (See also L<nbddump(1)>)
+
+=head2 nbdcopy -- [ qemu-nbd -f qcow2 disk.qcow2 ] [ nbdkit memory 1G ]
+
+Two subprocesses are created, L<qemu-nbd(8)> as the source and
+L<nbdkit(1)> as the destination.  The qcow2 file is converted to raw
+and stored temporarily in the RAM disk (L<nbdkit-memory-plugin(1)>).
+
+When nbdcopy exits both servers are killed and the RAM disk goes away,
+so this command has no overall effect, but is useful for testing.
+
+=head1 SEE ALSO
+
+L<libnbd(3)>,
+L<nbddiscard(1)>,
+L<nbddump(1)>,
+L<nbdfuse(1)>,
+L<nbdinfo(1)>,
+L<nbdsh(1)>,
+L<nbdublk(1)>,
+L<nbdzero(1)>,
+L<nbdkit(1)>,
+L<qemu-img(1)>,
+L<https://gitlab.com/nirs/blkhash>,
+L<blksum(1)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

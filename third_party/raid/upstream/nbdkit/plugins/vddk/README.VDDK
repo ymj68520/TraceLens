@@ -1,0 +1,23 @@
+VDDK (Virtual Disk Development Kit) is a proprietary VMware library
+for accessing VMDK files and VMware ESX servers.  Note that the
+license of the VDDK library is highly restrictive, preventing any
+commercial usage without negotiating a separate license from VMware.
+
+In order to obtain the VDDK library you have to register for an
+account and download it from:
+
+  https://www.vmware.com/support/developer/vddk/
+
+This directory contains an nbdkit plugin which uses this library to
+export VMDK files and VMware disks over NBD.
+
+You do NOT require VDDK to compile the plugin, and the plugin does not
+contain any VMware code.  You only need VDDK at runtime.  The plugin
+uses dlopen to load the library from a directory determined by the
+configuration parameter libdir.  It is NOT recommended to put VDDK in
+your regular library path (eg /usr/lib) because it contains components
+that conflict with system libraries.
+
+After building nbdkit-vddk-plugin.so, read the man page to find out
+how to use it (nbdkit-vddk-plugin(1)).  You'll probably also want to
+read the VDDK developer documentation.

@@ -1,0 +1,30 @@
+#  This file is part of mdadm.
+#
+#  mdadm is free software; you can redistribute it and/or modify it
+#  under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+
+[Unit]
+Description=MD Metadata Monitor on %I
+DefaultDependencies=no
+Before=initrd-switch-root.target
+Documentation=man:mdmon(8)
+# Allow mdmon to keep running after switchroot, until a new
+# instance is started.
+IgnoreOnIsolate=true
+
+[Service]
+# The mdmon starting in the initramfs (with dracut at least)
+# cannot see sysfs after root is mounted, so we will have to
+# 'takeover'.  As the '--offroot --takeover' don't hurt when
+# not necessary, are are useful with root-on-md in dracut,
+# have them always present.
+ExecStart=BINDIR/mdmon --foreground --offroot --takeover %I
+# Don't set the PIDFile.  It isn't necessary (systemd can work
+# it out) and systemd will remove it when transitioning from
+# initramfs to rootfs.
+#PIDFile=/run/mdadm/%I.pid
+# The default slice is system-mdmon.slice which Conflicts
+# with shutdown, causing mdmon to exit early.  So use system.slice.
+Slice=system.slice

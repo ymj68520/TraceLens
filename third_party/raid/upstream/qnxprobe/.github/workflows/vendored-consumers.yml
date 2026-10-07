@@ -1,0 +1,51 @@
+name: Vendored copies
+
+# Nothing in a consumer notices the day this repository changes, and nothing
+# here knows its own consumers. tools/vendoring.json records the pairs and this
+# reports which copies are behind.
+#
+# It runs on a schedule as well as on push, because ewfprobe and mediacarve are
+# upstreams too: a push here cannot see the day one of those moves.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1"
+  push:
+    branches:
+      - main
+    paths:
+      - "qnxprobe.py"
+      - "tools/vendoring.json"
+      - "tools/check_consumers.py"
+
+permissions:
+  contents: read
+
+jobs:
+  consumers:
+    name: Which repositories carry an out-of-date copy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compare every recorded copy against this repository
+        env:
+          # GITHUB_TOKEN cannot read another repository, and a private consumer
+          # 404s without one. That is reported as not compared, never as
+          # current, so the job is honest either way; set VENDORING_TOKEN to a
+          # read-only PAT with access to the consumers to compare them all.
+          GH_TOKEN: ${{ secrets.VENDORING_TOKEN }}
+        run: |
+          # Actions runs this with bash -e, so the exit code has to be caught on
+          # the command itself. Reading $? on the next line never happens: the
+          # step is already over.
+          status=0
+          python3 tools/check_consumers.py --summary "$GITHUB_STEP_SUMMARY" || status=$?
+          if [ "$status" = "2" ]; then
+            echo "::warning::some copies could not be compared, see the summary"
+            exit 0
+          fi
+          exit "$status"

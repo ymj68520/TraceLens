@@ -1,0 +1,14 @@
+coverage.xml
+.coverage
+dist/
+.eggs/
+*.egg-info/
+*.pyc
+__pycache__/
+.pytest_cache/
+tests/_docs/api
+tests/_docs/build
+.tox/
+*/*/_native.src/target
+*/*/_native.*.so
+*/*/_native.*.dll

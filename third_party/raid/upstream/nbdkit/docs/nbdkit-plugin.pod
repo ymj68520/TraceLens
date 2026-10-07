@@ -1,0 +1,1683 @@
+=head1 NAME
+
+nbdkit-plugin - how to write nbdkit plugins
+
+=head1 SYNOPSIS
+
+ #define NBDKIT_API_VERSION 2
+ #include <nbdkit-plugin.h>
+
+ #define THREAD_MODEL NBDKIT_THREAD_MODEL_SERIALIZE_ALL_REQUESTS
+
+ static void *
+ myplugin_open (void)
+ {
+   /* create a handle ... */
+   return handle;
+ }
+
+ static struct nbdkit_plugin plugin = {
+   .name              = "myplugin",
+   .open              = myplugin_open,
+   .get_size          = myplugin_get_size,
+   .pread             = myplugin_pread,
+   .pwrite            = myplugin_pwrite,
+   /* etc */
+ };
+ NBDKIT_REGISTER_PLUGIN(plugin)
+
+Compile the plugin as a shared library:
+
+ gcc -fPIC -shared myplugin.c -o myplugin.so
+
+and load it into nbdkit:
+
+ nbdkit [--args ...] ./myplugin.so [key=value ...]
+
+When debugging, use the I<-fv> options:
+
+ nbdkit -fv ./myplugin.so [key=value ...]
+
+=head1 DESCRIPTION
+
+An nbdkit plugin is a new source device which can be served using the
+Network Block Device (NBD) protocol.  This manual page describes how
+to create an nbdkit plugin in C.
+
+To see example plugins:
+L<https://gitlab.com/nbdkit/nbdkit/tree/master/plugins>
+
+To write plugins in other languages, see:
+__LANG_PLUGIN_LINKS__.
+
+=head2 API and ABI guarantee for C plugins
+
+Plugins written in C have an ABI guarantee: a plugin compiled against
+an older version of nbdkit will still work correctly when loaded with
+a newer nbdkit.  We also try (but cannot guarantee) to support plugins
+compiled against a newer version of nbdkit when loaded with an older
+nbdkit, although the plugin may have reduced functionality if it
+depends on features only provided by newer nbdkit.
+
+For plugins written in C, we also provide an API guarantee: a plugin
+written against an older header will still compile unmodified with a
+newer nbdkit.
+
+The API guarantee does not always apply to plugins written in other
+(non-C) languages which may have to adapt to changes when recompiled
+against a newer nbdkit.
+
+=head1 WRITING AN NBDKIT PLUGIN
+
+=head2 C<#define NBDKIT_API_VERSION 2>
+
+Plugins must choose which API version they want to use, by defining
+NBDKIT_API_VERSION before including C<E<lt>nbdkit-plugin.hE<gt>> (or
+any other nbdkit header).
+
+If omitted, the default version is 1 for backwards-compatibility with
+nbdkit v1.1.26 and earlier; however, it is recommended that new
+plugins be written to the maximum version (currently 2) as it enables
+more features and better interaction with nbdkit filters.
+
+The rest of this document only covers the version 2 interface.  A
+newer nbdkit will always support plugins written in C which use any
+prior API version.
+
+=head2 C<#include E<lt>nbdkit-plugin.hE<gt>>
+
+All plugins should start by including this header file (after
+optionally choosing an API version).
+
+=head2 C<#define THREAD_MODEL ...>
+
+All plugins must define a thread model.  See L</Threads> below for
+details.  It is generally safe to use:
+
+ #define THREAD_MODEL NBDKIT_THREAD_MODEL_SERIALIZE_ALL_REQUESTS
+
+=head2 C<struct nbdkit_plugin>
+
+All plugins must define and register one C<struct nbdkit_plugin>,
+which contains the name of the plugin and pointers to callback
+functions, and use the C<NBDKIT_REGISTER_PLUGIN(plugin)> macro:
+
+ static struct nbdkit_plugin plugin = {
+   .name              = "myplugin",
+   .longname          = "My Plugin",
+   .description       = "This is my great plugin for nbdkit",
+   .open              = myplugin_open,
+   .get_size          = myplugin_get_size,
+   .pread             = myplugin_pread,
+   .pwrite            = myplugin_pwrite,
+   /* etc */
+ };
+ NBDKIT_REGISTER_PLUGIN(plugin)
+
+The C<.name> field is the name of the plugin.
+
+The callbacks are described below (see L</CALLBACKS>).  Only C<.name>,
+C<.open>, C<.get_size> and C<.pread> are required.  All other
+callbacks can be omitted, although typical plugins need to use more.
+
+=head2 Callback lifecycle
+
+Callbacks are called in the following order over the lifecycle of
+the plugin:
+
+         ┌──────────────────┐
+         │ load             │
+         └─────────┬────────┘
+                   │           configuration phase starts     ─┐
+         ┌─────────┴────────┐                                  ┆
+         │ config           │  config is called once per       ┆
+         └─────────┬────────┘↺ key=value on the command line   ┆
+         ┌─────────┴────────┐                                  ┆
+         │ config_complete  │                                  ┆
+         └─────────┬────────┘                                  ┆
+         ┌─────────┴────────┐                                  ┆
+         │ thread_model     │                                  ┆
+         └─────────┬────────┘  configuration phase ends       ─┘
+         ┌─────────┴────────┐
+         │ get_ready        │
+         └─────────┬────────┘
+                   │           nbdkit forks into the background
+         ┌─────────┴────────┐
+         │ after_fork       │
+         └─────────┬────────┘
+                   │           nbdkit starts serving clients
+                   │
+        ┌──────────┴─────────────┬─ ─ ─ ─ ─ ─ ─ ─ ─
+ ┌──────┴─────┐ client #1        │
+ │ preconnect │                  │
+ └──────┬─────┘                  │
+ ┌──────┴─────┐                  │
+ │list_exports│                  │
+ └──────┬─────┘                  │
+ ┌──────┴─────┐                  │
+ │ open       │                  │
+ └──────┬─────┘                  │
+ ┌──────┴─────┐  NBD option      │
+ │ can_write  │  negotiation     │
+ └──────┬─────┘                  │
+ ┌──────┴─────┐           ┌──────┴─────┐ client #2
+ │ get_size   │           │ preconnect │
+ └──────┬─────┘           └──────┬─────┘
+ ┌──────┴─────┐ data
+ │ pread      │ serving
+ └──────┬─────┘↺                ...
+ ┌──────┴─────┐
+ │ pwrite     │
+ └──────┬─────┘↺          ┌──────┴─────┐
+ ┌──────┴─────┐           │ close      │
+ │ close      │           └────────────┘
+ └────────────┘
+
+                   │           before nbdkit exits
+                   │
+         ┌─────────┴────────┐
+         │ cleanup          │
+         └─────────┬────────┘
+         ┌─────────┴────────┐
+         │ unload           │
+         └──────────────────┘
+
+=head3 Notes
+
+=over 4
+
+=item C<nbdkit --dump-plugin>
+
+The order of calls when the user queries the plugin is slightly
+different: C<.config> is called once for each parameter.
+C<.config_complete> is I<not> called.  C<.thread_model> is called
+after C<.config>.
+
+=item C<.get_ready>
+
+This is the last chance to do any global preparation that is needed to
+serve connections.  In particular, error messages here will be visible
+to the user, but they might not be in C<.after_fork> (see below).
+
+Plugins should not create background threads here.  Use C<.after_fork>
+instead.
+
+=item C<.after_fork>
+
+C<.after_fork> is called after the server has forked into the
+background and changed UID and directory.  If a plugin needs to create
+background threads (or uses an external library that creates threads)
+it should do so here, because background threads are invalidated by
+fork.
+
+Because the server may have forked into the background, error messages
+and failures from C<.after_fork> cannot be seen by the user unless
+they look through syslog.  An error in C<.after_fork> can appear to
+the user as if nbdkit “just died”.  So in almost all cases it is
+better to use C<.get_ready> instead of this callback, or to do as much
+preparation work as possible in C<.get_ready> and only start
+background threads here.
+
+The server doesn't always fork (eg. if the I<-f> flag is used), but
+even so this callback will be called.  If you want to find out if the
+server forked between C<.get_ready> and C<.after_fork> use
+L<getpid(2)>.
+
+=item C<.preconnect> and C<.open>
+
+C<.preconnect> is called when a TCP connection has been made to the
+server.  This happens early, before NBD or TLS negotiation.
+
+C<.open> is called when a new client has connected and finished the
+NBD handshake.  TLS negotiation (if used) has been completed
+successfully.
+
+=item C<.can_write>, C<.get_size> and other option negotiation callbacks
+
+These are called during option negotiation with the client, but before
+any data is served.  These callbacks may return different values
+across different C<.open> calls, but within a single connection, they
+are called at most once and cached by nbdkit for that connection.
+
+=item C<.pread>, C<.pwrite> and other data serving callbacks
+
+After option negotiation has finished, these may be called to serve
+data.  Depending on the thread model chosen, they might be called in
+parallel from multiple threads.  The data serving callbacks include a
+flags argument; the results of the negotiation callbacks influence
+whether particular flags will ever be passed to a data callback.
+
+=item C<.cleanup> and C<.unload>
+
+The difference between these two methods is that C<.cleanup> is called
+before any filter has been removed from memory with L<dlclose(3)>.
+When C<.unload> is called, nbdkit is in the middle of calling
+L<dlclose(3)>.  Most plugins do not need to worry about this
+difference.
+
+=back
+
+=head2 Flags
+
+The following flags are defined by nbdkit, and used in various data
+serving callbacks as follows:
+
+=over 4
+
+=item C<NBDKIT_FLAG_MAY_TRIM>
+
+This flag is used by the C<.zero> callback; there is no way to disable
+this flag, although a plugin that does not support trims as a way to
+write zeroes may ignore the flag without violating expected semantics.
+
+=item C<NBDKIT_FLAG_FUA>
+
+This flag represents Forced Unit Access semantics.  It is used by the
+C<.pwrite>, C<.zero>, and C<.trim> callbacks to indicate that the
+plugin must not return a result until the action has landed in
+persistent storage.  This flag will not be sent to the plugin unless
+C<.can_fua> is provided and returns C<NBDKIT_FUA_NATIVE>.
+
+=back
+
+The following defines are valid as successful return values for
+C<.can_fua>:
+
+=over 4
+
+=item C<NBDKIT_FUA_NONE>
+
+Forced Unit Access is not supported; the client must manually request
+a flush after writes have completed.  The C<NBDKIT_FLAG_FUA> flag will
+not be passed to the plugin's write callbacks.
+
+=item C<NBDKIT_FUA_EMULATE>
+
+The client may request Forced Unit Access, but it is implemented by
+emulation, where nbdkit calls C<.flush> after a write operation; this
+is semantically correct, but may hurt performance as it tends to flush
+more data than just what the client requested.  The C<NBDKIT_FLAG_FUA>
+flag will not be passed to the plugin's write callbacks.
+
+=item C<NBDKIT_FUA_NATIVE>
+
+The client may request Forced Unit Access, which results in the
+C<NBDKIT_FLAG_FUA> flag being passed to the plugin's write callbacks
+(C<.pwrite>, C<.trim>, and C<.zero>).  When the flag is set, these
+callbacks must not return success until the client's request has
+landed in persistent storage.
+
+=back
+
+The following defines are valid as successful return values for
+C<.can_cache>:
+
+=over 4
+
+=item C<NBDKIT_CACHE_NONE>
+
+The server does not advertise caching support, and rejects any
+client-requested caching. Any C<.cache> callback is ignored.
+
+=item C<NBDKIT_CACHE_EMULATE>
+
+The nbdkit server advertises cache support to the client, where the
+client may request that the server cache a region of the export to
+potentially speed up future read and/or write operations on that
+region. The nbdkit server implements the caching by calling C<.pread>
+and ignoring the results. This option exists to ease the
+implementation of a common form of caching; any C<.cache> callback is
+ignored.
+
+=item C<NBDKIT_CACHE_NATIVE>
+
+The nbdkit server advertises cache support to the client, where the
+client may request that the server cache a region of the export to
+potentially speed up future read and/or write operations on that
+region. The nbdkit server calls the C<.cache> callback to perform the
+caching; if that callback is missing, the client's cache request
+succeeds without doing anything.
+
+=back
+
+=head2 Threads
+
+Each nbdkit plugin must declare its maximum thread safety model by
+defining the C<THREAD_MODEL> macro.  (This macro is used by
+C<NBDKIT_REGISTER_PLUGIN>).  Additionally, a plugin may implement the
+C<.thread_model> callback, called right after C<.config_complete> to
+make a runtime decision on which thread model to use.  The nbdkit
+server chooses the most restrictive model between the plugin's
+C<THREAD_MODEL>, the C<.thread_model> if present, any restrictions
+requested by filters, and any limitations imposed by the operating
+system.
+
+In C<nbdkit --dump-plugin PLUGIN> output, the C<max_thread_model> line
+matches the C<THREAD_MODEL> macro, and the C<thread_model> line
+matches what the system finally settled on after applying all
+restrictions.
+
+The possible settings for C<THREAD_MODEL> are defined below.
+
+=over 4
+
+=item C<#define THREAD_MODEL NBDKIT_THREAD_MODEL_SERIALIZE_CONNECTIONS>
+
+Only a single handle can be open at any time, and all requests happen
+from one thread.
+
+Note this means only one client can connect to the server at any time.
+If a second client tries to connect it will block waiting for the
+first client to close the connection.
+
+=item C<#define THREAD_MODEL NBDKIT_THREAD_MODEL_SERIALIZE_ALL_REQUESTS>
+
+I<This is a safe default for most plugins>.
+
+Multiple handles can be open at the same time, but requests are
+serialized so that for the plugin as a whole only one
+open/read/write/close (etc) request will be in progress at any time.
+
+This is a useful setting if the library you are using is not
+thread-safe.  However performance may not be good.
+
+=item C<#define THREAD_MODEL NBDKIT_THREAD_MODEL_SERIALIZE_REQUESTS>
+
+Multiple handles can be open and multiple data requests can happen in
+parallel.  However only one request will happen per handle at a time
+(but requests on different handles might happen concurrently).
+
+=item C<#define THREAD_MODEL NBDKIT_THREAD_MODEL_PARALLEL>
+
+Multiple handles can be open and multiple data requests can happen in
+parallel (even on the same handle).  The server may reorder replies,
+answering a later request before an earlier one.
+
+All the libraries you use must be thread-safe and reentrant, and any
+code that creates a file descriptor should atomically set
+C<FD_CLOEXEC> if you do not want it accidentally leaked to another
+thread's child process.  You may also need to provide mutexes for
+fields in your connection handle.
+
+=back
+
+If none of the above thread models are suitable, use
+C<NBDKIT_THREAD_MODEL_PARALLEL> and implement your own locking using
+C<pthread_mutex_t> etc.
+
+=head2 Error handling
+
+If there is an error in the plugin, the plugin should call
+L<nbdkit_error(3)> to report an error message.  Then, the callback
+should return the appropriate error indication, eg. C<NULL> or C<-1>.
+
+More information about these functions and L<nbdkit_verror(3)> can be
+found in the separate manual page about them.
+
+If your plugin does not overwrite global C<errno> when returning from
+system call failures (usually true for plugins written in C, often
+false for plugins written in high level scripting languages), then you
+can set S<< C<.errno_is_preserved = 1> >> in the plugin struct.
+
+=head1 CALLBACKS
+
+=head2 C<.name>
+
+ const char *name;
+
+This field (a string) is required, and B<must> contain only ASCII
+alphanumeric characters or non-leading dashes, and be unique amongst
+all plugins.
+
+=head2 C<.version>
+
+ const char *version;
+
+Plugins may optionally set a version string which is displayed in help
+and debugging output.  (See also L</VERSION> below)
+
+=head2 C<.longname>
+
+ const char *longname;
+
+An optional free text name of the plugin.  This field is used in error
+messages.
+
+=head2 C<.description>
+
+ const char *description;
+
+An optional multi-line description of the plugin.
+
+=head2 C<.load>
+
+ void load (void);
+
+This is called once just after the plugin is loaded into memory.  You
+can use this to perform any global initialization needed by the
+plugin.
+
+=head2 C<.unload>
+
+ void unload (void);
+
+This may be called once just before the plugin is unloaded from
+memory.  Note that it's not guaranteed that C<.unload> will always be
+called (eg. the server might be killed or segfault), so you should try
+to make the plugin as robust as possible by not requiring cleanup.
+See also L</SHUTDOWN> below.
+
+=head2 C<.dump_plugin>
+
+ void dump_plugin (void);
+
+This optional callback is called when the
+S<C<nbdkit plugin --dump-plugin>> command is used.  It should print
+any additional informative C<key=value> fields to stdout as needed.
+Prefixing the keys with the name of the plugin will avoid conflicts.
+
+=head2 C<.config>
+
+ int config (const char *key, const char *value);
+
+On the nbdkit command line, after the plugin filename, come an
+optional list of C<key=value> arguments.  These are passed to the
+plugin through this callback when the plugin is first loaded and
+before any connections are accepted.
+
+This callback may be called zero or more times.
+
+Both C<key> and C<value> parameters will be non-NULL.  The strings are
+owned by nbdkit but will remain valid for the lifetime of the plugin,
+so the plugin does not need to copy them.
+
+The key will be a non-empty string beginning with an ASCII alphabetic
+character (C<A-Z> C<a-z>).  The rest of the key must contain only
+ASCII alphanumeric plus period, underscore or dash characters (C<A-Z>
+C<a-z> C<0-9> C<.> C<_> C<->).  The value may be an arbitrary string,
+including an empty string.
+
+The names of C<key>s accepted by plugins is up to the plugin, but you
+should probably look at other plugins and follow the same conventions.
+
+If the value is a relative path, then note that the server changes
+directory when it starts up.  See L<nbdkit_realpath(3)>.
+
+If L<nbdkit_stdio_safe(3)> returns 1, the value of the configuration
+parameter may be used to trigger reading additional data through stdin
+(such as a password or inline script).
+
+If the C<.config> callback is not provided by the plugin, and the user
+tries to specify any C<key=value> arguments, then nbdkit will exit
+with an error.
+
+If there is an error, C<.config> should call L<nbdkit_error(3)> with an
+error message and return C<-1>.
+
+=head2 C<.magic_config_key>
+
+ const char *magic_config_key;
+
+This optional string can be used to set a "magic" key used when
+parsing plugin parameters.  It affects how "bare parameters" (those
+which do not contain an C<=> character) are parsed on the command
+line.
+
+If C<magic_config_key != NULL> then any bare parameters are passed to
+the C<.config> method as: S<C<config (magic_config_key, argv[i]);>>.
+
+If C<magic_config_key> is not set then we behave as in nbdkit E<lt>
+1.7: If the first parameter on the command line is bare then it is
+passed to the C<.config> method as: S<C<config ("script", value);>>.
+Any other bare parameters give errors.
+
+=head2 C<.config_complete>
+
+ int config_complete (void);
+
+This optional callback is called after all the configuration has been
+passed to the plugin.  It is a good place to do checks, for example
+that the user has passed the required parameters to the plugin.
+
+If there is an error, C<.config_complete> should call L<nbdkit_error(3)>
+with an error message and return C<-1>.
+
+=head2 C<.config_help>
+
+ const char *config_help;
+
+This optional multi-line help message should summarize any
+C<key=value> parameters that it takes.  It does I<not> need to repeat
+what already appears in C<.description>.
+
+If the plugin doesn't take any config parameters you should probably
+omit this.
+
+=head2 C<.thread_model>
+
+ int thread_model (void)
+
+This optional callback is called after all the configuration has been
+passed to the plugin.  It can be used to force a stricter thread model
+based on configuration, compared to C<THREAD_MODEL>.  See L</Threads>
+above for details.  Attempts to request a looser (more parallel) model
+are silently ignored.
+
+If there is an error, C<.thread_model> should call L<nbdkit_error(3)>
+with an error message and return C<-1>.
+
+=head2 C<.get_ready>
+
+ int get_ready (void);
+
+This optional callback is called before the server starts serving.  It
+is called before the server forks or changes directory.  It is
+ordinarily the last chance to do any global preparation that is needed
+to serve connections.
+
+If there is an error, C<.get_ready> should call L<nbdkit_error(3)> with
+an error message and return C<-1>.
+
+=head2 C<.after_fork>
+
+ int after_fork (void);
+
+This optional callback is called before the server starts serving.  It
+is called after the server forks and changes directory.  If a plugin
+needs to create background threads (or uses an external library that
+creates threads) it should do so here, because background threads are
+killed by fork.  However you should try to do as little as possible
+here because error reporting is difficult.  See L</Callback lifecycle>
+above.
+
+If there is an error, C<.after_fork> should call L<nbdkit_error(3)> with
+an error message and return C<-1>.
+
+=head2 C<.cleanup>
+
+ void cleanup (void);
+
+This optional callback is called after the server has closed all
+connections and is preparing to unload.  It is only reached in the
+same cases that the C<.after_fork> callback was used, making it a good
+place to clean up any background threads.  However, it is not
+guaranteed that this callback will be reached, so you should try to
+make the plugin as robust as possible by not requiring cleanup.  See
+also L</SHUTDOWN> below.
+
+=head2 C<.preconnect>
+
+ int preconnect (int readonly);
+
+This optional callback is called when a TCP connection has been made
+to the server.  This happens early, before NBD or TLS negotiation.  If
+TLS authentication is required to access the server, then it has
+B<not> been negotiated at this point.
+
+For security reasons (to avoid denial of service attacks) this
+callback should be written to be as fast and take as few resources as
+possible.  If you use this callback, only use it to do basic access
+control, such as checking L<nbdkit_peer_name(3)>, L<nbdkit_peer_pid(3)>,
+L<nbdkit_peer_uid(3)>, L<nbdkit_peer_gid(3)> against a list of permitted
+source addresses (see L</PEER NAME> and L<nbdkit-ip-filter(1)>).  It
+may be better to do access control outside the server, for example
+using TCP wrappers or a firewall.
+
+The C<readonly> flag informs the plugin that the server was started
+with the I<-r> flag on the command line.
+
+Returning C<0> will allow the connection to continue.  If there is an
+error or you want to deny the connection, call L<nbdkit_error(3)> with an
+error message and return C<-1>.
+
+=head2 C<.list_exports>
+
+ int list_exports (int readonly, int is_tls,
+                   struct nbdkit_exports *exports);
+
+This optional callback is called if the client tries to list the
+exports served by the plugin (using C<NBD_OPT_LIST>).  If the plugin
+does not supply this callback then the result of C<.default_export> is
+advertised as the lone export.  The NBD protocol defines C<""> as the
+default export, so this is suitable for plugins which ignore the
+export name and always serve the same content.  See also L</EXPORT
+NAME> below.
+
+The C<readonly> flag informs the plugin that the server was started
+with the I<-r> flag on the command line, which is the same value
+passed to C<.preconnect> and C<.open>.  However, the NBD protocol does
+not yet have a way to let the client advertise an intent to be
+read-only even when the server allows writes, so this parameter may
+not be as useful as it appears.
+
+The C<is_tls> flag informs the plugin whether this listing was
+requested after the client has completed TLS negotiation.  When
+running the server in a mode that permits but does not require TLS, be
+careful that any exports listed when C<is_tls> is C<false> do not leak
+unintended information.
+
+The C<exports> parameter is an opaque object for collecting the list
+of exports.  Call C<nbdkit_add_export> as needed to add specific
+exports to the list.
+
+ int nbdkit_add_export (struct nbdkit_export *exports,
+                        const char *name, const char *description);
+
+The C<name> must be a non-NULL, UTF-8 string between 0 and 4096 bytes
+in length.  Export names must be unique.  C<description> is an
+optional description of the export which some clients can display but
+which is otherwise unused (if you don't want a description, you can
+pass this parameter as C<NULL>).  The string(s) are copied into the
+exports list so you may free them immediately after calling this
+function.  C<nbdkit_add_export> returns C<0> on success or C<-1> on
+failure; on failure L<nbdkit_error(3)> has already been called, with
+C<errno> set to a suitable value.
+
+There are also situations where a plugin may wish to duplicate the
+nbdkit default behavior of supplying an export list containing only
+the result of C<.default_export> when C<.list_exports> is missing;
+this is most common in a language binding where it is not known at
+compile time whether the language script will be providing an
+implementation for C<.list_exports>, and is done by calling
+C<nbdkit_use_default_export>.
+
+ int nbdkit_use_default_export (struct nbdkit_export *exports);
+
+C<nbdkit_use_default_export> returns C<0> on success or C<-1> on
+failure; on failure L<nbdkit_error(3)> has already been called, with
+C<errno> set to a suitable value.
+
+The plugin may also leave the export list empty, by not calling either
+helper.  Once the plugin is happy with the list contents, returning
+C<0> will send the list of exports back to the client.  If there is an
+error, C<.list_exports> should call L<nbdkit_error(3)> with an error
+message and return C<-1>.
+
+=head2 C<.default_export>
+
+ const char *default_export (int readonly, int is_tls);
+
+This optional callback is called if the client tries to connect to the
+default export C<"">, where the plugin provides a UTF-8 string between
+0 and 4096 bytes.  If the plugin does not supply this callback, the
+connection continues with the empty name; if the plugin returns a
+valid string, nbdkit behaves as if the client had passed that string
+instead of an empty name, and returns that name to clients that
+support it (see the C<NBD_INFO_NAME> response to C<NBD_OPT_GO>).
+Similarly, if the plugin does not supply a C<.list_exports> callback,
+the result of this callback determines what export name to advertise
+to a client requesting an export list.
+
+The C<readonly> flag informs the plugin that the server was started
+with the I<-r> flag on the command line, which is the same value
+passed to C<.preconnect> and C<.open>.  However, the NBD protocol does
+not yet have a way to let the client advertise an intent to be
+read-only even when the server allows writes, so this parameter may
+not be as useful as it appears.
+
+The C<is_tls> flag informs the plugin whether the canonical name for
+the default export is being requested after the client has completed
+TLS negotiation.  When running the server in a mode that permits but
+does not require TLS, be careful that a default export name does not
+leak unintended information.
+
+If the plugin returns C<NULL> or an invalid string (such as longer
+than 4096 bytes), the client is not permitted to connect to the
+default export.  However, this is not an error in the protocol, so it
+is not necessary to call L<nbdkit_error(3)>.
+
+=head2 C<.open>
+
+ void *open (int readonly);
+
+This is called when a new client connects to the nbdkit server.  The
+callback should allocate a handle and return it.  This handle
+is passed back to other callbacks and could be freed in the C<.close>
+callback.
+
+Note that the handle is completely opaque to nbdkit, but it must not
+be NULL.  If you don't need to use a handle, return
+C<NBDKIT_HANDLE_NOT_NEEDED> which is a static non-NULL pointer.
+
+The C<readonly> flag informs the plugin that the server was started
+with the I<-r> flag on the command line which forces connections to be
+read-only.  Note that the plugin may I<additionally> force the
+connection to be readonly (even if this flag is false) by returning
+false from the C<.can_write> callback.  So if your plugin can only
+serve read-only, you can ignore this parameter.
+
+If the plugin wants to differentiate the content it serves based on
+client input, then this is the spot to use L<nbdkit_export_name(3)> to
+determine which export the client requested.  See also
+L</EXPORT NAME AND TLS> below.
+
+This callback is called after the NBD handshake has completed; if the
+server requires TLS authentication, then that has occurred as well.
+But if the server is set up to have optional TLS authentication, you
+may check L<nbdkit_is_tls(3)> to learn whether the client has
+completed TLS authentication.  When running the server in a mode that
+permits but does not require TLS, be careful that you do not allow
+unauthenticated clients to cause a denial of service against
+authentication.
+
+If there is an error, C<.open> should call L<nbdkit_error(3)> with an
+error message and return C<NULL>.
+
+=head2 C<.close>
+
+ void close (void *handle);
+
+This is called when the client closes the connection.  It should clean
+up any per-connection resources.
+
+Note there is no way in the NBD protocol to communicate close errors
+back to the client, for example if your plugin calls L<close(2)> and
+you are checking for errors (as you should do).  Therefore the best
+you can do is to log the error on the server.  Well-behaved NBD
+clients I<should> try to flush the connection before it is closed and
+check for errors, but obviously this is outside the scope of nbdkit.
+
+=head2 C<.get_size>
+
+ int64_t get_size (void *handle);
+
+This is called during the option negotiation phase of the protocol
+to get the size (in bytes) of the block device being exported.
+
+The returned size must be E<ge> 0.  If there is an error, C<.get_size>
+should call L<nbdkit_error(3)> with an error message and return C<-1>.
+
+=head2 C<.export_description>
+
+ const char *export_description (void *handle);
+
+This is called during the option negotiation phase only if the
+client specifically requested an export description (see the
+C<NBD_INFO_DESCRIPTION> response to C<NBD_OPT_GO>).  Any
+description provided must be human-readable UTF-8, no longer
+than 4096 bytes.  Ideally, this description should match any
+description set during C<.list_exports>, but that is not
+enforced.
+
+If the plugin returns C<NULL> or an invalid string (such as longer
+than 4096 bytes), or if this callback is omitted, no description is
+offered to the client.  As this is not an error in the protocol, it is
+not necessary to call L<nbdkit_error(3)>.  If the callback will not be
+returning a compile-time constant string, you may find
+L<nbdkit_strdup_intern(3)> helpful for returning a value that avoids a
+memory leak.
+
+=head2 C<.block_size>
+
+ int block_size (void *handle, uint32_t *minimum,
+                 uint32_t *preferred, uint32_t *maximum);
+
+This is called during the option negotiation phase of the protocol to
+get the minimum, preferred and maximum block size (all in bytes) of
+the block device.  The client should obey these constraints by not
+making requests which are smaller than the minimum size or larger than
+the maximum size, and usually making requests of a multiple of the
+preferred size.  Furthermore requests should be aligned to at least
+the minimum block size, and usually the preferred block size.
+
+"Preferred" block size in the NBD specification can be misinterpreted.
+It means the I/O size which does not have a penalty for
+read-modify-write.
+
+Even if the plugin implements this callback, this does B<not> mean
+that all client requests will obey the constraints.  A client could
+still ignore the constraints.  nbdkit passes all requests through to
+the plugin, because what the plugin does depends on the plugin's
+policy.  It might decide to serve the requests correctly anyway, or
+reject them with an error.  Plugins can avoid this complexity by using
+L<nbdkit-blocksize-policy-filter(1)> which allows both
+setting/adjusting the constraints, and selecting an error policy.
+
+The minimum block size must be E<ge> 1.  The maximum block size must
+be E<le> 0xffff_ffff.  minimum E<le> preferred E<le> maximum.
+
+As a special case, the plugin may return minimum == preferred ==
+maximum == 0, meaning no information.
+
+If this callback is not used, then the NBD protocol assumes by default
+minimum = 1, preferred = 4096.  (Maximum block size depends on various
+factors, see the NBD protocol specification, section "Block size
+constraints").
+
+=head2 C<.can_write>
+
+ int can_write (void *handle);
+
+This is called during the option negotiation phase to find out if the
+handle supports writes.
+
+If there is an error, C<.can_write> should call L<nbdkit_error(3)> with
+an error message and return C<-1>.
+
+This callback is not required.  If omitted, then we return true iff a
+C<.pwrite> callback has been defined.
+
+=head2 C<.can_flush>
+
+ int can_flush (void *handle);
+
+This is called during the option negotiation phase to find out if the
+handle supports the flush-to-disk operation.
+
+If there is an error, C<.can_flush> should call L<nbdkit_error(3)> with
+an error message and return C<-1>.
+
+This callback is not required.  If omitted, then we return true iff a
+C<.flush> callback has been defined.
+
+=head2 C<.is_rotational>
+
+ int is_rotational (void *handle);
+
+This is called during the option negotiation phase to find out if the
+backing disk is a rotational medium (like a traditional hard disk) or
+not (like an SSD).  If true, this may cause the client to reorder
+requests to make them more efficient for a slow rotating disk.
+
+If there is an error, C<.is_rotational> should call L<nbdkit_error(3)>
+with an error message and return C<-1>.
+
+This callback is not required.  If omitted, then we return false.
+
+=head2 C<.can_trim>
+
+ int can_trim (void *handle);
+
+This is called during the option negotiation phase to find out if the
+plugin supports the trim/discard operation for punching holes in the
+backing storage.
+
+If there is an error, C<.can_trim> should call L<nbdkit_error(3)> with an
+error message and return C<-1>.
+
+This callback is not required.  If omitted, then we return true iff a
+C<.trim> callback has been defined.
+
+=head2 C<.can_zero>
+
+ int can_zero (void *handle);
+
+This is called during the option negotiation phase to find out if the
+plugin wants the C<.zero> callback to be utilized.  Support for
+writing zeroes is still advertised to the client (unless the
+L<nbdkit-nozero-filter(1)> is also used), so returning false merely
+serves as a way to avoid complicating the C<.zero> callback to have to
+fail with C<ENOTSUP> or C<EOPNOTSUPP> on the connections where it will
+never be more efficient than using C<.pwrite> up front.
+
+If there is an error, C<.can_zero> should call L<nbdkit_error(3)> with an
+error message and return C<-1>.
+
+This callback is not required.  If omitted, then for a normal zero
+request, nbdkit always tries C<.zero> first if it is present, and
+gracefully falls back to C<.pwrite> if C<.zero> was absent or failed
+with C<ENOTSUP> or C<EOPNOTSUPP>.
+
+=head2 C<.can_fast_zero>
+
+ int can_fast_zero (void *handle);
+
+This is called during the option negotiation phase to find out if the
+plugin wants to advertise support for fast zero requests.  If this
+support is not advertised, a client cannot attempt fast zero requests,
+and has no way to tell if writing zeroes offers any speedups compared
+to using C<.pwrite> (other than compressed network traffic).  If
+support is advertised, then C<.zero> will have
+C<NBDKIT_FLAG_FAST_ZERO> set when the client has requested a fast
+zero, in which case the plugin must fail with C<ENOTSUP> or
+C<EOPNOTSUPP> up front if the request would not offer any benefits
+over C<.pwrite>.  Advertising support for fast zero requests does not
+require that writing zeroes be fast, only that the result (whether
+success or failure) is fast, so this should be advertised when
+feasible.
+
+If there is an error, C<.can_fast_zero> should call L<nbdkit_error(3)>
+with an error message and return C<-1>.
+
+This callback is not required.  If omitted, then nbdkit returns true
+if C<.zero> is absent or C<.can_zero> returns false (in those cases,
+nbdkit fails all fast zero requests, as its fallback to C<.pwrite> is
+not inherently faster), otherwise false (since it cannot be determined
+in advance if the plugin's C<.zero> will properly honor the semantics
+of C<NBDKIT_FLAG_FAST_ZERO>).
+
+=head2 C<.can_extents>
+
+ int can_extents (void *handle);
+
+This is called during the option negotiation phase to find out if the
+plugin supports detecting allocated (non-sparse) regions of the disk
+with the C<.extents> callback.
+
+If there is an error, C<.can_extents> should call L<nbdkit_error(3)> with
+an error message and return C<-1>.
+
+This callback is not required.  If omitted, then we return true iff a
+C<.extents> callback has been defined.
+
+=head2 C<.can_fua>
+
+ int can_fua (void *handle);
+
+This is called during the option negotiation phase to find out if the
+plugin supports the Forced Unit Access (FUA) flag on write, zero, and
+trim requests.  If this returns C<NBDKIT_FUA_NONE>, FUA support is not
+advertised to the client; if this returns C<NBDKIT_FUA_EMULATE>, the
+C<.flush> callback must work (even if C<.can_flush> returns false),
+and FUA support is emulated by calling C<.flush> after any write
+operation; if this returns C<NBDKIT_FUA_NATIVE>, then the C<.pwrite>,
+C<.zero>, and C<.trim> callbacks (if implemented) must handle the flag
+C<NBDKIT_FLAG_FUA>, by not returning until that action has landed in
+persistent storage.
+
+If there is an error, C<.can_fua> should call L<nbdkit_error(3)> with an
+error message and return C<-1>.
+
+This callback is not required unless a plugin wants to specifically
+handle FUA requests.  If omitted, nbdkit checks whether C<.flush>
+exists, and behaves as if this function returns C<NBDKIT_FUA_NONE> or
+C<NBDKIT_FUA_EMULATE> as appropriate.
+
+=head2 C<.can_multi_conn>
+
+ int can_multi_conn (void *handle);
+
+This is called during the option negotiation phase to find out if the
+plugin is prepared to handle multiple connections from a single
+client.  If the plugin sets this to true then a client may try to open
+multiple connections to the nbdkit server and spread requests across
+all connections to maximize parallelism.  If the plugin sets it to
+false (which is the default) then well-behaved clients should only
+open a single connection, although we cannot control what clients do
+in practice.
+
+Specifically it means that either the plugin does not cache requests
+at all.  Or if it does cache them then the effects of a C<.flush>
+request or setting C<NBDKIT_FLAG_FUA> on a request must be visible
+across all connections to the plugin before the plugin replies to that
+request.
+
+Properly working clients should send the same export name for each of
+these connections.
+
+If you use Linux L<nbd-client(8)> option S<I<-C num>> with
+S<num E<gt> 1> then Linux checks this flag and will refuse to connect
+if C<.can_multi_conn> is false.
+
+If there is an error, C<.can_multi_conn> should call L<nbdkit_error(3)>
+with an error message and return C<-1>.
+
+This callback is not required.  If omitted, then we return false.
+
+=head2 C<.can_cache>
+
+ int can_cache (void *handle);
+
+This is called during the option negotiation phase to find out if the
+plugin supports a cache or prefetch operation.
+
+This can return:
+
+=over 4
+
+=item C<NBDKIT_CACHE_NONE>
+
+Cache support is not advertised to the client.
+
+=item C<NBDKIT_CACHE_EMULATE>
+
+Caching is emulated by the server calling C<.pread> and discarding the
+result.
+
+=item C<NBDKIT_CACHE_NATIVE>
+
+Cache support is advertised to the client.  The C<.cache> callback will
+be called if it exists, otherwise all cache requests instantly succeed.
+
+=back
+
+If there is an error, C<.can_cache> should call L<nbdkit_error(3)> with
+an error message and return C<-1>.
+
+This callback is not required.  If omitted, then we return
+C<NBDKIT_CACHE_NONE> if the C<.cache> callback is missing, or
+C<NBDKIT_CACHE_NATIVE> if it is defined.
+
+=head2 C<.pread>
+
+ int pread (void *handle, void *buf, uint32_t count, uint64_t offset,
+            uint32_t flags);
+
+During the data serving phase, nbdkit calls this callback to read data
+from the backing store.  C<count> bytes starting at C<offset> in the
+backing store should be read and copied into C<buf>.  nbdkit takes
+care of all bounds- and sanity-checking, so the plugin does not need
+to worry about that.
+
+The parameter C<flags> exists in case of future NBD protocol
+extensions; at this time, it will be 0 on input.
+
+The callback must read the whole C<count> bytes if it can.  The NBD
+protocol doesn't allow partial reads (instead, these would be errors).
+If the whole C<count> bytes was read, the callback should return C<0>
+to indicate there was I<no> error.
+
+If there is an error (including a short read which couldn't be
+recovered from), C<.pread> should call L<nbdkit_error(3)> with an error
+message, and L<nbdkit_set_error(3)> to record an appropriate error
+(unless C<errno> is sufficient), then return C<-1>.
+
+=head2 C<.pwrite>
+
+ int pwrite (void *handle, const void *buf, uint32_t count, uint64_t offset,
+             uint32_t flags);
+
+During the data serving phase, nbdkit calls this callback to write
+data to the backing store.  C<count> bytes starting at C<offset> in
+the backing store should be written using the data in C<buf>.  nbdkit
+takes care of all bounds- and sanity-checking, so the plugin does not
+need to worry about that.
+
+This function will not be called if C<.can_write> returned false.  The
+parameter C<flags> may include C<NBDKIT_FLAG_FUA> on input based on
+the result of C<.can_fua>.
+
+The callback must write the whole C<count> bytes if it can.  The NBD
+protocol doesn't allow partial writes (instead, these would be
+errors).  If the whole C<count> bytes was written successfully, the
+callback should return C<0> to indicate there was I<no> error.
+
+If there is an error (including a short write which couldn't be
+recovered from), C<.pwrite> should call L<nbdkit_error(3)> with an error
+message, and L<nbdkit_set_error(3)> to record an appropriate error
+(unless C<errno> is sufficient), then return C<-1>.
+
+=head2 C<.flush>
+
+ int flush (void *handle, uint32_t flags);
+
+During the data serving phase, this callback is used to
+L<fdatasync(2)> the backing store, ie. to ensure it has been
+completely written to a permanent medium.  If that is not possible
+then you can omit this callback.
+
+This function will not be called directly by the client if
+C<.can_flush> returned false; however, it may still be called by
+nbdkit if C<.can_fua> returned C<NBDKIT_FUA_EMULATE>.  The parameter
+C<flags> exists in case of future NBD protocol extensions; at this
+time, it will be 0 on input.
+
+If there is an error, C<.flush> should call L<nbdkit_error(3)> with an
+error message, and L<nbdkit_set_error(3)> to record an appropriate error
+(unless C<errno> is sufficient), then return C<-1>.
+
+=head2 C<.trim>
+
+ int trim (void *handle, uint32_t count, uint64_t offset, uint32_t flags);
+
+During the data serving phase, this callback is used to "punch holes"
+in the backing store.  If that is not possible then you can omit this
+callback.
+
+This function will not be called if C<.can_trim> returned false.  The
+parameter C<flags> may include C<NBDKIT_FLAG_FUA> on input based on
+the result of C<.can_fua>.
+
+If there is an error, C<.trim> should call L<nbdkit_error(3)> with an
+error message, and L<nbdkit_set_error(3)> to record an appropriate error
+(unless C<errno> is sufficient), then return C<-1>.
+
+=head2 C<.zero>
+
+ int zero (void *handle, uint32_t count, uint64_t offset, uint32_t flags);
+
+During the data serving phase, this callback is used to write C<count>
+bytes of zeroes at C<offset> in the backing store.
+
+This function will not be called if C<.can_zero> returned false.  On
+input, the parameter C<flags> may include C<NBDKIT_FLAG_MAY_TRIM>
+unconditionally, C<NBDKIT_FLAG_FUA> based on the result of
+C<.can_fua>, and C<NBDKIT_FLAG_FAST_ZERO> based on the result of
+C<.can_fast_zero>.
+
+If C<NBDKIT_FLAG_MAY_TRIM> is requested, the operation can punch a
+hole instead of writing actual zero bytes, but only if subsequent
+reads from the hole read as zeroes.
+
+If C<NBDKIT_FLAG_FAST_ZERO> is requested, the plugin must decide up
+front if the implementation is likely to be faster than a
+corresponding C<.pwrite>; if not, then it must immediately fail with
+C<ENOTSUP> or C<EOPNOTSUPP> (whether by L<nbdkit_set_error(3)> or
+C<errno>) and preferably without modifying the exported image.  It is
+acceptable to always fail a fast zero request (as a fast failure is
+better than attempting the write only to find out after the fact that
+it was not fast after all).  Note that on Linux, support for
+C<ioctl(BLKZEROOUT)> is insufficient for determining whether a zero
+request to a block device will be fast (because the kernel will
+perform a slow fallback when needed).
+
+The callback must write the whole C<count> bytes if it can.  The NBD
+protocol doesn't allow partial writes (instead, these would be
+errors).  If the whole C<count> bytes was written successfully, the
+callback should return C<0> to indicate there was I<no> error.
+
+If there is an error, C<.zero> should call L<nbdkit_error(3)> with an
+error message, and L<nbdkit_set_error(3)> to record an appropriate error
+(unless C<errno> is sufficient), then return C<-1>.
+
+If this callback is omitted, or if it fails with C<ENOTSUP> or
+C<EOPNOTSUPP> (whether by L<nbdkit_set_error(3)> or C<errno>), then
+C<.pwrite> will be used as an automatic fallback except when the
+client requested a fast zero.
+
+=head2 C<.extents>
+
+ int extents (void *handle, uint32_t count, uint64_t offset,
+              uint32_t flags, struct nbdkit_extents *extents);
+
+During the data serving phase, this callback is used to detect
+allocated, sparse and zeroed regions of the disk.
+
+This function will not be called if C<.can_extents> returned false.
+nbdkit's default behaviour in this case is to treat the whole virtual
+disk as if it was allocated.  Also, this function will not be called
+by a client that does not request structured replies (the I<--no-sr>
+option of nbdkit can be used to test behavior when C<.extents> is
+unavailable to the client).
+
+The callback should detect and return the list of extents overlapping
+the range C<[offset...offset+count-1]>.  The C<extents> parameter
+points to an opaque object which the callback should fill in by
+calling C<nbdkit_add_extent>.  See L</Extents list> below.
+
+If there is an error, C<.extents> should call L<nbdkit_error(3)> with an
+error message, and L<nbdkit_set_error(3)> to record an appropriate error
+(unless C<errno> is sufficient), then return C<-1>.
+
+=head3 Extents list
+
+The plugin C<extents> callback is passed an opaque pointer C<struct
+nbdkit_extents *extents>.  This structure represents a list of
+L<filesystem extents|https://en.wikipedia.org/wiki/Extent_(file_systems)>
+describing which areas of the disk are allocated, which are sparse
+(“holes”), and, if supported, which are zeroes.
+
+The C<extents> callback should scan the disk starting at C<offset> and
+call C<nbdkit_add_extent> for each extent found.
+
+Extents overlapping the range C<[offset...offset+count-1]> should be
+returned if possible.  However nbdkit ignores extents E<lt> offset so
+the plugin may, if it is easier to implement, return all extent
+information for the whole disk.  The plugin may return extents beyond
+the end of the range.  It may also return extent information for less
+than the whole range, but it must return at least one extent
+overlapping C<offset>.
+
+The extents B<must> be added in ascending order, and B<must> be
+contiguous.
+
+The C<flags> parameter of the C<.extents> callback may contain the
+flag C<NBDKIT_FLAG_REQ_ONE>.  This means that the client is only
+requesting information about the extent overlapping C<offset>.  The
+plugin may ignore this flag, or as an optimization it may return just
+a single extent for C<offset>.
+
+ int nbdkit_add_extent (struct nbdkit_extents *extents,
+                        uint64_t offset, uint64_t length, uint32_t type);
+
+Add an extent covering C<[offset...offset+length-1]> of one of
+the following four types:
+
+=over 4
+
+=item C<type = 0>
+
+A normal, allocated data extent.
+
+=item C<type = NBDKIT_EXTENT_HOLE|NBDKIT_EXTENT_ZERO>
+
+An unallocated extent, a.k.a. a “hole”, which reads back as zeroes.
+This is the normal type of hole applicable to most disks.
+
+=item C<type = NBDKIT_EXTENT_ZERO>
+
+An allocated extent which is known to contain only zeroes.
+
+=item C<type = NBDKIT_EXTENT_HOLE>
+
+An unallocated extent (hole) which does not read back as zeroes.  Note
+this should only be used in specialized circumstances such as when
+writing a plugin for (or to emulate) certain SCSI drives which do not
+guarantee that trimmed blocks read back as zeroes.
+
+=back
+
+C<nbdkit_add_extent> returns C<0> on success or C<-1> on failure.  On
+failure L<nbdkit_error(3)> and/or L<nbdkit_set_error(3)> has already been
+called.  C<errno> will be set to a suitable value.
+
+=head2 C<.cache>
+
+ int cache (void *handle, uint32_t count, uint64_t offset, uint32_t flags);
+
+During the data serving phase, this callback is used to give the
+plugin a hint that the client intends to make further accesses to the
+given region of the export.
+
+The nature of caching/prefetching is not specified further by the NBD
+specification.  For example, a server may place limits on how much may
+be cached at once, and there is no way to control if writes to a
+cached area have write-through or write-back semantics.  In fact, the
+cache command can always fail and still be compliant, and success
+might not guarantee a performance gain.
+
+If this callback is omitted, then the results of C<.can_cache>
+determine whether nbdkit will reject cache requests, treat them as
+instant success, or emulate caching by calling C<.pread> over the same
+region and ignoring the results.
+
+This function will not be called if C<.can_cache> did not return
+C<NBDKIT_CACHE_NATIVE>.
+
+The C<flags> parameter exists in case of future NBD protocol
+extensions; at this time, it will be 0 on input.  A plugin must fail
+this function if C<flags> includes an unrecognized flag, as that may
+indicate a requirement that the plugin must comply with to provide a
+specific caching semantic.
+
+If there is an error, C<.cache> should call L<nbdkit_error(3)> with an
+error message, and L<nbdkit_set_error(3)> to record an appropriate error
+(unless C<errno> is sufficient), then return C<-1>.
+
+=head2 C<.errno_is_preserved>
+
+This field defaults to 0; if non-zero, nbdkit can reliably use the
+value of C<errno> when a callback reports failure, rather than the
+plugin having to call L<nbdkit_set_error(3)>.
+
+=head1 UMASK
+
+All plugins will see a L<umask(2)> of C<0022>.
+
+=head1 PARSING COMMAND LINE PARAMETERS
+
+nbdkit provides several functions to help plugins and filters to parse
+command line parameters.  These are documented in separate man pages:
+
+=over 4
+
+=item Parse disk sizes (eg. C<size=100M>)
+
+L<nbdkit_parse_size(3)>
+
+=item Parse numbers
+
+L<nbdkit_parse_int(3)>
+L<nbdkit_parse_unsigned(3)>
+L<nbdkit_parse_int8_t(3)>
+L<nbdkit_parse_uint8_t(3)>
+L<nbdkit_parse_int16_t(3)>
+L<nbdkit_parse_uint16_t(3)>
+L<nbdkit_parse_int32_t(3)>
+L<nbdkit_parse_uint32_t(3)>
+L<nbdkit_parse_int64_t(3)>
+L<nbdkit_parse_uint64_t(3)>
+
+=item Parse booleans (eg. C<setting=true>)
+
+L<nbdkit_parse_bool(3)>
+
+=item Parse probabilities (eg. C<rate=50%>)
+
+L<nbdkit_parse_probability(3)>
+
+=item Parse delays and sleeps (eg. C<delay=33ms>)
+
+L<nbdkit_parse_delay(3)>
+
+=item Reading passwords and other secrets
+
+L<nbdkit_read_password(3)>
+
+=item Safely interacting with stdin and stdout
+
+L<nbdkit_stdio_safe(3)>
+
+=item Filenames and paths
+
+L<nbdkit_absolute_path(3)>
+L<nbdkit_realpath(3)>
+
+=back
+
+=head1 SLEEPING
+
+A plugin or filter that needs to sleep may call L<sleep(2)>,
+L<nanosleep(2)> and similar.  However that can cause nbdkit to delay
+excessively when shutting down (since it must wait for any plugin or
+filter which is sleeping).  To avoid this plugins and filters should
+call L<nbdkit_nanosleep(3)> instead.
+
+=head1 EXPORT NAME AND TLS
+
+If the client negotiated an NBD export name with nbdkit then plugins
+may read this from any connected callback.  Nbdkit's normal behaviour
+is to accept any export name passed by the client, log it in debug
+output, but otherwise ignore it.  By calling L<nbdkit_export_name(3)>
+plugins may choose to filter by export name or serve different
+content.
+
+L<nbdkit_is_tls(3)> can be used to find the status of TLS negotiation
+on the current connection.
+
+=head1 STRING LIFETIME
+
+Some callbacks are specified to return C<const char *>, even when a
+plugin may not have a suitable compile-time constant to return.
+Returning dynamically-allocated memory for such a callback would
+induce a memory leak or otherwise complicate the plugin to perform
+additional bookkeeping.  For these cases, nbdkit provides several
+convenience functions for creating a copy of a string for better
+lifetime management:
+
+L<nbdkit_strdup_intern(3)>,
+L<nbdkit_strndup_intern(3)>,
+L<nbdkit_printf_intern(3)>,
+L<nbdkit_vprintf_intern(3)>.
+
+=head1 PEER NAME
+
+In any connected callback you can get the source address of the client
+using L<nbdkit_peer_name(3)>.  If the client is connected over a Unix
+domain socket, you may also be able to get the client process ID, user
+ID, group ID and security context using: L<nbdkit_peer_pid(3)>,
+L<nbdkit_peer_uid(3)>, L<nbdkit_peer_gid(3)> and
+L<nbdkit_peer_security_context(3)>.  If the client is connected using
+TLS and presented a client certificate then the Distinguished Name
+(DN) may be read using L<nbdkit_peer_tls_dn(3)> and the
+issuer's DN by L<nbdkit_peer_tls_issuer_dn(3)>.
+
+=head1 SHUTDOWN
+
+When nbdkit receives certain signals it will shut down (see
+L<nbdkit(1)/SIGNALS>).  The server will wait for any currently running
+plugin callbacks to finish, call C<.close> on those connections, then
+call the C<.cleanup> and C<.unload> callbacks before unloading the
+plugin.
+
+Note that it's not guaranteed this can always happen (eg. the server
+might be killed by C<SIGKILL> or segfault).
+
+See L<nbdkit_shutdown(3)> and L<nbdkit_disconnect(3)> for how to
+request server shutdown or client disconnection from within plugins.
+
+=head1 VERSION
+
+=head2 Compile-time version of nbdkit
+
+The macros C<NBDKIT_VERSION_MAJOR>, C<NBDKIT_VERSION_MINOR> and
+C<NBDKIT_VERSION_MICRO> expand to integers containing the version of
+the nbdkit headers that you are compiling against.
+
+C<NBDKIT_VERSION_MAJOR> is always 1.  C<NBDKIT_VERSION_MINOR> is even
+for stable releases of nbdkit and odd for development releases.
+
+The macro C<NBDKIT_VERSION_STRING> expands to the same version as a
+string.
+
+=head2 Run-time version of nbdkit
+
+When the plugin is loaded into nbdkit, it may not be the same version
+that it was compiled against.  nbdkit guarantees backwards
+compatibility of the API and ABI, so provided that nbdkit is the same
+version or newer, the plugin will still work.  There is no way to get
+the version of nbdkit from the plugin.
+
+=head2 Version of the plugin
+
+The plugin itself can use any versioning scheme you want, and put any
+string into the C<.version> field of the plugin struct (or leave the
+field NULL).
+
+=head2 API version
+
+See L</WRITING AN NBDKIT PLUGIN> above.
+
+=head1 DEBUGGING
+
+Run the server with I<-f> and I<-v> options so it doesn't fork and you
+can see debugging information:
+
+ nbdkit -fv ./myplugin.so [key=value [key=value [...]]]
+
+To print debugging information from within the plugin, call
+L<nbdkit_debug(3)>.  Note that L<nbdkit_debug(3)> only prints things
+when the server is in verbose mode (I<-v> option).
+
+=head2 Debug Flags
+
+The I<-v> option switches general debugging on or off, and this
+debugging should be used for messages which are useful for all users
+of your plugin.
+
+In cases where you want to enable specific extra debugging to
+troubleshoot bugs in plugins or filters — mainly for use by the
+plugin/filter developers themselves — you can define Debug Flags.
+These are global ints called C<myplugin_debug_*>:
+
+ int myplugin_debug_foo;
+ int myplugin_debug_bar;
+ ...
+ if (myplugin_debug_foo) {
+   nbdkit_debug ("lots of extra debugging about foo: ...");
+ }
+
+Debug Flags can be controlled on the command line using the I<-D> (or
+I<--debug>) option:
+
+ nbdkit -f -v -D myplugin.foo=1 -D myplugin.bar=2 myplugin [...]
+
+Note C<myplugin> is the name passed to C<.name> in the C<struct
+nbdkit_plugin>.  You don't have to declare debug flags, they are found
+automatically using L<dlsym(3)>.
+
+You should only use this feature for debug settings.  For general
+settings use ordinary plugin parameters.  Debug Flags can only be C
+ints.  They are not supported by non-C language plugins.
+
+For convenience C<'.'> characters are replaced with C<'_'> characters
+in the variable name, so both of these parameters:
+
+ -D myplugin.foo_bar=1
+ -D myplugin.foo.bar=1
+
+correspond to the plugin variable C<myplugin_debug_foo_bar>.
+
+=head1 COMPILING THE PLUGIN
+
+Plugins should be compiled as shared libraries.  There are various
+ways to achieve this, but most Linux compilers support a I<-shared>
+option to create the shared library directly, for example:
+
+ gcc -fPIC -shared myplugin.c -o myplugin.so
+
+Note that the shared library will have undefined symbols for functions
+that you call like L<nbdkit_parse_int(3)> or L<nbdkit_error(3)>.  These will
+be resolved by the server binary when nbdkit dlopens the plugin.
+
+=head2 PKG-CONFIG/PKGCONF
+
+nbdkit provides a pkg-config/pkgconf file called C<nbdkit.pc> which
+should be installed on the correct path when the nbdkit plugin
+development environment is installed.  You can use this in autoconf
+F<configure.ac> scripts to test for the development environment:
+
+ PKG_CHECK_MODULES([NBDKIT], [nbdkit >= 1.2.3])
+
+The above will fail unless nbdkit E<ge> 1.2.3 and the header file is
+installed, and will set C<NBDKIT_CFLAGS> and C<NBDKIT_LIBS>
+appropriately for compiling plugins.
+
+You can also run pkg-config/pkgconf directly, for example:
+
+ if ! pkg-config nbdkit --exists; then
+   echo "you must install the nbdkit plugin development environment"
+   exit 1
+ fi
+
+You can also substitute the plugindir variable by doing:
+
+ PKG_CHECK_VAR([NBDKIT_PLUGINDIR], [nbdkit], [plugindir])
+
+which defines C<$(NBDKIT_PLUGINDIR)> in automake-generated Makefiles.
+
+If nbdkit development headers are installed in a non-standard location
+then you may need to compile plugins using:
+
+ gcc -fPIC -shared myplugin.c -o myplugin.so \
+   `pkg-config nbdkit --cflags --libs`
+
+=head1 INSTALLING THE PLUGIN
+
+The plugin is a C<*.so> file and possibly a manual page.  You can of
+course install the plugin C<*.so> file wherever you want, and users
+will be able to use it by running:
+
+ nbdkit /path/to/plugin.so [args]
+
+However B<if> the shared library has a name of the form
+C<nbdkit-I<name>-plugin.so> B<and if> the library is installed in the
+C<$plugindir> directory, then users can be run it by only typing:
+
+ nbdkit name [args]
+
+The location of the C<$plugindir> directory is set when nbdkit is
+compiled and can be found by doing:
+
+ nbdkit --dump-config
+
+If using the pkg-config/pkgconf system then you can also find the
+plugin directory at compile time by doing:
+
+ pkg-config nbdkit --variable=plugindir
+
+=head1 WRITING PLUGINS IN C++
+
+Plugins in C++ work almost exactly like those in C, but the way you
+define the C<nbdkit_plugin> struct is slightly different:
+
+ namespace {
+   nbdkit_plugin create_plugin() {
+     nbdkit_plugin plugin = nbdkit_plugin ();
+     plugin.name     = "myplugin";
+     plugin.open     = myplugin_open;
+     plugin.get_size = myplugin_get_size;
+     plugin.pread    = myplugin_pread;
+     plugin.pwrite   = myplugin_pwrite;
+     return plugin;
+   }
+ }
+ static struct nbdkit_plugin plugin = create_plugin ();
+ NBDKIT_REGISTER_PLUGIN(plugin)
+
+=head1 WRITING PLUGINS IN OTHER PROGRAMMING LANGUAGES
+
+You can also write nbdkit plugins in Go, Lua, OCaml, Perl, Python,
+Rust, shell script or Tcl.  Other programming languages may be offered
+in future.
+
+Ruby plugin support was removed in nbdkit 1.40.
+
+For more information see:
+__LANG_PLUGIN_LINKS__.
+
+Plugins written in scripting languages may also be installed in
+C<$plugindir>.  These must be called C<nbdkit-I<name>-plugin> without
+any extension.  They must be executable, and they must use the shebang
+header (see L<nbdkit(1)/Shebang scripts>).  For example a plugin
+written in Perl called C<foo.pl> might be installed like this:
+
+ $ head -1 foo.pl
+ #!/usr/sbin/nbdkit perl
+
+=for paragraph
+
+ $ sudo install -m 0755 foo.pl $plugindir/nbdkit-foo-plugin
+
+and then users will be able to run it like this:
+
+ $ nbdkit foo [args ...]
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-nozero-filter(1)>,
+L<nbdkit-tls-fallback-filter(1)>,
+L<nbdkit-filter(3)>.
+
+Utility functions provided by nbdkit for plugins and filters to use:
+
+L<nbdkit_absolute_path(3)>,
+L<nbdkit_debug(3)>,
+L<nbdkit_debug_hexdiff(3)>,
+L<nbdkit_debug_hexdump(3)>,
+L<nbdkit_disconnect(3)>,
+L<nbdkit_error(3)>,
+L<nbdkit_export_name(3)>,
+L<nbdkit_is_tls(3)>,
+L<nbdkit_name(3)>,
+L<nbdkit_nanosleep(3)>,
+L<nbdkit_parse_bool(3)>,
+L<nbdkit_parse_delay(3)>,
+L<nbdkit_parse_int(3)>,
+L<nbdkit_parse_int16_t(3)>,
+L<nbdkit_parse_int32_t(3)>,
+L<nbdkit_parse_int64_t(3)>,
+L<nbdkit_parse_int8_t(3)>,
+L<nbdkit_parse_probability(3)>,
+L<nbdkit_parse_size(3)>,
+L<nbdkit_parse_uint16_t(3)>,
+L<nbdkit_parse_uint32_t(3)>,
+L<nbdkit_parse_uint64_t(3)>,
+L<nbdkit_parse_uint8_t(3)>,
+L<nbdkit_parse_unsigned(3)>,
+L<nbdkit_peer_gid(3)>,
+L<nbdkit_peer_name(3)>,
+L<nbdkit_peer_pid(3)>,
+L<nbdkit_peer_security_context(3)>,
+L<nbdkit_peer_tls_dn(3)>.
+L<nbdkit_peer_tls_issuer_dn(3)>.
+L<nbdkit_peer_uid(3)>,
+L<nbdkit_printf_intern(3)>,
+L<nbdkit_read_password(3)>,
+L<nbdkit_realpath(3)>,
+L<nbdkit_set_error(3)>,
+L<nbdkit_shutdown(3)>,
+L<nbdkit_stdio_safe(3)>,
+L<nbdkit_strdup_intern(3)>,
+L<nbdkit_strndup_intern(3)>,
+L<nbdkit_timestamp(3)>,
+L<nbdkit_vdebug(3)>,
+L<nbdkit_verror(3)>,
+L<nbdkit_vprintf_intern(3)>.
+
+Standard plugins provided by nbdkit:
+
+__PLUGIN_LINKS__.
+
+=head1 AUTHORS
+
+Eric Blake
+
+Richard W.M. Jones
+
+Pino Toscano
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

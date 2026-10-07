@@ -1,0 +1,165 @@
+=head1 NAME
+
+nbdkit-spinning-filter - add seek delays to simulate a spinning hard disk
+
+=head1 SYNOPSIS
+
+ nbdkit --filter=spinning PLUGIN [heads=N] [separate-heads=true|false]
+                                 [max-seek-time=N] [half-seek-time=N]
+                                 [min-seek-time=N]
+
+=head1 DESCRIPTION
+
+C<nbdkit-spinning-filter> is a filter for L<nbdkit(1)> which adds seek
+delays to simulate a spinning hard disk with a mechanical arm and
+head.  You can use this to test the NBD rotational property.
+
+In the default configuration this filter simulates a disk with one
+head.  Accesses which are close to the current position of this head
+have a very small delay.  Accesses which are far away suffer
+increasingly larger delays as the simulated head seeks to that
+position on the disk.  Each access moves the simulated position of the
+head.
+
+For example to turn L<nbdkit-memory-plugin(1)> (a RAM disk) into
+something which behaves more like a spinning disk:
+
+ nbdkit --filter=spinning memory 1G
+
+=head2 Multiple heads
+
+You can control the number of heads and whether they can move
+independently or not.  Setting C<heads=4> and C<separate-heads=false>
+simulates a disk with a single mechanical arm, two platters and four
+heads.  From the point of view of logical blocks this looks like the
+following, where the heads move in tandem over 4 equally spaced
+sections of the disk:
+
+                         arm
+                          │                       head
+      ┌────────────┬──────┴─────┬────────────┐  ↙
+      ⇓            ⇓            ⇓            ⇓
+ ┌─────────────────────────────────────────────────┐
+ └─────────────────────────────────────────────────┘
+
+In this mode, requests are serialized waiting for the arm to move even
+if the requests are for different heads (as happens on a real disk).
+
+Using C<separate-heads=true> simulates heads which move on independent
+arms (but each head is still confined to its quarter of the disk):
+
+                            range of movement for 4ᵗʰ arm/head
+                                     ┌──────┴─────┐
+    ⇓                 ⇓    ⇓            ⇓
+ ┌─────────────────────────────────────────────────┐
+ └─────────────────────────────────────────────────┘
+
+In this mode, requests may operate in parallel if they are handled by
+different heads.
+
+=head2 The rotational property
+
+The rotational property is a boolean flag in the NBD protocol which
+hints to the client whether the plugin behaves like a spinning disk
+(if rotational is true) or like a solid state disk or RAM (if
+rotational is false).
+
+This filter always advertises the rotational property, because it
+behaves like a spinning disk.
+
+Well-behaved NBD clients should observe this property and adjust their
+behaviour, for instance by scheduling disk accesses to reduce seeking.
+
+You can place L<nbdkit-rotational-filter(1)> in front of this filter
+if you want to simulate what happens with a spinning disk which does
+not advertise the property correctly:
+
+ nbdkit --filter=rotational --filter=spinning PLUGIN rotational=false
+
+Use L<nbdinfo(1)> to examine the rotational property of an NBD server.
+
+=head2 Seek times
+
+By default, seeks to adjacent tracks take 10 milliseconds, seeking
+from the first sector to the last sector of the disk takes ½ second,
+and seeking half way across the disk takes 0.2 seconds (so the curve
+of seek times is mildly quadratic).  Note these seek times are at
+least an order of magnitude larger than a typical hard disk, in order
+to exaggerate the effect for testing purposes.
+
+You can adjust the time taken to seek across the whole disk
+(C<max-seek-time>), across half of the disk (C<half-seek-time>), and
+from one track to an adjacent track (C<min-seek-time>) in order to
+change this curve.  For example, setting C<half-seek-time=500ms
+max-seek-time=1000ms> will make seek times twice as slow as the
+default and approximately linear with distance.
+
+=head1 PARAMETERS
+
+=over 4
+
+=item B<heads=>N
+
+Set the number of simulated heads to C<N> (default is 1).
+
+=item B<separate-heads=true>
+
+=item B<separate-heads=false>
+
+Simulate separate, independently moving heads (true), or heads
+connected together on a single arm (false).  See the description
+above.  The default is C<false>.
+
+=item B<min-seek-time=>N
+
+=item B<half-seek-time=>N
+
+=item B<max-seek-time=>N
+
+Adjust the time taken to seek to an adjacent track, seek across half
+of the disk, and seek across the whole disk.  All numbers are in
+seconds.  The defaults are C<min-seek-time=10ms>,
+C<half-seek-time=200ms> and C<max-seek-time=500ms>.
+
+See L<nbdkit_parse_delay(3)> for the precise format of these
+parameters.
+
+=back
+
+=head1 FILES
+
+=over 4
+
+=item F<$filterdir/nbdkit-spinning-filter.so>
+
+The filter.
+
+Use C<nbdkit --dump-config> to find the location of C<$filterdir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-spinning-filter> first appeared in nbdkit 1.40.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-delay-filter(1)>,
+L<nbdkit-rate-filter(1)>,
+L<nbdkit-rotational-filter(1)>,
+L<nbdkit-memory-plugin(1)>,
+L<nbdinfo(1)>,
+L<nbdkit-filter(3)>,
+L<nbdkit_parse_delay(3)>,
+L<https://en.wikipedia.org/wiki/Hard_disk_drive>,
+L<https://en.wikipedia.org/wiki/Hard_disk_drive_performance_characteristics>,
+L<https://blog.stuffedcow.net/2019/09/hard-disk-geometry-microbenchmarking/>
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

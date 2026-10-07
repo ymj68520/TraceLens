@@ -1,0 +1,189 @@
+=head1 NAME
+
+nbdkit-fua-filter - modify nbdkit flush and Forced Unit Access (FUA)
+
+=head1 SYNOPSIS
+
+ nbdkit --filter=fua plugin [fua-mode=MODE] [flush-on-close=true]
+                            [plugin-args...]
+
+=head1 DESCRIPTION
+
+C<nbdkit-fua-filter> is a filter that intentionally modifies handling
+of the S<“Forced Unit Access”> (FUA) flag across the NBD protocol.
+
+This filter can be used to disable FUA and flush requests for speed
+(although this is unsafe).  Also it can be used to test client or
+server fallbacks, and for evaluating timing differences between proper
+use of FUA compared to a full flush.  Also it can be used to force a
+flush when the client closes the connection.
+
+Note that by default, the NBD protocol does not guarantee that the use
+of FUA from one connection will be visible from another connection
+unless the server advertised NBD_FLAG_MULTI_CONN.  You may wish to
+combine this filter with L<nbdkit-multi-conn-filter(1)> if you plan on
+making multiple connections to the plugin.
+
+=head1 PARAMETERS
+
+The C<fua-mode> parameter is optional and controls which mode the
+filter will use.
+
+=over 4
+
+=item B<fua-mode=discard>
+
+=item B<fuamode=discard>
+
+(nbdkit E<ge> 1.22)
+
+The filter will discard FUA and flush requests.
+
+B<This mode is unsafe>: If the NBD disk contains a filesystem then you
+will likely lose data in the event of a crash.  It should only be used
+for ephemeral data which you can easily recreate, such as caches,
+builds, test data, etc.
+
+=item B<fua-mode=pass>
+
+=item B<fuamode=pass>
+
+(nbdkit E<ge> 1.22)
+
+Pass through FUA and flush requests unchanged.  Turns the filter into
+a no-op.
+
+=item B<fua-mode=none>
+
+=item B<fuamode=none>
+
+FUA support is not advertised to the client.  Clients will not be able
+to issue FUA write requests, but can send flush commands if the plugin
+supports it.
+
+This is the default if the C<fua-mode> parameter is not specified.
+
+=item B<fua-mode=emulate>
+
+=item B<fuamode=emulate>
+
+The filter will emulate FUA support using the plugin’s C<.flush>
+callback, regardless of whether the plugin itself supports more
+efficient FUA.  It refuses to load if the plugin does not support
+flush.
+
+=item B<fua-mode=native>
+
+=item B<fuamode=native>
+
+The filter will advertise native FUA support to the client and earlier
+filters in the chain.  This is useful for comparing optimizations of
+FUA handling when splitting large requests into sub-requests.  It
+refuses to load if the plugin’s C<.can_fua> callback returns
+C<NBDKIT_FUA_NONE>.
+
+=item B<fua-mode=force>
+
+=item B<fuamode=force>
+
+The filter will request FUA on all write transactions, even when the
+client did not request it (“write-through” mode).  In turn client
+flush requests become no-ops.  It refuses to load if the plugin’s
+C<.can_fua> callback returns C<NBDKIT_FUA_NONE>.
+
+=item B<flush-on-close=true>
+
+(nbdkit E<ge> 1.44)
+
+If set, call C<.flush> on the underlying plugin when the client closes
+any NBD connection.  This can be used for misbehaving clients that do
+not properly issue flush commands.  If the plugin does not support
+flush then the filter will refuse to start.
+
+=back
+
+=head1 EXAMPLES
+
+=over 4
+
+=item *
+
+Serve the file F<disk.img> discarding all FUA and flush requests.
+This can greatly improve performance, but you will likely lose data if
+there is a crash, so it is not safe.
+
+ nbdkit --filter=fua file disk.img fua-mode=discard
+
+=item *
+
+Serve the file F<disk.img>, but force the client to submit explicit
+flush requests instead of using C<NBD_CMD_FLAG_FUA>:
+
+ nbdkit --filter=fua file disk.img
+
+=item *
+
+Serve a file, flushing data to disk when the NBD client closes the
+connection.  Note use of C<fua-mode=pass> to stop the filter from
+changing the behaviour of normal FUA requests:
+
+ nbdkit --filter=fua file disk.img fua-mode=pass flush-on-close=true
+
+=item *
+
+Observe that the blocksize filter optimizes its handling of the FUA
+flag based on whether it knows nbdkit will be emulating FUA with a
+flush, by comparing the log filter output on top of different fua
+filter modes:
+
+ nbdkit --filter=blocksize --filter=log --filter=fua file disk.img \
+   maxlen=4k logfile=fua_emulated fua-mode=emulate
+ nbdkit --filter=blocksize --filter=log --filter=fua file disk.img \
+   maxlen=4k logfile=fua_native fua-mode=native
+
+=item *
+
+Serve the file F<disk.img> in write-through mode, where all writes
+from the client are immediately flushed to disk as if the client had
+always requested FUA:
+
+ nbdkit --filter=fua file disk.img fua-mode=force
+
+=back
+
+=head1 FILES
+
+=over 4
+
+=item F<$filterdir/nbdkit-fua-filter.so>
+
+The filter.
+
+Use C<nbdkit --dump-config> to find the location of C<$filterdir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-fua-filter> first appeared in nbdkit 1.4.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-file-plugin(1)>,
+L<nbdkit-filter(3)>,
+L<nbdkit-blocksize-filter(1)>,
+L<nbdkit-log-filter(1)>,
+L<nbdkit-multi-conn-filter(1)>,
+L<nbdkit-nocache-filter(1)>,
+L<nbdkit-noextents-filter(1)>,
+L<nbdkit-noparallel-filter(1)>,
+L<nbdkit-nozero-filter(1)>.
+
+=head1 AUTHORS
+
+Eric Blake
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

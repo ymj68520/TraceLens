@@ -1,0 +1,184 @@
+=head1 NAME
+
+nbdkit-release-notes-1.34 - release notes for nbdkit 1.34
+
+=head1 DESCRIPTION
+
+These are the release notes for nbdkit stable release 1.34.
+This describes the major changes since 1.32.
+
+nbdkit 1.34.0 was released on B<14 April 2023>.
+
+=head2 Security
+
+Various sanity checks were added to L<nbdkit-luks-filter(1)> so it can
+handle untrusted disk images.
+
+TLS support was hardened against a Man-in-the-Middle attacker
+injecting unknown NBD options before STARTTLS (Eric Blake).
+
+Fix rare assertion failure (denial of service) which can be triggered
+by clients hanging up early (Eric Blake).
+
+All past security issues and information about how to report new ones
+can be found in L<nbdkit-security(1)>.
+
+=head2 Plugins
+
+New L<nbdkit-blkio-plugin(1)> allows you to easily consume and
+automate the L<libblkio|https://libblkio.gitlab.io/libblkio/> high
+performance storage library.  This allows you to (amongst other
+things) access local vhost-user and VFIO devices (thanks Alberto Faria
+and Stefan Hajnoczi).
+
+L<nbdkit-file-plugin(1)> has new C<fd> and C<dirfd> parameters
+allowing a file or directory to be passed from a parent process
+through a file descriptor.
+
+Several enhancements were made to L<nbdkit-curl-plugin(1)>,
+concentrating on improved performance and functionality:
+
+=over 4
+
+=item *
+
+Multi-conn is now enabled for read-only connections (thanks Eric
+Blake).
+
+=item *
+
+Instead of using one libcurl handle per NBD client, we now use a
+common pool of handles, which improves performance.
+
+=item *
+
+Fix the C<tls13-ciphers> parameter (Michal Orzel).
+
+=item *
+
+We now use the new L<CURLOPT_PROTOCOLS_STR(3)> feature of libcurl (if
+available) instead of hard-coding the list of protocols into the
+plugin.
+
+=item *
+
+Support was added for forcing C<ssl-version>, S<http-version>
+
+=back
+
+L<nbdkit-vddk-plugin(1)> now supports VDDK 8 (thanks Ming Xie, Alice
+Frosi).
+
+L<nbdkit-torrent-plugin(1)> was ported to macOS (Eric Blake).
+
+=head2 Filters
+
+L<nbdkit-blocksize-policy-filter(1)> has a new
+C<blocksize-write-disconnect> to force a disconnection if a client
+attempts a write larger than a certain threshold (Eric Blake).
+
+L<nbdkit-retry-filter(1)> can now retry plugin open (Eric Blake).
+
+=head2 Language bindings
+
+L<nbdkit-python-plugin(3)> now rejects extra parameters to
+C<export_name> and C<shutdown> functions (Eric Blake).
+
+Tracebacks from Python plugins should now include the full method name
+(Eric Blake).
+
+L<nbdkit-sh-plugin(3)> status codes have changed in this release,
+although in a way that will normally be backwards compatible with
+older plugins.  Two new status codes are reserved for shutdown server
+and disconnect client.  Check the manual page for details.  (Eric
+Blake)
+
+=head2 Server
+
+C<nbdkit --dump-config> now reports C<exit_with_parent=yes|no> so you
+can tell if the optional L<exit with parent|nbdkit-captive(1)>
+functionality is enabled on the platform.
+
+Debug messages from filters and plugins are now picked out in bold,
+making them easier to read amongst other nbdkit debug messages.
+
+=head2 API
+
+New C<nbdkit_disconnect> API which allows a plugin or filter to drop
+the connection to the current client (Eric Blake).
+
+=head2 Bug fixes
+
+Fix a deadlock in L<nbdkit-exitwhen-filter(1)> (Piotr Dobrowolski).
+
+Fix the error message in L<nbdkit-ssh-plugin(1)> when the
+F<known_hosts> file is not readable (thanks Jonathon Jongsma).
+
+=head2 Documentation
+
+The I<--help> output of plugins is now consistent with the manual
+pages, and extra tests were added to ensure it stays this way.
+
+=head2 Tests
+
+Multiple CI improvements, particularly for Alpine Linux and macOS
+(Eric Blake).
+
+=head2 Build
+
+Most C<./configure>-time features can now be both enabled and disabled
+using I<--with->feature and I<--without->feature (Arsen Arsenović).
+
+Multiple VPATH build problems fixed (Eric Blake).
+
+=head2 Internals
+
+Use I<Subject Alternative Name> instead of I<commonName> in test
+certificates and suggest its use in documentation (thanks Daniel
+Berrangé).
+
+Source files reformatted to use E<le> 80 columns (Laszlo Ersek).
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>.
+
+=head1 AUTHORS
+
+Authors of nbdkit 1.34:
+
+=begin comment
+
+git shortlog -s v1.32.0..
+
+=end comment
+
+=over 4
+
+=item Alan Somers
+
+=item Arsen Arsenović
+
+=item Daniel P. Berrangé
+
+=item Eric Blake
+
+=item Laszlo Ersek
+
+=item Michal Orzel
+
+=item Nikolaus Rath
+
+=item Nir Soffer
+
+=item Piotr Dobrowolski
+
+=item Richard W.M. Jones
+
+=item Thomas Weißschuh
+
+=back
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

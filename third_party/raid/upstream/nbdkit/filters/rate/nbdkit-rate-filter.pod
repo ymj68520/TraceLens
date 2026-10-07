@@ -1,0 +1,155 @@
+=head1 NAME
+
+nbdkit-rate-filter - limit bandwidth by connection or server
+
+=head1 SYNOPSIS
+
+ nbdkit --filter=rate PLUGIN [PLUGIN-ARGS...]
+                      [rate=BITSPERSEC]
+                      [connection-rate=BITSPERSEC]
+                      [rate-file=FILENAME]
+                      [connection-rate-file=FILENAME]
+                      [burstiness=SECS]
+
+=head1 DESCRIPTION
+
+C<nbdkit-rate-filter> is a filter that limits the bandwidth that can
+be used by the server.  Limits can be applied per connection and/or
+for the server as a whole.
+
+=head1 EXAMPLES
+
+=over 4
+
+=item nbdkit --filter=rate memory 64M rate=1M
+
+Create a 64M RAM disk and limit server bandwidth as a whole to a
+maximum of S<1 Mbps> (megabit per second).
+
+=item nbdkit --filter=rate memory 64M connection-rate=50K
+
+Limit each connection to S<50 Kbps> (kilobits per second).  However as
+there is no limit to the number of simultaneous connections this does
+not limit overall server bandwidth.
+
+=item nbdkit --filter=rate memory 64M connection-rate=50K rate=1M
+
+Limit each connection to S<50 Kbps>.  Additionally the total bandwidth
+across all connections to the server is limited to S<1 Mbps>.
+
+=item nbdkit --filter=rate memory 64M rate=1M rate-file=/tmp/rate
+
+Initially limit bandwidth to S<1 Mbps>.  While the server is running
+the rate can be adjusted dynamically by writing a different rate into
+F</tmp/rate>.
+
+=back
+
+=head1 PARAMETERS
+
+=over 4
+
+=item B<connection-rate=>BITSPERSEC
+
+Limit each connection to C<BITSPERSEC>.
+
+=item B<rate=>BITSPERSEC
+
+Limit total bandwidth across all connections to C<BITSPERSEC>.
+
+=item B<connection-rate-file=>FILENAME
+
+=item B<rate-file=>FILENAME
+
+Adjust the per-connection or total bandwidth dynamically by writing
+C<BITSPERSEC> into C<FILENAME>.  See L</DYNAMIC ADJUSTMENT> below.
+
+=item B<burstiness=>SECS
+
+Control the bucket capacity, expressed as a length of time in
+"rate-equivalent seconds" that the client is allowed to burst for
+after a period of inactivity.  The default is 2.0 seconds.  It's not
+recommended to set this smaller than the default.
+
+=back
+
+C<BITSPERSEC> can be specified as a simple number, or you can use a
+number followed by C<K>, C<M> etc to mean kilobits, megabits and so
+on.
+
+=head1 DYNAMIC ADJUSTMENT
+
+Using the C<connection-rate-file> or C<rate-file> parameters you can
+dynamically adjust the bandwidth while the server is running.
+
+If the file is not present when the server starts up then the initial
+rate is taken from the associated C<connection-rate> or C<rate>
+parameter (or if that is not present, then it is unlimited).  If the
+file is deleted while the server is running then the last rate read
+from the file continues to be used.
+
+The file should be updated atomically (eg. create a new file, then
+rename or L<mv(1)> the new file over the old file).
+
+There will be a short delay between the file being updated and the new
+rate coming into effect.
+
+=head1 NOTES
+
+You can specify C<rate> and C<connection-rate> on their own or
+together.  If you specify neither, the filter is turned off.
+
+The rate filter approximates the bandwidth used by the NBD protocol on
+the wire.  Some operations such as zeroing and trimming are
+effectively free (because only a tiny NBD message is sent over the
+network) and so do not count against the bandwidth limit.  NBD and TCP
+protocol overhead is not included, so you may find that other tools
+such as L<tc(8)> and L<iptables(8)> give more accurate results.
+
+There are separate bandwidth limits for read and write (ie. download
+and upload to the server).
+
+If the size of requests made by your client is much larger than the
+rate limit then you can see long, lumpy sleeps in this filter.  In the
+future we may modify the filter to break up large requests
+automatically in order to limit the length of sleeps.  Placing the
+L<nbdkit-blocksize-filter(1)> in front of this filter, or adjusting
+C<burstiness> upwards may help.
+
+=head1 FILES
+
+=over 4
+
+=item F<$filterdir/nbdkit-rate-filter.so>
+
+The filter.
+
+Use C<nbdkit --dump-config> to find the location of C<$filterdir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-rate-filter> first appeared in nbdkit 1.12.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-blocksize-filter(1)>,
+L<nbdkit-delay-filter(1)>,
+L<nbdkit-exitlast-filter(1)>,
+L<nbdkit-exitwhen-filter(1)>,
+L<nbdkit-limit-filter(1)>,
+L<nbdkit-pause-filter(1)>,
+L<nbdkit-spinning-filter(1)>,
+L<nbdkit-filter(3)>,
+L<iptables(8)>,
+L<tc(8)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

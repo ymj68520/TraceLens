@@ -1,0 +1,328 @@
+{
+  "archive_sha256": "0c034edebaeab32f33126455f92bd2a1340150f091a30c3b334da970e292b015",
+  "commit": "fc74ca829c2773879243b326f2262c29f462df3a",
+  "files": {
+    ".gitattributes": {
+      "sha256": "7aecaf4e037033990acb3888963e6d72a86dd35a41e15fe63fd0602419884326"
+    },
+    ".github/workflows/build-executables.yml": {
+      "sha256": "a8fa5ecc7adf8cc330e9fd8badcd874d15abddcfbaf9b1e74d5504e022bb9b4c"
+    },
+    ".github/workflows/vendored-consumers.yml": {
+      "sha256": "31052a54e72e3214cb92b639a6c0578539de98eb792a8fd0a9f76418f2e704b8"
+    },
+    ".gitignore": {
+      "sha256": "f4de529672f494bc42300e0f1ecb388ce1e2b9ef5f7d4970abe6315ce5bb85bb"
+    },
+    "LICENSE": {
+      "sha256": "b902b89b5b20561c1e7f9d5962fe424cc0b7bfdb9f8074ad7726b78f812e1a9a"
+    },
+    "LICENSE-ewfprobe": {
+      "sha256": "b902b89b5b20561c1e7f9d5962fe424cc0b7bfdb9f8074ad7726b78f812e1a9a"
+    },
+    "README.md": {
+      "sha256": "b529bde145812b255a11acaa6bef5a13c9ca66c51ed14e0319c9101b7906f7ac"
+    },
+    "ewfprobe.py": {
+      "sha256": "304616fcdd362339c6890a100eeaba824822f518a09831eb50ed75692f3e52b8"
+    },
+    "packaging/README.txt": {
+      "sha256": "f2f94efff4d7c84f49ef605095967e06d8157f50b8be1aa03bbc6d1eb5cd5ac8"
+    },
+    "packaging/release-notes.md": {
+      "sha256": "f8348647bc3dd92182dde6dca8c53aed9b69140af65a76a089a6330ef9a993c4"
+    },
+    "qnxprobe.py": {
+      "sha256": "ab0f681313bc305f3662d4421199f45da357da3becf90b28696a158fbaae2710"
+    },
+    "qnxprobe_gui.py": {
+      "sha256": "0ee13f75ba10b8a7813ee412048cf310a099d38a4adf7600b724012e942617a0"
+    },
+    "tests/fixtures/apfs-fixture.img.gz": {
+      "sha256": "e4eecad5356045c6a1eeb6d2212bebab0e21977b2417a4e4e861707991a5012e"
+    },
+    "tests/fixtures/apfs-fixture.sha256": {
+      "sha256": "fb03511fd14cc3f0c098210ca866a156bd0bbb138d88bcc75c0a373a0b165e54"
+    },
+    "tests/fixtures/exfat-deleted.deleted.sha256": {
+      "sha256": "3c7ebc6eb1cd59fb84a80cb21563e334708ecad43f02ff02a12e96be005423cf"
+    },
+    "tests/fixtures/exfat-deleted.img.gz": {
+      "sha256": "77814a9c262a2a7edb57af23f132f520ca581448dae734fe765554e9aa9fcbe0"
+    },
+    "tests/fixtures/ext-sparse.sha256": {
+      "sha256": "f29b97e167f74c0b34387e1932bb8036e41bafb4fab1bd3862fd4c080cf2180b"
+    },
+    "tests/fixtures/ext2-sparse.img.gz": {
+      "sha256": "72b98c8e11d4c11a7f3526c0a5b49d744920ba100e06ab36ba8f94781298423e"
+    },
+    "tests/fixtures/ext4-sparse.img.gz": {
+      "sha256": "40e2855be9c16a3be51a9de03fa66a4baa1bdd4c875e17978cb4e453b922318a"
+    },
+    "tests/fixtures/f2fs-fixture-free.img.gz": {
+      "sha256": "4e91073e4d40bc4033220735480f1da6d128ac1e884a37fab498866172437950"
+    },
+    "tests/fixtures/f2fs-fixture-holes.img.gz": {
+      "sha256": "07b3de286217300f204c54411a2c6e10de9e7ed209e2139ef0955ae68eff651a"
+    },
+    "tests/fixtures/f2fs-fixture.free.sha256": {
+      "sha256": "f438ea2f953b34975ff6430d1410bad9f5937e79392d6d76442c797af9aa067c"
+    },
+    "tests/fixtures/f2fs-fixture.holes.sha256": {
+      "sha256": "e484f2e65230d8d221ad821d8989ba5a564c7970e39ea692bd52465ab769908f"
+    },
+    "tests/fixtures/f2fs-fixture.img.gz": {
+      "sha256": "70bed8000a4307ac90a278dd6a3ef212ed4a576424f8af21e75b870a44f08a81"
+    },
+    "tests/fixtures/f2fs-fixture.nodes.sha256": {
+      "sha256": "3ebef89f3215b18b30a364340827fd7793b91fe99cfb7f760646137c9405ad9a"
+    },
+    "tests/fixtures/f2fs-fixture.src.sha256": {
+      "sha256": "dfc6698c56b5d34342593ec360694c8139dd7e7600f287d4e020ff38384856bf"
+    },
+    "tests/fixtures/fat32-deleted.deleted.sha256": {
+      "sha256": "3c7ebc6eb1cd59fb84a80cb21563e334708ecad43f02ff02a12e96be005423cf"
+    },
+    "tests/fixtures/fat32-deleted.img.gz": {
+      "sha256": "a62477e04303e4624f067510b9a540b02dea26dcb5db27f6b7a4de35dc4dc3b7"
+    },
+    "tests/fixtures/hfsplus-fixture.img.gz": {
+      "sha256": "c2933d529e9bf5acf7ce87e9b150a3149c5a3af44cfa10fe0979c1375d953dcc"
+    },
+    "tests/fixtures/hfsplus-fixture.sha256": {
+      "sha256": "5aba5d8b430d290a54e91fa7f65cbe65d3a7e1b118378092091aa8997f727a87"
+    },
+    "tests/fixtures/jffs2-be-zlib.img.gz": {
+      "sha256": "a670d1ecbdb9f60fe1bbc9bd11ef4f133919da54126aac4d9e797dfed73440c2"
+    },
+    "tests/fixtures/jffs2-le-lzo.img.gz": {
+      "sha256": "f08cccbd1ba6c62cd4c971a24927a1829183f20e0e47d8b62982a25ac4968e1f"
+    },
+    "tests/fixtures/jffs2-le-none.img.gz": {
+      "sha256": "081c3d8573ddf5616681b94e9be783f8280b62f7d3193509faf4ffd86c576032"
+    },
+    "tests/fixtures/jffs2-le-rtime.img.gz": {
+      "sha256": "62debe36584c598d067888909469d5045f9b116b8239d5a82711ed06eb2173cf"
+    },
+    "tests/fixtures/jffs2-le-sum.img.gz": {
+      "sha256": "aad048278649000bf717019ad8a495abdb8d3de67e253221d51e412acb6be690"
+    },
+    "tests/fixtures/jffs2-le-zlib.img.gz": {
+      "sha256": "c0399a4ed4480521e55f15eefe211803286a445a70ea86139b2e0c8ab576e9a5"
+    },
+    "tests/fixtures/jffs2-nand-history.img.gz": {
+      "sha256": "a0b36a7451448946256870c3ccc565f4f2b58866cf11d13603dd29f431cf6208"
+    },
+    "tests/fixtures/jffs2-nand.history.sha256": {
+      "sha256": "1f36b65534545d1b4daa984166022ea9bf68ec215289c458f88ee419ccc91a0b"
+    },
+    "tests/fixtures/jffs2-nand.history.stat": {
+      "sha256": "5ceba40fe8fdcefd137e387e26eb5b9d3437e02f67b1938534f1034dde48456f"
+    },
+    "tests/fixtures/jffs2-nor-history.img.gz": {
+      "sha256": "362870067207f71c4464d7644acc40315fb51e9a8db9e75ffb222f937ef2fd68"
+    },
+    "tests/fixtures/jffs2-nor.history.sha256": {
+      "sha256": "1f36b65534545d1b4daa984166022ea9bf68ec215289c458f88ee419ccc91a0b"
+    },
+    "tests/fixtures/jffs2-nor.history.stat": {
+      "sha256": "324d873133058e9384621abd80b29c54086f9fcd6987eaadee6dc1a6c8286c2f"
+    },
+    "tests/fixtures/jffs2.devtable": {
+      "sha256": "ef44ca0090fcb6d714d2b71ce74698ae7f01381a2c9df4a74eb083ff0d3c17e0"
+    },
+    "tests/fixtures/jffs2.src.sha256": {
+      "sha256": "af825958dc3fdf4887b403a3be0bcab66aac1835229191247a86f3d943fc2b92"
+    },
+    "tests/fixtures/jffs2.src.stat": {
+      "sha256": "fa8467f7f9547c42a7bb515e7969a93f438fd96de6c471b5e4a259cb45ef54d5"
+    },
+    "tests/fixtures/ntfs-fixture.deleted.sha256": {
+      "sha256": "345aac3513a72bd9efb9b47d6ac23b2dadb109b2b6865eae0d5332032580a230"
+    },
+    "tests/fixtures/ntfs-fixture.img.gz": {
+      "sha256": "de0b018df385a26bc36f15410e3c6625c4fbaab41c0e2bda501c01a89f734c31"
+    },
+    "tests/fixtures/ntfs-fixture.sha256": {
+      "sha256": "38883f159615ef0d7c9125f7828ae8e5a17362a3a73ede40e6c6931662c3355c"
+    },
+    "tests/fixtures/squashfs-gzip.img.gz": {
+      "sha256": "41c1fb6dec4bcdd41c2976ff974fdb16e20afd665dfcab1426da5d34d72b6d0a"
+    },
+    "tests/fixtures/squashfs-lz4.img.gz": {
+      "sha256": "a88597b9f568eb6d76281d1012e6bc422fe4db1b6c36bbc680ee5129cdf103d4"
+    },
+    "tests/fixtures/squashfs-lzma.img.gz": {
+      "sha256": "ef27a7a280091ac104900bb4c1b13e5a9c0b473631ddcb5fed36ef8b4900ada6"
+    },
+    "tests/fixtures/squashfs-lzo.img.gz": {
+      "sha256": "b65ff2ed655a49bbaa7c25f91877d466db5dbf843efca844401278e09f271122"
+    },
+    "tests/fixtures/squashfs-none.img.gz": {
+      "sha256": "080c9bdbe42675eaa657028c51c74639eb394a426cb0967e851e7e8b229c0b35"
+    },
+    "tests/fixtures/squashfs-small.img.gz": {
+      "sha256": "03d210d8fd84c20e482806292b9edc5c446f3f414030821bd5931dc0bb012ee3"
+    },
+    "tests/fixtures/squashfs-xz.img.gz": {
+      "sha256": "741eb398116516dfa95f1832badc803d1a968c2963c3a7cf79933f124603311d"
+    },
+    "tests/fixtures/squashfs-zstd.img.gz": {
+      "sha256": "323ca2cb25cfca34cec7d5d2592718cbf719989adc188cd6def3e00794e0adba"
+    },
+    "tests/fixtures/squashfs.lln": {
+      "sha256": "01652da45366b27d326f6c8ea86f8d606cbdf35d78206fc571b12e5a995e751f"
+    },
+    "tests/fixtures/squashfs.src.sha256": {
+      "sha256": "7ee11a1d3a5125bc623fc04f70548cc370881ef5bfc0388d10375a9995debd52"
+    },
+    "tests/fixtures/ubi-nand-history.img.gz": {
+      "sha256": "9c90e5316d07f49fa1d1b7bf616cf357c0c7505df6512603c59db26f16452f89"
+    },
+    "tests/fixtures/ubi-nand-lzo.img.gz": {
+      "sha256": "b7e63931ae1aaa2a96e833288ac40cef1d8d7ccfacc1ceade6274efedcbc23f6"
+    },
+    "tests/fixtures/ubi-nand-none.img.gz": {
+      "sha256": "fdfd6a88dda0703f65be270b05de8ce95369293788941deff4ec3fa478ce315b"
+    },
+    "tests/fixtures/ubi-nand-zlib.img.gz": {
+      "sha256": "5f44789766d6d60b3a60ae1489de081c02a9541b6fe4765e219dbad2f61f39b9"
+    },
+    "tests/fixtures/ubi-nand-zstd.img.gz": {
+      "sha256": "462506afa898246a83afea8306a17248a8b60e3eae04d56f093b3041c47b119e"
+    },
+    "tests/fixtures/ubi-nand.history.kernel.sha256": {
+      "sha256": "ec2c370b45d5824ab2cc4bad9b2acbe51389a2b2f7554c170e54c5c92c11b1c4"
+    },
+    "tests/fixtures/ubi-nand.history.sha256": {
+      "sha256": "f9378be6feeb5d31528c4df2761376090b4dde5279936f14cedc66bbdc287b54"
+    },
+    "tests/fixtures/ubi-nand.history.stat": {
+      "sha256": "0e5b2348feaf756ba16cde44fe60acb9bdc838138a3a2d10cbdd57dd6e442072"
+    },
+    "tests/fixtures/ubi-nor.img.gz": {
+      "sha256": "2640448c2fd47ba23c6ee60b83e64ca4abbe42af47bb1351771ffea9ed6134bc"
+    },
+    "tests/fixtures/ubi.kernel.sha256": {
+      "sha256": "8b551ae8e590e1fa7a1aa33608093e5e9b561e46a560cfbb32ef3e939b406ee2"
+    },
+    "tests/fixtures/ubi.rootfs.sha256": {
+      "sha256": "c5178dc26e8316b6f26de410419200dee1d584ba50850d942c6aa6047a7156c0"
+    },
+    "tests/fixtures/ubifs-lzo.img.gz": {
+      "sha256": "600b1d15931803391375b063d9b5400540e60d57590cb96a4ed7dfb0d8f10968"
+    },
+    "tests/fixtures/ubifs.src.sha256": {
+      "sha256": "7a82ecf0969d72951a1f05e231d5d5fa6597692e1cf3850a6ba322e481533556"
+    },
+    "tests/fixtures/ubifs.src.stat": {
+      "sha256": "6d3d28dff1eec408a6f5d65e51a88528a17a0874813e59d0d83c1b96998b1dd6"
+    },
+    "tests/fixtures/yaffs.src.sha256": {
+      "sha256": "1fd3bb55cf8622e3f50c370816b1496338c4f814580a60c7beb431cd2c4f8af2"
+    },
+    "tests/fixtures/yaffs.src.stat": {
+      "sha256": "881f0c3c941712a914695d4a272d8e9042bd8356a5e4a14adef17577794fcc79"
+    },
+    "tests/fixtures/yaffs1-history.img.gz": {
+      "sha256": "3f59d8ed9ffab9e447b0c7ccfa87f3d1966daffad9a886b0d31043c7dbbf5afe"
+    },
+    "tests/fixtures/yaffs1.history.sha256": {
+      "sha256": "30fe6779ef60ba0bed03e743f0763c6f4cd0880e86854e87b4915fa5f22ef39f"
+    },
+    "tests/fixtures/yaffs1.history.stat": {
+      "sha256": "39b6fce00c370553b3e6e376973b5a519e69ed3d302a74b8210c61eea5c474fa"
+    },
+    "tests/fixtures/yaffs1.img.gz": {
+      "sha256": "34b605cb1a767a577528c79fdf1ffd620093356116a806d7b757385a201bed14"
+    },
+    "tests/fixtures/yaffs1cut-history.img.gz": {
+      "sha256": "6a7436982a57852ed4b13e161bc39e2f0e2ae93553f28e92c9d1c58191fb1536"
+    },
+    "tests/fixtures/yaffs1cut.history.sha256": {
+      "sha256": "e64eb3df3a847583b8cc63770b6af82c97dfda8c21f327bb0a40a7bf9c4ab288"
+    },
+    "tests/fixtures/yaffs1cut.history.stat": {
+      "sha256": "232f9537f6ff99d08a0a929c39aef6c9e57dc6833544a94253da32f2af549958"
+    },
+    "tests/fixtures/yaffs2-be.img.gz": {
+      "sha256": "c0192dcda66135d63dd0b25f1365e324b36ea7c0347aa37447ad200bf54566b1"
+    },
+    "tests/fixtures/yaffs2-history.img.gz": {
+      "sha256": "7bb6dc4c70613f030d6da07bc0eb1df161201b140c2375e146c7c0bb292859c3"
+    },
+    "tests/fixtures/yaffs2-le.img.gz": {
+      "sha256": "eda4f750537d3432ddcdc678e2e5b5213f6aa003d65b79547395d8142911a736"
+    },
+    "tests/fixtures/yaffs2-oob2.img.gz": {
+      "sha256": "8f80fe834e1dfdfe5ea922de4029eb3ebcd1b01c1bfaf8f7ece0976b6db708cb"
+    },
+    "tests/fixtures/yaffs2.history.sha256": {
+      "sha256": "ff3ef769b0f2538ccaf99ec72869f42ea17d780e70ec27f2d24f4875f5ea56aa"
+    },
+    "tests/fixtures/yaffs2.history.stat": {
+      "sha256": "98858c395acfd4fda63bcf1236af1c3d84e5a98373fa2ce9df7fd76edfd3ee40"
+    },
+    "tools/check_consumers.py": {
+      "sha256": "b099190b287abbb7dcdd1cc69fa060ea646896722bdf4739129e4c243cb526b8"
+    },
+    "tools/check_vendored.py": {
+      "sha256": "770af0d8354f7f3168bdc9e5c3b3129411006de308b1803171431acdb642c7f3"
+    },
+    "tools/make_apfs_fixture.sh": {
+      "sha256": "5e960d866e075994a06c060d73ca8a1a9b24de46a575e7a055935acb8e6ceccd"
+    },
+    "tools/make_ext_fixtures.sh": {
+      "sha256": "c704a91c442068623d9c7fabb71139533d5a09e1d08761b8256c095baeaa093b"
+    },
+    "tools/make_f2fs_fixture.sh": {
+      "sha256": "69d428e22c968fcc3287f3cd33f68a43075c80c0e917da2203e48ddc581cc283"
+    },
+    "tools/make_f2fs_free_fixture.sh": {
+      "sha256": "85d0d215cc5d6f10fc531d2f22ad6201626c7ccb3c55d1313b55920b05f4b102"
+    },
+    "tools/make_f2fs_hole_fixture.sh": {
+      "sha256": "bf7ba68ba09484e97282fd26b6a6c3e4a6aea1e6b1bf1456fc6f1b36686f80f4"
+    },
+    "tools/make_fat_deleted_fixtures.sh": {
+      "sha256": "52dbfa24e0fbd5e1974b9473ee8a2de9bba45c983f897cadee3b6b9682372814"
+    },
+    "tools/make_hfsplus_fixture.sh": {
+      "sha256": "14c63d21de429360e48b2263aaf372c3e3c11f57d09a9c53433e59c4a9125697"
+    },
+    "tools/make_jffs2_fixtures.sh": {
+      "sha256": "5a54f878ea641698b173225acc288c1dd258276c2ee5bce78401c8bb7a129e5a"
+    },
+    "tools/make_kernel_flash_fixtures.sh": {
+      "sha256": "c3b3f1afa0add4b02ddfab1165a82444c98cdd9b216eef6a8b3ca341ea3aad6b"
+    },
+    "tools/make_ntfs_fixture.sh": {
+      "sha256": "78398db3e8cafcc7ac03b7a671f923c4bd5df56b1a6ac28176037a47f47bdec4"
+    },
+    "tools/make_squashfs_fixtures.sh": {
+      "sha256": "2cb7a1aedf95be782e3dc2b7491d7b1aaab9a45bff6e621a598ba710dd5670f6"
+    },
+    "tools/make_ubi_fixtures.sh": {
+      "sha256": "b53895abb5b614f9fbda3920a42ab3716e72f343b67689276442a201e9cc9c61"
+    },
+    "tools/make_yaffs_fixtures.sh": {
+      "sha256": "dcadc706530f3773690e6f81e12cfd28b6e59180079c687ae388bfb13fd1c7bb"
+    },
+    "tools/make_yaffs_history_fixture.sh": {
+      "sha256": "bf55e126f908150ca7edc28b95aaa18a2591af8a85ff881b86325aba518a6eaf"
+    },
+    "tools/vendoring.json": {
+      "sha256": "47aa8359443aa7d594884f6e190bc9a9315d576711b822bdecd4a4ef87fa54c6"
+    },
+    "tools/yaffs_history.c": {
+      "sha256": "c8fab9da8001231fde0f0e116541d2e1c5654b55481ba6f41db7ecb8923c9d90"
+    },
+    "vendored.json": {
+      "sha256": "232ee6f4a67094297274258a672587ba0d996737930cb08104f4556c23ba8aa1"
+    }
+  },
+  "license": "MIT",
+  "name": "qnxprobe",
+  "role": "existing pinned EWF logical reader; explicit segments only",
+  "url": "https://github.com/abrignoni/qnxprobe.git"
+}

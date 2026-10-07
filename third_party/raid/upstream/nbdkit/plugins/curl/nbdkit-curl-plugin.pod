@@ -1,0 +1,668 @@
+=head1 NAME
+
+nbdkit-curl-plugin - nbdkit curl plugin (HTTP, FTP and other protocols)
+
+=head1 SYNOPSIS
+
+ nbdkit -r curl [url=]http://example.com/disk.img
+
+=head1 DESCRIPTION
+
+C<nbdkit-curl-plugin> is a plugin for L<nbdkit(1)> which turns content
+served over HTTP, FTP, and more, into a Network Block Device.  It uses
+a library called libcurl (also known as cURL) to read data from URLs.
+The exact list of protocols that libcurl can handle depends on how it
+was compiled, but most versions will handle HTTP, HTTPS, FTP, FTPS and
+more (see: S<C<curl -V>>).
+
+B<Note:> This plugin supports writes.  However for HTTP, you may not
+want nbdkit to issue PUT requests to the remote server (which probably
+doesn't understand them).  To force nbdkit to use a readonly
+connection, pass the I<-r> flag.  Using the I<-r> flag also enables
+NBD multi-conn, which usually performs much better (if the client
+supports it).
+
+Although this plugin can access SFTP (ie. SSH) servers, it is much
+better to use L<nbdkit-ssh-plugin(1)>.  This plugin can be used to
+access C<file:///> URLs, but you should use L<nbdkit-file-plugin(1)>
+instead.
+
+=head1 EXAMPLE
+
+ nbdkit -r curl http://example.com/disk.img
+
+serves the remote disk image as NBD on TCP port 10809 (to control
+ports and protocols used to serve NBD see L<nbdkit(1)>).
+
+=head1 PARAMETERS
+
+=over 4
+
+=item B<cainfo=>FILENAME
+
+(nbdkit E<ge> 1.18)
+
+Configure CA bundle for libcurl. See L<CURLOPT_CAINFO(3)> for details.
+
+Pass empty string in order to not use the default certificate store
+that libcurl is compiled with.
+
+=item B<capath=>PATH
+
+(nbdkit E<ge> 1.18)
+
+Set CA certificates directory location for libcurl. See
+L<CURLOPT_CAPATH(3)> for more information.
+
+=item B<connections=>N
+
+(nbdkit E<ge> 1.34)
+
+Open up to C<N> connections to the web server.  The default is 16.
+Connections are shared between all NBD clients, so you may wish to
+increase this if you expect many simultaneous NBD clients (or a single
+client using many multi-conn connections).
+
+See L</NBD CONNECTIONS AND CURL HANDLES> below.
+
+=item B<cookie=>COOKIE
+
+=item B<cookie=+>FILENAME
+
+=item B<cookie=->
+
+=item B<cookie=->FD
+
+(nbdkit E<ge> 1.12)
+
+Set a cookie in the request header when connecting to the remote
+server.
+
+A typical example is:
+
+ cookie='vmware_soap_session="52a01262-bf93-ccce-d379-8dabb3e55560"'
+
+This option can be used at most once.  It only works for HTTP and
+HTTPS transports.  To set multiple cookies you must concatenate them
+yourself, eg:
+
+ cookie='name1=content1; name2=content2'
+
+See L<CURLOPT_COOKIE(3)> for more information about this.  The format
+is quite strict and must consist of C<key=value>, each cookie
+separated by exactly S<C<"; ">> (semicolon and space).
+
+If the cookie is used for authentication then passing it on the
+command line is not secure on shared machines.  Use the alternate
+C<+FILENAME> syntax to pass it in a file, C<-> to read the cookie
+interactively, or C<-FD> to read it from a file descriptor.
+
+=item B<cookiefile=>
+
+(nbdkit E<ge> 1.26)
+
+Enable cookie processing (eg. when following redirects), starting with
+an empty list of cookies.  This is equivalent to calling
+L<CURLOPT_COOKIEFILE(3)> with an empty string.
+
+=item B<cookiefile=>FILENAME
+
+(nbdkit E<ge> 1.26)
+
+Enable cookie processing (eg. when following redirects), prepopulating
+cookies from the given file.  The file can contain cookies in any
+format supported by curl, see L<CURLOPT_COOKIEFILE(3)>.  Cookies sent
+by the server are not saved when nbdkit exits.
+
+=item B<cookiejar=>FILENAME
+
+(nbdkit E<ge> 1.26)
+
+Enable cookie processing (eg. when following redirects), prepopulating
+cookies from the given file, and writing server cookies back to the
+file when the NBD handle is closed.  The file can contain cookies in
+any format supported by curl, see L<CURLOPT_COOKIEJAR(3)>.
+
+There is some advice on the internet telling you to set this to
+F</dev/null>, but you B<should not> do this because it can corrupt
+F</dev/null>.  If you don't want a cookiejar, omit this option.  If
+you want to enable cookie processing without updating a permanent
+cookiejar, use the C<cookiefile=> option instead.
+
+=item B<cookie-script=>SCRIPT
+
+=item B<cookie-script-renew=>SECS
+
+(nbdkit E<ge> 1.22, not Windows)
+
+Run C<SCRIPT> (a command or shell script fragment) to generate the
+HTTP/HTTPS cookies.  C<cookie-script> cannot be used with C<cookie>.
+See L</HEADER AND COOKIE SCRIPTS> below.
+
+=item B<followlocation=false>
+
+(nbdkit E<ge> 1.26)
+
+Do not follow redirects from the server.  The default is true (follow
+redirects).
+
+You can follow redirects but avoid redirecting to a less secure
+protocol (eg. HTTPS redirecting to FTP) by using the C<protocols>
+parameter instead.
+
+=item B<header=>HEADER
+
+(nbdkit E<ge> 1.22)
+
+For HTTP/HTTPS, send a custom header, or remove a header that curl has
+added.  To add a custom header:
+
+ header='X-My-Name: John Doe'
+
+To remove a header that curl has added, add the header followed by a
+colon and no value:
+
+ header='User-Agent:'
+
+To add a custom header that has no value, you have to use a semicolon
+instead of colon.  This adds an C<X-Empty:> header with no value:
+
+ header='X-Empty;'
+
+See L<CURLOPT_HTTPHEADER(3)>.  You can use this option multiple times
+in order to add several headers.  Note this sends the header in all
+requests, even when following a redirect, which can cause headers
+(eg. containing sensitive authorization information) to be sent to
+hosts other than the one originally requested.
+
+=item B<header-script=>SCRIPT
+
+=item B<header-script-renew=>SECS
+
+(nbdkit E<ge> 1.22, not Windows)
+
+Run C<SCRIPT> (a command or shell script fragment) to generate the
+HTTP/HTTPS headers.  C<header-script> cannot be used with C<header>.
+See L</HEADER AND COOKIE SCRIPTS> below.
+
+=item B<http-version=none>
+
+=item B<http-version=1.0>
+
+=item B<http-version=1.1>
+
+=item B<http-version=2.0>
+
+=item B<http-version=2TLS>
+
+=item B<http-version=2-prior-knowledge>
+
+=item B<http-version=3>
+
+=item B<http-version=3only>
+
+(nbdkit E<ge> 1.34)
+
+Force curl to use a particular HTTP protocol.  The default is C<none>
+meaning curl will negotiate the best protocol with the server.  The
+other settings are mainly for testing.  See L<CURLOPT_HTTP_VERSION(3)>
+for details.
+
+=item B<ipresolve=any>
+
+=item B<ipresolve=v4>
+
+=item B<ipresolve=v6>
+
+(nbdkit E<ge> 1.36)
+
+Force curl to use only IPv4 (C<ipresolve=v4>), only IPv6
+(C<ipresolve=v6>) or any IP version supported by your system
+(C<ipresolve=any>).  The default is C<any>.  See
+L<CURLOPT_IPRESOLVE(3)>.
+
+=item B<password=>PASSWORD
+
+Set the password to use when connecting to the remote server.
+
+Note that passing this on the command line is not secure on shared
+machines.
+
+=item B<password=->
+
+Ask for the password (interactively) when nbdkit starts up.
+
+=item B<password=+>FILENAME
+
+Read the password from the named file.  This is a secure method
+to supply a password, as long as you set the permissions on the file
+appropriately.
+
+=item B<password=->FD
+
+Read the password from file descriptor number C<FD>, inherited from
+the parent process when nbdkit starts up.  This is also a secure
+method to supply a password.
+
+=item B<protocols=>PROTO,PROTO,...
+
+(nbdkit E<ge> 1.12)
+
+Limit the protocols that are allowed in the URL.  Use this option for
+extra security if the URL comes from an untrusted source and you want
+to avoid security issues in the more obscure protocols that curl
+supports.  (See qemu CVE-2013-0249 for an example of a security bug
+introduced by allowing unrestricted protocols).
+
+For example if you only intend HTTP and HTTPS URLs to be used, then
+add this parameter: C<protocols=http,https>
+
+This restriction also applies if the plugin follows a redirect to
+another protocol (eg. you start with an C<https://> URL which the
+server redirects to C<ftp://>).  To prevent redirects altogether see
+the C<followlocation> parameter.
+
+The value of this parameter is a comma-separated list of protocols,
+for example C<protocols=https>, or C<protocols=http,https>, or
+C<protocols=file,ftp,gopher>.  For a list of known protocols, see the
+libcurl manual (L<CURLOPT_PROTOCOLS_STR(3)>), and in S<nbdkit E<ge> 1.40>
+the output of:
+
+ nbdkit curl --dump-plugin
+
+The default is to allow any protocol.
+
+=item B<proxy=>PROXY
+
+(nbdkit E<ge> 1.20)
+
+Set the proxy.  See L<CURLOPT_PROXY(3)>.
+
+=item B<proxy-cainfo=>FILENAME
+
+=item B<proxy-capath=>PATH
+
+(nbdkit E<ge> 1.44)
+
+Set the CA bundle and CA certificates directory location for the
+proxy. See L<CURLOPT_PROXY_CAINFO(3)> and L<CURLOPT_PROXY_CAPATH(3)>
+for more information.
+
+=item B<proxy-password=>PASSWORD
+
+=item B<proxy-password=->
+
+=item B<proxy-password=+>FILENAME
+
+=item B<proxy-password=->FD
+
+=item B<proxy-user=>USERNAME
+
+(nbdkit E<ge> 1.12)
+
+Set the proxy username and password.
+
+=item B<resolve=>HOSTB<:>PORTB<:>ADDRESS
+
+Provide custom host name to IP address resolution.  You can supply
+this option as many times as needed.  See L<CURLOPT_RESOLVE(3)> for
+the full details of this option.
+
+=item B<sslverify=false>
+
+Don't verify the SSL certificate of the remote host.
+
+=item B<ssl-cipher-list=>CIPHER[:CIPHER...]
+
+=item B<ssl-version=default>
+
+=item B<ssl-version=tlsv1>
+
+=item B<ssl-version=sslv2>
+
+=item B<ssl-version=sslv3>
+
+=item B<ssl-version=tlsv1.0>
+
+=item B<ssl-version=tlsv1.1>
+
+=item B<ssl-version=tlsv1.2>
+
+=item B<ssl-version=tlsv1.3>
+
+=item B<ssl-version=max-default>
+
+=item B<ssl-version=max-tlsv1.0>
+
+=item B<ssl-version=max-tlsv1.1>
+
+=item B<ssl-version=max-tlsv1.2>
+
+=item B<ssl-version=max-tlsv1.3>
+
+Set the SSL ciphers and TLS version.  For further information see
+L<CURLOPT_SSL_CIPHER_LIST(3)> and L<CURLOPT_SSLVERSION(3)>.
+
+=item B<tcp-keepalive=true>
+
+(nbdkit E<ge> 1.20)
+
+Enable TCP keepalives.
+
+=item B<tcp-nodelay=false>
+
+(nbdkit E<ge> 1.20)
+
+Enable Nagle’s algorithm.  Small writes on the network socket will not
+be sent immediately but will be held in a local buffer and coalesced
+if possible.  This is more efficient for the network but can cause
+increased latency.
+
+The default (in libcurl E<ge> 7.50.2) is that Nagle’s algorithm is
+disabled for better latency at the expense of network efficiency.
+
+See L<CURLOPT_TCP_NODELAY(3)>.
+
+=item B<timeout=>SECS
+
+Set the timeout for requests.
+
+=item B<timeout=0>
+
+Use the default libcurl timeout for requests.
+
+=item B<tls13-ciphers=>CIPHER[:CIPHER...]
+
+Select TLSv1.3 ciphers available.  See L<CURLOPT_TLS13_CIPHERS(3)> and
+L<https://curl.se/docs/ssl-ciphers.html>
+
+=item B<unix-socket-path=>PATH
+
+(nbdkit E<ge> 1.10)
+
+Instead of using a TCP connection, connect to the server over the
+named Unix domain socket.  See L<CURLOPT_UNIX_SOCKET_PATH(3)>.
+
+=item [B<url=>]URL
+
+The URL of the remote disk image.  This is passed to libcurl directly
+via L<CURLOPT_URL(3)>.
+
+This parameter is required.
+
+C<url=> __IS_MAGIC__
+
+=item B<user=>USERNAME
+
+Set the username to use when connecting to the remote server.  This
+may also be set in the URL (eg. C<http://foo@example.com/disk.img>)
+
+=item B<user-agent=>USER-AGENT
+
+(nbdkit E<ge> 1.22)
+
+Send user-agent header when using HTTP or HTTPS.  The default is no
+user-agent header.
+
+=back
+
+=head1 NBD CONNECTIONS AND CURL HANDLES
+
+nbdkit E<le> 1.32 used a simple model where a new NBD connection would
+create a new libcurl handle.  Since a libcurl handle maintains a small
+cache of connections, this meant that the number of HTTP connections
+would be a small multiple of the number of incoming NBD connections
+and the total would not be limited (assuming C<http:> or C<https:>
+URL).
+
+nbdkit 1.34 changed to using a fixed pool of libcurl handles shared
+across all NBD connections.  You can control the maximum number of
+curl handles in the pool with the C<connections> parameter (default
+4).  Since each curl handle maintains a small cache of connections,
+this meant that the number of HTTP connections would be a small
+multiple of the C<connections> parameter.  If there are more than 4
+incoming NBD connections, they will contend for the libcurl handles,
+unless you adjust C<connections>.
+
+nbdkit E<ge> 1.36 changed again to use a curl multi handle
+(L<libcurl-multi(3)>).  Now the C<connections> parameter controls the
+maximum number of HTTP connections made to the remote server
+(L<CURLMOPT_MAX_TOTAL_CONNECTIONS(3)>).  This is more efficient
+especially with HTTP/2 and HTTP/3, where each HTTP connection can
+contain a very large number of streams (typically up to 100)
+multiplexed over one connection.  The default for C<connections> was
+raised to 16.
+
+=head1 HEADER AND COOKIE SCRIPTS
+
+While the C<header> and C<cookie> parameters can be used to specify
+static headers and cookies which are used in every HTTP/HTTPS request,
+the alternate C<header-script> and C<cookie-script> parameters can be
+used to run an external script or program to generate headers and/or
+cookies.  This is particularly useful to access services which require
+an authorization token.  In addition the C<header-script-renew> and
+C<cookie-script-renew> parameters allow you to renew the authorization
+token by rerunning the script periodically.
+
+C<header-script> is incompatible with C<header>, and C<cookie-script>
+is incompatible with C<cookie>.
+
+=head2 Header script
+
+The header script should print zero or more HTTP headers, each line of
+output in the same format as the C<header> parameter.  The headers
+printed by the script are passed to L<CURLOPT_HTTPHEADER(3)>.
+
+In the following example, an imaginary web service requires
+authentication using a token fetched from a separate login server.
+The token expires after 60 seconds, so we also tell the plugin that it
+must renew the token (by re-running the script) if more than 50
+seconds have elapsed since the last request:
+
+ nbdkit curl https://service.example.com/disk.img \
+        header-script='
+          printf "Authorization: Bearer "
+          curl -s -X POST https://auth.example.com/login |
+               jq -r .token
+        ' \
+        header-script-renew=50
+
+=head2 Cookie script
+
+The cookie script should print a single line in the same format as the
+C<cookie> parameter.  This is passed to L<CURLOPT_COOKIE(3)>.
+
+=head2 Header and cookie script shell variables
+
+Within the C<header-script> and C<cookie-script> the following shell
+variables are available:
+
+=over 4
+
+=item C<$iteration>
+
+The number of times that the script has been called.  The first time
+the script is called this contains C<0>.
+
+=item C<$url>
+
+The URL as passed to the plugin.
+
+=back
+
+=head2 Example: VMware ESXi cookies
+
+VMware ESXi’s web server can expose both VMDK and raw format disk
+images, but requires you to log in using HTTP Basic Authentication.
+While you can use the C<user> and C<password> parameters to send HTTP
+Basic Authentication headers in every request, tests have shown that
+it is faster to accept the cookie which the server returns and send
+that instead.  (It is not clear why it is faster, but one theory is
+that VMware has to do a more expensive username and password check
+each time.)
+
+The web server can be accessed as below.  Since the cookie expires
+after a certain period of time, we use C<cookie-script-renew>, and
+because the server uses a self-signed certificate we must use
+I<--insecure> and C<sslverify=false>.
+
+ SERVER=esx.example.com
+ DCPATH=data
+ DS=datastore1
+ GUEST=guest-name
+ URL="https://$SERVER/folder/$GUEST/$GUEST-flat.vmdk?dcPath=$DCPATH&dsName=$DS"
+
+ nbdkit curl "$URL" \
+        cookie-script='
+            curl --head -s --insecure -u root:password "$url" |
+                 sed -ne "{ s/^Set-Cookie: \([^;]*\);.*/\1/ip }"
+        ' \
+        cookie-script-renew=500 \
+        sslverify=false
+
+=head2 Example: Docker Hub authorization tokens
+
+Accessing objects like container layers from Docker Hub requires that
+you first fetch an authorization token, even for anonymous access.
+These tokens expire after about 5 minutes (300 seconds) so must be
+periodically renewed.
+
+You will need this authorization script (F</tmp/auth.sh>):
+
+ #!/bin/sh -
+ IMAGE=library/fedora
+ curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:$IMAGE:pull" |
+      jq -r .token
+
+You will also need this script to get the blobSum of the layer
+(F</tmp/blobsum.sh>):
+
+ #!/bin/sh -
+ TOKEN=`/tmp/auth.sh`
+ IMAGE=library/fedora
+ curl -s -X GET -H "Authorization: Bearer $TOKEN" \
+      "https://registry-1.docker.io/v2/$IMAGE/manifests/latest" |
+      jq -r '.fsLayers[0].blobSum'
+
+Both scripts must be executable, and both can be run on their own to
+check they are working.  To run nbdkit:
+
+ IMAGE=library/fedora
+ BLOBSUM=`/tmp/blobsum.sh`
+ URL="https://registry-1.docker.io/v2/$IMAGE/blobs/$BLOBSUM"
+
+ nbdkit curl "$URL" \
+        header-script=' printf "Authorization: Bearer "; /tmp/auth.sh ' \
+        header-script-renew=200 \
+        --filter=gzip
+
+Note that this exposes a tar file over NBD.  See also
+L<nbdkit-tar-filter(1)>.
+
+=head1 DEBUG FLAGS
+
+=over 4
+
+=item B<-D curl.scripts=1>
+
+This prints out the headers and cookies generated by the
+C<header-script> and C<cookie-script> options, which can be useful
+when debugging these scripts.
+
+=item B<-D curl.times=1>
+
+This prints out additional information about the total time taken to
+do name resolution, connect to the remote server, etc.  The
+information is printed in the debug output before nbdkit exits.  The
+output will look like:
+
+ nbdkit: debug: times (-D curl.times=1):
+ nbdkit: debug: name resolution               :    0.128442 s
+ nbdkit: debug: connection                    :    4.945213 s
+ nbdkit: debug: SSL negotiation               :    4.291362 s
+ nbdkit: debug: pretransfer                   :    0.104137 s
+ nbdkit: debug: first byte received           :   56.115269 s
+ nbdkit: debug: data transfer                 :  222.633831 s
+ nbdkit: debug: redirection time              :    0.000000 s
+
+The cumulative time taken to perform each step is shown (summed across
+all HTTP connections).  The redirection time is the total time taken
+doing HTTP redirections.  For further information see
+L<curl_easy_getinfo(3)/TIMES>.
+
+=item B<-D curl.verbose=1>
+
+This enables very verbose curl debugging.  See L<CURLOPT_VERBOSE(3)>.
+This is mainly useful if you suspect there is a bug inside libcurl
+itself.
+
+=item B<-D curl.verbose.ids=1>
+
+This enhances C<-D curl.verbose=1> by printing connection and transfer
+IDs next to each debug message.  As this has some overhead it is not
+enabled by default.
+
+=back
+
+=head1 FILES
+
+=over 4
+
+=item F<$plugindir/nbdkit-curl-plugin.so>
+
+The plugin.
+
+Use C<nbdkit --dump-config> to find the location of C<$plugindir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-curl-plugin> first appeared in nbdkit 1.2.
+
+=head1 SEE ALSO
+
+L<curl(1)>,
+L<libcurl(3)>,
+L<CURLOPT_CAINFO(3)>,
+L<CURLOPT_CAPATH(3)>,
+L<CURLOPT_COOKIE(3)>,
+L<CURLOPT_COOKIEFILE(3)>,
+L<CURLOPT_COOKIEJAR(3)>,
+L<CURLOPT_FOLLOWLOCATION(3)>,
+L<CURLOPT_HTTPHEADER(3)>,
+L<CURLOPT_IPRESOLVE(3)>,
+L<CURLOPT_PROXY(3)>,
+L<CURLOPT_PROXY_CAINFO(3)>,
+L<CURLOPT_PROXY_CAPATH(3)>,
+L<CURLOPT_RESOLVE(3)>,
+L<CURLOPT_SSL_CIPHER_LIST(3)>,
+L<CURLOPT_SSLVERSION(3)>,
+L<CURLOPT_TCP_KEEPALIVE(3)>,
+L<CURLOPT_TCP_NODELAY(3)>,
+L<CURLOPT_TLS13_CIPHERS(3)>,
+L<CURLOPT_URL(3)>,
+L<CURLOPT_UNIX_SOCKET_PATH(3)>,
+L<CURLOPT_USERAGENT(3)>,
+L<CURLOPT_VERBOSE(3)>,
+L<nbdkit(1)>,
+L<nbdkit-extentlist-filter(1)>,
+L<nbdkit-file-plugin(1)>,
+L<nbdkit-nfs-plugin(1)>,
+L<nbdkit-retry-filter(1)>,
+L<nbdkit-retry-request-filter(1)>,
+L<nbdkit-ssh-plugin(1)>,
+L<nbdkit-torrent-plugin(1)>,
+L<nbdkit-plugin(3)>,
+L<http://curl.haxx.se>,
+L<https://curl.se/docs/ssl-ciphers.html>
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+Parts derived from Alexander Graf's "QEMU Block driver for CURL images".
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

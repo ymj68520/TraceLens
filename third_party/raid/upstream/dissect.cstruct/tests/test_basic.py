@@ -1,0 +1,776 @@
+from __future__ import annotations
+
+import re
+import textwrap
+from io import BytesIO
+from typing import TYPE_CHECKING, BinaryIO
+
+import pytest
+
+from dissect.cstruct.cstruct import cstruct
+from dissect.cstruct.exception import ArraySizeError, ParserError, ResolveError
+from dissect.cstruct.types import BaseType
+
+from .utils import verify_compiled
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from dissect.cstruct.cstruct import Endianness
+
+
+def test_duplicate_type(cs: cstruct, compiled: bool) -> None:
+    cdef = """
+    struct test {
+        uint32  a;
+    };
+    """
+    cs.load(cdef, compiled=compiled)
+
+    with pytest.raises(ValueError, match="Duplicate type"):
+        cs.load(cdef)
+
+
+def test_load_file(cs: cstruct, compiled: bool, tmp_path: Path) -> None:
+    cdef = """
+    struct test {
+        uint32  a;
+    };
+    """
+    tmp_path.joinpath("testdef.txt").write_text(textwrap.dedent(cdef))
+
+    cs.loadfile(tmp_path.joinpath("testdef.txt"), compiled=compiled)
+    assert "test" in cs.types
+
+
+def test_load_init() -> None:
+    cdef = """
+    struct test {
+        DWORD   a;
+        QWORD   b;
+    };
+    """
+    # load with first positional argument
+    cs = cstruct(cdef)
+    assert "test" in cs.types
+    assert cs.endian == "<"
+
+    # load from keyword argument and big endian
+    cs = cstruct(load=cdef, endian=">")
+    assert "test" in cs.types
+    a = cs.test(a=0xBADC0DE, b=0xACCE55ED)
+    assert len(bytes(a)) == 12
+    assert bytes(a) == a.dumps()
+    assert bytes(a) == b"\x0b\xad\xc0\xde\x00\x00\x00\x00\xac\xce\x55\xed"
+
+    # load using positional argument and little endian
+    cs = cstruct(cdef, endian="<")
+    assert "test" in cs.types
+    a = cs.test(a=0xBADC0DE, b=0xACCE55ED)
+    assert len(bytes(a)) == 12
+    assert bytes(a) == a.dumps()
+    assert bytes(a) == b"\xde\xc0\xad\x0b\xed\x55\xce\xac\x00\x00\x00\x00"
+
+
+def test_load_init_kwargs_only() -> None:
+    cdef = """
+    struct test {
+        uint32  a;
+    };
+    """
+
+    # kwargs only check
+    with pytest.raises(TypeError, match=r"takes from .* positional arguments but .* were given"):
+        cs = cstruct(cdef, ">")
+
+    cs = cstruct(cdef, endian=">")
+    assert "test" in cs.types
+    assert cs.endian == ">"
+
+
+def test_read_type_name(cs: cstruct) -> None:
+    assert cs.read("uint32", b"\x01\x00\x00\x00") == 1
+
+
+def test_type_resolve(cs: cstruct) -> None:
+    assert cs.resolve("BYTE") == cs.uint8
+
+    with pytest.raises(ResolveError, match="Unknown type"):
+        cs.resolve("fake")
+
+    cs.add_type("ref0", "uint32")
+    for i in range(1, 15):
+        cs.add_type(f"ref{i}", f"ref{i - 1}")
+
+    assert cs.resolve("ref14") is cs.uint32
+
+
+def test_constants(cs: cstruct) -> None:
+    cdef = """
+    #define a 1
+    #define b 0x2
+    #define c "test"
+    #define d 1 << 1
+    """
+    cs.load(cdef)
+
+    assert cs.a == 1
+    assert cs.b == 2
+    assert cs.c == "test"
+    assert cs.d == 2
+
+
+def test_duplicate_types(cs: cstruct) -> None:
+    cdef = """
+    struct A {
+        uint32 a;
+    };
+    """
+    cs.load(cdef)
+    assert cs.A
+
+    with pytest.raises(ValueError, match="Duplicate type"):
+        cs.load(cdef)
+
+    cs.load("""typedef uint32 Test;""")
+    assert cs.Test is cs.uint32
+
+    cs.load("""typedef uint32 Test;""")
+    assert cs.Test is cs.uint32
+
+    with pytest.raises(ValueError, match="Duplicate type"):
+        cs.load("""typedef uint64 Test;""")
+
+
+def test_type_replace(cs: cstruct) -> None:
+    cs.add_type("BYTE", "uint16", replace=True)
+    assert cs.resolve("BYTE") is cs.uint16
+    assert cs.BYTE is cs.uint16
+
+    # Adding a conflicting type over an existing alias should raise
+    cs.add_type("foo", "uint8")
+    with pytest.raises(ValueError, match="Duplicate type"):
+        cs.load("struct foo { uint32 x; };")
+
+
+def test_reserved_attribute_names(cs: cstruct) -> None:
+    cs.load("struct load { uint8 a; };")
+    assert callable(cs.load)
+    assert cs.resolve("load").__members__["a"].type is cs.uint8
+
+    cs.load("struct consts { uint8 a; };")
+    assert isinstance(cs.consts, dict)
+
+    cs.load("#define resolve 1")
+    assert callable(cs.resolve)
+    assert cs.consts["resolve"] == 1
+
+
+def test_del_const_after_copy(cs: cstruct) -> None:
+    cs.load("#define FOO 1")
+    cs_copy = cs.copy()
+
+    assert cs_copy.FOO == 1
+    cs_copy.del_const("FOO")
+    assert "FOO" not in cs_copy.consts
+    assert cs.FOO == 1
+
+
+def test_const_type_name_collision(cs: cstruct) -> None:
+    # When a constant and a type share a name, the last one added wins on attribute access
+    cs.load("#define INT 1")
+    assert cs.INT == 1
+    assert cs.resolve("INT") is cs.int32
+
+    cs.load("struct foo { uint8 a; };")
+    cs.load("#define foo 1")
+    assert cs.foo == 1
+    assert cs.resolve("foo").__members__["a"].type is cs.uint8
+
+
+def test_typedef(cs: cstruct) -> None:
+    cdef = """
+    typedef uint32 test;
+    """
+    cs.load(cdef)
+
+    assert cs.test == cs.uint32
+    assert cs.resolve("test") == cs.uint32
+
+
+def test_config_flag_nocompile(cs: cstruct, compiled: bool) -> None:
+    cdef = """
+    struct compiled_global
+    {
+        uint32  a;
+    };
+
+    #[nocompile]
+    struct never_compiled
+    {
+        uint32  a;
+    };
+    """
+    cs.load(cdef, compiled=compiled)
+
+    assert verify_compiled(cs.compiled_global, compiled)
+    assert verify_compiled(cs.never_compiled, False)
+
+
+def test_compiler_slicing_multiple(cs: cstruct, compiled: bool) -> None:
+    cdef = """
+    struct compile_slicing {
+        char single;
+        char multiple[2];
+    };
+    """
+    cs.load(cdef, compiled=compiled)
+
+    assert verify_compiled(cs.compile_slicing, compiled)
+
+    obj = cs.compile_slicing(b"\x01\x02\x03")
+    assert obj.single == b"\x01"
+    assert obj.multiple == b"\x02\x03"
+
+
+def test_underscores_attribute(cs: cstruct, compiled: bool) -> None:
+    cdef = """
+    struct __test {
+        uint32 test_val;
+    };
+    """
+    cs.load(cdef, compiled=compiled)
+
+    assert verify_compiled(cs.__test, compiled)
+
+    data = b"\x39\x05\x00\x00"
+    obj = cs.__test(data)
+    assert obj.test_val == 1337
+
+
+def test_half_compiled_struct(cs: cstruct) -> None:
+    class OffByOne(int, BaseType):
+        type: BaseType
+
+        @classmethod
+        def _read(cls, stream: BinaryIO, *, context: dict | None = None, endian: Endianness) -> OffByOne:
+            return cls(cls.type._read(stream, context=context, endian=endian) + 1)
+
+        @classmethod
+        def _write(cls, stream: BinaryIO, data: int, *, endian: Endianness) -> OffByOne:
+            return cls(cls.type._write(stream, data - 1, endian=endian))
+
+    # Add an unsupported type for the cstruct compiler
+    # so that it returns the original struct,
+    # only partially compiling the struct.
+    offbyone = cs._make_type("offbyone", (OffByOne,), 8, attrs={"type": cs.uint64})
+    cs.add_type("offbyone", offbyone)
+
+    cdef = """
+    struct uncompiled {
+        uint32      a;
+        offbyone    b;
+        uint16      c;
+    };
+
+    struct compiled {
+        char        a[4];
+        uncompiled  b;
+        uint16      c;
+    };
+    """
+    cs.load(cdef, compiled=True)
+
+    assert verify_compiled(cs.compiled, True)
+    assert verify_compiled(cs.uncompiled, False)
+
+    buf = b"zomg\x01\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x03\x00\x04\x00"
+    obj = cs.compiled(buf)
+    assert obj.a == b"zomg"
+    assert obj.b.a == 1
+    assert obj.b.b == 3
+    assert obj.b.c == 3
+    assert obj.c == 4
+
+    assert obj.dumps() == buf
+
+
+def test_cstruct_bytearray(cs: cstruct) -> None:
+    cdef = """
+    struct test {
+        uint8 a;
+    };
+    """
+    cs.load(cdef)
+
+    obj = cs.test(bytearray([10]))
+    assert obj.a == 10
+
+
+def test_multipart_type_name(cs: cstruct) -> None:
+    cdef = """
+    enum TestEnum : unsigned int {
+        A = 0,
+        B = 1
+    };
+
+    struct test {
+        unsigned int    a;
+        unsigned long long  b;
+    };
+    """
+    cs.load(cdef)
+
+    assert cs.TestEnum.__type__ == cs.resolve("unsigned int")
+    assert cs.test.__fields__[0].type == cs.resolve("unsigned int")
+    assert cs.test.__fields__[1].type == cs.resolve("unsigned long long")
+
+    cdef = """
+    struct test1 {
+        unsigned long long unsigned a;
+    };
+    """
+    with pytest.raises(ResolveError, match="Unknown type unsigned long long unsigned"):
+        cs.load(cdef)
+
+    cdef = """
+    enum TestEnum : unsigned int and more {
+        A = 0,
+        B = 1
+    };
+    """
+    with pytest.raises(ResolveError, match="Unknown type unsigned int and more"):
+        cs.load(cdef)
+
+
+def test_dunder_bytes(cs: cstruct) -> None:
+    cdef = """
+    struct test {
+        DWORD   a;
+        QWORD   b;
+    };
+    """
+    cs.endian = ">"
+    cs.load(cdef)
+
+    a = cs.test(a=0xBADC0DE, b=0xACCE55ED)
+    assert len(bytes(a)) == 12
+    assert bytes(a) == a.dumps()
+    assert bytes(a) == b"\x0b\xad\xc0\xde\x00\x00\x00\x00\xac\xce\x55\xed"
+
+
+def test_array_of_null_terminated_strings(cs: cstruct, compiled: bool) -> None:
+    cdef = """
+    struct args {
+        uint32 argc;
+        char   argv[argc][];
+    };
+    """
+    cs.load(cdef, compiled=compiled)
+
+    assert verify_compiled(cs.args, compiled)
+
+    buf = b"\x02\x00\x00\x00hello\0world\0"
+    obj = cs.args(buf)
+
+    assert obj.argc == 2
+    assert obj.argv[0] == b"hello"
+    assert obj.argv[1] == b"world"
+
+    cdef = """
+    struct args2 {
+        uint32 argc;
+        char   argv[][argc];
+    };
+    """
+    with pytest.raises(ParserError, match="Depth required for multi-dimensional array"):
+        cs.load(cdef)
+
+
+def test_array_of_size_limited_strings(cs: cstruct, compiled: bool) -> None:
+    cdef = """
+    struct args {
+        uint32 argc;
+        char   argv[argc][8];
+    };
+    """
+    cs.load(cdef, compiled=compiled)
+
+    assert verify_compiled(cs.args, compiled)
+
+    buf = b"\x04\x00\x00\x00lorem\0\0\0ipsum\0\0\0dolor\0\0\0sit amet"
+    obj = cs.args(buf)
+
+    assert obj.argc == 4
+    assert obj.argv[0] == b"lorem\0\0\0"
+    assert obj.argv[1] == b"ipsum\0\0\0"
+    assert obj.argv[2] == b"dolor\0\0\0"
+    assert obj.argv[3] == b"sit amet"
+
+
+def test_array_three_dimensional(cs: cstruct, compiled: bool) -> None:
+    cdef = """
+    struct test {
+        uint8   a[2][2][2];
+    };
+    """
+    cs.load(cdef, compiled=compiled)
+
+    assert verify_compiled(cs.test, compiled)
+
+    buf = b"\x01\x02\x03\x04\x05\x06\x07\x08"
+    obj = cs.test(buf)
+
+    assert obj.a[0][0][0] == 1
+    assert obj.a[0][0][1] == 2
+    assert obj.a[0][1][0] == 3
+    assert obj.a[0][1][1] == 4
+    assert obj.a[1][0][0] == 5
+    assert obj.a[1][0][1] == 6
+    assert obj.a[1][1][0] == 7
+    assert obj.a[1][1][1] == 8
+
+    assert obj.dumps() == buf
+
+
+def test_nested_array_of_variable_size(cs: cstruct, compiled: bool) -> None:
+    cdef = """
+    struct test {
+        uint8   outer;
+        uint8   medior;
+        uint8   inner;
+        uint8   a[outer][medior][inner];
+    };
+    """
+    cs.load(cdef, compiled=compiled)
+
+    assert verify_compiled(cs.test, compiled)
+
+    buf = b"\x02\x01\x03\x01\x02\x03\x04\x05\x06"
+    obj = cs.test(buf)
+
+    assert obj.outer == 2
+    assert obj.medior == 1
+    assert obj.inner == 3
+    assert obj.a[0][0][0] == 1
+    assert obj.a[0][0][1] == 2
+    assert obj.a[0][0][2] == 3
+    assert obj.a[1][0][0] == 4
+    assert obj.a[1][0][1] == 5
+    assert obj.a[1][0][2] == 6
+
+    assert obj.dumps() == buf
+
+
+def test_report_array_size_mismatch(cs: cstruct) -> None:
+    cdef = """
+    struct test {
+        uint8   a[2];
+    };
+    """
+    cs.load(cdef)
+
+    a = cs.test(a=[1, 2, 3])
+
+    with pytest.raises(ArraySizeError):
+        a.dumps()
+
+
+def test_reserved_keyword(cs: cstruct, compiled: bool) -> None:
+    cdef = """
+    struct in {
+        uint8 a;
+    };
+
+    struct class {
+        uint8 a;
+    };
+
+    struct for {
+        uint8 a;
+    };
+    """
+    cs.load(cdef, compiled=compiled)
+
+    for name in ["in", "class", "for"]:
+        assert name in cs.types
+        assert verify_compiled(cs.resolve(name), compiled)
+
+        assert cs.resolve(name)(b"\x01").a == 1
+
+
+def test_array_class_name(cs: cstruct) -> None:
+    cdef = """
+    struct test {
+        uint8   a[2];
+    };
+
+    struct test2 {
+        uint8   a;
+        uint8   b[a + 1];
+    };
+    """
+    cs.load(cdef)
+
+    assert cs.test.__fields__[0].type.__name__ == "uint8[2]"
+    assert cs.test2.__fields__[1].type.__name__ == "uint8[a + 1]"
+
+
+def test_size_and_aligment(cs: cstruct) -> None:
+    test = cs._make_int_type("test", 1, False, alignment=8)
+    assert test.__size__ == 1
+    assert test.__alignment__ == 8
+
+    test = cs._make_packed_type("test", "B", int, alignment=8)
+    assert test.__size__ == 1
+    assert test.__alignment__ == 8
+
+
+def test_dynamic_substruct_size(cs: cstruct) -> None:
+    cdef = """
+    struct sub {
+        int32 len;
+        char str[len];
+    };
+
+    struct test {
+        sub data[1];
+    };
+    """
+    cs.load(cdef)
+
+    assert cs.sub.__dynamic__
+    assert cs.test.__dynamic__
+
+
+def test_dumps_write_overload(cs: cstruct) -> None:
+    assert cs.uint8.dumps(1) == cs.uint8(1).dumps() == b"\x01"
+
+    fh = BytesIO()
+    cs.uint8.write(fh, 1)
+    assert fh.getvalue() == b"\x01"
+    cs.uint8(2).write(fh)
+    assert fh.getvalue() == b"\x01\x02"
+
+
+def test_linked_list(cs: cstruct) -> None:
+    cdef = """
+    struct node {
+        uint16 data;
+        node* next;
+    };
+    """
+    cs.pointer = cs.uint16
+    cs.load(cdef)
+
+    assert cs.node.__fields__[1].type.__type__ == cs.node
+
+    obj = cs.node(b"\x01\x00\x04\x00\x02\x00\x00\x00")
+    assert repr(obj) == "<node data=0x1 next=<node* @ 0x4>>"
+
+    assert obj.data == 1
+    assert obj.next.data == 2
+
+
+def test_copy(cs: cstruct) -> None:
+    """Test that copying a cstruct instance works as expected."""
+    cdef = """
+    struct test {
+        uint32  a;
+    };
+    """
+    cs.load(cdef)
+
+    cs_copy = cs.copy()
+
+    # Modify the copy and verify the original is unchanged
+    cs_copy.load("""
+    struct test2 {
+        uint16  b;
+    };
+    """)
+
+    assert "test" in cs.types
+    assert "test2" not in cs.types
+
+    assert "test" in cs_copy.types
+    assert "test2" in cs_copy.types
+
+    # Verify that types in the copied cstruct reference the copied cstruct
+    assert cs_copy.resolve("test").__cs__ is cs_copy
+    assert cs_copy.resolve("test2").__cs__ is cs_copy
+
+
+def test_cdef(cs: cstruct) -> None:
+    """Test that a cstruct instance can render all its definitions back to C-style definitions."""
+    cs.load(
+        """
+        #define MAGIC_LENGTH 4
+        enum Color : uint16 { RED = 1, GREEN = 2, BLUE = 4 };
+        struct Point { int32 x; int32 y; };
+        union Val { uint32 as_int; float as_float; };
+        typedef Point Coord;
+        struct Header {
+            char magic[MAGIC_LENGTH];
+            Color color;
+            Point points[2];
+            Val v;
+        };
+        """
+    )
+
+    assert cs.cdef() == textwrap.dedent(
+        """\
+        #define MAGIC_LENGTH 4
+
+        enum Color : uint16 {
+            RED = 1,
+            GREEN = 2,
+            BLUE = 4,
+        };
+
+        struct Point {
+            int32 x;
+            int32 y;
+        };
+
+        union Val {
+            uint32 as_int;
+            float as_float;
+        };
+
+        typedef Point Coord;
+
+        struct Header {
+            char magic[4];
+            Color color;
+            Point points[2];
+            Val v;
+        };"""
+    )
+
+    # The full dump should be parseable on its own into equivalent types
+    reparsed = cstruct()
+    reparsed.load(cs.cdef())
+    assert reparsed.consts == cs.consts
+    for name in ("Color", "Point", "Val", "Coord", "Header"):
+        assert len(getattr(cs, name)) == len(getattr(reparsed, name))
+
+
+def test_cdef_defines(cs: cstruct) -> None:
+    """Test that ``#define`` constants (including those referenced in expressions) are dumped and round-trip."""
+    cs.load(
+        """
+        #define INT_CONST 8
+        #define STR_CONST "hello"
+        #define BYTES_CONST b"world"
+
+        struct Test {
+            uint32 count;
+            uint8 data[count * INT_CONST];
+        };
+        """
+    )
+
+    src = cs.cdef()
+    assert "#define INT_CONST 8" in src
+    assert "#define STR_CONST 'hello'" in src
+    assert "#define BYTES_CONST b'world'" in src
+    # The constant referenced in the (dynamic) array expression must be emitted
+    assert "uint8 data[count * INT_CONST];" in src
+
+    reparsed = cstruct()
+    reparsed.load(src)
+    assert reparsed.consts == cs.consts
+
+
+def test_endianness(cs: cstruct) -> None:
+    """Test that the endianness context manager works correctly."""
+    with cs.endianness(">") as big_endian_cs:
+        assert big_endian_cs.endian == ">"
+        assert big_endian_cs.uint32(b"\x00\x00\x00\x01") == 1
+
+        assert cs.endian == ">"
+
+    with cs.endianness("<") as little_endian_cs:
+        assert little_endian_cs.endian == "<"
+        assert little_endian_cs.uint32(b"\x01\x00\x00\x00") == 1
+
+    with cs.big_endian() as big_endian_cs:
+        assert big_endian_cs.endian == ">"
+        assert big_endian_cs.uint32(b"\x00\x00\x00\x01") == 1
+
+    with cs.little_endian() as little_endian_cs:
+        assert little_endian_cs.endian == "<"
+        assert little_endian_cs.uint32(b"\x01\x00\x00\x00") == 1
+
+
+def test_deprecation_warnings(cs: cstruct) -> None:
+    cdef = """
+    struct test {
+        uint8 a;
+        uint8 b[2];
+        uint8 *c;
+    };
+    """
+    cs.load(cdef)
+
+    with pytest.warns(DeprecationWarning, match=re.escape("The 'cs' property is deprecated, use '__cs__' instead.")):
+        _ = cs.test.cs
+
+    with pytest.warns(
+        DeprecationWarning,
+        match=re.escape("The 'size' property is deprecated, use '__size__', len(cls) or sizeof(cls) instead."),
+    ):
+        _ = cs.test.size
+
+    with pytest.warns(
+        DeprecationWarning, match=re.escape("The 'dynamic' property is deprecated, use '__dynamic__' instead.")
+    ):
+        _ = cs.test.dynamic
+
+    with pytest.warns(
+        DeprecationWarning, match=re.escape("The 'alignment' property is deprecated, use '__alignment__' instead.")
+    ):
+        _ = cs.test.alignment
+
+    with pytest.warns(
+        DeprecationWarning, match=re.escape("The 'fields' property is deprecated, use '__members__' instead.")
+    ):
+        _ = cs.test.fields
+
+    with pytest.warns(
+        DeprecationWarning, match=re.escape("The 'lookup' property is deprecated, use '__lookup__' instead.")
+    ):
+        _ = cs.test.lookup
+
+    with pytest.warns(
+        DeprecationWarning, match=re.escape("The 'ArrayType' property is deprecated, use '__ArrayType__' instead.")
+    ):
+        _ = cs.uint8.ArrayType
+
+    array = cs.test.__members__["b"].type
+    with pytest.warns(
+        DeprecationWarning, match=re.escape("The 'type' property is deprecated, use '__type__' instead.")
+    ):
+        _ = array.type
+
+    with pytest.warns(
+        DeprecationWarning,
+        match=re.escape("The 'num_entries' property is deprecated, use '__num_entries__' instead."),
+    ):
+        _ = array.num_entries
+
+    with pytest.warns(
+        DeprecationWarning,
+        match=re.escape("The 'null_terminated' property is deprecated, use '__null_terminated__' instead."),
+    ):
+        _ = array.null_terminated
+
+    with pytest.warns(
+        DeprecationWarning, match=re.escape("The 'packchar' property is deprecated, use '__fmt__' instead.")
+    ):
+        _ = cs.uint8.packchar
+
+    # No test for the pointer type since it also conflicts with a bug fix
+    # (accessing a field named 'type' on a pointer type)

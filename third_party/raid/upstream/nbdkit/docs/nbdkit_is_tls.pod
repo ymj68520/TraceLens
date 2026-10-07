@@ -1,0 +1,72 @@
+=head1 NAME
+
+nbdkit_is_tls - get TLS status of the connection for nbdkit
+
+=head1 SYNOPSIS
+
+ #include <nbdkit-plugin.h>
+
+ int nbdkit_is_tls (void);
+
+=head1 DESCRIPTION
+
+C<nbdkit_is_tls> returns true if and only if TLS negotiation has been
+completed on the current connection.  An L<nbdkit(1)> plugin may use
+C<nbdkit_is_tls> to limit connections according to whether the client
+connection is protected by TLS.  This function uses thread-local magic
+so no parameter is required
+
+L<nbdkit-tls-fallback-filter(1)> and the nbdkit I<--tls=require>
+option are other alternatives.
+
+=head1 RETURN VALUE
+
+The function returns 1 (true) if TLS negotiation has been completed,
+or 0 (false) if not.
+
+If there is an error it calls L<nbdkit_error(3)> and returns C<-1>.
+
+=head1 LANGUAGE BINDINGS
+
+In L<nbdkit-golang-plugin(3)>:
+
+ import "libguestfs.org/nbdkit"
+ is_tls, err := nbdkit.IsTLS()
+
+In L<nbdkit-ocaml-plugin(3)>:
+
+ NBDKit.is_tls : unit -> bool
+
+In L<nbdkit-python-plugin(3)>:
+
+ import nbdkit
+ tls = nbdkit.is_tls()
+
+In L<nbdkit-rust-plugin(3)>:
+
+ use nbdkit::*;
+ pub fn is_tls() -> Result<bool>
+
+In L<nbdkit-sh-plugin(3)> the TLS flag is available as parameter C<$4>
+of the C<open> method.
+
+=head1 HISTORY
+
+C<nbdkit_is_tls> was added in nbdkit 1.22.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit_export_name(3)>,
+L<nbdkit-plugin(3)>,
+L<nbdkit-filter(3)>,
+L<nbdkit-tls(1)>,
+L<nbdkit-tls-fallback-filter(1)>.
+
+=head1 AUTHORS
+
+Eric Blake
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

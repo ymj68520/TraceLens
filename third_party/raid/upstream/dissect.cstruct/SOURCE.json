@@ -1,0 +1,232 @@
+{
+  "archive_sha256": "66f1f6dad1cdb9cabb791b4f6144acd2cb92ad24b9e9f731c7dcaf1d0123e1dd",
+  "commit": "46b850fa9cd023a9de583149caa5e9ba31254cf1",
+  "files": {
+    ".git-blame-ignore-revs": {
+      "sha256": "ff7d90c325b4b1d23017ab3b2aa7055bec18d5c25fa67df43ff32cdf23d4ae56"
+    },
+    ".gitattributes": {
+      "sha256": "f1d0d27d6a12fdf08e4e3290b230921a0f3970d725a7bd18f8f472f7958187cc"
+    },
+    ".github/pull_request_template.md": {
+      "sha256": "c81c987221ae6bc8995e929d0dd10aaf3ac557cf7d812fda8c73cfc854973222"
+    },
+    ".github/workflows/dissect-ci.yml": {
+      "sha256": "4c095c4ec1316ae7cb13565a50501b8c552828a3dd1116ef2d592af068edb117"
+    },
+    ".gitignore": {
+      "sha256": "a4a60b2530e64f5d2402f7b53da989082d6e07a82c88b5ac48c70ff9ceb64a5b"
+    },
+    "CHANGELOG.md": {
+      "sha256": "a6f49ebd693d0facf6da3ff0962e9ccf03c87884a0dc962eed7fef86ec422332"
+    },
+    "COPYRIGHT": {
+      "sha256": "1fed7c4577ec85d1fd01d1f05b678ed576bee6cead6397a2a47879734c210eee"
+    },
+    "LICENSE": {
+      "sha256": "3e152a8b0ea3021d8a6c175544f06afe17c0bdf7130629fb9d9dc22bb3506d33"
+    },
+    "MANIFEST.in": {
+      "sha256": "b39c322533c6e3f48f36193321f91cceb447c843662fcdc244f3485598b75560"
+    },
+    "README.md": {
+      "sha256": "e1627d98891d509e65e93da5e0aacc4ca42c787264e8e1b4cf6815cf826f6ae1"
+    },
+    "dissect/cstruct/__init__.py": {
+      "sha256": "28ec8d794beee1cd096808b239f8fb89fb46c142234e60fc3301ed16c2cf2d25"
+    },
+    "dissect/cstruct/bitbuffer.py": {
+      "sha256": "68dcd8e259167bc7df01cf23ec53835f3c1973c819c1b7b2efb528b32a180acc"
+    },
+    "dissect/cstruct/compiler.py": {
+      "sha256": "cdcacee42582176bd6a367acfa91469fe32fb7e453321f16f5b9ed2be867f399"
+    },
+    "dissect/cstruct/cstruct.py": {
+      "sha256": "c02e1777c301c530b297e202d48d9cddeb48f0ce82e83e725d57c42db7d093a7"
+    },
+    "dissect/cstruct/exception.py": {
+      "sha256": "46a0f4f0bb8191b32a6b7890d40d390cd37c5e0126411fd252782ec1ef4b1a8f"
+    },
+    "dissect/cstruct/expression.py": {
+      "sha256": "304c2a1c682a0367d49389189389512c358d4c0321078fac689e41813c65ece0"
+    },
+    "dissect/cstruct/lexer.py": {
+      "sha256": "34351f016832c6044d46e54ef04c57439d4ba905d2da6bfd6f2c156bf33bb454"
+    },
+    "dissect/cstruct/parser.py": {
+      "sha256": "c422bed4ef1cf3ab1516f8da5d7491813b095967749dc28ce8a25fdb06f2186f"
+    },
+    "dissect/cstruct/tools/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "dissect/cstruct/tools/stubgen.py": {
+      "sha256": "31e6642e649e3522cd7001309407481afd652af96f2b7510e1637ce68becc533"
+    },
+    "dissect/cstruct/types/__init__.py": {
+      "sha256": "e8fef53eef780efed13636690d9d7da6acf1f86d10ce6430e2ad3edf35802eca"
+    },
+    "dissect/cstruct/types/base.py": {
+      "sha256": "bc9520ae7b0f836640f4c7a5d8ff49041b2d23dcfda0cc6a8b93e7c7d1650480"
+    },
+    "dissect/cstruct/types/char.py": {
+      "sha256": "cec44c95c6465b5707607ff140134e4439ccfdae425dcb992c6972d4dd62fccb"
+    },
+    "dissect/cstruct/types/enum.py": {
+      "sha256": "8f653aa04ffcd1ce07db9d3960c75d1cf9c5f7d6b3d8ae48b83857e3443b3842"
+    },
+    "dissect/cstruct/types/flag.py": {
+      "sha256": "ef1c508c51033c74903b104781c73be56ccf880c5f94eaaec2bed9edcddeacb1"
+    },
+    "dissect/cstruct/types/int.py": {
+      "sha256": "4424f7623ada8ea46a87c73278cfb36aacc29817de26b5e40f95b515c4735da8"
+    },
+    "dissect/cstruct/types/leb128.py": {
+      "sha256": "57ded74c94ff5dbc352e94f04cdd4e9233c7b90400414c5df0e1ae03ac840e61"
+    },
+    "dissect/cstruct/types/packed.py": {
+      "sha256": "405d6602a8312db82289b4592e19fa729e929ee1f62318c6afd0ec41d5c20921"
+    },
+    "dissect/cstruct/types/pointer.py": {
+      "sha256": "14db81f5b7c435645e6db297f91e95b3ac563cc1dea63bce861a2679486bec8f"
+    },
+    "dissect/cstruct/types/structure.py": {
+      "sha256": "419055082111bbd7a85cbaabba617b2aacb482e772c25d76f9c499c7a9f7b4f2"
+    },
+    "dissect/cstruct/types/void.py": {
+      "sha256": "7d5e212a4e74ba8a7f10a6d1d677f2d5c76d033bd462b4b2997b1d6a40b2164f"
+    },
+    "dissect/cstruct/types/wchar.py": {
+      "sha256": "5fe751bbaba38d0208b017f329bba3c0c3b9b2429d011b69b45e8fed1e6ff09a"
+    },
+    "dissect/cstruct/util.py": {
+      "sha256": "bc07fe91d3a4937ce9ad6fe00fa42641e37754846042a84f4b807f85ad631294"
+    },
+    "examples/disk.py": {
+      "sha256": "c42e952394e9518eaf729cbfea51520d1072b76f651251e08f2aa6fda4d63e35"
+    },
+    "examples/mirai.py": {
+      "sha256": "39f2ea30f96ab2b6d502c41bb6b6bc93ad40ed00a6fcd86edb5b7be24ca2ce86"
+    },
+    "examples/pe.py": {
+      "sha256": "ff99e32ddf0875fd39800bc9a5092cffba3e076116478929f70364d20a98f80b"
+    },
+    "examples/protobuf.py": {
+      "sha256": "b86d172bfc3bec083a516e69aa17c29177bcefbf5277ab652675c07884f40afd"
+    },
+    "examples/secdesc.py": {
+      "sha256": "b0261eaacd74f3910b17bd7638bb0268bbd83ebfa68e4a016973abd1e6a8c820"
+    },
+    "pyproject.toml": {
+      "sha256": "6f9d233b5313012f6fdc450157ab2a4e51664af6d85bcee0d941bd8faae08e55"
+    },
+    "tests/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "tests/_data/testdef.txt": {
+      "sha256": "3173b9a129195487e245f297eea21d38efbdcc23476ad03779f8cea56adf0dbe"
+    },
+    "tests/_docs/Makefile": {
+      "sha256": "0261bd1f089a883d010084bd0e8942f935eba87cf2a60504d304e03ce44a1428"
+    },
+    "tests/_docs/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "tests/_docs/conf.py": {
+      "sha256": "9953f46f227f56a6bad7e6e00bc44a68a85c521eb38138ae40eeb14d6ebcd12c"
+    },
+    "tests/_docs/index.rst": {
+      "sha256": "37adb68f2c51a830d0ece6eac531387ffbba57c2e1935547eec9d16b53d64fd5"
+    },
+    "tests/conftest.py": {
+      "sha256": "852220320a29a680c27e0683b1cb7545ad3a5565276695131aa235fe76d7e9cd"
+    },
+    "tests/test_align.py": {
+      "sha256": "a7985e0d1c8822b632775c71d8a423ecdb4400726a0008982759803ca207c43c"
+    },
+    "tests/test_annotations.py": {
+      "sha256": "00a19c00bda741c03e2e8b84ee7697f42baaee4ce3437ebb3025feb1f1f3c1d4"
+    },
+    "tests/test_basic.py": {
+      "sha256": "9f1fddf3e086efb9bd025bcaa9f5b99203a9a68bb694085d7d815f5a0db054c7"
+    },
+    "tests/test_benchmark.py": {
+      "sha256": "8f03b81f0babe73355c29a1a2fea48b5f765f4c3ec7626fa359ee36652d10c6e"
+    },
+    "tests/test_bitbuffer.py": {
+      "sha256": "36a59cee2f84472364037dd9206a39ede1b84f0c6600680511b8454c2c9affbf"
+    },
+    "tests/test_bitfield.py": {
+      "sha256": "602f4891ebc98efb3836361fb4fcded7ef00130cff2cd7ba950fac6814c3cdd9"
+    },
+    "tests/test_compiler.py": {
+      "sha256": "68894fbcf2247e6f79c8bf7de01183ce8cbdb175d0e2bb63fd66fd15cbc78b9c"
+    },
+    "tests/test_ctypes.py": {
+      "sha256": "c1f2f367e323c2963b14504543a1cdc07317da4b8a3a06d814f56d3da6aa1daf"
+    },
+    "tests/test_expression.py": {
+      "sha256": "16cd5f9f19dfb1068836a8d7c8e8450f929de6004cd5cb7d81dea4fee66b18ed"
+    },
+    "tests/test_lexer.py": {
+      "sha256": "6b9e9b2c87b9cdd5a41d82dca0691ff968832a16c13d712858ca4b12f667747f"
+    },
+    "tests/test_parser.py": {
+      "sha256": "ec21979eba54534d17940fd8f94708c04b5f3e5247b45b7a98bfc3b484bb4fcf"
+    },
+    "tests/test_tools_stubgen.py": {
+      "sha256": "7840da08439562a8a426df8a0483bc947a75608f2374794a00c0367c76298b54"
+    },
+    "tests/test_types_base.py": {
+      "sha256": "247c97d74e5c28da48704264589b6bee08b2bf5696e2935c7f03b2b94d88d8a4"
+    },
+    "tests/test_types_char.py": {
+      "sha256": "c36008daa798a75dfd8b7935974951f766c6cc8a397196f6f2e94a964b2f406a"
+    },
+    "tests/test_types_custom.py": {
+      "sha256": "1ba63be718ac33e122e7153726873bc261c79f60440717d5ef38e06cf7be7b77"
+    },
+    "tests/test_types_enum.py": {
+      "sha256": "4c4acc21ac17960a0f426020958e799c2fe2b76e68cb8fd8c3a7e748ae2230c1"
+    },
+    "tests/test_types_flag.py": {
+      "sha256": "4845a256f425d9a140f6ab18c7a4b5c168010618916ae195800aeb6ec3d3db7b"
+    },
+    "tests/test_types_int.py": {
+      "sha256": "bb6020dc71caeeb6ae8b8b6cfba2689972df810b7473b29c7dfb18bf054f8f6b"
+    },
+    "tests/test_types_leb128.py": {
+      "sha256": "ff0004e29d79f63ad5e5ea2028592aaa261e75071573422ed9e3afcacedb0c88"
+    },
+    "tests/test_types_packed.py": {
+      "sha256": "ef1e95b1026b5fc67c89e0acdda1a843f780246f82f1d15c56e584b85107e40e"
+    },
+    "tests/test_types_pointer.py": {
+      "sha256": "54502e6b34c5b8523f2c53e39d016f51c5b2d1578f6f66f65370a42364ab6d70"
+    },
+    "tests/test_types_structure.py": {
+      "sha256": "904035a0dacf48d5555d1ee5db47793fe0cc83654e93415c6b0a67814c943089"
+    },
+    "tests/test_types_union.py": {
+      "sha256": "72cfc5099d2775f8bd27391e913ae402344344c2211ffb45c0ad19951e299dd6"
+    },
+    "tests/test_types_void.py": {
+      "sha256": "fecfa1ca9d5de8efaba347e23f2495fb8e3489ec41b88f1b45c8c37c44c34ea0"
+    },
+    "tests/test_types_wchar.py": {
+      "sha256": "e9abcc5a479acdaa921e026de8e7ae3065f9dfd25aed42d549adfde19ad7a7dc"
+    },
+    "tests/test_utils.py": {
+      "sha256": "52423024d161ab5abcdb8c2194edf58fc24926fb0819cd9049c6ecdede6667a8"
+    },
+    "tests/utils.py": {
+      "sha256": "d2f9bc8de12ef14af3ddd91062da61c58671affbb4ff089e68587c8071451c56"
+    },
+    "tox.ini": {
+      "sha256": "f95cb1d8bd91c8ad92e46d6c3bcafe9fce3130238fdd66437667ce981530a9ef"
+    }
+  },
+  "license": "Apache-2.0",
+  "name": "dissect.cstruct",
+  "role": "audit snapshot only; incompatible main branch, NOT loaded",
+  "url": "https://github.com/fox-it/dissect.cstruct.git"
+}

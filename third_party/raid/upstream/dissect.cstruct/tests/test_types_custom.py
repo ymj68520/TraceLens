@@ -1,0 +1,144 @@
+from __future__ import annotations
+
+import warnings
+from typing import TYPE_CHECKING, Any, BinaryIO
+
+import pytest
+
+from dissect.cstruct.types import BaseType
+from dissect.cstruct.types.base import BaseArray
+
+if TYPE_CHECKING:
+    from dissect.cstruct.cstruct import Endianness, cstruct
+
+
+class EtwPointer(BaseType):
+    __type__: type[BaseType]
+    __size__: int | None
+
+    @classmethod
+    def __default__(cls) -> int:
+        return cls.__cs__.uint64.__default__()
+
+    @classmethod
+    def _read(
+        cls, stream: BinaryIO, *, context: dict[str, Any] | None = None, endian: Endianness, **kwargs
+    ) -> BaseType:
+        return cls.__type__._read(stream, context=context, endian=endian)
+
+    @classmethod
+    def _read_0(
+        cls, stream: BinaryIO, *, context: dict[str, Any] | None = None, endian: Endianness, **kwargs
+    ) -> list[BaseType]:
+        return cls.__type__._read_0(stream, context=context, endian=endian)
+
+    @classmethod
+    def _write(cls, stream: BinaryIO, data: Any, *, endian: Endianness) -> int:
+        return cls.__type__._write(stream, data, endian=endian)
+
+    @classmethod
+    def as_32bit(cls) -> None:
+        cls.__type__ = cls.__cs__.uint32
+        cls.__size__ = 4
+
+    @classmethod
+    def as_64bit(cls) -> None:
+        cls.__type__ = cls.__cs__.uint64
+        cls.__size__ = 8
+
+
+def test_adding_custom_type(cs: cstruct) -> None:
+    cs.add_custom_type("EtwPointer", EtwPointer)
+
+    cs.EtwPointer.as_64bit()
+    assert cs.EtwPointer.__type__ is cs.uint64
+    assert len(cs.EtwPointer) == 8
+    assert cs.EtwPointer(b"\xde\xad\xbe\xef" * 2).dumps() == b"\xde\xad\xbe\xef" * 2
+
+    cs.EtwPointer.as_32bit()
+    assert cs.EtwPointer.__type__ is cs.uint32
+    assert len(cs.EtwPointer) == 4
+    assert cs.EtwPointer(b"\xde\xad\xbe\xef" * 2).dumps() == b"\xde\xad\xbe\xef"
+
+
+def test_using_type_in_struct(cs: cstruct) -> None:
+    cs.add_custom_type("EtwPointer", EtwPointer)
+
+    struct_definition = """
+    struct test {
+        EtwPointer data;
+        uint64     data2;
+    };
+    """
+
+    cs.load(struct_definition)
+
+    cs.EtwPointer.as_64bit()
+    with pytest.raises(EOFError):
+        # Input too small
+        cs.test(b"\xde\xad\xbe\xef" * 3)
+
+    cs.EtwPointer.as_32bit()
+
+    obj = cs.test(b"\xde\xad\xbe\xef" * 3)
+    assert obj.data == 0xEFBEADDE
+    assert obj.data2 == 0xEFBEADDEEFBEADDE
+    assert obj.data.dumps() == b"\xde\xad\xbe\xef"
+
+
+def test_custom_default(cs: cstruct) -> None:
+    cs.add_custom_type("EtwPointer", EtwPointer)
+
+    cs.EtwPointer.as_64bit()
+    assert cs.EtwPointer.__default__() == 0
+
+    cs.EtwPointer.as_32bit()
+    assert cs.EtwPointer.__default__() == 0
+
+    assert cs.EtwPointer[1].__default__() == [0]
+    assert cs.EtwPointer[None].__default__() == []
+
+
+def test_custom_deprecated_signature(cs: cstruct) -> None:
+    class New(int, BaseType):
+        @classmethod
+        def _read(cls, stream: BinaryIO, *, context: dict | None = None, endian: Endianness) -> New:
+            pass
+
+        @classmethod
+        def _write(cls, stream: BinaryIO, data: int, *, endian: Endianness) -> New:
+            pass
+
+    class OldRead(int, BaseType):
+        @classmethod
+        def _read(cls, stream: BinaryIO, context: dict | None = None) -> OldRead:
+            pass
+
+    class OldWrite(int, BaseType):
+        @classmethod
+        def _write(cls, stream: BinaryIO, data: int) -> OldRead:
+            pass
+
+    class OldArrayRead(int, BaseType):
+        class __ArrayType__(list, BaseArray):
+            def _read(cls, stream: BinaryIO, context: dict[str, Any] | None = None) -> list:
+                pass
+
+    # No warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        cs.add_custom_type("New", New)
+
+    with pytest.warns(UserWarning, match=r"OldRead is missing the 'endian' keyword-only parameter in its _read method"):
+        cs.add_custom_type("OldRead", OldRead)
+
+    with pytest.warns(
+        UserWarning, match=r"OldWrite is missing the 'endian' keyword-only parameter in its _write method"
+    ):
+        cs.add_custom_type("OldWrite", OldWrite)
+
+    with pytest.warns(
+        UserWarning,
+        match=r"OldArrayRead\.__ArrayType__ is missing the 'endian' keyword-only parameter in its _read method",
+    ):
+        cs.add_custom_type("OldArrayRead", OldArrayRead)

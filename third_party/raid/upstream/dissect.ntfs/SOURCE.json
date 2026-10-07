@@ -1,0 +1,142 @@
+{
+  "archive_sha256": "20a3cbc5c9eb3ca24b91f2c5c72421d71b1cfad3e23ebba7f8ebac08fabf7a4e",
+  "commit": "7f021dd1182eb6f9b6a2dbd19cf2e29143ea654d",
+  "files": {
+    ".git-blame-ignore-revs": {
+      "sha256": "51b39c5904c0aec09a4398d451a4443e4df30383f9b2d207806bbe7dd5b936a2"
+    },
+    ".gitattributes": {
+      "sha256": "f1d0d27d6a12fdf08e4e3290b230921a0f3970d725a7bd18f8f472f7958187cc"
+    },
+    ".github/pull_request_template.md": {
+      "sha256": "c81c987221ae6bc8995e929d0dd10aaf3ac557cf7d812fda8c73cfc854973222"
+    },
+    ".github/workflows/dissect-ci.yml": {
+      "sha256": "e245dd8209745a34080cfebbbe734e89b1c6b6ec4dfe51bdbe6e7cde3342633d"
+    },
+    ".gitignore": {
+      "sha256": "a4a60b2530e64f5d2402f7b53da989082d6e07a82c88b5ac48c70ff9ceb64a5b"
+    },
+    "COPYRIGHT": {
+      "sha256": "698b0e6e67dc4b77c90e451ffef96eff3e2131f824f8158ce28deb1fb6613719"
+    },
+    "LICENSE": {
+      "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0"
+    },
+    "MANIFEST.in": {
+      "sha256": "b39c322533c6e3f48f36193321f91cceb447c843662fcdc244f3485598b75560"
+    },
+    "README.md": {
+      "sha256": "2534967af60e96676ec2db06865729012a450ae0f191f736044123b8323bd1b7"
+    },
+    "dissect/ntfs/__init__.py": {
+      "sha256": "363b728291c209ade28de95dd50e7037d0961877cd75e96a3a948ceeaa5207c9"
+    },
+    "dissect/ntfs/attr.py": {
+      "sha256": "34cf0481d6e68abb79099a6a47f6c88f39da48ac9491096ba3ddc5d9b344794c"
+    },
+    "dissect/ntfs/c_ntfs.py": {
+      "sha256": "82a52dc147ffc7540876c7ad498b83a1232f767475f81d610a419ad3f25a5e7e"
+    },
+    "dissect/ntfs/c_ntfs.pyi": {
+      "sha256": "38b72c51f9b79b2a845b0567cec1a3b191085ba18513aa2d9068965221acd110"
+    },
+    "dissect/ntfs/exceptions.py": {
+      "sha256": "6179ae744a25c2286ce637bb17e9e9682eb021a1a6e75f5196b6c96fc2bfce1c"
+    },
+    "dissect/ntfs/index.py": {
+      "sha256": "37191db4721d2deaee6ac97b1ac8320375de089a18e9342da0ce6aff8ae7bf63"
+    },
+    "dissect/ntfs/mft.py": {
+      "sha256": "be8cba3eff2b3183cd6a82960c00cad3542694646b70966301dc0f580ed72f98"
+    },
+    "dissect/ntfs/ntfs.py": {
+      "sha256": "1f3b6d407f0d6d5dcd6dcebe4f4b59c624ca80495d3a5019d44dcffdb45e82c8"
+    },
+    "dissect/ntfs/secure.py": {
+      "sha256": "4dfdf00cd91dacb00160b21aaafdf792154289dcdce6c47a7b6f5cefcaa4db1c"
+    },
+    "dissect/ntfs/stream.py": {
+      "sha256": "b35e77b85ef5829a56b6b2780bb65e26e4a52b30a3133fba52a120222040ac47"
+    },
+    "dissect/ntfs/usnjrnl.py": {
+      "sha256": "b9df566f38f9a270bdeb26df99964efc4bb1c1cfd7eb48566d50c8828bf73fd5"
+    },
+    "dissect/ntfs/util.py": {
+      "sha256": "1cfd76049fb1086010a96b349a7b1831c056359f64e7e0722241a37be76fe6c1"
+    },
+    "pyproject.toml": {
+      "sha256": "f8e973c6725e404504c00d2efa40d13d589ddf0615381cd5cbfa0767a9e2c07c"
+    },
+    "tests/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "tests/_data/boot_2m.bin.gz": {
+      "sha256": "bc6fffeae76755374b80f36cb34655b632c8eafc7e6fe9f311c3a6c454daca85"
+    },
+    "tests/_data/mft.bin.gz": {
+      "sha256": "165298701582bac9bbb710a6e0dbeb31b0d2aaeb2467586c57b33cb93523e822"
+    },
+    "tests/_data/ntfs-cloud.bin.gz": {
+      "sha256": "837cef8c0fef47c5224c66be31c820940e4a4d08e1c3db2bb97c8aeb0b26082e"
+    },
+    "tests/_data/ntfs.bin.gz": {
+      "sha256": "58216443f16e78495e3761fec2bec695b29ab5e9e8170874ab59407f9c1bc23d"
+    },
+    "tests/_data/ntfs_fragmented_mft.csv.gz": {
+      "sha256": "e5218f814f3b6b9f59551a90050ac772e45d2263a671a3b634c4fcb62d7030ce"
+    },
+    "tests/_data/sds.bin.gz": {
+      "sha256": "66caf920a4d16c4cd9f1b29ef29f5218738a4b4076cfac0a9c88810f339f562d"
+    },
+    "tests/_data/sds_complex.bin.gz": {
+      "sha256": "ef0397ef89c6d0fbb724c64dd2fa10be28e2c676cbf3f35a832d8e1eb4760ecb"
+    },
+    "tests/_docs/Makefile": {
+      "sha256": "0261bd1f089a883d010084bd0e8942f935eba87cf2a60504d304e03ce44a1428"
+    },
+    "tests/_docs/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "tests/_docs/conf.py": {
+      "sha256": "823cde8f6690c2db33323dfd278b07d2aeb58d8c56f3beeb1842797f8d2dcfa5"
+    },
+    "tests/_docs/index.rst": {
+      "sha256": "37adb68f2c51a830d0ece6eac531387ffbba57c2e1935547eec9d16b53d64fd5"
+    },
+    "tests/conftest.py": {
+      "sha256": "caa760a77d122047118e408602d16dc10dcd911ef476cbdcb8bf3e546ffec556"
+    },
+    "tests/test_attr.py": {
+      "sha256": "ea56d1702a3ceecb6deec1adafc0cb72309b618edcd2d9a970a091f7b2c97740"
+    },
+    "tests/test_exceptions.py": {
+      "sha256": "5b811cc3683d8446960fde21f31e9bccc942a911eddfca4da33819e6a8b83912"
+    },
+    "tests/test_index.py": {
+      "sha256": "f1691cfc69a2a7a6cbc9e0155bd18eefcfc925a0990649fc9b55095f8bc1bee9"
+    },
+    "tests/test_mft.py": {
+      "sha256": "67b5dfebf37ca254868ec604a967802e1b21d5b111041a81be6f67ba6e11c5a4"
+    },
+    "tests/test_ntfs.py": {
+      "sha256": "0ce8c9e3f8be86eb9d9b28122dfc08f4f3d8fd3feefc3f5f3df604c49793346c"
+    },
+    "tests/test_secure.py": {
+      "sha256": "81f454c1da1f892136167bc72f753709ec009505278694658c55ed679ab2dcd5"
+    },
+    "tests/test_usnjrnl.py": {
+      "sha256": "6dcfb64c8c2bb6e7dcdae53f5734da2553780e98e8a3f8526890ed3a44dd83bf"
+    },
+    "tests/test_util.py": {
+      "sha256": "23af018a8e62043e7acfccaf9890183cf505ca52d4ac1fa6bb48015df2a92f96"
+    },
+    "tox.ini": {
+      "sha256": "cdb5ce7e024b097dc2d6bd7449aa2e0409aecba3c9d9b869338823998a87b5e6"
+    }
+  },
+  "license": "AGPL-3.0-or-later",
+  "name": "dissect.ntfs",
+  "role": "readonly independent NTFS structure and file validation",
+  "url": "https://github.com/fox-it/dissect.ntfs.git"
+}

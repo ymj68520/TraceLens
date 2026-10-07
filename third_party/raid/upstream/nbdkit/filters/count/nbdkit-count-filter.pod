@@ -1,0 +1,66 @@
+=head1 NAME
+
+nbdkit-count-filter - count bytes read, written, zeroed and trimmed
+
+=head1 SYNOPSIS
+
+ nbdkit -fv --filter=count plugin
+
+=head1 DESCRIPTION
+
+C<nbdkit-count-filter> is a filter for L<nbdkit(1)> that simply counts
+the number of bytes that are read, written, zeroed and trimmed, and
+reports this number in debugging output when the filter is unloaded
+(usually when nbdkit exits).  The filter output can only be seen when
+debugging is enabled (I<-v>) which usually implies using the
+foreground (I<-f>) option as well.
+
+This is a very simple and lightweight filter.  For much more
+comprehensive stats and logging of operations, use
+L<nbdkit-stats-filter(1)> or L<nbdkit-log-filter(1)> instead.
+
+=head1 EXAMPLE
+
+ $ nbdkit -fv null 4k --filter=count \
+          --run 'nbdsh -u "$uri" -c "h.pread(4096,0)"'
+ [lots of output]
+ nbdkit: debug: null: unload plugin
+ nbdkit: debug: count: unload filter
+ nbdkit: debug: count bytes: read 4096, written 0, zeroed 0, trimmed 0
+
+=head1 PARAMETERS
+
+There are no parameters specific to this filter.  All parameters are
+passed through to the underlying plugin.
+
+=head1 FILES
+
+=over 4
+
+=item F<$filterdir/nbdkit-count-filter.so>
+
+The filter.
+
+Use C<nbdkit --dump-config> to find the location of C<$filterdir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-count-filter> first appeared in nbdkit 1.46.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-file-plugin(1)>,
+L<nbdkit-log-filter(1)>,
+L<nbdkit-stats-filter(1)>,
+L<nbdkit-filter(3)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

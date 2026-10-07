@@ -147,7 +147,7 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskC
                 {task.id?.substring(0, 8)}
               </td>
               <td className="px-4 py-4 text-sm text-slate-900 dark:text-white truncate max-w-[200px]" title={task.image_path}>
-                <div className="truncate">{task.image_path}</div>
+                <div className="truncate">{task.metadata?.source_label || task.image_path}</div>
                 {forensicCase && (
                   <Link to={`/reports/case/${forensicCase.id}`}
                     className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 text-[10px] text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"

@@ -1,5 +1,6 @@
 #include "TaskCRUDRoutes.h"
 #include "../AndroidPreflightAdmission.h"
+#include "../RaidTaskAdmission.h"
 #include "TaskHelpers.h"
 #include "RouteHelpers.h"
 #include "../SQLiteHelper.h"
@@ -183,6 +184,12 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
                 metadata[key] = value.get<std::string>();
             }
         }
+        // RAID origin is server-attested; caller metadata must never forge it.
+        for (auto it = metadata.begin(); it != metadata.end();) {
+            if (it->first.rfind("raid_", 0) == 0 || it->first == "source_kind" || it->first == "source_label")
+                it = metadata.erase(it);
+            else ++it;
+        }
         const char* fieldPrincipalMode = std::getenv("TRACELENS_FIELD_AUTH");
         if (fieldPrincipalMode && std::string(fieldPrincipalMode) == "enabled") {
             const auto& authenticated = app_.get_context<FieldAuthMiddleware>(req).principal;
@@ -196,6 +203,30 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
         }
         if (body.value("android_source", std::string("tsk")) == "tsk")
             metadata["source_verification"] = "UNVERIFIED_SOURCE";
+
+        const bool raidSource = body.value("image_source", std::string("tsk")) == "raid";
+        if (raidSource || isPreparedRaidImage(image_path) || body.contains("raid_job_id")) {
+            if (!raidSource || body.value("android_source", std::string("tsk")) != "tsk" ||
+                !body.value("db_output_dir", std::string()).empty() ||
+                !fieldPrincipalMode || std::string(fieldPrincipalMode) != "enabled") {
+                res.code = 400;
+                res.set_header("Content-Type", "application/json");
+                res.write(json{{"error", "RAID must be a verified standard image Task"},
+                               {"error_code", "RAID_TASK_ADMISSION_REQUIRED"}}.dump());
+                return res;
+            }
+            const auto admission = admitRaidImage(image_path,
+                body.value("raid_job_id", std::string()), body.value("raid_manifest_sha256", std::string()),
+                metadata.at("requested_by"), body.value("raid_allow_partial", false));
+            if (!admission.accepted) {
+                res.code = admission.code.find("CHANGED") != std::string::npos ? 409 : 400;
+                res.set_header("Content-Type", "application/json");
+                res.write(json{{"error", "RAID prepared image is unavailable or changed"},
+                               {"error_code", admission.code}}.dump());
+                return res;
+            }
+            for (const auto& [key, value] : admission.metadata) metadata[key] = value;
+        }
 
         // Dependencies
         std::vector<TaskDependency> dependencies;

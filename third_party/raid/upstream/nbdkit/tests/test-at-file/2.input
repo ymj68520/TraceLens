@@ -1,0 +1,6 @@
+# Test case for tests/test-at-file.sh
+# Naked parameters should be prefixed with "magic=".
+1
+b=2
+3
+d=4

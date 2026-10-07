@@ -1,0 +1,82 @@
+=head1 NAME
+
+nbdkit_parse_int, nbdkit_parse_unsigned,
+nbdkit_parse_int8_t, nbdkit_parse_int16_t,
+nbdkit_parse_int32_t, nbdkit_parse_int64_t,
+nbdkit_parse_uint8_t, nbdkit_parse_uint16_t,
+nbdkit_parse_uint32_t, nbdkit_parse_uint64_t - parse numbers for nbdkit
+
+=head1 SYNOPSIS
+
+ #include <nbdkit-plugin.h>
+
+ int nbdkit_parse_int (const char *what, const char *str, int *r);
+ int nbdkit_parse_unsigned (const char *what,
+                            const char *str, unsigned *r);
+ int nbdkit_parse_int8_t (const char *what,
+                          const char *str, int8_t *r);
+ int nbdkit_parse_uint8_t (const char *what,
+                           const char *str, uint8_t *r);
+ int nbdkit_parse_int16_t (const char *what,
+                           const char *str, int16_t *r);
+ int nbdkit_parse_uint16_t (const char *what,
+                            const char *str, uint16_t *r);
+ int nbdkit_parse_int32_t (const char *what,
+                           const char *str, int32_t *r);
+ int nbdkit_parse_uint32_t (const char *what,
+                            const char *str, uint32_t *r);
+ int nbdkit_parse_int64_t (const char *what,
+                           const char *str, int64_t *r);
+ int nbdkit_parse_uint64_t (const char *what,
+                            const char *str, uint64_t *r);
+
+=head1 DESCRIPTION
+
+Parse string C<str> into an integer of various types.  These functions
+parse a decimal, hexadecimal (C<"0x...">) or octal (C<"0...">) number.
+
+These functions deal correctly with overflow, out of range and parse
+errors, and you should use them instead of unsafe functions like
+L<sscanf(3)>, L<atoi(3)> and similar.
+
+The C<what> parameter is printed in error messages to provide context.
+It should usually be a short descriptive string of what you are trying
+to parse, eg:
+
+ if (nbdkit_parse_int ("random seed", value, &seed) == -1)
+   return -1;
+
+might print an error:
+
+ random seed: could not parse number: "lalala"
+
+=head1 RETURN VALUE
+
+On success the functions return C<0>.  If C<r != NULL>, they set C<*r>
+to the parsed value.  If C<r == NULL>, the parsing is done but the
+result is discarded.
+
+On error, L<nbdkit_error(3)> is called and the functions return C<-1>.
+On error C<*r> is always unchanged.
+
+=head1 HISTORY
+
+C<nbdkit_parse_int> and the others were added in nbdkit 1.16.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit_parse_bool(3)>,
+L<nbdkit_parse_delay(3)>,
+L<nbdkit_parse_probability(3)>,
+L<nbdkit_parse_size(3)>,
+L<nbdkit-plugin(3)>,
+L<nbdkit-filter(3)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

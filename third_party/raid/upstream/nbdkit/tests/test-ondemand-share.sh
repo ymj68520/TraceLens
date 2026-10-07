@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# nbdkit
+# Copyright Red Hat
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are
+# met:
+#
+# * Redistributions of source code must retain the above copyright
+# notice, this list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright
+# notice, this list of conditions and the following disclaimer in the
+# documentation and/or other materials provided with the distribution.
+#
+# * Neither the name of Red Hat nor the names of its contributors may be
+# used to endorse or promote products derived from this software without
+# specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY RED HAT AND CONTRIBUTORS ''AS IS'' AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+# THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+# PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL RED HAT OR
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+# USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+# OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+# SUCH DAMAGE.
+
+# Test shared access to ondemand plugin.
+
+source ./functions.sh
+set -e
+set -x
+set -u
+
+requires_plugin ondemand
+requires nbdsh --version
+
+# This plugin requires a mkfs command of some sort.
+requires mkfs --version
+
+dir=$(mktemp -d /tmp/nbdkit-test-dir.XXXXXX)
+cleanup_fn rm -rf $dir
+
+sock=$(mktemp -u /tmp/nbdkit-test-sock.XXXXXX)
+files="ondemand-share.pid $sock"
+rm -f $files
+cleanup_fn rm -f $files
+
+# Run nbdkit.
+start_nbdkit -P ondemand-share.pid -U $sock --log=stderr \
+             ondemand dir=$dir size=100M share=true
+
+export sock
+nbdsh -c - <<'EOF'
+import os
+sock = os.environ["sock"]
+
+# Open same export twice.
+h.set_export_name("export1")
+h.connect_unix(sock)
+
+h2 = nbd.NBD()
+h2.set_export_name("export1")
+h2.connect_unix(sock)
+
+# Writes on one handle should appear on the other (after flushing).
+b = b'\xAA\x55' * 256
+h.pwrite(b, 0)
+h.flush()
+b2 = h2.pread(512, 0)
+assert b == b2
+
+# Opening a different export should also work.
+h3 = nbd.NBD()
+h3.set_export_name("export2")
+h3.connect_unix(sock)
+EOF

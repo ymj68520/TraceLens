@@ -1,0 +1,291 @@
+#!@PYTHON@
+# -*- python -*-
+# Copyright Red Hat
+#
+# @configure_input@
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2 of the License, or (at your option) any later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+
+import argparse
+import os
+import re
+import sys
+
+# On macOS (only) System Integrity Protection (SIP) removes
+# DYLD_LIBRARY_PATH from the environment, breaking our ./run script.
+# We restore the import path if necessary here.  Confine this hack to
+# Darwin only so it doesn't cause potential security issues on normal
+# platforms.
+
+if "@host_os@".startswith("darwin") and \
+   os.environ["DYLD_LIBRARY_PATH"] == "" and \
+   os.environ["_DYLD_LIBRARY_PATH"] != "":
+    sys.path.prepend(os.environ["_DYLD_LIBRARY_PATH"])
+
+import nbd
+
+h = nbd.NBD()
+__version__ = h.get_version()
+extra = h.get_version_extra()
+if extra != "":
+    __version__ += " (" + extra + ")"
+
+short_options = []
+long_options = []
+
+p = argparse.ArgumentParser(
+    description='''Discard or zero all data on a Network Block Device.
+For complete documentation, please read the nbddiscard(1) man page.
+''')
+
+# Actually the URI is required, but we have to make it optional here
+# otherwise --long-options and --short-options won't work.
+p.add_argument('uri', metavar='NBD-URI', nargs='?',
+               help='NBD URI, eg. nbd://localhost')
+
+# argparse adds -h/--help implicitly.  In order for tab-completion to
+# work we must do this:
+short_options.append("-h")
+long_options.append("--help")
+
+p.add_argument('-l', '--length', dest='length',
+               help='set length instead of discarding to end of disk')
+short_options.append("-l")
+long_options.append("--length")
+
+p.add_argument('-o', '--offset', dest='offset',
+               help='set start offset instead of discarding from start of disk')
+short_options.append("-o")
+long_options.append("--offset")
+
+p.add_argument('-v', '--verbose', dest='verbose', action='store_true',
+               help='enable verbose mode')
+short_options.append("-v")
+long_options.append("--verbose")
+
+p.add_argument('-q', '--quiet', dest='quiet', action='store_true',
+               help='enable quiet mode')
+short_options.append("-q")
+long_options.append("--quiet")
+
+p.add_argument('-V', '--version', action='version',
+               version="%(prog)s {version}".format(version=__version__))
+short_options.append("-V")
+long_options.append("--version")
+
+p.add_argument('-y', '--yes', dest='yes', action='store_true',
+               help='assume yes to all questions (could be dangerous)')
+short_options.append("-y")
+long_options.append("--yes")
+
+p.add_argument('-z', '--zero', dest='zero_mode', action='store_true',
+               default=(p.prog == "nbdzero"),
+               help='zero blocks instead of discarding (default for nbdzero)')
+short_options.append("-z")
+long_options.append("--zero")
+
+p.add_argument('--fast-zero', dest='fast_zero', action='store_true',
+               help='attempt fast zero')
+long_options.append("--fast-zero")
+
+p.add_argument('-c', '--check', dest='check', action='store_true',
+               help='check disk without modifying it')
+short_options.append("-c")
+long_options.append("--check")
+
+# These hidden options are used by bash tab completion.
+p.add_argument("--short-options", action='store_true', help=argparse.SUPPRESS)
+p.add_argument("--long-options", action='store_true', help=argparse.SUPPRESS)
+
+arg = p.parse_args()
+
+if arg.short_options:
+    short_options.sort()
+    print("\n".join(short_options))
+    sys.exit()
+if arg.long_options:
+    long_options.sort()
+    print("\n".join(long_options))
+    sys.exit()
+
+if arg.uri is None:
+    sys.exit("NBD-URI is required.  See --help or nbddiscard(1) man page.")
+
+if arg.verbose:
+    h.set_debug(True)
+
+if arg.fast_zero:
+    if not arg.zero_mode:
+        if arg.verbose:
+            print("--fast implies --zero")
+        arg.zero_mode = True
+
+# Convert offset/length to bytes if necessary.
+#
+# There are various more standard ways to do this in Python, but they
+# don't quite do what I want.  See also:
+# https://stackoverflow.com/questions/42865724/parse-human-readable-filesizes-into-bytes
+def parse_size(size):
+    # Could be extended.
+    units = { "K": 2**10, "M" : 2**20, "G" : 2**30,
+              "T" : 2**40, "P" : 2**50, "E" : 2**60 }
+    if size is None:
+        return None
+    else:
+        m = re.match(r'^(\d+)([a-zA-Z])$', str(size))
+        n, u = m.group(1), m.group(2).upper()
+        if u in units:
+            return int(n) * units[u]
+        else:
+            sys.exit("cannot parse offset/length parameter: %s" % size)
+
+offset = parse_size(arg.offset)
+length = parse_size(arg.length)
+
+#print("uri = %r" % arg.uri)
+#print("offset = %r" % offset)
+#print("length = %r" % length)
+#print("zero mode = %r" % arg.zero_mode)
+#print("check = %r" % arg.check)
+
+# Install a custom exception handler so that errors reported by NBD
+# do not overwhelm the user with a stack trace.
+# https://pymotw.com/3/sys/exceptions.html
+original_excepthook = sys.excepthook
+
+def nbd_excepthook(type, value, traceback):
+    """
+    Suppress stack traces if an exception came from NBD.
+    """
+    if issubclass(type, nbd.Error):
+        sys.exit(value)
+    original_excepthook(type, value, traceback)
+
+sys.excepthook = nbd_excepthook
+
+# Connect to the NBD server.
+h.add_meta_context(nbd.CONTEXT_BASE_ALLOCATION)
+h.connect_uri(arg.uri)
+
+# libnbd defaults to trying to request extended headers, but not all
+# servers support it.
+extended_headers = h.get_extended_headers_negotiated()
+if arg.verbose:
+    print("extended headers = %r" % extended_headers)
+
+# block status support is only required if --check is active, but it
+# doesn't hurt to always check for it
+block_status = h.can_meta_context(nbd.CONTEXT_BASE_ALLOCATION)
+if arg.verbose:
+    print("block status = %r" % block_status)
+
+# Can we trim/zero?
+flags = 0
+if arg.check:
+    if not block_status:
+        sys.exit("this server does not support the block status operation")
+elif not arg.zero_mode:
+    if not h.can_trim():
+        sys.exit("this server does not support the trim/discard operation")
+else:
+    if not h.can_zero():
+        sys.exit("this server does not support the zero operation")
+    if arg.fast_zero:
+        fast_zero = h.can_fast_zero()
+        if not fast_zero:
+            sys.exit("fast zeroing is not supported by this server")
+        flags += nbd.CMD_FLAG_FAST_ZERO
+
+# Get the size and calculate the final offset/length.
+size = h.get_size()
+
+if offset is not None:
+    if offset >= size:
+        if not arg.quiet:
+            print("warning: offset at or beyond the end of the disk")
+        sys.exit()
+else:
+    offset = 0
+
+if length is not None:
+    if offset + length > size:
+        if not arg.quiet:
+            print("warning: offset + length is beyond the end of the disk")
+        length = size - offset
+else:
+    length = size - offset
+
+# If check, see if block status is already correct.
+if arg.check:
+    if arg.zero_mode:
+        goal = nbd.STATE_ZERO
+    else:
+        goal = nbd.STATE_HOLE
+
+    def status_cb(metacontext, offs, extents, err):
+        global offset
+        assert offs == offset
+        assert metacontext == nbd.CONTEXT_BASE_ALLOCATION
+        for e in extents:
+            if e[1] & goal == 0:
+                if not arg.quiet:
+                    print("image has data at offset %d" % offset)
+                sys.exit(1)
+            offset = offset + e[0]
+
+    max_request = length
+    last = offset + length
+    if not extended_headers:
+        max_request = min(max_request, 1*1024*1024*1024)
+    while offset < last:
+        length = min(last - offset, max_request)
+        h.block_status_64(length, offset, status_cb)
+    if arg.verbose:
+        if arg.zero_mode:
+            print("image is already zero")
+        else:
+            print("image is already sparse")
+    sys.exit()
+
+# Check the user wants to go ahead.
+if not arg.yes:
+    print("PERMANENTLY ERASE everything on %s bytes %d - %d (y/N)? " %
+          (arg.uri, offset, offset + length - 1),
+          end='', flush=True)
+    ans = sys.stdin.read(1)
+    if not (ans == 'y' or ans == 'Y'):
+        sys.exit('operation cancelled')
+
+# Start trimming or zeroing.
+if extended_headers:
+    if not arg.zero_mode:
+        h.trim(length, offset, flags)
+    else:
+        h.zero(length, offset, flags)
+else:
+    # Else do it the hard way ...
+    max_request = 1*1024*1024*1024
+    while length > 0:
+        n = min(max_request, length)
+        if not arg.zero_mode:
+            h.trim(n, offset, flags)
+        else:
+            h.zero(n, offset, flags)
+        length -= n
+        offset += n
+
+# If flush is supported, I assume that's desirable.
+if h.can_flush():
+    h.flush()

@@ -1,0 +1,365 @@
+=head1 NAME
+
+nbdkit-file-plugin - nbdkit file plugin
+
+=head1 SYNOPSIS
+
+ nbdkit file [file=]FILENAME
+             [fadvise=normal|random|sequential]
+             [reduce-memory-pressure=true]
+
+=for paragraph
+
+ nbdkit file dir=DIRECTORY
+
+=for paragraph
+
+ nbdkit file fd=FILE_DESCRIPTOR
+
+=for paragraph
+
+ nbdkit file dirfd=FILE_DESCRIPTOR
+
+=head1 DESCRIPTION
+
+C<nbdkit-file-plugin> is a file serving plugin for L<nbdkit(1)>.
+
+It serves the named C<FILENAME> over NBD.  Local block devices
+(eg. F</dev/sda>) may also be served.
+
+If you use the C<dir> parameter the plugin works in a different mode
+where it serves files from the given C<DIRECTORY>.  The filename is
+chosen L<by the client sending an NBD export name|/Serving multiple
+files and block devices>.
+
+If you use the C<fd> or C<dirfd> parameter then you can pass the file
+descriptor of a single disk or a directory to the plugin, inherited
+from the parent process.  This can be useful where special permissions
+or capabilities are needed to open the file descriptor, or you want to
+run nbdkit in a sandboxed environment.
+
+The file is writable unless either the I<-r> command line option, or
+L<nbdkit-readonly-filter(1)> is used.
+
+=head1 PARAMETERS
+
+Exactly one of B<file>, B<dir>, B<fd> or B<dirfd> must be given.  This
+controls the mode of the plugin, either serving a single file, the
+files in a directory, a single file descriptor, or the files in the
+directory of the file descriptor.
+
+=over 4
+
+=item B<dir=>DIRECTORY
+
+(nbdkit E<ge> 1.22, not Windows)
+
+Serve all regular files and block devices located directly inside the
+directory named C<DIRECTORY>, including those found by following
+symbolic links.  Other special files in the directory (such as
+subdirectories, pipes, or Unix sockets) are ignored.
+
+See L</Serving multiple files and block devices> below.
+
+=item B<dirfd=>FILE_DESCRIPTOR
+
+(nbdkit E<ge> 1.34, not Windows)
+
+This is like the C<dir=> option, but instead of specifying the
+directory by name, the parent process should open the directory and
+pass this file descriptor by inheritance to nbdkit.
+
+See L</Serving multiple files and block devices> below.
+
+=item B<fadvise=normal>
+
+=item B<fadvise=random>
+
+=item B<fadvise=sequential>
+
+(nbdkit E<ge> 1.22, not Windows)
+
+This optional flag hints to the kernel that you will access the file
+normally, or in a random order, or sequentially.  The exact behaviour
+depends on your operating system, but for Linux using C<normal> causes
+the kernel to read-ahead, C<sequential> causes the kernel to
+read-ahead twice as much as C<normal>, and C<random> turns off
+read-ahead.  See also L<posix_fadvise(2)>.
+
+The default is C<normal>.
+
+=item B<fd=>FILE_DESCRIPTOR
+
+(nbdkit E<ge> 1.34, not Windows)
+
+The parameter is the number of a file descriptor.  Serve the file or
+device already open on this file descriptor.  The file descriptor is
+usually inherited from the parent process.
+
+=item [B<file=>]FILENAME
+
+Serve the file named C<FILENAME>.  A local block device name can also
+be used here.  When this mode is used, the export name requested by
+the client is ignored.
+
+C<file=> __IS_MAGIC__
+
+=item [B<file=>]B<\\.\>CB<:>
+
+=item [B<file=>]B<\\.\>Volume
+
+=item [B<file=>]B<\\.\PhysicalDisk>I<N>
+
+=item [B<file=>]B<\\.\CdRom>I<N>
+
+(Windows only)
+
+Serve the Windows volume specified by the device name.  See:
+L<https://docs.microsoft.com/en-us/windows/win32/fileio/naming-a-file#win32-device-namespaces>.
+
+=item B<reduce-memory-pressure=true>
+
+(nbdkit E<ge> 1.22, not Windows)
+
+If the file is very large and the plugin will read or write the whole
+file, this can cause the file to be cached in memory (in the page
+cache on Linux), causing other files and processes to be evicted,
+leading to overall slow system performance and I/O storms.
+
+If you know that the file will only be read/written once and will not
+be needed afterwards (so keeping it in memory afterwards is pointless)
+use C<reduce-memory-pressure=true>.  This causes reads and writes to
+minimize use of the page cache.
+
+The default is false, which uses the kernel's normal page cache
+strategy.
+
+See also C<fadvise> above which can be used to hint the access
+pattern.
+
+In nbdkit 1.22 - 1.44 this option was called C<cache=none>, but that
+caused a lot of confusion for people used to qemu and kernel caching
+modes, which are not related to this setting.
+
+=back
+
+=head1 NOTES
+
+=head2 Serving multiple files and block devices
+
+Using C<dir=DIRECTORY> (or C<dirfd=DIRFD>) you can serve all regular
+files and block devices located directly inside the directory named
+C<DIRECTORY>, including those found by following symbolic links.
+Other special files in the directory (such as subdirectories, pipes,
+or Unix sockets) are ignored.
+
+When this mode is used, the file to be served is chosen by the export
+name passed by the client.  For security, when using directory mode,
+this plugin will not accept export names containing slash (C</>).
+
+For example:
+
+ $ ls -l /var/tmp/exports
+ total 0
+ -rw-r--r--. 1 rjones rjones 1048576 Dec 14 15:34 disk1
+ -rw-r--r--. 1 rjones rjones 2097152 Dec 14 15:34 disk2
+ lrwxrwxrwx. 1 rjones rjones       9 Dec 14 15:35 sda1 -> /dev/sda1
+ $ nbdkit file dir=/var/tmp/exports
+
+will serve three exports called C<"disk1">, C<"disk2"> and C<"sda1">.
+The first two are regular files and the last is a block device.
+
+The NBD URIs of the three exports are:
+
+=over 4
+
+=item *
+
+C<nbd://localhost/disk1>
+
+=item *
+
+C<nbd://localhost/disk2>
+
+=item *
+
+C<nbd://localhost/sda1>
+
+=back
+
+You can add or remove files or symbolic links from the directory while
+nbdkit is running.
+
+To list exports, use L<nbdinfo(1)> I<--list> option, for example:
+
+ $ nbdinfo --list nbd://localhost
+ protocol: newstyle-fixed without TLS, using structured packets
+ export="disk1":
+     export-size: 1048576 (1M)
+     uri: nbd://localhost:10809/disk1
+ [etc]
+
+An NBD client can request a list of available exports using
+C<NBD_OPT_LIST>.  For libnbd clients see nbd_opt_list(3).
+
+A client that requests the default export (C<"">) will be rejected.
+However, you can use L<nbdkit-exportname-filter(1)> to adjust the
+default export as well as other transformations of export names.  For
+example to make F</var/tmp/exports/disk1> be the default export:
+
+ nbdkit file dir=/var/tmp/exports \
+        --filter=exportname default-export=disk1
+
+=head2 Optimizing for random or sequential access
+
+If you know in advance that the NBD client will access the file
+randomly or only sequentially then you can hint that to the kernel
+using:
+
+ nbdkit file disk.img fadvise=random
+ nbdkit file disk.img fadvise=sequential
+
+As described in the L</PARAMETERS> section above, on Linux this
+disables or increases the amount of read-ahead that the kernel does.
+
+=head2 Files on tmpfs
+
+If you want to expose a file that resides on a file system known to
+have poor C<lseek(2)> performance when searching for holes (C<tmpfs>
+is known to be one such file system), you can use
+L<nbdkit-noextents-filter(1)> to avoid the penalty of probing for
+holes.
+
+=head2 Plugin I<--dump-plugin> output
+
+You can obtain extra information about how the file plugin was
+compiled by doing:
+
+ nbdkit file --dump-plugin
+
+Some of the fields which may appear are listed below.  Note these are
+for information only and may be changed or removed at any time in the
+future.
+
+=over 4
+
+=item C<file_block_size=yes>
+
+If set, the plugin has support for getting the minimum and preferred
+I/O size of block devices.
+
+=item C<file_blkrotational=yes>
+
+If set, the plugin has support for getting the rotational property of
+block devices.
+
+=item C<file_blksszget=yes>
+
+=item C<file_blkzeroout=yes>
+
+If both set, the plugin may be able to efficiently zero ranges of
+block devices, where the driver and block device itself supports this.
+
+=item C<file_blkdiscard=yes>
+
+If set, the plugin may be able to efficiently trim ranges of block
+devices, where the driver and block device itself supports this.
+
+=item C<file_extents=yes>
+
+If set, the plugin can read file extents.
+
+=item C<file_falloc_fl_punch_hole=yes>
+
+If set, the plugin may be able to punch holes (make sparse) files and
+block devices.
+
+=item C<file_falloc_fl_zero_range=yes>
+
+If set, the plugin may be able to efficiently zero ranges of files and
+block devices.
+
+=item C<winfile=yes>
+
+If present, this is the Windows version of the file plugin with
+reduced functionality and some special Windows-only features, as noted
+in this manual.
+
+=back
+
+=head2 Windows sparse files
+
+This plugin supports sparse files on Windows (with hole punching).
+However for this to work the files must already have the sparse
+property, the plugin will not make existing files sparse.  Use the
+S<C<fsutil sparse>> command to control the sparseness property of
+files.
+
+=head2 Old C<rdelay> and C<wdelay> parameters.
+
+Before nbdkit supported filters (E<lt> 1.2) this plugin had extra
+parameters C<rdelay> and C<wdelay> to insert delays.  These parameters
+have been moved to L<nbdkit-delay-filter(1)>.  Modify the command line
+to add I<--filter=delay> in order to use these parameters.
+
+=head2 Concatenating files
+
+To concatenate and export multiple files, use
+L<nbdkit-split-plugin(1)>.
+
+=head1 DEBUG FLAG
+
+=over 4
+
+=item B<-D file.zero=1>
+
+This enables very verbose debugging of the NBD zero request.  This can
+be used to tell if the file plugin is able to zero ranges in the file
+or block device efficiently or not.
+
+=back
+
+=head1 FILES
+
+=over 4
+
+=item F<$plugindir/nbdkit-file-plugin.so>
+
+The plugin.
+
+Use C<nbdkit --dump-config> to find the location of C<$plugindir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-file-plugin> first appeared in nbdkit 1.0.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-plugin(3)>,
+L<nbdkit-nfs-plugin(1)>,
+L<nbdkit-partitioning-plugin(1)>,
+L<nbdkit-split-plugin(1)>,
+L<nbdkit-tmpdisk-plugin(1)>,
+L<nbdkit-count-filter(1)>,
+L<nbdkit-delay-filter(1)>,
+L<nbdkit-exportname-filter(1)>,
+L<nbdkit-fua-filter(1)>,
+L<nbdkit-luks-filter(1)>,
+L<nbdkit-noextents-filter(1)>,
+L<nbdkit-readonly-filter(1)>,
+L<nbdinfo(1)>.
+
+=head1 AUTHORS
+
+Eric Blake
+
+Nir Soffer
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

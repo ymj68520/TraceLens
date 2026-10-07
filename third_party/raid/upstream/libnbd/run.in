@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+# libnbd 'run' programs locally script
+# Copyright Red Hat
+#
+# @configure_input@
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2 of the License, or (at your option) any later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+
+#----------------------------------------------------------------------
+
+# With this script you can run libnbd programs without needing to
+# install libnbd first.  You just have to do for example:
+#
+#   ./run nbdsh
+#
+# or:
+#
+#   ./run /path/to/my/libnbd/program
+#
+# or:
+#
+#   ./run python
+#   >>> import nbd    # locally-compiled nbd module
+#
+# This works for any C program and most non-C bindings.
+#
+# You can also compile other projects against this uninstalled libnbd
+# tree if those projects are using pkgconf/pkg-config:
+#
+#   ../libnbd/run ./configure
+#   make
+
+#----------------------------------------------------------------------
+
+# Function to intelligently prepend a path to an environment variable.
+# See http://stackoverflow.com/a/9631350
+prepend()
+{
+    eval $1="$2\${$1:+:\$$1}"
+}
+
+# Source and build directories (absolute paths so this works from any
+# directory).
+s="$(cd @abs_srcdir@ && pwd)"
+b="$(cd @abs_builddir@ && pwd)"
+
+# Set the PATH to contain all libnbd binaries.
+prepend PATH "$b/copy"
+prepend PATH "$b/dump"
+prepend PATH "$b/fuse"
+prepend PATH "$b/info"
+prepend PATH "$b/misc"
+prepend PATH "$b/sh"
+prepend PATH "$b/ublk"
+export PATH
+
+# Set LD_LIBRARY_PATH and DYLD_LIBRARY_PATH to contain library.
+# For use of _DYLD_LIBRARY_PATH see sh/nbdsh.
+prepend LD_LIBRARY_PATH "$b/lib/.libs"
+prepend DYLD_LIBRARY_PATH "$b/lib/.libs"
+prepend _DYLD_LIBRARY_PATH "$b/lib/.libs"
+export LD_LIBRARY_PATH
+export DYLD_LIBRARY_PATH
+export _DYLD_LIBRARY_PATH
+
+# For Python.
+export PYTHON="@PYTHON@"
+prepend PYTHONPATH "$b/python/.libs"
+prepend PYTHONPATH "$b/python"
+prepend PYTHONPATH "$s/python"
+export PYTHONPATH
+
+# For OCaml.
+prepend CAML_LD_LIBRARY_PATH "$b/ocaml"
+export CAML_LD_LIBRARY_PATH
+
+# For golang.
+export GOLANG="@GOLANG@"
+if [ -z "$CGO_CFLAGS" ]; then
+    CGO_CFLAGS="-I$s/include -I$b"
+else
+    CGO_CFLAGS="$CGO_CFLAGS -I$s/include -I$b"
+fi
+export CGO_CFLAGS
+if [ -z "$CGO_LDFLAGS" ]; then
+    CGO_LDFLAGS="-L$b/lib/.libs"
+else
+    CGO_LDFLAGS="$CGO_LDFLAGS -L$b/lib/.libs"
+fi
+export CGO_LDFLAGS
+if [ -n "@GOLANG_MAJOR_VERSION@" ] &&
+   ( ( [ "@GOLANG_MAJOR_VERSION@" -eq 1 ] &&
+       [ "@GOLANG_MINOR_VERSION@" -ge 21 ] ) ||
+     [ "@GOLANG_MAJOR_VERSION@" -ge 2 ] ); then
+    # cgocheck=1 "implements reasonably cheap dynamic checks"
+    export GODEBUG=cgocheck=1,invalidptr=1
+    # cgocheck2 implements complete pointer checking.
+    export GOEXPERIMENT=cgocheck2
+else
+    # golang <= 1.20 used this instead:
+    export GODEBUG=cgocheck=2,invalidptr=1
+fi
+# On failure, crash (giving us a useful core dump) instead of hiding that.
+export GOTRACEBACK=crash
+
+# Allow dependent packages to be compiled against local libnbd.
+prepend PKG_CONFIG_PATH "$b/lib/local"
+export PKG_CONFIG_PATH
+prepend OCAMLPATH "$b/ocaml"
+export OCAMLPATH
+
+# Do we have libtool?  If we have it then we can use it to make
+# running valgrind simpler.  However don't depend on it.
+if libtool --help >/dev/null 2>&1; then
+    libtool="libtool --mode=execute"
+fi
+
+# Use valgrind?
+#
+# If we're running a binary then apply valgrind directly to it.
+#
+# If it's a shell script then we set $VG and the script must run any
+# valgrinded programs by using $VG explicitly (note this variable is
+# not set if not valgrinding).
+#
+# Unfortunately the obvious thing of running ‘file $1’ will not work
+# because of libtool, so we have to base this off the file extension.
+if [ "x$LIBNBD_VALGRIND" = "x1" ]; then
+    _VG="valgrind --vgdb=no --leak-check=full --show-leak-kinds=all --error-exitcode=119 --suppressions=$b/valgrind/suppressions --trace-children=no --run-libc-freeres=no --num-callers=100"
+    case "$1" in
+        *.sh)
+            VG="$libtool $_VG"; export VG ;;
+        *)
+            valgrind="$_VG" ;;
+    esac
+
+    # Don't invoke malloc debugging when we are valgrinding because
+    # it duplicates work done by valgrind and might even hide issues.
+    #
+    # Originally this was a workaround for:
+    # https://sourceware.org/bugzilla/show_bug.cgi?id=28256
+    unset GLIBC_TUNABLES
+fi
+
+# Avoid GNOME keyring stupidity
+export GNOME_KEYRING_CONTROL=
+export GNOME_KEYRING_PID=
+
+# Run the program.
+exec $libtool $valgrind "$@"

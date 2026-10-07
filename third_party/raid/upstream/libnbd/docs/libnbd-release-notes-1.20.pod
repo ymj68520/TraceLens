@@ -1,0 +1,135 @@
+=head1 NAME
+
+libnbd-release-notes-1.20 - release notes for libnbd 1.20
+
+=head1 DESCRIPTION
+
+These are the release notes for libnbd stable release 1.20.
+This describes the major changes since 1.18.
+
+libnbd 1.20.0 was released on B<5 April 2024>.
+
+=head2 Security
+
+Fuzzing found and Eric Blake fixed an assertion which could be
+triggered by connecting to a malicious server.  This was assigned
+CVE-2023-5871 (low severity).  See the announcement here:
+L<https://lists.libguestfs.org/archives/list/guestfs@lists.libguestfs.org/thread/5CRC7LRTN35WPZZ4BT6NAMH4JGMF47IK/>
+
+If you find a security issue, please read F<SECURITY> in the source
+(online here:
+L<https://gitlab.com/nbdkit/libnbd/blob/master/SECURITY>).  To
+find out about previous security issues in libnbd, see
+L<libnbd-security(3)>.
+
+=begin comment
+
+=head2 New APIs
+
+=end comment
+
+=head2 Enhancements to existing APIs
+
+L<nbd_connect_uri(3)> now correctly supports case insensitive URIs.
+
+=head2 Protocol
+
+Improve interop with L<nbd-server(1)> which supports structured
+replies but not meta context (Eric Blake).
+
+=head2 Tools
+
+L<nbdinfo(1)> adds support for I<--isnt>, I<--cannot>, I<--hasnt>,
+which lets you check if features of an NBD server are I<not>
+supported.
+
+L<nbdinfo(1)> adds support for I<--uri> which just prints the
+canonical URI of the server.
+
+L<nbdinfo(1)> now prints human sizes for block size constraints (Eric
+Blake).
+
+=head2 Language bindings
+
+New L<libnbd-rust(3)> manual page added, providing an overview for
+writing Rust programs using libnbd.
+
+Rust documentation has been improved by using a custom translator from
+our own documentation format (Perl POD) to rustdoc.
+
+Some Rust compiler warnings were fixed (Eric Blake).
+
+OCaml bindings now support zero-copy in AIO pread and pwrite
+functions.  This change is backwards compatible with existing code.
+(Thanks Nicolas Ojeda Bar, Anil Madhavapeddy, Simon Cruanes).
+
+OCaml bindings now use C<Gc.finalize> (OCaml-level finalizers instead
+of C-level finalizers) which improves compatibility in OCaml 5.1.1 and
+above (Guillaume Munch-Maccagnoni).
+
+OCaml E<ge> 4.05 is formally required and checked in F<./configure>.
+Previously we did not specify a minimum version of OCaml, but in
+practice versions older than 4.05 probably didn't work.
+
+=head2 Tests
+
+Fuzzing approach was changed to use asynchronous commands.  This
+improves speed of fuzzing greatly and should find more issues.
+
+Multiple CI fixes (Eric Blake).
+
+Respect the user's choice of qemu-nbd, nbdkit and other binaries from
+(eg) S<C<./configure NBDKIT=/some/nbdkit>>.  Previously we would often
+test against binaries found on the path even if the user had specified
+other binaries to use.
+
+=head2 Other improvements and bug fixes
+
+L<nbdinfo(1)> now gracefully disconnects from the server in error
+cases, improving output (Eric Blake).
+
+C<struct nbd_handle> now contains a magic value which is checked on
+entry to libnbd, which should identify mistakes where programs calling
+libnbd pass in an incorrect pointer.
+
+=head2 Documentation
+
+An example was added of how to use userfaultfd to mmap an NBD-backed
+drive.  See F<examples/userfault-map.c> in the libnbd sources.
+
+Documentation of acceptable handle states in the man pages has been
+improved.
+
+=head2 Build
+
+F<contrib/libnbd.m4> is a contributed configure test for libnbd (Bruno
+Haible).
+
+C<./configure --with-bash-completions> will now fail if the required
+bash-completions package is not installed.
+
+=head1 SEE ALSO
+
+L<libnbd(3)>.
+
+=head1 AUTHORS
+
+=begin comment
+
+git shortlog -s v1.18.0..
+
+=end comment
+
+=over 4
+
+=item Eric Blake
+
+=item Richard W.M. Jones
+
+=item Thomas Weißschuh
+
+=back
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

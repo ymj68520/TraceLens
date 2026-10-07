@@ -1,0 +1,75 @@
+=head1 NAME
+
+nbdkit_export_name - get the NBD export name for nbdkit
+
+=head1 SYNOPSIS
+
+ #include <nbdkit-plugin.h>
+
+ const char *nbdkit_export_name (void);
+
+=head1 DESCRIPTION
+
+Return the optional NBD export name if one was negotiated with the
+current client (this uses thread-local magic so no parameter is
+required).
+
+The export name is a free-form text string, it is not necessarily a
+path or filename and it does not need to begin with a C<'/'>
+character.  The NBD protocol describes the empty string (C<"">) as a
+representing a "default export" or to be used in cases where the
+export name does not make sense.
+
+B<The export name is untrusted client data, be cautious when parsing it.>
+
+=head1 RETURN VALUE
+
+The function returns a string.  The returned string is valid at least
+through the C<.close> of the current connection, but if you need to
+store it in the plugin for use by more than one client you must copy
+it.
+
+If there is an error it calls L<nbdkit_error(3)> and returns C<NULL>.
+
+=head1 LANGUAGE BINDINGS
+
+In L<nbdkit-golang-plugin(3)>:
+
+ import "libguestfs.org/nbdkit"
+ exportName, err := nbdkit.ExportName()
+
+In L<nbdkit-ocaml-plugin(3)>:
+
+ NBDKit.export_name : unit -> string
+
+In L<nbdkit-python-plugin(3)>:
+
+ import nbdkit
+ name = nbdkit.export_name()
+
+In L<nbdkit-rust-plugin(3)>:
+
+ use nbdkit::*;
+ pub fn export_name() -> std::result::Result<String, Box<dyn error::Error>>
+
+In L<nbdkit-sh-plugin(3)> the export name is available as parameter
+C<$3> of the C<open> method.
+
+=head1 HISTORY
+
+C<nbdkit_export_name> was added in nbdkit 1.16.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit_is_tls(3)>,
+L<nbdkit-plugin(3)>,
+L<nbdkit-filter(3)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

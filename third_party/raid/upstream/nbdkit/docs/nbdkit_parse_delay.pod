@@ -1,0 +1,98 @@
+=head1 NAME
+
+nbdkit_parse_delay - parse human-readable delays and sleeps for nbdkit
+
+=head1 SYNOPSIS
+
+ #include <nbdkit-plugin.h>
+
+ int nbdkit_parse_delay (const char *what, const char *str,
+                         unsigned *sec, unsigned *nsec);
+
+=head1 DESCRIPTION
+
+The utility function C<nbdkit_parse_delay> can be used to parse
+configuration parameters on the L<nbdkit(1)> command line specifying
+delays and sleeps.
+
+The C<str> parameter is a string in one of the following formats:
+
+=over 4
+
+=item C<1>
+
+=item C<1.2>
+
+=item C<1.2s>
+
+Seconds
+
+=item C<1.2ms>
+
+=item C<120ms>
+
+Milliseconds
+
+=item C<1.2us>
+
+=item C<1.2μs>
+
+=item C<120μs>
+
+Microseconds
+
+=item C<1ns>
+
+Nanoseconds, the smallest possible time division for this function.
+
+=back
+
+The C<what> parameter is printed in error messages to provide context.
+
+The output (C<sec>, C<nsec>) can be passed straight to
+L<nbdkit_nanosleep(3)>.
+
+=head1 RETURN VALUE
+
+On success the function returns C<0>.  If C<sec != NULL>, set C<*sec>
+to the parsed seconds.  If C<nsec != NULL>, set C<*nsec> to the parsed
+nanoseconds.  If either C<sec == NULL> or C<nsec == NULL>, the parsing
+is done but the corresponding result is discarded.
+
+If there is an error it calls L<nbdkit_error(3)> and returns C<-1>.
+On error C<*sec> and C<*nsec> are always unchanged.
+
+=head1 LANGUAGE BINDINGS
+
+In L<nbdkit-ocaml-plugin(3)>:
+
+ NBDKit.parse_delay : string -> string -> int * int
+
+In L<nbdkit-python-plugin(3)>:
+
+ import nbdkit
+ (sec, nsec) = nbdkit.parse_delay(what, str)
+
+=head1 HISTORY
+
+C<nbdkit_parse_delay> was added in nbdkit 1.40.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit_parse_bool(3)>,
+L<nbdkit_parse_int(3)>,
+L<nbdkit_parse_probability(3)>,
+L<nbdkit_parse_size(3)>,
+L<nbdkit_nanosleep(3)>,
+L<nbdkit-plugin(3)>,
+L<nbdkit-filter(3)>,
+L<nbdkit-delay-filter(1)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

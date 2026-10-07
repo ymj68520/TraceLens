@@ -1,0 +1,129 @@
+=head1 NAME
+
+nbdkit-stats-filter - display statistics about operations
+
+=head1 SYNOPSIS
+
+ nbdkit --filter=stats PLUGIN statsfile=FILE
+                       [statsappend=true] [statsthreshold=PERCENTILE]
+
+=head1 DESCRIPTION
+
+C<nbdkit-stats-filter> is a filter that displays statistics about NBD
+operations, such as the number of bytes read and written.  Statistics
+are written to a file once when nbdkit exits.
+
+A lighter weight version of this is L<nbdkit-count-filter(1)>.
+
+=head1 EXAMPLE OUTPUT
+
+ # nbdkit --filter=exitlast --filter=stats memory 25G statsfile=example.txt
+ # nbd-client localhost /dev/nbd1 && mkfs.ext4 /dev/nbd1 && sync &&
+   nbd-client -d /dev/nbd1
+ [....]
+ # cat example.txt
+ total: 191 ops, 21.917545 s, 25.13 GiB, 1.15 GiB/s
+ read: 136 ops, 0.000230 s, 3.16 MiB, 13.43 GiB/s op, 147.83 KiB/s total
+   Request size and alignment breakdown:
+     12 bits: 68.4% (93 reqs, 372.00 KiB total)
+          12 bit aligned: 100.0% (93)
+          13 bit aligned:  72.0% (67)
+          14 bit aligned:  55.9% (52)
+          15 bit aligned:  48.4% (45)
+          16 bit aligned:  43.0% (40)
+     14 bits: 10.3% (14 reqs, 296.00 KiB total)
+          12 bit aligned: 100.0% (14)
+          13 bit aligned:  35.7% (5)
+          19 bit aligned:  21.4% (3)
+ [....]
+     other sizes:  3.7% (5 reqs, 3.16 MiB total)
+
+ write: 36 ops, 0.125460 s, 132.38 MiB, 1.03 GiB/s op, 6.04 MiB/s total
+   Request size and alignment breakdown:
+     12 bits: 50.0% (18 reqs, 72.00 KiB total)
+          12 bit aligned: 100.0% (18)
+          13 bit aligned:  77.8% (14)
+          27 bit aligned:  72.2% (13)
+          31 bit aligned:  66.7% (12)
+          32 bit aligned:  33.3% (6)
+          33 bit aligned:  22.2% (4)
+          34 bit aligned:  11.1% (2)
+     14 bits: 30.6% (11 reqs, 224.00 KiB total)
+          12 bit aligned: 100.0% (11)
+          27 bit aligned:  90.9% (10)
+     25 bits: 11.1% (4 reqs, 128.00 MiB total)
+          25 bit aligned: 100.0% (4)
+          26 bit aligned:  50.0% (2)
+          27 bit aligned:  25.0% (1)
+     16 bits:  2.8% (1 reqs, 64.00 KiB total)
+          16 bit aligned: 100.0% (1)
+
+ trim: 14 ops, 0.002687 s, 25.00 GiB, 9304.06 GiB/s op, 1.14 GiB/s total
+   Request size and alignment breakdown:
+     31 bits: 85.7% (12 reqs, 24.00 GiB total)
+          24 bit aligned: 100.0% (12)
+     24 bits:  7.1% (1 reqs, 16.00 MiB total)
+
+ flush: 5 ops, 0.000002 s, 0 bytes, 0 bytes/s op, 0 bytes/s total
+
+
+=head1 PARAMETERS
+
+=over 4
+
+=item B<statsfile=>FILE
+
+The file where we write the stats.
+
+This parameter is required.
+
+=item B<statsappend=true>
+
+If set then we append to the file instead of replacing it.
+
+=item B<statsthreshold=>PERCENTILE
+
+If non-zero, track request size and alignment distribution and print
+histogram.
+
+Requests are grouped by the number of bits that are needed to represent
+the request size (e.g. a request of size 3892 needs will be grouped
+with all requests of size 2^11=2048 to 2^12-1=4095), and the number of
+trailing zero bits in the offset.
+
+Histogram output is truncated to PERCENTILE of requests. Default: 95.
+
+=back
+
+=head1 FILES
+
+=over 4
+
+=item F<$filterdir/nbdkit-stats-filter.so>
+
+The filter.
+
+Use C<nbdkit --dump-config> to find the location of C<$filterdir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-stats-filter> first appeared in nbdkit 1.14.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-filter(3)>,
+L<nbdkit-count-filter(1)>,
+L<nbdkit-log-filter(1)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+Nikolaus Rath
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

@@ -1,0 +1,119 @@
+=head1 NAME
+
+nbdkit_peer_tls_dn,
+nbdkit_peer_tls_issuer_dn - read the client TLS X.509 Distinguished Name
+
+=head1 SYNOPSIS
+
+ #include <nbdkit-plugin.h>
+
+ char *nbdkit_peer_tls_dn (void);
+ char *nbdkit_peer_tls_issuer_dn (void);
+
+=head1 DESCRIPTION
+
+If all of these conditions are met:
+
+=over 4
+
+=item *
+
+the client connects over TLS (see L<nbdkit-tls(1)>)
+
+=item *
+
+the TLS connection is using X.509 certificates
+
+=item *
+
+the client presents a client certificate
+
+=item *
+
+the nbdkit I<--tls-verify-peer> option is used
+
+=back
+
+then these APIs can be used to get the Distinguished Name (DN) of the
+certificate or the certificate's issuer.  The issuer is the
+Certificate Authority (CA) that issued the client certificate.
+
+The DN is returned as a string of the form C<"CN=xx,O=yy,[...]C=zz">
+(see S<RFC 4514> for the exact format).
+
+If the DN is not available, C<""> is returned (this is not an error).
+
+L<nbdkit-ip-filter(1)> can be used to filter client connections by the
+DN.
+
+=head2 EXAMPLE CERTIFICATE AND DISTINGUISHED NAME
+
+Please see L<nbdkit-tls(1)> for details of how to generate client
+certificates.  Following those instructions, if you were to generate a
+client certificate from this F<client.info> input:
+
+ country = US
+ state = New York
+ locality = New York
+ organization = BigCo
+ cn = client.example.com
+ tls_www_client
+ encryption_key
+ signing_key
+
+and sign it with this Certificate Authority F<ca.info>:
+
+ cn = BigCo
+ ca
+ cert_signing_key
+
+then the client certificate DN would be:
+
+ CN=client.example.com,O=BigCo,L=New York,ST=New York,C=US
+
+and the issuer DN would be:
+
+ CN=BigCo
+
+=head1 RETURN VALUE
+
+On success both of these functions return a TLS Distinguished Name as
+a string, or C<"">.  The caller must free this string.
+
+If there is an error they call L<nbdkit_error(3)> and return C<NULL>.
+
+=head1 LANGUAGE BINDINGS
+
+In L<nbdkit-ocaml-plugin(3)>:
+
+ NBDKit.peer_tls_dn : unit -> string
+ NBDKit.peer_tls_issuer_dn : unit -> string
+
+In L<nbdkit-python-plugin(3)>:
+
+ import nbdkit
+ dn = nbdkit.peer_tls_dn()
+ dn = nbdkit.peer_tls_issuer_dn()
+
+=head1 HISTORY
+
+C<nbdkit_peer_tls_dn> and C<nbdkit_peer_tls_issuer_dn> were added in
+S<nbdkit 1.40>.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-plugin(3)>,
+L<nbdkit-filter(3)>,
+L<nbdkit-tls(1)>,
+L<nbdkit-ip-filter(1)>,
+L<nbdkit_is_tls(3)>,
+L<nbdkit_peer_name(3)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

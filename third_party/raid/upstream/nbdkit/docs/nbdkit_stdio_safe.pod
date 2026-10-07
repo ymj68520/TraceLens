@@ -1,0 +1,74 @@
+=head1 NAME
+
+nbdkit_stdio_safe - is it safe to interact with stdin and stdout
+
+=head1 SYNOPSIS
+
+ #include <nbdkit-plugin.h>
+
+ int nbdkit_stdio_safe (void);
+
+=head1 DESCRIPTION
+
+The C<nbdkit_stdio_safe> utility function returns whether or not it is
+safe to interact with stdin and stdout during the configuration phase.
+
+This is needed because when the nbdkit I<-s> option is used the plugin
+must not directly interact with stdin, because that would interfere
+with network communication.
+
+The result of this function only matters in callbacks up to
+C<.config_complete>.  Once nbdkit reaches C<.get_ready>, the plugin
+should assume that nbdkit may have closed the original stdin and
+stdout in order to become a daemon.
+
+L<nbdkit-sh-plugin(3)> uses this function to determine whether it is
+safe to support C<script=-> to read a script from stdin.  Also
+constructs like C<password=-> (see L<nbdkit_read_password(3)>) are
+disabled when reading from stdio is not safe.
+
+=head1 RETURN VALUE
+
+The function returns C<1> (safe) or C<0> (not safe).
+
+It cannot return an error.
+
+=head1 LANGUAGE BINDINGS
+
+In L<nbdkit-golang-plugin(3)>:
+
+ import "libguestfs.org/nbdkit"
+ isSafe := nbdkit.StdioSafe()
+
+In L<nbdkit-ocaml-plugin(3)>:
+
+ NBDKit.stdio_safe : unit -> bool
+
+In L<nbdkit-python-plugin(3)>:
+
+ import nbdkit
+ is_safe = nbdkit.stdio_safe()
+
+In L<nbdkit-rust-plugin(3)>:
+
+ use nbdkit::*;
+ pub fn is_stdio_safe() -> bool
+
+=head1 HISTORY
+
+C<nbdkit_stdio_safe> was added in nbdkit 1.20.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit_read_password(3)>,
+L<nbdkit-plugin(3)>,
+L<nbdkit-filter(3)>.
+
+=head1 AUTHORS
+
+Eric Blake
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

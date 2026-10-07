@@ -1,0 +1,48 @@
+{
+  "comment": [
+    "Who vendors what. One entry per upstream file, listing every repository that",
+    "keeps a copy of it. check_consumers.py reads this to answer the question a",
+    "per-repo vendoring check cannot: the upstream moved, so who is behind?",
+    "",
+    "Add a consumer here in the same change that first vendors the file, or the",
+    "check is silent about it forever. A missing consumer is the one failure this",
+    "registry has, and nothing else can detect it."
+  ],
+  "upstreams": [
+    {
+      "name": "qnxprobe",
+      "repo": "abrignoni/qnxprobe",
+      "file": "qnxprobe.py",
+      "consumers": [
+        {"repo": "abrignoni/GLEAPP", "manifest": "gleapp/vendor/vendored.json"},
+        {"repo": "abrignoni/VLEAPP", "manifest": "scripts/vendor/vendored.json"},
+        {"repo": "abrignoni/ALEAPP", "manifest": "scripts/vendor/vendored.json"},
+        {"repo": "abrignoni/DLEAPP", "manifest": "scripts/vendor/vendored.json"},
+        {"repo": "abrignoni/iLEAPP", "manifest": "scripts/vendor/vendored.json"},
+        {"repo": "abrignoni/RLEAPP", "manifest": "scripts/vendor/vendored.json"}
+      ]
+    },
+    {
+      "name": "ewfprobe",
+      "repo": "abrignoni/ewfprobe",
+      "file": "ewfprobe.py",
+      "consumers": [
+        {"repo": "abrignoni/GLEAPP", "manifest": "gleapp/vendor/vendored.json"},
+        {"repo": "abrignoni/VLEAPP", "manifest": "scripts/vendor/vendored.json"},
+        {"repo": "abrignoni/qnxprobe", "manifest": "vendored.json"},
+        {"repo": "abrignoni/ALEAPP", "manifest": "scripts/vendor/vendored.json"},
+        {"repo": "abrignoni/DLEAPP", "manifest": "scripts/vendor/vendored.json"},
+        {"repo": "abrignoni/iLEAPP", "manifest": "scripts/vendor/vendored.json"},
+        {"repo": "abrignoni/RLEAPP", "manifest": "scripts/vendor/vendored.json"}
+      ]
+    },
+    {
+      "name": "mediacarve",
+      "repo": "abrignoni/mediacarve",
+      "file": "mediacarve.py",
+      "consumers": [
+        {"repo": "abrignoni/GLEAPP", "manifest": "gleapp/vendor/vendored.json"}
+      ]
+    }
+  ]
+}

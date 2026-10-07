@@ -1,0 +1,196 @@
+=head1 NAME
+
+nbdkit-cache-filter - nbdkit caching filter
+
+=head1 SYNOPSIS
+
+ nbdkit --filter=cache plugin [plugin-args...]
+                              [cache=writeback|writethrough|unsafe]
+                              [cache-min-block-size=SIZE]
+                              [cache-max-size=SIZE]
+                              [cache-high-threshold=N]
+                              [cache-low-threshold=N]
+                              [cache-on-read=true|false|/PATH]
+
+=head1 DESCRIPTION
+
+C<nbdkit-cache-filter> is a filter that adds caching on top of a
+plugin.
+
+This is useful if a plugin is slow or expensive to use, because nbdkit
+will try to minimize requests to the plugin by caching previous
+requests.  You should use C<cache-on-read=true> (not the default) to
+cache reads from slow plugins.
+
+Note that many NBD I<clients> are able to do caching, and because the
+caching happens on the client side it will usually be more effective
+than caching inside the server.  This filter can be used if the client
+does not have effective caching, or (with C<cache=unsafe>) to defeat
+flush requests from the client (which is unsafe and can cause data
+loss, as the name suggests).
+
+This filter only caches image contents.  To accelerate sequential
+reads, use L<nbdkit-readahead-filter(1)> or L<nbdkit-scan-filter(1)>
+on top of this filter.
+
+=head1 PARAMETERS
+
+=over 4
+
+=item B<cache=writeback>
+
+Store writes in the cache.  They are not written to the plugin unless
+an explicit flush is done by the client.
+
+This is the default caching mode, and is safe if your client issues
+flush requests correctly (which is true for modern Linux and other
+well-written NBD clients).
+
+=item B<cache=writethrough>
+
+Always force writes through to the plugin.
+
+This makes the cache less effective, but is necessary if your client
+does not issue correct flush requests.
+
+=item B<cache=unsafe>
+
+Ignore flush requests.  Never write to the plugin unless the cache
+grows too large.
+
+This is dangerous and can cause data loss, but this may be acceptable
+if you only use it for testing or with data that you don't care about
+or can cheaply reconstruct.
+
+=item B<cache-min-block-size=>SIZE
+
+Set the minimum block size used by the cache.  This must be a power of
+2 and E<ge> 4096.
+
+The default is 64K, or the block size of the filesystem which contains
+the temporary file storing the cache (whichever is larger).
+
+=item B<cache-max-size=>SIZE
+
+=item B<cache-high-threshold=>N
+
+=item B<cache-low-threshold=>N
+
+(nbdkit E<ge> 1.10)
+
+Limit the size of the cache to C<SIZE>.  See L</CACHE MAXIMUM SIZE> below.
+
+=item B<cache-on-read=true>
+
+(nbdkit E<ge> 1.10)
+
+Cache read requests as well as write and cache requests.  Any time a
+block is read from the plugin, it is saved in the cache (if there is
+sufficient space) so the same data can be served more quickly later.
+
+Note that if the underlying data served by the plugin can be modified
+by some other means (eg. something else can write to a file which is
+being served by L<nbdkit-file-plugin(1)>), this option will cause
+nbdkit to serve stale data because reads won't always go through to
+the plugin.
+
+=item B<cache-on-read=false>
+
+Do not cache read requests (this is the default).
+
+=item B<cache-on-read=/PATH>
+
+(nbdkit E<ge> 1.28)
+
+When F</PATH> (which must be an absolute path) exists, this behaves
+like C<cache-on-read=true>, and when it does not exist like
+C<cache-on-read=false>.  This allows you to control the cache-on-read
+behaviour while nbdkit is running.
+
+=back
+
+=head1 CACHE MAXIMUM SIZE
+
+By default the cache can grow to any size (although not larger than
+the virtual size of the underlying plugin) and you have to ensure
+there is sufficient space in C<$TMPDIR> for it.
+
+Using the parameters C<cache-max-size>, C<cache-high-threshold> and
+C<cache-low-threshold> you can limit the maximum size of the cache.
+
+This requires kernel and filesystem support (for L<fallocate(2)>
+C<FALLOC_FL_PUNCH_HOLE>), so it may not work on all platforms.
+
+Some examples:
+
+=over 4
+
+=item C<cache-max-size=1G>
+
+The cache is limited to around 1 gigabyte.
+
+=item C<cache-max-size=1G cache-high-threshold=95 cache-low-threshold=80>
+
+Once the cache size reaches 972M (95% of 1G), blocks are reclaimed
+from the cache until the size is reduced to 819M (80% of 1G).
+
+=back
+
+The way this works is once the size of the cache exceeds
+S<C<SIZE> ✕ the high threshold>, the filter works to reduce the size
+of the cache until it is less than S<C<SIZE> ✕ the low threshold>.
+Once the size is below the low threshold, no more reclaim work is done
+until the size exceeds the high threshold again.
+
+The default thresholds are high 95% and low 80%.  You must set
+S<0 E<lt> low E<lt> high>.  The thresholds are expressed as integer
+percentages of C<cache-max-size>.
+
+Least recently used blocks are discarded first.
+
+=head1 ENVIRONMENT VARIABLES
+
+=over 4
+
+=item C<TMPDIR>
+
+The cache is stored in a temporary file located in F</var/tmp> by
+default.  You can override this location by setting the C<TMPDIR>
+environment variable before starting nbdkit.
+
+=back
+
+=head1 FILES
+
+=over 4
+
+=item F<$filterdir/nbdkit-cache-filter.so>
+
+The filter.
+
+Use C<nbdkit --dump-config> to find the location of C<$filterdir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-cache-filter> first appeared in nbdkit 1.2.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-file-plugin(1)>,
+L<nbdkit-cow-filter(1)>,
+L<nbdkit-readahead-filter(1)>,
+L<nbdkit-filter(3)>,
+L<qemu-img(1)>.
+
+=head1 AUTHORS
+
+Eric Blake
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

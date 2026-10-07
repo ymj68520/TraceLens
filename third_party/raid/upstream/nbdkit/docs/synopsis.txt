@@ -1,0 +1,31 @@
+nbdkit [-4|--ipv4-only] [-6|--ipv6-only]
+       [-D|--debug PLUGIN|FILTER|nbdkit.FLAG=N]
+       [--exit-with-parent] [-e|--exportname EXPORTNAME]
+       [--filter=FILTER ...] [-f|--foreground]
+       [-g|--group GROUP] [-i|--ipaddr IPADDR] [--keepalive]
+       [--log=default|stderr|syslog|null|/path]
+       [--mask-handshake=MASK] [--name=NAME]
+       [-n|--newstyle] [--no-mc|--no-meta-contexts]
+       [--no-sr|--no-structured-replies] [-o|--oldstyle]
+       [-P|--pidfile PIDFILE] [-p|--port PORT] [--print-uri]
+       [-r|--readonly] [--run 'COMMAND ARGS ...']
+       [--selinux-label=LABEL] [-s|--single]
+       [--swap] [-t|--threads THREADS]
+       [--timeout=TIMEOUT] [--tls=off|on|require]
+       [--tls-certificates=/path/to/certificates]
+       [--tls-priority=PRIORITY]
+       [--tls-psk=/path/to/pskfile] [--tls-verify-peer]
+       [-U|--unix SOCKET|-] [-u|--user USER]
+       [-v|--verbose] [--vsock]
+       PLUGIN
+       [[KEY=]VALUE [KEY=VALUE [...]]] | @PATH
+
+nbdkit --dump-config
+
+nbdkit PLUGIN --dump-plugin
+
+nbdkit --help
+
+nbdkit [-V|--version]
+
+nbdkit [--short-options|--long-options]

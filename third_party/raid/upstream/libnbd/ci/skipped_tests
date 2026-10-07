@@ -1,0 +1,5 @@
+# On old nbd-server, some tests deadlock
+^Alpine Linux-3\.1[89].*$;interop/interop-nbd-server interop/interop-nbd-server-tls interop/list-exports-nbd-server
+
+# CentOS (stream) 8 probably has an older, buggy version of nbdkit and is not updated
+^CentOS .*8$;info/info-uri.sh info/info-list-uris.sh interop/list-exports-nbdkit

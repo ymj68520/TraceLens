@@ -1,0 +1,19 @@
+#
+# create a raid1 without superblock, remove a drive, and readd it.
+# readd should fail.
+#
+mdadm -B $md0 -l1 -n2 -d1 $dev1 $dev2
+sleep 2
+check resync
+check wait
+testdev $md0 1 $size 1
+sleep 6
+
+mdadm $md0 -f $dev2
+sleep 2
+mdadm $md0 -r $dev2
+if mdadm $md0 --re-add $dev2; then
+	err "re-add should fail"
+fi
+
+mdadm -S $md0

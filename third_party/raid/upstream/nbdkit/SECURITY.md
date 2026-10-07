@@ -1,0 +1,17 @@
+## Reporting security issues in nbdkit
+
+If you think you've found a serious or potential security bug that you
+don't want to report on a public mailing list, then send email to both
+`rjones@redhat.com` and `eblake@redhat.com`
+
+Make it clear in the email Subject line that it's a serious or
+security-related bug in nbdkit.
+
+You can also sign and/or encrypt messages using our GPG public keys
+available on the usual keyservers, or online here:
+https://download.libguestfs.org/libguestfs.keyring
+
+For information about past security issues, see
+docs/nbdkit-security.pod, or the nbdkit-security(1) man page if you
+have installed nbdkit, also available online here:
+https://libguestfs.org/nbdkit-security.1.html

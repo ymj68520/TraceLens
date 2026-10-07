@@ -1,0 +1,104 @@
+# nbd client library in userspace
+# Copyright Red Hat
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2 of the License, or (at your option) any later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+
+# OCaml, by design, doesn't bother to free the major heap before
+# calling exit.  Ignore that leak.
+{
+   ocaml_heap_leak
+   Memcheck:Leak
+   ...
+   fun:caml_alloc_for_heap
+}
+
+# On the other hand, these seem to be a real bugs in OCaml:
+{
+   ocaml_heap_leak_2
+   Memcheck:Leak
+   fun:malloc
+   fun:caml_thread_new_descriptor
+   fun:caml_thread_new
+}
+{
+   ocaml_heap_leak_3
+   Memcheck:Leak
+   fun:malloc
+   fun:caml_thread_new_descriptor
+   fun:caml_thread_initialize
+}
+{
+   ocaml_heap_leak_4
+   Memcheck:Leak
+   ...
+   fun:pthread_create*
+   ...
+   fun:caml_thread_new
+}
+{
+   ocaml_heap_leak_5
+   Memcheck:Leak
+   fun:malloc
+   fun:caml_stat_alloc
+}
+{
+   ocaml_heap_leak_6
+   Memcheck:Leak
+   fun:malloc
+   ...
+   fun:caml_build_primitive_table
+}
+
+# Add for OCaml 4.10.
+{
+   ocaml_heap_leak_7
+   Memcheck:Leak
+   fun:malloc
+   ...
+   fun:caml_init_domain
+}
+{
+   ocaml_heap_leak_8
+   Memcheck:Leak
+   fun:malloc
+   ...
+   fun:caml_init_atom_table
+}
+
+# This one seems to be a real leak, starting in OCaml 4.13
+{
+   caml_setup_stack_overflow_detection
+   Memcheck:Leak
+   ...
+   fun:caml_setup_stack_overflow_detection
+}
+
+# Valgrind bug affecting OCaml 4.14
+# https://bugs.kde.org/show_bug.cgi?id=455711
+{
+  caml_terminate_signals_uninitialized_sigaltstack
+  Memcheck:Param
+  sigaltstack(ss)
+  fun:sigaltstack
+  fun:caml_terminate_signals
+}
+
+{
+  caml_stop_stack_overflow_detection_uninitialized_sigaltstack
+  Memcheck:Param
+  sigaltstack(ss)
+  fun:sigaltstack
+  fun:caml_stop_stack_overflow_detection
+}

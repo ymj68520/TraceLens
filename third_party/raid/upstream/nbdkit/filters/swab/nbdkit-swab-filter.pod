@@ -1,0 +1,112 @@
+=head1 NAME
+
+nbdkit-swab-filter - nbdkit filter for swapping byte order
+
+=head1 SYNOPSIS
+
+ nbdkit --filter=swab PLUGIN [PLUGIN-ARGS...] [swab-bits=8|16|32|64]
+
+=head1 DESCRIPTION
+
+C<nbdkit-swab-filter> is a filter for L<nbdkit(1)> which swaps bytes
+in the underlying plugin.
+
+One use for this is to read disk images which were formatted on the
+Atari Falcon, where the IDE controller is wired in reverse order.
+
+=head1 EXAMPLE
+
+=head2 Swap bytes from a disk image
+
+ nbdkit --filter=swab file file=disk.img
+
+The above command serves the disk image F<disk.img>, swapping even and
+odd bytes:
+
+ disk.img   0   1   2   3   4   5 ...
+              ╳       ╳       ╳
+   output   1   0   3   2   5   4 ...
+
+This filter truncates the size of the plugin down to the alignment
+determined by swab-bits (since operating on an unaligned tail would be
+awkward).  If you need to round the image size up instead to access
+the last few bytes, combine this filter with
+L<nbdkit-truncate-filter(1)>; fortunately, sector-based disk images
+are already suitably sized.
+
+Note that this filter fails operations where the offset or count are
+not aligned to the swab-bits boundaries; if you need byte-level
+access, apply the L<nbdkit-blocksize-filter(1)> before this one, to
+get read-modify-write access to individual bytes.
+
+=head1 PARAMETERS
+
+=over 4
+
+=item B<swab-bits=8>
+
+This turns off the filter.
+
+=item B<swab-bits=16>
+
+This is the default setting which swaps pairs of bytes.  This is
+suitable when reading and writing to Atari Falcon drives.
+
+=item B<swab-bits=32>
+
+This swaps the endianness of each 4 byte word in the disk, ie:
+
+  input    0   1   2   3   4   5   6   7
+
+=for paragraph
+
+ output    3   2   1   0   7   6   5   4
+
+=item B<swab-bits=64>
+
+This swaps the endianness of each 8 byte word in the disk, ie:
+
+  input    0   1   2   3   4   5   6   7
+
+=for paragraph
+
+ output    7   6   5   4   3   2   1   0
+
+This can be used to make L<nbdkit-pattern-plugin(1)> little endian
+instead of big endian.
+
+=back
+
+=head1 FILES
+
+=over 4
+
+=item F<$filterdir/nbdkit-swab-filter.so>
+
+The filter.
+
+Use C<nbdkit --dump-config> to find the location of C<$filterdir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-swab-filter> first appeared in nbdkit 1.22.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-file-plugin(1)>,
+L<nbdkit-pattern-plugin(1)>,
+L<nbdkit-filter(3)>,
+L<nbdkit-blocksize-filter(1)>.
+L<nbdkit-truncate-filter(1)>,
+L<nbdkit-xor-filter(1)>.
+
+=head1 AUTHORS
+
+François Revol
+
+=head1 COPYRIGHT
+
+Copyright (C) 2020 François Revol

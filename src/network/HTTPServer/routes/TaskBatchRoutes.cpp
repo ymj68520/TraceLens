@@ -1,6 +1,7 @@
 #include "TaskBatchRoutes.h"
 #include "TaskHelpers.h"
 #include "RouteHelpers.h"
+#include "../RaidTaskAdmission.h"
 #include "../../Swagger/Swagger.h"
 #include <ctime>
 
@@ -55,7 +56,15 @@ crow::response TaskBatchRoutes::handle_batch_create_tasks(const crow::request& r
         std::vector<std::string> image_paths;
 
         for (const auto& path : body["image_paths"]) {
-            image_paths.push_back(path.get<std::string>());
+            const auto image = path.get<std::string>();
+            if (isPreparedRaidImage(image)) {
+                res.code = 400;
+                res.set_header("Content-Type", "application/json");
+                res.write(json{{"error", "RAID images require their prepared source binding via /api/tasks"},
+                               {"error_code", "RAID_SOURCE_BINDING_REQUIRED"}}.dump());
+                return res;
+            }
+            image_paths.push_back(image);
         }
 
         TaskPriority priority = TaskPriority::NORMAL;

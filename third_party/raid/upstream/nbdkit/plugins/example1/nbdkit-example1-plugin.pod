@@ -1,0 +1,48 @@
+=head1 NAME
+
+nbdkit-example1-plugin - minimal nbdkit plugin
+
+=head1 SYNOPSIS
+
+ nbdkit example1
+
+=head1 DESCRIPTION
+
+C<nbdkit-example1-plugin> is a minimal L<nbdkit(1)> plugin.
+
+It serves, readonly, from memory, a static blob of data which looks a
+little bit like a 100 MB disk image that contains a single empty
+partition.
+
+Mainly this is useful for testing nbdkit and as an example for writing
+nbdkit plugins (L<nbdkit-plugin(3)>).
+
+=head1 FILES
+
+=over 4
+
+=item F<$plugindir/nbdkit-example1-plugin.so>
+
+The plugin.
+
+Use C<nbdkit --dump-config> to find the location of C<$plugindir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-example1-plugin> first appeared in nbdkit 1.0.
+
+=head1 SEE ALSO
+
+L<https://gitlab.com/nbdkit/nbdkit/blob/master/plugins/example1/example1.c>,
+L<nbdkit(1)>,
+L<nbdkit-plugin(3)>
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

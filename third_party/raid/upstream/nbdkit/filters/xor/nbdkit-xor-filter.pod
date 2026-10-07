@@ -1,0 +1,106 @@
+=head1 NAME
+
+nbdkit-xor-filter - obfuscate contents of a plugin with XOR
+
+=head1 SYNOPSIS
+
+ nbdkit --filter=xor [PLUGIN ARGS ...] xor=VALUE xorlen=LENBYTES
+
+ nbdkit --filter=xor [PLUGIN ARGS ...] xor=rand[:SEED]
+
+=head1 DESCRIPTION
+
+C<nbdkit-xor-filter> is a filter for L<nbdkit(1)> which XORs
+(exclusive or) a value across all of the data in the underlying
+plugin.  This can be used to obfuscate the contents of a plugin or as
+a trivial, insecure, but fast type of encryption.  For proper
+encryption, see L<nbdkit-luks-filter(1)>.
+
+This filter has two modes.  You can XOR with a fixed repeating
+pattern:
+
+ nbdkit file disk.img --filter=xor xor=0xDEADBEEF xorlen=4
+
+Or you can XOR with the output of a pseudo-random number generator
+(PRNG) with an optional seed by using C<xor=rand[:SEED]>.  The result
+is more obfuscated.  In this mode C<xorlen> is not used:
+
+ nbdkit file disk.img --filter=xor xor=rand:1984
+
+This filter does not currently support sparse plugins.  Trim
+operations will fill the backing plugin with XORed zeroes (which makes
+it easy to read out the "key", another reason why this is not secure).
+
+=head1 PARAMETERS
+
+=over 4
+
+=item B<xor=>VALUE
+
+The value to be XORed with the underlying data.  This is truncated or
+extended to C<xorlen> bytes.  Usually you want to specify this in hex
+using the C<0x> prefix.
+
+The value is big endian.  For example S<C<xor=0x123456 xorlen=3>> will
+XOR bytes as follows:
+
+ data:     A0 A1 A2 A3 A4 A5 A6
+ XOR with: 12 34 56 12 34 56 12
+           ────────────────────
+ result:   B2 95 F4 B1 90 F3 B4
+
+=item B<xor=rand>
+
+=item B<xor=rand:>SEED
+
+XOR the underlying data with the output of a pseudo-random number
+generator (PRNG).  Optionally a seed for the PRNG may be given
+(otherwise the seed is 0).
+
+The C<xor> parameter is required.
+
+=item B<xorlen=>LENBYTES
+
+The length of the XOR value, in bytes.  Any length from 1 to 8 is
+supported.
+
+This parameter is required when using C<xor=VALUE> and should not be
+set for C<xor=rand>.
+
+=back
+
+=head1 FILES
+
+=over 4
+
+=item F<$filterdir/nbdkit-xor-filter.so>
+
+The filter.
+
+Use C<nbdkit --dump-config> to find the location of C<$filterdir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-xor-filter> first appeared in nbdkit 1.48.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-file-plugin(1)>,
+L<nbdkit-luks-filter(1)>,
+L<nbdkit-map-filter(1)>,
+L<nbdkit-pattern-plugin(1)>,
+L<nbdkit-random-plugin(1)>,
+L<nbdkit-swab-filter(1)>,
+L<nbdkit-filter(3)>,
+L<nbdkit_parse_uint64_t(3)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

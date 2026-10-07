@@ -1,0 +1,130 @@
+=head1 NAME
+
+nbdkit-blocksize-filter - nbdkit blocksize filter
+
+=head1 SYNOPSIS
+
+ nbdkit --filter=blocksize plugin [minblock=SIZE] [maxdata=SIZE] \
+     [maxlen=SIZE] [plugin-args...]
+
+=head1 DESCRIPTION
+
+C<nbdkit-blocksize-filter> is a filter that ensures various block size
+limits are met on transactions presented to the plugin.  The NBD
+protocol permits clients to send requests with a granularity as small
+as 1 byte or as large as nearly 4 gigabytes, although it suggests that
+portable clients should align requests to 512 bytes and not exceed 32
+megabytes without prior coordination with the server.
+
+Meanwhile, some plugins require requests to be aligned to 512-byte
+multiples, or may enforce a maximum transaction size to bound the time
+or memory resources spent by any one command (note that nbdkit itself
+refuses a read or write larger than 64 megabytes, while many other NBD
+servers limit things to 32 megabytes).  The blocksize filter can be
+used to modify the client requests to meet the plugin restrictions.
+
+This filter can be combined with L<nbdkit-blocksize-policy-filter(1)>
+to advertise different block sizes to the client.
+
+=head1 PARAMETERS
+
+The nbdkit-blocksize-filter accepts the following parameters.
+
+=over 4
+
+=item B<minblock=>SIZE
+
+The minimum block size and alignment to pass to the plugin.  This must
+be a power of two, and no larger than 64k.  If omitted, this defaults
+to the minimum block size of the underlying plugin, or 1 if the plugin
+did not report a minimum block size.  The filter rounds up
+read requests to alignment boundaries, performs read-modify-write
+cycles for any unaligned head or tail of a write or zero request, and
+silently ignores any unaligned head or tail of a trim request.  The
+filter also truncates the plugin size down to an aligned value (as it
+cannot safely operate on the unaligned tail).  If you need to round
+the image size up instead to access the last few bytes, combine this
+filter with L<nbdkit-truncate-filter(1)>.
+
+This parameter understands the suffix 'k' for 1024.
+
+=item B<maxdata=>SIZE
+
+The maximum block size for any single transaction with data (read and
+write).  If omitted, this defaults to the minimum of 64 megabytes (that
+is, the nbdkit maximum) or any maximum reported by the underlying plugin.
+This need not be a power of two, but must be an
+integer multiple of C<minblock>.  The filter fragments any larger
+client request into multiple plugin requests.
+
+This parameter understands the suffixes 'k', 'M', and 'G' for powers
+of 1024.
+
+=item B<maxlen=>SIZE
+
+The maximum length for any single transaction without data (trim, zero,
+cache or extents).  If omitted, this defaults to 0xffffffff rounded down to
+C<minblock> alignment (that is, the inherent 32-bit limit of the NBD
+protocol).  This need not be a power of two, but must be an integer
+multiple of C<minblock>, and should be at least as large as
+C<maxdata>.  The filter fragments any larger client request into
+multiple plugin requests.
+
+This parameter understands the suffixes 'k', 'M', and 'G' for powers
+of 1024.
+
+=back
+
+=head1 EXAMPLES
+
+Allow an arbitrary client to use the VDDK plugin (which is limited to
+512-byte blocks), without having to fix the client to avoid sending
+unaligned requests:
+
+ nbdkit --filter=blocksize vddk minblock=512 file=/absolute/path/to/file.vmdk
+
+Allow an arbitrary client tuned to nbdkit's 64 megabyte sizing to
+connect to a remote server that insists on 32 megabyte sizing, via the
+nbd plugin:
+
+ nbdkit --filter=blocksize nbd maxdata=32M socket=/path/to/socket
+
+Serve a file as if it were a block device that insists on 4k
+alignment, while still allowing access to any unaligned bytes at the
+end of the file:
+
+ nbdkit --filter=blocksize --filter=truncate file /path/to/file \
+ minblock=4k round-up=4k
+
+=head1 FILES
+
+=over 4
+
+=item F<$filterdir/nbdkit-blocksize-filter.so>
+
+The filter.
+
+Use C<nbdkit --dump-config> to find the location of C<$filterdir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-blocksize-filter> first appeared in nbdkit 1.4.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-nbd-plugin(1)>,
+L<nbdkit-vddk-plugin(1)>,
+L<nbdkit-filter(3)>,
+L<nbdkit-blocksize-policy-filter(1)>,
+L<nbdkit-truncate-filter(1)>.
+
+=head1 AUTHORS
+
+Eric Blake
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

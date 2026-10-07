@@ -1,0 +1,9 @@
+# Checkout on Windows converts LF to CRLF by default, which changes a file's
+# bytes and so its hash. vendored.json records the hash of the vendored reader,
+# so without this the vendor guard fails on Windows and nowhere else.
+* text=auto eol=lf
+# The NTFS fixture is a gzipped disk image. text=auto above would leave it alone
+# because git detects it as binary, but saying so is cheaper than relying on the
+# detection: a single converted byte would change the image and its hashes.
+*.gz binary
+*.img binary

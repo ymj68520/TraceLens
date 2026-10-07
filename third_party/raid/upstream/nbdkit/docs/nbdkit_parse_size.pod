@@ -1,0 +1,68 @@
+=head1 NAME
+
+nbdkit_parse_size - parse human-readable size strings for nbdkit
+
+=head1 SYNOPSIS
+
+ #include <nbdkit-plugin.h>
+
+ int64_t nbdkit_parse_size (const char *str);
+
+=head1 DESCRIPTION
+
+Use the C<nbdkit_parse_size> utility function to parse human-readable
+size strings such as C<"100M"> into the size in bytes.
+
+The C<str> parameter is a string in a number of common formats.
+
+=head1 RETURN VALUE
+
+The function returns the size in bytes.
+
+If there is an error it calls L<nbdkit_error(3)> and returns C<-1>.
+
+=head1 LANGUAGE BINDINGS
+
+In L<nbdkit-golang-plugin(3)>:
+
+ import "libguestfs.org/nbdkit"
+ size, err := nbdkit.ParseSize(value)
+
+In L<nbdkit-ocaml-plugin(3)>:
+
+ NBDKit.parse_size : string -> int64
+
+In L<nbdkit-python-plugin(3)>:
+
+ import nbdkit
+ size = nbdkit.parse_size(str)
+
+In L<nbdkit-rust-plugin(3)>:
+
+ use nbdkit::*;
+ pub fn parse_size(s: &str) -> Result<i64>
+
+In L<nbdkit-sh-plugin(3)>, C<nbdkit_parse_size> is called implicitly
+to parse the output of C<get_size> and other methods.
+
+=head1 HISTORY
+
+C<nbdkit_parse_size> was present in nbdkit 0.1.0.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit_parse_bool(3)>,
+L<nbdkit_parse_delay(3)>,
+L<nbdkit_parse_int(3)>,
+L<nbdkit_parse_probability(3)>,
+L<nbdkit-plugin(3)>,
+L<nbdkit-filter(3)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

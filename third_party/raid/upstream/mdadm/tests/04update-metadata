@@ -1,0 +1,57 @@
+set -xe
+
+# test converting v0.90 to v1.0
+# check for different levels
+# check it fails for non-v0.90
+# check it fails during reshape or recovery
+# check it fails when bitmap is present
+
+dlist="$dev0 $dev1 $dev2 $dev3"
+
+if [ $skipping_linear == "yes" ]; then
+	level_list="raid1/1 raid5/3 raid6/2"
+else
+	level_list="linear/4 raid1/1 raid5/3 raid6/2"
+fi
+for ls in $level_list
+do
+	s=${ls#*/} l=${ls%/*}
+	if [[ $l == 'raid1' ]]; then
+		mdadm -CR --assume-clean -e 0.90 $md0 --level $l -n 4 $dlist
+	else
+		mdadm -CR --assume-clean -e 0.90 $md0 --level $l -n 4 -c 64 $dlist
+	fi
+	testdev $md0 $s 19904 64
+	mdadm -S $md0
+	mdadm -A $md0 --update=metadata $dlist
+	testdev $md0 $s 19904 64 check
+	mdadm -S $md0
+done
+
+if mdadm -A $md0 --update=metadata $dlist
+then echo >&2 should fail with v1.0 metadata
+	exit 1
+fi
+
+mdadm -CR -e 0.90 $md0 --level=6 -n4 -c32 $dlist
+mdadm -S $md0
+
+if mdadm -A $md0 --update=metadata $dlist
+then echo >&2 should fail during resync
+	exit 1
+fi
+mdadm -A $md0 $dlist
+mdadm --wait $md0 || true
+mdadm -S $md0
+
+# should succeed now
+mdadm -A $md0 --update=metadata $dlist
+
+mdadm -S /dev/md0
+mdadm -CR --assume-clean -e 0.90 $md0 --level=6 -n4 -c32 $dlist --bitmap=internal
+mdadm -S $md0
+
+if mdadm -A $md0 --update=metadata $dlist
+then echo >&2 should fail when bitmap present
+	exit 1
+fi

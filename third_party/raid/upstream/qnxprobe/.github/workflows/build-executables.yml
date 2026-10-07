@@ -1,0 +1,222 @@
+name: Build executables
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: windows-x64
+          - os: windows-11-arm
+            label: windows-arm64
+          - os: macos-latest
+            label: macos-arm64
+          - os: macos-15-intel
+            label: macos-x64
+          - os: ubuntu-22.04
+            label: linux-x64
+          - os: ubuntu-22.04-arm
+            label: linux-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      # 3.14 for compression.zstd, which zstd-compressed SquashFS and UBIFS need;
+      # the executables carry the standard library they were built with.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Check the tag matches QNXPROBE_VERSION
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: python
+        run: |
+          import os, re
+          src = open("qnxprobe.py", encoding="utf-8").read()
+          version = re.search(r'^QNXPROBE_VERSION = "([^"]+)"', src, re.M).group(1)
+          tag = os.environ["GITHUB_REF_NAME"]
+          assert tag == "v" + version, f"tag {tag} does not match QNXPROBE_VERSION {version}"
+          print("tag", tag, "matches QNXPROBE_VERSION")
+
+      - name: Install Linux build prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y tk xvfb
+
+      - name: Install PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller
+
+      - name: Check the vendored reader still matches what was vendored
+        run: python tools/check_vendored.py
+
+      - name: Self-test from source
+        run: python qnxprobe.py --self-test
+
+      - name: Build the command line executable
+        run: >
+          pyinstaller --noconfirm --clean --onefile --console
+          --name qnxprobe --hidden-import ewfprobe qnxprobe.py
+
+      - name: Build the window executable
+        run: >
+          pyinstaller --noconfirm --clean --onefile --windowed
+          --name qnxprobe_gui --hidden-import qnxprobe --hidden-import ewfprobe
+          qnxprobe_gui.py
+
+      - name: Keep the self-test's synthetic images as fixtures
+        shell: python
+        run: |
+          # self_test() builds its images in a temp dir and removes it; point
+          # the temp dir at ./fixtures and make the removal a no-op.
+          import os, shutil, sys, tempfile
+          sys.path.insert(0, os.getcwd())
+          import qnxprobe
+          dest = os.path.abspath("fixtures"); os.makedirs(dest, exist_ok=True)
+          tempfile.mkdtemp = lambda prefix="", **k: dest
+          shutil.rmtree = lambda *a, **k: None
+          assert qnxprobe.self_test() == 0
+          print(sorted(os.listdir(dest)))
+
+      - name: Run the executables on the fixtures
+        shell: python
+        run: |
+          import glob, os, subprocess
+          ext = ".exe" if os.name == "nt" else ""
+          cli = os.path.join("dist", "qnxprobe" + ext)
+          gui = os.path.join("dist", "qnxprobe_gui" + ext)   # the bare binary; macOS also gets a .app
+          # *.001 is the first segment of the split set the self-test leaves behind
+          # (its .002 and .003 sit beside it) and the lone cut segment
+          fixtures = sorted(glob.glob("fixtures/*.img") + glob.glob("fixtures/*.bin")
+                            + glob.glob("fixtures/*.001"))
+          assert len(fixtures) == 24, fixtures
+
+          r = subprocess.run([cli, "--self-test"], capture_output=True, text=True)
+          print(r.stdout[-600:]); assert r.returncode == 0 and "SELF-TEST PASSED" in r.stdout
+
+          r = subprocess.run([cli, "--list", "fixtures/positive_le.img"], capture_output=True, text=True)
+          print(r.stdout[-400:]); assert r.returncode == 0 and "VERDICT: QNX6 filesystem present." in r.stdout
+
+          # the window starts the tool by re-entering itself with --cli; this is
+          # exactly that call, so it proves the frozen path the Report pane uses
+          r = subprocess.run([gui, "--cli", "--self-test"], capture_output=True, text=True)
+          print(r.stdout[-300:]); assert r.returncode == 0 and "SELF-TEST PASSED" in r.stdout, r.stderr[-2000:]
+
+          r = subprocess.run([gui, "--check-discovery"] + fixtures, capture_output=True, text=True)
+          print(r.stdout); assert r.returncode == 0, r.stderr[-2000:]
+          lines = [l for l in r.stdout.splitlines() if l.strip()]
+          assert len(lines) == 24 and all(l.startswith("OK") for l in lines), lines
+          print("all executables ran on", os.environ.get("RUNNER_OS"), os.environ.get("RUNNER_ARCH"))
+
+      - name: Check the command line executable reads zstd
+        shell: python
+        run: |
+          # qnxprobe imports compression.zstd only when a volume needs it, so this
+          # proves PyInstaller bundled it. The frozen self-test cannot: the
+          # committed fixtures are not beside the executable, so it skips every
+          # flash image check.
+          import gzip, hashlib, os, shutil, subprocess, zipfile
+          ext = ".exe" if os.name == "nt" else ""
+          cli = os.path.join("dist", "qnxprobe" + ext)
+          with gzip.open("tests/fixtures/squashfs-zstd.img.gz") as src, open("zstd.img", "wb") as dst:
+              shutil.copyfileobj(src, dst)
+          r = subprocess.run([cli, "--extract", "zstd.zip", "zstd.img"], capture_output=True, text=True)
+          print(r.stdout[-500:]); assert r.returncode == 0, r.stderr[-2000:]
+          assert "no zstd" not in r.stdout, "this build does not carry compression.zstd"
+          want = {}
+          with open("tests/fixtures/squashfs.src.sha256", encoding="utf-8") as fh:
+              for line in fh:
+                  digest, path = line.rstrip("\n").split("  ", 1)
+                  want["lba0/" + path] = digest
+          with zipfile.ZipFile("zstd.zip") as z:
+              got = {n: hashlib.sha256(z.read(n)).hexdigest() for n in z.namelist() if n in want}
+          match = sum(1 for n, d in want.items() if got.get(n) == d)
+          print(f"{match} of {len(want)} files from the zstd SquashFS match their source hashes")
+          assert match == len(want) == 612
+
+      - name: Check the window starts and stays up
+        shell: python
+        run: |
+          import os, subprocess, sys, time
+          ext = ".exe" if os.name == "nt" else ""
+          cmd = [os.path.join("dist", "qnxprobe_gui" + ext), "fixtures/positive_le.img"]
+          if sys.platform.startswith("linux"):
+              cmd = ["xvfb-run", "-a"] + cmd
+          p = subprocess.Popen(cmd)
+          time.sleep(20)
+          alive = p.poll() is None
+          if alive:
+              p.terminate()
+          print("gui process alive after 20 s:", alive, "| exit code:", p.poll())
+          assert alive, "qnxprobe_gui exited early"
+
+      - name: Package
+        shell: bash
+        run: |
+          set -e
+          name="qnxprobe-${GITHUB_REF_NAME//\//-}-${{ matrix.label }}"
+          mkdir -p "pkg/$name"
+          cp packaging/README.txt LICENSE "pkg/$name/"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp dist/qnxprobe.exe dist/qnxprobe_gui.exe "pkg/$name/"
+            (cd "pkg/$name" && sha256sum qnxprobe.exe qnxprobe_gui.exe > SHA256SUMS.txt && cat SHA256SUMS.txt)
+            (cd pkg && 7z a -bd "../$name.zip" "$name" > /dev/null)
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            cp dist/qnxprobe "pkg/$name/"
+            cp -R dist/qnxprobe_gui.app "pkg/$name/"
+            (cd "pkg/$name" && shasum -a 256 qnxprobe qnxprobe_gui.app/Contents/MacOS/qnxprobe_gui > SHA256SUMS.txt && cat SHA256SUMS.txt)
+            (cd pkg && ditto -c -k --keepParent "$name" "../$name.zip")
+          else
+            cp dist/qnxprobe dist/qnxprobe_gui "pkg/$name/"
+            (cd "pkg/$name" && sha256sum qnxprobe qnxprobe_gui > SHA256SUMS.txt && cat SHA256SUMS.txt)
+            (cd pkg && tar -czf "../$name.tar.gz" "$name")
+          fi
+          ls -la "$name".*
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: qnxprobe-${{ matrix.label }}
+          path: |
+            qnxprobe-*.zip
+            qnxprobe-*.tar.gz
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Checksums of the archives
+        run: |
+          cd artifacts && sha256sum qnxprobe-* > SHA256SUMS.txt && cat SHA256SUMS.txt
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sed "s/{{VERSION}}/${GITHUB_REF_NAME}/g" packaging/release-notes.md > notes.md
+          gh release create "$GITHUB_REF_NAME" artifacts/* \
+            --title "qnxprobe ${GITHUB_REF_NAME}" \
+            --notes-file notes.md

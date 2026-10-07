@@ -1,0 +1,186 @@
+=head1 NAME
+
+nbdkit-delay-filter - nbdkit delay filter
+
+=head1 SYNOPSIS
+
+ nbdkit --filter=delay plugin [plugin-args ...]
+          delay-read=DELAY
+          delay-write=DELAY
+          delay-zero=DELAY
+          delay-trim=DELAY
+          delay-extents=DELAY
+          delay-cache=DELAY
+          delay-open=DELAY
+          delay-close=DELAY
+          delay-fast-zero=BOOL
+          delay-trigger=FILENAME
+
+=for paragraph
+
+ nbdkit --filter=delay plugin rdelay=DELAY wdelay=DELAY [plugin-args...]
+
+=head1 DESCRIPTION
+
+C<nbdkit-delay-filter> is a filter for L<nbdkit(1)> that delays read
+and write requests.  This is used to simulate a slow or remote server,
+or to test certain kinds of race conditions in Linux.  To limit server
+bandwidth use L<nbdkit-rate-filter(1)> instead.  To simulate a
+spinning disk see L<nbdkit-spinning-filter(1)>.
+
+=head1 EXAMPLES
+
+Delays reads and writes by 100ms:
+
+ nbdkit --filter=delay file disk.img rdelay=100ms wdelay=100ms
+
+Delay only zero operations by 1 second, nothing else is affected:
+
+ nbdkit --filter=delay file disk.img delay-zero=1
+
+=head1 DELAY FORMAT
+
+In nbdkit E<ge> 1.40, L<nbdkit_parse_delay(3)> is used to parse the
+delay parameters, so a wide variety of formats are accepted, such as:
+
+=over 4
+
+=item delay-read=1.5
+
+=item delay-write=100ms
+
+=item delay-zero=1.2μs
+
+=item delay-trim=1000ns
+
+=back
+
+In nbdkit E<le> 1.38, only a whole number of seconds, or a whole
+number of milliseconds (if suffixed by C<ms>) were allowed.
+
+=head1 TRIGGERED DELAYS
+
+Using the C<delay-trigger=FILENAME> option, you can disable this
+filter until the named F<FILENAME> is created.  If the file is
+deleted, then the filter is disabled again.  This allows you to boot
+up a virtual machine before turning on delays.
+
+=head1 PARAMETERS
+
+=over 4
+
+=item B<delay-cache=>DELAY
+
+(nbdkit E<ge> 1.14)
+
+Delay advisory cache operations by C<DELAY>.
+
+=item B<delay-close=>DELAY
+
+(nbdkit E<ge> 1.28)
+
+Delay close (client disconnection) by C<DELAY>.  This can also cause
+server shutdown to be delayed if clients are connected at the time.
+This only affects clients that gracefully disconnect (using
+C<NBD_CMD_DISC> / libnbd function L<nbd_shutdown(3)>).  Clients that
+abruptly disconnect from the server cannot be delayed.
+
+=item B<delay-extents=>DELAY
+
+(nbdkit E<ge> 1.12)
+
+Delay block status (extents) operations by C<DELAY>.
+
+=item B<delay-fast-zero=>BOOL
+
+(nbdkit E<ge> 1.16)
+
+The NBD specification documents an extension called fast zero, in
+which the client may request that a server should reply with
+C<ENOTSUP> as soon as possible if the zero operation offers no real
+speedup over a corresponding write.  By default, this parameter is
+true, and fast zero requests are serviced by the plugin after the same
+delay as any other zero request; but setting this parameter to false
+instantly fails a fast zero response without waiting for or consulting
+the plugin.
+
+=item B<delay-open=>DELAY
+
+(nbdkit E<ge> 1.28)
+
+Delay open (client connection) by C<DELAY>.
+
+=item B<delay-read=>DELAY
+
+=item B<rdelay=>DELAY
+
+Delay read operations by C<DELAY>.
+
+The two forms C<delay-read> and C<rdelay> work identically.
+
+=item B<delay-trigger=>FILENAME
+
+(nbdkit E<ge> 1.46)
+
+If this option is used, the filter is only enabled when the file
+called F<FILENAME> exists.  Therefore this file may be created and
+deleted while nbdkit is running to enable and disable delays.
+
+=item B<delay-trim=>DELAY
+
+(nbdkit E<ge> 1.10)
+
+Delay trim/discard operations by C<DELAY>.
+
+=item B<delay-write=>DELAY
+
+Delay write operations by C<DELAY>.
+
+=item B<delay-zero=>DELAY
+
+(nbdkit E<ge> 1.10)
+
+Delay zero operations by C<DELAY>.  See also the C<delay-fast-zero>
+option.
+
+=item B<wdelay=>DELAY
+
+Delay write, zero and trim operations by C<DELAY>.  (This is the same
+as setting C<delay-write>, C<delay-zero> and C<delay-trim> options
+together.)
+
+=back
+
+=head1 FILES
+
+=over 4
+
+=item F<$filterdir/nbdkit-delay-filter.so>
+
+The filter.
+
+Use C<nbdkit --dump-config> to find the location of C<$filterdir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-delay-filter> first appeared in nbdkit 1.2, based on earlier
+C<rdelay> and C<wdelay> options in L<nbdkit-file-plugin(1)>.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-filter(3)>,
+L<nbdkit-pause-filter(1)>,
+L<nbdkit-rate-filter(1)>,
+L<nbdkit-spinning-filter(1)>,
+L<nbdkit_parse_delay(3)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

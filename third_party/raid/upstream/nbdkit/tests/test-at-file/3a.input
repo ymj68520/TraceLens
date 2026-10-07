@@ -1,0 +1,4 @@
+# Test case for tests/test-at-file.sh
+a=1
+b=2
+c=3

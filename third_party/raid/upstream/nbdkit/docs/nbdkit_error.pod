@@ -1,0 +1,98 @@
+=head1 NAME
+
+nbdkit_error, nbdkit_verror,
+nbdkit_set_error - return an error from nbdkit plugins
+
+=head1 SYNOPSIS
+
+ #include <nbdkit-plugin.h>
+
+ void nbdkit_error (const char *fs, ...);
+ void nbdkit_verror (const char *fs, va_list args);
+
+ void nbdkit_set_error (int err);
+
+=head1 DESCRIPTION
+
+If there is an error in your plugin, the plugin should call
+C<nbdkit_error> to report an error message.  Then the callback should
+return the appropriate error indication, eg. C<NULL> or C<-1>.
+
+C<nbdkit_error> works like L<printf(3)>.  C<nbdkit_verror> works like
+L<vprintf(3)>.
+
+For convenience, C<nbdkit_error> preserves the value of C<errno>, and
+also supports the glibc extension of a single C<%m> in a format string
+expanding to C<strerror(errno)>, even on platforms that don't support
+that natively.
+
+=head2 Example
+
+ int
+ my_pread (void *handle, void *buf, uint32_t count, uint64_t offset,
+           uint32_t flags)
+ {
+   char *bounce_buffer = malloc (SECTOR_SIZE);
+   if (bounce_buffer == NULL) {
+     nbdkit_error ("malloc: %m");
+     return -1;
+   }
+   //...
+ }
+
+=head2 Setting errno
+
+For callbacks which serve data to the client, the plugin may call
+C<nbdkit_set_error> to influence the errno that will be sent back to
+the client.
+
+If the call to C<nbdkit_set_error> is omitted while serving data, then
+the global variable C<errno> may be used.  For plugins which have
+C<.errno_is_preserved != 0> the server will use C<errno>.  In plugins
+written in non-C languages, we usually cannot trust that C<errno> will
+be preserved when returning from that language to C.  In that case,
+either the plugin must call C<nbdkit_set_error> or hard-coded C<EIO>
+is used.
+
+=head2 Interaction with I<--log> option
+
+The nbdkit I<--log> option controls where error messages are sent.
+The default is to send error messages to stderr, unless nbdkit forks
+into the background in which case they are sent to syslog.  For more
+information read the description in L<nbdkit(1)>.
+
+=head2 Timestamps
+
+C<nbdkit_error> does not timestamp messages.  To add timestamps, see
+L<nbdkit_timestamp(3)>.
+
+=head1 LANGUAGE BINDINGS
+
+Most language bindings do not expose these functions explicitly.
+Instead you are expected to throw an exception on error which is
+implicitly turned into a call to C<nbdkit_error>.  Read the
+documentation for the language binding to find out how errors are
+handled.
+
+=head1 HISTORY
+
+C<nbdkit_error> and C<nbdkit_verror> were present in nbdkit 0.1.0.
+C<nbdkit_set_error> was added in nbdkit 1.2.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit_debug(3)>,
+L<nbdkit_timestamp(3)>,
+L<nbdkit-plugin(3)>,
+L<nbdkit-filter(3)>.
+
+=head1 AUTHORS
+
+Eric Blake
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

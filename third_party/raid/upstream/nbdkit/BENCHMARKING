@@ -1,0 +1,187 @@
+A GUIDE TO BENCHMARKING NBDKIT
+
+
+General comments
+================
+
+* The plugin matters!  Different plugins have completely different
+  uses, implementations and threading models.  There is little point
+  in talking generically about “the performance of nbdkit” without
+  mentioning what plugin you are testing.
+
+* The client matters!  Does the client support multi-conn?  Does the
+  client use the oldstyle or newstyle protocol?  Has the client been
+  written with performance in mind?  The currently best clients are
+  (a) the Linux kernel (nbd.ko), (b) qemu, and (c) fio.  Make sure you
+  are using recent versions and have multi-conn enabled.
+
+* Filters impair performance!  When benchmarking you should never use
+  filters unless filters are what you are trying to benchmark.
+
+
+Testing using fio
+=================
+
+FIO is a Flexible I/O tester written by Jens Axboe, and it is the
+primary tool used for generating the load to test filesystems and
+block devices.
+
+(1) Install libnbd.
+
+(2) Clone and compile fio:
+
+    https://github.com/axboe/fio
+
+using:
+
+    ./configure --enable-libnbd
+
+(3) Edit the test file in examples/nbd.fio, if required.
+
+(4) Run nbdkit and fio together.  From the fio source directory:
+
+    rm -f /tmp/socket
+    nbdkit -f -U /tmp/socket null 1G --run 'export uri; ./fio examples/nbd.fio'
+
+If you want to use nbdkit from the source directory too, change
+‘nbdkit’ to the path of the wrapper, eg:
+
+    rm -f /tmp/socket
+    ../nbdkit/nbdkit -f -U /tmp/socket null 1G --run 'export uri; ./fio examples/nbd.fio'
+
+
+Variations
+----------
+
+* Try adjusting the number of fio jobs (threads).
+
+* Try adjusting the number of nbdkit threads (nbdkit -t option).
+
+* Use other plugins.  Both nbdkit-memory-plugin and nbdkit-file-plugin
+  are important ones to test.
+
+* Run nbdkit under perf:
+
+  perf record -a -g --call-graph=dwarf -- \
+      server/nbdkit  -f -U /tmp/socket \
+          ./plugins/null/.libs/nbdkit-null-plugin.so 1G
+
+
+Testing using the Linux kernel client
+=====================================
+
+Step (1) is the same as above - obtain or compile fio.
+
+(2) Create the fio configuration file.
+
+Create /var/tmp/test.fio containing:
+
+----------------------------------------------------------------------
+[test]
+rw=randrw
+size=64m
+directory=/var/tmp/nbd
+ioengine=libaio
+iodepth=4
+direct=1
+numjobs=8
+group_reporting
+time_based
+runtime=120
+----------------------------------------------------------------------
+
+(3) Run nbdkit.
+
+From the nbdkit source directory:
+
+rm -f /tmp/socket
+./nbdkit -f -U /tmp/socket memory 1G
+
+(4) Loop mount the NBD server:
+
+modprobe nbd
+nbd-client -C 8 -unix /tmp/socket /dev/nbd0
+mkfs.xfs -f /dev/nbd0
+mkdir /var/tmp/nbd
+mount /dev/nbd0 /var/tmp/nbd
+
+(5) Run the fio test:
+
+fio /var/tmp/test.fio
+
+
+Testing using qemu
+==================
+
+Qemu contains an NBD client with excellent performance.  However it's
+not very useful for general benchmarking.  But two tests you can
+perform are described below.
+
+
+Test linear copying performance
+-------------------------------
+
+In some situations, linear copying is important, particularly when
+copying large disk images or virtual machines around.  Both nbdkit and
+the qemu client support sparseness detection and efficient zeroing.
+
+To test copying speed you can use ‘qemu-img convert’, to or from
+nbdkit:
+
+  nbdkit memory 1G --run 'qemu-img convert file.qcow2 -O raw "$uri"'
+
+  nbdkit memory 1G --run 'qemu-img convert "$uri" -O qcow2 file.qcow2'
+
+Notes:
+
+ * In the second case, because the memory plugin is entirely sparse
+   and zero, the convert command should do almost no work.  A more
+   realistic test might use the file, data or pattern plugins.
+
+ * Try copying to and from remote sources like nbdkit-curl-plugin and
+   nbdkit-ssh-plugin.
+
+ * nbdkit-readahead-filter can optimize copying when reading from
+   nbdkit.  This filter can particularly affect performance when the
+   nbdkit plugin source is remote (eg. nbdkit-curl-plugin).
+
+ * qemu-img has options for optimizing number of threads and whether
+   out of order writes are permitted.
+
+Test end-to-end VM block device performance
+-------------------------------------------
+
+Set up a virtual machine using an NBD block device, connected to
+nbdkit.  On the qemu command line you would use:
+
+  qemu ... -drive file=nbd:unix:/tmp/sock,if=virtio,format=raw ...
+
+In libvirt you would use:
+
+  <devices>
+    <disk type='network' device='disk'>
+      <driver name='qemu'/>
+      <source protocol='nbd'>
+        <host transport='unix' socket='/tmp/sock'/>
+      </source>
+      <target dev='vda' bus='virtio'/>
+    </disk>
+  </devices>
+
+Set up nbdkit to serve on the Unix domain socket:
+
+ nbdkit -U /tmp/sock memory 1G
+
+Inside the guest you will see a block device like /dev/vdX which is
+backed by the nbdkit instance, and you can use fio or other filesystem
+testing tools to evaluate performance.
+
+This is very much a real world, end-to-end test which tests many
+different things together, including the client, guest kernel, qemu,
+virtio transport, host kernel and nbdkit.  So it's more useful as a
+way to detect that there is a problem, rather than as a way to
+identify which component is at fault.
+
+If you have sufficiently recent kernel and qemu you can try using
+virtio-vsock as the transport (instead of a Unix domain socket), see
+AF_VSOCK in nbdkit-service(1).

@@ -1,0 +1,46 @@
+devs="$dev0 $dev1 $dev2"
+backup_file=$targetdir/md-backup
+backup_link=/var/lib/mdadm/backup_file-md0
+stale_backup=$targetdir/stale-backup-file
+
+set_up_test()
+{
+	mdadm -Cv -R -n 3 -l5 $md0 $devs --size=10M || die "create array failed"
+	mdadm -a $md0 $dev3 || die "failed to bind new disk to array"
+	echo 1000 > /sys/block/md0/md/sync_speed_max
+}
+
+clean_up_test()
+{
+	echo idle > /sys/block/md0/md/sync_action
+	mdadm -S $md0
+	rm -f $backup_file $backup_link $stale_backup
+}
+
+trap 'clean_up_test' EXIT
+
+set_up_test || die "set up test failed"
+
+rm -f $backup_file $backup_link $stale_backup
+touch $stale_backup
+ln -s $stale_backup $backup_link ||
+	die "failed to create stale backup link"
+
+# trigger reshape
+mdadm --grow -l 6 --backup-file=$backup_file $md0 || die "grow failed"
+[ "$(readlink $backup_link)" = "$backup_file" ] ||
+	die "backup link was not replaced"
+[ -e $stale_backup ] || die "stale backup link target was removed"
+sleep 2
+
+# stop reshape
+echo frozen > /sys/block/md0/md/sync_action
+
+# read accross reshape
+dd if=$md0 of=/dev/NULL bs=1m count=100 iflag=direct &> /dev/null &
+sleep 2
+
+# suspend array
+echo 1 > /sys/block/md0/md/suspend_lo
+
+exit 0

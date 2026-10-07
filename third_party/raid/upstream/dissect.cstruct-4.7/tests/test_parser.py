@@ -1,0 +1,296 @@
+from __future__ import annotations
+
+from unittest.mock import Mock
+
+import pytest
+
+from dissect.cstruct import cstruct
+from dissect.cstruct.exceptions import ParserError
+from dissect.cstruct.parser import TokenParser
+from dissect.cstruct.types import BaseArray, Pointer, Structure
+from tests.utils import verify_compiled
+
+
+def test_nested_structs(cs: cstruct, compiled: bool) -> None:
+    cdef = """
+    struct nest {
+        struct {
+            uint32 b;
+        } a[4];
+    };
+    """
+    cs.load(cdef, compiled=compiled)
+
+    assert verify_compiled(cs.nest, compiled)
+
+    data = b"\x00\x00\x00\x00\x01\x00\x00\x00\x02\x00\x00\x00\x03\x00\x00\x00"
+    obj = cs.nest(data)
+    for i in range(4):
+        assert obj.a[i].b == i
+
+    assert cs.nest.fields["a"].type.__name__ == "__anonymous_0__[4]"
+    assert cs.nest.fields["a"].type.type.__name__ == "__anonymous_0__"
+
+
+def test_preserve_comment_newlines() -> None:
+    cdef = """
+    // normal comment
+    #define normal_anchor
+    /*
+     * Multi
+     * line
+     * comment
+     */
+    #define multi_anchor
+    """
+    data = TokenParser._remove_comments(cdef)
+
+    mock_token = Mock()
+    mock_token.match.string = data
+    mock_token.match.start.return_value = data.index("#define normal_anchor")
+    assert TokenParser._lineno(mock_token) == 3
+
+    mock_token.match.start.return_value = data.index("#define multi_anchor")
+    assert TokenParser._lineno(mock_token) == 9
+
+
+def test_typedef_types(cs: cstruct) -> None:
+    cdef = """
+    typedef char uuid_t[16];
+    typedef uint32 *ptr;
+
+    struct test {
+        uuid_t uuid;
+        ptr ptr;
+    };
+    """
+    cs.pointer = cs.uint8
+    cs.load(cdef)
+
+    assert issubclass(cs.uuid_t, BaseArray)
+    assert cs.uuid_t(b"\x01" * 16) == b"\x01" * 16
+
+    assert issubclass(cs.ptr, Pointer)
+    assert cs.ptr(b"\x01AAAA") == 1
+    assert cs.ptr(b"\x01AAAA").dereference() == 0x41414141
+
+    obj = cs.test(b"\x01" * 16 + b"\x11AAAA")
+    assert obj.uuid == b"\x01" * 16
+    assert obj.ptr.dereference() == 0x41414141
+
+    with pytest.raises(ParserError, match="line 1: typedefs cannot have bitfields"):
+        cs.load("""typedef uint8 with_bits : 4;""")
+
+
+def test_dynamic_substruct_size(cs: cstruct) -> None:
+    cdef = """
+    typedef struct {
+        int32 len;
+        char str[len];
+    } sub;
+
+    typedef struct {
+        sub data[1];
+    } test;
+    """
+    cs.load(cdef)
+
+    assert cs.sub.dynamic
+    assert cs.test.dynamic
+
+
+def test_structure_names(cs: cstruct) -> None:
+    cdef = """
+    struct a {
+        uint32 _;
+    };
+
+    struct {
+        uint32 _;
+    } b;
+
+    struct {
+        uint32 _;
+    } c, d;
+
+    typedef struct {
+        uint32 _;
+    } e;
+    """
+    cs.load(cdef)
+
+    assert all(c in cs.typedefs for c in ("a", "b", "c", "d", "e"))
+
+    assert cs.a.__name__ == "a"
+    assert cs.b.__name__ == "b"
+    assert cs.c.__name__ == "c"
+    assert cs.d.__name__ == "c"
+    assert cs.e.__name__ == "e"
+
+
+def test_includes(cs: cstruct) -> None:
+    cdef = """
+    /* Standard libs */
+    #include <stdint.h> // defines fixed data types: int8_t...
+    /* user libs */
+    #include "myLib.h"  // my own header
+
+    typedef struct myStruct
+    {
+        char charVal[16];
+    }
+    """
+    cs.load(cdef)
+
+    assert cs.includes == ["<stdint.h>", "myLib.h"]
+    assert cs.myStruct.__name__ == "myStruct"
+    assert len(cs.myStruct.fields) == 1
+    assert cs.myStruct.fields.get("charVal")
+
+
+def test_typedef_pointer(cs: cstruct) -> None:
+    cdef = """
+    typedef struct _IMAGE_DATA_DIRECTORY {
+        DWORD VirtualAddress;
+        DWORD Size;
+    } IMAGE_DATA_DIRECTORY, *PIMAGE_DATA_DIRECTORY;
+    """
+    cs.load(cdef)
+
+    assert issubclass(cs._IMAGE_DATA_DIRECTORY, Structure)
+    assert cs.IMAGE_DATA_DIRECTORY is cs._IMAGE_DATA_DIRECTORY
+    assert issubclass(cs.PIMAGE_DATA_DIRECTORY, Pointer)
+    assert cs.PIMAGE_DATA_DIRECTORY.type == cs._IMAGE_DATA_DIRECTORY
+
+
+def test_undef(cs: cstruct) -> None:
+    cdef = """
+    #define MY_CONST 42
+    #undef MY_CONST
+    """
+    cs.load(cdef)
+
+    assert "MY_CONST" not in cs.consts
+
+    with pytest.raises(ParserError, match="line 1: constant 'MY_CONST' not defined"):
+        cs.load("#undef MY_CONST")  # This should raise an error since MY_CONST is not defined
+
+
+def test_conditional_ifdef(cs: cstruct) -> None:
+    cdef = """
+    #define MY_CONST 42
+
+    #ifdef MY_CONST
+    struct test {
+        uint32 a;
+    };
+    #endif
+    """
+    cs.load(cdef)
+
+    assert "test" in cs.typedefs
+
+
+def test_conditional_ifndef(cs: cstruct) -> None:
+    cdef = """
+    #ifndef MYVAR
+        #define MYVAR  (1)
+    #endif
+    """
+    cs.load(cdef)
+
+    assert "MYVAR" in cs.consts
+    assert cs.consts["MYVAR"] == 1
+
+
+def test_conditional_ifndef_guard(cs: cstruct) -> None:
+    cdef = """
+    /* Define Guard */
+    #ifndef __MYGUARD
+    #define __MYGUARD
+
+    typedef struct myStruct
+    {
+        char   charVal[16];
+    }
+    #endif // __MYGUARD
+    """
+    cs.load(cdef)
+
+    assert "__MYGUARD" in cs.consts
+    assert "myStruct" in cs.typedefs
+
+
+def test_conditional_nested() -> None:
+    cdef = """
+    #ifndef MYSWITCH1
+        #define MYVAR1 (1)
+    #else
+        #ifdef MYSWITCH2
+            #define MYVAR1 (2)
+        #else
+            #define MYVAR1 (3)
+        #endif
+    #endif
+    """
+    cs = cstruct().load(cdef)
+
+    assert "MYVAR1" in cs.consts
+    assert cs.consts["MYVAR1"] == 1
+
+    cs = cstruct().load("#define MYSWITCH1")
+
+    assert "MYSWITCH1" in cs.consts
+
+    cs.load(cdef)
+
+    assert "MYVAR1" in cs.consts
+    assert cs.consts["MYVAR1"] == 3
+
+
+def test_conditional_in_struct(cs: cstruct) -> None:
+    cdef = """
+    struct t_bitfield {
+        union {
+            struct {
+                uint32_t bit0:1;
+                uint32_t bit1:1;
+                #ifdef MYSWT
+                uint32_t bit2:1;
+                #endif
+            } fval;
+            uint32_t bits;
+        };
+    };
+    """
+    cs.load(cdef)
+
+    assert "t_bitfield" in cs.typedefs
+    assert "fval" in cs.t_bitfield.fields
+    assert "bit0" in cs.t_bitfield.fields["fval"].type.fields
+    assert "bit1" in cs.t_bitfield.fields["fval"].type.fields
+    assert "bit2" not in cs.t_bitfield.fields["fval"].type.fields
+
+
+def test_conditional_parsing_error(cs: cstruct) -> None:
+    cdef = """
+    #ifndef __HELP
+    #define __HELP
+    #endif
+    struct test {
+        uint32 a;
+    };
+    #endif
+    """
+    with pytest.raises(ParserError, match=r"line 8: unexpected token .+ENDIF"):
+        cs.load(cdef)
+
+    cdef = """
+    #ifndef __HELP
+    #define __HELP
+    struct test {
+        uint32 a;
+    };
+    """
+    with pytest.raises(ParserError, match="line 6: unclosed conditional statement"):
+        cs.load(cdef)

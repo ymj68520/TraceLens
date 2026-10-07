@@ -1,0 +1,121 @@
+=head1 NAME
+
+nbdkit_peer_name, nbdkit_peer_pid,
+nbdkit_peer_uid, nbdkit_peer_gid,
+nbdkit_peer_security_context - get client address and information for nbdkit
+
+=head1 SYNOPSIS
+
+ #include <nbdkit-plugin.h>
+
+ int nbdkit_peer_name (struct sockaddr *addr, socklen_t *addrlen);
+ int64_t nbdkit_peer_pid (void);
+ int64_t nbdkit_peer_uid (void);
+ int64_t nbdkit_peer_gid (void);
+ char *nbdkit_peer_security_context (void);
+
+=head1 DESCRIPTION
+
+=head2 nbdkit_peer_name
+
+Return the peer (client) address, if available.  The C<addr> and
+C<addrlen> parameters behave like L<getpeername(2)>.  In particular
+you must initialize C<addrlen> with the size of the buffer pointed to
+by C<addr>, and if C<addr> is not large enough then the address will
+be truncated.
+
+In some cases this is not available or the address returned will be
+meaningless (eg. if there is a proxy between the client and nbdkit).
+This call uses thread-local magic so no parameter is required to
+specify the current connection.
+
+=head2 nbdkit_peer_pid
+
+(nbdkit E<ge> 1.24, Linux only)
+
+Return the peer process ID.  This is only available when the client
+connected over a Unix domain socket.
+
+=head2 nbdkit_peer_uid
+
+(nbdkit E<ge> 1.24)
+
+Return the peer user ID.  This is only available when the client
+connected over a Unix domain socket.
+
+=head2 nbdkit_peer_gid
+
+(nbdkit E<ge> 1.24)
+
+Return the peer group ID.  This is only available when the client
+connected over a Unix domain socket.
+
+=head2 nbdkit_peer_security_context
+
+(nbdkit E<ge> 1.36, not Windows)
+
+Return the peer security context (usually the SELinux label, IPSEC
+label or NetLabel).  See the description of C<SO_PEERSEC> in
+L<unix(7)> and L<ip(7)>.
+
+=head1 RETURN VALUE
+
+All functions except C<nbdkit_peer_security_context> return C<0> on
+success.  If there is an error they call L<nbdkit_error(3)> and return
+C<-1>.
+
+C<nbdkit_peer_security_context> returns a security context as a string
+on success.  The caller must free this string.  On error (which can
+include missing label or unsupported protocol), L<nbdkit_error(3)> is
+called and this call returns C<NULL>.
+
+=head1 LANGUAGE BINDINGS
+
+In L<nbdkit-ocaml-plugin(3)>:
+
+ NBDKit.peer_name : unit -> Unix.sockaddr
+ NBDKit.peer_pid : unit -> int64
+ NBDKit.peer_uid : unit -> int64
+ NBDKit.peer_gid : unit -> int64
+ NBDKit.peer_security_context : unit -> string
+
+In L<nbdkit-python-plugin(3)>:
+
+ import nbdkit
+ pid = nbdkit.peer_pid()
+ uid = nbdkit.peer_uid()
+ gid = nbdkit.peer_gid()
+ security_context = nbdkit.peer_security_context()
+
+In L<nbdkit-rust-plugin(3)>:
+
+ use nbdkit::*;
+ pub fn peername<T: SockaddrLike>() ->
+         std::result::Result<T, Box<dyn error::Error>>
+
+=head1 HISTORY
+
+C<nbdkit_peer_name> was added in nbdkit 1.16.
+
+C<nbdkit_peer_pid>, C<nbdkit_peer_uid> and C<nbdkit_peer_gid> were
+added in nbdkit 1.24.
+
+C<nbdkit_peer_security_context> was added in nbdkit 1.36.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-plugin(3)>,
+L<nbdkit-filter(3)>,
+L<nbdkit-ip-filter(1)>,
+L<getpeername(2)>,
+L<unix(7)>,
+L<ip(7)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

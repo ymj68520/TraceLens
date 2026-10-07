@@ -1,0 +1,74 @@
+=head1 NAME
+
+nbdkit_parse_probability - parse probabilities for nbdkit
+
+=head1 SYNOPSIS
+
+ #include <nbdkit-plugin.h>
+
+ int nbdkit_parse_probability (const char *what, const char *str,
+                               double *ret);
+
+=head1 DESCRIPTION
+
+Use the C<nbdkit_parse_probability> utility function to parse
+probabilities.  Common formats understood include: C<"0.1">,
+C<"1e-1">, C<"10%">, C<"1:10"> or C<"1/10">, which all mean a
+probability of 1 in 10.
+
+The C<what> parameter is printed in error messages to provide context.
+The C<str> parameter is the probability string.
+
+=head1 RETURN VALUE
+
+On success the function returns C<0>.  If C<ret != NULL>, set C<*ret>
+to the parsed value.  If C<ret == NULL>, the parsing is done but the
+result is discarded.
+
+The probability is always a finite number E<ge> 0.0, but B<note the
+result may be larger than 1.0> (for example if S<C<str == "200%">>
+then the function will set S<C<*ret = 2.0>>).  If you want to clamp
+the upper bound the caller must do that.
+
+On error, L<nbdkit_error(3)> is called and C<-1> is returned.  On
+error C<*ret> is always unchanged.
+
+=head1 LANGUAGE BINDINGS
+
+In L<nbdkit-ocaml-plugin(3)>:
+
+ NBDKit.parse_probability : string -> string -> float
+
+In L<nbdkit-python-plugin(3)>:
+
+ import nbdkit
+ size = nbdkit.parse_probability(what, str)
+
+In L<nbdkit-rust-plugin(3)>:
+
+ use nbdkit::*;
+ pub fn parse_probability(what: &str, s: &str) -> Result<f64>
+
+=head1 HISTORY
+
+C<nbdkit_parse_probability> was added in nbdkit 1.36.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit_parse_bool(3)>,
+L<nbdkit_parse_delay(3)>,
+L<nbdkit_parse_int(3)>,
+L<nbdkit_parse_size(3)>,
+L<nbdkit-plugin(3)>,
+L<nbdkit-filter(3)>,
+L<nbdkit-error-filter(1)>,
+L<nbdkit-evil-filter(1)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

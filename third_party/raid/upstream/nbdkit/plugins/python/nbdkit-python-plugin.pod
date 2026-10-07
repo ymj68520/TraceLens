@@ -1,0 +1,695 @@
+=head1 NAME
+
+nbdkit-python-plugin - nbdkit python plugin
+
+=head1 SYNOPSIS
+
+ nbdkit python /path/to/plugin.py [arguments...]
+
+=head1 DESCRIPTION
+
+C<nbdkit-python-plugin> is an embedded Python interpreter for
+L<nbdkit(1)>, allowing you to write nbdkit plugins in Python 3.
+
+=head2 If you have been given an nbdkit Python plugin
+
+Assuming you have a Python script which is an nbdkit plugin, you run it
+like this:
+
+ nbdkit python /path/to/plugin.py
+
+You may have to add further C<key=value> arguments to the command
+line.  Read the Python script to see if it requires any.
+
+=head1 WRITING A PYTHON NBDKIT PLUGIN
+
+For example plugins written in Python, see:
+L<https://gitlab.com/nbdkit/nbdkit/blob/master/plugins/python/examples>
+
+Broadly speaking, Python nbdkit plugins work like C ones, so you should
+read L<nbdkit-plugin(3)> first.
+
+To write a Python nbdkit plugin, you create a Python file which
+contains at least the following required functions (in the top level
+C<__main__> module):
+
+ API_VERSION = 2
+ def open(readonly):
+   # see below
+ def get_size(h):
+   # see below
+ def pread(h, buf, offset, flags):
+   # see below
+
+Note that the subroutines must have those literal names (like C<open>),
+because the C part looks up and calls those functions directly.  You
+may want to include documentation and globals (eg. for storing global
+state).  Any other top level statements are run when the script is
+loaded, just like ordinary Python.
+
+=head2 Python versions
+
+Since nbdkit E<ge> 1.16 only Python 3 is supported.  If you wish to
+continue using nbdkit plugins written in Python 2 then you must use
+nbdkit E<le> 1.14, but we advise you to update your plugins.
+
+The version of Python 3 is chosen when nbdkit is built.  This is
+compiled in and can't be changed at runtime.  C<./configure> looks for
+(in order):
+
+=over 4
+
+=item *
+
+the C<PYTHON> variable
+(eg C<./configure PYTHON=/usr/bin/python3.9>)
+
+=item *
+
+F<python3> on C<$PATH>
+
+=item *
+
+F<python> on C<$PATH>
+
+=back
+
+C<./configure> will fail if the first interpreter found is a Python 2
+interpreter.
+
+To find out which version of Python C<nbdkit-python-plugin> was
+compiled for, use the I<--dump-plugin> option:
+
+ $ nbdkit python --dump-plugin
+ ...
+ python_version=3.7.0
+ python_pep_384_abi_version=3
+
+=head2 API versions
+
+The nbdkit API has evolved and new versions are released periodically.
+To ensure backwards compatibility plugins have to opt in to the new
+version.  From Python you do this by declaring a constant in your
+module:
+
+ API_VERSION = 2
+
+(where 2 is the latest version at the time this documentation was
+written).  All newly written Python modules must have this constant.
+
+=head2 Executable script
+
+If you want you can make the script executable and include a "shebang"
+at the top:
+
+ #!/usr/sbin/nbdkit python
+
+See also L<nbdkit(1)/Shebang scripts>.
+
+These scripts can also be installed in the C<$plugindir>.  See
+L<nbdkit-plugin(3)/WRITING PLUGINS IN OTHER PROGRAMMING LANGUAGES>.
+
+=head2 Module functions
+
+Your script may use C<import nbdkit> to have access to the following
+methods in the C<nbdkit> module:
+
+=head3 C<nbdkit.debug(msg)>
+
+Send a debug message to stderr or syslog if verbose messages are
+enabled.
+
+See: L<nbdkit_debug(3)>
+
+=head3 C<nbdkit.debug_hexdiff(buf1, buf2, prefix start)>,
+C<nbdkit.debug_hexdump(buf, prefix, start)>
+
+Display a buffer in hexdump format.
+
+See: L<nbdkit_debug_hexdiff(3)> and L<nbdkit_debug_hexdump(3)>
+
+=head3 C<nbdkit.disconnect(force)>
+
+Disconnect from the client.  If C<force> is C<True> then nbdkit will
+disconnect the client immediately.
+
+See: L<nbdkit_disconnect(3)>
+
+=head3 C<nbdkit.export_name()>
+
+Return the export name negotiated with the client as a Unicode string.
+Note this should not be trusted because the client can send whatever
+it wants.
+
+See: L<nbdkit_export_name(3)>
+
+=head3 C<nbdkit.is_tls()>
+
+Returns C<True> if the client completed TLS authentication, or
+C<False> if the connection is plaintext.
+
+See: L<nbdkit_is_tls(3)>
+
+=head3 C<nbdkit.name()>
+
+Return the name of the nbdkit instance, or None if it was not set.
+
+See: L<nbdkit_name(3)>
+
+=head3 C<nbdkit.nanosleep(secs, nsecs)>
+
+Sleep for seconds and nanoseconds.
+
+See: L<nbdkit_nanosleep(3)>
+
+=head3 C<nbdkit.parse_bool(str)>
+
+Parse a human-readable boolean (such as "yes" or "false"), returning
+C<True> or C<False>.  Wraps the L<nbdkit_parse_bool(3)> function.
+
+See: L<nbdkit_parse_bool(3)>
+
+=head3 C<nbdkit.parse_delay(what, str)>
+
+Parse a delay or sleep (such as "10ms") into a pair (sec, nsec).
+Wraps the L<nbdkit_parse_delay(3)> function.
+
+See: L<nbdkit_parse_delay(3)>
+
+=head3 C<nbdkit.parse_probability(what, str)>
+
+Parse a string (such as "100%") into a probability, returning a
+floating point number.
+
+See: L<nbdkit_parse_probability(3)>
+
+=head3 C<nbdkit.parse_size(str)>
+
+Parse a string (such as "100M") into a size in bytes.
+
+See: L<nbdkit_parse_size(3)>
+
+=head3 C<nbdkit.peer_pid()>,
+C<nbdkit.peer_uid()>,
+C<nbdkit.peer_gid()>,
+C<nbdkit.peer_security_context()>
+
+Return the client process ID, user ID, group ID or security context.
+The PID, UID and GID are only available when the client connects by
+Unix domain socket, and then only on some operating systems.  The
+security context is usually the SELinux label, IPSEC label or
+NetLabel.
+
+See: L<nbdkit_peer_pid(3)>, L<nbdkit_peer_uid(3)>,
+L<nbdkit_peer_gid(3)> and L<nbdkit_peer_security_context(3)>
+
+=head3 C<nbdkit.peer_tls_dn()>
+
+Return the client TLS Distinguished Name.
+
+See: L<nbdkit_peer_tls_dn(3)>
+
+=head3 C<nbdkit.peer_tls_issuer_dn()>
+
+Return the client certificate issuer's TLS Distinguished Name.
+
+See: L<nbdkit_peer_tls_issuer_dn(3)>
+
+=head3 C<nbdkit.read_password(value)>
+
+Read a password from a config parameter.  This returns the password as
+a Python C<bytes> object.
+
+See: L<nbdkit_read_password(3)>
+
+=head3 C<nbdkit.set_error(err)>
+
+Throwing a Python exception from a callback causes an error message to
+be sent back to the NBD client.  The NBD protocol allows an error code
+(ie. errno) to be sent to the client, but by default the Python plugin
+always sends C<EIO>.  To control what error code is sent call
+C<nbdkit.set_error>:
+
+ def pread(h, buf, offset):
+   if access_denied:
+     nbdkit.set_error(errno.EPERM)
+     raise RuntimeError()
+
+See: L<nbdkit_set_error(3)>
+
+=head3 C<nbdkit.shutdown()>
+
+Request asynchronous server shutdown.
+
+See: L<nbdkit_shutdown(3)>
+
+=head3 C<nbdkit.stdio_safe()>
+
+Returns C<True> if it is safe to interact with stdin and stdout
+during the configuration phase.
+
+See: L<nbdkit_stdio_safe(3)>
+
+=head3 C<nbdkit.timestamp()>
+
+Generate a timestamp for log messages.
+
+See: L<nbdkit_timestamp(3)>
+
+=head2 Module constants
+
+After C<import nbdkit> the following constants are available.  These
+are used in the callbacks below.
+
+=over 4
+
+=item C<nbdkit.THREAD_MODEL_SERIALIZE_CONNECTIONS>
+
+=item C<nbdkit.THREAD_MODEL_SERIALIZE_ALL_REQUESTS>
+
+=item C<nbdkit.THREAD_MODEL_SERIALIZE_REQUESTS>
+
+=item C<nbdkit.THREAD_MODEL_PARALLEL>
+
+Possible return values from C<thread_model()>.
+
+=item C<nbdkit.FLAG_MAY_TRIM>
+
+=item C<nbdkit.FLAG_FUA>
+
+=item C<nbdkit.FLAG_REQ_ONE>
+
+=item C<nbdkit.FLAG_FAST_ZERO>
+
+Flags bitmap passed to certain plugin callbacks.  Not all callbacks
+with a flags parameter use all of these flags, consult the
+documentation below and L<nbdkit-plugin(3)>.
+
+=item C<nbdkit.FUA_NONE>
+
+=item C<nbdkit.FUA_EMULATE>
+
+=item C<nbdkit.FUA_NATIVE>
+
+Possible return values from C<can_fua()>.
+
+=item C<nbdkit.CACHE_NONE>
+
+=item C<nbdkit.CACHE_EMULATE>
+
+=item C<nbdkit.CACHE_NATIVE>
+
+Possible return values from C<can_cache()>.
+
+=item C<nbdkit.EXTENT_HOLE>
+
+=item C<nbdkit.EXTENT_ZERO>
+
+Used in the C<type> field returned by C<extents()>.
+
+=back
+
+=head2 Threads
+
+The thread model for Python callbacks defaults to
+C<nbdkit.THREAD_MODEL_SERIALIZE_ALL_REQUESTS>.
+
+Since S<nbdkit 1.22> it has been possible to set this by implementing
+a C<thread_model()> function which returns one of the constants
+C<nbdkit.THREAD_MODEL_*>.
+
+The Python Global Interpreter Lock (GIL) is still used, so Python code
+does not run in parallel.  However if a plugin callback calls a
+library which blocks (eg. to make an HTTP request), then another
+callback might be executed in parallel.  Plugins which use
+C<nbdkit.THREAD_MODEL_SERIALIZE_REQUESTS> or
+C<nbdkit.THREAD_MODEL_PARALLEL> may need to use locks on shared data.
+
+=head2 Exceptions
+
+Python callbacks should throw exceptions to indicate errors.  Remember
+to use C<nbdkit.set_error> if you need to control which error is sent
+back to the client; if omitted, the client will see an error of C<EIO>.
+
+=head2 Python callbacks
+
+This just documents the arguments to the callbacks in Python, and any
+way that they differ from the C callbacks.  In all other respects they
+work the same way as the C callbacks, so you should go and read
+nbdkit-plugin(3).
+
+=over 4
+
+=item C<dump_plugin>
+
+(Optional)
+
+There are no arguments or return value.
+
+=item C<config>
+
+(Optional)
+
+ def config(key, value):
+   # no return value
+
+=item C<config_complete>
+
+(Optional)
+
+There are no arguments or return value.
+
+=item C<thread_model>
+
+(Optional, nbdkit E<ge> 1.22)
+
+ def thread_model():
+   return nbdkit.THEAD_MODEL_SERIALIZE_ALL_REQUESTS
+
+See L</Threads> above.
+
+=item C<get_ready>
+
+(Optional)
+
+There are no arguments or return value.
+
+=item C<after_fork>
+
+(Optional, nbdkit E<ge> 1.26)
+
+There are no arguments or return value.
+
+=item C<cleanup>
+
+(Optional, nbdkit E<ge> 1.28)
+
+There are no arguments or return value.
+
+=item C<list_exports>
+
+(Optional)
+
+ def list_exports(readonly, is_tls):
+   # return an iterable object (eg. list) of
+   # (name, description) tuples or bare names:
+   return [ (name1, desc1), name2, (name3, desc3), ... ]
+
+=item C<default_export>
+
+(Optional)
+
+ def default_export(readonly, is_tls):
+   # return a string
+   return "name"
+
+=item C<preconnect>
+
+(Optional, nbdkit E<ge> 1.26)
+
+ def preconnect(readonly):
+   # no return value
+
+=item C<open>
+
+(Required)
+
+ def open(readonly):
+   # return handle
+
+You can return any Python value (even C<None>) as the handle.  It is
+passed back as the first arg C<'h'> in subsequent calls.  To return an
+error from this method you must throw an exception.
+
+=item C<close>
+
+(Optional)
+
+ def close(h):
+   # no return value
+
+After C<close> returns, the reference count of the handle is
+decremented in the C part, which usually means that the handle and its
+contents will be garbage collected.
+
+=item C<export_description>
+
+(Optional)
+
+ def export_description(h):
+   # return a string
+   return "description"
+
+=item C<get_size>
+
+(Required)
+
+ def get_size(h):
+   # return the size of the disk
+
+=item C<block_size>
+
+(Option)
+
+ def block_size(h):
+   # return triple (minimum, preferred, maximum) block size
+
+=item C<is_rotational>
+
+(Optional)
+
+ def is_rotational(h):
+   # return a boolean
+
+=item C<can_multi_conn>
+
+(Optional)
+
+ def can_multi_conn(h):
+   # return a boolean
+
+=item C<can_write>
+
+(Optional)
+
+ def can_write(h):
+   # return a boolean
+
+=item C<can_flush>
+
+(Optional)
+
+ def can_flush(h):
+   # return a boolean
+
+=item C<can_trim>
+
+(Optional)
+
+ def can_trim(h):
+   # return a boolean
+
+=item C<can_zero>
+
+(Optional)
+
+ def can_zero(h):
+   # return a boolean
+
+=item C<can_fast_zero>
+
+(Optional)
+
+ def can_fast_zero(h):
+   # return a boolean
+
+=item C<can_fua>
+
+(Optional)
+
+ def can_fua(h):
+   # return nbdkit.FUA_NONE or nbdkit.FUA_EMULATE
+   # or nbdkit.FUA_NATIVE
+
+=item C<can_cache>
+
+(Optional)
+
+ def can_cache(h):
+   # return nbdkit.CACHE_NONE or nbdkit.CACHE_EMULATE
+   # or nbdkit.CACHE_NATIVE
+
+=item C<can_extents>
+
+(Optional)
+
+ def can_extents(h):
+   # return a boolean
+
+=item C<pread>
+
+(Required)
+
+ def pread(h, buf, offset, flags):
+   # read into the buffer
+
+The body of your C<pread> function should read exactly C<len(buf)>
+bytes of data starting at disk C<offset> and write it into the buffer
+C<buf>.  C<flags> is always 0.
+
+NBD only supports whole reads, so your function should try to read
+the whole region (perhaps requiring a loop).  If the read fails or
+is partial, your function should throw an exception, optionally using
+C<nbdkit.set_error> first.
+
+=item C<pwrite>
+
+(Optional)
+
+ def pwrite(h, buf, offset, flags):
+   length = len(buf)
+   # no return value
+
+The body of your C<pwrite> function should write the buffer C<buf> to
+the disk.  You should write C<count> bytes to the disk starting at
+C<offset>.  C<flags> may contain C<nbdkit.FLAG_FUA>.
+
+NBD only supports whole writes, so your function should try to
+write the whole region (perhaps requiring a loop).  If the write
+fails or is partial, your function should throw an exception,
+ optionally using C<nbdkit.set_error> first.
+
+=item C<flush>
+
+(Optional)
+
+ def flush(h, flags):
+   # no return value
+
+The body of your C<flush> function should do a L<sync(2)> or
+L<fdatasync(2)> or equivalent on the backing store.
+C<flags> is always 0.
+
+If the flush fails, your function should throw an exception, optionally
+using C<nbdkit.set_error> first.
+
+=item C<trim>
+
+(Optional)
+
+ def trim(h, count, offset, flags):
+   # no return value
+
+The body of your C<trim> function should "punch a hole" in the backing
+store.  C<flags> may contain C<nbdkit.FLAG_FUA>.  If the trim fails,
+your function should throw an exception, optionally using
+C<nbdkit.set_error> first.
+
+=item C<zero>
+
+(Optional)
+
+ def zero(h, count, offset, flags):
+   # no return value
+
+The body of your C<zero> function should ensure that C<count> bytes of
+the disk, starting at C<offset>, will read back as zero.  C<flags> is
+a bitmask which may include C<nbdkit.FLAG_MAY_TRIM>,
+C<nbdkit.FLAG_FUA>, C<nbdkit.FLAG_FAST_ZERO>.
+
+NBD only supports whole writes, so your function should try to
+write the whole region (perhaps requiring a loop).
+
+If the write fails or is partial, your function should throw an
+exception, optionally using C<nbdkit.set_error> first.  In particular,
+if you would like to automatically fall back to C<pwrite> (perhaps
+because there is nothing to optimize if
+S<C<flags & nbdkit.FLAG_MAY_TRIM>> is false), use
+S<C<nbdkit.set_error(errno.EOPNOTSUPP)>>.
+
+=item C<cache>
+
+(Optional)
+
+ def cache(h, count, offset, flags):
+   # no return value
+
+The body of your C<cache> function should prefetch data in the
+indicated range.
+
+If the cache operation fails, your function should throw an exception,
+optionally using C<nbdkit.set_error> first.
+
+=item C<extents>
+
+(Optional)
+
+ def extents(h, count, offset, flags):
+   # return an iterable object (eg. list) of
+   # (offset, length, type) tuples:
+   return [ (off1, len1, type1), (off2, len2, type2), ... ]
+
+=back
+
+=head2 Missing callbacks
+
+=over 4
+
+=item Missing: C<load>
+
+This is not needed since you can use regular Python mechanisms like
+top level statements to run code when the module is loaded.
+
+=item Missing: C<unload>
+
+This is missing, but in nbdkit E<ge> 1.28 you can put code in the
+C<cleanup()> function to have it run when nbdkit exits.  In earlier
+versions of nbdkit, using a Python
+L<atexit|https://docs.python.org/3/library/atexit.html> handler is
+recommended.
+
+=item Missing:
+C<name>,
+C<version>,
+C<longname>,
+C<description>,
+C<config_help>,
+C<magic_config_key>.
+
+These are not yet supported.
+
+=back
+
+=head1 FILES
+
+=over 4
+
+=item F<$plugindir/nbdkit-python-plugin.so>
+
+The plugin.
+
+Use C<nbdkit --dump-config> to find the location of C<$plugindir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-python-plugin> first appeared in nbdkit 1.2.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-plugin(3)>,
+L<python(1)>.
+
+=head1 AUTHORS
+
+Eric Blake
+
+Richard W.M. Jones
+
+Nir Soffer
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

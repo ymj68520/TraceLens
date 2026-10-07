@@ -1,0 +1,962 @@
+(* hey emacs, this is OCaml code: -*- tuareg -*- *)
+(* nbd client library in userspace: generator
+ * Copyright Red Hat
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *)
+
+(* OCaml bindings.
+ *
+ * Note we always pass the parameters as: optargs, handle, args.
+ *)
+
+open Printf
+
+open API
+open Utils
+
+(* String representation of args and return value. *)
+let rec ocaml_fundecl_to_string args optargs ret =
+  let optargs = List.map ocaml_optarg_to_string optargs in
+  let args = List.map ocaml_arg_to_string args in
+  let ret = ocaml_ret_to_string ret in
+  String.concat " -> " (optargs @ ["t"] @ args @ [ret])
+
+(* String representation of a single OCaml arg. *)
+and ocaml_arg_to_string = function
+  | Bool _ -> "bool"
+  | BytesIn _ -> "bytes"
+  | BytesPersistIn _ -> "Buffer.t"
+  | BytesOut _ -> "bytes"
+  | BytesPersistOut _ -> "Buffer.t"
+  | Closure { cbargs } ->
+     sprintf "(%s)" (ocaml_closuredecl_to_string cbargs)
+  | Enum (_, { enum_prefix }) -> sprintf "%s.t" enum_prefix
+  | Extent64 _ -> "extent"
+  | Fd _ -> "Unix.file_descr"
+  | Flags (_, { flag_prefix }) -> sprintf "%s.t list" flag_prefix
+  | Int _ -> "int"
+  | Int64 _ -> "int64"
+  | Path _ -> "string"
+  | SockAddrAndLen _ -> "Unix.sockaddr"
+  | SizeT _ -> "int" (* OCaml int type is always sufficient for counting *)
+  | String _ -> "string"
+  | StringList _ -> "string list"
+  | UInt _ | UIntPtr _ -> "int"
+  | UInt32 _ -> "int64 (* uint32_t *)" (* widening due to lack of uint32_t in
+                                          OCaml *)
+  | UInt64 _ -> "int64"
+
+and ocaml_ret_to_string = function
+  | RBool -> "bool"
+  | RStaticString -> "string"
+  | RErr -> "unit"
+  | RFd -> "Unix.file_descr"
+  | RInt -> "int"
+  | RInt64 -> "int64"
+  | RCookie -> "cookie"
+  | RSizeT -> "int"
+  | RString -> "string"
+  | RUInt | RUIntPtr -> "int"
+  | RUInt64 -> "int64"
+  | REnum { enum_prefix } -> enum_prefix ^ ".t"
+  | RFlags { flag_prefix } -> flag_prefix ^ ".t list"
+
+and ocaml_optarg_to_string = function
+  | OClosure { cbname; cbargs } ->
+     sprintf "?%s:(%s)" cbname (ocaml_closuredecl_to_string cbargs)
+  | OFlags (n, { flag_prefix }, _) -> sprintf "?%s:%s.t list" n flag_prefix
+
+and ocaml_closuredecl_to_string = function
+  | [] ->
+     (* For no-argument closures we need to add an implicit unit arg. *)
+     "unit -> int"
+  | cbargs ->
+     let cbargs = List.map ocaml_cbarg_to_string cbargs in
+     String.concat " -> " (cbargs @ ["int"])
+
+and ocaml_cbarg_to_string = function
+  | CBArrayAndLen (arg, _) ->
+     sprintf "%s array" (ocaml_arg_to_string arg)
+  | CBBytesIn _ -> "bytes"
+  | CBInt _ -> "int"
+  | CBInt64 _ -> "int64"
+  | CBMutable arg ->
+     sprintf "%s ref" (ocaml_arg_to_string arg)
+  | CBString _ -> "string"
+  | CBUInt _ -> "int"
+  | CBUInt64 _ -> "int64"
+
+let ocaml_name_of_arg = function
+  | Bool n -> n
+  | BytesIn (n, len) -> n
+  | BytesOut (n, len) -> n
+  | BytesPersistIn (n, len) -> n
+  | BytesPersistOut (n, len) -> n
+  | Closure { cbname } -> cbname
+  | Enum (n, _) -> n
+  | Extent64 _ -> assert false (* only used in extent64_closure *)
+  | Fd n -> n
+  | Flags (n, _) -> n
+  | Int n -> n
+  | Int64 n -> n
+  | Path n -> n
+  | SizeT n -> n
+  | SockAddrAndLen (n, len) -> n
+  | String n -> n
+  | StringList n -> n
+  | UInt n -> n
+  | UInt32 n -> n
+  | UInt64 n -> n
+  | UIntPtr n -> n
+
+let ocaml_name_of_optarg = function
+  | OClosure { cbname } -> cbname
+  | OFlags (n, _, _) -> n
+
+let num_params args optargs =
+  List.length optargs + 1 (* handle *) + List.length args
+
+let generate_ocaml_nbd_mli () =
+  generate_header OCamlStyle;
+
+  pr {|(** OCaml bindings for libnbd.
+
+    For full documentation see libnbd-ocaml(3) and libnbd(3).
+
+    For examples written in OCaml see the libnbd source code
+    [ocaml/examples] subdirectory.
+*)
+
+exception Error of string * Unix.error option
+(** Exception thrown when an API call fails.
+
+    The string is the error message, and the int is the {!Unix.error}
+    (if available).
+*)
+
+exception Closed of string
+(** Exception thrown if you call a closed handle. *)
+
+type cookie = int64
+
+type extent = int64 * int64
+(** Length and flags of an extent in {!block_status_64} callback. *)
+
+|};
+
+  List.iter (
+    fun { enum_prefix; enums } ->
+      pr "module %s : sig\n" enum_prefix;
+      pr "  type t =\n";
+      List.iter (
+        fun (enum, _) ->
+          pr "  | %s\n" enum
+      ) enums;
+      pr "  | UNKNOWN of int\n";
+      pr "end\n";
+      pr "\n"
+  ) all_enums;
+  List.iter (
+    fun { flag_prefix; flags } ->
+      pr "module %s : sig\n" flag_prefix;
+      pr "  type t =\n";
+      List.iter (
+        fun (flag, _) ->
+          pr "  | %s\n" flag
+      ) flags;
+      pr "  | UNKNOWN of int\n";
+      pr "\n";
+      pr "  val mask : t list\n";
+      pr "end\n";
+      pr "\n"
+  ) all_flags;
+  List.iter (
+    fun (n, _) -> pr "val %s : int32\n" (String.lowercase_ascii n)
+  ) constants;
+  List.iter (
+    fun (ns, ctxts) ->
+      pr "val namespace_%s : string\n" ns;
+      List.iter (
+        fun (ctxt, consts) ->
+          pr "val context_%s_%s : string\n" ns (macro_name ctxt);
+          List.iter (fun (n, _) ->
+              pr "val %s : int32\n" (String.lowercase_ascii n)
+          ) consts
+      ) ctxts;
+  ) metadata_namespaces;
+  pr "\n";
+
+  pr {|module Buffer : sig
+  type t =
+    (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
+  (** A buffer that persists across calls, used in {!aio_pread},
+      {!aio_pwrite} and similar.
+
+      In libnbd ≤ 1.18 this was a specially implemented type.
+      This was inefficient as zero copy was not possible.
+
+      In libnbd ≥ 1.20 this is just an alias for a {!Bigarray},
+      so you can use functions from {!Bigarray.Array1} directly
+      if you prefer.  This also allows zero copy.
+
+      This type is compatible with the
+      {{:https://v3.ocaml.org/p/bigstring/latest}[bigstring]} and
+      {{:https://v3.ocaml.org/p/bigstringaf/latest}[bigstringaf]}
+      libraries. *)
+
+  val alloc : int -> t
+  (** Allocate an uninitialized buffer.  The parameter is the size
+      in bytes.
+
+      In libnbd ≥ 1.20 this is an alias for {!Bigarray.Array1.create}. *)
+
+  val to_bytes : t -> bytes
+  (** Copy buffer to an OCaml [bytes] object.
+
+      In libnbd ≥ 1.20 you can read from the bigarray directly to avoid
+      copying if you want. *)
+
+  val to_string : t -> string
+  (** Same as {!to_bytes} but returns a [string] instead. *)
+
+  val of_bytes : bytes -> t
+  (** Copy an OCaml [bytes] object to a newly allocated buffer.
+
+      In libnbd ≥ 1.20 you can write to the bigarray directly to avoid
+      copying if you want. *)
+
+  val of_string : string -> t
+  (** Same as {!of_bytes} but takes a [string] instead. *)
+
+  val size : t -> int
+  (** Return the size of the buffer.
+
+      In libnbd ≥ 1.20 this is an alias for {!Bigarray.Array1.dim}. *)
+
+  val is_zero : ?sub:(int * int) -> t -> bool
+  (** Return true if and only if the buffer contains only zero bytes.
+
+      The optional [?sub = (offset, len)] can be used to check part
+      of a buffer. *)
+
+end
+(** Persistent buffer used in AIO calls. *)
+
+val errno_of_unix_error : Unix.error -> int
+(** Return the raw C errno corresponding to a {!Unix.error}.  This
+    can be used in callbacks to update the [int ref] parameter. *)
+
+type t
+(** The libnbd handle, equivalent to the C type [struct nbd_handle *]. *)
+
+val create : unit -> t
+(** Create a new libnbd handle. *)
+
+val close : t -> unit
+(** Close a handle.
+
+    Handles can also be closed by the garbage collector when
+    they become unreachable.  This call is used only if you want
+    to force the handle to close now and reclaim resources
+    immediately.
+*)
+
+val with_handle : (t -> 'a) -> 'a
+(** Wrapper around {!create}.  It calls the function parameter with a
+    newly created handle, and ensures that {!close} is always called
+    even if the function throws an exception.
+
+    Use this when it is essential that the handle is closed in order
+    to free up external resources in a timely manner; for example if
+    running the server as a subprocess and you want to ensure that the
+    subprocess is always killed; or if you need to disconnect from the
+    server before continuing with another operation. *)
+
+|};
+
+  List.iter (
+    fun (name, { args; optargs; ret; shortdesc; longdesc }) ->
+      pr "val %s : %s\n" name (ocaml_fundecl_to_string args optargs ret);
+
+      pr "(** [NBD.%s t" name;
+      List.iter (fun arg -> arg |> ocaml_name_of_optarg |> pr " ?%s") optargs;
+      List.iter (fun arg -> arg |> ocaml_name_of_arg |> pr " %s") args;
+      pr "]\n";
+      pr "\n";
+      pr "    %s\n" shortdesc;
+      pr "\n";
+      pr "%s" (String.concat "\n" (pod2text longdesc));
+      pr "*)\n";
+      pr "\n";
+
+  ) handle_calls
+
+let generate_ocaml_nbd_ml () =
+  generate_header OCamlStyle;
+
+  pr {|exception Error of string * Unix.error option
+exception Closed of string
+type cookie = int64
+type extent = int64 * int64
+
+(* Give the exceptions names so that they can be raised from the C code. *)
+let () =
+  Callback.register_exception "nbd_internal_ocaml_error" (Error ("", None));
+  Callback.register_exception "nbd_internal_ocaml_closed" (Closed "")
+
+|};
+
+  List.iter (
+    fun { enum_prefix; enums } ->
+      pr "module %s = struct\n" enum_prefix;
+      pr "  type t =\n";
+      List.iter (
+        fun (enum, _) ->
+          pr "  | %s\n" enum
+      ) enums;
+      pr "  | UNKNOWN of int\n";
+      pr "end\n";
+      pr "\n"
+  ) all_enums;
+  List.iter (
+    fun { flag_prefix; flags } ->
+      pr "module %s = struct\n" flag_prefix;
+      pr "  type t =\n";
+      List.iter (
+        fun (flag, _) ->
+          pr "  | %s\n" flag
+      ) flags;
+      pr "  | UNKNOWN of int\n";
+      pr "\n";
+      pr "  let mask = [\n";
+      List.iter (
+        fun (flag, _) ->
+          pr "    %s;\n" flag
+      ) flags;
+      pr "  ]\n";
+      pr "end\n";
+      pr "\n"
+  ) all_flags;
+  List.iter (
+    fun (n, i) -> pr "let %s = %d_l\n" (String.lowercase_ascii n) i
+  ) constants;
+  List.iter (
+    fun (ns, ctxts) ->
+      pr "let namespace_%s = \"%s:\"\n" ns ns;
+      List.iter (
+        fun (ctxt, consts) ->
+          pr "let context_%s_%s = \"%s:%s\"\n" ns (macro_name ctxt) ns ctxt;
+          List.iter (fun (n, i) ->
+              pr "let %s = %d_l\n" (String.lowercase_ascii n) i
+          ) consts
+      ) ctxts;
+  ) metadata_namespaces;
+  pr "\n";
+
+  pr {|module Buffer = struct
+  type t =
+    (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
+
+  let alloc =
+    Bigarray.Array1.create Bigarray.Char Bigarray.c_layout
+  let size = Bigarray.Array1.dim
+
+  external to_bytes : t -> bytes = "nbd_internal_ocaml_buffer_to_bytes"
+  external to_string : t -> string = "nbd_internal_ocaml_buffer_to_bytes"
+  external _of_bytes : bytes -> t -> unit =
+    "nbd_internal_ocaml_buffer_of_bytes"
+  external _of_string : string -> t -> unit =
+    "nbd_internal_ocaml_buffer_of_bytes"
+  let of_bytes b =
+    let buf = alloc (Bytes.length b) in
+    _of_bytes b buf;
+    buf
+  let of_string s =
+    let buf = alloc (String.length s) in
+    _of_string s buf;
+    buf
+
+  external is_zero : ?sub:(int * int) -> t -> bool =
+    "nbd_internal_ocaml_is_zero" [@@noalloc]
+end
+
+external errno_of_unix_error : Unix.error -> int =
+    "nbd_internal_code_of_unix_error" [@@noalloc]
+
+type t
+
+external _create : unit -> t = "nbd_internal_ocaml_nbd_create"
+external close : t -> unit = "nbd_internal_ocaml_nbd_close"
+
+let create () =
+  let nbd = _create () in
+  Gc.finalise close nbd;
+  nbd
+
+let with_handle f =
+  let nbd = create () in
+  try let r = f nbd in close nbd; r with exn -> close nbd; raise exn
+
+|};
+
+  List.iter (
+    fun (name, { args; optargs; ret }) ->
+      pr "external %s : %s\n" name (ocaml_fundecl_to_string args optargs ret);
+      pr "    = ";
+      (* In OCaml, argument lists longer than 5 elements require
+       * special handling in the C bindings.
+       *)
+      if num_params args optargs > 5 then
+        pr "\"nbd_internal_ocaml_nbd_%s_byte\" " name;
+      pr "\"nbd_internal_ocaml_nbd_%s\"\n" name
+  ) handle_calls
+
+let print_ocaml_enum_val { enum_prefix; enums } =
+  pr "/* Convert OCaml %s.t to int. */\n" enum_prefix;
+  pr "static int\n";
+  pr "%s_val (value v)\n" enum_prefix;
+  pr "{\n";
+  pr "  /* NB: No allocation in this function, don't need to use\n";
+  pr "   * CAML* wrappers.\n";
+  pr "   */\n";
+  pr "  int r = 0;\n";
+  pr "\n";
+  pr "  if (Is_long (v)) {\n";
+  pr "    /* Int_val (v) is the index of the enum in the type\n";
+  pr "     * (eg. v = 0 => enum = %s.%s).\n" enum_prefix (fst (List.hd enums));
+  pr "     * Convert it to the C representation.\n";
+  pr "     */\n";
+  pr "    switch (Int_val (v)) {\n";
+  List.iteri (
+    fun i (enum, _) ->
+      pr "    case %d: r = LIBNBD_%s_%s; break;\n" i enum_prefix enum
+  ) enums;
+  pr "    default: abort ();\n";
+  pr "    }\n";
+  pr "  }\n";
+  pr "  else\n";
+  pr "    r = Int_val (Field (v, 0)); /* UNKNOWN of int */\n";
+  pr "\n";
+  pr "  return r;\n";
+  pr "}\n";
+  pr "\n";
+  if List.exists (
+         function
+         | _, { ret = REnum { enum_prefix = prefix } } ->
+            (prefix = enum_prefix)
+         | _ -> false
+       ) handle_calls then (
+    pr "/* Convert int to OCaml %s.t. */\n" enum_prefix;
+    pr "static value\n";
+    pr "Val_%s (int i)\n" enum_prefix;
+    pr "{\n";
+    pr "  CAMLparam0 ();\n";
+    pr "  CAMLlocal1 (rv);\n";
+    pr "\n";
+    pr "  switch (i) {\n";
+    List.iteri (
+      fun i (enum, _) ->
+        pr "  case LIBNBD_%s_%s: rv = Val_int (%d); break;\n" enum_prefix enum i
+      ) enums;
+    pr "  default:\n";
+    pr "    rv = caml_alloc (1, 0); /* UNKNOWN of int */\n";
+    pr "    Store_field (rv, 0, Val_int (i));\n";
+    pr "  }\n";
+    pr "\n";
+    pr "  CAMLreturn (rv);\n";
+    pr "}\n";
+    pr "\n"
+  )
+
+let print_ocaml_flag_val { flag_prefix; flags } =
+  pr "/* Convert OCaml %s.t list to uint32_t bitmask. */\n" flag_prefix;
+  pr "static uint32_t\n";
+  pr "%s_val (value v)\n" flag_prefix;
+  pr "{\n";
+  pr "  /* NB: No allocation in this function, don't need to use\n";
+  pr "   * CAML* wrappers.\n";
+  pr "   */\n";
+  pr "  value i;\n";
+  pr "  unsigned bit;\n";
+  pr "  uint32_t r = 0;\n";
+  pr "\n";
+  pr "  for (; v != Val_emptylist; v = Field (v, 1)) {\n";
+  pr "    i = Field (v, 0);\n";
+  pr "    /* i contains either the index of the flag in the type,\n";
+  pr "     * or UNKNOWN of int containing the bit position.\n";
+  pr "     * (eg. i = 0 => flag = %s.%s).\n" flag_prefix (fst (List.hd flags));
+  pr "     * Convert it to the C representation.\n";
+  pr "     */\n";
+  pr "    if (Is_long (i)) {\n";
+  pr "      switch (Int_val (i)) {\n";
+  List.iteri (
+    fun i (flag, _) ->
+      pr "      case %d: r |= LIBNBD_%s_%s; break;\n" i flag_prefix flag
+  ) flags;
+  pr "      default: abort ();\n";
+  pr "      }\n";
+  pr "    }\n";
+  pr "    else {\n";
+  pr "      bit = Int_val (Field (i, 0)); /* UNKNOWN of int */\n";
+  pr "      if (bit > 31)\n";
+  pr "        caml_invalid_argument (\"bitmask value out of range\");\n";
+  pr "      else\n";
+  pr "        r |= 1u << bit;\n";
+  pr "    }\n";
+  pr "  }\n";
+  pr "\n";
+  pr "  return r;\n";
+  pr "}\n";
+  pr "\n";
+  if List.exists (
+         function
+         | _, { ret = RFlags { flag_prefix = prefix } } ->
+            (prefix = flag_prefix)
+         | _ -> false
+       ) handle_calls then (
+    pr "/* Convert uint32_t bitmask to OCaml %s.t list. */\n" flag_prefix;
+    pr "static value\n";
+    pr "Val_%s (unsigned flags)\n" flag_prefix;
+    pr "{\n";
+    pr "  CAMLparam0 ();\n";
+    pr "  CAMLlocal3 (cdr, rv, v);\n";
+    pr "  int i;\n";
+    pr "\n";
+    pr "  rv = Val_emptylist;\n";
+    pr "  for (i = 31; i >= 0; i--) {\n";
+    pr "    if (flags & (1 << i)) {\n";
+    pr "      switch (1 << i) {\n";
+    List.iteri (
+      fun i (flag, _) ->
+        pr "      case LIBNBD_%s_%s: v = Val_int (%d); break;\n" flag_prefix flag i;
+      ) flags;
+    pr "      default:\n";
+    pr "        v = caml_alloc (1, 0); /* UNKNOWN of int */\n";
+    pr "        Store_field (v, 0, Val_int (i));\n";
+    pr "      }\n";
+    pr "\n";
+    pr "      cdr = rv;\n";
+    pr "      rv = caml_alloc (2, 0);\n";
+    pr "      Store_field (rv, 0, v);\n";
+    pr "      Store_field (rv, 1, cdr);\n";
+    pr "    }\n";
+    pr "  }\n";
+    pr "\n";
+    pr "  CAMLreturn (rv);\n";
+    pr "}\n";
+    pr "\n"
+  )
+
+let print_ocaml_closure_wrapper { cbname; cbargs } =
+  let argnames =
+    List.map (
+      function
+      | CBArrayAndLen ((UInt32 n | Extent64 n), _) | CBBytesIn (n, _)
+      | CBInt n | CBInt64 n
+      | CBMutable (Int n) | CBString n | CBUInt n | CBUInt64 n ->
+         n ^ "v"
+      | CBArrayAndLen _ | CBMutable _ -> assert false
+      ) cbargs in
+
+  pr "/* Wrapper for %s callback. */\n" cbname;
+  pr "static int\n";
+  pr "%s_wrapper_locked " cbname;
+  C.print_cbarg_list ~wrap:true cbargs;
+  pr "\n";
+  pr "{\n";
+  pr "  CAMLparam0 ();\n";
+  let argnames_len = List.length argnames in
+  assert (argnames_len <= 5);
+  if argnames_len > 0 then
+    pr "  CAMLlocal%d (%s);\n" argnames_len (String.concat ", " argnames);
+  pr "  CAMLlocal2 (exn, rv);\n";
+  pr "  const struct user_data *data = user_data;\n";
+  pr "  int r;\n";
+  if argnames_len > 0 then
+    pr "  value args[%d];\n" argnames_len;
+  pr "\n";
+
+  List.iter (
+    function
+    | CBArrayAndLen (UInt32 n, count) ->
+       pr "  %sv = " n;
+       let fncol = output_column () in
+       let indent = spaces fncol in
+       pr "nbd_internal_ocaml_alloc_i64_from_u32_array (\n";
+       pr "%s  %s,\n" indent n;
+       pr "%s  %s\n" indent count;
+       pr "%s);\n" indent
+    | CBArrayAndLen (Extent64 n, count) ->
+       pr "  %sv = " n;
+       let fncol = output_column () in
+       let indent = spaces fncol in
+       pr "nbd_internal_ocaml_alloc_extent64_array (\n";
+       pr "%s  %s,\n" indent n;
+       pr "%s  %s\n" indent count;
+       pr "%s);\n" indent
+    | CBBytesIn (n, len) ->
+       pr "  %sv = caml_alloc_initialized_string (%s, %s);\n" n len n
+    | CBInt n | CBUInt n ->
+       pr "  %sv = Val_int (%s);\n" n n
+    | CBInt64 n ->
+       pr "  %sv = caml_copy_int64 (%s);\n" n n
+    | CBString n ->
+       pr "  %sv = caml_copy_string (%s);\n" n n
+    | CBUInt64 n ->
+       pr "  %sv = caml_copy_int64 (%s);\n" n n
+    | CBMutable (Int n) ->
+       pr "  %sv = caml_alloc_tuple (1);\n" n;
+       pr "  Store_field (%sv, 0, Val_int (*%s));\n" n n
+    | CBArrayAndLen _ | CBMutable _ -> assert false
+  ) cbargs;
+
+  List.iteri (fun i n -> pr "  args[%d] = %s;\n" i n) argnames;
+
+  if argnames_len > 0 then
+    pr "  rv = caml_callbackN_exn (data->fnv, %d, args);\n"
+      (List.length argnames)
+  else
+    (* If no callback arguments, call with unit parameter. *)
+    pr "  rv = caml_callback_exn (data->fnv, Val_unit);\n";
+
+  List.iter (
+    function
+    | CBArrayAndLen ((UInt32 _ | Extent64 _), _)
+    | CBBytesIn _
+    | CBInt _
+    | CBInt64 _
+    | CBString _
+    | CBUInt _
+    | CBUInt64 _ -> ()
+    | CBMutable (Int n) ->
+       pr "  *%s = Int_val (Field (%sv, 0));\n" n n
+    | CBArrayAndLen _ | CBMutable _ -> assert false
+  ) cbargs;
+
+  pr "  if (Is_exception_result (rv)) {\n";
+  pr "    nbd_internal_ocaml_exception_in_wrapper (\"%s\", rv);\n" cbname;
+  pr "    CAMLreturnT (int, -1);\n";
+  pr "  }\n";
+
+  pr "\n";
+  pr "  r = Int_val (rv);\n";
+  pr "  assert (r >= 0);\n";
+  pr "  CAMLreturnT (int, r);\n";
+  pr "}\n";
+  pr "\n";
+  pr "static int\n";
+  pr "%s_wrapper " cbname;
+  C.print_cbarg_list ~wrap:true cbargs;
+  pr "\n";
+  pr "{\n";
+  pr "  int ret = 0;\n";
+  pr "\n";
+  pr "  caml_leave_blocking_section ();\n";
+  pr "  ret = %s_wrapper_locked " cbname;
+  C.print_cbarg_list ~wrap:true ~types:false cbargs;
+  pr ";\n";
+  pr "  caml_enter_blocking_section ();\n";
+  pr "  return ret;\n";
+  pr "}\n";
+  pr "\n"
+
+let print_ocaml_binding (name, { args; optargs; ret }) =
+  (* Get the names of all the value arguments including the handle. *)
+  let values =
+    List.map ocaml_name_of_optarg optargs @ ["h"] @
+      List.map ocaml_name_of_arg args in
+  let values = List.map (fun v -> v ^ "v") values in
+
+  (* Create the binding. *)
+  pr "value\n";
+  let params = List.map (sprintf "value %s") values in
+  let params = String.concat ", " params in
+  pr "nbd_internal_ocaml_nbd_%s (" name;
+  pr_wrap ',' (fun () -> pr "%s" params);
+  pr ")\n";
+  pr "{\n";
+  (* CAMLparam<N> can only take up to 5 parameters.  Further parameters
+   * have to be passed in groups of 5 to CAMLxparam<N> calls.
+   *)
+  (match values with
+   | p1 :: p2 :: p3 :: p4 :: p5 :: rest ->
+      pr "  CAMLparam5 (%s);\n" (String.concat ", " [p1; p2; p3; p4; p5]);
+      let rec loop = function
+        | [] -> ()
+        | p1 :: p2 :: p3 :: p4 :: p5 :: rest ->
+           pr "  CAMLxparam5 (%s);\n"
+              (String.concat ", " [p1; p2; p3; p4; p5]);
+           loop rest
+        | rest ->
+           pr "  CAMLxparam%d (%s);\n"
+              (List.length rest) (String.concat ", " rest)
+      in
+      loop rest
+   | ps ->
+      pr "  CAMLparam%d (%s);\n" (List.length ps) (String.concat ", " ps)
+  );
+  pr "  CAMLlocal1 (rv);\n";
+  pr "\n";
+
+  pr "  struct nbd_handle *h = NBD_val (hv);\n";
+  pr "  if (h == NULL)\n";
+  pr "    nbd_internal_ocaml_raise_closed (\n";
+  pr "      \"NBD.%s\"\n" name;
+  pr "    );\n";
+  pr "\n";
+
+  List.iter (
+    function
+    | OClosure { cbname } ->
+       pr "  nbd_%s_callback %s_callback = {0};\n" cbname cbname;
+       pr "  struct user_data *%s_user_data = alloc_user_data ();\n" cbname;
+       pr "  if (%sv != Val_int (0)) { /* Some closure */\n" cbname;
+       pr "    /* The function may save a reference to the closure, so we\n";
+       pr "     * must treat it as a possible GC root.\n";
+       pr "     */\n";
+       pr "    %s_user_data->fnv = Field (%sv, 0);\n" cbname cbname;
+       pr "    caml_register_generational_global_root (&%s_user_data->fnv);\n"
+         cbname;
+       pr "    %s_callback.callback = %s_wrapper;\n" cbname cbname;
+       pr "  }\n";
+       pr "  %s_callback.user_data = %s_user_data;\n" cbname cbname;
+       pr "  %s_callback.free = free_user_data;\n" cbname;
+    | OFlags (n, { flag_prefix }, _) ->
+       pr "  uint32_t %s;\n" n;
+       pr "  if (%sv != Val_int (0)) /* Some [ list of %s.t ] */\n"
+         n flag_prefix;
+       pr "    %s = %s_val (Field (%sv, 0));\n" n flag_prefix n;
+       pr "  else /* None */\n";
+       pr "    %s = 0;\n" n
+  ) optargs;
+
+  List.iter (
+    function
+    | Bool n ->
+       pr "  bool %s = Bool_val (%sv);\n" n n
+    | BytesIn (n, count) ->
+       pr "  const void *%s = Bytes_val (%sv);\n" n n;
+       pr "  size_t %s = caml_string_length (%sv);\n" count n
+    | BytesPersistIn (n, count) ->
+       pr "  struct caml_ba_array *%s_ba = Caml_ba_array_val (%sv);\n" n n;
+       pr "  const void *%s = (const void *) %s_ba->data;\n" n n;
+       pr "  size_t %s = %s_ba->dim[0];\n" count n
+    | BytesOut (n, count) ->
+       pr "  void *%s = Bytes_val (%sv);\n" n n;
+       pr "  size_t %s = caml_string_length (%sv);\n" count n
+    | BytesPersistOut (n, count) ->
+       pr "  struct caml_ba_array *%s_ba = Caml_ba_array_val (%sv);\n" n n;
+       pr "  void *%s = (void *) %s_ba->data;\n" n n;
+       pr "  size_t %s = %s_ba->dim[0];\n" count n
+    | Closure { cbname } ->
+       pr "  nbd_%s_callback %s_callback;\n" cbname cbname;
+       pr "  struct user_data *%s_user_data = alloc_user_data ();\n" cbname;
+       pr "  /* The function may save a reference to the closure, so we\n";
+       pr "   * must treat it as a possible GC root.\n";
+       pr "   */\n";
+       pr "  %s_user_data->fnv = %sv;\n" cbname cbname;
+       pr "  caml_register_generational_global_root (&%s_user_data->fnv);\n"
+         cbname;
+       pr "  %s_callback.callback = %s_wrapper;\n" cbname cbname;
+       pr "  %s_callback.user_data = %s_user_data;\n" cbname cbname;
+       pr "  %s_callback.free = free_user_data;\n" cbname
+    | Enum (n, { enum_prefix }) ->
+       pr "  int %s = %s_val (%sv);\n" n enum_prefix n
+    | Extent64 _ -> assert false (* only used in extent64_closure *)
+    | Fd n ->
+       pr "  /* OCaml Unix.file_descr is just an int, at least on Unix. */\n";
+       pr "  int %s = Int_val (%sv);\n" n n
+    | Flags (n, { flag_prefix }) ->
+       pr "  uint32_t %s = %s_val (%sv);\n" n flag_prefix n
+    | Int n ->
+       pr "  int %s = Int_val (%sv);\n" n n
+    | Int64 n ->
+       pr "  int64_t %s = Int64_val (%sv);\n" n n
+    | Path n | String n ->
+       pr "  const char *%s = String_val (%sv);\n" n n
+    | SizeT n ->
+       pr "  size_t %s = Int_val (%sv);\n" n n
+    | SockAddrAndLen (n, len) ->
+       pr "  struct sockaddr_storage %s_storage;\n" n;
+       pr "  struct sockaddr *%s = (struct sockaddr *)&%s_storage;\n" n n;
+       pr "  socklen_t %s;\n" len;
+       pr "  nbd_internal_unix_sockaddr_to_sa (%sv, &%s_storage, &%s);\n"
+         n n len
+    | StringList n ->
+       pr "  char **%s = (char **)nbd_internal_ocaml_string_list (%sv);\n" n n
+    | UInt n | UIntPtr n ->
+       pr "  unsigned %s = Int_val (%sv);\n" n n
+    | UInt32 n ->
+       pr "  int64_t %s64 = Int64_val (%sv);\n" n n;
+       pr "  if (%s64 < 0 || (uint64_t)%s64 > UINT32_MAX)\n" n n;
+       pr "    caml_invalid_argument (\"'%s' out of range\");\n" n;
+       pr "  uint32_t %s = (uint32_t)%s64;\n" n n;
+    | UInt64 n ->
+       pr "  uint64_t %s = Int64_val (%sv);\n" n n
+  ) args;
+
+  (* If there is a BytesPersistIn/Out parameter then we need to
+   * register it as a global root and save that into the
+   * completion_callback.user_data so the root is removed on
+   * command completion.
+   *)
+  List.iter (
+    function
+    | BytesPersistIn (n, _) | BytesPersistOut (n, _) ->
+       pr "  completion_user_data->bufv = %sv;\n" n;
+       pr "  caml_register_generational_global_root (&completion_user_data->bufv);\n"
+    | _ -> ()
+  ) args;
+
+  let ret_c_type = C.type_of_ret ret and errcode = C.errcode_of_ret ret in
+  pr "  %s r;\n" ret_c_type;
+  pr "\n";
+  pr "  caml_enter_blocking_section ();\n";
+  pr "  r =  nbd_%s " name;
+  C.print_arg_list ~wrap:true ~handle:true ~types:false args optargs;
+  pr ";\n";
+  pr "  caml_leave_blocking_section ();\n";
+  pr "\n";
+  (match errcode with
+   | Some code ->
+      pr "  if (r == %s)\n" code;
+      pr "    nbd_internal_ocaml_raise_error ();\n";
+      pr "\n"
+   | None -> ()
+  );
+  (match ret with
+   | RBool -> pr "  rv = Val_bool (r);\n"
+   | RErr -> pr "  rv = Val_unit;\n"
+   | RFd | RInt | RSizeT | RUInt | RUIntPtr -> pr "  rv = Val_int (r);\n"
+   | REnum { enum_prefix } -> pr "  rv = Val_%s (r);\n" enum_prefix
+   | RFlags { flag_prefix } -> pr "  rv = Val_%s (r);\n" flag_prefix
+   | RInt64 | RCookie | RUInt64 -> pr "  rv = caml_copy_int64 (r);\n"
+   | RStaticString -> pr "  rv = caml_copy_string (r);\n"
+   | RString ->
+      pr "  rv = caml_copy_string (r);\n";
+      pr "  free (r);\n"
+  );
+
+  (* Any parameters which need to be freed. *)
+  List.iter (
+    function
+    | StringList n -> pr "  free (%s);\n" n
+    | Bool _
+    | BytesIn _
+    | BytesPersistIn _
+    | BytesOut _
+    | BytesPersistOut _
+    | Closure _
+    | Enum _
+    | Fd _
+    | Flags _
+    | Int _
+    | Int64 _
+    | Path _
+    | SizeT _
+    | String _
+    | SockAddrAndLen _
+    | UInt _
+    | UInt32 _
+    | UInt64 _
+    | UIntPtr _ -> ()
+    | Extent64 _ -> assert false (* only used in extent64_closure *)
+  ) args;
+
+  pr "  CAMLreturn (rv);\n";
+  pr "}\n";
+  pr "\n";
+
+  let num_args = num_params args optargs in
+  if num_args > 5 then (
+    pr "/* Byte-code compat function because this method has > 5 parameters.\n";
+    pr " */\n";
+    pr "value\n";
+    pr "nbd_internal_ocaml_nbd_%s_byte (value *argv, int argn)\n" name;
+    pr "{\n";
+    pr "  return nbd_internal_ocaml_nbd_%s (" name;
+    let print_args () =
+      for i = 0 to num_args - 1 do
+        if i > 0 then pr ", ";
+        pr "argv[%d]" i
+      done
+    in
+    pr_wrap ',' print_args;
+    pr ");\n";
+    pr "}\n";
+    pr "\n"
+  )
+
+let generate_ocaml_nbd_c () =
+  generate_header CStyle;
+
+  pr "#include <config.h>\n";
+  pr "\n";
+  pr "#include <stdint.h>\n";
+  pr "#include <stdio.h>\n";
+  pr "#include <stdlib.h>\n";
+  pr "#include <string.h>\n";
+  pr "#include <assert.h>\n";
+  pr "\n";
+  pr "#include <libnbd.h>\n";
+  pr "\n";
+  pr "#include \"nbd-c.h\"\n";
+  pr "\n";
+  pr "#include <caml/alloc.h>\n";
+  pr "#include <caml/bigarray.h>\n";
+  pr "#include <caml/callback.h>\n";
+  pr "#include <caml/fail.h>\n";
+  pr "#include <caml/memory.h>\n";
+  pr "#include <caml/mlvalues.h>\n";
+  pr "#include <caml/threads.h>\n";
+  pr "\n";
+  pr "#pragma GCC diagnostic ignored \"-Wmissing-prototypes\"\n";
+  pr "\n";
+
+  pr "/* This is passed to *_wrapper as the user_data pointer\n";
+  pr " * and freed in the free_user_data function below.\n";
+  pr " */\n";
+  pr "struct user_data {\n";
+  pr "  value fnv;     /* Optional GC root pointing to OCaml function. */\n";
+  pr "  value bufv;    /* Optional GC root pointing to persistent buffer. */\n";
+  pr "};\n";
+  pr "\n";
+  pr "static struct user_data *\n";
+  pr "alloc_user_data (void)\n";
+  pr "{\n";
+  pr "  struct user_data *data = calloc (1, sizeof *data);\n";
+  pr "  if (data == NULL)\n";
+  pr "    caml_raise_out_of_memory ();\n";
+  pr "  return data;\n";
+  pr "}\n";
+  pr "\n";
+  pr "static void\n";
+  pr "free_user_data (void *user_data)\n";
+  pr "{\n";
+  pr "  struct user_data *data = user_data;\n";
+  pr "\n";
+  pr "  if (data->fnv != 0)\n";
+  pr "    caml_remove_generational_global_root (&data->fnv);\n";
+  pr "  if (data->bufv != 0)\n";
+  pr "    caml_remove_generational_global_root (&data->bufv);\n";
+  pr "  free (data);\n";
+  pr "}\n";
+  pr "\n";
+
+  List.iter print_ocaml_closure_wrapper all_closures;
+  List.iter print_ocaml_enum_val all_enums;
+  List.iter print_ocaml_flag_val all_flags;
+  List.iter print_ocaml_binding handle_calls

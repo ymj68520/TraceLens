@@ -1,0 +1,106 @@
+# validate the prodigal member disk scenario i.e. a former container
+# member is returned after having been rebuilt on another system
+
+
+imsm_check_hold() {
+   if mdadm --remove $1 $2; then
+       echo "$2 removal from $1 should have been blocked" >&2
+       cat /proc/mdstat >&2
+       mdadm -E $2
+       exit 1
+   fi
+}
+
+imsm_check_fell_out() {
+    local ret=5
+    local success=0
+
+    for ((i=1; i<=ret; i++)); do
+        if mdadm --remove "$1" "$2"; then
+            success=1
+            break
+        fi
+        if grep -q "is not a member, cannot remove" "$targetdir/stderr"; then
+            success=1
+            break
+        fi
+        sleep 2
+    done
+
+    if [ $success -ne 1 ]; then
+        echo "$2 should have fallen out of $1 or been removable" >&2
+        cat /proc/mdstat >&2
+        mdadm -E "$2"
+        exit 1
+    fi
+}
+
+imsm_member_has_disk() {
+    mdadm -D "$1" | awk -v dev="$2" '
+        /RaidDevice/ { devices=1; next }
+        devices && $(NF-2) == "active" && $(NF-1) == "sync" && $NF == dev { found=1 }
+        END { exit !found }'
+}
+
+imsm_check_active_family() {
+    imsm_member_has_disk "$1" "$2" && imsm_member_has_disk "$1" "$3"
+}
+
+export IMSM_DEVNAME_AS_SERIAL=1
+export IMSM_TEST_OROM=1
+export IMSM_NO_PLATFORM=1
+container=/dev/md/container
+member=/dev/md/vol0
+
+
+num_disks=4
+size=$((10*1024))
+mdadm -CR $container -e imsm -n $num_disks $dev0 $dev1 $dev2 $dev3
+mdadm -CR $member $dev0 $dev2 -n 2 -l 1 -z $size
+mdadm --wait $member || true
+mdadm -Ss
+
+# make dev0 and dev1 a new rebuild family
+mdadm -A $container $dev0 $dev1
+mdadm -IR $container
+mdadm --wait ${member}_0 || true
+mdadm -Ss
+
+# make dev2 and dev3 a new rebuild family
+mdadm -A $container $dev2 $dev3
+mdadm -IR $container
+mdadm --wait ${member}_0 || true
+mdadm -Ss
+
+# reassemble and make sure one of the families falls out
+mdadm -A $container $dev0 $dev1 $dev2 $dev3
+mdadm -IR $container
+testdev ${member}_0 1 $size 64
+if imsm_check_active_family ${member}_0 $dev0 $dev1 ; then
+    # the dev[01] family won
+    imsm_check_hold $container $dev0
+    imsm_check_hold $container $dev1
+    imsm_check_fell_out $container $dev2
+    imsm_check_fell_out $container $dev3
+elif imsm_check_active_family ${member}_0 $dev2 $dev3 ; then
+    # the dev[23] family won
+    imsm_check_fell_out $container $dev0
+    imsm_check_fell_out $container $dev1
+    imsm_check_hold $container $dev2
+    imsm_check_hold $container $dev3
+else
+    echo "could not determine assembled IMSM family" >&2
+    cat /proc/mdstat >&2
+    mdadm -D ${member}_0 >&2
+    exit 1
+fi
+mdadm -Ss
+
+# reassemble with a new id for the dev[23] family
+mdadm -A $container $dev0 $dev1
+mdadm -IR $container
+mdadm -A ${container}2 $dev2 $dev3 --update=uuid
+mdadm -IR ${container}2
+
+testdev ${member}_0 1 $size 64
+testdev ${member}_1 1 $size 64

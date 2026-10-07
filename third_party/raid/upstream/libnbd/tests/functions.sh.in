@@ -1,0 +1,304 @@
+# nbdkit
+# Common functions used by the tests.
+# @configure_input@
+# Copyright Red Hat
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are
+# met:
+#
+# * Redistributions of source code must retain the above copyright
+# notice, this list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright
+# notice, this list of conditions and the following disclaimer in the
+# documentation and/or other materials provided with the distribution.
+#
+# * Neither the name of Red Hat nor the names of its contributors may be
+# used to endorse or promote products derived from this software without
+# specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY RED HAT AND CONTRIBUTORS ''AS IS'' AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+# THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+# PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL RED HAT OR
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+# USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+# OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+# SUCH DAMAGE.
+
+# Various variables defined by autoconf that test scripts might want
+# to use.
+abs_top_srcdir="@abs_top_srcdir@"
+NBDKIT="@NBDKIT@"
+PYTHON="@PYTHON@"
+QEMU_NBD="@QEMU_NBD@"
+QEMU_STORAGE_DAEMON="@QEMU_STORAGE_DAEMON@"
+CMP="@CMP@"
+CUT="@CUT@"
+DD="@DD@"
+REALPATH="@REALPATH@"
+SED="@SED@"
+STAT="@STAT@"
+TR="@TR@"
+TRUNCATE="@TRUNCATE@"
+
+# cleanup_fn cmd [args]
+#
+# Run the command ‘cmd [args]’ when the test script exits.  This is
+# run in all cases when the script exits, so is a reliable way to
+# clean up test files, external processes etc.  Cleanup hooks are run
+# in the order of registration.
+#
+# Examples:
+#   cleanup_fn rm -f test.out
+#   cleanup_fn kill $pid
+_cleanup_hook_count=0
+cleanup_fn ()
+{
+    local _hook=_cleanup_hook$((_cleanup_hook_count++))
+    declare -ag $_hook
+    eval $_hook'=("$@")'
+}
+
+_run_cleanup_hooks ()
+{
+    local _status=$? _i
+
+    set +e
+    trap '' INT QUIT TERM EXIT ERR
+    echo $0: run cleanup hooks: exit code $_status
+
+    for (( _i = 0; _i < $_cleanup_hook_count; ++_i )); do
+        eval '"${_cleanup_hook'$_i'[@]}"'
+    done
+
+    exit $_status
+}
+trap _run_cleanup_hooks INT QUIT TERM EXIT ERR
+
+#----------------------------------------------------------------------
+# Define a variable from a heredoc.
+# eg:
+# define var <<'EOF'
+# ...anything here...
+# EOF
+# https://stackoverflow.com/a/8088167
+
+define ()
+{
+    IFS= read -r -d '' ${1} || true
+}
+
+# requires program [args]
+#
+# Check that ‘program [args]’ works.  If not, skip the test.
+# For example to check that qemu-img is available, do:
+#
+# requires qemu-img --version
+requires ()
+{
+    ( "$@" ) </dev/null >/dev/null 2>&1 || {
+        echo "$0: ‘$*’ failed with error code $?"
+        echo "$0: test prerequisite is missing or not working"
+        exit 77
+    }
+}
+
+# Opposite of requires - the test must not succeed.
+requires_not ()
+{
+    if ( "$@" ) </dev/null >/dev/null 2>&1 ; then
+        echo "$0: test prerequisite is missing or not working"
+        exit 77
+    fi
+}
+
+# Test host kernel is Linux and minimum version.
+#
+# It's usually better to test features rather than using this, but
+# there are cases where testing features of the current kernel is too
+# hard.
+requires_linux_kernel_version ()
+{
+    local kver
+    local min="$1"
+
+    # Test the host kernel is Linux.
+    requires test "$(uname -s)" = "Linux"
+
+    # Test that it's the minimum version.
+    # https://stackoverflow.com/a/24067243
+    requires $CUT --version
+    requires sort -V /dev/null
+    kver=$(uname -r | $CUT -d. -f1-2)
+    requires test "$(printf "$kver\n$min" | sort -V | head -n 1)" = "$min"
+}
+
+# requires_fuse
+#
+# Check for fusermount3 and accessibility of /dev/fuse.  That is not the best
+# way to check that it is going to work, but so far it is enough.
+requires_fuse ()
+{
+    requires test -r /dev/fuse
+    requires fusermount3 --version
+}
+
+# requires_caps
+#
+# Check for linux capabilities.  Parameters are in the form of "cap_name", e.g.
+#   requires_caps cap_net_admin cap_chown
+#
+# This should be coupled with requires_root as it will not fail when capsh
+# utility from libcapng is not installed or the capabilities are not found in
+# /proc/<pid>/status (to future-proof this against non-Linux platforms).
+requires_caps ()
+{
+    test -r /proc/$$/status || return 0
+    type capsh 2>/dev/null >&2 || return 0
+
+    local cap_eff
+    local cap_str
+
+    cap_eff="$($SED -n 's/CapEff:\s*\([^0-9a-fA-F]*\)/\1/p' /proc/$$/status)"
+    test -z "$cap_eff" && return 0
+
+    cap_str=$(capsh --decode="$cap_eff")
+    while test "$#" -gt 0; do
+        if [[ ! "$cap_str" =~ [,=]$1(,|$) ]]; then
+            echo "$0: test skipped because of missing capability: $1"
+            exit 77
+        fi
+        shift
+    done
+}
+
+# Tests that use the vsock interface will fail if vsock is not
+# supported.  On Linux you have to load the kernel module
+# vsock_loopback.  See also
+# https://bugzilla.redhat.com/show_bug.cgi?id=2069558
+requires_vsock_support ()
+{
+    if ! grep -q ^AF_VSOCK /proc/net/protocols ||
+       ! lsmod | grep -q ^vsock_loopback; then
+        echo "$0: test skipped because AF_VSOCK is not supported."
+        exit 77
+    fi
+}
+
+# Test that we have URI support (which also implies libxml2).  The
+# Python test is there to ensure we're running the local version of
+# nbdsh, not a system-installed version.
+requires_uri ()
+{
+    requires $PYTHON --version
+    requires nbdsh -c 'exit(not h.supports_uri())'
+}
+
+# Check the sparse and preallocated files work in the way we expect.
+# ZFS fallocate (mode == 0) does not actually allocate.  Inspired by
+# this similar test in qemu:
+# https://gitlab.com/qemu-project/qemu/-/commit/c49dda72
+requires_sparse_and_preallocated_files ()
+{
+    requires $TRUNCATE --version
+    requires $STAT --version
+    requires fallocate --version
+
+    # Create a temporary file on the current filesystem.
+    tmpfile=$(mktemp ./testXXXXXX)
+
+    # Truncate it.  It should be sparse.
+    tsize=$((5 * 1024 * 1024))
+    truncate -s $tsize $tmpfile
+    size="$( $STAT -c %s $tmpfile )"
+
+    if [ "$size" -ne "$tsize" ]; then
+        rm -f $tmpfile
+        echo "SKIP: $0: truncate created unexpected file size"
+        exit 77
+    fi
+
+    balloc="$( $STAT -c %b $tmpfile )"
+    bsize="$( $STAT -c %B $tmpfile )"
+    alloc=$(( $balloc * $bsize ))
+    if [ "$alloc" -ne 0 ]; then
+        rm -f $tmpfile
+        echo "SKIP: $0: truncate did not create a sparse file"
+        exit 77
+    fi
+
+    # Fully allocate it.
+    if ! fallocate -z -l $tsize $tmpfile; then
+        rm -f $tmpfile
+        echo "SKIP: $0: fallocate -z command failed"
+        exit 77
+    fi
+
+    balloc="$( $STAT -c %b $tmpfile )"
+    bsize="$( $STAT -c %B $tmpfile )"
+    alloc=$(( $balloc * $bsize ))
+    if [ "$alloc" -ne $tsize ]; then
+        rm -f $tmpfile
+        echo "SKIP: $0: fallocate did not create a fully allocated file"
+        exit 77
+    fi
+
+    rm -f $tmpfile
+}
+
+# Tests that run under check-root should use this.
+requires_root ()
+{
+    if test $(id -u) -ne 0; then
+        echo "$0: test skipped because not running as root"
+        echo "$0: use ‘sudo make check-root’ to run these tests"
+        exit 77
+    fi
+}
+
+# pick_unused_port
+#
+# Picks and returns an "unused" port, setting the global variable
+# $port.
+#
+# This is inherently racy so we only use it where it's absolutely
+# necessary (eg. testing TLS because qemu cannot do TLS over a Unix
+# domain socket).
+pick_unused_port ()
+{
+    requires ss --version
+
+    # Start at a random port to make it less likely that two parallel
+    # tests will conflict.
+    port=$(( 50000 + (RANDOM%15000) ))
+    while ss -ltn | grep -sqE ":$port\b"; do
+        ((port++))
+        if [ $port -eq 65000 ]; then port=50000; fi
+    done
+    echo picked unused port $port
+}
+
+# Wait for a server to start up and write a PID file.
+wait_for_pidfile ()
+{
+    local binary=$1
+    local pid=$2
+
+    for i in {1..60}; do
+        if test -f $pid; then
+            break
+        fi
+        sleep 1
+    done
+
+    if ! test -f $pid; then
+        echo "$0: $binary did not start up"
+        exit 1
+    fi
+}

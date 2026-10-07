@@ -1,0 +1,3 @@
+# Test case for tests/test-at-file.sh
+# Note this filename is relative to the location of this file.
+@./4c.input

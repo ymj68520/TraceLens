@@ -1,0 +1,138 @@
+[build-system]
+requires = ["setuptools>=77.0.0", "setuptools_scm[toml]>=6.4.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dissect.cstruct"
+description = "A Dissect module implementing a parser for C-like structures: structure parsing in Python made easy"
+readme = "README.md"
+requires-python = ">=3.10"
+license =  "Apache-2.0"
+license-files = ["LICENSE", "COPYRIGHT"]
+authors = [
+  {name = "Dissect Team", email = "dissect@fox-it.com"}
+]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Information Technology",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Topic :: Internet :: Log Analysis",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "Topic :: Security",
+  "Topic :: Utilities",
+]
+dynamic = ["version"]
+
+[project.urls]
+homepage = "https://dissect.tools"
+documentation = "https://docs.dissect.tools/en/latest/projects/dissect.cstruct"
+repository = "https://github.com/fox-it/dissect.cstruct"
+changelog = "https://github.com/fox-it/dissect.cstruct/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+dev = [
+  "typing_extensions"
+]
+
+[dependency-groups]
+test = [
+    "pytest",
+]
+lint = [
+    "ruff==0.13.1",
+    "typing_extensions",
+    "vermin",
+]
+build = [
+    "build",
+]
+debug = [
+    "ipdb",
+]
+dev = [
+    {include-group = "test"},
+    {include-group = "lint"},
+    {include-group = "debug"},
+]
+
+[project.scripts]
+cstruct-stubgen = "dissect.cstruct.tools.stubgen:main"
+
+[tool.ruff]
+line-length = 120
+required-version = ">=0.13.1"
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = [
+  "F",
+  "E",
+  "W",
+  "I",
+  "UP",
+  "YTT",
+  "ANN",
+  "B",
+  "C4",
+  "DTZ",
+  "T10",
+  "FA",
+  "ISC",
+  "G",
+  "INP",
+  "PIE",
+  "PYI",
+  "PT",
+  "Q",
+  "RSE",
+  "RET",
+  "SLOT",
+  "SIM",
+  "TID",
+  "TC",
+  "PTH",
+  "PLC",
+  "TRY",
+  "FLY",
+  "PERF",
+  "FURB",
+  "RUF",
+  "D"
+]
+
+ignore = [
+    "E203", "B904", "UP024", "ANN002", "ANN003", "ANN204", "ANN401", "SIM105", "TRY003", "PLC0415",
+    # Ignore some pydocstyle rules for now as they require a larger cleanup
+    "D1",
+    "D205",
+    "D301",
+    "D417",
+    # Seems bugged: https://github.com/astral-sh/ruff/issues/16824
+    "D402",
+]
+future-annotations = true
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.flake8-type-checking]
+strict = true
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+"tests/_docs/**" = ["INP001"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["dissect.cstruct"]
+known-third-party = ["dissect"]
+required-imports = ["from __future__ import annotations"]
+
+[tool.setuptools.packages.find]
+include = ["dissect.*"]
+
+[tool.setuptools_scm]

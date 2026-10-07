@@ -1,0 +1,2027 @@
+# nbdkit
+# Copyright Red Hat
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are
+# met:
+#
+# * Redistributions of source code must retain the above copyright
+# notice, this list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright
+# notice, this list of conditions and the following disclaimer in the
+# documentation and/or other materials provided with the distribution.
+#
+# * Neither the name of Red Hat nor the names of its contributors may be
+# used to endorse or promote products derived from this software without
+# specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY RED HAT AND CONTRIBUTORS ''AS IS'' AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+# THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+# PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL RED HAT OR
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+# USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+# OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+# SUCH DAMAGE.
+
+m4_define([NBDKIT_VERSION_MAJOR], [1])
+m4_define([NBDKIT_VERSION_MINOR], [49])
+m4_define([NBDKIT_VERSION_MICRO], [3])
+AC_INIT([nbdkit],
+        NBDKIT_VERSION_MAJOR.NBDKIT_VERSION_MINOR.NBDKIT_VERSION_MICRO)
+AC_CONFIG_MACRO_DIR([m4])
+
+# Headings within the configure script output.
+term_bold=""
+term_red=""
+term_green=""
+term_restore=""
+AS_IF([test -t 1], [
+    AS_CASE(["$TERM"],
+            [xterm*|vt220*], [
+              term_bold="$(printf "\e@<:@1m")"
+              term_red="$(printf "\e@<:@22;31m")"
+              term_green="$(printf "\e@<:@22;32m")"
+              term_restore="$(printf "\e@<:@0m")"
+    ])
+])
+m4_define([HEADING],
+          [AS_ECHO
+           AS_ECHO(["${term_bold}$1${term_restore}"])])
+
+HEADING([Checking for C compiler and basic build environment])
+
+dnl This must be used very early else you will get
+dnl "warning: AC_RUN_IFELSE was called before AC_USE_SYSTEM_EXTENSIONS"
+m4_ifdef([AC_USE_SYSTEM_EXTENSIONS],[],
+         [m4_define([AC_USE_SYSTEM_EXTENSIONS],[])])
+AC_USE_SYSTEM_EXTENSIONS
+
+dnl NB: Do not [quote] this parameter.
+AM_INIT_AUTOMAKE(foreign)
+LT_INIT([win32-dll])
+
+dnl Extra string, a freeform string defined by downstream packagers.
+dnl eg. If you are packaging nbdkit for Linux distro X 1.1, you could
+dnl   ./configure --with-extra="X release 1.1"
+AC_ARG_WITH([extra],
+    [AS_HELP_STRING([--with-extra=...],
+                    [extra version information (for use by packagers)])],
+    [NBDKIT_VERSION_EXTRA="$withval"],
+    [NBDKIT_VERSION_EXTRA=]
+)
+AC_DEFINE_UNQUOTED([NBDKIT_VERSION_EXTRA], ["$NBDKIT_VERSION_EXTRA"],
+                   [Extra version information (for use by packagers)])
+
+AC_MSG_NOTICE([nbdkit version NBDKIT_VERSION_MAJOR.NBDKIT_VERSION_MINOR.NBDKIT_VERSION_MICRO ($NBDKIT_VERSION_EXTRA)])
+
+dnl Expose version information to the public headers
+[NBDKIT_]VERSION_MAJOR=NBDKIT_VERSION_MAJOR
+[NBDKIT_]VERSION_MINOR=NBDKIT_VERSION_MINOR
+[NBDKIT_]VERSION_MICRO=NBDKIT_VERSION_MICRO
+AC_SUBST([NBDKIT_VERSION_MAJOR])
+AC_SUBST([NBDKIT_VERSION_MINOR])
+AC_SUBST([NBDKIT_VERSION_MICRO])
+
+dnl List of plugins and filters.
+lang_plugins="\
+        cc \
+        golang \
+        lua \
+        ocaml \
+        perl \
+        python \
+        rust \
+        sh \
+        tcl \
+        "
+non_lang_plugins="\
+        blkio \
+        cdi \
+        curl \
+        data \
+        eval \
+        example1 \
+        example2 \
+        example3 \
+        example4 \
+        file \
+        floppy \
+        full \
+        gcs \
+        guestfs \
+        info \
+        iso \
+        libvirt \
+        linuxdisk \
+        memory \
+        nbd \
+        nfs \
+        null \
+        ondemand \
+        ones \
+        partitioning \
+        pattern \
+        random \
+        S3 \
+        sparse-random \
+        split \
+        ssh \
+        tmpdisk \
+        torrent \
+        vddk \
+        vram \
+        zero \
+        "
+plugins="$(echo $(printf %s\\n $lang_plugins $non_lang_plugins | sort -u))"
+filters="\
+        blocksize \
+        blocksize-policy \
+        bzip2 \
+        cache \
+        checkwrite \
+        count \
+        cow \
+        ddrescue \
+        delay \
+        error \
+        evil \
+        exitlast \
+        exitwhen \
+        exportname \
+        ext2 \
+        extentlist \
+        fua \
+        gzip \
+        indexed-gzip \
+        ip \
+        limit \
+        log \
+        luks \
+        lzip \
+        map \
+        multi-conn \
+        nocache \
+        noextents \
+        nofilter \
+        noparallel \
+        nozero \
+        offset \
+        openonce \
+        partition \
+        pause \
+        protect \
+        qcow2dec \
+        rate \
+        readahead \
+        readonly \
+        retry \
+        retry-request \
+        rotational \
+        scan \
+        spinning \
+        stats \
+        swab \
+        tar \
+        time-limit \
+        tls-fallback \
+        truncate \
+        xor \
+        xz \
+        "
+AC_SUBST([plugins])
+AC_SUBST([lang_plugins])
+AC_SUBST([non_lang_plugins])
+AC_SUBST([filters])
+
+dnl Some very basic tools.
+AC_PROG_SED
+AC_PROG_RANLIB
+
+dnl Bash must be at least version 4.  If it is too old, fail hard
+dnl with a good diagnostic.  Note macOS ships an ancient version
+dnl of bash (https://gitlab.com/nbdkit/nbdkit/-/issues/21)
+bash=$(command -v bash)
+AC_MSG_CHECKING([for the major version of $bash])
+bash_major=`bash -c 'echo ${BASH_VERSINFO:-0}'`
+AC_MSG_RESULT([$bash_major])
+AS_IF([test $bash_major -lt 4],
+      [AC_MSG_ERROR([
+Your bash shell ($bash) is older than version 4.
+
+If you are using macOS, please install the latest version of bash
+from homebrew or macports.
+
+If you have installed the latest bash and this error is still
+showing up, check that \$PATH is set correctly.
+])])
+
+dnl Check for basic C environment.
+AC_PROG_CC
+AC_PROG_INSTALL
+AC_PROG_CPP
+AC_SYS_LARGEFILE
+
+AC_C_PROTOTYPES
+test "x$U" != "x" && AC_MSG_ERROR([Compiler not ANSI compliant])
+
+AM_PROG_CC_C_O
+
+dnl Define the host CPU architecture (defines 'host_cpu').
+AC_CANONICAL_HOST
+AC_DEFINE_UNQUOTED([host_cpu],["$host_cpu"],[Host architecture.])
+
+dnl Define 'host_os'.
+AC_DEFINE_UNQUOTED([host_os],["$host_os"],[Host operating system.])
+
+dnl Defines WORDS_BIGENDIAN on big endian platforms.
+AC_C_BIGENDIAN
+
+dnl These are defined in <unistd.h> which is included by
+dnl AC_DEFAULT_INCLUDES.
+AC_CHECK_SIZEOF([pid_t])
+AC_CHECK_SIZEOF([uid_t])
+AC_CHECK_SIZEOF([gid_t])
+
+dnl Check for C++ (optional, we just use this to test the header
+dnl can be included from C++ code).
+AC_PROG_CXX
+
+dnl The C++ compiler test is pretty useless because even if it fails
+dnl it sets CXX=g++.  So test the compiler actually works.
+AC_MSG_CHECKING([if the C++ compiler really really works])
+AS_IF([$CXX --version >&AS_MESSAGE_LOG_FD 2>&1],[have_cxx=yes],[have_cxx=no])
+AC_MSG_RESULT([$have_cxx])
+AM_CONDITIONAL([HAVE_CXX], [test "$have_cxx" = "yes"])
+
+AX_PTHREAD
+
+dnl If --enable-gcc-warnings is used, then compiler warnings are
+dnl turned on.  Despite the name this applies to GCC, Clang and
+dnl Rust (clippy) warnings.
+AC_ARG_ENABLE([gcc-warnings],
+    [AS_HELP_STRING([--enable-gcc-warnings],
+                    [turn on compiler warnings (for developers)])],
+     [case $enableval in
+      yes|no) ;;
+      *)      AC_MSG_ERROR([bad value $enableval for gcc-warnings option]) ;;
+      esac
+      compiler_warnings=$enableval],
+      [compiler_warnings=no]
+)
+if test "x$compiler_warnings" = "xyes"; then
+    WARNINGS_CFLAGS="-Wall -Wshadow -Wvla -Werror"
+    AC_SUBST([WARNINGS_CFLAGS])
+
+    dnl Hack for clang which complains about:
+    dnl c++: error: argument unused during compilation: '-pthread' [-Werror,-Wunused-command-line-argument]
+    WARNINGS_MODULE_CXXFLAGS="$WARNINGS_CFLAGS"
+    dnl ax_pthread.m4 already tested if we are building with clang, and
+    dnl tries to avoid -pthread to the linker for C; but since it is getting
+    dnl added back in for C++, we can shut it up with extra CXXFLAGS.
+    AC_MSG_CHECKING([if we should disable unused-command-line-argument warning])
+    AS_IF([test "x$ax_pthread_clang" = "xyes"], [
+          WARNINGS_MODULE_CXXFLAGS="$WARNINGS_MODULE_CXXFLAGS -Xcompiler -Wno-unused-command-line-argument"
+          AC_MSG_RESULT([yes])
+      ],
+      [AC_MSG_RESULT([no])]
+    )
+    AC_SUBST([WARNINGS_MODULE_CXXFLAGS])
+fi
+AM_CONDITIONAL([COMPILER_WARNINGS], [test "$compiler_warnings" = "yes"])
+
+dnl Check if the compiler supports -std=c90 flag.  This is only used
+dnl during a test.  OpenBSD GCC does not support this flag so we skip
+dnl that test.
+AC_MSG_CHECKING([if the compiler supports -std=c90 for ANSI C test])
+old_CFLAGS="$CFLAGS"
+CFLAGS="$CFLAGS -std=c90"
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([])],
+    [supports_std_c90=yes],
+    [supports_std_c90=no])
+CFLAGS="$old_CFLAGS"
+AC_MSG_RESULT([$supports_std_c90])
+AM_CONDITIONAL([CAN_TEST_ANSI_C], [test "x$supports_std_c90" = "xyes"])
+
+dnl Check for __builtin_*_overflow.  We need the dummy parameters
+dnl else detection doesn't work correctly for some reason.
+AC_CHECK_DECLS([__builtin_add_overflow(int, int, int *),
+                __builtin_mul_overflow(int, int, int *)],
+                [], [], [])
+
+dnl On Haiku we must use BSD-compatibility headers to get the endian
+dnl macros we use.
+AC_MSG_CHECKING(whether OS-dependent include paths are required)
+AS_CASE([$host_os],
+  [haiku*], [CFLAGS="$CFLAGS -I`findpaths -p /system B_FIND_PATH_HEADERS_DIRECTORY`/bsd"; AC_MSG_RESULT(yes)],
+  [AC_MSG_RESULT(no)]
+)
+
+dnl On Linux /tmp is often tmpfs which is not large enough, so use /var/tmp.
+dnl But Haiku only has /tmp.
+AC_MSG_CHECKING([for temporary directory for large files])
+AS_CASE([$host_os],
+  [haiku*], [LARGE_TMPDIR=/tmp],
+  [LARGE_TMPDIR=/var/tmp]
+)
+AC_MSG_RESULT([$LARGE_TMPDIR])
+AC_DEFINE_UNQUOTED([LARGE_TMPDIR],["$LARGE_TMPDIR"],
+                   [Temporary directory for large files])
+
+dnl Check if libc has program_invocation_short_name.
+AC_CHECK_DECLS([program_invocation_short_name], [], [], [#include <errno.h>])
+
+dnl Check if __attribute__((cleanup(...))) works.
+dnl Set -Werror, otherwise gcc will only emit a warning for attributes
+dnl that it doesn't understand.
+acx_nbdkit_save_CFLAGS="${CFLAGS}"
+CFLAGS="${CFLAGS} -Werror"
+AC_MSG_CHECKING([if __attribute__((cleanup(...))) works with this compiler])
+AC_COMPILE_IFELSE([
+AC_LANG_SOURCE([[
+#include <stdio.h>
+#include <stdlib.h>
+
+void
+freep (void *ptr)
+{
+  exit (EXIT_SUCCESS);
+}
+
+void
+test (void)
+{
+  __attribute__((cleanup(freep))) char *ptr = malloc (100);
+  (void)ptr;
+}
+
+int
+main (int argc, char *argv[])
+{
+  test ();
+  exit (EXIT_FAILURE);
+}
+]])
+    ],[
+    AC_MSG_RESULT([yes])
+    ],[
+    AC_MSG_RESULT([no])
+    AC_MSG_ERROR(
+['__attribute__((cleanup(...)))' does not work.
+
+You may not be using a sufficiently recent version of GCC or CLANG, or
+you may be using a C compiler which does not support this attribute,
+or the configure test may be wrong.
+
+This code requires the attribute to work for proper locking between threads.])])
+CFLAGS="${acx_nbdkit_save_CFLAGS}"
+
+dnl Check for __auto_type (GCC extension).
+AC_MSG_CHECKING([if __auto_type is available in this compiler])
+AC_COMPILE_IFELSE([
+AC_LANG_SOURCE([[
+static int
+test (int a)
+{
+  __auto_type at = a;
+  return at;
+}
+]])
+    ],[
+    AC_MSG_RESULT([yes])
+    AC_DEFINE([HAVE_AUTO_TYPE],[1],[__auto_type is available])
+    ],[
+    AC_MSG_RESULT([no])
+    ]
+)
+
+dnl 'environ' is not always declared in public header files:
+dnl Linux => <unistd.h>  Haiku => <stdlib.h>
+dnl FreeBSD & OpenBSD => not declared
+dnl On platforms where it's not declared we must add an extern decl.
+AC_MSG_CHECKING([if environ is declared in header files])
+AC_COMPILE_IFELSE([
+AC_LANG_SOURCE([[
+#include <stdlib.h>
+#include <unistd.h>
+static int
+test (void)
+{
+  char **env = environ;
+  return env ? 1 : 0; // this just forces env to be used
+}
+]])
+    ],[
+    AC_MSG_RESULT([yes])
+    AC_DEFINE([HAVE_ENVIRON_DECL],[1],[environ is declared in headers])
+    ],[
+    AC_MSG_RESULT([no])
+    ]
+)
+
+dnl Check sizeof long.
+AC_CHECK_SIZEOF(long)
+
+dnl Check for other headers, all optional.
+AC_CHECK_HEADERS([\
+        alloca.h \
+        afunix.h \
+        arpa/inet.h \
+        byteswap.h \
+        endian.h \
+        fnmatch.h \
+        grp.h \
+        linux/fs.h \
+        netdb.h \
+        netinet/in.h \
+        netinet/tcp.h \
+        paths.h \
+        pwd.h \
+        readpassphrase.h \
+        termios.h \
+        stdatomic.h \
+        syslog.h \
+        sys/disk.h \
+        sys/disklabel.h \
+        sys/endian.h \
+        sys/ioctl.h \
+        sys/mman.h \
+        sys/prctl.h \
+        sys/procctl.h \
+        sys/socket.h \
+        sys/statvfs.h \
+        sys/ucred.h \
+        sys/un.h \
+        sys/vsock.h \
+        sys/wait.h \
+        winsock2.h])
+
+AC_CHECK_HEADERS([linux/vm_sockets.h], [], [], [#include <sys/socket.h>])
+
+dnl Check for functions in libc, all optional.
+AC_CHECK_FUNCS([\
+        accept4 \
+        explicit_bzero \
+        fdatasync \
+        flockfile \
+        funlockfile \
+        inet_ntop \
+        inet_pton \
+        mkostemp \
+        mlock \
+        mlockall \
+        munlock \
+        open_memstream \
+        pipe \
+        pipe2 \
+        ppoll \
+        posix_fadvise \
+        posix_memalign \
+        sigaction \
+        tcgetattr \
+        tcsetattr \
+        valloc])
+
+dnl Check for timer_create
+dnl It may require -lrt.
+old_LIBS="$LIBS"
+AC_SEARCH_LIBS([timer_create], [rt], [
+        AS_IF([test "x$ac_cv_search_timer_create" != "xnone required"],
+            [RT_LIBS="$ac_cv_search_timer_create"], [RT_LIBS=])
+        AC_SUBST([RT_LIBS])
+    ], [])
+AC_CHECK_FUNCS([timer_create])
+LIBS="$old_LIBS"
+
+dnl readpassphrase may require -lbsd
+old_LIBS="$LIBS"
+AC_SEARCH_LIBS([readpassphrase], [bsd], [
+        AS_IF([test "x$ac_cv_search_readpassphrase" != "xnone required"],
+            [BSD_LIBS="$ac_cv_search_readpassphrase"], [BSD_LIBS=])
+        AC_SUBST([BSD_LIBS])
+    ], [])
+AC_CHECK_FUNCS([readpassphrase])
+LIBS="$old_LIBS"
+
+dnl Check for structs and members.
+AC_CHECK_MEMBERS([struct dirent.d_type], [], [], [[#include <dirent.h>]])
+AC_CHECK_MEMBERS([struct ucred.uid], [], [],
+                 [[
+#ifdef HAVE_SYS_SOCKET_H
+#include <sys/socket.h>
+#endif
+#ifdef HAVE_SYS_UCRED_H
+#include <sys/ucred.h>
+#endif
+]])
+AC_CHECK_MEMBERS([struct sockpeercred.uid], [], [],
+                 [[
+#ifdef HAVE_SYS_SOCKET_H
+#include <sys/socket.h>
+#endif
+]])
+
+dnl Check for types.
+AC_CHECK_TYPES([in_port_t], [], [], [[
+#ifdef HAVE_NETINET_IN_H
+#include <netinet/in.h>
+#endif
+]])
+
+dnl Replacement functions that we provide for some platforms.
+AC_CONFIG_LIBOBJ_DIR([common/replacements])
+AC_REPLACE_FUNCS([\
+        fdatasync \
+        fsync \
+        get_current_dir_name \
+        getdelim \
+        getline \
+        openlog \
+        open_memstream \
+        poll \
+        posix_memalign \
+        pread \
+        pwrite \
+        readpassphrase \
+        realpath \
+        strndup \
+        sysconf \
+        syslog \
+        vsyslog])
+
+dnl Check whether printf("%m") works
+AC_CACHE_CHECK([whether the printf family supports %m],
+  [nbdkit_cv_func_printf_percent_m],
+  [AC_RUN_IFELSE(
+    [AC_LANG_PROGRAM([[
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
+    ]], [[
+    char buf[200] = "";
+    errno = EINVAL;
+    snprintf(buf, sizeof buf, "%m");
+    return !!strcmp (buf, strerror (EINVAL));
+    ]])],
+    [nbdkit_cv_func_printf_percent_m=yes],
+    [nbdkit_cv_func_printf_percent_m=no],
+    [[
+    case "$host_os" in
+      *-gnu* | gnu*) nbdkit_cv_func_printf_percent_m=yes;;
+      *) nbdkit_cv_func_printf_percent_m="guessing no";;
+    esac
+    ]])])
+AS_IF([test "x$nbdkit_cv_func_printf_percent_m" = xyes],
+  [AC_DEFINE([HAVE_VFPRINTF_PERCENT_M],[1],
+    [Define to 1 if vfprintf supports %m.])])
+
+dnl Check for dlsym (required, on Windows install dlfcn).
+old_LIBS="$LIBS"
+AC_SEARCH_LIBS([dlsym], [dl dld], [
+        AS_IF([test "x$ac_cv_search_dlsym" != "xnone required"],
+            [DL_LIBS="$ac_cv_search_dlsym"], [DL_LIBS=])
+        AC_SUBST([DL_LIBS])
+    ], [AC_MSG_ERROR([unable to find the dlsym() function])
+])
+LIBS="$old_LIBS"
+
+dnl Check for dladdr in -ldl (optional, this is a glibc extension).
+old_LIBS="$LIBS"
+LIBS="$DL_LIBS $LIBS"
+AC_CHECK_FUNCS([dladdr])
+LIBS="$old_LIBS"
+
+dnl Test if <iconv.h> header can build working binaries.
+dnl
+dnl On FreeBSD: iconv and libiconv both exist, both can be installed
+dnl simultaneously, <iconv.h> can exist in two separate places, and
+dnl if you get the wrong header/library mix everything breaks.
+dnl
+dnl On Haiku: libiconv is required to link to iconv_* functions.
+AC_ARG_WITH([iconv],
+    [AS_HELP_STRING([--without-iconv],
+                    [don't try to link against iconv @<:@default=check@:>@])],
+    [],
+    [with_iconv=check])
+AS_IF([test "x$with_iconv" != "xno"],[
+    AC_CHECK_HEADER([iconv.h],[
+        AC_MSG_CHECKING([if <iconv.h> can be used to link a program])
+        AC_LINK_IFELSE([
+AC_LANG_SOURCE([[
+#include <stdio.h>
+#include <stdlib.h>
+#include <iconv.h>
+int
+main (int argc, char *argv[])
+{
+  iconv_t ic = iconv_open ("", "");
+  iconv_close (ic);
+  exit (0);
+}
+]])
+            ],[
+            AC_MSG_RESULT([yes])
+            iconv_working=yes
+            ],[
+            AC_MSG_RESULT([no])
+            ])
+        ])
+    ])
+AM_CONDITIONAL([HAVE_ICONV], [test "x$iconv_working" = "xyes"])
+
+use_linker_script=yes
+
+dnl Don't use linker script on FreeBSD because FreeBSD's linker is
+dnl broken.  See eg:
+dnl https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=190851
+dnl Also on macOS (darwin) which fails with:
+dnl ld: unknown option: --version-script=./nbdkit.syms
+dnl clang: error: linker command failed with exit code 1
+AC_MSG_CHECKING([if we should disable the linker script (FreeBSD, macOS)])
+AS_CASE([$host_os],
+  [freebsd*|darwin*], [
+      use_linker_script=no
+      AC_MSG_RESULT([yes])
+  ],
+  [AC_MSG_RESULT([no])]
+)
+
+dnl Check if -rdynamic linker flag works.
+acx_nbdkit_save_LDFLAGS="${LDFLAGS}"
+LDFLAGS="${LDFLAGS} -rdynamic"
+AC_MSG_CHECKING([if linker supports -rdynamic])
+AC_LINK_IFELSE([
+AC_LANG_SOURCE([[
+#include <stdlib.h>
+int
+main (int argc, char *argv[])
+{
+  exit (EXIT_SUCCESS);
+}
+]])
+    ],[
+    AC_MSG_RESULT([yes])
+    DL_LDFLAGS=-rdynamic
+    ],[
+    AC_MSG_RESULT([no])
+])
+dnl restore CFLAGS
+LDFLAGS="${acx_nbdkit_save_LDFLAGS}"
+AC_SUBST([DL_LDFLAGS])
+
+dnl Check for user statically defined tracing (USDT) aka DTrace probes.
+dnl Allow this to be disabled.
+AC_ARG_ENABLE([probes],
+    AS_HELP_STRING([--disable-probes],
+                   [disable user statically defined tracing (USDT) probes]),
+    [],
+    [
+    dnl Default probes enabled only on Linux.  This currently fails
+    dnl on FreeBSD and macOS because it requires a special dtrace
+    dnl command to be run.  XXX
+    enable_probes=yes
+    AS_CASE([$host_os],
+      [freebsd*|darwin*], [enable_probes=no]
+    )
+])
+AS_IF([test "x$enable_probes" != "xno"],[
+    dnl http://sourceware.org/systemtap/wiki/AddingUserSpaceProbingToApps
+    AC_CHECK_HEADERS([sys/sdt.h])
+    AS_IF([test "x$ac_cv_header_sys_sdt_h" != "xyes"],[
+        enable_probes=no
+    ])
+])
+AS_IF([test "x$enable_probes" = "xyes"],[
+    AC_DEFINE([ENABLE_PROBES],[1],
+              [Enable user statically defined tracing (USDT) probes.])
+])
+
+dnl Is this Windows?
+AC_MSG_CHECKING([if the target is Windows])
+AS_CASE([$host_os],
+    [mingw*|msys*], [
+        is_windows=yes
+        LIBS="$LIBS -lkernel32 -luser32 -lws2_32"
+        NO_UNDEFINED_ON_WINDOWS="-no-undefined"
+        IMPORT_LIBRARY_ON_WINDOWS='-Wl,-L$(top_builddir)/server -Wl,-lnbdkit'
+        SOEXT="dll"
+        DIR_SEPARATOR_STR='\\'
+    ],
+    [is_windows=no
+     SOEXT="so"
+     DIR_SEPARATOR_STR=/]
+)
+AC_MSG_RESULT([$is_windows])
+AC_SUBST([NO_UNDEFINED_ON_WINDOWS])
+AC_SUBST([IMPORT_LIBRARY_ON_WINDOWS])
+AC_SUBST([SOEXT])
+AC_DEFINE_UNQUOTED([SOEXT],["$SOEXT"],[Extension used for shared objects/DLLs.])
+AC_DEFINE_UNQUOTED([EXEEXT],["$EXEEXT"],[Extension used for executables.])
+AC_DEFINE_UNQUOTED([DIR_SEPARATOR_STR],["$DIR_SEPARATOR_STR"],
+                   [String that separates path elements.])
+AM_CONDITIONAL([IS_WINDOWS],[test "x$is_windows" = "xyes"])
+
+dnl Look for the mc/windmc utility (optional).
+AC_CHECK_TOOLS([MC],[windmc mc.exe],[no])
+AM_CONDITIONAL([HAVE_MC],[test "x$MC" != "xno"])
+
+dnl On Windows look for dlltool.
+AS_IF([test "x$is_windows" = "xyes"],[
+    AC_CHECK_TOOLS([DLLTOOL],[dlltool],[no])
+    AS_IF([test "x$DLLTOOL" = "xno"],
+          [AC_MSG_ERROR([dlltool utility must be available when compiling for Windows])])
+])
+
+dnl See if getaddrinfo requires an external library.
+AC_SEARCH_LIBS([getaddrinfo], [network socket])
+
+dnl Does this platform support libc_malloc_debug.so.0 (glibc >= 2.34)?
+AC_MSG_CHECKING([if this is glibc >= 2.34])
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+#include <limits.h>
+#if !defined(__GLIBC__) || __GLIBC__ < 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ < 34)
+#error "not glibc 2.34"
+#endif
+        ]])],
+   [if (LD_PRELOAD=libc_malloc_debug.so.0 /bin/true) 2>&1 | grep .; then
+      is_glibc_234='missing suitable libc_malloc_debug.so.0'
+    else
+      is_glibc_234=yes
+    fi], [is_glibc_234=no]
+)
+AC_MSG_RESULT([$is_glibc_234])
+AM_CONDITIONAL([HAVE_GLIBC_234], [test "x$is_glibc_234" = "xyes"])
+
+dnl Build the special libFuzzer version of nbdkit.  DO NOT USE THIS for
+dnl normal builds.  See fuzzing/README.
+AC_ARG_ENABLE([libfuzzer],
+    [AS_HELP_STRING([--enable-libfuzzer],
+                    [build libFuzzer test binary (developers only)])],
+    [],
+    [enable_libfuzzer=no])
+AS_IF([test "x$enable_libfuzzer" = "xyes"],[
+    AC_DEFINE([ENABLE_LIBFUZZER],[1],[Enable special libFuzzer binary])
+    # We have to disable the linker script for libFuzzer because Clang
+    # adds loads of fuzzer and ASAN-related symbols that are required
+    # by the plugins but which our linker script tries to hide.
+    use_linker_script=no
+])
+AM_CONDITIONAL([ENABLE_LIBFUZZER],[test "x$enable_libfuzzer" = "xyes"])
+
+dnl Should we use the linker script (ld --version-script)?  Note
+dnl some tests above may set this variable.
+AC_ARG_ENABLE([linker-script],
+    [AS_HELP_STRING([--disable-linker-script],
+                    [disable linker script for server (developers only)])],
+    [use_linker_script=$enableval],
+    [])
+AM_CONDITIONAL([USE_LINKER_SCRIPT],
+               [test "x$use_linker_script" = "xyes"])
+
+HEADING([Checking for libraries and programs])
+
+m4_define([PRINT_PKG_VERSION],
+          [AS_ECHO_N(["$1 version is "]); $PKG_CONFIG --modversion "$1"])
+
+dnl Check for SELinux socket labelling (optional).
+AC_ARG_WITH([selinux],
+    AS_HELP_STRING([--without-selinux], [disable SELinux support, used for socket labelling @<:@default=check@:>@]))
+AS_IF([test "x$with_selinux" != xno], [
+    PKG_CHECK_MODULES([LIBSELINUX], [libselinux], [
+        PRINT_PKG_VERSION(libselinux)
+        AC_SUBST([LIBSELINUX_CFLAGS])
+        AC_SUBST([LIBSELINUX_LIBS])
+        AC_DEFINE([HAVE_LIBSELINUX],[1],[libselinux found at compile time.])
+    ], [AC_MSG_WARN([libselinux not found, sockets will not be labeled.])])
+])
+
+AS_IF([test "x$with_selinux" = xyes && test "x$LIBSELINUX_LIBS" = x], [
+    AC_MSG_ERROR([selinux requested but not found])
+])
+
+dnl Check for valgrind.
+AC_CHECK_PROG([VALGRIND],[valgrind],[valgrind],[no])
+
+dnl If valgrind headers are available (optional).
+dnl Although the runtime check adds only a trivial amount of code, you can
+dnl avoid it with explicit --disable-valgrind.
+AC_ARG_ENABLE([valgrind],
+    [AS_HELP_STRING([--disable-valgrind],
+                    [disable Valgrind probe])],
+    [],
+    [enable_valgrind=check])
+AS_IF([test "x$enable_valgrind" != "xno"],[
+    PKG_CHECK_MODULES([VALGRIND], [valgrind], [
+        PRINT_PKG_VERSION(valgrind)
+        AC_SUBST([VALGRIND_CFLAGS])
+        AC_SUBST([VALGRIND_LIBS])
+        AC_DEFINE([HAVE_VALGRIND],[1],[Valgrind headers found at compile time])
+    ],[
+        AS_IF([test "x$enable_valgrind" = "xyes"], [
+            AC_MSG_ERROR([--enable-valgrind given, but Valgrind headers are not available])
+        ])
+    ])
+])
+
+dnl Check for GnuTLS (optional, for TLS support).
+AC_ARG_WITH([gnutls],
+    [AS_HELP_STRING([--without-gnutls], [disable TLS support via GnuTLS @<:@default=check@:>@])])
+
+AS_IF([test "x$with_gnutls" != xno], [
+    PKG_CHECK_MODULES([GNUTLS], [gnutls >= 3.5.18], [
+        PRINT_PKG_VERSION(gnutls)
+        AC_SUBST([GNUTLS_CFLAGS])
+        AC_SUBST([GNUTLS_LIBS])
+        AC_DEFINE([HAVE_GNUTLS],[1],[gnutls found at compile time.])
+    ], [
+        AC_MSG_WARN([gnutls not found or < 3.5.18, TLS support will be disabled.])
+    ])
+])
+
+AS_IF([test "x$with_gnutls" = xyes && test x"$GNUTLS_LIBS" = x], [
+    AC_MSG_ERROR([gnutls requested but not found])
+])
+
+AM_CONDITIONAL([HAVE_GNUTLS], [test "x$GNUTLS_LIBS" != "x"])
+
+AS_IF([test "x$GNUTLS_LIBS" != "x"],[
+    AC_MSG_CHECKING([for default TLS session priority string])
+    AC_ARG_WITH([tls-priority],
+        [AS_HELP_STRING([--with-tls-priority=...],
+                        [default TLS session priority string @<:@default=NORMAL@:>@])],
+        [tls_priority=$withval],
+        [tls_priority=NORMAL])
+    AC_MSG_RESULT([$tls_priority])
+    AC_DEFINE_UNQUOTED([TLS_PRIORITY],["$tls_priority"],
+                       [Default TLS session priority string])
+
+    # Check for working <gnutls/socket.h>.  This is only needed for
+    # gnutls 3.7.9 and no other version (unfortunately used by Debian
+    # 12 and others).  In that release kTLS functionality was added to
+    # <gnutls/socket.h> incorrectly, before being moved to
+    # <gnutls/gnutls.h> in 3.8.0.  <gnutls/socket.h> breaks on
+    # Windows, so we must make inclusion conditional.  When we move
+    # the minimum version of gnutls >= 3.8.0 we can get rid of this.
+    old_CFLAGS="$CFLAGS"
+    CFLAGS="$GNUTLS_CFLAGS $CFLAGS"
+    AC_CHECK_HEADERS([gnutls/socket.h])
+    CFLAGS="$old_CFLAGS"
+
+    # Check for APIs which may not be present.
+    old_LIBS="$LIBS"
+    LIBS="$GNUTLS_LIBS $LIBS"
+    AC_CHECK_FUNCS([\
+        gnutls_base64_decode2 \
+        gnutls_certificate_set_known_dh_params \
+        gnutls_group_get \
+        gnutls_group_get_name \
+        gnutls_pbkdf2 \
+        gnutls_srp_server_get_username \
+        gnutls_transport_is_ktls_enabled \
+    ])
+    LIBS="$old_LIBS"
+
+    dnl macOS has its own program called certtool and packages the
+    dnl GnuTLS tool as "gnutls-certtool".
+    AC_CHECK_PROGS([CERTTOOL],[gnutls-certtool certtool],[certtool])
+])
+AM_CONDITIONAL([HAVE_GNUTLS_PBKDF2],
+    [test "x$GNUTLS_LIBS" != "x" && test "x$ac_cv_func_gnutls_pbkdf2" = xyes])
+
+dnl Allow all plugins and filters to be disabled.
+AC_ARG_ENABLE([plugins],
+    [AS_HELP_STRING([--disable-plugins],
+                    [disable all bundled plugins and filters])])
+AM_CONDITIONAL([HAVE_PLUGINS], [test "x$enable_plugins" != "xno"])
+
+dnl For the cc plugin, let the user hard-code their preferred compiler setup
+dnl Default to the settings used for nbdkit itself
+AC_ARG_VAR([CC_PLUGIN_CC],
+  [value to hard-code into the cc plugin's default for CC, instead of $CC])
+: "${CC_PLUGIN_CC:=$CC}"
+AC_ARG_VAR([CC_PLUGIN_CFLAGS],
+  [value to hard-code into the cc plugin's default for CFLAGS, instead of
+  $CFLAGS])
+: "${CC_PLUGIN_CFLAGS:=$CFLAGS}"
+
+dnl Check for some commands used by the tests which should be the GNU
+dnl coreutils variants.  On macOS these are prefixed with 'g' or 'gnu'.
+AC_CHECK_PROGS([CUT],[gnucut cut],[cut])
+AC_CHECK_PROGS([STAT],[gstat stat],[stat])
+AC_CHECK_PROGS([TRUNCATE],[gtruncate truncate],[truncate])
+
+dnl qemu-img is used by the tests to create the disk.  This might not
+dnl be present everywhere (eg. on i386), so check for it.  Individual
+dnl tests also need to check that qemu-img is present.
+AC_CHECK_PROGS([QEMU_IMG], [qemu-img], [no])
+AM_CONDITIONAL([HAVE_QEMU_IMG], [test "x$QEMU_IMG" != "xno"])
+
+HEADING([Checking for bash completion])
+
+dnl Bash completion.
+AC_ARG_WITH([bash-completions],
+    [AS_HELP_STRING([--without-bash-completions], [disable installing bash completions @<:@default=check@:>@])])
+
+AS_IF([test "x$with_bash_completions" != xno], [
+    PKG_CHECK_MODULES([BASH_COMPLETION], [bash-completion >= 2.0], [
+        PRINT_PKG_VERSION([bash-completion])
+        bash_completion=yes
+        AC_MSG_CHECKING([for bash-completions directory])
+        m4_ifdef([PKG_CHECK_VAR],[
+            PKG_CHECK_VAR(bashcompdir, [bash-completion], [completionsdir])
+        ])
+        AS_IF([test -z "$bashcompdir"], [
+            bashcompdir="${sysconfdir}/bash_completion.d"
+        ])
+        AC_MSG_RESULT([$bashcompdir])
+        AC_SUBST([bashcompdir])
+    ],[
+        bash_completion=no
+        AC_MSG_WARN([bash-completion not installed])
+    ])
+])
+
+AS_IF([test "x$bash_completion" = xno && test "x$with_bash_completions" = xyes], [
+    AC_MSG_ERROR([bash-completions requested but required packages not found])
+])
+
+AM_CONDITIONAL([HAVE_BASH_COMPLETION],[test "x$bash_completion" = "xyes"])
+
+HEADING([Checking for Perl])
+
+dnl Check we have enough to run podwrapper.
+AC_ARG_WITH([manpages],
+    [AS_HELP_STRING([--without-manpages],
+                    [do not build man pages @<:@default=check@:>@])],
+    [],
+    [: m4_divert_text([DEFAULTS], [with_manpages=check])])
+
+enable_pod=no
+AC_CHECK_PROGS([PERL], [perl], [])
+
+AS_IF([test "x$with_manpages" != xno], [
+    AS_IF([test "x$PERL" != "x"],[
+        AC_MSG_CHECKING([if we have perl Pod::Man and Pod::Simple])
+        AS_IF([$PERL -MPod::Man -MPod::Simple -e 1 >&AS_MESSAGE_LOG_FD 2>&1],[
+            enable_pod=yes
+        ])
+        AC_MSG_RESULT([$enable_pod])
+    ])
+])
+
+AS_IF([test "x$enable_pod" = xno && test "x$with_manpages" = xyes], [
+    AC_MSG_ERROR([man-pages requested but required packages not found])
+])
+
+AM_CONDITIONAL([HAVE_POD],
+               [test "x$PERL" != "xno" && test "x$enable_pod" = "xyes"])
+
+dnl Define the path to the podwrapper program.
+PODWRAPPER="$PERL $(pwd)/podwrapper.pl"
+AC_SUBST([PODWRAPPER])
+
+dnl Check for Perl, for embedding in the perl plugin.
+dnl Note that the perl binary is checked above.
+AC_ARG_ENABLE([perl],
+    [AS_HELP_STRING([--disable-perl], [disable Perl embed plugin])],
+    [],
+    [enable_perl=yes])
+AS_IF([test "x$PERL" != "xno" && test "x$enable_perl" != "xno"],[
+    dnl Check for Perl archlib.
+    AC_MSG_CHECKING([for Perl embed archlib])
+    PERL_ARCHLIB="$($PERL -MConfig -e 'print $Config{archlib}')"
+    AS_IF([ test -n "$PERL_ARCHLIB" ],[
+        AC_MSG_RESULT([$PERL_ARCHLIB])
+    ],[
+        AC_MSG_NOTICE([Perl embed module disabled])
+        enable_perl=no
+    ])
+
+    dnl Check for Perl CFLAGS.
+    AC_MSG_CHECKING([for Perl embed CFLAGS])
+    PERL_CFLAGS="$($PERL -MExtUtils::Embed -e 'ccflags')"
+    AS_IF([ test -n "$PERL_CFLAGS" ],[
+        AC_MSG_RESULT([$PERL_CFLAGS])
+    ],[
+        AC_MSG_NOTICE([Perl embed module disabled])
+        enable_perl=no
+    ])
+
+    dnl Check for Perl LDOPTS.
+    AC_MSG_CHECKING([for Perl embed LDOPTS])
+    PERL_LDOPTS="$($PERL -MExtUtils::Embed -e 'ldopts')"
+    AC_MSG_RESULT([$PERL_LDOPTS])
+
+    dnl Check these actually work.
+    old_CFLAGS="$CFLAGS"
+    old_LIBS="$LIBS"
+    CFLAGS="$PERL_CFLAGS -I$PERL_ARCHLIB/CORE $CFLAGS"
+    LIBS="$PERL_LDOPTS $LIBS"
+    AC_CHECK_FUNCS([perl_alloc])
+    CFLAGS="$old_CFLAGS"
+    LIBS="$old_LIBS"
+    AC_MSG_CHECKING([whether Perl modules will compile])
+    if test "x$ac_cv_func_perl_alloc" = xyes; then
+        AC_MSG_RESULT([yes])
+     else
+        AC_MSG_RESULT([no])
+        enable_perl=no
+    fi
+])
+AM_CONDITIONAL([HAVE_PERL],[test "x$enable_perl" != "xno" && test "x$PERL" != "xno"])
+AC_SUBST([PERL_ARCHLIB])
+AC_SUBST([PERL_CFLAGS])
+AC_SUBST([PERL_LDOPTS])
+
+HEADING([Checking for Python])
+
+dnl Check for Python 3, for embedding in the python plugin.
+AC_PATH_PROGS([PYTHON],[python3 python],[no])
+AC_ARG_ENABLE([python],
+    [AS_HELP_STRING([--disable-python], [disable Python embed plugin])],
+    [],
+    [enable_python=yes])
+AS_IF([test "x$PYTHON" != "xno" && test "x$enable_python" != "xno"],[
+    AC_MSG_CHECKING([version of $PYTHON])
+    PYTHON_VERSION_MAJOR=`$PYTHON -c "import sys; print (sys.version_info@<:@0@:>@)"`
+    PYTHON_VERSION_MINOR=`$PYTHON -c "import sys; print (sys.version_info@<:@1@:>@)"`
+    PYTHON_VERSION="$PYTHON_VERSION_MAJOR.$PYTHON_VERSION_MINOR"
+    AS_IF([test -n "$PYTHON_VERSION"],[
+        AC_MSG_RESULT([$PYTHON_VERSION])
+    ],[
+        AC_MSG_NOTICE([Python embed module disabled])
+        enable_python=no
+    ])
+
+    AC_MSG_CHECKING([Python major version is 3])
+    AS_IF([test "x$PYTHON_VERSION_MAJOR" = "x3"],[
+        AC_MSG_RESULT([yes])
+    ],[
+        AC_MSG_RESULT([no])
+        AC_MSG_ERROR([Python $PYTHON_VERSION_MAJOR <> 3 is no longer supported.
+
+Python 2 end of life was 2020-01-01 and nbdkit >= 1.16 no longer
+supports it.
+
+If you want to use Python 2, you will need to use nbdkit 1.14.])
+    ])
+
+    dnl Check for Python CFLAGS, libraries.
+    dnl For Python >= 3.8 we have to use python-<VERSION>-embed.pc, see:
+    dnl https://docs.python.org/3.8/whatsnew/3.8.html#debug-build-uses-the-same-abi-as-release-build
+    dnl The python.pc is called python-<VERSION>.pc on Debian and
+    dnl later versions of Fedora, and python.pc on older versions
+    dnl of Fedora.
+    PKG_CHECK_MODULES([PYTHON], [python-$PYTHON_VERSION-embed], [
+        AC_SUBST([PYTHON_CFLAGS])
+        AC_SUBST([PYTHON_LIBS])
+        AC_SUBST([PYTHON_VERSION])
+        AC_DEFINE([HAVE_PYTHON],[1],[Python library found at compile time])
+    ],[
+    PKG_CHECK_MODULES([PYTHON], [python-$PYTHON_VERSION], [
+        AC_SUBST([PYTHON_CFLAGS])
+        AC_SUBST([PYTHON_LIBS])
+        AC_SUBST([PYTHON_VERSION])
+        AC_DEFINE([HAVE_PYTHON],[1],[Python library found at compile time])
+    ],[
+    PKG_CHECK_MODULES([PYTHON], [python], [
+        AC_SUBST([PYTHON_CFLAGS])
+        AC_SUBST([PYTHON_LIBS])
+        AC_SUBST([PYTHON_VERSION])
+        AC_DEFINE([HAVE_PYTHON],[1],[Python library found at compile time])
+    ],[
+        AC_MSG_WARN([python $PYTHON_VERSION not found])
+        enable_python=no
+    ])])])
+])
+AM_CONDITIONAL([HAVE_PYTHON],[test "x$enable_python" != "xno" && test "x$PYTHON" != "xno"])
+AC_SUBST([PYTHON_CFLAGS])
+AC_SUBST([PYTHON_LIBS])
+AC_SUBST([PYTHON_LDFLAGS])
+
+HEADING([Checking for OCaml])
+
+dnl For the OCaml plugin, you can set OCAMLOPTFLAGS before running
+dnl ./configure to specify any extra flags you want to pass to
+dnl ocamlopt.  For example to enable debug symbols & warnings:
+dnl OCAMLOPTFLAGS="-g -warn-error +A-3"
+AC_SUBST([OCAMLOPTFLAGS])
+
+dnl Check for OCaml, for embedding in the ocaml plugin.
+AC_PROG_OCAML
+AC_ARG_ENABLE([ocaml],
+    [AS_HELP_STRING([--disable-ocaml], [disable OCaml embed plugin])],
+    [],
+    [enable_ocaml=yes])
+AS_IF([test "x$OCAMLOPT" != "xno" && test "x$enable_ocaml" != "xno"],[
+    dnl Check OCaml can create a shared library (see README for details).
+    AC_MSG_CHECKING([if $OCAMLOPT can create a shared library])
+    echo 'print_endline "test"' > conftest.ml
+    AS_IF([$OCAMLOPT $OCAMLOPTFLAGS -output-obj -runtime-variant _pic -o conftest.so conftest.ml >&AS_MESSAGE_LOG_FD 2>&1],[
+        AC_MSG_RESULT([yes])
+        ocaml_link_shared=yes
+    ],[
+        AC_MSG_RESULT([no])
+    ])
+    rm -f conftest.ml conftest.cmi conftest.cmx conftest.so conftest.o
+])
+AM_CONDITIONAL([HAVE_OCAML],[test "x$OCAMLOPT" != "xno" &&
+                             test "x$ocaml_link_shared" = "xyes"])
+AM_CONDITIONAL([HAVE_OCAMLDOC],[test "x$OCAMLDOC" != "xno"])
+
+AS_IF([test "x$OCAMLC" != "xno" && test "x$OCAMLFIND" != "xno" && \
+       test "x$enable_ocaml" = "xyes"],[
+    dnl Check for how to link OCaml plugins.
+    AC_MSG_CHECKING([major version of OCaml])
+    [OCAML_MAJOR=` echo $OCAMLVERSION | $SED 's/\([[:digit:]]*\).*/\1/' `]
+    AC_MSG_RESULT([$OCAML_MAJOR])
+    AC_SUBST([OCAML_MAJOR])
+
+    AC_MSG_CHECKING([for what libraries are needed for OCaml plugins])
+    AS_IF([test $OCAML_MAJOR -ge 5],[
+        OCAML_STD_INCLUDES="-I +unix -I +threads"
+        # bigarray is part of the stdlib in OCaml >= 5
+        OCAML_PLUGIN_LIBRARIES="unix.cmxa threads.cmxa"
+    ],[
+        OCAML_STD_INCLUDES=""
+        OCAML_PLUGIN_LIBRARIES="unix.cmxa bigarray.cmxa"
+    ])
+    AC_MSG_RESULT([$OCAML_STD_INCLUDES $OCAML_PLUGIN_LIBRARIES])
+    AC_SUBST([OCAML_STD_INCLUDES])
+    AC_SUBST([OCAML_PLUGIN_LIBRARIES])
+
+    dnl Check if OCaml has caml_alloc_initialized_string (added 2017).
+    AC_MSG_CHECKING([for caml_alloc_initialized_string])
+    cat >conftest.c <<'EOF'
+#include <caml/alloc.h>
+int main () { char *p = (void *) caml_alloc_initialized_string; return 0; }
+EOF
+    AS_IF([$OCAMLC conftest.c >&AS_MESSAGE_LOG_FD 2>&1],[
+        AC_MSG_RESULT([yes])
+        AC_DEFINE([HAVE_CAML_ALLOC_INITIALIZED_STRING],[1],
+                  [caml_alloc_initialized_string found at compile time.])
+    ],[
+        AC_MSG_RESULT([no])
+    ])
+    rm -f conftest.c conftest.o
+
+    dnl Check if OCaml has caml_shutdown (added 2014).
+    AC_MSG_CHECKING([for caml_shutdown])
+    cat >conftest.c <<'EOF'
+#include <caml/callback.h>
+int main () { char *p = (void *) caml_shutdown; return 0; }
+EOF
+    AS_IF([$OCAMLC conftest.c >&AS_MESSAGE_LOG_FD 2>&1],[
+        AC_MSG_RESULT([yes])
+        AC_DEFINE([HAVE_CAML_SHUTDOWN],[1],
+                  [caml_shutdown found at compile time.])
+    ],[
+        AC_MSG_RESULT([no])
+    ])
+    rm -f conftest.c conftest.o
+
+    dnl Check if OCaml has <caml/socketaddr.h>
+    AC_MSG_CHECKING([for caml/socketaddr.h])
+    cat >conftest.c <<'EOF'
+#include <caml/mlvalues.h>
+#include <caml/socketaddr.h>
+int main () { return 0; }
+EOF
+    AS_IF([$OCAMLC conftest.c >&AS_MESSAGE_LOG_FD 2>&1],[
+        AC_MSG_RESULT([yes])
+        AC_DEFINE([HAVE_CAML_SOCKETADDR_H],[1],
+                  [caml/socketaddr.h found at compile time.])
+    ],[
+        AC_MSG_RESULT([no])
+    ])
+    rm -f conftest.c conftest.o
+
+    dnl Check if OCaml has caml_unix_alloc_sockaddr (added OCaml 5 in 2022).
+    AC_MSG_CHECKING([for caml_unix_alloc_sockaddr])
+    cat >conftest.c <<'EOF'
+#include <caml/mlvalues.h>
+#include <caml/socketaddr.h>
+int main () { char *p = (void *) caml_unix_alloc_sockaddr; return 0; }
+EOF
+    AS_IF([$OCAMLC conftest.c >&AS_MESSAGE_LOG_FD 2>&1],[
+        AC_MSG_RESULT([yes])
+        AC_DEFINE([HAVE_CAML_UNIX_ALLOC_SOCKADDR],[1],
+                  [caml_unix_alloc_sockaddr found at compile time.])
+    ],[
+        AC_MSG_RESULT([no])
+    ])
+    rm -f conftest.c conftest.o
+])
+
+HEADING([Checking for Rust])
+
+dnl For developing plugins in Rust, optional.
+dnl Rust does not play nicely with VPATH builds
+AC_CHECK_PROG([CARGO],[cargo],[cargo],[no])
+AC_CHECK_PROG([RUSTC],[rustc],[rustc],[no])
+AC_ARG_ENABLE([rust],
+    [AS_HELP_STRING([--disable-rust], [disable Rust plugin])],
+    [],
+    [if test "x$(realpath $srcdir)" = "x$(realpath .)"; then
+       enable_rust=yes
+     else
+       enable_rust=no
+     fi])
+AS_IF([test "x$enable_rust" != "xno" && test "x$CARGO" != "xno" && test "x$RUSTC" != "xno"],
+      [have_rust=yes], [have_rust=no])
+AM_CONDITIONAL([HAVE_RUST], [test "x$have_rust" = "xyes"])
+AS_IF([test "x$have_rust" = "xyes"], [
+    printf "cargo version: "; $CARGO --version
+    printf "rustc version: "; $RUSTC --version
+])
+
+HEADING([Checking for Tcl])
+
+dnl Check for Tcl, for embedding in the Tcl plugin.
+AC_ARG_ENABLE([tcl],
+    [AS_HELP_STRING([--disable-tcl], [disable Tcl plugin])],
+    [],
+    [enable_tcl=yes])
+AS_IF([test "x$enable_tcl" != "xno"],[
+    PKG_CHECK_MODULES([TCL], [tcl], [
+        PRINT_PKG_VERSION(tcl)
+        AC_SUBST([TCL_CFLAGS])
+        AC_SUBST([TCL_LIBS])
+    ],[
+        AC_MSG_WARN([Tcl not found])
+        enable_tcl=no
+    ])
+])
+AM_CONDITIONAL([HAVE_TCL],[test "x$enable_tcl" = "xyes"])
+
+HEADING([Checking for Lua])
+
+dnl Check for Lua, for embedding in the Lua plugin.
+AC_ARG_ENABLE([lua],
+    [AS_HELP_STRING([--disable-lua], [disable Lua plugin])],
+    [],
+    [enable_lua=yes])
+AS_IF([test "x$enable_lua" != "xno"],[
+    PKG_CHECK_MODULES([LUA], [lua], [
+        PRINT_PKG_VERSION(lua)
+        AC_SUBST([LUA_CFLAGS])
+        AC_SUBST([LUA_LIBS])
+
+        dnl Lua 5.1 used by RHEL 7 does not have lua_isinteger.
+        old_LIBS="$LIBS"
+        LIBS="$LUA_LIBS $LIBS"
+        AC_CHECK_FUNCS([lua_isinteger])
+        LIBS="$old_LIBS"
+    ],[
+        AC_MSG_WARN([Lua not found])
+        enable_lua=no
+    ])
+])
+AM_CONDITIONAL([HAVE_LUA],[test "x$enable_lua" = "xyes"])
+
+HEADING([Checking for Golang])
+
+dnl Check for golang.
+AC_ARG_ENABLE([golang],
+    AS_HELP_STRING([--disable-golang], [disable Go language plugin]),
+        [],
+        [enable_golang=yes])
+AS_IF([test "x$enable_golang" != "xno"],[
+    AC_CHECK_PROG([GOLANG],[go],[go],[no])
+    AS_IF([test "x$GOLANG" != "xno"],[
+        AC_MSG_CHECKING([if $GOLANG is usable])
+        AS_IF([$GOLANG run $srcdir/plugins/golang/config-test.go 2>&AS_MESSAGE_LOG_FD && \
+               $GOLANG help modules 2>&AS_MESSAGE_LOG_FD 1>&2],[
+            AC_MSG_RESULT([yes])
+
+            # Substitute some golang environment.
+            GOOS=`$GOLANG env GOOS`
+            GOARCH=`$GOLANG env GOARCH`
+            GOROOT=`$GOLANG env GOROOT`
+            AC_SUBST([GOOS])
+            AC_SUBST([GOARCH])
+            AC_SUBST([GOROOT])
+        ],[
+            AC_MSG_RESULT([no])
+            AC_MSG_WARN([golang ($GOLANG) is installed but not usable])
+            GOLANG=no
+        ])
+    ])
+],[GOLANG=no])
+AM_CONDITIONAL([HAVE_GOLANG],[test "x$GOLANG" != "xno"])
+
+HEADING([Checking for features used by plugins and filters])
+
+dnl Check for libblkio (only if you want to compile the blkio plugin).
+AC_ARG_WITH([libblkio],
+    [AS_HELP_STRING([--without-libblkio],
+                    [disable blkio plugin @<:@default=check@:>@])],
+    [],
+    [with_libblkio=check])
+AS_IF([test "$with_libblkio" != "no"],[
+    PKG_CHECK_MODULES([LIBBLKIO], [blkio],[
+        PRINT_PKG_VERSION(blkio)
+        AC_SUBST([LIBBLKIO_CFLAGS])
+        AC_SUBST([LIBBLKIO_LIBS])
+        AC_DEFINE([HAVE_LIBBLKIO],[1],[libblkio found at compile time.])
+    ],
+    [AC_MSG_WARN([libblkio not found, blkio plugin will be disabled])])
+])
+AM_CONDITIONAL([HAVE_LIBBLKIO],[test "x$LIBBLKIO_LIBS" != "x"])
+
+dnl Check for curl (only if you want to compile the curl plugin).
+AC_ARG_WITH([curl],
+    [AS_HELP_STRING([--without-curl],
+                    [disable curl plugin @<:@default=check@:>@])],
+    [],
+    [with_curl=check])
+AS_IF([test "$with_curl" != "no"],[
+    PKG_CHECK_MODULES([CURL], [libcurl],[
+        PRINT_PKG_VERSION(libcurl)
+        AC_SUBST([CURL_CFLAGS])
+        AC_SUBST([CURL_LIBS])
+        AC_DEFINE([HAVE_CURL],[1],[curl found at compile time.])
+        old_CFLAGS="$CFLAGS"
+        CFLAGS="$CURL_CFLAGS $CFLAGS"
+        AC_CHECK_DECL([CURLOPT_UNIX_SOCKET_PATH], [
+            AC_DEFINE([HAVE_CURLOPT_UNIX_SOCKET_PATH],[1],
+                      [CURLOPT_UNIX_SOCKET_PATH found at compile time.])
+            ], [], [#include <curl/curl.h>])
+        dnl Detect both CURLOPT_PROTOCOLS_STR and
+        dnl CURLOPT_REDIR_PROTOCOLS_STR.  Both were added in curl
+        dnl 7.85.0 so we assume if one exists then both do.
+        AC_CHECK_DECL([CURLOPT_PROTOCOLS_STR], [
+            AC_DEFINE([HAVE_CURLOPT_PROTOCOLS_STR],[1],
+                      [CURLOPT_PROTOCOLS_STR found at compile time.])
+            ], [], [#include <curl/curl.h>])
+        dnl Detect various HTTP version enums supported by curl.
+        AC_CHECK_DECL([CURL_HTTP_VERSION_2_0], [
+            AC_DEFINE([HAVE_CURL_HTTP_VERSION_2_0],[1],
+                      [CURL_HTTP_VERSION_2_0 found at compile time.])
+            ], [], [#include <curl/curl.h>])
+        AC_CHECK_DECL([CURL_HTTP_VERSION_2TLS], [
+            AC_DEFINE([HAVE_CURL_HTTP_VERSION_2TLS],[1],
+                      [CURL_HTTP_VERSION_2TLS found at compile time.])
+            ], [], [#include <curl/curl.h>])
+        AC_CHECK_DECL([CURL_HTTP_VERSION_2_PRIOR_KNOWLEDGE], [
+            AC_DEFINE([HAVE_CURL_HTTP_VERSION_2_PRIOR_KNOWLEDGE],[1],
+                      [CURL_HTTP_VERSION_2_PRIOR_KNOWLEDGE found at compile time.])
+            ], [], [#include <curl/curl.h>])
+        AC_CHECK_DECL([CURL_HTTP_VERSION_3], [
+            AC_DEFINE([HAVE_CURL_HTTP_VERSION_3],[1],
+                      [CURL_HTTP_VERSION_3 found at compile time.])
+            ], [], [#include <curl/curl.h>])
+        AC_CHECK_DECL([CURL_HTTP_VERSION_3ONLY], [
+            AC_DEFINE([HAVE_CURL_HTTP_VERSION_3ONLY],[1],
+                      [CURL_HTTP_VERSION_3ONLY found at compile time.])
+            ], [], [#include <curl/curl.h>])
+        CFLAGS="$old_CFLAGS"
+
+        dnl curl_multi_get_handles was added as a semi-experimental
+        dnl feature in curl 8.3.1.
+        dnl https://github.com/curl/curl/pull/11750
+        dnl https://github.com/curl/curl/commit/9ffd4117357
+        dnl curl_version_info was added in 7.10
+        old_LIBS="$LIBS"
+        LIBS="$CURL_LIBS $LIBS"
+        AC_CHECK_FUNCS([\
+            curl_multi_get_handles \
+            curl_version_info \
+        ])
+        LIBS="$old_LIBS"
+    ],
+    [AC_MSG_WARN([curl not found, curl plugin will be disabled])])
+])
+AM_CONDITIONAL([HAVE_CURL],[test "x$CURL_LIBS" != "x"])
+
+dnl Check for libssh (only if you want to compile the ssh plugin).
+AC_ARG_WITH([ssh],
+    [AS_HELP_STRING([--without-ssh],
+                    [disable ssh plugin @<:@default=check@:>@])],
+    [],
+    [with_ssh=check])
+AS_IF([test "$with_ssh" != "no"],[
+    PKG_CHECK_MODULES([SSH], [libssh >= 0.8.0],[
+        PRINT_PKG_VERSION(libssh)
+        # Ubuntu 18.04 shipped prerelease of libssh-0.8.0 without
+        # SSH_OPTIONS_NODELAY
+        old_CFLAGS="$CFLAGS"
+        CFLAGS="$CFLAGS $SSH_CFLAGS"
+        AC_CHECK_DECL([SSH_OPTIONS_NODELAY], [
+            AC_SUBST([SSH_CFLAGS])
+            AC_SUBST([SSH_LIBS])
+            # We don't need this in the code, just in this configure
+            HAVE_SSH_OPTIONS_NODELAY=1
+            ], [], [
+            #include <libssh/libssh.h>
+        ])
+        CFLAGS="$old_CFLAGS"
+    ],
+    [AC_MSG_WARN([libssh not found, ssh plugin will be disabled])])
+])
+AM_CONDITIONAL([HAVE_SSH],[test "x$HAVE_SSH_OPTIONS_NODELAY" != "x"])
+
+dnl Check for libnfs >= 6 (internally libnfs 16)
+AC_ARG_WITH([nfs],
+    [AS_HELP_STRING([--without-nfs],
+                    [disable NFS plugin @<:@default=check@:>@])],
+    [],
+    [with_nfs=check])
+AS_IF([test "$with_nfs" != "no"],[
+    PKG_CHECK_MODULES([LIBNFS], [libnfs >= 16],[
+        PRINT_PKG_VERSION(libnfs)
+        AC_SUBST([LIBNFS_CFLAGS])
+        AC_SUBST([LIBNFS_LIBS])
+
+        dnl Check for optional features.
+        dnl XXX libnfs has undeclared requirement for -lgnutls
+        old_LIBS="$LIBS"
+        LIBS="$LIBNFS_LIBS $GNUTLS_LIBS $LIBS"
+        AC_CHECK_FUNCS([\
+            nfs_mt_service_thread_start \
+            nfs_set_readonly \
+        ])
+        LIBS="$old_LIBS"
+    ],
+    [AC_MSG_WARN([libnfs not found, NFS plugin will be disabled])])
+])
+AM_CONDITIONAL([HAVE_LIBNFS],[test "x$LIBNFS_LIBS" != "x"])
+
+dnl Check for xorriso or genisoimage or mkisofs
+dnl (only if you want to compile the iso plugin).
+ISOPROG="no"
+is_xorriso=0
+AC_ARG_WITH([iso],
+    [AS_HELP_STRING([--without-iso],
+                    [disable iso plugin @<:@default=check@:>@])],
+    [],
+    [with_iso=check])
+AS_IF([test "$with_iso" != "no"],[
+    AC_CHECK_PROG([XORRISO],[xorriso],[xorriso],[no])
+    AC_CHECK_PROG([GENISOIMAGE],[genisoimage],[genisoimage],[no])
+    AC_CHECK_PROG([MKISOFS],[mkisofs],[mkisofs],[no])
+    AS_IF([test "x$XORRISO" != "xno"],[
+        ISOPROG="$XORRISO"
+        is_xorriso=1
+    ],[
+        AS_IF([test "x$GENISOIMAGE" != "xno"],[
+            ISOPROG="$GENISOIMAGE"
+        ],[
+            AS_IF([test "x$MKISOFS" != "xno"],[
+                ISOPROG="$MKISOFS"
+            ])
+        ])
+    ])
+    AS_IF([test "x$ISOPROG" != "xno"],[
+        printf "picked %s for nbdkit-iso-plugin\n" "$ISOPROG"
+        AC_DEFINE_UNQUOTED([ISOPROG],["$ISOPROG"],
+                           [Program used by iso plugin to make ISOs.])
+        AS_IF([test "x$is_xorriso" = "x1"], [
+            AC_DEFINE([ISOPROG_IS_XORRISO],[1],
+                      [ISO program behaves like xorriso.])
+        ])
+    ])
+])
+AC_SUBST([ISOPROG])
+AM_CONDITIONAL([HAVE_ISO],[test "x$ISOPROG" != "xno"])
+
+dnl Check for libvirt (only if you want to compile the libvirt plugin).
+AC_ARG_WITH([libvirt],
+    [AS_HELP_STRING([--without-libvirt],
+                    [disable libvirt plugin @<:@default=check@:>@])],
+    [],
+    [with_libvirt=check])
+AS_IF([test "$with_libvirt" != "no"],[
+    PKG_CHECK_MODULES([LIBVIRT], [libvirt],[
+        PRINT_PKG_VERSION(libvirt)
+        AC_SUBST([LIBVIRT_CFLAGS])
+        AC_SUBST([LIBVIRT_LIBS])
+        AC_DEFINE([HAVE_LIBVIRT],[1],[libvirt found at compile time.])
+    ],
+    [AC_MSG_WARN([libvirt not found, libvirt plugin will be disabled])])
+])
+AM_CONDITIONAL([HAVE_LIBVIRT],[test "x$LIBVIRT_LIBS" != "x"])
+
+dnl Check for bzlib (only if you want to compile the bzip2 filter).
+AC_ARG_WITH([bzip2],
+    [AS_HELP_STRING([--without-bzip2],
+                    [disable bzip2 filter @<:@default=check@:>@])],
+    [],
+    [with_bzip2=check])
+AS_IF([test "$with_bzip2" != "no"],[
+    PKG_CHECK_MODULES([BZLIB], [bzip2],[
+        PRINT_PKG_VERSION(bzip2)
+        AC_SUBST([BZLIB_CFLAGS])
+        AC_SUBST([BZLIB_LIBS])
+        AC_DEFINE([HAVE_BZLIB],[1],[libbz2 found at compile time.])
+        AC_CHECK_PROGS([BZIP2],[bzip2],[no])
+    ],
+    [AC_MSG_WARN([libbz2 not found, bzip2 filter will be disabled])])
+])
+AM_CONDITIONAL([HAVE_BZLIB],
+  [test "x$BZLIB_LIBS" != "x" && test "x$BZIP2" != "xno"])
+
+dnl Check for zlib (only if you want to compile the gzip filter).
+AC_ARG_WITH([zlib],
+    [AS_HELP_STRING([--without-zlib],
+                    [disable gzip filter @<:@default=check@:>@])],
+    [],
+    [with_zlib=check])
+AS_IF([test "$with_zlib" != "no"],[
+    PKG_CHECK_MODULES([ZLIB], [zlib >= 1.2.3.5],[
+        PRINT_PKG_VERSION(zlib)
+        AC_SUBST([ZLIB_CFLAGS])
+        AC_SUBST([ZLIB_LIBS])
+        AC_DEFINE([HAVE_ZLIB],[1],[zlib found at compile time.])
+    ],
+    [AC_MSG_WARN([zlib >= 1.2.3.5 not found, gzip filter will be disabled])])
+])
+AM_CONDITIONAL([HAVE_ZLIB],[test "x$ZLIB_LIBS" != "x"])
+
+dnl Check for zlib-ng (optimizes uses of zlib).
+AC_ARG_WITH([zlib-ng],
+    [AS_HELP_STRING([--without-zlib-ng],
+                    [disable zlib-ng support @<:@default=check@:>@])],
+    [],
+    [with_zlib_ng=check])
+AS_IF([test "$with_zlib_ng" != "no"],[
+    PKG_CHECK_MODULES([ZLIB_NG], [zlib-ng],[
+        PRINT_PKG_VERSION([zlib-ng])
+        AC_SUBST([ZLIB_NG_CFLAGS])
+        AC_SUBST([ZLIB_NG_LIBS])
+        AC_DEFINE([HAVE_ZLIB_NG],[1],[zlib-ng found at compile time.])
+    ],
+    [AC_MSG_WARN([zlib-ng not found, zlib operations will run slower])])
+])
+AM_CONDITIONAL([HAVE_ZLIB],[test "x$ZLIB_LIBS" != "x"])
+
+dnl Check for libnbd (only if you want to compile the nbd plugin, and
+dnl to run some tests).
+AC_ARG_WITH([libnbd],
+    [AS_HELP_STRING([--without-libnbd],
+                    [disable nbd plugin @<:@default=check@:>@])],
+    [],
+    [with_libnbd=check])
+AS_IF([test "$with_libnbd" != "no"],[
+    PKG_CHECK_MODULES([LIBNBD], [libnbd >= 0.9.8],[
+        PRINT_PKG_VERSION(libnbd)
+        AC_SUBST([LIBNBD_CFLAGS])
+        AC_SUBST([LIBNBD_LIBS])
+        AC_DEFINE([HAVE_LIBNBD],[1],[libnbd found at compile time.])
+    ],
+    [AC_MSG_WARN([libnbd >= 0.9.8 not found, nbd plugin will be crippled])])
+])
+
+dnl For backwards compatibility, we have a second way to disable the nbd plugin.
+AC_ARG_ENABLE([nbd-plugin],
+    [AS_HELP_STRING([--disable-nbd-plugin], [disable nbd plugin (deprecated, use --without-libnbd)])],
+    [],
+    [enable_nbd_plugin=yes])
+AM_CONDITIONAL([HAVE_LIBNBD],
+  [test "x$LIBNBD_LIBS" != "x" && test "x$enable_nbd_plugin" = "xyes"])
+
+dnl Check for liblzma (only if you want to compile the xz and lzip filters).
+AC_ARG_WITH([liblzma],
+    [AS_HELP_STRING([--without-liblzma],
+                    [disable xz and lzip filters @<:@default=check@:>@])],
+    [],
+    [with_liblzma=check])
+AS_IF([test "$with_liblzma" != "no"],[
+    PKG_CHECK_MODULES([LIBLZMA], [liblzma],[
+        PRINT_PKG_VERSION(liblzma)
+        AC_SUBST([LIBLZMA_CFLAGS])
+        AC_SUBST([LIBLZMA_LIBS])
+        AC_DEFINE([HAVE_LIBLZMA],[1],[liblzma found at compile time.])
+    ],
+    [AC_MSG_WARN([liblzma not found, xz and lzip filters will be disabled])])
+])
+AM_CONDITIONAL([HAVE_LIBLZMA],[test "x$LIBLZMA_LIBS" != "x"])
+
+AS_IF([test "x$LIBLZMA_LIBS" != "x"],[
+    old_LIBS="$LIBS"
+    LIBS="$LIBLZMA_LIBS $LIBS"
+    AC_CHECK_FUNCS([lzma_lzip_decoder])
+    LIBS="$old_LIBS"
+    AS_IF([test "x$ac_cv_func_lzma_lzip_decoder" != "xyes"], [
+        AC_MSG_WARN([liblzma without lzip support, lzip filter will be disabled])
+    ])
+])
+AM_CONDITIONAL([HAVE_LZMA_LZIP_DECODER],
+               [test "x$LIBLZMA_LIBS" != "x" && \
+                test "x$ac_cv_func_lzma_lzip_decoder" = "xyes"])
+
+AC_CHECK_PROG([LZIP],[lzip],[lzip],[no])
+AM_CONDITIONAL([HAVE_LZIP], [test "x$LZIP" != "xno"])
+
+dnl Check for zstd (only if you want to compile allocator=zstd).
+AC_ARG_WITH([libzstd],
+    [AS_HELP_STRING([--without-libzstd],
+                    [disable allocator=zstd @<:@default=check@:>@])],
+    [],
+    [with_libzstd=check])
+AS_IF([test "$with_libzstd" != "no"],[
+    PKG_CHECK_MODULES([LIBZSTD], [libzstd],[
+        PRINT_PKG_VERSION(libzstd)
+        AC_SUBST([LIBZSTD_CFLAGS])
+        AC_SUBST([LIBZSTD_LIBS])
+        AC_DEFINE([HAVE_LIBZSTD],[1],[libzstd found at compile time.])
+    ],
+    [AC_MSG_WARN([libzstd not found, allocator=zstd will be disabled])])
+])
+AM_CONDITIONAL([HAVE_LIBZSTD],[test "x$LIBZSTD_LIBS" != "x"])
+
+dnl Check for libguestfs (only for the guestfs plugin and parts of
+dnl the test suite).
+AC_ARG_WITH([libguestfs],
+    [AS_HELP_STRING([--without-libguestfs],
+                    [disable guestfs plugin and tests @<:@default=check@:>@])],
+    [],
+    [with_libguestfs=check])
+AS_IF([test "$with_libguestfs" != "no"],[
+    PKG_CHECK_MODULES([LIBGUESTFS], [libguestfs],[
+        PRINT_PKG_VERSION(libguestfs)
+        # Although the library was found, we want to make sure it supports nbd
+        AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+#include <guestfs.h>
+        ]], [[
+#ifndef GUESTFS_ADD_DRIVE_OPTS_PROTOCOL
+#error unsupported
+#endif
+        ]])], [
+        AC_SUBST([LIBGUESTFS_CFLAGS])
+        AC_SUBST([LIBGUESTFS_LIBS])
+        AC_DEFINE([HAVE_LIBGUESTFS],[1],[libguestfs found at compile time.])
+        ],[
+        LIBGUESTFS_LIBS=
+        AC_MSG_WARN([libguestfs too old, guestfs plugin and tests will be disabled])])
+    ],
+    [AC_MSG_WARN([libguestfs not found, guestfs plugin and tests will be disabled])])
+])
+AM_CONDITIONAL([HAVE_LIBGUESTFS],[test "x$LIBGUESTFS_LIBS" != "x"])
+
+dnl Disable tests which need libguestfs.
+AC_ARG_ENABLE([libguestfs-tests],
+    [AS_HELP_STRING([--disable-libguestfs-tests],
+                    [disable tests which need libguestfs])],
+    [],
+    [enable_libguestfs_tests=check]
+)
+AM_CONDITIONAL([USE_LIBGUESTFS_FOR_TESTS],
+               [test "x$LIBGUESTFS_LIBS" != "x" && \
+                test "x$enable_libguestfs_tests" != "xno"])
+
+dnl Check for mke2fs -d (used by linuxdisk plugin).  There are three
+dnl possible outcomes that we care about: (1) We have mke2fs and it
+dnl supports the -d option.  (2) We either don't have mke2fs or it's
+dnl too old to support the -d option (eg. on RHEL 7).  (3) The user
+dnl disables the linuxdisk plugin.
+AC_ARG_ENABLE([linuxdisk],
+    [AS_HELP_STRING([--disable-linuxdisk],
+                    [disable linuxdisk plugin @<:@default=check@:>@])],
+    [],
+    [enable_linuxdisk=check])
+
+mke2fs_with_d=no
+AS_IF([test "$enable_linuxdisk" != "no"], [
+    AC_MSG_CHECKING([for mke2fs supporting the -d option])
+    AS_IF([mke2fs -V >/dev/null 2>&1], [
+        AS_IF([LANG=C mke2fs -d 2>&1 | grep -sq "option requires an argument"], [
+            mke2fs_with_d=yes
+        ])
+    ])
+    AC_MSG_RESULT([$mke2fs_with_d])
+])
+AM_CONDITIONAL([HAVE_MKE2FS_WITH_D],[test "x$mke2fs_with_d" = "xyes"])
+
+dnl Check for ext2fs and com_err, for the ext2 filter.
+AC_ARG_WITH([ext2],
+    [AS_HELP_STRING([--without-ext2],
+                    [disable ext2 filter @<:@default=check@:>@])],
+    [],
+    [with_ext2=check])
+AS_IF([test "$with_ext2" != "no"], [
+    PKG_CHECK_MODULES([EXT2FS], [ext2fs], [
+        PRINT_PKG_VERSION(ext2fs)
+        AC_SUBST([EXT2FS_CFLAGS])
+        AC_SUBST([EXT2FS_LIBS])
+        AC_DEFINE([HAVE_EXT2FS],[1],[ext2fs found at compile time.])
+    ],
+    [AC_MSG_WARN([ext2fs not found, ext2 filter will be disabled])])
+    PKG_CHECK_MODULES([COM_ERR], [com_err], [
+        PRINT_PKG_VERSION([com_err])
+        AC_SUBST([COM_ERR_CFLAGS])
+        AC_SUBST([COM_ERR_LIBS])
+        AC_DEFINE([HAVE_COM_ERR],[1],[com_err found at compile time.])
+    ],
+    [AC_MSG_WARN([com_err not found, ext2 filter will be disabled])])
+
+    AC_CHECK_MEMBERS([struct struct_io_manager.cache_readahead,
+                      struct struct_io_manager.zeroout])
+])
+AM_CONDITIONAL([HAVE_EXT2],
+               [test "x$EXT2FS_LIBS" != "x" && test "x$COM_ERR_LIBS" != "x"])
+
+dnl libtorrent-rasterbar for the bittorrent plugin.
+AC_ARG_ENABLE([torrent],
+    [AS_HELP_STRING([--disable-torrent],
+                    [disable bittorrent plugin])],
+    [],
+    [enable_torrent=check]
+)
+AS_IF([test "x$enable_torrent" != "xno"], [
+    PKG_CHECK_MODULES([LIBTORRENT], [libtorrent-rasterbar], [
+        PRINT_PKG_VERSION([libtorrent-rasterbar])
+        AC_SUBST([LIBTORRENT_CFLAGS])
+        AC_SUBST([LIBTORRENT_LIBS])
+    ],
+    [AC_MSG_WARN([libtorrent-rasterbar not found, bittorrent plugin will be disabled])])
+])
+AM_CONDITIONAL([HAVE_TORRENT],
+               [test "x$have_cxx" = "xyes" && test "x$LIBTORRENT_LIBS" != "x"])
+
+dnl OpenCL for the vram plugin.
+AC_ARG_ENABLE([vram],
+    [AS_HELP_STRING([--disable-vram],
+                    [disable Video RAM (OpenCL) plugin])],
+    [],
+    [enable_vram=check]
+)
+AS_IF([test "x$enable_vram" != "xno"], [
+    PKG_CHECK_MODULES([OPENCL], [OpenCL >= 2.0], [
+        PRINT_PKG_VERSION(OpenCL)
+        AC_SUBST([OPENCL_CFLAGS])
+        AC_SUBST([OPENCL_LIBS])
+    ],
+    [AC_MSG_WARN([OpenCL not found, vram plugin will be disabled])])
+])
+AM_CONDITIONAL([HAVE_OPENCL],
+               [test "x$OPENCL_LIBS" != "x"])
+
+dnl Check if the user wants to disable VDDK support.
+dnl See plugins/vddk/README.VDDK.
+AC_ARG_ENABLE([vddk],
+    [AS_HELP_STRING([--disable-vddk],
+                    [disable VMware VDDK plugin])],
+    [],
+    [
+     dnl While VDDK was available on i686 in 5.1.1, we only support
+     dnl newer versions which are supported only on x86-64.  Don't
+     dnl compile on other platforms.
+     AC_MSG_CHECKING([if the host CPU is compatible with VDDK])
+     AS_IF([test "$host_cpu" = "x86_64" && test "$host_os" = "linux-gnu"],[
+        AC_MSG_RESULT([yes ($host)])
+        enable_vddk=yes
+     ],[
+        AC_MSG_RESULT([no ($host)])
+        enable_vddk=no
+     ])
+    ])
+AM_CONDITIONAL([HAVE_VDDK], [test "x$enable_vddk" = "xyes"])
+
+HEADING([Generating output files])
+
+dnl Produce output files.
+AC_CONFIG_HEADERS([config.h])
+AC_CONFIG_FILES([podwrapper.pl],
+                [chmod +x,-w podwrapper.pl])
+AC_CONFIG_FILES([common/protocol/generate-protostrings.sh],
+                [chmod +x,-w common/protocol/generate-protostrings.sh])
+AC_CONFIG_FILES([tests/make-pki.sh],
+                [chmod +x,-w tests/make-pki.sh])
+AC_CONFIG_FILES([tests/make-psk.sh],
+                [chmod +x,-w tests/make-psk.sh])
+AC_CONFIG_FILES([Makefile
+                 bash-completion/Makefile
+                 common/allocators/Makefile
+                 common/bitmap/Makefile
+                 common/gpt/Makefile
+                 common/include/Makefile
+                 common/protocol/Makefile
+                 common/regions/Makefile
+                 common/replacements/Makefile
+                 common/replacements/win32/Makefile
+                 common/utils/Makefile
+                 contrib/Makefile
+                 docs/Makefile
+                 include/Makefile
+                 include/nbdkit-version.h
+                 plugins/Makefile
+                 plugins/blkio/Makefile
+                 plugins/cc/Makefile
+                 plugins/cdi/Makefile
+                 plugins/curl/Makefile
+                 plugins/data/Makefile
+                 plugins/eval/Makefile
+                 plugins/example1/Makefile
+                 plugins/example2/Makefile
+                 plugins/example3/Makefile
+                 plugins/example4/Makefile
+                 plugins/file/Makefile
+                 plugins/floppy/Makefile
+                 plugins/full/Makefile
+                 plugins/gcs/Makefile
+                 plugins/golang/Makefile
+                 plugins/guestfs/Makefile
+                 plugins/info/Makefile
+                 plugins/iso/Makefile
+                 plugins/libvirt/Makefile
+                 plugins/linuxdisk/Makefile
+                 plugins/lua/Makefile
+                 plugins/memory/Makefile
+                 plugins/nbd/Makefile
+                 plugins/nfs/Makefile
+                 plugins/null/Makefile
+                 plugins/ocaml/Makefile
+                 plugins/ondemand/Makefile
+                 plugins/ones/Makefile
+                 plugins/partitioning/Makefile
+                 plugins/pattern/Makefile
+                 plugins/perl/Makefile
+                 plugins/python/Makefile
+                 plugins/random/Makefile
+                 plugins/rust/Makefile
+                 plugins/S3/Makefile
+                 plugins/sh/Makefile
+                 plugins/ssh/Makefile
+                 plugins/sparse-random/Makefile
+                 plugins/split/Makefile
+                 plugins/tcl/Makefile
+                 plugins/tmpdisk/Makefile
+                 plugins/torrent/Makefile
+                 plugins/vddk/Makefile
+                 plugins/vram/Makefile
+                 plugins/zero/Makefile
+                 filters/Makefile
+                 filters/blocksize/Makefile
+                 filters/blocksize-policy/Makefile
+                 filters/bzip2/Makefile
+                 filters/cache/Makefile
+                 filters/checkwrite/Makefile
+                 filters/count/Makefile
+                 filters/cow/Makefile
+                 filters/ddrescue/Makefile
+                 filters/delay/Makefile
+                 filters/error/Makefile
+                 filters/evil/Makefile
+                 filters/exitlast/Makefile
+                 filters/exitwhen/Makefile
+                 filters/exportname/Makefile
+                 filters/ext2/Makefile
+                 filters/extentlist/Makefile
+                 filters/fua/Makefile
+                 filters/gzip/Makefile
+                 filters/indexed-gzip/Makefile
+                 filters/ip/Makefile
+                 filters/limit/Makefile
+                 filters/log/Makefile
+                 filters/luks/Makefile
+                 filters/lzip/Makefile
+                 filters/map/Makefile
+                 filters/multi-conn/Makefile
+                 filters/nocache/Makefile
+                 filters/noextents/Makefile
+                 filters/nofilter/Makefile
+                 filters/noparallel/Makefile
+                 filters/nozero/Makefile
+                 filters/offset/Makefile
+                 filters/openonce/Makefile
+                 filters/partition/Makefile
+                 filters/pause/Makefile
+                 filters/protect/Makefile
+                 filters/qcow2dec/Makefile
+                 filters/rate/Makefile
+                 filters/readahead/Makefile
+                 filters/readonly/Makefile
+                 filters/retry/Makefile
+                 filters/retry-request/Makefile
+                 filters/rotational/Makefile
+                 filters/scan/Makefile
+                 filters/spinning/Makefile
+                 filters/stats/Makefile
+                 filters/swab/Makefile
+                 filters/tar/Makefile
+                 filters/time-limit/Makefile
+                 filters/tls-fallback/Makefile
+                 filters/truncate/Makefile
+                 filters/xor/Makefile
+                 filters/xz/Makefile
+                 fuzzing/Makefile
+                 server/local/nbdkit.pc
+                 server/Makefile
+                 server/nbdkit.pc
+                 tests/functions.sh
+                 tests/Makefile
+                 valgrind/Makefile])
+
+AC_OUTPUT
+
+dnl Summary.
+echo
+echo
+echo "------------------------------------------------------------"
+HEADING([Thank you for downloading $PACKAGE_STRING])
+echo
+echo "This is how we have configured the optional components for you today:"
+echo
+
+print ()
+{
+    printf '    %.40s %s\n' \
+        "$1 ........................................" "$2"
+}
+
+feature ()
+{
+    feat="$1"
+    shift
+    if "$@"; then
+        printf "$term_green"
+        print "$feat" "yes"
+    else
+        printf "$term_red"
+        print "$feat" "no"
+    fi
+    printf "$term_restore"
+}
+
+echo "Optional server features:"
+echo
+feature "bash-completion"     test "x$HAVE_BASH_COMPLETION_TRUE" = "x"
+feature "libfuzzer (developers only)" \
+                              test "x$ENABLE_LIBFUZZER_TRUE" = "x"
+feature "linker script"       test "x$USE_LINKER_SCRIPT" = "x"
+feature "manual pages"        test "x$HAVE_POD_TRUE" = "x"
+feature "SELinux"             test "x$LIBSELINUX_LIBS" != "x"
+feature "TLS"                 test "x$GNUTLS_LIBS" != "x"
+print "TLS priority"          "$tls_priority"
+feature "USDT probes"         test "x$enable_probes" = "xyes"
+
+echo
+echo "Optional plugins:"
+echo
+feature "blkio"               test "x$HAVE_LIBBLKIO_TRUE" = "x"
+feature "curl"                test "x$HAVE_CURL_TRUE" = "x"
+feature "example4"            test "x$HAVE_PERL_TRUE" = "x"
+feature "floppy"              test "x$HAVE_ICONV_TRUE" = "x"
+feature "gcs"                 test "x$HAVE_PYTHON_TRUE" = "x"
+feature "guestfs"             test "x$HAVE_LIBGUESTFS_TRUE" = "x"
+feature "iso"                 test "x$HAVE_ISO_TRUE" = "x"
+feature "libvirt"             test "x$HAVE_LIBVIRT_TRUE" = "x"
+feature "linuxdisk"           test "x$HAVE_MKE2FS_WITH_D_TRUE" = "x"
+feature "nbd"                 test "x$HAVE_LIBNBD_TRUE" = "x"
+feature "nfs"                 test "x$HAVE_LIBNFS_TRUE" = "x"
+feature "S3"                  test "x$HAVE_PYTHON_TRUE" = "x"
+feature "ssh"                 test "x$HAVE_SSH_TRUE" = "x"
+feature "torrent"             test "x$HAVE_TORRENT_TRUE" = "x"
+feature "vddk"                test "x$HAVE_VDDK_TRUE" = "x"
+feature "vram"                test "x$HAVE_OPENCL_TRUE" = "x"
+
+echo
+echo "Languages:"
+echo
+feature "go"                  test "x$HAVE_GOLANG_TRUE" = "x"
+feature "lua"                 test "x$HAVE_LUA_TRUE" = "x"
+feature "ocaml"               test "x$HAVE_OCAML_TRUE" = "x"
+feature "perl"                test "x$HAVE_PERL_TRUE" = "x"
+feature "python"              test "x$HAVE_PYTHON_TRUE" = "x"
+feature "rust"                test "x$HAVE_RUST_TRUE" = "x"
+feature "tcl"                 test "x$HAVE_TCL_TRUE" = "x"
+
+echo
+echo "Optional filters:"
+echo
+feature "bzip2"               test "x$HAVE_BZLIB_TRUE" = "x"
+feature "ext2"                test "x$HAVE_EXT2_TRUE" = "x"
+feature "gzip"                test "x$HAVE_ZLIB_TRUE" = "x"
+feature "indexed-gzip"        test "x$HAVE_ZLIB_TRUE" = "x"
+feature "luks"                test "x$HAVE_GNUTLS_PBKDF2_TRUE" = "x"
+feature "lzip"                test "x$HAVE_LZMA_LZIP_DECODER_TRUE" = "x"
+feature "stats"               test "x$HAVE_CXX_TRUE" = "x"
+feature "xz"                  test "x$HAVE_LIBLZMA_TRUE" = "x"
+
+echo
+echo "Other optional features:"
+echo
+feature "allocator=zstd"      test "x$HAVE_LIBZSTD_TRUE" = "x"
+feature "compiler warnings"   test "x$COMPILER_WARNINGS_TRUE" = "x"
+feature "tests using libguestfs" \
+                              test "x$HAVE_LIBGUESTFS_TRUE" = "x" && \
+                              test "x$USE_LIBGUESTFS_FOR_TESTS_TRUE" = "x"
+feature "zlib-ng"             test "x$ZLIB_NG_LIBS" != "x"
+print cc-plugin-CC            "$CC_PLUGIN_CC"
+print cc-plugin-CFLAGS        "$CC_PLUGIN_CFLAGS"
+
+echo
+echo "If any optional component is configured ‘no’ when you expected ‘yes’"
+echo "then you should check the preceding messages and README."
+echo
+echo "Please report bugs back to the mailing list:"
+echo "https://lists.libguestfs.org"
+echo
+echo "Next you should type 'make' to build the package,"
+echo "then 'make check' to run the tests."

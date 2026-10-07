@@ -422,6 +422,7 @@ set(LIB_SOURCES
     src/analyzers/AndroidAnalyzer/ArchiveFileExtractor.cpp
     src/analyzers/AndroidAnalyzer/AndroidBackupStream.cpp
     src/network/HTTPServer/AndroidPreflightAdmission.cpp
+    src/network/HTTPServer/RaidTaskAdmission.cpp
     src/network/HTTPServer/AndroidContainerNormalization.cpp
     # Xiaomi MIUI backup source (offline .bak analysis, bypassing TSK)
     src/analyzers/AndroidAnalyzer/MiuiBackupManifest.cpp

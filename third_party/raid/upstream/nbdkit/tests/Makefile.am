@@ -1,0 +1,2782 @@
+# nbdkit
+# Copyright Red Hat
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are
+# met:
+#
+# * Redistributions of source code must retain the above copyright
+# notice, this list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright
+# notice, this list of conditions and the following disclaimer in the
+# documentation and/or other materials provided with the distribution.
+#
+# * Neither the name of Red Hat nor the names of its contributors may be
+# used to endorse or promote products derived from this software without
+# specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY RED HAT AND CONTRIBUTORS ''AS IS'' AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+# THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+# PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL RED HAT OR
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+# USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+# OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+# SUCH DAMAGE.
+
+include $(top_srcdir)/common-rules.mk
+
+#----------------------------------------------------------------------
+# This directory contains most of the nbdkit tests.
+#
+# Test variables:
+#
+#   TESTS            Tests that don't have any special requirements.
+#
+#   LIBNBD_TESTS     Tests that link to the libnbd C library should be
+#                    added to this variable.
+#
+#   LIBGUESTFS_TESTS Tests that link to libguestfs C library should be
+#                    added to this variable.
+#
+# check_*, noinst_*, EXTRA_DIST, EXTRA_PROGRAMS: These are the usual
+# automake variables.  Consult the automake manual for the meaning of
+# these.
+
+TESTS =
+LIBNBD_TESTS =
+LIBGUESTFS_TESTS =
+
+check_PROGRAMS =
+check_DATA = functions.sh
+check_SCRIPTS =
+check_LTLIBRARIES =
+noinst_LTLIBRARIES =
+EXTRA_DIST = README.tests
+EXTRA_PROGRAMS =
+
+# Use the 'direct' backend, and ensure maximum libguestfs debugging.
+# Enable libnbd debugging.
+TESTS_ENVIRONMENT = \
+	LIBGUESTFS_ATTACH_METHOD=appliance \
+	LIBGUESTFS_DEBUG=1 \
+	LIBGUESTFS_TRACE=1 \
+	LIBNBD_DEBUG=1 \
+	$(NULL)
+
+# Enable malloc-check as a cheap way to find some use-after-free and
+# uninitialized read problems when using glibc, and doesn't affect
+# normal operation or other libc.
+random = $(shell bash -c 'echo $$(( 1 + (RANDOM & 255) ))')
+if HAVE_GLIBC_234
+TESTS_ENVIRONMENT += \
+	LD_PRELOAD="$${LD_PRELOAD:+"$$LD_PRELOAD:"}libc_malloc_debug.so.0" \
+	GLIBC_TUNABLES=glibc.malloc.check=1:glibc.malloc.perturb=$(random) \
+	$(NULL)
+else
+TESTS_ENVIRONMENT += \
+	MALLOC_CHECK_=1 \
+	MALLOC_PERTURB_=$(random) \
+	$(NULL)
+endif
+
+if !IS_WINDOWS
+# Ensure we're testing the local copy by running everything through
+# the nbdkit helper script in the top build directory.
+TESTS_ENVIRONMENT += PATH=$(abs_top_builddir):$(PATH)
+else
+# Since most tests refer to "nbdkit" but on Windows the wrapper is
+# called "nbdkit.exe", we must make a "wrapper wrapper" called
+# "nbdkit" in some other directory, and the tests/ directory is
+# convenient.  For some reason a symlink doesn't work here.
+noinst_SCRIPTS = nbdkit
+nbdkit: Makefile
+	rm -f $@
+	echo 'exec $(abs_top_builddir)/nbdkit.exe "$$@"' > $@
+	chmod 0555 $@
+CLEANFILES += nbdkit
+TESTS_ENVIRONMENT += PATH=$(abs_builddir):$(PATH)
+endif
+
+# Common disk image shared with several tests.  These are built
+# conditionally, so tests should check the files they need exist and
+# skip if not present.
+if !IS_WINDOWS
+if HAVE_MKE2FS_WITH_D
+if HAVE_QEMU_IMG
+
+check_DATA += disk disk.tar
+CLEANFILES += disk disk.tar
+
+disk:
+	rm -rf disk.tmp $@ $@-t
+	mkdir disk.tmp
+	echo -n "hello,world" > disk.tmp/hello.txt
+	$(top_builddir)/nbdkit$(EXEEXT) -fv linuxdisk disk.tmp size=100M \
+	    --run '@QEMU_IMG@ convert "$$uri" $@-t'
+	rm -rf disk.tmp
+	mv $@-t $@
+
+disk.tar: disk
+	rm -f $@
+	tar cf disk.tar $<
+
+if HAVE_BZLIB
+check_DATA += disk.bz2
+CLEANFILES += disk.bz2
+disk.bz2: disk
+	rm -f $@
+	$(BZIP2) --keep $<
+	touch $@
+endif HAVE_BZLIB
+
+if HAVE_ZLIB
+check_DATA += disk.gz disk.tar.gz
+CLEANFILES += disk.gz disk.tar.gz
+disk.gz: disk
+	rm -f $@
+	gzip -9 --keep $<
+disk.tar.gz: disk.tar
+	rm -f $@
+	gzip -9 --keep $<
+endif HAVE_ZLIB
+
+if HAVE_LIBLZMA
+check_DATA += disk.xz disk.tar.xz
+CLEANFILES += disk.xz disk.tar.xz
+disk.xz: disk
+	rm -f $@
+# We choose a very small block size here only for testing.  Normally
+# you should choose a 16M block size.
+	xz --best --block-size=32768 --keep $<
+disk.tar.xz: disk.tar
+	rm -f $@
+	xz --best --block-size=32768 --keep $<
+endif HAVE_LIBLZMA
+
+if HAVE_LZIP
+check_DATA += disk.lz disk.tar.lz
+CLEANFILES += disk.lz disk.tar.lz
+disk.lz: disk chunked-lzip.sh
+	rm -f $@ $@-t
+	$(srcdir)/chunked-lzip.sh 32768 $< $@-t
+	mv $@-t $@
+disk.tar.lz: disk.tar chunked-lzip.sh
+	rm -f $@ $@-t
+	$(srcdir)/chunked-lzip.sh 32768 $< $@-t
+	mv $@-t $@
+endif HAVE_LZIP
+EXTRA_DIST += chunked-lzip.sh
+
+endif HAVE_QEMU_IMG
+endif HAVE_MKE2FS_WITH_D
+endif !IS_WINDOWS
+
+#----------------------------------------------------------------------
+# Use 'make check' to run the ordinary tests as non-root.  The
+# following are special commands for particular scenarios:
+
+# To run all the tests under valgrind, use the following rule:
+check-valgrind:
+	NBDKIT_VALGRIND=1 $(MAKE) check
+
+# To run only tests which require root, use 'make check-root':
+root_tests = \
+	test-file-block \
+	test-file-block-nbd \
+	test-nbd-client.sh \
+	test-nbd-client-tls.sh \
+	test-swap.sh \
+	$(NULL)
+check-root:
+	$(MAKE) check TESTS="$(root_tests)"
+
+if HAVE_VDDK
+# Run a basic check against a real copy of VDDK.  You must set
+# vddkdir to point to the library location, eg:
+#
+#   make check-vddk vddkdir=vmware-vix-disklib-distrib
+check-vddk:
+	$(MAKE) check TESTS="test-vddk-real.sh \
+	                     test-vddk-real-dump-plugin.sh \
+	                     test-vddk-real-create.sh \
+	                     test-vddk-real-unaligned-chunk.sh"
+endif HAVE_VDDK
+
+#----------------------------------------------------------------------
+# Syntax checking.
+TESTS += \
+	test-pycodestyle.sh \
+	test-tests-requires-header.sh \
+	test-tests-requires-nbdcopy.sh \
+	test-tests-requires-nbdinfo.sh \
+	test-tests-requires-nbdsh.sh \
+	test-tests-requires-run.sh \
+	test-tests-requires-tls.sh \
+	test-tests-set-options.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-pycodestyle.sh \
+	test-tests-requires-header.sh \
+	test-tests-requires-nbdcopy.sh \
+	test-tests-requires-nbdinfo.sh \
+	test-tests-requires-nbdsh.sh \
+	test-tests-requires-run.sh \
+	test-tests-requires-tls.sh \
+	test-tests-set-options.sh \
+	$(NULL)
+
+#----------------------------------------------------------------------
+# Basic server command line and start-up tests.
+
+TESTS += \
+	test-binary.sh \
+	test-help.sh \
+	test-version.sh \
+	test-short-options.sh \
+	test-long-options.sh \
+	test-verbose.sh \
+	test-manual.sh \
+	test-synopsis.sh \
+	test-dump-config.sh \
+	test-dump-config-major-1.sh \
+	test-dump-config-version-major-minor.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-binary.sh \
+	test-help.sh \
+	test-version.sh \
+	test-short-options.sh \
+	test-long-options.sh \
+	test-verbose.sh \
+	test-manual.sh \
+	test-synopsis.sh \
+	test-dump-config.sh \
+	test-dump-config-major-1.sh \
+	test-dump-config-version-major-minor.sh \
+	$(NULL)
+
+if HAVE_PLUGINS
+
+TESTS += \
+	test-help-example1.sh \
+	test-help-plugin.sh \
+	test-plugin-docs.sh \
+	test-version-example1.sh \
+	test-version-plugin.sh \
+	test-version-filter.sh \
+	test-name.sh \
+	test-no-name.sh \
+	test-name-plugin.sh \
+	test-timestamp.sh \
+	test-dump-plugin-example1.sh \
+	test-dump-plugin.sh \
+	test-dump-plugin-example2.sh \
+	test-dump-plugin-name.sh \
+	test-dump-plugin-and-single.sh \
+	test-dump-plugin-thread-model.sh \
+	test-dump-plugin-filter.sh \
+	test-probe-filter.sh \
+	test-probe-plugin.sh \
+	test-probe-filter-dump-plugin.sh \
+	test-no-parameters.sh \
+	test-bad-plugin-name.sh \
+	test-bad-filter-name.sh \
+	test-print-uri.sh \
+	test-print-uri-tls.sh \
+	test-start.sh \
+	test-single.sh \
+	test-single-from-file.sh \
+	test-single-sh.sh \
+	test-captive.sh \
+	test-captive-tls.sh \
+	test-captive-tls-certificates.sh \
+	test-captive-tls-psk.sh \
+	test-random-sock.sh \
+	test-socket-activation.sh \
+	test-socket-activation-names.sh \
+	test-tls.sh \
+	test-tls-priority.sh \
+	test-tls-psk.sh \
+	test-not-linked-to-libssl.sh \
+	test-ip-port.sh \
+	test-ipv4-lo.sh \
+	test-ipv6-lo.sh \
+	test-foreground.sh \
+	test-debug-flags.sh \
+	test-long-name.sh \
+	test-flush.sh \
+	test-crippled-extents.sh \
+	test-export-handshake.sh \
+	test-export-handshake-tls.sh \
+	test-swap.sh \
+	test-disconnect.sh \
+	test-disconnect-tls.sh \
+	test-client-death.sh \
+	test-client-death-tls.sh \
+	test-shutdown.sh \
+	test-nbdkit-backend-debug.sh \
+	test-read-password.sh \
+	test-read-password-interactive.sh \
+	test-nbd-client.sh \
+	test-nbd-client-tls.sh \
+	test-last-error.sh \
+	test-timeout.sh \
+	test-timeout-cancel.sh \
+	test-keepalive.sh \
+	test-log-to-file.sh \
+	test-log-to-file-append.sh \
+	test-at-file.sh \
+	test-debug-hexdump.sh \
+	test-debug-hexdiff.sh \
+	$(NULL)
+if !IS_WINDOWS
+TESTS += \
+	test-vsock.sh \
+	$(NULL)
+endif
+EXTRA_DIST += \
+	test-at-file.sh \
+	test-at-file/1.expected \
+	test-at-file/1.input \
+	test-at-file/2.expected \
+	test-at-file/2.input \
+	test-at-file/3.expected \
+	test-at-file/3a.input \
+	test-at-file/3b.input \
+	test-at-file/4.expected \
+	test-at-file/4a.input \
+	test-at-file/4b.input \
+	test-at-file/4c.input \
+	test-bad-filter-name.sh \
+	test-bad-plugin-name.sh \
+	test-captive-tls-certificates.sh \
+	test-captive-tls-psk.sh \
+	test-captive-tls.sh \
+	test-captive.sh \
+	test-client-death-tls.sh \
+	test-client-death.sh \
+	test-crippled-extents.sh \
+	test-export-handshake.sh \
+	test-export-handshake-tls.sh \
+	test-debug-flags.sh \
+	test-debug-hexdiff.sh \
+	test-debug-hexdiff-plugin.c \
+	test-debug-hexdump.sh \
+	test-debug-hexdump-plugin.c \
+	test-disconnect-tls.sh \
+	test-disconnect.sh \
+	test-dump-plugin-and-single.sh \
+	test-dump-plugin-example1.sh \
+	test-dump-plugin-example2.sh \
+	test-dump-plugin-filter.sh \
+	test-dump-plugin-name.sh \
+	test-dump-plugin-thread-model.sh \
+	test-dump-plugin.sh \
+	test-flush.sh \
+	test-foreground.sh \
+	test-help-example1.sh \
+	test-help-plugin.sh \
+	test-ip-port.sh \
+	test-ipv4-lo.sh \
+	test-ipv6-lo.sh \
+	test-keepalive.sh \
+	test-last-error.sh \
+	test-log-to-file.sh \
+	test-log-to-file-append.sh \
+	test-long-name.sh \
+	test-name.sh \
+	test-name-plugin.sh \
+	test-nbd-client-tls.sh \
+	test-nbd-client.sh \
+	test-nbdkit-backend-debug.sh \
+	test-no-name.sh \
+	test-no-parameters.sh \
+	test-not-linked-to-libssl.sh \
+	test-plugin-docs.sh \
+	test-print-uri.sh \
+	test-print-uri-tls.sh \
+	test-probe-filter-dump-plugin.sh \
+	test-probe-filter.sh \
+	test-probe-plugin.sh \
+	test-random-sock.sh \
+	test-read-password-interactive.sh \
+	test-read-password-plugin.c \
+	test-read-password.sh \
+	test-shutdown.sh \
+	test-single-from-file.sh \
+	test-single-sh.sh \
+	test-single.sh \
+	test-socket-activation.sh \
+	test-socket-activation-names.sh \
+	test-start.sh \
+	test-stdio.sh \
+	test-swap.sh \
+	test-timeout.sh \
+	test-timeout.py \
+	test-timeout-cancel.sh \
+	test-timestamp.sh \
+	test-tls-priority.sh \
+	test-tls-psk.sh \
+	test-tls.sh \
+	test-version-example1.sh \
+	test-version-filter.sh \
+	test-version-plugin.sh \
+	test-vsock.sh \
+	$(NULL)
+
+if !IS_WINDOWS
+TESTS += test-stdio.sh
+# check_LTLIBRARIES won't build a shared library (see automake manual).
+# So we have to do this and add a dependency.
+noinst_LTLIBRARIES += \
+	test-stdio-plugin.la \
+	$(NULL)
+test-stdio.sh: test-stdio-plugin.la
+
+test_stdio_plugin_la_SOURCES = \
+	test-stdio-plugin.c \
+	$(top_srcdir)/include/nbdkit-plugin.h \
+	$(NULL)
+test_stdio_plugin_la_CPPFLAGS = \
+	-I$(top_srcdir)/include \
+	-I$(top_builddir)/include \
+	-I$(top_srcdir)/common/replacements \
+	$(NULL)
+test_stdio_plugin_la_CFLAGS = $(WARNINGS_CFLAGS)
+# For use of the -rpath option, see:
+# https://lists.gnu.org/archive/html/libtool/2007-07/msg00067.html
+test_stdio_plugin_la_LDFLAGS = \
+	-module -avoid-version -shared $(NO_UNDEFINED_ON_WINDOWS) -rpath /nowhere \
+	$(NULL)
+test_stdio_plugin_la_LIBADD = \
+	$(top_builddir)/common/replacements/libcompat.la \
+	$(top_builddir)/common/utils/libutils.la \
+	$(IMPORT_LIBRARY_ON_WINDOWS) \
+	$(NULL)
+endif
+
+# check_LTLIBRARIES won't build a shared library (see automake manual).
+# So we have to do this and add a dependency.
+noinst_LTLIBRARIES += \
+	test-flush-plugin.la \
+	$(NULL)
+test-flush.sh: test-flush-plugin.la
+
+test_flush_plugin_la_SOURCES = \
+	test-flush-plugin.c \
+	$(top_srcdir)/include/nbdkit-plugin.h \
+	$(NULL)
+test_flush_plugin_la_CPPFLAGS = \
+	-I$(top_srcdir)/include \
+	-I$(top_builddir)/include \
+	$(NULL)
+test_flush_plugin_la_CFLAGS = $(WARNINGS_CFLAGS)
+# For use of the -rpath option, see:
+# https://lists.gnu.org/archive/html/libtool/2007-07/msg00067.html
+test_flush_plugin_la_LDFLAGS = \
+	-module -avoid-version -shared $(NO_UNDEFINED_ON_WINDOWS) -rpath /nowhere \
+	$(NULL)
+test_flush_plugin_la_LIBADD = $(IMPORT_LIBRARY_ON_WINDOWS)
+
+# check_LTLIBRARIES won't build a shared library (see automake manual).
+# So we have to do this and add a dependency.
+noinst_LTLIBRARIES += \
+	test-disconnect-plugin.la \
+	$(NULL)
+test-disconnect.sh: test-disconnect-plugin.la
+test-disconnect-tls.sh: test-disconnect-plugin.la keys.psk
+
+test_disconnect_plugin_la_SOURCES = \
+	test-disconnect-plugin.c \
+	$(top_srcdir)/include/nbdkit-plugin.h \
+	$(NULL)
+test_disconnect_plugin_la_CPPFLAGS = \
+	-I$(top_srcdir)/include \
+	-I$(top_builddir)/include \
+	$(NULL)
+test_disconnect_plugin_la_CFLAGS = $(WARNINGS_CFLAGS)
+# For use of the -rpath option, see:
+# https://lists.gnu.org/archive/html/libtool/2007-07/msg00067.html
+test_disconnect_plugin_la_LDFLAGS = \
+	-module -avoid-version -shared $(NO_UNDEFINED_ON_WINDOWS) -rpath /nowhere \
+	$(NULL)
+test_disconnect_plugin_la_LIBADD = $(IMPORT_LIBRARY_ON_WINDOWS)
+
+test-client-death-tls.sh: keys.psk
+
+# check_LTLIBRARIES won't build a shared library (see automake manual).
+# So we have to do this and add a dependency.
+noinst_LTLIBRARIES += \
+	test-shutdown-plugin.la \
+	$(NULL)
+test-shutdown.sh: test-shutdown-plugin.la
+
+test_shutdown_plugin_la_SOURCES = \
+	test-shutdown-plugin.c \
+	$(top_srcdir)/include/nbdkit-plugin.h \
+	$(NULL)
+test_shutdown_plugin_la_CPPFLAGS = \
+	-I$(top_srcdir)/include \
+	-I$(top_builddir)/include \
+	$(NULL)
+test_shutdown_plugin_la_CFLAGS = $(WARNINGS_CFLAGS)
+# For use of the -rpath option, see:
+# https://lists.gnu.org/archive/html/libtool/2007-07/msg00067.html
+test_shutdown_plugin_la_LDFLAGS = \
+	-module -avoid-version -shared $(NO_UNDEFINED_ON_WINDOWS) -rpath /nowhere \
+	$(NULL)
+test_shutdown_plugin_la_LIBADD = $(IMPORT_LIBRARY_ON_WINDOWS)
+
+# check_LTLIBRARIES won't build a shared library (see automake manual).
+# So we have to do this and add a dependency.
+noinst_LTLIBRARIES += \
+	test-debug-hexdump-plugin.la \
+	test-debug-hexdiff-plugin.la \
+	$(NULL)
+test-debug-hexdump.sh: test-debug-hexdump-plugin.la
+test-debug-hexdiff.sh: test-debug-hexdiff-plugin.la
+
+test_debug_hexdump_plugin_la_SOURCES = \
+	test-debug-hexdump-plugin.c \
+	$(top_srcdir)/include/nbdkit-plugin.h \
+	$(NULL)
+test_debug_hexdump_plugin_la_CPPFLAGS = \
+	-I$(top_srcdir)/include \
+	-I$(top_builddir)/include \
+	$(NULL)
+test_debug_hexdump_plugin_la_CFLAGS = $(WARNINGS_CFLAGS)
+# For use of the -rpath option, see:
+# https://lists.gnu.org/archive/html/libtool/2007-07/msg00067.html
+test_debug_hexdump_plugin_la_LDFLAGS = \
+	-module -avoid-version -shared $(NO_UNDEFINED_ON_WINDOWS) -rpath /nowhere \
+	$(NULL)
+test_debug_hexdump_plugin_la_LIBADD = $(IMPORT_LIBRARY_ON_WINDOWS)
+
+test_debug_hexdiff_plugin_la_SOURCES = \
+	test-debug-hexdiff-plugin.c \
+	$(top_srcdir)/include/nbdkit-plugin.h \
+	$(NULL)
+test_debug_hexdiff_plugin_la_CPPFLAGS = \
+	-I$(top_srcdir)/include \
+	-I$(top_builddir)/include \
+	$(NULL)
+test_debug_hexdiff_plugin_la_CFLAGS = $(WARNINGS_CFLAGS)
+# For use of the -rpath option, see:
+# https://lists.gnu.org/archive/html/libtool/2007-07/msg00067.html
+test_debug_hexdiff_plugin_la_LDFLAGS = \
+	-module -avoid-version -shared $(NO_UNDEFINED_ON_WINDOWS) -rpath /nowhere \
+	$(NULL)
+test_debug_hexdiff_plugin_la_LIBADD = $(IMPORT_LIBRARY_ON_WINDOWS)
+
+# check_LTLIBRARIES won't build a shared library (see automake manual).
+# So we have to do this and add a dependency.
+noinst_LTLIBRARIES += \
+	test-name-plugin.la \
+	$(NULL)
+test-name-plugin.sh: test-name-plugin.la
+
+test_name_plugin_la_SOURCES = \
+	test-name-plugin.c \
+	$(top_srcdir)/include/nbdkit-plugin.h \
+	$(NULL)
+test_name_plugin_la_CPPFLAGS = \
+	-I$(top_srcdir)/include \
+	-I$(top_builddir)/include \
+	$(NULL)
+test_name_plugin_la_CFLAGS = $(WARNINGS_CFLAGS)
+# For use of the -rpath option, see:
+# https://lists.gnu.org/archive/html/libtool/2007-07/msg00067.html
+test_name_plugin_la_LDFLAGS = \
+	-module -avoid-version -shared $(NO_UNDEFINED_ON_WINDOWS) -rpath /nowhere \
+	$(NULL)
+test_name_plugin_la_LIBADD = $(IMPORT_LIBRARY_ON_WINDOWS)
+
+# check_LTLIBRARIES won't build a shared library (see automake manual).
+# So we have to do this and add a dependency.
+noinst_LTLIBRARIES += \
+	test-timestamp-plugin.la \
+	$(NULL)
+test-timestamp.sh: test-timestamp-plugin.la
+
+test_timestamp_plugin_la_SOURCES = \
+	test-timestamp-plugin.c \
+	$(top_srcdir)/include/nbdkit-plugin.h \
+	$(NULL)
+test_timestamp_plugin_la_CPPFLAGS = \
+	-I$(top_srcdir)/include \
+	-I$(top_builddir)/include \
+	$(NULL)
+test_timestamp_plugin_la_CFLAGS = $(WARNINGS_CFLAGS)
+# For use of the -rpath option, see:
+# https://lists.gnu.org/archive/html/libtool/2007-07/msg00067.html
+test_timestamp_plugin_la_LDFLAGS = \
+	-module -avoid-version -shared $(NO_UNDEFINED_ON_WINDOWS) -rpath /nowhere \
+	$(NULL)
+test_timestamp_plugin_la_LIBADD = $(IMPORT_LIBRARY_ON_WINDOWS)
+
+endif HAVE_PLUGINS
+
+# Test the header files can be included on their own.
+check_PROGRAMS += \
+	test-just-plugin-header \
+	test-just-filter-header
+	$(NULL)
+TESTS += \
+	test-just-plugin-header \
+	test-just-filter-header
+	$(NULL)
+
+test_just_plugin_header_SOURCES = \
+	test-just-plugin-header.c \
+	$(NULL)
+test_just_plugin_header_CPPFLAGS = \
+	-I$(top_srcdir)/include \
+	-I$(top_builddir)/include \
+	$(NULL)
+test_just_plugin_header_CFLAGS = $(WARNINGS_CFLAGS)
+
+test_just_filter_header_SOURCES = \
+	test-just-filter-header.c \
+	$(NULL)
+test_just_filter_header_CPPFLAGS = \
+	-I$(top_srcdir)/include \
+	-I$(top_builddir)/include \
+	$(NULL)
+test_just_filter_header_CFLAGS = $(WARNINGS_CFLAGS)
+
+if CAN_TEST_ANSI_C
+# This builds a plugin using an ANSI (ISO C90) compiler to ensure that
+# the header file is compatible.  The plugin does nothing very
+# interesting, it's mainly a compile test.
+TESTS += test-ansi-c.sh
+EXTRA_DIST += test-ansi-c.sh
+# check_LTLIBRARIES won't build a shared library (see automake manual).
+# So we have to do this and add a dependency.
+noinst_LTLIBRARIES += test-ansi-c-plugin.la
+test-ansi-c.sh: test-ansi-c-plugin.la
+
+test_ansi_c_plugin_la_SOURCES = \
+	test-ansi-c-plugin.c \
+	$(top_srcdir)/include/nbdkit-plugin.h \
+	$(NULL)
+test_ansi_c_plugin_la_CPPFLAGS = \
+	-std=c90 -pedantic \
+	-I$(top_srcdir)/include \
+	-I$(top_builddir)/include \
+	$(NULL)
+test_ansi_c_plugin_la_CFLAGS = $(WARNINGS_CFLAGS)
+# For use of the -rpath option, see:
+# https://lists.gnu.org/archive/html/libtool/2007-07/msg00067.html
+test_ansi_c_plugin_la_LDFLAGS = \
+	-module -avoid-version -shared $(NO_UNDEFINED_ON_WINDOWS) -rpath /nowhere \
+	$(NULL)
+test_ansi_c_plugin_la_LIBADD = $(IMPORT_LIBRARY_ON_WINDOWS)
+endif CAN_TEST_ANSI_C
+
+if HAVE_CXX
+# This builds a plugin and a filter using the C++ compiler.  They
+# don't do anything interesting when run.
+TESTS += test-cxx.sh
+EXTRA_DIST += test-cxx.sh
+# check_LTLIBRARIES won't build a shared library (see automake manual).
+# So we have to do this and add a dependency.
+noinst_LTLIBRARIES += test-cxx-plugin.la test-cxx-filter.la
+test-cxx.sh: test-cxx-plugin.la test-cxx-filter.la
+
+test_cxx_plugin_la_SOURCES = \
+	test-cxx-plugin.cpp \
+	$(top_srcdir)/include/nbdkit-plugin.h \
+	$(NULL)
+test_cxx_plugin_la_CPPFLAGS = \
+	-I$(top_srcdir)/include \
+	-I$(top_builddir)/include \
+	$(NULL)
+test_cxx_plugin_la_CXXFLAGS = $(WARNINGS_CFLAGS)
+# For use of the -rpath option, see:
+# https://lists.gnu.org/archive/html/libtool/2007-07/msg00067.html
+test_cxx_plugin_la_LDFLAGS = \
+	-module -avoid-version -shared $(NO_UNDEFINED_ON_WINDOWS) -rpath /nowhere \
+	$(NULL)
+test_cxx_plugin_la_LIBADD = $(IMPORT_LIBRARY_ON_WINDOWS)
+
+test_cxx_filter_la_SOURCES = \
+	test-cxx-filter.cpp \
+	$(top_srcdir)/include/nbdkit-filter.h \
+	$(NULL)
+test_cxx_filter_la_CPPFLAGS = \
+	-I$(top_srcdir)/include \
+	-I$(top_builddir)/include \
+	$(NULL)
+test_cxx_filter_la_CXXFLAGS = $(WARNINGS_CFLAGS)
+# For use of the -rpath option, see:
+# https://lists.gnu.org/archive/html/libtool/2007-07/msg00067.html
+test_cxx_filter_la_LDFLAGS = \
+	-module -avoid-version -shared $(NO_UNDEFINED_ON_WINDOWS) -rpath /nowhere \
+	$(NULL)
+test_cxx_filter_la_LIBADD = $(IMPORT_LIBRARY_ON_WINDOWS)
+endif HAVE_CXX
+
+# Exit with parent test.
+check_PROGRAMS += test-exit-with-parent
+TESTS += test-exit-with-parent
+
+test_exit_with_parent_SOURCES = \
+	test-exit-with-parent.c test.h requires.c requires.h \
+	$(NULL)
+test_exit_with_parent_CFLAGS = \
+	$(WARNINGS_CFLAGS) \
+	$(LIBGUESTFS_CFLAGS) \
+	$(NULL)
+
+# PKI files for the TLS tests.
+check_DATA += pki/.stamp
+EXTRA_DIST += make-pki.sh
+pki/.stamp: make-pki.sh
+	rm -rf pki pki-t
+	./make-pki.sh pki-t
+	mv pki-t pki
+
+# PSK keys for the TLS-PSK tests.
+check_DATA += keys.psk
+EXTRA_DIST += make-psk.sh
+keys.psk: ./make-psk.sh
+	rm -f $@ $@-t
+	./make-psk.sh $@-t
+	mv $@-t $@
+
+# Keys are expensive to recreate so only delete them when we do
+# ‘make distclean’.
+DISTCLEANFILES = keys.psk
+distclean-local: distclean-local-tls
+distclean-local-tls:
+	rm -rf pki
+
+#----------------------------------------------------------------------
+# Tests of C plugins or tests which require plugins.
+
+if HAVE_PLUGINS
+
+# Common data shared by multiple tests
+check_DATA += file-data
+CLEANFILES += file-data
+EXTRA_DIST += generate-file-data.sh
+file-data: generate-file-data.sh
+	$(srcdir)/generate-file-data.sh $@
+
+# While most tests need libguestfs, testing parallel I/O is easier when
+# using qemu-io to kick off asynchronous requests.
+TESTS += \
+	test-parallel-file.sh \
+	test-parallel-nbd.sh \
+	test-parallel-sh.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-parallel-file.sh \
+	test-parallel-nbd.sh \
+	test-parallel-sh.sh \
+	$(NULL)
+
+# Common test library.
+check_LTLIBRARIES += libtest.la
+libtest_la_SOURCES = test.c test.h requires.c requires.h
+libtest_la_CFLAGS = $(WARNINGS_CFLAGS)
+
+# Basic connection test.
+LIBNBD_TESTS += test-connect
+
+test_connect_SOURCES = test-connect.c requires.c requires.h
+test_connect_CFLAGS = $(WARNINGS_CFLAGS) $(LIBNBD_CFLAGS)
+test_connect_LDADD = $(LIBNBD_LIBS)
+
+# newstyle protocol test.
+LIBNBD_TESTS += test-newstyle
+
+test_newstyle_SOURCES = test-newstyle.c
+test_newstyle_CFLAGS = $(WARNINGS_CFLAGS) $(LIBNBD_CFLAGS)
+test_newstyle_LDADD = $(LIBNBD_LIBS)
+
+# oldstyle protocol test.
+LIBNBD_TESTS += test-oldstyle
+
+test_oldstyle_SOURCES = test-oldstyle.c
+test_oldstyle_CFLAGS = $(WARNINGS_CFLAGS) $(LIBNBD_CFLAGS)
+test_oldstyle_LDADD = $(LIBNBD_LIBS)
+
+# Test export flags.
+TESTS += test-eflags.sh
+EXTRA_DIST += test-eflags.sh
+
+# Test export name.
+TESTS += test-export-name.sh test-export-info.sh
+EXTRA_DIST += test-export-name.sh test-export-info.sh
+
+# Test block size constraints.
+TESTS += test-block-size-constraints.sh
+EXTRA_DIST += test-block-size-constraints.sh
+
+# blkio plugin test.
+if HAVE_LIBBLKIO
+TESTS += test-blkio.sh
+endif
+EXTRA_DIST += test-blkio.sh
+
+# cdi plugin test.
+TESTS += test-cdi.sh
+EXTRA_DIST += test-cdi.sh
+
+# curl plugin test.
+if HAVE_MKE2FS_WITH_D
+if HAVE_CURL
+if !IS_WINDOWS
+TESTS += \
+	test-curl-options.sh \
+	test-curl-header-script-fail.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-curl-options.sh \
+	test-curl-header-script-fail.script \
+	test-curl-header-script-fail.sh \
+	$(NULL)
+LIBGUESTFS_TESTS += test-curl
+LIBNBD_TESTS += \
+	test-curl-head-forbidden \
+	test-curl-header-script \
+	test-curl-cookie-script \
+	$(NULL)
+
+test_curl_SOURCES = \
+	test-curl.c \
+	web-server.c \
+	web-server.h \
+	test.h \
+	requires.c \
+	requires.h \
+	$(NULL)
+test_curl_CPPFLAGS = \
+	-I$(top_srcdir)/common/utils \
+	-I$(top_srcdir)/common/include \
+	$(NULL)
+test_curl_CFLAGS = \
+	$(WARNINGS_CFLAGS) \
+	$(LIBGUESTFS_CFLAGS) \
+	$(PTHREAD_CFLAGS) \
+	$(NULL)
+test_curl_LDFLAGS = \
+	$(top_builddir)/common/utils/libutils.la \
+	$(PTHREAD_LIBS) \
+	$(NULL)
+test_curl_LDADD = \
+	libtest.la \
+	$(LIBGUESTFS_LIBS) \
+	$(NULL)
+
+test_curl_head_forbidden_SOURCES = \
+	test-curl-head-forbidden.c \
+	web-server.c \
+	web-server.h \
+	requires.c \
+	requires.h \
+	$(NULL)
+test_curl_head_forbidden_CPPFLAGS = \
+	-I$(top_srcdir)/common/include \
+	-I$(top_srcdir)/common/utils \
+	$(NULL)
+test_curl_head_forbidden_CFLAGS = \
+	$(WARNINGS_CFLAGS) \
+	$(LIBNBD_CFLAGS) \
+	$(PTHREAD_CFLAGS) \
+	$(NULL)
+test_curl_head_forbidden_LDFLAGS = \
+	$(top_builddir)/common/utils/libutils.la \
+	$(PTHREAD_LIBS) \
+	$(NULL)
+test_curl_head_forbidden_LDADD = \
+	$(LIBNBD_LIBS) \
+	$(NULL)
+
+test_curl_header_script_SOURCES = \
+	test-curl-header-script.c \
+	web-server.c \
+	web-server.h \
+	requires.c \
+	requires.h \
+	$(NULL)
+test_curl_header_script_CPPFLAGS = \
+	-I$(top_srcdir)/common/include \
+	-I$(top_srcdir)/common/utils \
+	$(NULL)
+test_curl_header_script_CFLAGS = \
+	$(WARNINGS_CFLAGS) \
+	$(LIBNBD_CFLAGS) \
+	$(PTHREAD_CFLAGS) \
+	$(NULL)
+test_curl_header_script_LDFLAGS = \
+	$(top_builddir)/common/utils/libutils.la \
+	$(PTHREAD_LIBS) \
+	$(NULL)
+test_curl_header_script_LDADD = \
+	$(LIBNBD_LIBS) \
+	$(NULL)
+
+test_curl_cookie_script_SOURCES = \
+	test-curl-cookie-script.c \
+	web-server.c \
+	web-server.h \
+	requires.c \
+	requires.h \
+	$(NULL)
+test_curl_cookie_script_CPPFLAGS = \
+	-I$(top_srcdir)/common/include \
+	-I$(top_srcdir)/common/utils \
+	$(NULL)
+test_curl_cookie_script_CFLAGS = \
+	$(WARNINGS_CFLAGS) \
+	$(LIBNBD_CFLAGS) \
+	$(PTHREAD_CFLAGS) \
+	$(NULL)
+test_curl_cookie_script_LDFLAGS = \
+	$(top_builddir)/common/utils/libutils.la \
+	$(PTHREAD_LIBS) \
+	$(NULL)
+test_curl_cookie_script_LDADD = \
+	$(LIBNBD_LIBS) \
+	$(NULL)
+
+endif !IS_WINDOWS
+endif HAVE_CURL
+endif HAVE_MKE2FS_WITH_D
+
+# data plugin test.
+LIBGUESTFS_TESTS += test-data
+TESTS += \
+	test-data-64b.sh \
+	test-data-7E.sh \
+	test-data-bad.sh \
+	test-data-base64.sh \
+	test-data-extents.sh \
+	test-data-file.sh \
+	test-data-format.sh \
+	test-data-optimum.sh \
+	test-data-partition.sh \
+	test-data-raw.sh \
+	test-data-raw-copy.sh \
+	test-data-random-slice.sh \
+	test-data-random-slice2.sh \
+	test-data-reloffset.sh \
+	test-data-sectors.sh \
+	test-data-size.sh \
+	test-disk2data.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-data-64b.sh \
+	test-data-7E.sh \
+	test-data-bad.sh \
+	test-data-base64.sh \
+	test-data-extents.sh \
+	test-data-file.sh \
+	test-data-format.sh \
+	test-data-optimum.sh \
+	test-data-partition.sh \
+	test-data-raw.sh \
+	test-data-raw-copy.sh \
+	test-data-random-slice.sh \
+	test-data-random-slice2.sh \
+	test-data-reloffset.sh \
+	test-data-sectors.sh \
+	test-data-size.sh \
+	test-disk2data.sh \
+	$(NULL)
+
+test_data_SOURCES = test-data.c test.h
+test_data_CPPFLAGS = -I$(top_srcdir)/common/include
+test_data_CFLAGS = $(WARNINGS_CFLAGS) $(LIBGUESTFS_CFLAGS)
+test_data_LDADD = libtest.la $(LIBGUESTFS_LIBS)
+
+# eval plugin test.
+TESTS += \
+	test-eval.sh \
+	test-eval-file.sh \
+	test-eval-exports.sh \
+	test-eval-extents.sh \
+	test-eval-cache.sh \
+	test-eval-dump-plugin.sh \
+	test-eval-disconnect.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-eval.sh \
+	test-eval-file.sh \
+	test-eval-exports.sh \
+	test-eval-extents.sh \
+	test-eval-cache.sh \
+	test-eval-dump-plugin.sh \
+	test-eval-disconnect.sh \
+	$(NULL)
+
+# file plugin test.
+TESTS += \
+	test-file.sh \
+	test-file-size.sh \
+	test-file-readonly.sh \
+	test-file-fd.sh \
+	test-file-extents.sh \
+	test-file-dir.sh \
+	test-file-dirfd.sh \
+	test-file-reduce-memory-pressure-read-consistent.sh \
+	test-file-reduce-memory-pressure-read-effective.sh \
+	test-file-reduce-memory-pressure-write-consistent.sh \
+	test-file-reduce-memory-pressure-write-effective.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-file.sh \
+	test-file-size.sh \
+	test-file-readonly.sh \
+	test-file-fd.sh \
+	test-file-extents.sh \
+	test-file-dir.sh \
+	test-file-dirfd.sh \
+	test-file-reduce-memory-pressure-read-consistent.sh \
+	test-file-reduce-memory-pressure-read-effective.sh \
+	test-file-reduce-memory-pressure-write-consistent.sh \
+	test-file-reduce-memory-pressure-write-effective.sh \
+	$(NULL)
+LIBGUESTFS_TESTS += test-file-block
+LIBNBD_TESTS += test-file-block-nbd
+
+test_file_block_SOURCES = test-file-block.c test.h requires.c requires.h
+test_file_block_CFLAGS = $(WARNINGS_CFLAGS) $(LIBGUESTFS_CFLAGS)
+test_file_block_LDADD = libtest.la $(LIBGUESTFS_LIBS)
+
+test_file_block_nbd_SOURCES = test-file-block-nbd.c requires.c requires.h
+test_file_block_nbd_CFLAGS = $(WARNINGS_CFLAGS) $(LIBNBD_CFLAGS)
+test_file_block_nbd_LDADD = $(LIBNBD_LIBS)
+
+# floppy plugin test.
+TESTS += \
+	test-floppy.sh \
+	test-floppy-size.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-floppy.sh \
+	test-floppy-size.sh \
+	$(NULL)
+
+# full plugin test.
+TESTS += test-full.sh
+EXTRA_DIST += test-full.sh
+
+# info plugin test.
+TESTS += \
+	test-info-address.sh \
+	test-info-base64.sh \
+	test-info-raw.sh \
+	test-info-time.sh \
+	test-info-uptime.sh \
+	test-info-conntime.sh \
+	test-info-version.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-info-address.sh \
+	test-info-base64.sh \
+	test-info-raw.sh \
+	test-info-time.sh \
+	test-info-uptime.sh \
+	test-info-conntime.sh \
+	test-info-version.sh \
+	$(NULL)
+
+# iso plugin test.
+if HAVE_ISO
+TESTS += test-iso.sh
+endif HAVE_ISO
+EXTRA_DIST += test-iso.sh
+
+# linuxdisk plugin test.
+if HAVE_MKE2FS_WITH_D
+TESTS += \
+	test-linuxdisk.sh \
+	test-linuxdisk-copy-out.sh \
+	$(NULL)
+endif HAVE_MKE2FS_WITH_D
+EXTRA_DIST += \
+	test-linuxdisk.sh \
+	test-linuxdisk-copy-out.sh \
+	$(NULL)
+
+# memory plugin test.
+LIBGUESTFS_TESTS += \
+	test-memory \
+	test-memory-allocator-malloc \
+	$(NULL)
+if HAVE_LIBZSTD
+LIBGUESTFS_TESTS += test-memory-allocator-zstd
+endif HAVE_LIBZSTD
+TESTS += \
+	test-memory-allocator-malloc.sh \
+	test-memory-allocator-malloc-mlock.sh \
+	test-memory-largest.sh \
+	test-memory-largest-for-qemu.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-memory-allocator-malloc.sh \
+	test-memory-allocator-malloc-mlock.sh \
+	test-memory-largest.sh \
+	test-memory-largest-for-qemu.sh \
+	$(NULL)
+
+test_memory_SOURCES = test-memory.c test.h
+test_memory_CPPFLAGS = -DALLOCATOR='"sparse"'
+test_memory_CFLAGS = $(WARNINGS_CFLAGS) $(LIBGUESTFS_CFLAGS)
+test_memory_LDADD = libtest.la $(LIBGUESTFS_LIBS)
+
+test_memory_allocator_malloc_SOURCES = test-memory.c test.h
+test_memory_allocator_malloc_CPPFLAGS = -DALLOCATOR='"malloc"'
+test_memory_allocator_malloc_CFLAGS = $(WARNINGS_CFLAGS) $(LIBGUESTFS_CFLAGS)
+test_memory_allocator_malloc_LDADD = libtest.la $(LIBGUESTFS_LIBS)
+
+if HAVE_LIBZSTD
+test_memory_allocator_zstd_SOURCES = test-memory.c test.h
+test_memory_allocator_zstd_CPPFLAGS = -DALLOCATOR='"zstd"'
+test_memory_allocator_zstd_CFLAGS = $(WARNINGS_CFLAGS) $(LIBGUESTFS_CFLAGS)
+test_memory_allocator_zstd_LDADD = libtest.la $(LIBGUESTFS_LIBS)
+endif HAVE_LIBZSTD
+
+if HAVE_LIBNBD
+# nbd plugin test.
+LIBGUESTFS_TESTS += test-nbd
+TESTS += \
+	test-nbd-block-size.sh \
+	test-nbd-dynamic-content.sh \
+	test-nbd-dynamic-list.sh \
+	test-nbd-extents.sh \
+	test-nbd-qcow2.sh \
+	test-nbd-tls.sh \
+	test-nbd-tls-psk.sh \
+	test-nbd-vsock.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-nbd-block-size.sh \
+	test-nbd-dynamic-content.sh \
+	test-nbd-dynamic-list.sh \
+	test-nbd-extents.sh \
+	test-nbd-qcow2.sh \
+	test-nbd-tls.sh \
+	test-nbd-tls-psk.sh \
+	test-nbd-vsock.sh \
+	$(NULL)
+
+test_nbd_SOURCES = test-nbd.c test.h
+test_nbd_CFLAGS = $(WARNINGS_CFLAGS) $(LIBGUESTFS_CFLAGS)
+test_nbd_LDADD = libtest.la $(LIBGUESTFS_LIBS)
+endif HAVE_LIBNBD
+
+# null plugin test.
+LIBNBD_TESTS += test-null
+TESTS += test-null-extents.sh
+EXTRA_DIST += test-null-extents.sh
+
+test_null_SOURCES = test-null.c
+test_null_CFLAGS = $(WARNINGS_CFLAGS) $(LIBNBD_CFLAGS)
+test_null_LDADD = $(LIBNBD_LIBS)
+
+# ondemand plugin test.
+TESTS += \
+	test-ondemand.sh \
+	test-ondemand-list.sh \
+	test-ondemand-locking.sh \
+	test-ondemand-share.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-ondemand.sh \
+	test-ondemand-list.sh \
+	test-ondemand-locking.sh \
+	test-ondemand-share.sh \
+	$(NULL)
+
+# ones plugin test.
+TESTS += test-ones.sh
+EXTRA_DIST += test-ones.sh
+
+# partitioning plugin test.
+TESTS += \
+	test-partitioning1.sh \
+	test-partitioning2.sh \
+	test-partitioning3.sh \
+	test-partitioning4.sh \
+	test-partitioning5.sh \
+	test-partitioning6.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-partitioning1.sh \
+	test-partitioning2.sh \
+	test-partitioning3.sh \
+	test-partitioning4.sh \
+	test-partitioning5.sh \
+	test-partitioning6.sh \
+	$(NULL)
+
+# pattern plugin test.
+TESTS += \
+	test-pattern.sh \
+	test-pattern-largest.sh \
+	test-pattern-largest-for-qemu.sh \
+	test-pattern-stride.sh \
+	test-pattern-upper.sh \
+	test-pattern-upper-random.sh \
+	test-pattern-copy.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-pattern.sh \
+	test-pattern-largest.sh \
+	test-pattern-largest-for-qemu.sh \
+	test-pattern-stride.sh \
+	test-pattern-upper.sh \
+	test-pattern-upper-random.sh \
+	test-pattern-copy.sh \
+	$(NULL)
+
+# random plugin test.
+LIBNBD_TESTS += test-random
+TESTS += \
+	test-random-copy.sh \
+	test-random-seed.sh \
+	test-random-seed-fast.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-random-copy.sh \
+	test-random-seed.sh \
+	test-random-seed-fast.sh \
+	$(NULL)
+
+test_random_SOURCES = test-random.c
+test_random_CPPFLAGS = -I $(top_srcdir)/common/include
+test_random_CFLAGS = $(WARNINGS_CFLAGS) $(LIBNBD_CFLAGS)
+test_random_LDADD = $(LIBNBD_LIBS)
+
+# S3 plugin test.
+TESTS += \
+	test-S3.sh \
+	test-S3-unit.sh
+EXTRA_DIST += \
+	test-S3.sh \
+	test-S3-unit.sh \
+	test-S3/boto3/__init__.py \
+	test-S3/botocore/exceptions.py \
+	$(NULL)
+
+# gcs plugin test.
+TESTS += \
+	test-gcs.sh \
+	test-gcs-unit.sh
+EXTRA_DIST += \
+	test-gcs.sh \
+	test-gcs-unit.sh \
+	test-gcs/google/cloud/storage/__init__.py \
+	test-gcs/google/api_core/exceptions.py \
+	test-gcs/google/api_core/__init__.py \
+	$(NULL)
+
+# sparse-random plugin test.
+TESTS += \
+	test-sparse-random-blocksize.sh \
+	test-sparse-random-copy.sh \
+	test-sparse-random-info.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-sparse-random-blocksize.sh \
+	test-sparse-random-copy.sh \
+	test-sparse-random-info.sh \
+	$(NULL)
+
+# split files plugin test.
+check_DATA += split1 split2 split3
+CLEANFILES += split1 split2 split3
+split1: file-data
+	rm -f $@ $@-t
+	dd if=$< of=$@-t bs=1 count=100
+	mv $@-t $@
+split2: file-data
+	rm -f $@ $@-t
+	dd if=$< of=$@-t bs=1 count=100 skip=100
+	mv $@-t $@
+split3: file-data
+	rm -f $@ $@-t
+	dd if=$< of=$@-t bs=1 skip=200
+	mv $@-t $@
+LIBNBD_TESTS += test-split
+
+test_split_SOURCES = test-split.c
+test_split_CFLAGS = $(WARNINGS_CFLAGS) $(LIBNBD_CFLAGS)
+test_split_LDADD = $(LIBNBD_LIBS)
+
+TESTS += \
+	test-split-cache.sh \
+	test-split-extents.sh \
+	test-split-extents-overread.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-split-cache.sh \
+	test-split-extents.sh \
+	test-split-extents-overread.sh \
+	$(NULL)
+
+# ssh plugin test.
+EXTRA_DIST += \
+	test-ssh.sh \
+	$(NULL)
+
+if HAVE_SSH
+TESTS += test-ssh.sh
+endif HAVE_SSH
+
+# tmpdisk plugin test.
+LIBGUESTFS_TESTS += test-tmpdisk
+TESTS += test-tmpdisk-command.sh
+EXTRA_DIST += test-tmpdisk-command.sh
+
+test_tmpdisk_SOURCES = \
+	test-tmpdisk.c \
+	test.h \
+	requires.c \
+	requires.h \
+	$(NULL)
+test_tmpdisk_CPPFLAGS = \
+	-I$(top_srcdir)/common/utils
+test_tmpdisk_CFLAGS = \
+	$(WARNINGS_CFLAGS) \
+	$(LIBGUESTFS_CFLAGS) \
+	$(NULL)
+test_tmpdisk_LDFLAGS = \
+	$(top_builddir)/common/utils/libutils.la \
+	$(NULL)
+test_tmpdisk_LDADD = \
+	libtest.la \
+	$(LIBGUESTFS_LIBS) \
+	$(NULL)
+
+if HAVE_VDDK
+# VDDK plugin test.
+
+# check_LTLIBRARIES won't build a shared library (see automake manual).
+# So we have to do this and add a dependency.
+noinst_LTLIBRARIES += libvixDiskLib.la
+LIBGUESTFS_TESTS += test-vddk
+TESTS += \
+	test-vddk-dump-plugin.sh \
+	test-vddk-password-fd.sh \
+	test-vddk-password-interactive.sh \
+	test-vddk-real-create.sh \
+	test-vddk-real-dump-plugin.sh \
+	test-vddk-real-unaligned-chunk.sh \
+	test-vddk-real.sh \
+	test-vddk-reexec.sh \
+	test-vddk-run.sh \
+	$(NULL)
+
+test_vddk_SOURCES = test-vddk.c test.h requires.c requires.h
+test_vddk_CPPFLAGS = -I$(top_srcdir)/common/include
+test_vddk_CFLAGS = $(WARNINGS_CFLAGS) $(LIBGUESTFS_CFLAGS)
+test_vddk_LDADD = libtest.la $(LIBGUESTFS_LIBS)
+
+libvixDiskLib_la_SOURCES = \
+	dummy-vddk.c \
+	$(NULL)
+libvixDiskLib_la_CPPFLAGS = \
+	-I$(top_srcdir)/plugins/vddk \
+	-I$(top_srcdir)/include \
+	-I$(top_builddir)/include \
+	$(NULL)
+libvixDiskLib_la_CFLAGS = $(WARNINGS_CFLAGS)
+# For use of the -rpath option, see:
+# https://lists.gnu.org/archive/html/libtool/2007-07/msg00067.html
+libvixDiskLib_la_LDFLAGS = \
+	-shared -version-number 6:0:0 -no-undefined -rpath /nowhere \
+	$(NULL)
+endif HAVE_VDDK
+
+if HAVE_OPENCL
+# vram plugin test.
+
+LIBGUESTFS_TESTS += test-vram
+
+test_vram_SOURCES = test-vram.c test.h requires.c requires.h
+test_vram_CFLAGS = \
+	$(WARNINGS_CFLAGS) \
+	$(LIBGUESTFS_CFLAGS) \
+	$(NULL)
+test_vram_LDADD = libtest.la $(LIBGUESTFS_LIBS)
+
+endif HAVE_OPENCL
+
+EXTRA_DIST += \
+	test-vddk-dump-plugin.sh \
+	test-vddk-password-fd.sh \
+	test-vddk-password-interactive.sh \
+	test-vddk-real-create.sh \
+	test-vddk-real-dump-plugin.sh \
+	test-vddk-real-unaligned-chunk.sh \
+	test-vddk-real.sh \
+	test-vddk-reexec.sh \
+	test-vddk-run.sh \
+	$(NULL)
+
+# zero plugin test.
+TESTS += test-zero.sh
+EXTRA_DIST += test-zero.sh
+
+#----------------------------------------------------------------------
+# Tests of language plugins.
+
+# OCaml plugin test.
+if HAVE_OCAML
+
+LIBGUESTFS_TESTS += test-ocaml
+LIBNBD_TESTS += test-ocaml-errorcodes
+TESTS += \
+	test-ocaml-fork.sh \
+	test-ocaml-dump-plugin.sh \
+	test-ocaml-list-exports.sh \
+	test-ocamlexample-plugin.sh \
+	test-ocaml-debug-hexdump.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-ocaml-fork.sh \
+	test-ocaml-dump-plugin.sh \
+	test-ocaml-list-exports.sh \
+	test-ocamlexample-plugin.sh \
+	test-ocaml-debug-hexdump.sh \
+	$(NULL)
+
+test_ocaml_SOURCES = test-ocaml.c test.h requires.c requires.h
+test_ocaml_CFLAGS = \
+	$(WARNINGS_CFLAGS) \
+	$(LIBGUESTFS_CFLAGS) \
+	$(NULL)
+test_ocaml_LDADD = libtest.la $(LIBGUESTFS_LIBS)
+
+test_ocaml_errorcodes_SOURCES = test-ocaml-errorcodes.c requires.c requires.h
+test_ocaml_errorcodes_CPPFLAGS = -I$(top_srcdir)/common/include
+test_ocaml_errorcodes_CFLAGS = $(WARNINGS_CFLAGS) $(LIBNBD_CFLAGS)
+test_ocaml_errorcodes_LDADD = $(LIBNBD_LIBS)
+
+check_SCRIPTS += \
+	test-ocaml-plugin.so \
+	test-ocaml-debug-hexdump-plugin.so \
+	test-ocaml-errorcodes-plugin.so \
+	$(NULL)
+
+OCAML_PLUGIN_DEPS = \
+	../plugins/ocaml/libnbdkitocaml.la \
+	../plugins/ocaml/NBDKit.cmi \
+	../plugins/ocaml/NBDKit.cmx
+
+test-ocaml-plugin.so: test_ocaml_plugin.cmx $(OCAML_PLUGIN_DEPS)
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) $(OCAML_STD_INCLUDES) -I ../plugins/ocaml \
+	  -output-obj -runtime-variant _pic -o $@ \
+	  $(OCAML_PLUGIN_LIBRARIES) NBDKit.cmx $< \
+	  -cclib -L../plugins/ocaml/.libs -cclib -lnbdkitocaml
+test_ocaml_plugin.cmx: test_ocaml_plugin.ml $(OCAML_PLUGIN_DEPS)
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) $(OCAML_STD_INCLUDES) -I ../plugins/ocaml \
+	  -c $< -o $@
+
+test-ocaml-debug-hexdump-plugin.so: \
+	    test_ocaml_debug_hexdump_plugin.cmx $(OCAML_PLUGIN_DEPS)
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) $(OCAML_STD_INCLUDES) -I ../plugins/ocaml \
+	  -output-obj -runtime-variant _pic -o $@ \
+	  $(OCAML_PLUGIN_LIBRARIES) NBDKit.cmx $< \
+	  -cclib -L../plugins/ocaml/.libs -cclib -lnbdkitocaml
+test_ocaml_debug_hexdump_plugin.cmx: \
+	    test_ocaml_debug_hexdump_plugin.ml $(OCAML_PLUGIN_DEPS)
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) $(OCAML_STD_INCLUDES) -I ../plugins/ocaml \
+	  -c $< -o $@
+
+test-ocaml-errorcodes-plugin.so: \
+	    test_ocaml_errorcodes_plugin.cmx $(OCAML_PLUGIN_DEPS)
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) $(OCAML_STD_INCLUDES) -I ../plugins/ocaml \
+	  -output-obj -runtime-variant _pic -o $@ \
+	  $(OCAML_PLUGIN_LIBRARIES) NBDKit.cmx $< \
+	  -cclib -L../plugins/ocaml/.libs -cclib -lnbdkitocaml
+test_ocaml_errorcodes_plugin.cmx: \
+	    test_ocaml_errorcodes_plugin.ml $(OCAML_PLUGIN_DEPS)
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) $(OCAML_STD_INCLUDES) -I ../plugins/ocaml \
+	  -c $< -o $@
+
+endif HAVE_OCAML
+
+EXTRA_DIST += \
+	test_ocaml_plugin.ml \
+	test_ocaml_debug_hexdump_plugin.ml \
+	test_ocaml_errorcodes_plugin.ml \
+	test-ocaml.c \
+	$(NULL)
+
+# perl plugin test.
+if HAVE_PERL
+
+TESTS += \
+	test-dump-plugin-example4.sh \
+	test-shebang-perl.sh \
+	$(NULL)
+EXTRA_DIST += \
+	shebang.pl \
+	test.pl \
+	test-dump-plugin-example4.sh \
+	test-shebang-perl.sh \
+	$(NULL)
+LIBGUESTFS_TESTS += test-perl
+
+test_perl_SOURCES = test-lang-plugins.c test.h requires.c requires.h
+test_perl_CFLAGS = \
+	-DLANG='"perl"' -DSCRIPT='"$(srcdir)/test.pl"' \
+	$(WARNINGS_CFLAGS) \
+	$(LIBGUESTFS_CFLAGS) \
+	$(NULL)
+test_perl_LDADD = libtest.la $(LIBGUESTFS_LIBS)
+
+endif HAVE_PERL
+
+# python plugin test.
+if HAVE_PYTHON
+
+TESTS += \
+	test-python.sh \
+	test-python-debug-hexdump.sh \
+	test-python-error.sh \
+	test-python-exception.sh \
+	test-python-export-name.sh \
+	test-python-export-list.sh \
+	test-python-is-tls.sh \
+	test-python-name.sh \
+	test-python-password.sh \
+	test-python-peer.sh \
+	test-python-thread-model.sh \
+	test-python-timestamp.sh \
+	test-shebang-python.sh \
+	test-shebang-crlf.sh \
+	$(NULL)
+EXTRA_DIST += \
+	python-debug-hexdump.py \
+	python-error.py \
+	python-exception.py \
+	python-export-name.py \
+	python-export-list.py \
+	python-is-tls.py \
+	python-name.py \
+	python-password.py \
+	python-peer.py \
+	python-thread-model.py \
+	python-timestamp.py \
+	shebang.py \
+	test-python-debug-hexdump.sh \
+	test-python-error.sh \
+	test-python-exception.sh \
+	test-python-export-name.sh \
+	test-python-export-list.sh \
+	test-python-is-tls.sh \
+	test-python-password.sh \
+	test-python-peer.sh \
+	test-python-plugin.py \
+	test-python-name.sh \
+	test-python-thread-model.sh \
+	test-python-timestamp.sh \
+	test-python.sh \
+	test-shebang-python.sh \
+	test-shebang-crlf.sh \
+	test_python.py \
+	$(NULL)
+
+# We can't trust that git will preserve the line endings accurately in
+# shebang-crlf.py (see core.autocrlf feature).  So we generate it
+# before the test is run.
+test-shebang-crlf.sh: shebang-crlf.py
+shebang-crlf.py:
+	rm -f $@-t $@
+	printf '#!../nbdkit python\r\n' > $@-t
+	chmod +x $@-t
+	mv $@-t $@
+DISTCLEANFILES += shebang-crlf.py
+
+endif HAVE_PYTHON
+
+# Shell (sh) plugin test.
+LIBGUESTFS_TESTS += test-shell
+check_DATA += test-shell.img
+EXTRA_DIST += test-shell.sh
+CLEANFILES += test-shell.img
+
+test_shell_SOURCES = test-lang-plugins.c test.h requires.c requires.h
+test_shell_CFLAGS = \
+	-DLANG='"sh"' -DSCRIPT='"$(srcdir)/test-shell.sh"' \
+	$(WARNINGS_CFLAGS) \
+	$(LIBGUESTFS_CFLAGS) \
+	$(NULL)
+test_shell_LDADD = libtest.la $(LIBGUESTFS_LIBS)
+
+test-shell.img:
+	$(TRUNCATE) -s 1048576 $@
+
+TESTS += \
+	test-sh-errors.sh \
+	test-sh-example.sh \
+	test-sh-extents.sh \
+	test-sh-pwrite-ignore-stdin.sh \
+	test-sh-tmpdir-leak.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-sh-errors.sh \
+	test-sh-example.sh \
+	test-sh-extents.sh \
+	test-sh-pwrite-ignore-stdin.sh \
+	test-sh-tmpdir-leak.sh \
+	$(NULL)
+
+# Tcl plugin test.
+EXTRA_DIST += test.tcl
+
+if HAVE_TCL
+
+LIBGUESTFS_TESTS += test-tcl
+
+test_tcl_SOURCES = test-lang-plugins.c test.h requires.c requires.h
+test_tcl_CFLAGS = \
+	-DLANG='"tcl"' -DSCRIPT='"$(srcdir)/test.tcl"' \
+	$(WARNINGS_CFLAGS) \
+	$(LIBGUESTFS_CFLAGS) \
+	$(NULL)
+test_tcl_LDADD = libtest.la $(LIBGUESTFS_LIBS)
+
+endif HAVE_TCL
+
+# Lua plugin test.
+EXTRA_DIST += test.lua
+
+if HAVE_LUA
+
+LIBGUESTFS_TESTS += test-lua
+
+test_lua_SOURCES = test-lang-plugins.c test.h requires.c requires.h
+test_lua_CFLAGS = \
+	-DLANG='"lua"' -DSCRIPT='"$(srcdir)/test.lua"' \
+	$(WARNINGS_CFLAGS) \
+	$(LIBGUESTFS_CFLAGS) \
+	$(NULL)
+test_lua_LDADD = libtest.la $(LIBGUESTFS_LIBS)
+
+endif HAVE_LUA
+
+# Golang plugin test.
+EXTRA_DIST += \
+	test-golang-block-size.sh \
+	test-golang-copy-out.sh \
+	test-golang-dump-plugin.sh \
+	test-golang-exports.sh \
+	test-golang-extents.sh \
+	test-golang-fork-warning.sh \
+	test-golang-list-exports.sh \
+	test-golang-magic.sh \
+	test-golang-map.sh \
+	test-golang-name.sh \
+	test-golang-version.sh \
+	$(NULL)
+
+if HAVE_GOLANG
+
+TESTS += \
+	test-golang-block-size.sh \
+	test-golang-copy-out.sh \
+	test-golang-dump-plugin.sh \
+	test-golang-exports.sh \
+	test-golang-extents.sh \
+	test-golang-fork-warning.sh \
+	test-golang-list-exports.sh \
+	test-golang-magic.sh \
+	test-golang-map.sh \
+	test-golang-name.sh \
+	test-golang-version.sh \
+	$(NULL)
+LIBGUESTFS_TESTS += test-golang
+
+test_golang_SOURCES = test-golang.c test.h requires.c requires.h
+test_golang_CFLAGS = \
+	$(WARNINGS_CFLAGS) \
+	$(LIBGUESTFS_CFLAGS) \
+	$(NULL)
+test_golang_LDADD = libtest.la $(LIBGUESTFS_LIBS)
+
+endif HAVE_GOLANG
+
+# CC plugin test.
+TESTS += \
+	test-cc.sh \
+	test-cc-cpp.sh \
+	test-shebang-cc.sh \
+	$(NULL)
+if HAVE_OCAML
+TESTS += \
+	test-cc-ocaml.sh \
+	test-shebang-cc-ocaml.sh \
+	$(NULL)
+endif
+EXTRA_DIST += \
+	cc-shebang.c \
+	cc_shebang.ml \
+	test-cc.sh \
+	test-cc-cpp.cpp \
+	test-cc-cpp.sh \
+	test-cc-ocaml.sh \
+	test-shebang-cc.sh \
+	test-shebang-cc-ocaml.sh \
+	$(NULL)
+
+#----------------------------------------------------------------------
+# Tests of filters.
+
+# Generic test of filter layers.
+TESTS += \
+	test-layers.sh \
+	$(NULL)
+EXTRA_DIST += test-layers.sh
+LIBNBD_TESTS += test-layers
+
+test_layers_SOURCES = \
+	test-layers.c \
+	requires.c \
+	requires.h \
+	$(NULL)
+test_layers_CPPFLAGS = \
+	-I$(top_srcdir)/common/include \
+	-I$(top_srcdir)/common/protocol \
+	-I$(top_srcdir)/common/utils \
+	-I$(top_srcdir)/server \
+	$(NULL)
+test_layers_CFLAGS = \
+	$(WARNINGS_CFLAGS) \
+	$(PTHREAD_CFLAGS) \
+	$(LIBNBD_CFLAGS) \
+	$(NULL)
+test_layers_LDFLAGS = \
+	$(PTHREAD_LIBS) \
+	$(LIBNBD_LIBS) \
+	$(NULL)
+test_layers_LDADD = \
+	$(top_builddir)/common/utils/libutils.la \
+	$(NULL)
+EXTRA_test_layers_DEPENDENCIES = \
+	test-layers-plugin.la \
+	test-layers-filter1.la \
+	test-layers-filter2.la \
+	test-layers-filter3.la \
+	$(NULL)
+
+# check_LTLIBRARIES won't build a shared library (see automake manual).
+# So we have to do this and add a dependency.
+noinst_LTLIBRARIES += \
+	test-layers-plugin.la \
+	test-layers-filter1.la \
+	test-layers-filter2.la \
+	test-layers-filter3.la \
+	$(NULL)
+
+test_layers_plugin_la_SOURCES = \
+	test-layers-plugin.c \
+	$(top_srcdir)/include/nbdkit-plugin.h \
+	$(NULL)
+test_layers_plugin_la_CPPFLAGS = \
+	-I$(top_srcdir)/include \
+	-I$(top_builddir)/include \
+	$(NULL)
+test_layers_plugin_la_CFLAGS = $(WARNINGS_CFLAGS)
+# For use of the -rpath option, see:
+# https://lists.gnu.org/archive/html/libtool/2007-07/msg00067.html
+test_layers_plugin_la_LDFLAGS = \
+	-module -avoid-version -shared $(NO_UNDEFINED_ON_WINDOWS) -rpath /nowhere \
+	$(NULL)
+test_layers_plugin_la_LIBADD = $(IMPORT_LIBRARY_ON_WINDOWS)
+
+test_layers_filter1_la_SOURCES = \
+	test-layers-filter.c \
+	$(top_srcdir)/include/nbdkit-filter.h \
+	$(NULL)
+test_layers_filter1_la_CPPFLAGS = \
+	-I$(top_srcdir)/include \
+	-I$(top_builddir)/include \
+	$(NULL)
+test_layers_filter1_la_CFLAGS = $(WARNINGS_CFLAGS) -Dlayer='"filter1"'
+# For use of the -rpath option, see:
+# https://lists.gnu.org/archive/html/libtool/2007-07/msg00067.html
+test_layers_filter1_la_LDFLAGS = \
+	-module -avoid-version -shared $(NO_UNDEFINED_ON_WINDOWS) -rpath /nowhere \
+	$(NULL)
+test_layers_filter1_la_LIBADD = $(IMPORT_LIBRARY_ON_WINDOWS)
+
+test_layers_filter2_la_SOURCES = \
+	test-layers-filter.c \
+	$(top_srcdir)/include/nbdkit-filter.h \
+	$(NULL)
+test_layers_filter2_la_CPPFLAGS = \
+	-I$(top_srcdir)/include \
+	-I$(top_builddir)/include \
+	$(NULL)
+test_layers_filter2_la_CFLAGS = $(WARNINGS_CFLAGS) -Dlayer='"filter2"'
+# For use of the -rpath option, see:
+# https://lists.gnu.org/archive/html/libtool/2007-07/msg00067.html
+test_layers_filter2_la_LDFLAGS = \
+	-module -avoid-version -shared $(NO_UNDEFINED_ON_WINDOWS) -rpath /nowhere \
+	$(NULL)
+test_layers_filter2_la_LIBADD = $(IMPORT_LIBRARY_ON_WINDOWS)
+
+test_layers_filter3_la_SOURCES = \
+	test-layers-filter.c \
+	$(top_srcdir)/include/nbdkit-filter.h \
+	$(NULL)
+test_layers_filter3_la_CPPFLAGS = \
+	-I$(top_srcdir)/include \
+	-I$(top_builddir)/include \
+	$(NULL)
+test_layers_filter3_la_CFLAGS = $(WARNINGS_CFLAGS) -Dlayer='"filter3"'
+# For use of the -rpath option, see:
+# https://lists.gnu.org/archive/html/libtool/2007-07/msg00067.html
+test_layers_filter3_la_LDFLAGS = \
+	-module -avoid-version -shared $(NO_UNDEFINED_ON_WINDOWS) -rpath /nowhere \
+	$(NULL)
+test_layers_filter3_la_LIBADD = $(IMPORT_LIBRARY_ON_WINDOWS)
+
+# blocksize filter test.
+TESTS += \
+	test-blocksize.sh \
+	test-blocksize-extents.sh \
+	test-blocksize-extents-overflow.sh \
+	test-blocksize-default.sh \
+	test-blocksize-sharding.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-blocksize.sh \
+	test-blocksize-extents.sh \
+	test-blocksize-extents-overflow.sh \
+	test-blocksize-default.sh \
+	test-blocksize-sharding.sh \
+	$(NULL)
+
+# blocksize-policy filter test.
+TESTS += \
+	test-blocksize-policy.sh \
+	test-blocksize-error-policy.sh \
+	test-blocksize-write-disconnect.sh \
+	test-blocksize-policy-extents.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-blocksize-policy.sh \
+	test-blocksize-error-policy.sh \
+	test-blocksize-write-disconnect.sh \
+	test-blocksize-policy-extents.sh \
+	$(NULL)
+
+if HAVE_BZLIB
+# bzip2 filter test.
+LIBGUESTFS_TESTS += test-bzip2
+
+test_bzip2_SOURCES = test-bzip2.c requires.c requires.h test.h
+test_bzip2_CFLAGS = $(WARNINGS_CFLAGS) $(LIBGUESTFS_CFLAGS)
+test_bzip2_LDADD = libtest.la $(LIBGUESTFS_LIBS)
+endif HAVE_BZLIB
+
+# cache filter test.
+TESTS += \
+	test-cache.sh \
+	test-cache-block-size.sh \
+	test-cache-on-read.sh \
+	test-cache-on-read-caches.sh \
+	test-cache-max-size.sh \
+	test-cache-unaligned.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-cache.sh \
+	test-cache-block-size.sh \
+	test-cache-on-read.sh \
+	test-cache-on-read-caches.sh \
+	test-cache-max-size.sh \
+	test-cache-unaligned.sh \
+	$(NULL)
+
+# checkwrite filter test.
+TESTS += \
+	test-checkwrite.sh \
+	test-checkwrite-bounds.sh \
+	test-checkwrite-evil.sh \
+	test-checkwrite-fail.sh \
+	test-checkwrite-fastzero.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-checkwrite.sh \
+	test-checkwrite-bounds.sh \
+	test-checkwrite-evil.sh \
+	test-checkwrite-fail.sh \
+	test-checkwrite-fastzero.sh \
+	$(NULL)
+
+# count filter test.
+TESTS += test-count.sh
+EXTRA_DIST += test-count.sh
+
+# cow filter test.
+if HAVE_MKE2FS_WITH_D
+TESTS += \
+	test-cow.sh \
+	test-cow-block-size.sh \
+	test-cow-export-safe.sh \
+	test-cow-extents1.sh \
+	test-cow-extents2.sh \
+	test-cow-extents-large.sh \
+	test-cow-on-read.sh \
+	test-cow-on-read-caches.sh \
+	test-cow-unaligned.sh \
+	$(NULL)
+endif
+TESTS += \
+	test-cow-huge.sh \
+	test-cow-null.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-cow.sh \
+	test-cow-block-size.sh \
+	test-cow-export-safe.sh \
+	test-cow-extents1.sh \
+	test-cow-extents2.sh \
+	test-cow-extents-large.sh \
+	test-cow-huge.sh \
+	test-cow-null.sh \
+	test-cow-on-read.sh \
+	test-cow-on-read-caches.sh \
+	test-cow-unaligned.sh \
+	$(NULL)
+
+# ddrescue filter tests.
+TESTS += test-ddrescue-filter.sh
+EXTRA_DIST += test-ddrescue-filter.sh
+
+# delay filter tests.
+TESTS += \
+	test-delay-close.sh \
+	test-delay-open.sh \
+	test-delay-shutdown.sh \
+	test-delay-trigger.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-delay-close.sh \
+	test-delay-open.sh \
+	test-delay-shutdown.sh \
+	test-delay-trigger.sh \
+	$(NULL)
+LIBNBD_TESTS += test-delay
+
+test_delay_SOURCES = test-delay.c
+test_delay_CFLAGS = $(WARNINGS_CFLAGS) $(LIBNBD_CFLAGS)
+test_delay_LDADD = $(LIBNBD_LIBS)
+
+# error filter test.
+TESTS += \
+	test-error0.sh \
+	test-error10.sh \
+	test-error100.sh \
+	test-error-triggered.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-error0.sh \
+	test-error10.sh \
+	test-error100.sh \
+	test-error-triggered.sh \
+	$(NULL)
+
+# evil filter test.
+TESTS += \
+	test-evil-cosmic.sh \
+	test-evil-large-p.sh \
+	test-evil-small-p.sh \
+	test-evil-stuck-high-bits.sh \
+	test-evil-stuck-low-bits.sh \
+	test-evil-stuck-wires.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-evil-cosmic.sh \
+	test-evil-large-p.sh \
+	test-evil-small-p.sh \
+	test-evil-stuck-high-bits.sh \
+	test-evil-stuck-low-bits.sh \
+	test-evil-stuck-wires.sh \
+	$(NULL)
+
+# exitlast filter test.
+TESTS += test-exitlast.sh
+EXTRA_DIST += test-exitlast.sh
+
+# exitwhen filter test.
+TESTS += \
+	test-exitwhen-file-already-created.sh \
+	test-exitwhen-file-created.sh \
+	test-exitwhen-file-created-reject-new.sh \
+	test-exitwhen-file-created-when-idle.sh \
+	test-exitwhen-file-deleted.sh \
+	test-exitwhen-process-exits.sh \
+	test-exitwhen-script.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-exitwhen-file-already-created.sh \
+	test-exitwhen-file-created.sh \
+	test-exitwhen-file-created-reject-new.sh \
+	test-exitwhen-file-created-when-idle.sh \
+	test-exitwhen-file-deleted.sh \
+	test-exitwhen-process-exits.sh \
+	test-exitwhen-script.sh \
+	$(NULL)
+if !IS_WINDOWS
+check_PROGRAMS += test-exitwhen-pipe-closed
+TESTS += test-exitwhen-pipe-closed
+test_exitwhen_pipe_closed_CFLAGS = $(WARNINGS_CFLAGS)
+test_exitwhen_pipe_closed_SOURCES = \
+	test-exitwhen-pipe-closed.c \
+	requires.c \
+	requires.h \
+	$(NULL)
+endif
+
+# exportname filter test.
+TESTS += test-exportname.sh
+EXTRA_DIST += test-exportname.sh
+
+# ext2 filter test.
+if HAVE_QEMU_IMG
+if HAVE_MKE2FS_WITH_D
+if HAVE_EXT2
+
+LIBGUESTFS_TESTS += test-ext2
+
+test_ext2_SOURCES = test-ext2.c test.h
+test_ext2_CFLAGS = $(WARNINGS_CFLAGS) $(LIBGUESTFS_CFLAGS)
+test_ext2_LDADD = libtest.la $(LIBGUESTFS_LIBS)
+
+TESTS += test-ext2-exportname.sh test-ext2-parallel.sh
+EXTRA_DIST += test-ext2-exportname.sh test-ext2-parallel.sh
+
+check_DATA += ext2.img
+CLEANFILES += ext2.img
+
+# NB: truncate + explicit size is required because of a bug in mke2fs:
+# https://www.mail-archive.com/debian-bugs-dist@lists.debian.org/msg1813759.html
+ext2.img: disk test-ext2-exportname.sh
+	rm -rf $@ $@-t ext2.img.d
+	mkdir -p ext2.img.d/disks
+	cp $< ext2.img.d/disks/disk.img
+	echo /disks/disk.img > ext2.img.d/manifest
+	$(TRUNCATE) -s 2147483648 $@-t
+	mke2fs -q -F -t ext4 -d ext2.img.d $@-t
+	rm -r ext2.img.d
+	mv $@-t $@
+
+endif HAVE_EXT2
+endif HAVE_MKE2FS_WITH_D
+endif HAVE_QEMU_IMG
+
+# extentlist filter test.
+TESTS += \
+	test-extentlist.sh \
+	test-extentlist-from-qemu.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-extentlist.sh \
+	test-extentlist-from-qemu.sh \
+	$(NULL)
+
+# fua filter test.
+TESTS += \
+	test-fua.sh \
+	test-fua-flush-on-close.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-fua.sh \
+	test-fua-flush-on-close.sh \
+	$(NULL)
+
+# gzip filter test.
+LIBGUESTFS_TESTS += test-gzip
+
+test_gzip_SOURCES = test-gzip.c test.h requires.c requires.h
+test_gzip_CFLAGS = $(WARNINGS_CFLAGS) $(LIBGUESTFS_CFLAGS)
+test_gzip_LDADD = libtest.la $(LIBGUESTFS_LIBS)
+
+# indexed-gzip filter tests.
+TESTS += test-indexed-gzip-filter.sh
+EXTRA_DIST += test-indexed-gzip-filter.sh
+
+# ip filter test.
+TESTS += \
+	test-ip-filter.sh \
+	test-ip-filter-anyunix.sh \
+	test-ip-filter-anyvsock.sh \
+	test-ip-filter-dn.sh \
+	test-ip-filter-issuer-dn.sh \
+	test-ip-filter-pid.sh \
+	test-ip-filter-uid.sh \
+	test-ip-filter-gid.sh \
+	test-ip-filter-security.sh \
+	test-ip-filter-deny-list.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-ip-filter.sh \
+	test-ip-filter-anyunix.sh \
+	test-ip-filter-anyvsock.sh \
+	test-ip-filter-dn.sh \
+	test-ip-filter-issuer-dn.sh \
+	test-ip-filter-pid.sh \
+	test-ip-filter-uid.sh \
+	test-ip-filter-gid.sh \
+	test-ip-filter-security.sh \
+	test-ip-filter-deny-list.sh \
+	$(NULL)
+
+# limit filter test.
+TESTS += test-limit.sh
+EXTRA_DIST += test-limit.sh
+
+# log filter test.
+TESTS += \
+	test-log.sh \
+	test-log-error.sh \
+	test-log-extents.sh \
+	test-log-script.sh \
+	test-log-script-info.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-log.sh \
+	test-log-error.sh \
+	test-log-extents.sh \
+	test-log-script.sh \
+	test-log-script-info.sh \
+	$(NULL)
+
+# luks filter test.
+if HAVE_GNUTLS_PBKDF2
+TESTS += \
+	test-luks-info.sh \
+	test-luks-copy.sh \
+	test-luks-copy-zero.sh \
+	$(NULL)
+endif
+EXTRA_DIST += \
+	test-luks-info.sh \
+	test-luks-copy.sh \
+	test-luks-copy-zero.sh \
+	$(NULL)
+
+# lzip filter test.
+if HAVE_LIBLZMA
+TESTS += \
+	test-lzip-aligned.sh \
+	test-lzip-unaligned.sh \
+	$(NULL)
+LIBGUESTFS_TESTS += test-lzip
+test_lzip_SOURCES = test-lzip.c test.h requires.c requires.h
+test_lzip_CFLAGS = $(WARNINGS_CFLAGS) $(LIBGUESTFS_CFLAGS)
+test_lzip_LDADD = libtest.la $(LIBGUESTFS_LIBS)
+endif HAVE_LIBLZMA
+EXTRA_DIST += \
+	test-lzip-aligned.sh \
+	test-lzip-unaligned.sh \
+	$(NULL)
+
+# map filter test.
+TESTS += \
+	test-map.sh \
+	test-map-extents.sh \
+	test-map-out-of-range.sh \
+	test-map-random.sh \
+	test-map-size.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-map.sh \
+	test-map-extents.sh \
+	test-map-out-of-range.sh \
+	test-map-random.sh \
+	test-map-size.sh \
+	$(NULL)
+
+# multi-conn filter test.
+TESTS += \
+	test-multi-conn.sh \
+	test-multi-conn-name.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-multi-conn.sh \
+	test-multi-conn-name.sh \
+	$(NULL)
+
+# nofilter test.
+TESTS += test-nofilter.sh
+EXTRA_DIST += test-nofilter.sh
+
+if HAVE_LIBNBD
+# nozero filter test.
+TESTS += test-nozero.sh
+endif HAVE_LIBNBD
+EXTRA_DIST += test-nozero.sh
+
+if HAVE_LIBNBD
+# noextents filter test.
+TESTS += test-noextents.sh
+endif HAVE_LIBNBD
+EXTRA_DIST += test-noextents.sh
+
+# offset filter test.
+LIBGUESTFS_TESTS += test-offset
+
+test_offset_SOURCES = test-offset.c test.h
+test_offset_CFLAGS = $(WARNINGS_CFLAGS) $(LIBGUESTFS_CFLAGS)
+test_offset_LDADD = libtest.la $(LIBGUESTFS_LIBS)
+
+TESTS += \
+	test-offset2.sh \
+	test-offset-extents.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-offset2.sh \
+	test-offset-extents.sh \
+	$(NULL)
+
+# offset + truncate test.
+TESTS += test-offset-truncate.sh
+EXTRA_DIST += test-offset-truncate.sh
+
+# openonce filter test.
+TESTS += test-openonce.sh
+EXTRA_DIST += test-openonce.sh
+
+# partition filter test.
+TESTS += \
+	test-partition1.sh \
+	test-partition2.sh \
+	test-partition-4k-gpt.sh \
+	test-partition-4k-mbr.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-partition1.sh \
+	test-partition2.sh \
+	test-partition-4k-gpt.sh \
+	test-partition-4k-mbr.sh \
+	$(NULL)
+
+# pause filter test.
+LIBNBD_TESTS += test-pause
+
+test_pause_SOURCES = test-pause.c
+test_pause_CFLAGS = $(WARNINGS_CFLAGS) $(LIBNBD_CFLAGS)
+test_pause_LDADD = $(LIBNBD_LIBS)
+
+# protect filter test.
+LIBNBD_TESTS += test-protect
+
+test_protect_SOURCES = test-protect.c requires.c requires.h
+test_protect_CFLAGS = $(WARNINGS_CFLAGS) $(LIBNBD_CFLAGS)
+test_protect_LDADD = $(LIBNBD_LIBS)
+
+TESTS += \
+	test-protect-ranges.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-protect-ranges.sh \
+	$(NULL)
+
+# qcow2dec filter test.
+TESTS += \
+	test-qcow2dec.sh \
+	test-qcow2dec-map.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-qcow2dec.sh \
+	test-qcow2dec-map.sh \
+	$(NULL)
+
+# rate filter test.
+TESTS += \
+	test-rate.sh \
+	test-rate-dynamic.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-rate.sh \
+	test-rate-dynamic.sh \
+	$(NULL)
+
+# readahead filter test.
+TESTS += \
+	test-readahead.sh \
+	test-readahead-copy.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-readahead.sh \
+	test-readahead-copy.sh \
+	$(NULL)
+
+# readonly filter test.
+TESTS += test-readonly.sh
+EXTRA_DIST += test-readonly.sh
+
+# retry filter test.
+TESTS += \
+	test-retry.sh \
+	test-retry-readonly.sh \
+	test-retry-extents.sh \
+	test-retry-size.sh \
+	test-retry-reopen-fail.sh \
+	test-retry-zero-flags.sh \
+	test-retry-open.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-retry.sh \
+	test-retry-readonly.sh \
+	test-retry-extents.sh \
+	test-retry-size.sh \
+	test-retry-reopen-fail.sh \
+	test-retry-zero-flags.sh \
+	test-retry-open.sh \
+	$(NULL)
+
+# retry-request filter test.
+TESTS += \
+	test-retry-request.sh \
+	test-retry-request-open.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-retry-request.sh \
+	test-retry-request-open.sh \
+	$(NULL)
+
+LIBNBD_TESTS += test-retry-request-mirror
+
+test_retry_request_mirror_SOURCES = \
+	test-retry-request-mirror.c \
+	web-server.c \
+	web-server.h \
+	test.h \
+	requires.c \
+	requires.h \
+	$(NULL)
+test_retry_request_mirror_CPPFLAGS = \
+	-I$(top_srcdir)/common/include \
+	-I$(top_srcdir)/common/utils \
+	$(NULL)
+test_retry_request_mirror_CFLAGS = \
+	$(WARNINGS_CFLAGS) \
+	$(PTHREAD_CFLAGS) \
+	$(LIBNBD_CFLAGS) \
+	$(NULL)
+test_retry_request_mirror_LDFLAGS = \
+	$(top_builddir)/common/utils/libutils.la \
+	$(PTHREAD_LIBS) \
+	$(NULL)
+test_retry_request_mirror_LDADD = \
+	libtest.la \
+	$(LIBNBD_LIBS) \
+	$(NULL)
+
+# rotational filter test.
+TESTS += test-rotational.sh
+EXTRA_DIST += test-rotational.sh
+
+# scan filter test.
+TESTS += \
+	test-scan-copy.sh \
+	test-scan-info.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-scan-copy.sh \
+	test-scan-info.sh \
+	$(NULL)
+
+# spinning filter test.
+TESTS += \
+	test-spinning-info.sh \
+	test-spinning-mkfs.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-spinning-info.sh \
+	test-spinning-mkfs.sh \
+	$(NULL)
+
+# swab filter test.
+TESTS += \
+	test-swab-8.sh \
+	test-swab-16r.sh \
+	test-swab-16w.sh \
+	test-swab-32r.sh \
+	test-swab-32w.sh \
+	test-swab-64r.sh \
+	test-swab-64w.sh \
+	test-swab-extents.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-swab-8.sh \
+	test-swab-16r.sh \
+	test-swab-16w.sh \
+	test-swab-32r.sh \
+	test-swab-32w.sh \
+	test-swab-64r.sh \
+	test-swab-64w.sh \
+	test-swab-extents.sh \
+	$(NULL)
+
+# tar filter test.
+TESTS += \
+	test-tar.sh \
+	test-tar-info.sh \
+	test-tar-info-xz.sh \
+	test-tar-info-xz-qcow2dec.sh \
+	test-tar-limit.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-tar.sh \
+	test-tar-info.sh \
+	test-tar-info-xz.sh \
+	test-tar-info-xz-qcow2dec.sh \
+	test-tar-limit.sh \
+	$(NULL)
+
+# time-limit filter test.
+TESTS += test-time-limit.sh
+EXTRA_DIST += test-time-limit.sh
+
+# tls-fallback filter test.
+TESTS += test-tls-fallback.sh
+EXTRA_DIST += test-tls-fallback.sh
+
+# truncate filter tests.
+TESTS += \
+	test-truncate1.sh \
+	test-truncate2.sh \
+	test-truncate3.sh \
+	test-truncate4.sh \
+	test-truncate-extents.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-truncate1.sh \
+	test-truncate2.sh \
+	test-truncate3.sh \
+	test-truncate4.sh \
+	test-truncate-extents.sh \
+	$(NULL)
+
+# xor filter test.
+TESTS += \
+	test-xor-filesystem.sh \
+	test-xor-rand.sh \
+	test-xor-zero.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-xor-filesystem.sh \
+	test-xor-rand.sh \
+	test-xor-zero.sh \
+	$(NULL)
+
+# xz filter test.
+LIBGUESTFS_TESTS += test-xz
+
+test_xz_SOURCES = test-xz.c test.h requires.c requires.h
+test_xz_CFLAGS = $(WARNINGS_CFLAGS) $(LIBGUESTFS_CFLAGS)
+test_xz_LDADD = libtest.la $(LIBGUESTFS_LIBS)
+
+# tar filter + gzip, lzip or xz filter + curl.
+if HAVE_CURL
+
+LIBGUESTFS_TESTS += \
+	test-gzip-curl \
+	test-tar-gzip-curl \
+	test-lzip-curl \
+	test-tar-lzip-curl \
+	test-xz-curl \
+	test-tar-xz-curl \
+	$(NULL)
+
+test_gzip_curl_SOURCES = \
+	test-gzip-curl.c \
+	web-server.c \
+	web-server.h \
+	test.h \
+	requires.c \
+	requires.h \
+	$(NULL)
+test_gzip_curl_CPPFLAGS = \
+	-I$(top_srcdir)/common/utils \
+	-I$(top_srcdir)/common/include \
+	$(NULL)
+test_gzip_curl_CFLAGS = \
+	$(WARNINGS_CFLAGS) \
+	$(LIBGUESTFS_CFLAGS) \
+	$(PTHREAD_CFLAGS) \
+	$(NULL)
+test_gzip_curl_LDFLAGS = \
+	$(top_builddir)/common/utils/libutils.la \
+	$(PTHREAD_LIBS) \
+	$(NULL)
+test_gzip_curl_LDADD = \
+	libtest.la \
+	$(LIBGUESTFS_LIBS) \
+	$(NULL)
+
+test_tar_gzip_curl_SOURCES = \
+	test-tar-gzip-curl.c \
+	web-server.c \
+	web-server.h \
+	test.h \
+	requires.c \
+	requires.h \
+	$(NULL)
+test_tar_gzip_curl_CPPFLAGS = \
+	-I$(top_srcdir)/common/utils \
+	-I$(top_srcdir)/common/include \
+	$(NULL)
+test_tar_gzip_curl_CFLAGS = \
+	$(WARNINGS_CFLAGS) \
+	$(LIBGUESTFS_CFLAGS) \
+	$(PTHREAD_CFLAGS) \
+	$(NULL)
+test_tar_gzip_curl_LDFLAGS = \
+	$(top_builddir)/common/utils/libutils.la \
+	$(PTHREAD_LIBS) \
+	$(NULL)
+test_tar_gzip_curl_LDADD = \
+	libtest.la \
+	$(LIBGUESTFS_LIBS) \
+	$(NULL)
+
+test_lzip_curl_SOURCES = \
+	test-lzip-curl.c \
+	web-server.c \
+	web-server.h \
+	test.h \
+	requires.c \
+	requires.h \
+	$(NULL)
+test_lzip_curl_CPPFLAGS = \
+	-I$(top_srcdir)/common/utils \
+	-I$(top_srcdir)/common/include \
+	$(NULL)
+test_lzip_curl_CFLAGS = \
+	$(WARNINGS_CFLAGS) \
+	$(LIBGUESTFS_CFLAGS) \
+	$(PTHREAD_CFLAGS) \
+	$(NULL)
+test_lzip_curl_LDFLAGS = \
+	$(top_builddir)/common/utils/libutils.la \
+	$(PTHREAD_LIBS) \
+	$(NULL)
+test_lzip_curl_LDADD = \
+	libtest.la \
+	$(LIBGUESTFS_LIBS) \
+	$(NULL)
+
+test_tar_lzip_curl_SOURCES = \
+	test-tar-lzip-curl.c \
+	web-server.c \
+	web-server.h \
+	test.h \
+	requires.c \
+	requires.h \
+	$(NULL)
+test_tar_lzip_curl_CPPFLAGS = \
+	-I$(top_srcdir)/common/utils \
+	-I$(top_srcdir)/common/include \
+	$(NULL)
+test_tar_lzip_curl_CFLAGS = \
+	$(WARNINGS_CFLAGS) \
+	$(LIBGUESTFS_CFLAGS) \
+	$(PTHREAD_CFLAGS) \
+	$(NULL)
+test_tar_lzip_curl_LDFLAGS = \
+	$(top_builddir)/common/utils/libutils.la \
+	$(PTHREAD_LIBS) \
+	$(NULL)
+test_tar_lzip_curl_LDADD = \
+	libtest.la \
+	$(LIBGUESTFS_LIBS) \
+	$(NULL)
+
+test_xz_curl_SOURCES = \
+	test-xz-curl.c \
+	web-server.c \
+	web-server.h \
+	test.h \
+	requires.c \
+	requires.h \
+	$(NULL)
+test_xz_curl_CPPFLAGS = \
+	-I$(top_srcdir)/common/utils \
+	-I$(top_srcdir)/common/include \
+	$(NULL)
+test_xz_curl_CFLAGS = \
+	$(WARNINGS_CFLAGS) \
+	$(LIBGUESTFS_CFLAGS) \
+	$(PTHREAD_CFLAGS) \
+	$(NULL)
+test_xz_curl_LDFLAGS = \
+	$(top_builddir)/common/utils/libutils.la \
+	$(PTHREAD_LIBS) \
+	$(NULL)
+test_xz_curl_LDADD = \
+	libtest.la \
+	$(LIBGUESTFS_LIBS) \
+	$(NULL)
+
+test_tar_xz_curl_SOURCES = \
+	test-tar-xz-curl.c \
+	web-server.c \
+	web-server.h \
+	test.h \
+	requires.c \
+	requires.h \
+	$(NULL)
+test_tar_xz_curl_CPPFLAGS = \
+	-I$(top_srcdir)/common/utils \
+	-I$(top_srcdir)/common/include \
+	$(NULL)
+test_tar_xz_curl_CFLAGS = \
+	$(WARNINGS_CFLAGS) \
+	$(LIBGUESTFS_CFLAGS) \
+	$(PTHREAD_CFLAGS) \
+	$(NULL)
+test_tar_xz_curl_LDFLAGS = \
+	$(top_builddir)/common/utils/libutils.la \
+	$(PTHREAD_LIBS) \
+	$(NULL)
+test_tar_xz_curl_LDADD = \
+	libtest.la \
+	$(LIBGUESTFS_LIBS) \
+	$(NULL)
+
+endif HAVE_CURL
+
+#----------------------------------------------------------------------
+# Interoperability tests.
+
+# Note that the nbd-client interop test requires root, so it is listed
+# separately.
+
+TESTS += \
+	test-go-nbd.sh \
+	$(NULL)
+EXTRA_DIST += \
+	test-go-nbd.sh \
+	test-go-nbd.d/go.mod \
+	test-go-nbd.d/go.sum \
+	test-go-nbd.d/nbdkit_unix_test.go \
+	$(NULL)
+
+endif HAVE_PLUGINS
+
+#----------------------------------------------------------------------
+# Tests of old plugins.
+
+# These test scripts are automatically created.
+#
+# The name is significant.  It should have the form:
+#   test-old-plugins-<ARCH>-<OS>-<VERSION>-<TESTTYPE>.sh
+# where
+#   <ARCH> is `uname -m`
+#   <OS> is `uname -s`
+#   <VERSION> is the old plugin version (may not contain '-')
+#   <TESTTYPE> is 'version', 'help', 'dump', 'nbd' or 'fs'.
+#
+# The plugin being tested can be found in old-plugins/<ARCH>/<OS>/<VERSION>/
+TESTS += \
+	test-old-plugins-i686-Linux-v1.0.0-version.sh \
+	test-old-plugins-i686-Linux-v1.0.0-help.sh \
+	test-old-plugins-i686-Linux-v1.0.0-dump.sh \
+	test-old-plugins-i686-Linux-v1.0.0-nbd.sh \
+	test-old-plugins-i686-Linux-v1.0.0-fs.sh \
+	test-old-plugins-i686-Linux-v1.2.8_3_g0560f8f-version.sh \
+	test-old-plugins-i686-Linux-v1.2.8_3_g0560f8f-help.sh \
+	test-old-plugins-i686-Linux-v1.2.8_3_g0560f8f-dump.sh \
+	test-old-plugins-i686-Linux-v1.2.8_3_g0560f8f-nbd.sh \
+	test-old-plugins-i686-Linux-v1.2.8_3_g0560f8f-fs.sh \
+	test-old-plugins-i686-Linux-v1.8.4_3_g11f5a90d-version.sh \
+	test-old-plugins-i686-Linux-v1.8.4_3_g11f5a90d-help.sh \
+	test-old-plugins-i686-Linux-v1.8.4_3_g11f5a90d-dump.sh \
+	test-old-plugins-i686-Linux-v1.8.4_3_g11f5a90d-nbd.sh \
+	test-old-plugins-i686-Linux-v1.8.4_3_g11f5a90d-fs.sh \
+	test-old-plugins-i686-Linux-v1.12.8_2_g1e2ccc27-version.sh \
+	test-old-plugins-i686-Linux-v1.12.8_2_g1e2ccc27-help.sh \
+	test-old-plugins-i686-Linux-v1.12.8_2_g1e2ccc27-dump.sh \
+	test-old-plugins-i686-Linux-v1.12.8_2_g1e2ccc27-nbd.sh \
+	test-old-plugins-i686-Linux-v1.12.8_2_g1e2ccc27-fs.sh \
+	test-old-plugins-i686-Linux-v1.18.4-version.sh \
+	test-old-plugins-i686-Linux-v1.18.4-help.sh \
+	test-old-plugins-i686-Linux-v1.18.4-dump.sh \
+	test-old-plugins-i686-Linux-v1.18.4-nbd.sh \
+	test-old-plugins-i686-Linux-v1.18.4-fs.sh \
+	test-old-plugins-i686-Linux-v1.38.4-version.sh \
+	test-old-plugins-i686-Linux-v1.38.4-help.sh \
+	test-old-plugins-i686-Linux-v1.38.4-dump.sh \
+	test-old-plugins-i686-Linux-v1.38.4-nbd.sh \
+	test-old-plugins-i686-Linux-v1.38.4-fs.sh \
+	test-old-plugins-x86_64-Linux-v1.0.0-version.sh \
+	test-old-plugins-x86_64-Linux-v1.0.0-help.sh \
+	test-old-plugins-x86_64-Linux-v1.0.0-dump.sh \
+	test-old-plugins-x86_64-Linux-v1.0.0-nbd.sh \
+	test-old-plugins-x86_64-Linux-v1.0.0-fs.sh \
+	test-old-plugins-x86_64-Linux-v1.2.8-version.sh \
+	test-old-plugins-x86_64-Linux-v1.2.8-help.sh \
+	test-old-plugins-x86_64-Linux-v1.2.8-dump.sh \
+	test-old-plugins-x86_64-Linux-v1.2.8-nbd.sh \
+	test-old-plugins-x86_64-Linux-v1.2.8-fs.sh \
+	test-old-plugins-x86_64-Linux-v1.8.4-version.sh \
+	test-old-plugins-x86_64-Linux-v1.8.4-help.sh \
+	test-old-plugins-x86_64-Linux-v1.8.4-dump.sh \
+	test-old-plugins-x86_64-Linux-v1.8.4-nbd.sh \
+	test-old-plugins-x86_64-Linux-v1.8.4-fs.sh \
+	test-old-plugins-x86_64-Linux-v1.12.8-version.sh \
+	test-old-plugins-x86_64-Linux-v1.12.8-help.sh \
+	test-old-plugins-x86_64-Linux-v1.12.8-dump.sh \
+	test-old-plugins-x86_64-Linux-v1.12.8-nbd.sh \
+	test-old-plugins-x86_64-Linux-v1.12.8-fs.sh \
+	test-old-plugins-x86_64-Linux-v1.18.2-version.sh \
+	test-old-plugins-x86_64-Linux-v1.18.2-help.sh \
+	test-old-plugins-x86_64-Linux-v1.18.2-dump.sh \
+	test-old-plugins-x86_64-Linux-v1.18.2-nbd.sh \
+	test-old-plugins-x86_64-Linux-v1.18.2-fs.sh \
+	test-old-plugins-x86_64-Linux-v1.38.4-version.sh \
+	test-old-plugins-x86_64-Linux-v1.38.4-help.sh \
+	test-old-plugins-x86_64-Linux-v1.38.4-dump.sh \
+	test-old-plugins-x86_64-Linux-v1.38.4-nbd.sh \
+	test-old-plugins-x86_64-Linux-v1.38.4-fs.sh \
+	$(NULL)
+
+test-old-plugins-%.sh:
+	rm -f $@ $@-t
+	f=`echo "$@" | $(SED) 's/test-old-plugins-\(.*\).sh/\1/'`; \
+	echo 'script=$@ exec $$srcdir/test-old-plugins.sh' "$$f" > $@-t
+	chmod 0755 $@-t
+	mv $@-t $@
+
+EXTRA_DIST += \
+	old-plugins/README \
+	old-plugins/*/*/*/nbdkit-file-plugin.so \
+	test-old-plugins.sh \
+	$(NULL)
+DISTCLEANFILES += \
+	test-old-plugins-*.sh \
+	$(NULL)
+
+#----------------------------------------------------------------------
+
+if HAVE_LIBNBD
+check_PROGRAMS += $(LIBNBD_TESTS)
+TESTS += $(LIBNBD_TESTS)
+endif HAVE_LIBNBD
+
+if HAVE_LIBGUESTFS
+if USE_LIBGUESTFS_FOR_TESTS
+check_PROGRAMS += $(LIBGUESTFS_TESTS)
+TESTS += $(LIBGUESTFS_TESTS)
+endif USE_LIBGUESTFS_FOR_TESTS
+endif HAVE_LIBGUESTFS

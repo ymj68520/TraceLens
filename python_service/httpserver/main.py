@@ -351,6 +351,8 @@ def _register_routes(app: FastAPI):
     app.include_router(qq_forensics.router, prefix="/api/qq", tags=["QQ Forensics"])
     app.include_router(android_report.router, prefix="/api/android-report", tags=["Android Offline Reports"])
     app.include_router(evidence_intake.router, prefix="/api/evidence-intake", tags=["Evidence Intake"])
+    from .routes import raid_task_intake
+    app.include_router(raid_task_intake.router, prefix="/api/evidence-intake", tags=["Evidence Intake"])
 
 
 def get_app() -> FastAPI:

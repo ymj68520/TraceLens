@@ -1,0 +1,173 @@
+=head1 NAME
+
+nbdkit-client - how to mount NBD filesystems on a client machine
+
+=head1 DESCRIPTION
+
+For NBD exports that contain filesystems there are several approaches
+to mounting them on a physical machine.
+
+For virtual machines, see the section
+L</ATTACHING NBD DEVICES TO A VIRTUAL MACHINE> at the end.
+
+=head2 Easy mounting at boot time
+
+For simple setups the following method is the easiest way to get an
+NBD filesystem to mount at boot.  Create or edit F</etc/rc.local> or
+F</etc/rc.d/rc.local>:
+
+ #!/bin/sh -
+ nm-online
+ modprobe nbd
+ nbd-client server /dev/nbd0
+ mount /dev/nbd0 /mnt
+
+=head2 Mounting using systemd mount points
+
+You can use systemd mount points to mount NBD filesystems at boot
+and/or on demand.
+
+Set up an L<nbdtab(5)> mapping.  If F</etc/nbdtab> doesn't exist, then
+create it first.  Add this line:
+
+ nbd0 server / bs=512,persist
+
+As a workaround for
+L<https://github.com/NetworkBlockDevice/nbd/issues/91> you must
+currently modify the F<nbd@.service> file:
+
+ # cp /usr/lib/systemd/system/nbd@.service /etc/systemd/system/
+ # vi /etc/systemd/system/nbd@.service
+
+and edit or create these settings in the C<[Service]> section:
+
+ [Service]
+ Type=oneshot
+ RemainAfterExit=yes
+ ExecStart=/usr/sbin/nbd-client %i
+ ExecStop=/usr/sbin/nbd-client -d /dev/%i
+
+Finally create a systemd mount file called
+F</etc/systemd/system/mnt.mount>:
+
+ [Unit]
+ Requires=nbd@nbd0.service
+ [Mount]
+ What=/dev/nbd0
+ Where=/mnt
+ Type=ext4
+
+You can either reboot now or do:
+
+ # systemctl start mnt.mount
+
+Other systemd services which need this mount point can depend on this
+mount unit.
+
+=head1 LOADING THE LINUX KERNEL MODULE
+
+The native Linux NBD client is a kernel module called C<nbd.ko>.  It
+is not always loaded on demand.  To ensure it is loaded you may need
+to do:
+
+ # echo nbd > /etc/modules-load.d/nbd.conf
+
+This will not take effect until you reboot, so to load it right away
+do:
+
+ # modprobe nbd
+
+=head2 RHEL and nbd.ko
+
+Red Hat Enterprise Linux 8 enabled the C<nbd.ko> Linux kernel module
+but only for Unix domain sockets (ie. local connections).  This means
+you cannot connect to an NBD server over a TCP network.  This also
+affects Linux distributions derived from RHEL like CentOS, Alma and
+others.
+
+This does not affect use of nbdkit as an NBD server, only the Linux
+kernel as an NBD client.  Userspace Linux clients such as L<libnbd(3)>
+tools will work.
+
+=head1 ATTACHING NBD DEVICES TO A VIRTUAL MACHINE
+
+Notice in these cases that the virtual machine does not use the NBD
+protocol directly.  Instead, the virtual machine sees a local disk.
+Thus there is no need to enable an NBD client or kernel module inside
+the virtual machine.  Behind the scenes the hypervisor (eg. Qemu)
+converts the local disk into an NBD connection.
+
+=head2 Using libvirt XML
+
+Use the L<virsh(1)> C<edit> subcommand to modify the libvirt XML of a
+virtual machine:
+
+ # virsh edit guest-name
+
+The E<lt>diskE<gt> element should be placed in the E<lt>devicesE<gt>
+section of the XML, after any other E<lt>diskE<gt> elements.  For more
+information about libvirt XML see
+L<https://libvirt.org/formatdomain.html>
+
+For NBD devices served over a Unix domain socket (nbdkit I<-U> option)
+add:
+
+ <disk device="disk" type="network">
+   <source protocol="nbd">
+     <host transport="unix" socket="/path/to/unix.sock"/>
+   </source>
+   <target dev="vdb" bus="virtio"/>
+   <driver name="qemu" type="raw"/>
+ </disk>
+
+If using a TCP socket (nbdkit I<-p> option):
+
+ <disk device="disk" type="network">
+   <source protocol="nbd">
+     <host name="localhost" port="10809"/>
+   </source>
+   <target dev="vdb" bus="virtio"/>
+   <driver name="qemu" type="raw"/>
+ </disk>
+
+=head2 Using qemu directly
+
+Qemu can open NBD URIs.  To get nbdkit to show the URI it is serving
+use the I<--print-uri> option.
+
+For example:
+
+ $ nbdkit -f -U - --print-uri memory 1G
+ nbd+unix://?socket=/tmp/nbdkitTV6kS8/socket
+ Shell-quoted URI: "nbd+unix://?socket=/tmp/nbdkitTV6kS8/socket"
+ Command to query the NBD endpoint:
+   nbdinfo "nbd+unix://?socket=/tmp/nbdkitTV6kS8/socket"
+
+ $ qemu-system-x86_64 [...] \
+     -drive file="nbd+unix://?socket=/tmp/nbdkitTV6kS8/socket",format=raw,if=virtio
+
+=begin comment
+
+XXX We should document other hypervisors here ...
+
+=end comment
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-loop(1)>,
+L<nbdkit-service(1)>,
+L<nbd-client(8)>,
+L<nbdtab(5)>,
+L<systemd(1)>,
+L<systemd.mount(5)>,
+L<virsh(1)>,
+L<https://libvirt.org/formatdomain.html>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

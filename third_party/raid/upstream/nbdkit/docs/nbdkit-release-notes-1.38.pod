@@ -1,0 +1,144 @@
+=head1 NAME
+
+nbdkit-release-notes-1.38 - release notes for nbdkit 1.38
+
+=head1 DESCRIPTION
+
+These are the release notes for nbdkit stable release 1.38.
+This describes the major changes since 1.36.
+
+nbdkit 1.38.0 was released on B<5 April 2024>.
+
+=head2 Security
+
+No security issues were found in this release.
+
+All past security issues and information about how to report new ones
+can be found in L<nbdkit-security(1)>.
+
+=head2 Plugins
+
+New L<nbdkit-gcs-plugin(1)> providing support for Google Cloud Storage
+(Mykola Ivanets).
+
+L<nbdkit-data-plugin(1)>, L<nbdkit-memory-plugin(1)>,
+L<nbdkit-floppy-plugin(1)>, L<nbdkit-iso-plugin(1)>,
+L<nbdkit-sparse-random-plugin(1)> and L<nbdkit-torrent-plugin(1)> all
+now advertise suitable minimum, preferred and maximum block sizes,
+which means clients should be able to access them more efficiently.
+
+L<nbdkit-vddk-plugin(1)> now supports VDDK up to version 8.0.2.1.
+
+L<nbdkit-S3-plugin(1)> now reads sensitive tokens as passwords,
+allowing more flexibility on how to safely pass them to nbdkit.
+
+=head2 Filters
+
+New L<nbdkit-readonly-filter(1)> which allows more fine-grained
+control over whether a plugin is read-only (and also to change it at
+runtime) compared to the normal nbdkit I<-r> command line option.
+
+=head2 Language bindings
+
+L<nbdkit-python-plugin(3)> adds bindings for C<nbdkit.is_tls>,
+C<nbdkit.stdio_safe>, C<nbdkit.nanosleep> C<nbdkit.peer_pid>,
+C<nbdkit.peer_uid>, C<nbdkit.peer_gid>,
+C<nbdkit.peer_security_context>, C<nbdkit.read_password>.
+
+L<nbdkit-ocaml-plugin(3)> implements zero-copy pread and pwrite calls.
+This change is not backwards compatible for OCaml plugin code.
+(Thanks Nicolas Ojeda Bar, Anil Madhavapeddy, Simon Cruanes).
+
+nbdkit-ocaml-plugin also adds extra OCaml version information to
+I<--dump-plugin> output; and adds an example of how to use debug
+flags.
+
+L<nbdkit-rust-plugin(3)> minimum Rust version (MSRV) increased to
+1.63.0.  Various issues found by clippy have been fixed (Alan Somers).
+
+=head2 Server
+
+New I<--no-meta-contexts> (I<--no-mc>) option which stops the server
+from advertising metadata contexts, improving interoperability testing
+(Eric Blake).
+
+nbdkit I<--dump-plugin> outputs additional fields: The internal
+C<soext>, either C<so> or C<dll> so you can tell what plugin/filter
+extension the server is looking for.  The C<max_api_version> is the
+maximum plugin API version supported.
+
+=begin comment
+
+=head2 API
+
+=end comment
+
+=head2 Bug fixes
+
+Fix compilation with GCC 14 (Florian Weimer).
+
+Fix the default block size exposed by L<nbdkit-S3-plugin(1)>, fix the
+zero callback, and other bug fixes (Mykola Ivanets).
+
+L<nbdkit-luks-filter(1)> could enter an infinite loop in some error
+cases (Wilko Nienhaus).
+
+Several plugins would crash or behave strangely if no parameters were
+passed.  These have been fixed and a regression test added.
+
+=head2 Documentation
+
+Update fio benchmarking documentation (Eric Blake).
+
+Add example of how to export a variable to I<--run> subcommands (Eric
+Blake).
+
+=head2 Tests
+
+Fix Cirros CI tests (Peter Krempa).
+
+=head2 Build
+
+bash E<ge> 4 is required.  (This was always true, but now the
+F<./configure> script checks it.)
+
+You can now use both environment variables C<NBDKIT_VALGRIND=1
+NBDKIT_GDB=1> together to run valgrind and gdbserver, in order to
+debug valgrinded nbdkit and plugins.
+
+=head2 Internals
+
+Important internal structs now contain magic values which are checked
+by optional assertions, improving type safety.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>.
+
+=head1 AUTHORS
+
+Authors of nbdkit 1.38:
+
+=begin comment
+
+git shortlog -s v1.36.0..
+
+=end comment
+
+=over 4
+
+=item Alan Somers
+
+=item Eric Blake
+
+=item Mykola Ivanets
+
+=item Peter Krempa
+
+=item Richard W.M. Jones
+
+=back
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

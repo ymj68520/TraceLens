@@ -1,0 +1,192 @@
+=head1 NAME
+
+libnbd-release-notes-1.16 - release notes for libnbd 1.16
+
+=head1 DESCRIPTION
+
+These are the release notes for libnbd stable release 1.16.
+This describes the major changes since 1.14.
+
+libnbd 1.16.0 was released on B<18 April 2023>.
+
+=head2 Security
+
+No security issues were found in this release.
+
+If you find a security issue, please read F<SECURITY> in the source
+(online here:
+L<https://gitlab.com/nbdkit/libnbd/blob/master/SECURITY>).  To
+find out about previous security issues in libnbd, see
+L<libnbd-security(3)>.
+
+=head2 New APIs
+
+New API L<nbd_supports_vsock(3)> can be used to test if the client has
+vsock support (Eric Blake).
+
+New API L<nbd_poll2(3)> which allows an extra file descriptor to be
+passed in (Ming Lei).
+
+New L<nbd_stats_bytes_sent(3)>, L<nbd_stats_bytes_received(3)>,
+L<nbd_stats_chunks_sent(3)> and L<nbd_stats_chunks_received(3)> APIs
+which expose the number of bytes and messages sent and received on the
+current connection (Eric Blake).
+
+New L<nbd_opt_list_meta_context_queries(3)> and
+L<nbd_aio_opt_list_meta_context_queries(3)> APIs allow you to query
+the available meta contexts interactively with the server during the
+negotiation phase of the protocol (Eric Blake).
+
+New L<nbd_set_request_meta_context(3)> lets you control whether the
+meta context is set during negotiation.  This can make certain
+operations faster, especially C<nbdinfo --list>.  (Eric Blake)
+
+New L<nbd_opt_set_meta_context(3)>,
+L<nbd_opt_set_meta_context_queries(3)>,
+L<nbd_aio_opt_set_meta_context(3)> and
+L<nbd_aio_opt_set_meta_context_queries(3)> APIs let you request meta
+contexts when using L<nbd_set_opt_mode(3)> (Eric Blake).
+
+New L<nbd_opt_structured_reply(3)> and
+L<nbd_aio_opt_structured_reply(3)> APIs let you fine-tune when
+structured replies are requested during the negotiation phase (Eric
+Blake).
+
+New L<nbd_opt_starttls(3)> and L<nbd_aio_opt_starttls(3)> APIs let you
+fine-tune when STARTTLS is negotiated (Eric Blake).
+
+New L<nbd_set_socket_activation_name(3)> and
+L<nbd_get_socket_activation_name(3)> APIs which allow you to name the
+socket used for socket activation.  Certain servers such as
+qemu-storage-daemon will use this name on the command line and in
+scripts.  (Thanks Laszlo Ersek).
+
+=head2 Enhancements to existing APIs
+
+L<nbd_connect_command(3)> called with NULL argv parameter previously
+crashed, but now returns an error (Eric Blake).
+
+L<nbd_opt_list_meta_context(3)> can now be called without having
+negotiated structured replies (Eric Blake).
+
+L<nbd_set_strict_mode(3)> has a new C<LIBNBD_STRICT_PAYLOAD> flag
+which can be used to control whether send oversize messages, in order
+to test servers (Eric Blake).
+
+C API pointer parameters that cannot be NULL are now annotated with
+C<attribute((nonnull))> (if the compiler supports it) so that you will
+get a compile time warning if they are used improperly (thanks Eric
+Blake).
+
+C APIs which allocate are now marked with C<attribute((malloc))> and
+similar attributions to improve static analysis of programs using
+libnbd (Eric Blake).
+
+C APIs expressing flag values now use unsigned types, removing some
+undefined corner-cases with bitwise math on signed ints.  This change
+is API and ABI backwards compatible.  (Eric Blake)
+
+=head2 Tools
+
+New L<nbdublk(1)> program which is used to create a Linux
+F</dev/ublkbI<E<lt>NE<gt>>> block device from an NBD server (thanks
+Ming Lei).
+
+L<nbdinfo(1)> now has colorized output (use I<--no-color> to disable).
+
+nbdinfo has new I<--is tls> and I<--can structured-reply> options to
+let you test for these features on the server (Eric Blake).
+
+L<nbdcopy(1)> now writes progress messages to stderr (previously they
+were written to F</dev/tty>).  This makes it consistent with other
+tools like dd.  (Eric Blake).
+
+L<nbdsh(1)> options I<-c> and I<-u> can now be interleaved, making it
+easier to toggle optional URI features (Eric Blake).
+
+=head2 Language bindings
+
+Documentation for the OCaml bindings now includes parameter names.
+
+The OCaml bindings now return OCaml error values in exceptions instead
+of raw C errno numbers.
+
+OCaml bindings now support L<nbd_aio_connect(3)> which uses the
+sockaddr type directly.
+
+The Python bindings now have an explicit C<h.close()> method.  Letting
+the handle go out of scope still works for closing the handle, but now
+you have the choice to explicitly close the handle before it goes out
+of scope.  If you try to use the handle after closing it, a new
+C<nbd.ClosedHandle> exception will be thrown.
+
+The Python bindings now provide a contextlib decorated function, so
+you can write the more natural S<C<with nbd.nbd() as h: ...>>
+
+=head2 Tests
+
+Wider CI coverage (Eric Blake).
+
+=head2 Other improvements and bug fixes
+
+The state machine can now cope with and recover from some bad
+structured reply messages and unknown cookies sent by the server (Eric
+Blake).
+
+The library is now annotated with C<-z nodelete>, preventing it from
+being "really" unloaded when you call dlclose(3).  This is the only
+way to prevent a crash in multi-threaded code.  See commit
+368e3d0d5a887 for details.
+
+Improve debugging when the handle enters the C<%DEAD> state.
+
+The library is now much more POSIX-compliant and resilient when
+running subcommands, no longer relying on quirks of the glibc
+implementation of execvp and other non-async-signal-safe functions
+(Laszlo Ersek).
+
+Source files reformatted to use E<le> 80 columns (Laszlo Ersek).
+
+=begin comment
+
+=head2 Documentation
+
+=end comment
+
+=head2 Build
+
+Fix build on Alpine Linux + musl which declares C<AF_VSOCK> but does
+not define the associated structures (Eric Blake).
+
+Python distutils, deprecated in Python E<ge> 3.10, has been replaced
+by sysconfig (thanks Miro Hrončok).
+
+=head1 SEE ALSO
+
+L<libnbd(3)>.
+
+=head1 AUTHORS
+
+=begin comment
+
+git shortlog -s v1.14.0..
+
+=end comment
+
+=over 4
+
+=item Daniel P. Berrangé
+
+=item Eric Blake
+
+=item Laszlo Ersek
+
+=item Ming Lei
+
+=item Richard W.M. Jones
+
+=back
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

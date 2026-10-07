@@ -3,6 +3,10 @@
 ###############################################################################
 * text=auto
 
+# Pinned upstream digests describe exact bytes, including upstream line endings.
+third_party/raid/upstream/** -text
+third_party/raid/*.tar.gz -text
+
 ###############################################################################
 # Set default behavior for command prompt diff.
 #

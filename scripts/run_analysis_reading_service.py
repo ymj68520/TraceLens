@@ -6,7 +6,7 @@ Core release identity remains the base release; extension identity is separate.
 import asyncio, hashlib, ipaddress, json, sys
 from contextlib import asynccontextmanager
 from pathlib import Path
-BASE = Path('/root/tracelens-releases/6c-readonly-20260928-dxdZa9/runtime/6c-29ac4513406ec3d6')
+BASE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BASE/'python_service'))
 import uvicorn
 from fastapi import APIRouter, Query

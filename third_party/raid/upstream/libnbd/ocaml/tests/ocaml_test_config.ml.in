@@ -1,0 +1,37 @@
+(* hey emacs, this is OCaml code: -*- tuareg -*- *)
+(* libnbd OCaml test configuration
+ * Copyright Red Hat
+ * @configure_input@
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *)
+
+let nbdkit = "@NBDKIT@"
+
+(* Environment variable $srcdir is set by the test harness. *)
+let srcdir =
+  try Sys.getenv "srcdir"
+  with Not_found -> failwith "error: srcdir is not defined"
+
+(* Replacement for [Bytes.set_int64_be] (added in OCaml >= 4.08). *)
+let bytes_set_int64_be b i x =
+  let x = ref x in
+  for j = 0 to 7 do
+    let c = Int64.shift_right_logical !x 56 in
+    let c = Int64.to_int c in
+    let c = Char.chr c in
+    Bytes.set b (i+j) c;
+    x := Int64.shift_left !x 8
+  done

@@ -1,0 +1,177 @@
+=head1 NAME
+
+nbdkit-pattern-plugin - plugin to serve a fixed pattern of data for testing
+
+=head1 SYNOPSIS
+
+ nbdkit pattern [size=]SIZE [stride=BLOCK_SIZE]
+
+=head1 DESCRIPTION
+
+C<nbdkit-pattern-plugin> is a plugin for L<nbdkit(1)> which serves a
+fixed pattern of data, read only.  This is used for testing nbdkit
+filters and NBD clients.
+
+To create test disks filled with other repeated patterns use
+L<nbdkit-data-plugin(1)> or L<nbdkit-ones-plugin(1)> instead.  To
+create disks filled with random data, use L<nbdkit-random-plugin(1)>
+or L<nbdkit-sparse-random-plugin(1)>.
+
+The fixed pattern is the offset, as a 64 bit big endian integer, every
+8 bytes.  In hexadecimal this looks like:
+
+ offset                         data
+  0000:   00 00 00 00 00 00 00 00   00 00 00 00 00 00 00 08
+  0010:   00 00 00 00 00 00 00 10   00 00 00 00 00 00 00 18
+  0020:   00 00 00 00 00 00 00 20   00 00 00 00 00 00 00 28
+                                  ↗ └──────────┬──────────┘
+              byte at offset 0x28              │
+                                               │
+                                     64 bit big endian int
+                                     encoding offset 0x28
+
+The size of the virtual disk must be specified using the C<size>
+parameter.  If the size is not a multiple of 8 then the last 8 byte
+offset in the pattern is truncated.
+
+=head2 Upper bits
+
+The C<upper> parameter can be used to set the top 16 bits of each word
+in the pattern.  This can be used to distinguish between different
+instances of nbdkit-pattern-plugin, or when testing copies to ensure
+that different data is copied each time.  For example setting
+C<upper=0x1234> changes the pattern to:
+
+ offset                         data
+  0000:   12 34 00 00 00 00 00 00   12 34 00 00 00 00 00 08
+  0010:   12 34 00 00 00 00 00 10   12 34 00 00 00 00 00 18
+  0020:   12 34 00 00 00 00 00 20   12 34 00 00 00 00 00 28
+
+The upper value is XOR-ed into the top 16 bits, the default is 0.
+
+=head2 Strides
+
+Using the C<stride> parameter you can create a pattern where each
+block of data has a unique number.  This is useful for tracking down
+disk corruption where blocks of data may be transposed.  For example,
+with 4096 byte block-based storage, using C<stride=4k> will produce a
+pattern like this:
+
+ offset                         data
+  0000:   00 00 00 00 00 00 00 00   00 00 00 00 00 00 00 00
+  0010:   00 00 00 00 00 00 00 00   00 00 00 00 00 00 00 00
+  ...
+  ...                          block at offset 0x1000 (4k)
+  ...                        ↙
+  1000:   00 00 00 00 00 00 10 00   00 00 00 00 00 00 00 00
+  1010:   00 00 00 00 00 00 00 00   00 00 00 00 00 00 00 00
+  ...
+  ...                          block at offset 0x2000 (8k)
+  ...                        ↙
+  2000:   00 00 00 00 00 00 20 00   00 00 00 00 00 00 00 00
+  2010:   00 00 00 00 00 00 00 00   00 00 00 00 00 00 00 00
+
+=head2 Writes and testing copying
+
+Writing to the disk is possible.  If you do this the plugin will check
+that what you are writing exactly matches what would be read at the
+same offset (if not, it returns EIO error).  You can use this to test
+copying programs by making the source and destination NBD URIs be the
+same:
+
+ nbdkit pattern size=100M --run 'nbdcopy "$uri" "$uri"'
+
+C<qemu-img convert> could be used in place of nbdcopy.
+See also L<nbdkit-checkwrite-filter(1)>.
+
+=head2 Largest possible size
+
+nbdkit itself limits plugins to S<2⁶³-1> bytes
+(S<decimal: 9223372036854775807>,
+S<hexadecimal: 0x7fff_ffff_ffff_ffff>).
+
+To test if NBD clients are free of bugs (not to mention nbdkit itself)
+you can use:
+
+ nbdkit pattern 9223372036854775807
+
+Note this is too large for qemu to open.
+
+=head2 Little endian pattern
+
+To get a little endian pattern instead of big endian apply
+L<nbdkit-swab-filter(1)> on top of this plugin:
+
+ nbdkit pattern 1G --filter=swab swab-bits=64
+
+=head1 PARAMETERS
+
+=over 4
+
+=item [B<size=>]SIZE
+
+Specify the virtual size of the disk image.
+
+This parameter is required.
+
+C<size=> __IS_MAGIC__
+
+=item B<stride=>BLOCK_SIZE
+
+Instead of writing the 64 bit integers sequentially, place them at the
+beginning of each C<BLOCK_SIZE> block.  See L</Strides> above.
+
+The minimum, and default, stride is 8 which places the integers
+sequentially with no gaps.  The stride must be a power of two.
+
+=item B<upper=>N
+
+XOR C<N> (N=0..65535) with the top 16 bits of the pattern word.  You
+can prefix the value with C<0x> for hexadecimal.  The default is 0.
+
+=item B<upper=random>
+
+On each run of nbdkit, a random number in the range 1..65535 (not 0)
+is chosen for the upper 16 bits of each word.
+
+=back
+
+=head1 FILES
+
+=over 4
+
+=item F<$plugindir/nbdkit-pattern-plugin.so>
+
+The plugin.
+
+Use C<nbdkit --dump-config> to find the location of C<$plugindir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-pattern-plugin> first appeared in nbdkit 1.6.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-plugin(3)>,
+L<nbdkit-checkwrite-filter(1)>,
+L<nbdkit-data-plugin(1)>,
+L<nbdkit-full-plugin(1)>,
+L<nbdkit-null-plugin(1)>,
+L<nbdkit-ones-plugin(1)>,
+L<nbdkit-offset-filter(1)>,
+L<nbdkit-random-plugin(1)>,
+L<nbdkit-sparse-random-plugin(1)>,
+L<nbdkit-swab-filter(1)>,
+L<nbdkit-xor-filter(1)>,
+L<nbdkit-zero-plugin(1)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

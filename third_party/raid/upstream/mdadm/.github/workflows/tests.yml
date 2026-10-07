@@ -1,0 +1,96 @@
+name: tests
+on:
+  pull_request:
+    paths:
+      - '*.c'
+      - '*.h'
+      - 'tests/*'
+      - 'test'
+      - '.github/*'
+      - '.github/workflows/*'
+      - '.github/tools/*'
+jobs:
+  upstream_tests:
+     if: ${{ github.repository == 'disabled' }} # Intel hosted runners are down
+     runs-on: self-hosted
+     timeout-minutes: 150
+     name: upstream tests
+     steps:
+     - uses: actions/checkout@v7
+       if: ${{ github.event_name == 'pull_request' }}
+       with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        fetch-depth: 0
+     - uses: actions/checkout@v7
+       if: ${{ github.event_name == 'schedule' }}
+       with:
+        ref: main
+        fetch-depth: 0
+     - name: 'Prepare machine'
+       run: |
+          cd ..
+          # to upgrade the VMs to Fed42, comment the next line out and uncomment the one below that.
+          vagrant snapshot restore clean_vm_v1
+          # vagrant snapshot restore clean_vm_v42
+          echo "FYI vagrant restore command finished with exit code: $?"
+          sleep 2
+          vagrant status
+          vagrant up
+          sleep 2
+          vagrant ssh -c "sudo timedatectl set-timezone UTC && \
+            sudo systemctl restart chronyd && sudo chronyc -a makestep && sleep 1 && uname -r"
+          echo "FYI vagrant time command finished with exit code: $?"
+
+     - name: Export RUNNER_NAME
+       run: echo "RUNNER_NAME=$RUNNER_NAME" >> $GITHUB_ENV
+
+     - name: 'Run tests'
+       id: testing
+       continue-on-error: true
+       run: |
+          cd ..
+          vagrant ssh -c "cd /home/vagrant/host/mdadm && .github/tools/run_mdadm_tests.sh"
+
+     - name: 'Copy logs to host machine'
+       if: ${{ steps.testing.outcome == 'failure' }}
+       run: |
+          cd ..
+          vagrant ssh -c "sudo mkdir -p /home/vagrant/host/logs && sudo mv /var/tmp/*.log /home/vagrant/host/logs"
+
+     - name: "Save artifacts inspur5"
+       if: ${{ steps.testing.outcome == 'failure' && env.RUNNER_NAME == 'inspur5' }}
+       uses: actions/upload-artifact@v7
+       with:
+         name: "Logs from failed tests"
+         path: /home/ci/actions-runner/_work/mdadm/logs/*.log
+
+     - name: "Save artifacts inspur5-2"
+       if: ${{ steps.testing.outcome == 'failure' && env.RUNNER_NAME == 'inspur5-2'}}
+       uses: actions/upload-artifact@v7
+       with:
+         name: "Logs from failed tests"
+         path: /home/ci/actions-runner-2/_work/mdadm/logs/*.log
+
+     - name: "Clean logs"
+       if: ${{ steps.testing.outcome == 'failure' }}
+       run: |
+          cd ..
+
+          if [ "$RUNNER_NAME" == "inspur5" ]; then
+            sudo rm /home/ci/actions-runner/_work/mdadm/logs/*.log
+          else
+            sudo rm /home/ci/actions-runner-2/_work/mdadm/logs/*.log
+          fi
+
+     - name: "Set failed"
+       if: ${{ steps.testing.outcome == 'failure' }}
+       run: exit 1
+
+  cleanup:
+    runs-on: self-hosted
+    needs: [upstream_tests]
+    steps:
+      - name: Halt VM
+        run:  |
+          cd ..
+          vagrant halt

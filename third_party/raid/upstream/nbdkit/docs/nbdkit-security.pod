@@ -1,0 +1,80 @@
+=head1 NAME
+
+nbdkit-security - information about past security issues in nbdkit
+
+=head1 DESCRIPTION
+
+This page details past security issues found in nbdkit.
+
+For how to report new security issues, see the C<SECURITY.md> file in
+the top level source directory, also available online here:
+L<https://gitlab.com/nbdkit/nbdkit/blob/master/SECURITY.md>
+
+=head2 CVE-2019-14850
+denial of service due to premature opening of back-end connection
+
+See the full announcement and links to mitigation, tests and fixes
+here:
+L<https://lists.libguestfs.org/archives/list/guestfs@lists.libguestfs.org/thread/YR77GRSM2GE5W7XDXNHOPHTGCZEZ7RMP/>
+
+=head2 CVE-2019-14851
+assertion failure by issuing commands in the wrong order
+
+This CVE was caused by the fix to the previous issue.
+
+See the full announcement and links to mitigation, tests and fixes
+here:
+L<https://lists.libguestfs.org/archives/list/guestfs@lists.libguestfs.org/message/KZMJDBRRPPVOQSD5EK6NDTXSKK6J7AYX/>
+
+=head2 CVE-2021-3716
+structured read denial of service attack against starttls
+
+See the full announcement and links to mitigation, tests and fixes
+here:
+L<https://lists.libguestfs.org/archives/list/guestfs@lists.libguestfs.org/thread/GQ6HPFKEEDTHQLO764NLGXG7YCVIENGF/>
+
+=head2 CVE-2025-47711
+denial of service attack by client sending maximum size block status
+
+See the full announcement and links to mitigation, tests and fixes
+here:
+L<https://lists.libguestfs.org/archives/list/guestfs@lists.libguestfs.org/message/67E7AASHHADIY7VAD3FFW2I67LTWVWYF/>
+
+=head2 CVE-2025-47712
+denial of service attack by client sending large unaligned size block status
+
+See the full announcement and links to mitigation, tests and fixes
+here:
+L<https://lists.libguestfs.org/archives/list/guestfs@lists.libguestfs.org/message/67E7AASHHADIY7VAD3FFW2I67LTWVWYF/>
+
+=head2 denial of service attack by client sending unaligned block status
+
+See the patch here:
+L<https://lists.libguestfs.org/archives/list/guestfs@lists.libguestfs.org/thread/EQTMAKGDP53WYOUBCEKWLCWAJHVUNSXX/>
+Full announcement and links to mitigation coming.
+
+=head2 denial of service attacks in split plugin
+
+See the upstream commits:
+L<https://gitlab.com/nbdkit/nbdkit/-/commit/fc588a8af9316b187f87ea0dead0f3de644f3135>
+L<https://gitlab.com/nbdkit/nbdkit/-/commit/0a583bbda20b58c10173154cfb93a0e0cdf9fac8>
+
+=head2 denial of service attack in cow filter
+
+This filter is working as intended but we documented that you should
+only use this filter with trusted clients.  See:
+L<https://gitlab.com/nbdkit/nbdkit/-/commit/8d5e20b15f90438f8a565837fede4ca18da64d6d>
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>.
+
+=head1 AUTHORS
+
+Eric Blake
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

@@ -1,0 +1,199 @@
+=head1 NAME
+
+nbdkit-memory-plugin - nbdkit virtual memory (RAM disk) plugin
+
+=head1 SYNOPSIS
+
+ nbdkit memory [size=]SIZE [allocator=sparse|malloc|zstd]
+
+=head1 DESCRIPTION
+
+C<nbdkit-memory-plugin> is a plugin for L<nbdkit(1)> which stores a
+single disk image in virtual memory, and discards it when nbdkit
+exits.  This plugin can be used for testing or where you don't care
+about the final content of the disk image.
+
+All nbdkit clients will see the same disk content, initially all
+zeroes.
+
+By default the disk image is stored in memory using a sparse array.
+The allocated parts of the disk image cannot be larger than physical
+RAM plus swap, less whatever is being used by the rest of the system.
+Other allocators are available, see L</ALLOCATORS> below.  All
+allocators store the image in memory.  If you want to allocate more
+space than this use L<nbdkit-file-plugin(1)> backed by a temporary
+file instead.
+
+Using the sparse allocator the virtual size can be as large as you
+like, up to the maximum supported by nbdkit (S<2⁶³-1 bytes>).  This
+limit is tested when nbdkit is compiled, and it should work on all
+platforms and architectures supported by nbdkit.
+
+=head1 EXAMPLES
+
+Create a one gigabyte sparse RAM disk:
+
+ nbdkit memory 1G
+
+If you want to loop mount the above disk, see L<nbdkit-loop(1)>.
+
+Create the largest possible RAM disk:
+
+ nbdkit memory $(( 2**63 - 1 ))
+
+=head1 PARAMETERS
+
+=over 4
+
+=item [B<size=>]SIZE
+
+Specify the virtual size of the disk image.
+
+This parameter is required.
+
+C<size=> __IS_MAGIC__
+
+=item B<allocator=sparse>
+
+=item B<allocator=malloc>[,B<mlock=true>]
+
+=item B<allocator=zstd>
+
+(nbdkit E<ge> 1.22)
+
+Select the backend allocation strategy.  See L</ALLOCATORS> below.
+The default is sparse.
+
+=back
+
+=head1 NOTES
+
+=head2 Preloading small amounts of data
+
+If you want an in-memory disk image preinitialized with a small amount
+of data specified on the command line, look at
+L<nbdkit-data-plugin(1)> instead.  Note by "small" this does not mean
+that the virtual disk image must be small, but that the amount of data
+initially stored sparsely is small enough to specify on the command
+line.
+
+=head2 Preloading large amounts of data
+
+If you want to preload a large amount of data (eg. a disk image) into
+the memory plugin, use L<qemu-img(1)> or L<nbdcopy(1)>:
+
+ $ rm -f pid
+ $ nbdkit -P pid memory 10G
+
+Wait for nbdkit to become ready to accept connections:
+
+ $ while [ ! -f pid ]; do sleep 1; done
+
+Preload Fedora disk image using qemu-img:
+
+ $ virt-builder fedora-28 --size=10G
+ $ qemu-img convert -p -n fedora-28.img nbd:localhost:10809
+
+If you have libnbd E<ge> 1.4, you can use L<nbdcopy(1)> as an
+alternative:
+
+ $ nbdcopy -p fedora-28.img nbd://localhost
+
+=head1 ALLOCATORS
+
+Since nbdkit E<ge> 1.22 several allocation strategies are available
+using the C<allocator> parameter.
+
+=over 4
+
+=item B<allocator=sparse>
+
+The disk image is stored in memory using a sparse array.  The sparse
+array uses a simple two level page table with a fixed page size.  The
+allocated parts of the disk image cannot be larger than physical RAM
+plus swap, less whatever is being used by the rest of the system.  The
+aim of the sparse array implementation is to support extremely large
+images for testing, although it won't necessarily be efficient for
+that use case.  However it should also be reasonably efficient for
+normal disk sizes.
+
+The virtual size of the disk can be as large as you like, up to the
+maximum supported by nbdkit (S<2⁶³-1 bytes>).
+
+This is the default, and was the only allocator available before
+S<nbdkit 1.22>.
+
+=item B<allocator=malloc>
+
+=item B<allocator=malloc,mlock=true>
+
+The disk image is stored directly in memory allocated using
+L<malloc(3)> on the heap.  No sparseness is possible: you must have
+enough memory for the whole disk.  Very large virtual sizes will
+usually fail.  However this can be faster because the implementation
+is simpler and the locking strategy allows more concurrency.
+
+If C<mlock=true> is added then additionally the array is locked into
+RAM using L<mlock(2)> (so it should never be swapped out).  This
+usually requires you to adjust the L<ulimit(1)> associated with the
+process and on some operating systems may require you to run nbdkit as
+root.  (See also the L<nbdkit(1)> I<--swap> option).
+
+The C<mlock=true> feature is only supported on some platforms.  Use
+S<C<nbdkit memory --dump-plugin>> and check that the output contains
+C<mlock=yes>.
+
+=item B<allocator=zstd>
+
+The disk image is stored in a sparse array where each page is
+compressed using L<zstd compression|https://facebook.github.io/zstd/>.
+Assuming a typical 2:1 compression ratio, this allows you to store
+twice as much real data as C<allocator=sparse>, with the trade-off
+that the plugin is slightly slower because it has to compress and
+decompress each page.  Aside from compression, the implementation of
+this allocator is similar to C<allocator=sparse>, so in other respects
+(such as supporting huge virtual disk sizes) it is the same.
+
+This allocator is only supported if nbdkit was compiled with zstd
+support.  Use S<C<nbdkit memory --dump-plugin>> and check that the
+output contains C<zstd=yes>.
+
+=back
+
+=head1 FILES
+
+=over 4
+
+=item F<$plugindir/nbdkit-memory-plugin.so>
+
+The plugin.
+
+Use C<nbdkit --dump-config> to find the location of C<$plugindir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-memory-plugin> first appeared in nbdkit 1.2.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-plugin(3)>,
+L<nbdkit-loop(1)>,
+L<nbdkit-data-plugin(1)>,
+L<nbdkit-file-plugin(1)>,
+L<nbdkit-info-plugin(1)>,
+L<nbdkit-tmpdisk-plugin(1)>,
+L<mlock(2)>,
+L<malloc(3)>,
+L<qemu-img(1)>,
+L<nbdcopy(1)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

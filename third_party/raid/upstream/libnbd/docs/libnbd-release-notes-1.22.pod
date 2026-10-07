@@ -1,0 +1,129 @@
+=head1 NAME
+
+libnbd-release-notes-1.22 - release notes for libnbd 1.22
+
+=head1 DESCRIPTION
+
+These are the release notes for libnbd stable release 1.22.
+This describes the major changes since 1.20.
+
+libnbd 1.22.0 was released on B<11 February 2025>.
+
+=head2 Security
+
+Multiple flaws in TLS server certificate checking were found and fixed
+(CVE-2024-7383).  See
+L<https://lists.libguestfs.org/archives/list/guestfs@lists.libguestfs.org/thread/LHR3BW6RJ7K4BJBQIYV3GTZLSY27VZO2/>
+(thanks Jon Szymaniak, Daniel P. Berrangé).
+
+If you find a security issue, please read F<SECURITY> in the source
+(online here:
+L<https://gitlab.com/nbdkit/libnbd/blob/master/SECURITY>).  To
+find out about previous security issues in libnbd, see
+L<libnbd-security(3)>.
+
+=head2 New APIs
+
+L<nbd_set_tls_hostname(3)> and L<nbd_get_tls_hostname(3)> can be used
+to set and get the hostname used for TLS server certificate checking.
+This hostname, if set, is used in preference to the hostname of the
+server.  This can be used when NBD connections are proxied, or
+transported over a Unix domain socket.
+
+L<nbd_is_uri(3)> applies a heuristic to detect if something is likely
+to be an NBD URI or not.
+
+L<nbd_get_subprocess_pid(3)> returns the process ID (PID) of the
+subprocess created by functions such as L<nbd_connect_command(3)>.
+
+=head2 Enhancements to existing APIs
+
+As an extension to L<nbd_connect_uri(3)>, you can now connect to
+C<nbd+ssh://> or C<nbds+ssh://> URIs, creating an NBD tunnel over an
+SSH connection.  This is very convenient when you have SSH access to a
+remote host, but a firewall prevents direct access to NBD ports.
+
+=head2 Protocol
+
+We now print the full error message string if one is sent by the
+server.  S<nbdkit E<ge> 1.42> will send full error messages from
+plugins over the NBD connection to compatible NBD clients like
+S<libnbd 1.22> or qemu.
+
+=head2 Tools
+
+Fix L<nbdfuse(1)> so that TLS URIs using C<?tls-certificates> or
+C<?tls-psk-file> now work properly (Jon Szymaniak).
+
+L<nbddump(1)> has a new I<--offset> option (Eric Blake).
+
+=head2 Language bindings
+
+Various fixes to the Rust bindings (thanks Hanna Czenczek).
+
+The documentation included in the Rust bindings has been improved
+greatly.
+
+=begin comment
+
+=head2 Tests
+
+=end comment
+
+=head2 Other improvements and bug fixes
+
+Common code is now used to get the size of block devices, and this has
+been fixed to work properly on BSD.  This affected at least nbdcopy
+when used to copy to and from block devices on BSD.
+
+=head2 Documentation
+
+Fix links to L<nbd-server(1)> and other pages in HTML-generated
+documentation (Vera Wu).
+
+In L<nbd_connect_uri(3)> we documented small differences in the way
+that we parse NBD URIs versus qemu.
+
+L<nbd_connect_uri(3)> adds additional documentation on the reserved
+VSock port numbers.
+
+=head2 Build
+
+S<gnutls E<ge> 3.5.18> is now required.  This matches the version
+needed by qemu.  If using RHEL, this means that S<RHEL E<ge> 8> is now
+required.
+
+libnbd should now compile on macOS.
+
+F<examples/connect-benchmark> is a new example that can be used to
+benchmark connections.
+
+Add support for GCC 15.
+
+=head1 SEE ALSO
+
+L<libnbd(3)>.
+
+=head1 AUTHORS
+
+=begin comment
+
+git shortlog -s v1.20.0..
+
+=end comment
+
+=over 4
+
+=item Daniel P. Berrangé
+
+=item Eric Blake
+
+=item Richard W.M. Jones
+
+=item Jon Szymaniak
+
+=back
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

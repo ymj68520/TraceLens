@@ -1,0 +1,1554 @@
+/* nbdkit
+ * Copyright Red Hat
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *
+ * * Redistributions of source code must retain the above copyright
+ * notice, this list of conditions and the following disclaimer.
+ *
+ * * Redistributions in binary form must reproduce the above copyright
+ * notice, this list of conditions and the following disclaimer in the
+ * documentation and/or other materials provided with the distribution.
+ *
+ * * Neither the name of Red Hat nor the names of its contributors may be
+ * used to endorse or promote products derived from this software without
+ * specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY RED HAT AND CONTRIBUTORS ''AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+ * PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL RED HAT OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ * USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+#include <config.h>
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <getopt.h>
+#include <limits.h>
+#include <errno.h>
+#include <assert.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+
+#ifdef HAVE_SYS_MMAN_H
+#include <sys/mman.h>
+#endif
+
+#ifdef HAVE_SYS_SOCKET_H
+#include <sys/socket.h>
+#endif
+
+#ifdef HAVE_LINUX_VM_SOCKETS_H
+#include <linux/vm_sockets.h>
+#elif HAVE_SYS_VSOCK_H
+#include <sys/vsock.h>
+#endif
+
+#include <pthread.h>
+
+#include <dlfcn.h>
+
+#include "ascii-ctype.h"
+#include "ascii-string.h"
+#include "exit-with-parent.h"
+#include "get_current_dir_name.h"
+#include "getline.h"
+#include "nbd-protocol.h"
+#include "nbdkit-string.h"
+#include "open_memstream.h"
+#include "realpath.h"
+#include "strndup.h"
+#include "syslog.h"
+#include "utils.h"
+#include "vector.h"
+
+#include "internal.h"
+#include "options.h"
+
+#ifdef ENABLE_LIBFUZZER
+#define main fuzzer_main
+#endif
+
+static char *make_random_fifo (void);
+static void cleanup_random_fifo (void);
+static struct backend *open_plugin_so (size_t i, const char *filename,
+                                       int short_name);
+static struct backend *open_filter_so (struct backend *next, size_t i,
+                                       const char *filename, int short_name);
+static void parse_key_values (int argc, char **argv, bool is_first,
+                              const char *magic_config_key,
+                              const char *cwd);
+static void parse_key_value (const char *arg,
+                             bool is_first, const char *magic_config_key,
+                             const char *cwd);
+static void parse_at_path (const char *filename,
+                           bool is_first, const char *magic_config_key,
+                           const char *cwd);
+static void start_serving (void);
+static void write_pidfile (void);
+static bool is_config_key (const char *key, size_t len);
+static void error_if_stdio_closed (void);
+static void switch_stdio (void);
+static void winsock_init (void);
+
+int tcpip_sock_af = AF_UNSPEC;  /* -4, -6 */
+struct debug_flag *debug_flags; /* -D */
+bool exit_with_parent;          /* --exit-with-parent */
+const char *export_name;        /* -e */
+bool foreground;                /* -f */
+const char *ipaddr;             /* -i */
+bool keepalive;                 /* --keepalive */
+enum log_to log_to = LOG_TO_DEFAULT; /* --log */
+const char *log_to_file;        /* --log=/path */
+FILE *log_to_fp;                /* --log=/path */
+unsigned mask_handshake = ~0U;  /* --mask-handshake */
+const char *process_name;       /* --name */
+bool newstyle = true;           /* false = -o, true = -n */
+bool no_mc;                     /* --no-meta-contexts */
+bool no_sr;                     /* --no-sr */
+char *pidfile;                  /* -P */
+const char *port;               /* -p */
+bool print_uri;                 /* --print-uri */
+bool read_only;                 /* -r */
+const char *run;                /* --run */
+bool listen_stdin;              /* -s */
+const char *selinux_label;      /* --selinux-label */
+bool swap;                      /* --swap */
+unsigned threads;               /* -t */
+unsigned timeout_secs, timeout_nsecs; /* --timeout */
+int tls;                        /* --tls : 0=off 1=on 2=require */
+const char *tls_certificates_dir; /* --tls-certificates */
+const char *tls_priority;       /* --tls-priority */
+const char *tls_psk;            /* --tls-psk */
+bool tls_verify_peer;           /* --tls-verify-peer */
+char *unixsocket;               /* -U */
+const char *user, *group;       /* -u & -g */
+bool verbose;                   /* -v */
+bool vsock;                     /* --vsock */
+
+enum service_mode service_mode; /* serving over TCP, Unix, etc */
+bool configured;                /* .config_complete done */
+int saved_stdin = -1;           /* dup'd stdin during -s/--run */
+int saved_stdout = -1;          /* dup'd stdout during -s/--run */
+
+/* Linked list of backends.  Each backend struct is followed by either
+ * a filter or plugin struct.  "top" points to the first one.  They
+ * are linked through the backend->next field.
+ *
+ *         ┌──────────┐    ┌──────────┐    ┌──────────┐
+ * top ───▶│ backend  │───▶│ backend  │───▶│ backend  │
+ *         │ b->i = 2 │    │ b->i = 1 │    │ b->i = 0 │
+ *         │ filter   │    │ filter   │    │ plugin   │
+ *         └──────────┘    └──────────┘    └──────────┘
+ */
+struct backend *top;
+
+static char *random_fifo_dir = NULL;   /* Directory containing -U - */
+static char *random_fifo = NULL;       /* Path to -U - socket */
+
+static void
+usage (void)
+{
+  extern const char *synopsis;
+
+  /* --{short,long}-options remain undocumented */
+  printf ("%s\n", synopsis);
+
+  /* This blurb matches the DESCRIPTION section of the man page: */
+  printf (
+    "Network Block Device (NBD) is a network protocol for accessing block\n"
+    "devices over the network.  Block devices are hard disks and things that\n"
+    "behave like hard disks such as disk images and virtual machines.\n"
+    "\n"
+    "nbdkit is both a toolkit for creating NBD servers from “unconventional”\n"
+    "sources, and the name of an NBD server.  nbdkit ships with many plugins\n"
+    "for performing common tasks like serving local files.\n"
+    "\n"
+  );
+  printf ("Please read the nbdkit(1) manual page for full usage.\n");
+}
+
+static void
+display_version (void)
+{
+  if (strcmp (NBDKIT_VERSION_EXTRA, "") == 0)
+    printf ("%s %s\n", PACKAGE_NAME, PACKAGE_VERSION);
+  else
+    printf ("%s %s (%s)\n",
+            PACKAGE_NAME, PACKAGE_VERSION, NBDKIT_VERSION_EXTRA);
+}
+
+static void
+dump_config (void)
+{
+  CLEANUP_FREE char *binary = NULL;
+
+#ifdef __linux__
+  binary = realpath ("/proc/self/exe", NULL);
+#else
+#ifdef WIN32
+  /* GetModuleFileNameA has a crappy interface that prevents us from
+   * getting the length of the path so we just have to guess at an
+   * upper limit here.  It will at least truncate it properly with \0.
+   * _get_pgmptr would be a better alternative except that it isn't
+   * implemented in MinGW.  XXX
+   */
+  binary = malloc (256);
+  if (!GetModuleFileNameA (NULL, binary, 256)) {
+    free (binary);
+    binary = NULL;
+  }
+#endif
+#endif
+
+  if (binary != NULL)
+    printf ("%s=%s\n", "binary", binary);
+  printf ("%s=%s\n", "bindir", bindir);
+  if (can_exit_with_parent ())
+    printf ("exit_with_parent=yes\n");
+  else
+    printf ("exit_with_parent=no\n");
+  printf ("%s=%s\n", "filterdir", filterdir);
+  printf ("%s=%s\n", "host_cpu", host_cpu);
+  printf ("%s=%s\n", "host_os", host_os);
+  printf ("%s=%s\n", "libdir", libdir);
+  printf ("%s=%s\n", "mandir", mandir);
+  printf ("%s=%d\n", "max_api_version", MAX_API_VERSION);
+  printf ("%s=%s\n", "name", PACKAGE_NAME);
+  printf ("%s=%s\n", "plugindir", plugindir);
+  printf ("%s=%s\n", "root_tls_certificates_dir", root_tls_certificates_dir);
+  printf ("%s=%s\n", "run_default_socket", "Unix");
+  printf ("%s=%s\n", "sbindir", sbindir);
+#ifdef HAVE_LIBSELINUX
+  printf ("selinux=yes\n");
+#else
+  printf ("selinux=no\n");
+#endif
+  printf ("%s=%s\n", "soext", SOEXT);
+  printf ("%s=%s\n", "sysconfdir", sysconfdir);
+#ifdef HAVE_TIMEOUT_OPTION
+  printf ("timeout_option=yes\n");
+#else
+  printf ("timeout_option=no\n");
+#endif
+#ifdef HAVE_GNUTLS
+  printf ("tls=yes\n");
+#else
+  printf ("tls=no\n");
+#endif
+  printf ("%s=%s\n", "version", PACKAGE_VERSION);
+  if (strcmp (NBDKIT_VERSION_EXTRA, "") != 0)
+    printf ("%s=%s\n", "version_extra", NBDKIT_VERSION_EXTRA);
+  printf ("%s=%d\n", "version_major", NBDKIT_VERSION_MAJOR);
+  printf ("%s=%d\n", "version_minor", NBDKIT_VERSION_MINOR);
+#if defined (AF_VSOCK) && defined (VMADDR_CID_ANY)
+  printf ("vsock_option=yes\n");
+#else
+  printf ("vsock_option=no\n");
+#endif
+#ifdef HAVE_LIBZSTD
+  printf ("zstd=yes\n");
+#else
+  printf ("zstd=no\n");
+#endif
+}
+
+/* -D nbdkit.environ=1 to dump the environment at start up. */
+NBDKIT_DLL_PUBLIC int nbdkit_debug_environ;
+
+#ifndef HAVE_ENVIRON_DECL
+extern char **environ;
+#endif
+
+static void
+dump_environment (void)
+{
+  size_t i;
+
+  for (i = 0; environ[i]; ++i)
+    debug ("%s", environ[i]);
+}
+
+int
+main (int argc, char *argv[])
+{
+  int c;
+  bool help = false, version = false, dump_plugin = false;
+  int tls_set_on_cli = false;
+  bool short_name;
+  const char *filename;
+  static struct filter_filename {
+    struct filter_filename *next;
+    const char *filename;
+  } *filter_filenames = NULL;
+  size_t i;
+
+  error_if_stdio_closed ();
+  winsock_init ();
+
+#if !ENABLE_LIBFUZZER
+  threadlocal_init ();
+#else
+  static bool main_called = false;
+  if (!main_called) {
+    threadlocal_init ();
+    main_called = true;
+  }
+#endif
+
+  /* The default setting for TLS depends on whether we were
+   * compiled with GnuTLS.
+   */
+#ifdef HAVE_GNUTLS
+  tls = 1;
+#else
+  tls = 0;
+#endif
+
+  /* Check for socket activation.  If used this will populate the
+   * socket_activation vector, so it will have length > 0.
+   */
+  get_socket_activation ();
+
+  for (;;) {
+    c = getopt_long (argc, argv, short_options, long_options, NULL);
+    if (c == -1)
+      break;
+
+    switch (c) {
+    case DUMP_CONFIG_OPTION:
+      dump_config ();
+      cleanup_random_fifo ();
+      exit (EXIT_SUCCESS);
+
+    case DUMP_PLUGIN_OPTION:
+      dump_plugin = true;
+      break;
+
+    case EXIT_WITH_PARENT_OPTION:
+      if (can_exit_with_parent ()) {
+        exit_with_parent = true;
+        foreground = true;
+      }
+      else {
+        fprintf (stderr,
+                 "%s: --exit-with-parent is not implemented "
+                 "for this operating system\n",
+                 program_name);
+        exit (EXIT_FAILURE);
+      }
+      break;
+
+    case FILTER_OPTION:
+      {
+        struct filter_filename *t;
+
+        if (optarg[0] == '\0') {
+          fprintf (stderr, "%s: filter name cannot be an empty string\n",
+                   program_name);
+          exit (EXIT_FAILURE);
+        }
+
+        t = malloc (sizeof *t);
+        if (t == NULL) {
+          perror ("malloc");
+          exit (EXIT_FAILURE);
+        }
+        t->next = filter_filenames;
+        t->filename = optarg;
+        filter_filenames = t;
+      }
+      break;
+
+    case HELP_OPTION:
+      help = true;
+      break;
+
+    case KEEPALIVE_OPTION:
+      keepalive = true;
+      break;
+
+    case LOG_OPTION:
+      if (strcmp (optarg, "default") == 0)
+        log_to = LOG_TO_DEFAULT;
+      else if (strcmp (optarg, "stderr") == 0)
+        log_to = LOG_TO_STDERR;
+      else if (strcmp (optarg, "syslog") == 0)
+        log_to = LOG_TO_SYSLOG;
+      else if (strcmp (optarg, "null") == 0)
+        log_to = LOG_TO_NULL;
+      else if (optarg[0] == '/') {
+        log_to = LOG_TO_FILE;
+        log_to_file = optarg;
+      }
+      else {
+        fprintf (stderr, "%s: "
+                 "--log must be \"stderr\", \"syslog\", \"null\", or "
+                 "an absolute path\n",
+                 program_name);
+        exit (EXIT_FAILURE);
+      }
+      break;
+
+    case LONG_OPTIONS_OPTION:
+      for (i = 0; long_options[i].name != NULL; ++i)
+        printf ("--%s\n", long_options[i].name);
+      cleanup_random_fifo ();
+      exit (EXIT_SUCCESS);
+
+    case MASK_HANDSHAKE_OPTION:
+      if (nbdkit_parse_unsigned ("mask-handshake",
+                                 optarg, &mask_handshake) == -1)
+        exit (EXIT_FAILURE);
+      break;
+
+    case NAME_OPTION:
+      process_name = optarg;
+      break;
+
+    case NO_MC_OPTION:
+      no_mc = true;
+      break;
+
+    case NO_SR_OPTION:
+      no_sr = true;
+      break;
+
+    case PRINT_URI:
+      print_uri = true;
+      break;
+
+    case RUN_OPTION:
+      if (socket_activation.len > 0) {
+        fprintf (stderr, "%s: cannot use socket activation with --run flag\n",
+                 program_name);
+        exit (EXIT_FAILURE);
+      }
+      run = optarg;
+      foreground = true;
+      break;
+
+    case SELINUX_LABEL_OPTION:
+      selinux_label = optarg;
+      break;
+
+    case SHORT_OPTIONS_OPTION:
+      for (i = 0; short_options[i]; ++i) {
+        if (short_options[i] != ':')
+          printf ("-%c\n", short_options[i]);
+      }
+      cleanup_random_fifo ();
+      exit (EXIT_SUCCESS);
+
+    case SWAP_OPTION:
+      swap = 1;
+      break;
+
+    case TIMEOUT_OPTION:
+#ifdef HAVE_TIMEOUT_OPTION
+      if (nbdkit_parse_delay ("timeout", optarg,
+                              &timeout_secs, &timeout_nsecs) == -1)
+        exit (EXIT_FAILURE);
+      break;
+#else
+      fprintf (stderr, "%s: --timeout is not supported on this platform\n",
+               program_name);
+      exit (EXIT_FAILURE);
+#endif
+
+    case TLS_OPTION:
+      tls_set_on_cli = true;
+      if (ascii_strcasecmp (optarg, "require") == 0 ||
+          ascii_strcasecmp (optarg, "required") == 0 ||
+          ascii_strcasecmp (optarg, "force") == 0)
+        tls = 2;
+      else {
+        tls = nbdkit_parse_bool (optarg);
+        if (tls == -1)
+          exit (EXIT_FAILURE);
+      }
+      break;
+
+    case TLS_CERTIFICATES_OPTION:
+      tls_certificates_dir = optarg;
+      break;
+
+    case TLS_PRIORITY_OPTION:
+      tls_priority = optarg;
+      break;
+
+    case TLS_PSK_OPTION:
+      tls_psk = optarg;
+      break;
+
+    case TLS_VERIFY_PEER_OPTION:
+      tls_verify_peer = true;
+      break;
+
+    case VSOCK_OPTION:
+#if defined (AF_VSOCK) && defined (VMADDR_CID_ANY)
+      vsock = true;
+      break;
+#else
+      fprintf (stderr, "%s: AF_VSOCK is not supported on this platform\n",
+               program_name);
+      exit (EXIT_FAILURE);
+#endif
+
+    case '4':
+      tcpip_sock_af = AF_INET;
+      break;
+
+    case '6':
+      tcpip_sock_af = AF_INET6;
+      break;
+
+    case 'D':
+      add_debug_flag (optarg);
+      break;
+
+    case 'e':
+      export_name = optarg;
+      break;
+
+    case 'f':
+      foreground = true;
+      break;
+
+    case 'g':
+      group = optarg;
+      break;
+
+    case 'i':
+      if (socket_activation.len > 0) {
+        fprintf (stderr, "%s: cannot use socket activation with -i flag\n",
+                 program_name);
+        exit (EXIT_FAILURE);
+      }
+      ipaddr = optarg;
+      break;
+
+    case 'n':
+      newstyle = true;
+      break;
+
+    case 'o':
+      newstyle = false;
+      break;
+
+    case 'P':
+      pidfile = nbdkit_absolute_path (optarg);
+      if (pidfile == NULL)
+        exit (EXIT_FAILURE);
+      break;
+
+    case 'p':
+      if (socket_activation.len > 0) {
+        fprintf (stderr, "%s: cannot use socket activation with -p flag\n",
+                 program_name);
+        exit (EXIT_FAILURE);
+      }
+      port = optarg;
+      break;
+
+    case 'r':
+      read_only = true;
+      break;
+
+    case 's':
+      if (socket_activation.len > 0) {
+        fprintf (stderr, "%s: cannot use socket activation with -s flag\n",
+                 program_name);
+        exit (EXIT_FAILURE);
+      }
+      listen_stdin = true;
+#ifdef WIN32
+      /* This could be implemented with a bit of work.  The problem
+       * currently is that we try to use recv() on the stdio file
+       * descriptor which winsock does not support (nor Linux in
+       * fact).  We would need to implement a test to see if the file
+       * descriptor is a socket or not and use either read or recv as
+       * appropriate.
+       */
+      NOT_IMPLEMENTED_ON_WINDOWS ("-s");
+#endif
+      break;
+
+    case 't':
+      if (nbdkit_parse_unsigned ("threads", optarg, &threads) == -1)
+        exit (EXIT_FAILURE);
+      /* XXX Worth a maximum limit on threads? */
+      break;
+
+    case 'U':
+      if (socket_activation.len > 0) {
+        fprintf (stderr, "%s: cannot use socket activation with -U flag\n",
+                 program_name);
+        exit (EXIT_FAILURE);
+      }
+      if (strcmp (optarg, "-") == 0)
+        unixsocket = make_random_fifo ();
+      else
+        unixsocket = nbdkit_absolute_path (optarg);
+      if (unixsocket == NULL)
+        exit (EXIT_FAILURE);
+      break;
+
+    case 'u':
+      user = optarg;
+      break;
+
+    case 'v':
+      verbose = true;
+      break;
+
+    case 'V':
+      version = true;
+      break;
+
+    default:
+      usage ();
+      exit (EXIT_FAILURE);
+    }
+  }
+
+  /* No extra parameters. */
+  if (optind >= argc) {
+    if (help) {
+      usage ();
+      cleanup_random_fifo ();
+      exit (EXIT_SUCCESS);
+    }
+    if (version) {
+      display_version ();
+      cleanup_random_fifo ();
+      exit (EXIT_SUCCESS);
+    }
+    if (dump_plugin) {
+      /* Incorrect use of --dump-plugin. */
+      fprintf (stderr,
+               "%s: use 'nbdkit plugin --dump-plugin' or\n"
+               "'nbdkit /path/to/plugin." SOEXT " --dump-plugin' or\n"
+               "if you want to find out about the server use --dump-config\n",
+               program_name);
+      cleanup_random_fifo ();
+      exit (EXIT_FAILURE);
+    }
+
+    /* Otherwise this is an error. */
+    fprintf (stderr,
+             "%s: no plugins given on the command line.\n"
+             "Use '%s --help' or "
+             "read the nbdkit(1) manual page for documentation.\n",
+             program_name, program_name);
+    exit (EXIT_FAILURE);
+  }
+
+  /* --tls=require and oldstyle won't work. */
+  if (tls == 2 && !newstyle) {
+    fprintf (stderr,
+             "%s: cannot use oldstyle protocol (-o) and require TLS\n",
+             program_name);
+    exit (EXIT_FAILURE);
+  }
+
+  /* Set the umask to a known value.  This makes the behaviour of
+   * plugins when creating files more predictable, and also removes an
+   * implicit dependency on umask when calling mkstemp(3).
+   */
+  umask (0022);
+
+  /* Open the log file. */
+  switch (log_to) {
+    /* If we will or might use syslog. */
+  case LOG_TO_DEFAULT:
+  case LOG_TO_SYSLOG:
+    openlog (process_name ? : program_name, LOG_PID, 0);
+    break;
+
+  case LOG_TO_FILE:
+    log_to_fp = fopen (log_to_file, "a");
+    if (log_to_fp == NULL) {
+      fprintf (stderr, "%s: %s: fopen: %m\n", program_name, log_to_file);
+      exit (EXIT_FAILURE);
+    }
+    break;
+
+  case LOG_TO_STDERR:
+  case LOG_TO_NULL:
+    ;
+  }
+
+  /* Print the version in debug output, right after syslog initialization. */
+  if (strcmp (NBDKIT_VERSION_EXTRA, "") == 0)
+    debug ("%s %s", PACKAGE_NAME, PACKAGE_VERSION);
+  else
+    debug ("%s %s (%s)", PACKAGE_NAME, PACKAGE_VERSION, NBDKIT_VERSION_EXTRA);
+
+  /* Initialize TLS. */
+  crypto_init (tls_set_on_cli);
+  assert (tls != -1);
+
+  /* Implement --exit-with-parent early in case plugin initialization
+   * takes a long time and the parent exits during that time.
+   */
+  if (exit_with_parent) {
+    if (set_exit_with_parent () == -1) {
+      perror ("nbdkit: --exit-with-parent");
+      exit (EXIT_FAILURE);
+    }
+  }
+
+  /* If the user has mixed up -p/--run/-s/-U/--vsock options, then
+   * give an error.
+   *
+   * XXX Actually the server could easily be extended to handle both
+   * TCP/IP and Unix sockets, or even multiple TCP/IP ports.
+   */
+  if ((port && unixsocket) ||
+      (port && listen_stdin) ||
+      (unixsocket && listen_stdin) ||
+      (listen_stdin && run) ||
+      (listen_stdin && dump_plugin) ||
+      (vsock && unixsocket) ||
+      (vsock && listen_stdin)) {
+    fprintf (stderr,
+             "%s: --dump-plugin, -p, --run, -s, -U or --vsock options "
+             "cannot be used in this combination\n",
+             program_name);
+    exit (EXIT_FAILURE);
+  }
+
+  /* Since nbdkit 1.36, --run implies -U -, unless --vsock or --port
+   * was set explicitly.
+   */
+  if (run && !unixsocket && !port && !vsock) {
+    unixsocket = make_random_fifo ();
+    if (!unixsocket)
+      exit (EXIT_FAILURE);
+  }
+
+  /* By the point we have enough information to calculate the service mode. */
+  if (socket_activation.len > 0)
+    service_mode = SERVICE_MODE_SOCKET_ACTIVATION;
+  else if (listen_stdin)
+    service_mode = SERVICE_MODE_LISTEN_STDIN;
+  else if (unixsocket)
+    service_mode = SERVICE_MODE_UNIXSOCKET;
+  else if (vsock)
+    service_mode = SERVICE_MODE_VSOCK;
+  else
+    service_mode = SERVICE_MODE_TCPIP;
+  debug ("service mode: %s", service_mode_string (service_mode));
+
+  /* By the point we have enough information to calculate the NBD URI.
+   * Note this may be NULL.
+   */
+  uri = make_uri ();
+
+  /* The remaining command line arguments are the plugin name and
+   * parameters.  If --help, --version or --dump-plugin were specified
+   * then we open the plugin so that we can display the per-plugin
+   * help/version/plugin information.
+   */
+  filename = argv[optind++];
+  if (filename[0] == '\0') {
+    fprintf (stderr, "%s: plugin name cannot be an empty string\n",
+             program_name);
+    exit (EXIT_FAILURE);
+  }
+  short_name = is_short_name (filename);
+
+  /* Is there an executable script located in the plugindir?
+   * If so we simply execute it with the current command line.
+   */
+  if (short_name) {
+    struct stat statbuf;
+    CLEANUP_FREE char *script;
+
+    if (asprintf (&script,
+                  "%s/nbdkit-%s-plugin", plugindir, filename) == -1) {
+      perror ("asprintf");
+      exit (EXIT_FAILURE);
+    }
+
+    if (stat (script, &statbuf) == 0 &&
+        (statbuf.st_mode & S_IXUSR) != 0) {
+      /* We're going to execute the plugin directly.
+       * Replace argv[0] with argv[optind-1] and move further arguments
+       * down the list.
+       */
+      argv[0] = argv[optind-1];
+      for (i = optind; i <= argc; i++)
+        argv[i-1] = argv[i];
+      execv (script, argv);
+      perror (script);
+      exit (EXIT_FAILURE);
+    }
+  }
+
+  /* Open the plugin (first) and then wrap the plugin with the
+   * filters.  The filters are wrapped in reverse order that they
+   * appear on the command line so that in the end ‘top’ points to
+   * the first filter on the command line.
+   */
+  top = open_plugin_so (0, filename, short_name);
+  i = 1;
+  while (filter_filenames) {
+    struct filter_filename *t = filter_filenames;
+
+    filename = t->filename;
+    short_name = is_short_name (filename);
+
+    top = open_filter_so (top, i++, filename, short_name);
+
+    filter_filenames = t->next;
+    free (t);
+  }
+
+  /* In verbose mode, print the layers for easier understanding of how
+   * requests are processed.
+   */
+  if (verbose) {
+    CLEANUP_FREE_STRING string s = empty_vector;
+    struct backend *b;
+
+    for_each_backend (b) {
+      if (string_append_format (&s,
+                                "%s%s (%s%s)",
+                                b != top ? " -> " : "",
+                                b->name,
+                                b->i > 0 ? "filter" : "plugin",
+                                b == top ? ", first" :
+                                  b->i == 0 ? ", last": "")
+          == -1) {
+        fprintf (stderr, "%s: string_append_format: %m", program_name);
+        exit (EXIT_FAILURE);
+      }
+    }
+
+    debug ("request processing: %s", s.ptr);
+  }
+
+  /* Apply nbdkit.* flags for the server. */
+  apply_debug_flags (RTLD_DEFAULT, "nbdkit");
+
+  /* Check all debug flags were used, and free them. */
+  free_debug_flags ();
+
+  /* Dump the environment if asked.  This is the earliest we can do it
+   * because it uses a debug flag.
+   */
+  if (nbdkit_debug_environ && verbose)
+    dump_environment ();
+
+  if (help) {
+    struct backend *b;
+
+    usage ();
+    for_each_backend (b) {
+      printf ("\n");
+      b->usage (b);
+    }
+    top->free (top);
+    cleanup_random_fifo ();
+    exit (EXIT_SUCCESS);
+  }
+
+  if (version) {
+    const char *v;
+    struct backend *b;
+
+    display_version ();
+    for_each_backend (b) {
+      printf ("%s", b->name);
+      if ((v = b->version (b)) != NULL)
+        printf (" %s", v);
+      printf ("\n");
+    }
+    top->free (top);
+    cleanup_random_fifo ();
+    exit (EXIT_SUCCESS);
+  }
+
+  /* Parse key=value on the command line. */
+  {
+    CLEANUP_FREE char *cwd = get_current_dir_name ();
+    if (cwd == NULL) {
+      fprintf (stderr, "%s: get_current_dir_name: %m\n", program_name);
+      exit (EXIT_FAILURE);
+    }
+    parse_key_values (argc, argv, true, top->magic_config_key (top), cwd);
+  }
+
+  /* This must run after parsing the parameters so that the script can
+   * be loaded for scripting languages.  But it must be called before
+   * config_complete so that the plugin doesn't check for missing
+   * parameters.
+   */
+  if (dump_plugin) {
+    top->dump_fields (top);
+    top->free (top);
+    free_socket_activation ();
+    free_interns ();
+    cleanup_random_fifo ();
+    exit (EXIT_SUCCESS);
+  }
+
+  top->config_complete (top);
+
+  /* Select the correct thread model based on config. */
+  lock_init_thread_model ();
+
+  /* Tell the plugin that we are about to start serving.  This must be
+   * called before we change user, fork, or open any sockets.
+   */
+  top->get_ready (top);
+
+  /* Print the URI.  Do it just before we close stdio, especially
+   * before setting 'configured' to true which makes nbdkit_stdio_safe
+   * false.
+   */
+  if (print_uri && uri && nbdkit_stdio_safe ()) {
+    printf ("%s\n", uri);
+    printf ("Shell-quoted URI: ");
+    shell_quote (uri, stdout);
+    printf ("\n");
+    printf ("Command to query the NBD endpoint:\n");
+    printf ("  nbdinfo ");
+    shell_quote (uri, stdout);
+    printf ("\n");
+    fflush (stdout);
+  }
+
+  switch_stdio ();
+  configured = true;
+
+  start_serving ();
+
+  top->cleanup (top);
+  top->free (top);
+  top = NULL;
+
+  free (unixsocket);
+  free (pidfile);
+  free (uri);
+
+  cleanup_random_fifo ();
+  crypto_free ();
+  close_quit_pipe ();
+
+  free_socket_activation ();
+  free_interns ();
+
+  /* Note: Don't exit here, otherwise this won't work when compiled
+   * for libFuzzer.
+   */
+  return EXIT_SUCCESS;
+}
+
+/* Implementation of '-U -' */
+static char *
+make_random_fifo (void)
+{
+  char *sock;
+
+  random_fifo_dir = make_temporary_directory ();
+  if (random_fifo_dir == NULL) {
+    perror ("make_temporary_directory");
+    return NULL;
+  }
+
+  if (asprintf (&random_fifo, "%s" DIR_SEPARATOR_STR "socket",
+                random_fifo_dir) == -1) {
+    perror ("asprintf");
+    goto error;
+  }
+
+  sock = strdup (random_fifo);
+  if (sock == NULL) {
+    perror ("strdup");
+    goto error;
+  }
+
+  return sock;
+
+ error:
+  cleanup_random_fifo ();
+  return NULL;
+}
+
+static void
+cleanup_random_fifo (void)
+{
+  if (random_fifo) {
+    unlink (random_fifo);
+    free (random_fifo);
+  }
+
+  if (random_fifo_dir) {
+    rmdir (random_fifo_dir);
+    free (random_fifo_dir);
+  }
+}
+
+const char *
+service_mode_string (enum service_mode sm)
+{
+  switch (sm) {
+  case SERVICE_MODE_SOCKET_ACTIVATION: return "socket activation";
+  case SERVICE_MODE_LISTEN_STDIN:      return "listen stdin";
+  case SERVICE_MODE_UNIXSOCKET:        return "unix socket";
+  case SERVICE_MODE_VSOCK:             return "vsock";
+  case SERVICE_MODE_TCPIP:             return "TCP/IP";
+  default: abort ();
+  }
+}
+
+/* Is it the name of a possible nbdkit-<name>-plugin or
+ * nbdkit-<name>-filter that might be a Fedora or Debian package?
+ * This matches more than all possible names, but it's just a guide
+ * for help output.
+ */
+static int
+is_possible_package_name (const char *name)
+{
+  size_t i, n = strlen (name);
+
+  for (i = 0; i < n; ++i) {
+    char c = name[i];
+    if (ascii_isalnum (c))
+      continue;
+    if (c == '-' || c == '_' || c == '.')
+      continue;
+    return 0;
+  }
+  return 1;
+}
+
+/* Common error handling for dlopen(3) failures in open_plugin_so or
+ * open_filter_so.
+ *
+ * The error message is held implicitly in dlerror(3).
+ *
+ * 'what' == "plugin" | "filter"
+ *
+ * 'filename' is the file we were trying to dlopen.
+ *
+ * 'short_name' is the plugin/filter short name that was passed on the
+ * nbdkit command line, or NULL if a short name was used (eg the
+ * plugin was opened using a full path).
+ */
+static void
+failed_to_load_error (const char *what,
+                      const char *filename,
+                      const char *short_name)
+{
+  fprintf (stderr, "%s: error: cannot open %s \"", program_name, what);
+  c_string_quote (filename, stderr);
+  fprintf (stderr, "\": ");
+  c_string_quote (dlerror (), stderr);
+  fprintf (stderr, "\n");
+  if (short_name && is_possible_package_name (short_name)) {
+    fprintf (stderr,
+             "\n"
+             "To add this functionality you might need to install a separate\n"
+             "%s package such as nbdkit-%s-%s (Fedora) or\n"
+             "nbdkit-%s-%s (Debian).\n",
+             what, short_name, what, what, short_name);
+  }
+  fprintf (stderr,
+           "\n"
+           "Use '%s --help' or "
+           "read the nbdkit(1) manual page for documentation.\n",
+           program_name);
+  exit (EXIT_FAILURE);
+}
+
+static struct backend *
+open_plugin_so (size_t i, const char *name, int short_name)
+{
+  struct backend *ret;
+  const char *orig_name = name;
+  char *filename = (char *) name;
+  bool free_filename = false;
+  void *dl;
+  struct nbdkit_plugin *(*plugin_init) (void);
+  char *error;
+
+  if (short_name) {
+    /* Short names are rewritten relative to the plugindir. */
+    if (asprintf (&filename,
+                  "%s/nbdkit-%s-plugin." SOEXT, plugindir, name) == -1) {
+      perror ("asprintf");
+      exit (EXIT_FAILURE);
+    }
+    free_filename = true;
+  }
+
+  dl = dlopen (filename, RTLD_NOW|RTLD_GLOBAL);
+  if (dl == NULL)
+    failed_to_load_error ("plugin", filename, short_name ? orig_name : NULL);
+
+  /* Initialize the plugin.  See dlopen(3) to understand C weirdness. */
+  dlerror ();
+  plugin_init = dlsym (dl, "plugin_init");
+  if ((error = dlerror ()) != NULL) {
+    fprintf (stderr, "%s: %s: %s\n", program_name, name, error);
+    exit (EXIT_FAILURE);
+  }
+  if (!plugin_init) {
+    fprintf (stderr, "%s: %s: invalid plugin_init\n", program_name, name);
+    exit (EXIT_FAILURE);
+  }
+
+  /* Register the plugin. */
+  ret = plugin_register (i, filename, dl, plugin_init);
+
+  if (free_filename)
+    free (filename);
+
+  return ret;
+}
+
+static struct backend *
+open_filter_so (struct backend *next, size_t i,
+                const char *name, int short_name)
+{
+  struct backend *ret;
+  const char *orig_name = name;
+  char *filename = (char *) name;
+  bool free_filename = false;
+  void *dl;
+  struct nbdkit_filter *(*filter_init) (void);
+  char *error;
+
+  if (short_name) {
+    /* Short names are rewritten relative to the filterdir. */
+    if (asprintf (&filename,
+                  "%s/nbdkit-%s-filter." SOEXT, filterdir, name) == -1) {
+      perror ("asprintf");
+      exit (EXIT_FAILURE);
+    }
+    free_filename = true;
+  }
+
+  dl = dlopen (filename, RTLD_NOW|RTLD_GLOBAL);
+  if (dl == NULL)
+    failed_to_load_error ("filter", filename, short_name ? orig_name : NULL);
+
+  /* Initialize the filter.  See dlopen(3) to understand C weirdness. */
+  dlerror ();
+  filter_init = dlsym (dl, "filter_init");
+  if ((error = dlerror ()) != NULL) {
+    fprintf (stderr, "%s: %s: %s\n", program_name, name, error);
+    exit (EXIT_FAILURE);
+  }
+  if (!filter_init) {
+    fprintf (stderr, "%s: %s: invalid filter_init\n", program_name, name);
+    exit (EXIT_FAILURE);
+  }
+
+  /* Register the filter. */
+  ret = filter_register (next, i, filename, dl, filter_init);
+
+  if (free_filename)
+    free (filename);
+
+  return ret;
+}
+
+/* Call config() on each of the key=value plugin & filter parameters. */
+static void
+parse_key_values (int argc, char **argv, bool is_first,
+                  const char *magic_config_key,
+                  const char *cwd)
+{
+  if (optind >= argc) return;
+
+  parse_key_value (argv[optind], is_first, magic_config_key, cwd);
+
+  ++optind;
+#if defined(__GNUC__) && __GNUC__ >= 15 && defined(__OPTIMIZE__)
+  /* Ensure this is optimized as a tail call. */
+  __attribute__((musttail)) return
+#endif
+  parse_key_values (argc, argv, false, magic_config_key, cwd);
+}
+
+/* Parse a single [key=]value or @PATH parameter, calling config().
+ *
+ * If the plugin provides magic_config_key then any "bare" values
+ * (ones not containing "=") are prefixed with this key.
+ *
+ * For backwards compatibility with old plugins, and to support
+ * scripting languages, if magic_config_key == NULL then if the
+ * first parameter is bare it is prefixed with the key "script", and
+ * any other bare parameters are errors.
+ *
+ * Keys must live for the life of nbdkit.  Since we want to avoid
+ * modifying argv (so that /proc/PID/cmdline remains sane) but we
+ * need to create a key from argv[i] = "key=value" we must intern
+ * the keys, which are then freed at the end of main().
+ */
+static void
+parse_key_value (const char *arg,
+                 bool is_first, const char *magic_config_key, const char *cwd)
+{
+  if (arg[0] == '@' && strchr (arg, '/')) { /* @PATH */
+    parse_at_path (&arg[1], is_first, magic_config_key, cwd);
+  }
+  else {                        /* [key=]value */
+    const char *p, *key;
+    size_t n;
+
+    p = strchr (arg, '=');
+    n = p - arg;
+    if (p && is_config_key (arg, n)) { /* Is it key=value? */
+      key = nbdkit_strndup_intern (arg, n);
+      if (key == NULL)
+        exit (EXIT_FAILURE);
+      top->config (top, key, p+1);
+    }
+    else if (magic_config_key == NULL) {
+      if (is_first)             /* magic script parameter */
+        top->config (top, "script", arg);
+      else {
+        fprintf (stderr,
+                 "%s: expecting key=value on the command line but got: %s\n",
+                 program_name, arg);
+        exit (EXIT_FAILURE);
+      }
+    }
+    else {                      /* magic config key */
+      top->config (top, magic_config_key, arg);
+    }
+  }
+}
+
+/* Parse @PATH parameter. */
+static void
+parse_at_path (const char *filename,
+               bool is_first, const char *magic_config_key, const char *cwd)
+{
+  FILE *fp;
+  const char *p;
+  CLEANUP_FREE char *path = NULL, *new_cwd = NULL, *line = NULL;
+  size_t linelen = 0, i;
+  ssize_t len;
+  const char *arg;
+
+  /* Calculate the path relative to the context directory. */
+  if (filename[0] == '/') {
+    path = strdup (filename);
+    if (path == NULL) {
+      fprintf (stderr, "%s: strdup: %m\n", program_name);
+      exit (EXIT_FAILURE);
+    }
+  }
+  else {
+    if (asprintf (&path, "%s/%s", cwd, filename) == -1) {
+      fprintf (stderr, "%s: asprintf: %m\n", program_name);
+      exit (EXIT_FAILURE);
+    }
+  }
+
+  /* Calculate the new context directory in case this file contains
+   * any @PATH entries.  These are relative to this file.
+   */
+  p = strrchr (path, '/');
+  assert (p);
+  new_cwd = strndup (path, p-path);
+  if (new_cwd == NULL) {
+    fprintf (stderr, "%s: strndup: %m\n", program_name);
+    exit (EXIT_FAILURE);
+  }
+
+  /* Read the file line at a time, ignoring comments and blank lines. */
+  debug ("opening @%s", path);
+  fp = fopen (path, "r");
+  if (fp == NULL) {
+    fprintf (stderr, "%s: %s: %m\n", program_name, path);
+    exit (EXIT_FAILURE);
+  }
+
+  while ((len = getline (&line, &linelen, fp)) != -1) {
+    /* Ignore lines which are just whitespace or start with '#'. */
+    for (i = 0; i < len; ++i) {
+      if (line[i] == '#') {
+        i = len;
+        break;
+      }
+      if (!ascii_isspace (line[i]))
+        break;
+    }
+    if (i == len) continue;
+
+    /* Remove final \n if present. */
+    if (len > 0 && line[len-1] == '\n')
+      line[--len] = '\0';
+
+    /* We need to intern this string as it must live for the life of
+     * nbdkit.  This is freed at the end of main().
+     */
+    arg = nbdkit_strndup_intern (line, len);
+    if (arg == NULL)
+      exit (EXIT_FAILURE);
+
+    /* Parse it. */
+    parse_key_value (arg, is_first, magic_config_key, new_cwd);
+    is_first = false;
+  }
+
+  fclose (fp);
+}
+
+static void
+start_serving (void)
+{
+  sockets socks = empty_vector;
+  size_t i;
+
+  set_up_quit_pipe ();
+#if !ENABLE_LIBFUZZER
+  set_up_signals ();
+#endif
+
+  /* Lock the process into memory if requested. */
+  if (swap) {
+#ifdef HAVE_MLOCKALL
+    if (mlockall (MCL_CURRENT | MCL_FUTURE) == -1) {
+      fprintf (stderr, "%s: --swap: mlockall: %m\n", program_name);
+      exit (EXIT_FAILURE);
+    }
+    debug ("mlockall done");
+#else
+    fprintf (stderr, "%s: mlockall (--swap option) "
+             "is not supported on this platform\n", program_name);
+    exit (EXIT_FAILURE);
+#endif
+  }
+
+  switch (service_mode) {
+  case SERVICE_MODE_SOCKET_ACTIVATION:
+    /* Socket activation.  The socket_activation variable is a list of
+     * file descriptors to use.
+     */
+    assert (socket_activation.len > 0);
+    if (sockets_reserve_exactly (&socks, socket_activation.len) == -1) {
+      perror ("realloc");
+      exit (EXIT_FAILURE);
+    }
+    for (i = 0; i < socket_activation.len; ++i) {
+      int fd = socket_activation.ptr[i].fd;
+      const char *name = socket_activation.ptr[i].name;
+
+      /* This can't fail because of the reservation above. */
+      sockets_append (&socks, fd);
+
+      if (name == NULL)
+        debug ("socket activation: listening on fd %d", fd);
+      else
+        debug ("socket activation: listening on fd %d (%s)", fd, name);
+    }
+    change_user ();
+    write_pidfile ();
+    top->after_fork (top);
+    accept_incoming_connections (&socks);
+    break;
+
+  case SERVICE_MODE_LISTEN_STDIN:
+    /* Handling a single connection on stdin/stdout. */
+    change_user ();
+    write_pidfile ();
+    top->after_fork (top);
+    threadlocal_new_server_thread ();
+    handle_single_connection (saved_stdin, saved_stdout);
+    break;
+
+  case SERVICE_MODE_UNIXSOCKET:
+    bind_unix_socket (&socks);
+    goto serve_socks;
+
+  case SERVICE_MODE_VSOCK:
+    bind_vsock (&socks);
+    goto serve_socks;
+
+  case SERVICE_MODE_TCPIP:
+    bind_tcpip_socket (&socks);
+  serve_socks:
+    /* Common code for handling multiple connections on TCP/IP, Unix
+     * domain socket or AF_VSOCK.
+     */
+    run_command ();
+    change_user ();
+    fork_into_background ();
+    write_pidfile ();
+    top->after_fork (top);
+    accept_incoming_connections (&socks);
+    break;
+
+  default:
+    abort ();
+  }
+}
+
+static void
+write_pidfile (void)
+{
+  int fd;
+  pid_t pid;
+  char pidstr[64];
+  size_t len;
+
+  if (!pidfile)
+    return;
+
+  pid = getpid ();
+  /* Don't put a trailing \n after the PID file on Windows. It is
+   * turned into \r\n which causes problems if you process the file
+   * using a Unix tool like bash, especially when running the test
+   * suite.
+   */
+  snprintf (pidstr, sizeof pidstr, "%d"
+#ifndef WIN32
+            "\n"
+#endif
+            , (int) pid);
+  len = strlen (pidstr);
+
+  fd = open (pidfile, O_WRONLY|O_TRUNC|O_CREAT|O_CLOEXEC|O_NOCTTY, 0644);
+  if (fd == -1) {
+    perror (pidfile);
+    exit (EXIT_FAILURE);
+  }
+
+  if (write (fd, pidstr, len) < len ||
+      close (fd) == -1) {
+    perror (pidfile);
+    exit (EXIT_FAILURE);
+  }
+
+  debug ("written pidfile %s", pidfile);
+}
+
+/* When parsing plugin and filter config key=value from the command
+ * line, is the key a simple alphanumeric with period, underscore or
+ * dash?
+ */
+static bool
+is_config_key (const char *key, size_t len)
+{
+  static const char allowed_first[] =
+    "abcdefghijklmnopqrstuvwxyz"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  static const char allowed[] =
+    "._-"
+    "0123456789"
+    "abcdefghijklmnopqrstuvwxyz"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+  if (len == 0)
+    return false;
+
+  if (strchr (allowed_first, key[0]) == NULL)
+    return false;
+
+  /* This works in context of the caller since key[len] == '='. */
+  if (strspn (key, allowed) != len)
+    return false;
+
+  return true;
+}
+
+/* Refuse to run if stdin/out/err are closed, whether or not -s is used. */
+static void
+error_if_stdio_closed (void)
+{
+#ifdef F_GETFL
+  if (fcntl (STDERR_FILENO, F_GETFL) == -1) {
+    /* Nowhere we can report the error. Oh well. */
+    exit (EXIT_FAILURE);
+  }
+  if (fcntl (STDIN_FILENO, F_GETFL) == -1 ||
+      fcntl (STDOUT_FILENO, F_GETFL) == -1) {
+    perror ("expecting stdin/stdout to be opened");
+    exit (EXIT_FAILURE);
+  }
+#endif
+}
+
+/* Sanitize stdin/stdout to /dev/null, after saving the originals
+ * when needed.  We are still single-threaded at this point, and
+ * already checked that stdin/out were open, so we don't have to
+ * worry about other threads accidentally grabbing our intended fds,
+ * or races on FD_CLOEXEC.  POSIX says that 'fflush(NULL)' is
+ * supposed to reset the underlying offset of seekable stdin, but
+ * glibc is buggy and requires an explicit fflush(stdin) as
+ * well. https://sourceware.org/bugzilla/show_bug.cgi?id=12799
+ */
+static void
+switch_stdio (void)
+{
+#if defined (F_DUPFD_CLOEXEC) || defined (F_DUPFD)
+  fflush (stdin);
+  fflush (NULL);
+  if (listen_stdin || run) {
+#ifndef F_DUPFD_CLOEXEC
+#define F_DUPFD_CLOEXEC F_DUPFD
+#endif
+    saved_stdin = fcntl (STDIN_FILENO, F_DUPFD_CLOEXEC, STDERR_FILENO + 1);
+    saved_stdout = fcntl (STDOUT_FILENO, F_DUPFD_CLOEXEC, STDERR_FILENO + 1);
+#if F_DUPFD == F_DUPFD_CLOEXEC
+    saved_stdin = set_cloexec (saved_stdin);
+    saved_stdout = set_cloexec (saved_stdout);
+#endif
+    if (saved_stdin == -1 || saved_stdout == -1) {
+      perror ("fcntl");
+      exit (EXIT_FAILURE);
+    }
+  }
+#endif
+#ifndef WIN32
+  close (STDIN_FILENO);
+  close (STDOUT_FILENO);
+  if (open ("/dev/null", O_RDONLY) != STDIN_FILENO ||
+      open ("/dev/null", O_WRONLY) != STDOUT_FILENO) {
+    perror ("open");
+    exit (EXIT_FAILURE);
+  }
+#endif
+}
+
+/* On Windows the Winsock library must be initialized early.
+ * https://docs.microsoft.com/en-us/windows/win32/winsock/initializing-winsock
+ */
+static void
+winsock_init (void)
+{
+#ifdef WIN32
+  WSADATA wsaData;
+  int result;
+
+  result = WSAStartup (MAKEWORD (2, 2), &wsaData);
+  if (result != 0) {
+    fprintf (stderr, "WSAStartup failed: %d\n", result);
+    exit (EXIT_FAILURE);
+  }
+#endif
+}

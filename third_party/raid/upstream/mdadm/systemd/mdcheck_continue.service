@@ -1,0 +1,17 @@
+#  This file is part of mdadm.
+#
+#  mdadm is free software; you can redistribute it and/or modify it
+#  under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+
+[Unit]
+Description=MD array scrubbing - continuation
+Documentation=man:mdadm(8)
+
+[Service]
+Type=simple
+Environment="MDADM_CHECK_DURATION=6 hours"
+# mdcheck --start will continues previously started checks, and starts from
+# zero for arrays without a "Checked_$UUID" marker in /var/lib/mdcheck
+ExecStart=MISCDIR/mdcheck --start --duration ${MDADM_CHECK_DURATION}

@@ -1,0 +1,16 @@
+#
+# lockless bitmaps are only supported at array-creation time with 1.2
+# metadata; verify --grow --bitmap=lockless is rejected and does not
+# silently add a regular internal bitmap.
+#
+mdadm --create --run $md0 --bitmap=none --metadata=1.2 --level=1 -n2 --delay=1 $dev1 $dev2
+check wait
+check nobitmap
+
+if mdadm --grow $md0 --bitmap=lockless
+then echo >&2 "should fail: lockless bitmap not supported via --grow"
+	exit 1
+fi
+check nobitmap
+
+mdadm -S $md0

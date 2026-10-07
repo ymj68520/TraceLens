@@ -1,0 +1,135 @@
+// vim: tw=80
+// Copyright (C) 2020 Axcient
+//
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are
+// met:
+//
+// * Redistributions of source code must retain the above copyright
+// notice, this list of conditions and the following disclaimer.
+//
+// * Redistributions in binary form must reproduce the above copyright
+// notice, this list of conditions and the following disclaimer in the
+// documentation and/or other materials provided with the distribution.
+//
+// THIS SOFTWARE IS PROVIDED BY RED HAT AND CONTRIBUTORS ''AS IS'' AND
+// ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+// THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+// PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL RED HAT OR
+// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+// USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+// ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+// OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+// SUCH DAMAGE.
+
+use lazy_static::lazy_static;
+use mockall::mock;
+use std::{
+    cell::RefCell,
+    ffi::{CString, CStr},
+    os::raw::{c_char, c_int, c_void},
+    sync::Mutex
+};
+
+use nbdkit::*;
+
+thread_local!(pub static ERRMSG: RefCell<String> =
+              const { RefCell::new(String::new()) });
+thread_local!(pub static ERRNO: RefCell<i32> =
+              const { RefCell::new(0) });
+
+lazy_static! {
+    /// Mediates access to MockServer's global expectations
+    /// Any test that sets an expectation on a static method (like `open`) must
+    /// grab this mutex
+    pub static ref MOCK_SERVER_MTX: Mutex<()> = Mutex::new(());
+}
+
+mock!{
+    pub Server {}
+    #[allow(dead_code)]
+    impl Server for Server {
+        fn after_fork() -> Result<()> where Self: Sized;
+        fn block_size(&self) -> Result<(u32,u32,u32)>;
+        fn cache(&self, count: u32, offset: u64) -> Result<()>;
+        fn can_cache(&self) -> Result<CacheFlags>;
+        fn can_extents(&self) -> Result<bool>;
+        fn can_fast_zero(&self) -> Result<bool>;
+        fn can_flush(&self) -> Result<bool>;
+        fn can_fua(&self) -> Result<FuaFlags>;
+        fn can_multi_conn(&self) -> Result<bool>;
+        fn can_trim(&self) -> Result<bool>;
+        fn can_write(&self) -> Result<bool>;
+        fn can_zero(&self) -> Result<bool>;
+        fn config(k: &str, v: &str) -> Result<()> where Self: Sized;
+        fn config_complete() -> Result<()> where Self: Sized;
+        fn config_help() -> Option<&'static CStr> where Self: Sized;
+        fn description() -> Option<&'static CStr> where Self: Sized;
+        fn dump_plugin() where Self: Sized;
+        fn extents(&self, c: u32, o: u64, f: Flags, e: &mut ExtentHandle)
+            -> Result<()>;
+        fn flush(&self) -> Result<()>;
+        fn get_ready() -> Result<()> where Self: Sized;
+        fn get_size(&self) -> Result<i64>;
+        fn is_rotational(&self) -> Result<bool>;
+        fn load() where Self: Sized;
+        fn longname() -> Option<&'static CStr> where Self: Sized;
+        fn magic_config_key() -> Option<&'static CStr> where Self: Sized;
+        fn name() -> &'static CStr where Self: Sized;
+        fn open(readonly: bool) -> Result<Box<dyn Server>> where Self: Sized;
+        fn preconnect(readonly: bool) -> Result<()> where Self: Sized;
+        fn read_at(&self, buf: &mut [u8], offset: u64) -> Result<()>;
+        fn thread_model() -> Result<ThreadModel> where Self: Sized;
+        fn trim(&self, count: u32, offset: u64, flags: Flags) -> Result<()>;
+        fn unload() where Self: Sized;
+        fn version() -> Option<&'static CStr> where Self: Sized;
+        fn write_at(&self, _buf: &[u8], _offset: u64, _flags: Flags) -> Result<()>;
+        fn zero(&self, count: u32, offset: u64, flags: Flags) -> Result<()>;
+    }
+}
+
+mock! {
+    pub NbdkitAddExtent {
+        pub fn add(extents: *mut c_void, offset: u64, len: u64, ty: u32) -> c_int;
+
+    }
+}
+
+#[no_mangle]
+extern "C" fn nbdkit_add_extent(extents: *mut c_void,
+                                offset: u64, len: u64, ty: u32) -> c_int
+{
+    MockNbdkitAddExtent::add(extents, offset, len, ty)
+}
+
+// XXX The actual C function is variadic, but stable Rust can't create variadic
+// extern functions yet.  So we pretend that it has two arguments.
+// https://github.com/rust-lang/rust/issues/44930
+// extern fn nbdkit_error(fmt: *const c_char, ...);
+#[no_mangle]
+extern "C" fn nbdkit_error(fmt: *const c_char, msg: *const c_char) {
+    assert_eq!(
+        unsafe {CStr::from_ptr(fmt) },
+        CString::new("%s").unwrap().as_c_str()
+    );
+    ERRMSG.with(|m| unsafe {
+            CStr::from_ptr(msg)
+        }.to_str()
+        .unwrap()
+        .clone_into(&mut m.borrow_mut())
+    );
+}
+#[no_mangle]
+extern "C" fn nbdkit_set_error(errno: c_int) {
+    ERRNO.with(|e| *e.borrow_mut() = errno);
+}
+
+/// Holds common setup stuff needed by most test cases
+pub struct Fixture<'a> {
+    pub mockp: *mut Box<MockServer>,
+    pub plugin: &'a Plugin,
+    pub handle: *mut c_void
+}

@@ -1,0 +1,619 @@
+=head1 NAME
+
+nbdkit-sh-plugin - nbdkit shell, script or executable plugin
+
+=head1 SYNOPSIS
+
+ nbdkit sh /path/to/script [arguments...]
+
+=for paragraph
+
+ nbdkit sh - <<'EOF'
+ ... shell script ...
+ EOF
+
+=head1 DESCRIPTION
+
+C<nbdkit-sh-plugin> allows you to write plugins for L<nbdkit(1)> using
+arbitrary scripting languages, including shells like L<bash(1)>,
+L<dash(1)>, L<csh(1)>, L<zsh(1)> etc., other scripting environments,
+or any executable.
+
+Note if you want to use an established scripting language like Perl or
+Python, then nbdkit has specific plugins to handle those languages and
+those will be more efficient (see L<nbdkit(1)> for a complete list).
+
+To use shell script fragments from the nbdkit command line (rather
+than a separate script) see L<nbdkit-eval-plugin(1)>.
+
+=head2 If you have been given an nbdkit sh plugin
+
+Assuming you have a shell script which is an nbdkit plugin, you run it
+like this:
+
+ nbdkit sh /path/to/script
+
+You may have to add further C<key=value> arguments to the command
+line.  The script must be executable (C<chmod +x>).
+
+=head2 Inline shell scripts
+
+It is also possible to write a shell script plugin "inline" using C<->
+as the name of the script, like this:
+
+ nbdkit sh - <<'EOF'
+   case "$1" in
+     get_size) echo 1M ;;
+     pread) dd if=/dev/zero count=$3 iflag=count_bytes ;;
+     *) exit 2 ;;
+   esac
+ EOF
+
+By default the inline script runs under F</bin/sh>.  You can add a
+shebang (C<#!>) to use other scripting languages.  Of course, reading
+an inline script from stdin is incompatible with the I<-s>
+(I<--single>) mode of nbdkit that connects a client on stdin.
+
+=head1 WRITING AN NBDKIT SH PLUGIN
+
+For example plugins written in Bash, see:
+L<https://gitlab.com/nbdkit/nbdkit/blob/master/plugins/sh/examples/>
+
+Broadly speaking, nbdkit shell plugins work like C ones, so you should
+read L<nbdkit-plugin(3)> first.
+
+=head2 Programming model
+
+This plugin has a simple programming model: For every plugin method
+that needs to be called, the external script is invoked with
+parameters describing the method and its arguments.  The first
+parameter is always the method name.  For example:
+
+ /path/to/script config file disk.img
+                   │      │   │
+                   │      │   └─ value ($3)
+                   │      └── key ($2)
+               method ($1)
+
+=for paragraph
+
+ /path/to/script pread <handle> <count> <offset>
+                   │       │       │       │
+                   │       │       │       └─ offset in bytes ($4)
+                   │       │       └── request size in bytes ($3)
+               method ($1) └── handle ($2) ─ see "Handles" below
+
+Scripts should ignore extra parameters that they don't understand
+since we may add new parameters in future.
+
+=head2 Exit codes
+
+The script should exit with specific exit codes:
+
+=over 4
+
+=item S<0>
+
+The method was executed successfully.
+
+=item 1 and 16-255
+
+There was an error.  The script may print on stderr an errno name,
+optionally followed by whitespace and a message, for example:
+
+ echo 'ENOSPC Out of space' >&2
+ exit 1
+
+or if you don't need the log message:
+
+ echo ENOSPC >&2
+ exit 1
+
+If the script doesn't print anything or the output cannot be parsed
+then nbdkit assumes error C<EIO>.  Note that output to stderr is
+ignored if the command succeeds, so it is acceptable to output a
+potential error message prefix prior to attempting a command which
+will add further details if a failure occurs.
+
+=item S<2>
+
+The requested method is not supported by the script.
+
+=item S<3>
+
+For methods which return booleans, this code indicates false.
+
+=item 4 and 5
+
+Triggers a call to the C function L<nbdkit_shutdown(3)>, which requests
+an asynchronous exit of the nbdkit server (disconnecting all clients).
+The client will usually get a response before shutdown is complete
+(although this is racy); so once the shutdown is requested, code 4
+then behaves like code 0 (stderr is ignored, and the server tries to
+return success), and code 5 behaves like code 1 (the server tries to
+return an error to the client parsed from stderr, although a missing
+error defaults to C<ESHUTDOWN> instead of C<EIO>).
+
+=item S<6>
+
+Triggers a call to the C function L<nbdkit_disconnect(3)> with C<force>
+set to true, which requests an abrupt disconnect of the current
+client.  The contents of stderr are irrelevant with this status, since
+the client will not get a response.
+
+=item 7 and 8
+
+Triggers a call to the C function L<nbdkit_disconnect(3)> with C<force>
+set to false, which requests a soft disconnect of the current client
+(future client requests are rejected with C<ESHUTDOWN> without calling
+into the plugin, but current requests may complete).  Since the client
+will likely get the response to this command, code 7 then behaves like
+code 0 (stderr is ignored, and the server tries to return success),
+and code 8 behaves like code 1 (the server tries to return an error to
+the client parsed from stderr, although a missing error defaults to
+C<ESHUTDOWN> instead of C<EIO>).
+
+=item 9-15
+
+These exit codes are reserved for future use.  Note that versions of
+nbdkit E<lt> 1.34 documented that codes 8 through 15 behaved like code
+1; although it is unlikely that many scripts relied on this similarity
+in practice.
+
+=back
+
+In nbdkit E<gt> 1.34, it is possible to probe whether additional exit
+codes have been assigned meaning, by looking for the line
+B<max_known_status=> in the output of B<nbdkit --dump-plugin sh>.  If
+this line is not present, exit codes 4 and above behave like status 1.
+
+=head2 Temporary directory
+
+A fresh script is invoked for each method call (ie. scripts are
+stateless), so if the script needs to store state it has to store it
+somewhere in the filesystem in a format and location which is left up
+to the author of the script.
+
+However nbdkit helps by creating a randomly named, empty directory for
+the script.  This directory persists for the lifetime of nbdkit and is
+deleted when nbdkit exits.  The name of the directory is passed to
+each script invocation in the C<$tmpdir> environment variable.
+
+=head2 Handles
+
+Handles are arbitrary strings, but it is best to limit them to short
+alphanumeric strings.
+
+=head3 Per-connection state
+
+The temporary directory described above can be used for state for the
+lifetime of the nbdkit instance (across multiple connections).  If you
+want to store state per connection then one way to do it is to create
+a randomly named subdirectory under the temporary directory:
+
+ case "$1" in
+   ...
+   open)
+     mktemp -d $tmpdir/handle-XXXXXX ;;
+
+The handle will be the subdirectory name, returned to the script as
+C<$2> in all connected calls (eg. C<pread>, C<get_size>).  You can
+delete the subdirectory explicitly in C<close>:
+
+ case "$1" in
+   ...
+   close)
+     rm -rf "$2" ;;
+
+or rely on nbdkit deleting the whole temporary directory including all
+per-handle subdirectories when it exits.
+
+=head2 Performance
+
+This plugin has to fork on every request, so performance will never be
+great.  For best performance, consider using the L<nbdkit-plugin(3)>
+API directly.  Having said that, if you have a sh plugin and want to
+improve performance then the following tips may help:
+
+=over 4
+
+=item Relax the thread model.
+
+The default C<thread_model> is C<serialize_all_requests> meaning that
+two instances of the script can never be running at the same time.
+This is safe but slow.  If your script is safe to be called in
+parallel, set this to C<parallel>.
+
+=item Implement the C<zero> method.
+
+If the C<zero> method is not implemented then nbdkit will fall back to
+using C<pwrite> which is considerably slower because nbdkit has to
+send blocks of zeroes to the script.
+
+=item You don't have to write shell scripts.
+
+This plugin can run any external binary, not only shell scripts.  You
+should get more performance by rewriting the shell script as a program
+in a compiled language.
+
+=back
+
+=head2 Methods
+
+This just documents the arguments to the script corresponding to each
+plugin method, and any way that they differ from the C callbacks.  In
+all other respects they work the same way as the C callbacks, so you
+should go and read L<nbdkit-plugin(3)>.
+
+=over 4
+
+=item C<load>
+
+ /path/to/script load
+
+=item C<unload>
+
+ /path/to/script unload
+
+This is called just before nbdkit exits.  Errors from this method are
+ignored.
+
+=item C<dump_plugin>
+
+ /path/to/script dump_plugin
+
+=item C<config>
+
+ /path/to/script config <key> <value>
+
+=item C<config_complete>
+
+ /path/to/script config_complete
+
+=item C<magic_config_key>
+
+ /path/to/script magic_config_key
+
+If a magic config key is needed, this should echo it to stdout.
+See L<nbdkit(1)/Magic parameters>.
+
+=item C<thread_model>
+
+ /path/to/script thread_model
+
+On success this should print the desired thread model of the script,
+one of C<"serialize_connections">, C<"serialize_all_requests">,
+C<"serialize_requests">, or C<"parallel">.
+
+This method is I<not> required; if omitted, then the plugin will be
+executed under the safe C<"serialize_all_requests"> model.  However,
+this means that this method B<must> be provided if you want to use the
+C<"parallel"> or C<"serialize_requests"> model.  Even then your
+request may be restricted for other reasons; look for C<thread_model>
+in the output of C<nbdkit --dump-plugin sh script> to see what
+actually gets selected.
+
+If an error occurs, the script should output an error message and exit
+with status C<1>; unrecognized output is ignored.
+
+=item C<get_ready>
+
+ /path/to/script get_ready
+
+=item C<after_fork>
+
+ /path/to/script after_fork
+
+=item C<preconnect>
+
+ /path/to/script preconnect <readonly>
+
+=item C<list_exports>
+
+ /path/to/script list_exports <readonly> <tls>
+
+The C<readonly> and C<tls> parameters will be C<true> or C<false>.
+
+The first line of output informs nbdkit how to parse the rest of the
+output, the remaining lines then supply the inputs of the C
+C<nbdkit_add_export> function (see L<nbdkit-plugin(3)>), as follows:
+
+=over 4
+
+=item NAMES
+
+The remaining output provides one export name per line, and no export
+will be given a description.  For convenience, this form is also
+assumed if the first output line does not match one of the recognized
+parse modes.
+
+=item INTERLEAVED
+
+The remaining output provides pairs of lines, the first line being an
+export name, and the second the corresponding description.
+
+=item NAMES+DESCRIPTIONS
+
+The number of remaining lines is counted, with the first half being
+used as export names, and the second half providing descriptions to
+pair with names from the first half.
+
+An example of using this form to list files in the current directory,
+followed by their L<ls(1)> long description, would be:
+
+ echo NAMES+DESCRIPTIONS
+ ls
+ ls -l
+
+=back
+
+Note that other output modes might be introduced in the future; in
+particular, none of the existing modes allow a literal newline in an
+export name or description, although this could be possible under a
+new mode supporting escape sequences.
+
+This method is I<not> required; if it is absent, the list of exports
+advertised by nbdkit will be the single name result of C<default_export>
+and no description.
+
+=item C<default_export>
+
+ /path/to/script default_export <readonly> <tls>
+
+The C<readonly> and C<tls> parameters will be C<true> or C<false>.
+
+On success this should print a name on stdout to use in place of the
+default export C<"">, then exit with code C<0>.  For convenience, the
+output can be any of the list forms recognized by C<list_exports>, in
+which case the first listed export name is used, and where an empty
+list uses C<"">.  Given the current set of recognized export lists, it
+is not possible for the resulting name to include a newline.
+
+This method is I<not> required; if it is absent, the default export
+name will be the empty string, C<"">.
+
+=item C<open>
+
+ /path/to/script open <readonly> <exportname> <tls>
+
+The C<readonly> parameter will be C<true> or C<false>.  The
+C<exportname> parameter, if present, is the export name passed to the
+server from the client.  The C<tls> parameter, if present, will be
+C<true> or C<false> depending on whether the client is using TLS.
+
+On success this should print the handle (any string) on stdout and
+exit with code C<0>.  If the handle ends with a newline character then
+the newline is removed.
+
+Unlike C plugins, this method is I<not> required.  If omitted then the
+handle will be C<""> (empty string).
+
+=item C<close>
+
+ /path/to/script close <handle>
+
+=item C<export_description>
+
+ /path/to/script export_description <handle>
+
+The script should print a human-readable description of the disk image
+on stdout.  If the description ends with a newline character then the
+newline is removed.
+
+This method is I<not> required; if it is absent, no export description
+will be provided to the client.
+
+=item C<get_size>
+
+ /path/to/script get_size <handle>
+
+The script should print the size of the disk image on stdout.  You can
+print the size in bytes, or use any format understood by
+L<nbdkit_parse_size(3)> such as C<1M>.
+
+This method is required.
+
+=item C<block_size>
+
+ /path/to/script block_size <handle>
+
+This script should print three numbers on stdout, separated by
+whitespace.  These are (in order) the minimum block size, the
+preferred block size, and the maximum block size.  You can print the
+sizes in bytes or use any format understood by L<nbdkit_parse_size(3)>
+such as C<1M>.
+
+=item C<can_write>
+
+=item C<can_flush>
+
+=item C<can_trim>
+
+=item C<can_zero>
+
+=item C<can_extents>
+
+Unlike in other languages, you B<must> provide the C<can_*> methods
+otherwise they are assumed to all return false and your C<pwrite>,
+C<flush>, C<trim>, C<zero> and C<extents> methods will never be
+called.  The reason for this is obscure: In other languages we can
+detect if (eg) a C<pwrite> method is defined and synthesize an
+appropriate response if no actual C<can_write> method is defined.
+However detecting if methods are present without running them is not
+possible with this plugin.
+
+ /path/to/script can_write <handle>
+ /path/to/script can_flush <handle>
+ /path/to/script can_trim <handle>
+ /path/to/script can_zero <handle>
+ /path/to/script can_extents <handle>
+
+The script should exit with code C<0> for true or code C<3> for false.
+
+=item C<is_rotational>
+
+=item C<can_fast_zero>
+
+ /path/to/script is_rotational <handle>
+ /path/to/script can_fast_zero <handle>
+
+The script should exit with code C<0> for true or code C<3> for false.
+
+=item C<can_fua>
+
+=item C<can_cache>
+
+ /path/to/script can_fua <handle>
+ /path/to/script can_cache <handle>
+
+These control Forced Unit Access (FUA) and caching behaviour of the
+core server.
+
+Unlike the other C<can_*> callbacks, these two are I<not> a boolean.
+They must print either "none", "emulate" or "native" to stdout.  The
+meaning of these is described in L<nbdkit-plugin(3)>.  Furthermore,
+you B<must> provide a C<can_cache> method if you desire the C<cache>
+callback to be utilized, similar to the reasoning behind requiring
+C<can_write> to utilize C<pwrite>.
+
+=item C<can_multi_conn>
+
+ /path/to/script can_multi_conn <handle>
+
+The script should exit with code C<0> for true or code C<3> for false.
+
+=item C<pread>
+
+ /path/to/script pread <handle> <count> <offset>
+
+The script should print the requested binary data on stdout.  Exactly
+C<count> bytes must be printed.
+
+This method is required.
+
+=item C<pwrite>
+
+ /path/to/script pwrite <handle> <count> <offset> <flags>
+
+The script should read the binary data to be written from stdin.
+
+The C<flags> parameter can be an empty string or C<"fua">.  In the
+future, a comma-separated list of flags may be present.
+
+Unlike in other languages, if you provide a C<pwrite> method you
+B<must> also provide a C<can_write> method which exits with code C<0>
+(true).
+
+=item C<flush>
+
+ /path/to/script flush <handle>
+
+Unlike in other languages, if you provide a C<flush> method you
+B<must> also provide a C<can_flush> method which exits with code C<0>
+(true).
+
+=item C<trim>
+
+ /path/to/script trim <handle> <count> <offset> <flags>
+
+The C<flags> parameter can be an empty string or C<"fua">.  In the
+future, a comma-separated list of flags may be present.
+
+Unlike in other languages, if you provide a C<trim> method you B<must>
+also provide a C<can_trim> method which exits with code C<0> (true).
+
+=item C<zero>
+
+ /path/to/script zero <handle> <count> <offset> <flags>
+
+The C<flags> parameter can be an empty string or a comma-separated
+list of the flags: C<"fua">, C<"may_trim">, and C<"fast"> (eg. C<"">,
+C<"fua">, C<"fua,may_trim,fast"> are some of the 8 possible values).
+
+Unlike in other languages, if you provide a C<zero> method you B<must>
+also provide a C<can_zero> method which exits with code C<0> (true).
+
+To trigger a fallback to C<pwrite> on a normal zero request, or to
+respond quickly to the C<"fast"> flag that a specific zero request is
+no faster than a corresponding write, the script must output
+C<ENOTSUP> or C<EOPNOTSUPP> to stderr (possibly followed by a
+description of the problem) before exiting with code C<1> (failure).
+
+=item C<extents>
+
+ /path/to/script extents <handle> <count> <offset> <flags>
+
+The C<flags> parameter can be an empty string or C<"req_one">.
+
+This must print, one per line on stdout, a list of one or more extents
+in the format:
+
+ offset length type
+
+which correspond to the inputs of the C C<nbdkit_add_extent> function
+(see L<nbdkit-plugin(3)>).  The C<offset> and C<length> fields may use
+any format understood by L<nbdkit_parse_size(3)>.  The optional
+C<type> field may be an integer, missing (same as 0), or a
+comma-separated list of the words C<hole> and C<zero>.  Blank lines
+and lines beginning with C<#> are comments.  An example of a valid set
+of extents covering a C<10M> disk where the first megabyte only is
+allocated data:
+
+ 0  1M
+ 1M 9M  hole,zero
+
+Unlike in other languages, if you provide an C<extents> method you
+B<must> also provide a C<can_extents> method which exits with code
+C<0> (true).
+
+=item C<cache>
+
+ /path/to/script cache <handle> <count> <offset>
+
+Unlike in other languages, if you provide a C<cache> method you
+B<must> also provide a C<can_cache> method which prints "native" and
+exits with code C<0> (true).
+
+=back
+
+=head2 Missing callbacks
+
+=over 4
+
+=item Missing: C<name>, C<version>, C<longname>,
+C<description>, C<config_help>
+
+These are not yet supported.
+
+=back
+
+=head1 FILES
+
+=over 4
+
+=item F<$plugindir/nbdkit-sh-plugin.so>
+
+The plugin.
+
+Use C<nbdkit --dump-config> to find the location of C<$plugindir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-sh-plugin> first appeared in nbdkit 1.8.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-plugin(3)>,
+L<nbdkit-eval-plugin(1)>,
+L<nbdkit-cc-plugin(1)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

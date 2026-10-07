@@ -614,9 +614,16 @@ bool FileExtractor::extractFileByPath(const std::string& filePath, const std::st
     // Use parameterized query to prevent SQL injection
     std::vector<FileRecord> results;
 
+    // TSK stores filesystem paths with a leading '/', while Android parser
+    // candidates use root-relative paths. Match both spellings without adding
+    // synthetic files or silently resolving cross-partition ambiguity.
+    if (filePath.empty()) return false;
+    const std::string alternatePath = filePath.front() == '/'
+        ? filePath.substr(1) : "/" + filePath;
+
     std::string sql = "SELECT inode, name, path, size, mtime, ctime, type, is_deleted, md5, "
                       "COALESCE(partition_num, 0) "
-                      "FROM files WHERE path = ?";
+                      "FROM files WHERE path IN (?, ?)";
 
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(dbManager_->getDb(), sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
@@ -625,6 +632,7 @@ bool FileExtractor::extractFileByPath(const std::string& filePath, const std::st
     }
 
     sqlite3_bind_text(stmt, 1, filePath.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, alternatePath.c_str(), -1, SQLITE_STATIC);
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         FileRecord record;

@@ -1,0 +1,199 @@
+=head1 NAME
+
+nbdkit-release-notes-1.44 - release notes for nbdkit 1.44
+
+=head1 DESCRIPTION
+
+These are the release notes for nbdkit stable release 1.44.
+This describes the major changes since 1.42.
+
+nbdkit 1.44.0 was released on B<1 July 2025>.
+
+=head2 Security
+
+Fix off-by-one for maximum block_status length (CVE-2025-47711), and a
+32-bit overflow in extents handling (CVE-2025-47712) (reported by
+Nikolay Ivanets and Eric Blake, and fixed by Eric Blake).
+
+Thread-local storage is now used when printing certain protocol
+messages in verbose mode, which avoids possible output corruption.
+Since these messages were generated based on untrusted client input,
+the existing code was examined to see if this could have been
+exploitable, but it is not thought so.  Nevertheless the fix was
+backported to stable version 1.42.2 and updating is recommended.
+
+See L<nbdkit-security(1)> for past security issues.
+
+=head2 Plugins
+
+New L<nbdkit-nfs-plugin(1)> which allows access to disk images stored
+on NFS servers (thanks Ronnie Sahlberg).
+
+L<nbdkit-file-plugin(1)> is now much more careful about checking for
+errors from certain Linux system calls that we previously thought were
+just advisory (thanks Eric Sandeen, Dave Chinner).
+
+L<nbdkit-file-plugin(1)> can now trim LVM thin block devices (thanks
+Germano Veit Michel, Eric Blake).
+
+L<nbdkit-curl-plugin(1)> adds new C<proxy-cafile> and C<proxy-capath>
+parameters (Adi Aloni).
+
+L<nbdkit-vddk-plugin(1)> adds a new C<export> parameter which allows
+the client to choose which file to serve via the NBD protocol export
+name.  This plugin has also been optimized so that querying extent
+information no longer slows down reads.  Debugging information has
+also be improved, and we can now track the time taken to run
+asynchronous commands.
+
+L<nbdkit-info-plugin(1)> adds a new C<mode=version> method.
+
+L<nbdkit-torrent-plugin(1)> now supports prefetching.  This plugin now
+also generates additional information in I<--dump-plugin> output.
+
+L<nbdkit-data-plugin(1)> allows C<@offset> to use scaling suffixes,
+eg. C<@4M> to move the offset to 4194304 (Eric Blake).
+
+=head2 Filters
+
+New L<nbdkit-openonce-filter(1)> which can be used to open the
+underlying plugin once, sharing the plugin across connections.
+
+I<nbdkit-cacheextents-filter has been deprecated>, and is
+expected to be removed in S<nbdkit 1.46>.
+
+L<nbdkit-cow-filter(1)> now understands that the NBD protocol export
+name causes multiple disk images to be exported, and correctly creates
+an overlay per export.  (See also L</Documentation> below.)
+
+L<nbdkit-ext2-filter(1)> now permits concurrent client connections
+(Eric Blake).
+
+L<nbdkit-fua-filter(1)> adds a new C<flush-on-close=true> flag which
+can be used to force a flush to persistent storage when the connection
+closes even if the client does not request one.
+
+L<nbdkit-blocksize-policy-filter(1)> will now round unaligned extents
+from plugins.  Also adjust C<blocksize-error-policy=error> to allow
+access to the unaligned tail of the disk image, but at the same time
+add new C<blocksize-error-policy=strict-error> mode which can be used
+to block that.  (Eric Blake).
+
+=head2 Language bindings
+
+L<Plugins written in Golang|nbdkit-golang-plugin(3)> now issue a
+warning if L<fork(2)> is called, since that will likely cause the
+plugin to break.
+
+For L<the Rust plugin and Rust examples|nbdkit-rust-plugin(3)>, clippy
+warnings are now only enabled if the
+S<C<./configure --enable-gcc-warnings>> build option is used.
+
+=head2 Server
+
+New I<--log=/path> option allowing error logging to be sent to a file.
+Also new I<--log=default> option which just directs logging to the
+default output (the same as if I<--log> is not used at all).
+
+=head2 API
+
+The filter API (which is not part of our API promise) changes the
+C<.thread_model> call, allowing the current thread model to be changed
+conditionally based on what the plugin sets it to.
+
+=begin comment
+
+=head2 Bug fixes
+
+=end comment
+
+=head2 Documentation
+
+Filters which are "export-safe" — that is, they correctly handle the
+case where plugins serve different content depending on the NBD
+protocol export name — are now documented in
+L<nbdkit-protocol(1)/EXPORT-SAFE FILTERS>.
+
+A common macro is used for all references in the documentation to
+magic parameters.
+
+=head2 Tests
+
+The particularly long-running C<test-spinning-mkfs.sh> test has been
+modified to finish more quickly.
+
+Previously running the whole test suite would leave many
+F</tmp/nbdkitXXXXXX> temporary directories behind.  These have been
+reduced although not quite eliminated.
+
+New C<define> function in F<tests/functions.sh> which provides a
+simpler way to add inline plugins and scripts to tests, reducing
+concerns around quoting.
+
+Several tests were modified to use the I<--run> method to start the
+test client.  This improves performance and reduces fragility of the
+tests.
+
+Tests now use C<set -u> (error if an undefined variable is used) to
+reduce a common cause of errors.
+
+=head2 Build
+
+The C<./configure> output has been beautified, which also helps to
+highlight problems when glancing at the output.
+
+Fix build issues with GCC 15.
+
+Allow User Statically Defined Tracing (USDT) probes to be added into
+the server.  Few actual probes are added so far, but the build system
+has been modified to allow it.
+
+L<nbdkit-vddk-plugin(1)> drops support for S<VDDK 6.5>, so the minimum
+required version is now S<VDDK E<ge> 6.7>.  Support for
+S<VDDK 9.0.0.0> has been added.
+
+Builds on clang were complaining about unused I<-pthread> option.
+This warning has been fixed (Eric Blake).
+
+=head2 Internals
+
+In Python code, remove unnecessary C<global> statements (thanks Nir
+Soffer).
+
+L<nbdkit-file-plugin(1)> now produces more detailed information in
+error messages, particularly about the file being accessed and the
+offset and size of the request that failed.
+
+In debug mode, when the server starts up it prints a debug message
+summarising the flow of request processing through filters and the
+plugin, making this easier to understand.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>.
+
+=head1 AUTHORS
+
+Authors of nbdkit 1.44:
+
+=begin comment
+
+git shortlog -s v1.42.0..
+
+=end comment
+
+=over 4
+
+=item Adi Aloni
+
+=item Daniel P. Berrangé
+
+=item Eric Blake
+
+=item Richard W.M. Jones
+
+=back
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

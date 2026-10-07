@@ -1,0 +1,34 @@
+Have you written an nbdkit plugin that you're willing to share?
+Email <guestfs@lists.libguestfs.org> to get it added to this list.
+
+* XVA (XenServer Virtual Appliance)
+
+This simple plugin written in Perl lets you read these files and
+reexport them as NBD.  It does not require that the XVA is unpacked:
+https://lists.gnu.org/archive/html/qemu-devel/2017-11/msg02971.html
+https://lists.gnu.org/archive/html/qemu-devel/2017-11/plHKJ062x5Uo.pl
+
+The whole thread is worth reading because several different approaches
+to dealing with XVA files are presented:
+https://lists.gnu.org/archive/html/qemu-devel/2017-11/threads.html#02839
+
+* Minecraft "block block device"
+
+https://github.com/williambl/blockblockdevice
+
+"Block Block Device is a Minecraft mod and NBDKit plugin which work
+together to allow you to create block devices on your computer which
+are backed by redstone in a Minecraft world."
+
+* Tom7's Hard(er) Drives
+
+http://tom7.org/harder/
+
+This is a C++ nbdkit plugin which stores data "in flight" in ping
+packets.
+
+* Proxmox backup server plugin
+
+https://github.com/abbbi/cpbsnbd
+
+Export your virtual machine disk backups from a Proxmox Backup Server via NBD.

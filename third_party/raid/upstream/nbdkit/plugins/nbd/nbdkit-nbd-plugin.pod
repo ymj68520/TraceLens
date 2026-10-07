@@ -1,0 +1,354 @@
+=head1 NAME
+
+nbdkit-nbd-plugin - proxy / forward to another NBD server
+
+=head1 SYNOPSIS
+
+ nbdkit nbd { command=COMMAND [arg=ARG [...]] |
+              hostname=HOST [port=PORT] |
+              vhost-cid=CID [port=PORT] |
+              socket=SOCKNAME |
+              socket-fd=FD |
+              [uri=]URI }
+            [dynamic-export=BOOL] [export=NAME] [retry=N] [shared=BOOL]
+            [tls=MODE] [tls-certificates=DIR] [tls-verify=BOOL]
+            [tls-username=NAME] [tls-psk=FILE]
+
+=head1 DESCRIPTION
+
+C<nbdkit-nbd-plugin> is a plugin for L<nbdkit(1)> that lets you
+forward the connection to another NBD server.  There are several uses
+for this plugin:
+
+=over 4
+
+=item *
+
+Adjust the set of features seen by the ultimate NBD client without
+having to change the original server.  For example, convert between
+the oldstyle and newstyle protocols, or add TLS support if the
+original server lacks it.
+
+=item *
+
+Apply nbdkit filters to any other NBD server.
+
+=item *
+
+With L<qemu-nbd(8)>, read and write qcow2 files with nbdkit (see also
+L<nbdkit-qcow2dec-filter(1)>).
+
+=back
+
+=head1 PARAMETERS
+
+One of B<socket>, B<hostname> (optionally with B<port>), B<vsock>
+(optionally with B<port>), B<uri>, B<socket-fd> or B<command> must be
+given to specify which NBD server to forward to:
+
+=over 4
+
+=item B<command=>COMMAND
+
+=item B<arg=>ARG
+
+(nbdkit E<ge> 1.22)
+
+Run an NBD server, usually L<qemu-nbd(8)>, as an external command.
+See L</EXAMPLES> below.
+
+C<COMMAND> is the program to run, followed by zero or more C<arg=ARG>
+parameters for each argument.  For example:
+
+ nbdkit nbd command=qemu-nbd arg=-f arg=qcow2 arg=$PWD/disk.qcow2
+
+would run the command C<qemu-nbd -f qcow2 $PWD/disk.qcow2>.  Because
+nbdkit may change directory before running the command, you may need
+to ensure that all file paths used in parameters (like the disk name
+above) are absolute paths.
+
+This uses the libnbd API L<nbd_connect_systemd_socket_activation(3)>.
+This option implies C<shared=true>.
+
+=item B<hostname=>HOST
+
+=item B<port=>PORT
+
+(nbdkit E<ge> 1.14)
+
+Connect to the NBD server at the remote C<HOST> using a TCP socket.
+The optional port parameter overrides the default port (10809), and
+may be a 16-bit number or a non-numeric string to look up the
+well-known port for a service name.
+
+=item B<vsock=>CID
+
+=item B<port=>PORT
+
+(nbdkit E<ge> 1.22)
+
+Connect to the NBD server at the given vsock C<CID> (for example, in a
+guest VM, using the cid 2 will connect to a server in the host).  The
+optional port parameter overrides the default port (10809), and must
+be a 32-bit number.  This only works for platforms with the
+C<AF_VSOCK> family of sockets and libnbd new enough to use it;
+C<nbdkit --dump-plugin nbd> will contain C<libnbd_vsock=1> if this is
+the case.  For more details on AF_VSOCK, see
+L<nbdkit-service(1)/AF_VSOCK>.
+
+=item B<socket=>SOCKNAME
+
+Connect to the NBD server using Unix domain socket C<SOCKNAME>.
+
+=item B<socket-fd=>FD
+
+(nbdkit E<ge> 1.22)
+
+Connect to the NBD server over a socket file descriptor inherited by
+nbdkit.  This uses the libnbd API L<nbd_connect_socket(3)>.  This
+option implies C<shared=true>.
+
+=item [B<uri=>]URI
+
+(nbdkit E<ge> 1.14)
+
+When C<uri> is supplied, decode C<URI> to determine the address to
+connect to.  A URI can specify a TCP connection (such as
+C<nbd://localhost:10809/export>), a Unix socket (such as
+C<nbd+unix:///export?socket=/path/to/sock>), or a vsock connection
+(such as C<nbd+vsock:///2:10809/export>).  Remember you may need to
+quote the parameter to protect it from the shell.
+
+The C<uri> parameter is only available when the plugin was compiled
+against libnbd with URI support; C<nbdkit --dump-plugin nbd> will
+contain C<libnbd_uri=1> if this is the case.
+
+The export portion of the URI is ignored when using
+C<dynamic-export=true>.
+
+C<uri=> __IS_MAGIC__
+
+=back
+
+Other parameters control the NBD connection:
+
+=over 4
+
+=item B<export=>NAME
+
+If this parameter is given, and the server speaks new style protocol,
+then connect to the named export instead of the default export (the
+empty string).  If C<uri> is supplied, the export name should be
+embedded in the URI instead.  This is incompatible with
+C<dynamic-export=true>.
+
+=item B<retry=>N
+
+(nbdkit E<ge> 1.14)
+
+If the initial connection attempt to the server fails, retry up to
+C<N> times more after a one-second delay between tries (default 0).
+
+=item B<shared=false>
+
+=item B<shared=true>
+
+(nbdkit E<ge> 1.14)
+
+If using C<command> or C<socket-fd> modes then this defaults to true,
+otherwise false.
+
+If false the plugin will open a new connection to the server for each
+client making a connection to nbdkit.  The remote server does not have
+to be started until immediately before the first nbdkit client
+connects.
+
+If this parameter is set to C<true>, the plugin will open a single
+connection to the server when nbdkit is first started (the C<retry>
+parameter may be necessary to coordinate timing of the remote server
+startup), and all clients to nbdkit will share that single connection.
+This mode is incompatible with B<dynamic-export=true>.
+
+=item B<dynamic-export=false>
+
+=item B<dynamic-export=true>
+
+(nbdkit E<ge> 1.24)
+
+This parameter defaults to false, in which case all clients to nbdkit
+use the same export of the server, as set by C<export> or C<uri>,
+regardless of the client's export name request.  If it is set to true,
+nbdkit will pass the client's requested export name over to the final
+NBD server, which means clients requesting different export names can
+see different content when the server differentiates content by export
+name.  Dynamic exports prevent the use of C<shared> mode, and thus are
+not usable with C<command> or C<socket-fd>.
+
+If libnbd is new enough, dynamic export mode is able to advertise the
+same exports as listed by the server; C<nbdkit --dump-plugin nbd> will
+contain C<libnbd_dynamic_list=1> if this is the case.  Regardless of
+what this plugin lists, it is also possible to use
+L<nbdkit-exportname-filter(1)> to adjust what export names the client
+sees or uses as a default.
+
+=item B<tls=off>
+
+=item B<tls=on>
+
+=item B<tls=require>
+
+(nbdkit E<ge> 1.14)
+
+Selects which TLS mode to use with the server.  If no other tls option
+is present, this defaults to C<off>, where the client does not attempt
+encryption (and may be rejected by a server that requires it).  If
+omitted but another tls option is present, this defaults to C<on>,
+where the client opportunistically attempts a TLS handshake, but will
+continue running unencrypted if the server does not support
+encryption.  If set to C<require> or if the C<uri> parameter is used
+with a scheme that requires encryption (such as C<nbds://host>), then
+this requires an encrypted connection to the server.
+
+The C<tls> parameter is only available when the plugin was compiled
+against libnbd with TLS support; C<nbdkit --dump-plugin nbd> will
+contain C<libnbd_tls=1> if this is the case.  Note the difference
+between I<--tls=...> controlling what nbdkit serves, and C<tls=...>
+controlling what the nbd plugin connects to as a client.
+
+=item B<tls-certificates=>DIR
+
+(nbdkit E<ge> 1.14)
+
+This specifies the directory containing X.509 client certificates to
+present to the server.
+
+=item B<tls-verify=false>
+
+(nbdkit E<ge> 1.14)
+
+Setting this parameter to false disables server name verification,
+which opens you to potential Man-in-the-Middle (MITM) attacks, but
+allows for a simpler setup for distributing certificates.
+
+=item B<tls-username=>NAME
+
+(nbdkit E<ge> 1.14)
+
+If provided, this overrides the user name to present to the server
+alongside the certificate.
+
+=item B<tls-psk=>FILE
+
+(nbdkit E<ge> 1.14)
+
+If provided, this is the filename containing the Pre-Shared Keys (PSK)
+to present to the server.  While this is easier to set up than X.509,
+it requires that the PSK file be transmitted over a secure channel.
+
+=back
+
+=head1 EXAMPLES
+
+=head2 Convert oldstyle server to encrypted newstyle
+
+Expose the contents of an export served by an old style server over a
+Unix socket to TCP network clients that only want to consume encrypted
+data.  Use I<--exit-with-parent> to clean up nbdkit at the same time
+that the old server exits.
+
+ ( sock=`mktemp -u`
+   nbdkit --exit-with-parent --tls=require nbd socket=$sock &
+   exec /path/to/oldserver --socket=$sock )
+
+=for paragraph
+
+ ┌────────────┐   TLS    ┌────────┐  plaintext  ┌────────────┐
+ │ new client │ ────────▶│ nbdkit │ ───────────▶│ old server │
+ └────────────┘   TCP    └────────┘    Unix     └────────────┘
+
+=head2 Use qemu-nbd to open a qcow2 file
+
+Run qemu-nbd as the server, allowing you to read and write qcow2 files
+(since nbdkit does not have a native qcow2 plugin).  This allows you
+to use nbdkit filters on top, see the next example.
+
+ nbdkit nbd command=qemu-nbd arg=-f arg=qcow2 arg=/path/to/image.qcow2
+
+qemu-nbd is cleaned up when nbdkit exits.
+
+=head2 Add nbdkit-partition-filter to qemu-nbd
+
+Combine L<nbdkit-partition-filter(1)> with L<qemu-nbd(8)>’s ability to
+visit qcow2 files:
+
+ nbdkit --filter=partition nbd \
+        command=qemu-nbd arg=-f arg=qcow2 arg=/path/to/image.qcow2 \
+        partition=1
+
+This performs the same task as the deprecated qemu-nbd I<-P> option:
+
+ qemu-nbd -P 1 -f qcow2 /path/to/image.qcow2
+
+=head2 Convert newstyle server for oldstyle-only client
+
+Expose the contents of export C<foo> from a newstyle server with
+encrypted data to a client that can only consume unencrypted old
+style.  Use I<--run> to clean up nbdkit at the time the client exits.
+In general, note that it is best to keep the plaintext connection
+limited to a Unix socket on the local machine.
+
+ nbdkit -o --tls=off nbd hostname=example.com export=foo tls=require \
+  --run '/path/to/oldclient --socket=$unixsocket'
+
+=for paragraph
+
+ ┌────────────┐  plaintext  ┌────────┐   TLS    ┌────────────┐
+ │ old client │ ───────────▶│ nbdkit │ ────────▶│ new server │
+ └────────────┘    Unix     └────────┘   TCP    └────────────┘
+
+=head1 DUMP PLUGIN OUTPUT
+
+You can learn which features are provided by libnbd by inspecting the
+C<libnbd_*> lines in I<--dump-plugin> output:
+
+ $ nbdkit --dump-plugin nbd
+ [...]
+ libnbd_version=1.2.3
+ libnbd_tls=1
+ libnbd_uri=1
+
+=head1 FILES
+
+=over 4
+
+=item F<$plugindir/nbdkit-nbd-plugin.so>
+
+The plugin.
+
+Use C<nbdkit --dump-config> to find the location of C<$plugindir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-nbd-plugin> first appeared in nbdkit 1.2.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-captive(1)>,
+L<nbdkit-filter(3)>,
+L<nbdkit-exportname-filter(1)>,
+L<nbdkit-qcow2dec-filter(1)>,
+L<nbdkit-tls(1)>,
+L<nbdkit-plugin(3)>,
+L<libnbd(3)>,
+L<qemu-nbd(8)>.
+
+=head1 AUTHORS
+
+Eric Blake
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

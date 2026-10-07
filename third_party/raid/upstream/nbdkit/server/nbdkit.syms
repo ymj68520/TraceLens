@@ -1,0 +1,110 @@
+# nbdkit
+# Copyright Red Hat
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are
+# met:
+#
+# * Redistributions of source code must retain the above copyright
+# notice, this list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright
+# notice, this list of conditions and the following disclaimer in the
+# documentation and/or other materials provided with the distribution.
+#
+# * Neither the name of Red Hat nor the names of its contributors may be
+# used to endorse or promote products derived from this software without
+# specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY RED HAT AND CONTRIBUTORS ''AS IS'' AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+# THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+# PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL RED HAT OR
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+# USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+# OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+# SUCH DAMAGE.
+
+# This linker script controls the visibility of symbols in the final
+# nbdkit binary.  We want to export some symbols to plugins, but at
+# the same time we don't want plugins to be able to call arbitrary
+# functions from nbdkit, so this script lists only the symbols we want
+# to export.
+
+{
+  # The functions we want plugins and filters to call.
+  global:
+    nbdkit_absolute_path;
+    nbdkit_add_export;
+    nbdkit_add_extent;
+    nbdkit_context_get_backend;
+    nbdkit_context_set_next;
+    nbdkit_debug;
+    nbdkit_debug_hexdiff;
+    nbdkit_debug_hexdump;
+    nbdkit_disconnect;
+    nbdkit_error;
+    nbdkit_export_name;
+    nbdkit_exports_count;
+    nbdkit_exports_free;
+    nbdkit_exports_new;
+    nbdkit_extents_aligned;
+    nbdkit_extents_count;
+    nbdkit_extents_free;
+    nbdkit_extents_full;
+    nbdkit_extents_new;
+    nbdkit_get_export;
+    nbdkit_get_extent;
+    nbdkit_is_tls;
+    nbdkit_name;
+    nbdkit_nanosleep;
+    nbdkit_next_context_close;
+    nbdkit_next_context_open;
+    nbdkit_parse_bool;
+    nbdkit_parse_delay;
+    nbdkit_parse_int16_t;
+    nbdkit_parse_int32_t;
+    nbdkit_parse_int64_t;
+    nbdkit_parse_int8_t;
+    nbdkit_parse_int;
+    nbdkit_parse_probability;
+    nbdkit_parse_size;
+    nbdkit_parse_uint16_t;
+    nbdkit_parse_uint32_t;
+    nbdkit_parse_uint64_t;
+    nbdkit_parse_uint8_t;
+    nbdkit_parse_unsigned;
+    nbdkit_peer_gid;
+    nbdkit_peer_name;
+    nbdkit_peer_pid;
+    nbdkit_peer_security_context;
+    nbdkit_peer_tls_dn;
+    nbdkit_peer_tls_issuer_dn;
+    nbdkit_peer_uid;
+    nbdkit_printf_intern;
+    nbdkit_read_password;
+    nbdkit_realpath;
+    nbdkit_set_error;
+    nbdkit_shutdown;
+    nbdkit_stdio_safe;
+    nbdkit_strdup_intern;
+    nbdkit_strndup_intern;
+    nbdkit_timestamp;
+    nbdkit_use_default_export;
+    nbdkit_vdebug;
+    nbdkit_verror;
+    nbdkit_vprintf_intern;
+
+    # For nbdkit.* debug flags in the server:
+    nbdkit_debug_*;
+
+    # For AFL++ to work:
+    __afl_*;
+
+  # Everything else is hidden.
+  local: *;
+};

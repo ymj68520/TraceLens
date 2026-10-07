@@ -1,0 +1,134 @@
+# To-do list for libnbd
+
+Example code integrating with `ppoll`/`pollfd`, APR pollset (and others?).
+
+NBD resize extension.
+
+Potential deadlock with `nbd_add_meta_context`: if a client sends
+enough requests to the server that it blocks while writing, but the
+server replies to requests as they come in rather than waiting for the
+end of the client request, then the server can likewise block in
+writing replies that libnbd is not yet reading.  Not an issue for
+existing servers that don't have enough contexts to reply with enough
+data to fill buffers, but could be an issue with qemu-nbd if it is
+taught to exports many dirty bitmaps simultaneously.  Revamping the
+`states-newstyle-meta-context.c` state machine to let libnbd handle
+`NBD_REP_META_CONTEXT` while still writing queries could be hairy.
+
+Performance: Chart it over various buffer sizes and threads, as that
+  should make it easier to identify systematic issues.
+
+Examine other fuzzers: https://gitlab.com/akihe/radamsa
+
+Test interoperability with https://crates.io/crates/nbdserve
+(https://github.com/vi/nbdserve)
+
+## nbdcopy
+
+* Enforce maximum block size.
+
+* Synchronous loop should be adjusted to take into account
+  the NBD preferred block size, as was done for multi-thread loop.
+  Benchmark.
+
+* Consider io_uring if there are performance bottlenecks.
+
+* Configurable retries in response to read or write failures.
+
+## nbdfuse
+
+* If you write beyond the end of the virtual file, it returns `EIO`.
+
+* Implement `block_status`.
+
+## nbdinfo
+
+* `nbdinfo --map` needs `--offset` and `--length` parameters for mapping
+  just a subset of the image
+
+* `nbdinfo --map=context1 --map=context2` visiting two contexts in
+  lock-step would be nice
+
+* `nbdinfo --map` should consider probing all available contexts
+  rather than just `base:allocation`
+
+## New tool: nbdcmp
+
+This would compare either a file and an NBD endpoint, or two NBD
+endpoints, for equality.  It could be used, amongst other things, for
+verifying an nbdcopy.  (See also blksum(1)) This might be written as a
+Python script.
+
+## Suggested API improvements
+
+general:
+
+* synchronous APIs that have a timeout or can be cancelled
+
+connecting:
+
+* `nbd_connect_tcp`: allow control over whether IPv4 or IPv6 is desired
+
+* `nbd_connect_uri`: allow control over which features are enabled
+
+* `nbd_connect_command`: allow passing `char **env`
+
+* connection completed callback
+
+errors:
+
+* explore if `nbd_aio_notify_error` is needed for faster response if
+  server goes away
+
+TLS:
+
+* should be individual APIs for setting each TLS file
+  (`set_tls_certificates` can continue to exist)
+
+* TLS should have a way to pass in PIN or password to support encrypted keys
+
+* allow use of TLS memory APIs (`gnutls_datum_t` + `gnutls_*_mem`)
+
+* support PKCS11 URIs (RFC 7512)
+
+* TLS should properly shut down the session (calling `gnutls_bye`)
+
+Easier server implementation testing:
+
+* a way to force `NBD_OPT_EXPORT_NAME` over `NBD_OPT_GO`
+
+* a way to send options before `NBD_OPT_STARTTLS`
+
+* a way to send unknown `NBD_OPT` or `NBD_CMD`
+
+subprocess:
+
+* It should be possible to use `nbd_close` and never block, so maybe
+  `nbd_shutdown` should wait for the subprocess or there should be
+  another API to do this.
+
+* capture error message when `nbd_connect_command` fails
+
+sockets:
+
+* Allow user to pass in their own socket functions, this would allow
+  io_uring to be used.
+
+## OCaml
+
+* Translate `*error` between OCaml `Unix.error` and C `errno`
+  automatically using the functions in `<caml/unixsupport.h>`.  This
+  requires a change to the generator `CBMutable (Int _)` ->
+  `CBMutable (Errno _)` which is quite a large change.
+
+## Coding style
+
+* consider replacing `#if defined (macro)` with `#if defined macro`, or
+  even just `#ifdef macro`; for shorter lines
+
+* investigate automatic code formatting tools (such a tool could be run
+  in "check mode" in CI)
+
+## Code sharing with nbdkit (header files, etc)
+
+* investigate a git submodule

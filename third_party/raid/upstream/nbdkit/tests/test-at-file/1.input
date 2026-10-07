@@ -1,0 +1,11 @@
+# Test case for tests/test-at-file.sh
+
+   # Ignore whitespace before comment char.
+      ###
+   # Ignore blank lines in input:
+
+   
+# The actual key=value pairs.
+a=1
+b=2
+c=3

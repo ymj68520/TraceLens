@@ -1,0 +1,40 @@
+x86_64-linux-rust-stable:
+  extends: .rust_build_job
+  image: rust:latest
+
+x86_64-linux-rust-nightly:
+  extends: .rust_build_job
+  image: rustlang/rust:nightly
+
+x86_64-linux-rust-msrv:
+  extends: .rust_build_job
+  image: rust:1.77.0
+  script:
+    - cd plugins/rust
+    - cargo test --all-targets --all-features
+
+x86_64-linux-rust-minver:
+  extends: .rust_build_job
+  image: rustlang/rust:nightly
+  dependencies:
+    - x86_64-linux-rust-msrv
+    - x86_64-linux-rust-nightly
+    - x86_64-linux-rust-stable
+  script:
+    - cd plugins/rust
+    - cargo update -Zminimal-versions
+    - cargo test --all-features
+    - rm -rf $CARGO_HOME/registry/index
+
+x86_64-linux-rust-lint:
+  extends: .rust_build_job
+  image: rustlang/rust:nightly
+  dependencies:
+    - x86_64-linux-rust-msrv
+    - x86_64-linux-rust-nightly
+    - x86_64-linux-rust-stable
+  script:
+    - cd plugins/rust
+    - rustup component add clippy
+    - cargo clippy --all-features --all-targets -- -D warnings
+    - rm -rf $CARGO_HOME/registry/index

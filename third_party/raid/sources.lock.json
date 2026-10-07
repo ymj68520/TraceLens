@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "projects": [
+    {"name": "dissect.volume", "url": "https://github.com/fox-it/dissect.volume.git", "commit": "d2da189112cae3a627f96d9de78341193eb6dc52", "license": "AGPL-3.0-or-later", "role": "metadata and readonly RAID streams"},
+    {"name": "dissect.cstruct", "url": "https://github.com/fox-it/dissect.cstruct.git", "commit": "46b850fa9cd023a9de583149caa5e9ba31254cf1", "license": "Apache-2.0", "role": "audit snapshot only; incompatible main branch, NOT loaded"},
+    {"name": "dissect.cstruct-4.7", "url": "https://github.com/fox-it/dissect.cstruct.git", "commit": "194b1b556c1474b501d9e120d4750d404786056b", "license": "Apache-2.0", "role": "compatible pinned volume dependency, tag 4.7"},
+    {"name": "dissect.util", "url": "https://github.com/fox-it/dissect.util.git", "commit": "2fbbb593b6b03e84adb35a8ca338e7ae20f9c4f4", "license": "Apache-2.0", "role": "volume dependency"},
+    {"name": "raid_recovery", "url": "https://github.com/alfiopuglisi/raid_recovery.git", "commit": "701921327cf8109566b8da86de6994cc23d5fa6c", "license": "GPL-3.0", "role": "experimental metadata-free RAID5 candidate generator; not enabled"},
+    {"name": "mdadm", "url": "https://github.com/md-raid-utilities/mdadm.git", "commit": "bc327b1c80098c4800f640e99b77b319aff92e30", "license": "GPL-2.0", "role": "independent metadata examination; no kernel assembly"},
+    {"name": "nbdkit", "url": "https://gitlab.com/nbdkit/nbdkit.git", "commit": "bfc58d4cf1beb857a9d1103cf3d2fc537ee1d8e3", "license": "BSD-3-Clause", "role": "future readonly virtual block transport"},
+    {"name": "libnbd", "url": "https://gitlab.com/nbdkit/libnbd.git", "commit": "467f548f4f78da48ae3e44ea83aeb679adb7a698", "license": "LGPL-2.0-or-later", "role": "future C++ virtual block client"},
+    {"name": "qnxprobe", "url": "https://github.com/abrignoni/qnxprobe.git", "commit": "fc74ca829c2773879243b326f2262c29f462df3a", "license": "MIT", "role": "existing pinned EWF logical reader; explicit segments only"},
+    {"name": "dissect.ntfs", "url": "https://github.com/fox-it/dissect.ntfs.git", "commit": "7f021dd1182eb6f9b6a2dbd19cf2e29143ea654d", "license": "AGPL-3.0-or-later", "role": "readonly independent NTFS structure and file validation"},
+    {"name": "dissect.fat", "url": "https://github.com/fox-it/dissect.fat.git", "commit": "640424d5d0837280e7f1553b7247f99321fbc5c9", "license": "AGPL-3.0-or-later", "role": "readonly independent FAT structure and file validation"}
+  ]
+}

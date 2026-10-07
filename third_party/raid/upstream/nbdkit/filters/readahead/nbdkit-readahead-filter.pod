@@ -1,0 +1,115 @@
+=head1 NAME
+
+nbdkit-readahead-filter - prefetch data ahead of sequential reads
+
+=head1 SYNOPSIS
+
+ nbdkit --filter=readahead PLUGIN
+
+=for paragraph
+
+ nbdkit --filter=readahead --filter=cache PLUGIN
+
+=for paragraph
+
+ nbdkit --filter=readahead --filter=cow PLUGIN cow-on-cache=true
+
+=head1 DESCRIPTION
+
+C<nbdkit-readahead-filter> is a filter that prefetches data when the
+client is reading.
+
+When the client issues a read, this filter issues a parallel prefetch
+(C<.cache>) for subsequent data.  Plugins which support this command
+will prefetch the data, making sequential reads faster.  For plugins
+which do not support this command, you can inject
+L<nbdkit-cache-filter(1)> below (after) this filter, giving
+approximately the same effect.  L<nbdkit-cow-filter(1)> can be used
+instead of nbdkit-cache-filter, if you add the C<cow-on-cache=true>
+option.
+
+The filter uses a simple adaptive algorithm which accelerates
+sequential reads and requires no further configuration.
+
+A similar filter is L<nbdkit-scan-filter(1)> which reads ahead over
+the whole disk, useful if you know that the client will be reading
+sequentially across most or all of the disk.
+
+=head2 Limitations
+
+In a number of significant cases this filter will do nothing.  The
+filter will print a warning message if this happens.
+
+=over 4
+
+=item Thread model must be parallel
+
+Use C<nbdkit PLUGIN --dump-plugin> to find the thread model of the
+underlying plugin.  If it does not support the C<parallel> thread
+model, this filter cannot perform prefetches in parallel with the read
+requests.
+
+We may be able to lift this restriction in future.
+
+=item Underlying filters or plugin must support C<.cache> (prefetch)
+
+Very many plugins do not have the concept of prefetching and/or
+do not implement the C<.cache> callback, and so there is no
+way for this filter to issue prefetches.
+
+You can usually get around this by adding I<--filter=cache> after this
+filter as explained above.  It may be necessary to limit the total
+size of the cache (see L<nbdkit-cache-filter(1)/CACHE MAXIMUM SIZE>).
+
+=item Clients and kernels may do readahead already
+
+It may be the case that NBD clients are already issuing
+C<NBD_CMD_CACHE> (NBD prefetch) commands.  It may also be the case
+that your plugin is using local file functions where the kernel is
+doing readahead.  In such cases this filter is not necessary and may
+be pessimal.
+
+=back
+
+=head1 PARAMETERS
+
+There are no parameters specific to nbdkit-readahead-filter.  Any
+parameters are passed through to and processed by the underlying
+plugin in the normal way.
+
+=head1 FILES
+
+=over 4
+
+=item F<$filterdir/nbdkit-readahead-filter.so>
+
+The filter.
+
+Use C<nbdkit --dump-config> to find the location of C<$filterdir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-readahead-filter> first appeared in nbdkit 1.12.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-cache-filter(1)>,
+L<nbdkit-cow-filter(1)>,
+L<nbdkit-file-plugin(1)>,
+L<nbdkit-retry-filter(1)>,
+L<nbdkit-scan-filter(1)>,
+L<nbdkit-torrent-plugin(1)>,
+L<nbdkit-vddk-plugin(1)>,
+L<nbdkit-filter(3)>,
+L<qemu-img(1)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

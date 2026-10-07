@@ -1,0 +1,108 @@
+=head1 NAME
+
+nbdkit-tracing - adding user statically defined tracing (USDT) probes
+
+=head1 SYNOPSIS
+
+ perf buildid-cache --add server/nbdkit
+
+=for paragraph
+
+ perf list sdt_nbdkit:*
+
+=for paragraph
+
+ perf probe sdt_nbdkit:*
+
+=for paragraph
+
+ perf record -e sdt_nbdkit:* -a -R \
+             ./nbdkit memory 1G --run 'nbdinfo "$uri"'
+
+=head1 DESCRIPTION
+
+You can add user statically defined tracing (USDT) a.k.a DTrace probes
+to nbdkit and use them to trace significant events in the server.
+Note this almost certainly requires you to recompile nbdkit from
+source, since only a very minimal set of probes is included in nbdkit
+itself and you will want to add your own.
+
+=head2 ADDING PROBES
+
+To enable probing at all you will need the F<E<lt>sys/sdt.hE<gt>>
+header file installed (eg. from the package C<systemtap-sdt-devel> on
+Fedora, but available from different places in other Linux distros and
+BSD).  When configuring nbdkit you should see:
+
+ Optional server features:
+ ...
+    USDT probes ............................ yes
+
+Add probes by inserting C<DTRACE_PROBE> or C<DTRACE_PROBEE<lt>nnE<gt>>
+macros into the server source code:
+
+ DTRACE_PROBE (nbdkit, my_probe);
+
+or with up to 12 parameters:
+
+ DTRACE_PROBE2 (nbdkit, my_probe, arg1, arg2);
+
+After compiling nbdkit, you should see a C<.note.stapsdt> ELF section
+in the binary.  This section contains the probes:
+
+ $ readelf -x .note.stapsdt server/nbdkit
+ Hex dump of section '.note.stapsdt':
+   0x00000000 08000000 39000000 03000000 73746170 ....9.......stap
+   0x00000010 73647400 42c70000 00000000 40400200 sdt.B.......@@..
+   0x00000020 00000000 00000000 00000000 6e62646b ............nbdk
+   0x00000030 69740068 616e646c 655f7369 6e676c65 it.handle_single
+   0x00000040 5f636f6e 6e656374 696f6e00 00000000 _connection.....
+ ...
+
+=head2 USING PERF TO TRACE NBDKIT
+
+L<perf(1)> requires that you scan the binary to detect the probes:
+
+ # perf buildid-cache --add server/nbdkit
+ # perf list sdt_nbdkit:*
+ List of pre-defined events (to be used in -e or -M):
+  sdt_nbdkit:handle_single_connection                [SDT event]
+  sdt_nbdkit:preconnect                              [SDT event]
+
+To enable all probes (costly) use:
+
+ # perf probe sdt_nbdkit:*
+
+You can also enable just the probes you are interested in.
+
+To disable probes, use C<perf probe --del I<pattern>>.
+
+Then run perf to record information in the usual way, for example:
+
+ # perf record -e sdt_nbdkit:* -a -R \
+               ./nbdkit memory 1G --run 'nbdinfo "$uri"'
+
+ # perf script
+          nbdkit 1620084 [007] 2415654.254236:
+                 sdt_nbdkit:handle_single_connection: (55e582694742)
+          nbdkit 1620084 [007] 2415654.254247:
+                 sdt_nbdkit:preconnect: (55e582698724) arg1=94444748021888
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<perf(1)>,
+L<https://sourceware.org/systemtap/wiki/AddingUserSpaceProbingToApps>,
+L<https://blog.vmsplice.net/2017/07/tracing-userspace-static-probes-with.html>,
+L<https://jvns.ca/blog/2017/07/05/linux-tracing-systems/>,
+L<https://docs.openvswitch.org/en/latest/topics/usdt-probes/>.
+
+=head1 AUTHORS
+
+Eric Blake
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

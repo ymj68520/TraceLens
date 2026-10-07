@@ -7,6 +7,7 @@
 #include "TaskWatchdog.h"
 #include "TaskSerialization.h"
 #include "AndroidPreflightAdmission.h"
+#include "RaidTaskAdmission.h"
 #include "AndroidContainerNormalization.h"
 #include "LLMPythonProxy.h"
 #include "../../integration/LLMIntegration/LLMClient.h"
@@ -429,6 +430,26 @@ void TaskManager::start_analysis(const std::string& task_id) {
             }
 
             std::string imagePath = task.image_path;
+            if (task.metadata.count("source_kind") && task.metadata.at("source_kind") == "raid") {
+                const auto admission = admitRaidImage(imagePath, task.metadata.at("raid_job_id"),
+                    task.metadata.at("raid_manifest_sha256"), task.metadata.at("raid_requested_by"),
+                    task.metadata.at("raid_allow_partial") == "true");
+                if (!admission.accepted) {
+                    update_status(task_id, TaskStatus::FAILED, "RAID source changed before analysis", admission.code);
+                    return;
+                }
+                const auto taskRoot = forensics::PathManager::instance().getTaskDir(task_id);
+                std::filesystem::create_directories(taskRoot);
+                const auto frozen = taskRoot / "raid_source_manifest.json";
+                std::error_code copyError;
+                if (!std::filesystem::exists(frozen))
+                    std::filesystem::copy_file(task.metadata.at("raid_manifest_path"), frozen,
+                                              std::filesystem::copy_options::none, copyError);
+                if (copyError || !sourceMatchesPreflightHash(frozen.string(), task.metadata.at("raid_manifest_file_sha256"))) {
+                    update_status(task_id, TaskStatus::FAILED, "RAID source snapshot unavailable", "RAID_SNAPSHOT_INVALID");
+                    return;
+                }
+            }
             update_status(task_id, TaskStatus::RUNNING, "Initializing analysis...");
             update_progress(task_id, TaskPhase::INITIALIZING, 10, "Initializing analysis environment...");
 

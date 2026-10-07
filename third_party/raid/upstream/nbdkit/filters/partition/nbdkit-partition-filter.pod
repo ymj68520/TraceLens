@@ -1,0 +1,92 @@
+=head1 NAME
+
+nbdkit-partition-filter - nbdkit partition filter
+
+=head1 SYNOPSIS
+
+ nbdkit --filter=partition plugin partition=PART [plugin-args...]
+
+=head1 DESCRIPTION
+
+C<nbdkit-partition-filter> is a filter that limits requests to a
+single partition within a disk image that is served by another plugin.
+
+Partition numbers are specified by the required C<partition>
+parameter, and count from 1.
+
+This works like the C<qemu-nbd -P> option.
+
+The opposite of this filter is L<nbdkit-partitioning-plugin(1)> which
+adds a virtual partition table to a file or files.
+
+=head1 PARAMETERS
+
+=over 4
+
+=item B<partition=>PART
+
+The partition number to serve, counting from 1.
+
+This parameter is required.
+
+=item B<partition-sectorsize=>SECTOR_SIZE
+
+The default for this parameter is chosen according to the minimum block
+size advertised by the underlying device.  If it is 512 or 4K, then the
+sector size is set to that.  If the underlying device does not advertise
+a minimum block size, or it is something other than 512 or 4K, the
+default is 512 bytes.
+
+The user may specify 512 or 4096 as the sector size manually via config.
+
+However set, this parameter instructs the partition table
+logic to treat the underlying storage as having the
+indicated sector size.  This is important for MBR
+and GPT logic using LBA (logical block addressing).
+
+=back
+
+=head1 EXAMPLE
+
+F<disk.img> is a partitioned disk image (eg. a virtual machine disk
+image).  To serve the first partition only use:
+
+ nbdkit --filter=partition file disk.img partition=1
+
+=head1 FILES
+
+=over 4
+
+=item F<$filterdir/nbdkit-partition-filter.so>
+
+The filter.
+
+Use C<nbdkit --dump-config> to find the location of C<$filterdir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-partition-filter> first appeared in nbdkit 1.2.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-file-plugin(1)>,
+L<nbdkit-filter(3)>,
+L<nbdkit-map-filter(1)>,
+L<nbdkit-offset-filter(1)>,
+L<nbdkit-partitioning-plugin(1)>,
+L<nbdkit-protect-filter(1)>,
+L<nbdkit-truncate-filter(1)>,
+L<parted(8)>.
+
+=head1 AUTHORS
+
+Eric Blake
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

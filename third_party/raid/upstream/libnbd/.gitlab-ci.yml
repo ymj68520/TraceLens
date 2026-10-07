@@ -1,0 +1,43 @@
+variables:
+  GIT_DEPTH: 100
+  DOCKER_DRIVER: overlay2
+
+stages:
+  - containers
+  - builds
+  - sanity_checks
+
+.script_variables: &script_variables |
+  export MAKEFLAGS="-j $(getconf _NPROCESSORS_ONLN)"
+  export CCACHE_BASEDIR="$(pwd)"
+  export CCACHE_DIR="$CCACHE_BASEDIR/ccache"
+  export CCACHE_MAXSIZE="500M"
+  export PATH="$CCACHE_WRAPPERSDIR:$PATH"
+
+include: '/ci/gitlab.yml'
+
+.base_build_job:
+  cache:
+    paths:
+      - ccache/
+    key: "$CI_JOB_NAME"
+  script:
+    - *script_variables
+    - ci/build.sh
+  artifacts:
+    paths:
+      - "config.log"
+      - "**/test-suite.log"
+    public: true
+    when: always
+    expire_in: 1 week
+
+.native_build_job:
+  extends:
+    - .base_build_job
+    - .gitlab_native_build_job
+
+.cross_build_job:
+  extends:
+    - .base_build_job
+    - .gitlab_cross_build_job

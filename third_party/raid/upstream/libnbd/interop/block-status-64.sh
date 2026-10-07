@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# nbd client library in userspace
+# Copyright Red Hat
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2 of the License, or (at your option) any later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+
+# Test reading qemu dirty-bitmap.
+
+source ../tests/functions.sh
+set -e
+set -x
+
+requires qemu-img bitmap --help
+requires $QEMU_NBD --version
+
+# This test uses the qemu-nbd -B option.
+if ! $QEMU_NBD --help | grep -sq -- -B; then
+    echo "$0: skipping because $QEMU_NBD does not support the -B option"
+    exit 77
+fi
+
+files="block-status-64.qcow2"
+rm -f $files
+cleanup_fn rm -f $files
+
+# Create mostly-sparse file with intentionally different data vs. dirty areas
+# (64k data, 5G-64k hole,zero; 5G-64k clean, 64k dirty)
+qemu-img create -f qcow2 block-status-64.qcow2 5G
+qemu-img bitmap --add --enable -f qcow2 block-status-64.qcow2 bitmap0
+qemu-io -f qcow2 -c "w -z $((5*1024*1024*1024 - 64*1024)) 64k" \
+        block-status-64.qcow2
+qemu-img bitmap --disable -f qcow2 block-status-64.qcow2 bitmap0
+qemu-io -f qcow2 -c 'w 0 64k' block-status-64.qcow2
+
+# Run the test.
+$VG ./block-status-64 qemu:dirty-bitmap:bitmap0 \
+    $QEMU_NBD -f qcow2 -B bitmap0 block-status-64.qcow2

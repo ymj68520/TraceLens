@@ -1,0 +1,129 @@
+To report security bugs, see ‘SECURITY’ in the top source directory.
+
+
+Fuzzing libnbd using the American Fuzzy Lop (AFL) fuzzer
+========================================================
+
+You can fuzz libnbd with AFL or AFL++ (https://aflplus.plus/) using
+the wrapper in this directory.
+
+You will need to recompile libnbd with AFL instrumentation:
+
+  ./configure CC=/usr/bin/afl-gcc CXX=/usr/bin/afl-g++ \
+      --disable-shared \
+      --disable-golang --disable-ocaml --disable-python --disable-rust
+  make clean
+  make
+
+To use clang instead (recommended with AFL++):
+
+  export AFL_USE_ASAN=1
+  ./configure CC=/usr/bin/afl-clang-lto CXX=/usr/bin/afl-clang-lto++ \
+      --disable-shared \
+      --disable-golang --disable-ocaml --disable-python --disable-rust
+  make clean
+  make
+
+The fuzzing/testcase_dir directory contains some initial testcases
+that AFL can use.
+
+Run multiple copies of afl-fuzz.  Usually you should run 1 master (-M)
+and as many slaves (-S) as you can.
+
+Master:
+
+  mkdir -p fuzzing/sync_dir
+  afl-fuzz -i fuzzing/testcase_dir -o fuzzing/sync_dir -M fuzz01 \
+      ./fuzzing/libnbd-fuzz-wrapper @@
+
+Slaves:
+
+  # replace fuzzNN with fuzz02, fuzz03, etc.
+  afl-fuzz -i fuzzing/testcase_dir -o fuzzing/sync_dir -S fuzzNN \
+      ./fuzzing/libnbd-fuzz-wrapper @@
+
+Test Coverage
+-------------
+
+To find out if the fuzzing is covering all of the code, I used afl-cov
+(https://github.com/mrash/afl-cov).  Usage is rather complex, so
+consult the README of that project, but in brief:
+
+(1) Create a second copy of the libnbd source, and compile it with
+profiling:
+
+  ./configure CFLAGS="-O2 -g -pg -fprofile-arcs -ftest-coverage" \
+      --disable-shared \
+      --disable-golang --disable-ocaml --disable-python --disable-rust
+  make clean
+  make
+
+(2) Assuming ../libnbd-afl is the libnbd source compiled with AFL, and
+the current directory is libnbd compiled with profiling, then run the
+command below.  You can run this even while afl-fuzz is running.
+
+  afl-cov -d ../libnbd-afl/fuzzing/sync_dir \
+      --code-dir . \
+      --coverage-cmd "fuzzing/libnbd-fuzz-wrapper AFL_FILE"
+
+This will create an HTML test coverage report in
+../libnbd-afl/fuzzing/sync_dir/cov/web/
+
+
+Fuzzing libnbd using honggfuzz
+==============================
+
+Recompile libnbd with honggfuzz instrumentation:
+
+  ./configure \
+      CC=/path/to/hfuzz-clang CXX=/path/to/hfuzz-clang++ \
+      --disable-shared \
+      --disable-golang --disable-ocaml --disable-python --disable-rust
+  make clean
+  make
+
+Run honggfuzz using test cases:
+
+  honggfuzz -i fuzzing/testcase_dir -z -- \
+      ./fuzzing/libnbd-fuzz-wrapper ___FILE___
+
+(Note 3 underscore characters on each side.)
+
+
+Fuzzing libnbd using Clang + libFuzzer
+======================================
+
+Recompile libnbd with libFuzzer enabled and build the libFuzzer test
+binary:
+
+  ./configure \
+      CC=clang \
+      CFLAGS="-g -O1" \
+      --enable-libfuzzer \
+      --disable-shared \
+      --disable-golang --disable-ocaml --disable-python --disable-rust
+  make clean
+  make CFLAGS="-g -O1 -fsanitize=fuzzer,address" -C lib
+  make CFLAGS="-g -O1 -fsanitize=fuzzer,address" \
+    -C fuzzing libnbd-libfuzzer-test
+
+(The awkward additional CFLAGS on the make command line are necessary
+because ./configure attempts to test that the compiler works, but this
+test fails when -fsanitize=fuzzer is used as that option adds an extra
+main() definition.)
+
+",address" enables the Clang Address Sanitizer, and can be omitted for
+faster fuzzing.
+
+You can then run the fuzzer program directly on the input corpus:
+
+  ./fuzzing/libnbd-libfuzzer-test fuzzing/testcase_dir
+
+New test inputs are written to fuzzing/testcase_dir and will be used
+on subsequent runs.  If this is undesirable then delete
+fuzzing/testcase_dir/[0-f]* before the run.
+
+There are various extra command line options supported by libFuzzer.
+For more details see:
+
+  https://llvm.org/docs/LibFuzzer.html

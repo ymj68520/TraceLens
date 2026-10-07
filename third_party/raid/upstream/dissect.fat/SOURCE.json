@@ -1,0 +1,100 @@
+{
+  "archive_sha256": "378931f757a2704c494156113555d257a9f51a742dd48db4cda76444381114c2",
+  "commit": "640424d5d0837280e7f1553b7247f99321fbc5c9",
+  "files": {
+    ".git-blame-ignore-revs": {
+      "sha256": "dcef310cdfbb0fd89e00ed6e43e1331c9850eb828cf3a2f65aa19a0080cc9f3f"
+    },
+    ".gitattributes": {
+      "sha256": "4420c380badfd36207771c7718239506035cc9497a697556d6e4457fc2e966d1"
+    },
+    ".github/pull_request_template.md": {
+      "sha256": "c81c987221ae6bc8995e929d0dd10aaf3ac557cf7d812fda8c73cfc854973222"
+    },
+    ".github/workflows/dissect-ci.yml": {
+      "sha256": "e245dd8209745a34080cfebbbe734e89b1c6b6ec4dfe51bdbe6e7cde3342633d"
+    },
+    ".gitignore": {
+      "sha256": "c136ae094d0101e01c5e1479e65c26700cc264454dd1069be9cd561bcf1606b5"
+    },
+    "COPYRIGHT": {
+      "sha256": "63956c3410b24f93980278964bf6c71cce2342bbb31918f74414b5ce6857639f"
+    },
+    "LICENSE": {
+      "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0"
+    },
+    "MANIFEST.in": {
+      "sha256": "cc3d13412694a8985d752131d73b6efd25ca098c2597ea858bd17d60cef0abc0"
+    },
+    "README.md": {
+      "sha256": "d9d36c60dd8f16bf1f08f8d88fd191339d41249dd70faede4daf2a950e45112d"
+    },
+    "dissect/fat/__init__.py": {
+      "sha256": "ee0bc7bc8a630af5b4889e1974c4027722bc42689ef0b7084b2de367786c9c12"
+    },
+    "dissect/fat/c_exfat.py": {
+      "sha256": "e34698e3a9414d6f19da9c42fa45b3ec3a3136618fef838294a5bc8178507b74"
+    },
+    "dissect/fat/c_fat.py": {
+      "sha256": "d2df8121d23757eea389caea46975120d45f55b472fa31fe116770f7d4595bec"
+    },
+    "dissect/fat/exceptions.py": {
+      "sha256": "8ca3bea8f76d194e3d98c8294d29a4585adc418622fc2d091b424fc273ff33b8"
+    },
+    "dissect/fat/exfat.py": {
+      "sha256": "b2529162898d9e40ac9128e9d262d294aa3d6702c9aadd2487b8d299212c7ea6"
+    },
+    "dissect/fat/fat.py": {
+      "sha256": "60806d350e54b3816c3674f33b056af0d797fb24d3d51bd976e1b7e0686df660"
+    },
+    "pyproject.toml": {
+      "sha256": "efc8a266779a5135ff9b32268511ad97216aa564bc41a9769cb657151cb438ee"
+    },
+    "tests/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "tests/_docs/Makefile": {
+      "sha256": "eefc980321a75d0b9f83e378214666d34bf0a606f7e32fe52798572139293e48"
+    },
+    "tests/_docs/conf.py": {
+      "sha256": "1a26ce18949eaeb6509743216ae3f8259d531aa64ceeb5424ca32a8dcebee8f8"
+    },
+    "tests/_docs/index.rst": {
+      "sha256": "37adb68f2c51a830d0ece6eac531387ffbba57c2e1935547eec9d16b53d64fd5"
+    },
+    "tests/conftest.py": {
+      "sha256": "41d7d4871f89fe8418a913cd6690193ef0790f469936124de6bdec5dda826f54"
+    },
+    "tests/data/exfat.bin": {
+      "sha256": "569808d79f6953f15f5660567cf83ff853e949571b7c410afcadee83fb7a06c7"
+    },
+    "tests/data/exfat4m.bin": {
+      "sha256": "f95b9b3801f67f21453460e9e95bee369912ba987f53f4d8dde35b1a35a58928"
+    },
+    "tests/data/fat12.bin": {
+      "sha256": "791a007b5919452c6c2621b17e197b832733505d183cacc56cf20848cc1d9091"
+    },
+    "tests/data/fat16.bin": {
+      "sha256": "dc6534d97b32d37c5bc04b4e6c06d15ff21a34441c93427c5407d89081ed3ab9"
+    },
+    "tests/data/fat32.bin": {
+      "sha256": "317c6f704966c3cee296bef52aecc072c0034fb84afc6695e0d8f3cdfadc16bd"
+    },
+    "tests/test_exceptions.py": {
+      "sha256": "001173a9ccd188281792a62192563af28fc49b1e679e68fa8b4a7437b4bcbd93"
+    },
+    "tests/test_exfat.py": {
+      "sha256": "1f395ce37fd08391504fdde988bf30ec3b72f1017d590c8d1e66ee1a412137c5"
+    },
+    "tests/test_fat.py": {
+      "sha256": "e372878532725f08422b43df3c89e737f65f681fb3326595a1fae4ac7085d3b4"
+    },
+    "tox.ini": {
+      "sha256": "ebf5c50446e163eb90071e42b8400f3582d3f5baee15673799e598e2b037114e"
+    }
+  },
+  "license": "AGPL-3.0-or-later",
+  "name": "dissect.fat",
+  "role": "readonly independent FAT structure and file validation",
+  "url": "https://github.com/fox-it/dissect.fat.git"
+}

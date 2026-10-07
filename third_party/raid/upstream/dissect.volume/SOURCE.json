@@ -1,0 +1,454 @@
+{
+  "archive_sha256": "7b7cd35ef55239c08ca5874c6d14351e07cd2146fcf27bb25230c3b8c32b87df",
+  "commit": "d2da189112cae3a627f96d9de78341193eb6dc52",
+  "files": {
+    ".git-blame-ignore-revs": {
+      "sha256": "9d8d7dcb1efff21802ac0c698df1676dc6fcca651565c9bf4a33587234623466"
+    },
+    ".gitattributes": {
+      "sha256": "f1d0d27d6a12fdf08e4e3290b230921a0f3970d725a7bd18f8f472f7958187cc"
+    },
+    ".github/pull_request_template.md": {
+      "sha256": "c81c987221ae6bc8995e929d0dd10aaf3ac557cf7d812fda8c73cfc854973222"
+    },
+    ".github/workflows/dissect-ci.yml": {
+      "sha256": "e245dd8209745a34080cfebbbe734e89b1c6b6ec4dfe51bdbe6e7cde3342633d"
+    },
+    ".gitignore": {
+      "sha256": "a4a60b2530e64f5d2402f7b53da989082d6e07a82c88b5ac48c70ff9ceb64a5b"
+    },
+    "COPYRIGHT": {
+      "sha256": "4bc6e53d5e56f5b617a56962c1e7700bfb3cdaef153c0427e90435b239971efe"
+    },
+    "LICENSE": {
+      "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0"
+    },
+    "MANIFEST.in": {
+      "sha256": "b39c322533c6e3f48f36193321f91cceb447c843662fcdc244f3485598b75560"
+    },
+    "README.md": {
+      "sha256": "ea9a51e5c0f19da15fb5b2619ec33453a0f2e9eb635c3262ac99eb2838752c56"
+    },
+    "dissect/volume/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "dissect/volume/ddf/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "dissect/volume/ddf/c_ddf.py": {
+      "sha256": "854493b123e05e1ec4ccc485be6917056828bd0a95442f5390c1c1fbdf1ac939"
+    },
+    "dissect/volume/ddf/c_ddf.pyi": {
+      "sha256": "635714ca0c0d3ce1a1ea8d526961ca9f12477c0769de1793de357a5c0f2fffcc"
+    },
+    "dissect/volume/ddf/ddf.py": {
+      "sha256": "4aae4701dbcd5c8cb084e3de8b912de6c38ce7d4f01537d63e4dc9caa35c35c2"
+    },
+    "dissect/volume/disk/__init__.py": {
+      "sha256": "5c0d607664b5adf15c32c07db04a945a7e30ba029a79b208949b2f73e1948bfa"
+    },
+    "dissect/volume/disk/disk.py": {
+      "sha256": "3936f4721bd39917dd84cb6bdee0cfc391707862bcfa2ff3c7d0001acfc8273f"
+    },
+    "dissect/volume/disk/partition.py": {
+      "sha256": "4497beaea22497fe1d1c63f9d98c09099c853d6043c8a5e88f049975a12ee33e"
+    },
+    "dissect/volume/disk/schemes/__init__.py": {
+      "sha256": "f596a17ee2bf10437f0fcde8d15b22262d69606654e36c95b5bae84b06c0d9a6"
+    },
+    "dissect/volume/disk/schemes/apm.py": {
+      "sha256": "38234210e4b4e9c042c2eaa28fa0f92dc32a6b847757cc978bd4cdd70e5ac427"
+    },
+    "dissect/volume/disk/schemes/bsd.py": {
+      "sha256": "c2123f6b157bea6c0d663e26fa84c9991e32a6a1bbfda9b57bf85b05f807f7b0"
+    },
+    "dissect/volume/disk/schemes/gpt.py": {
+      "sha256": "27e0efaae7284ea6490302ae594716648e6de1ae2ff7214e7709e836c7088617"
+    },
+    "dissect/volume/disk/schemes/mbr.py": {
+      "sha256": "7cc6d747f872e1e6c6b52914a00a849485af03bae0b545fcf3f862f4e166a88b"
+    },
+    "dissect/volume/dm/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "dissect/volume/dm/btree.py": {
+      "sha256": "c376e040ea368bd40bc02a46a510fc7ea0cd27dcef5d406c56d098e5e15c782d"
+    },
+    "dissect/volume/dm/c_dm.py": {
+      "sha256": "a28d480eb2e7bd6b38b4180ddbe9c3ab08055c0f01c4ce825b7b1ec2a2ab6265"
+    },
+    "dissect/volume/dm/c_dm.pyi": {
+      "sha256": "9b4fcb11f6c691b9c1027b0f368abdf3ca6a3b82c13f7be98b560c7a136d34ac"
+    },
+    "dissect/volume/dm/thin.py": {
+      "sha256": "962ce99bc9f7417227f02b9397c9c30aadb0b0b45ed0dfacdccf600c5c096a22"
+    },
+    "dissect/volume/exceptions.py": {
+      "sha256": "4778c44e2c133ef852caa1145a902cb3f9e2aea5092c2d5206ce6abb9034d0ca"
+    },
+    "dissect/volume/ldm.py": {
+      "sha256": "3e53f167e5ffb4fb2d87ebf99324765fa54fbea7e56920ecf3698069d46c2ab0"
+    },
+    "dissect/volume/lvm/__init__.py": {
+      "sha256": "61cd1bb38b8d5b04bd083542e7fc46f02d1fbf4892aee8e9f8cb9e9ed470f390"
+    },
+    "dissect/volume/lvm/c_lvm2.py": {
+      "sha256": "5da6c246d7d88b4331c27ab764448697269bd4b0a09ae663c7251969a597dfc8"
+    },
+    "dissect/volume/lvm/c_lvm2.pyi": {
+      "sha256": "2d728a7947ff1a11da444ae30b4e61e585d6343c0cef39382c6b7477c1f9fdfe"
+    },
+    "dissect/volume/lvm/lvm2.py": {
+      "sha256": "b3671d8424e9db0897a8ec1b0654538b1d8039eaa3bb76ce4f113f31564d9ddf"
+    },
+    "dissect/volume/lvm/metadata.py": {
+      "sha256": "09a74c1e9eb3c582cfe5c2449e17fba548d465079066400b1e9bf552831c19fe"
+    },
+    "dissect/volume/lvm/physical.py": {
+      "sha256": "709c6c82d6bacb892bb8fe0bef2f5a88c5133e575cdb8172d2b1cd66be8ee23c"
+    },
+    "dissect/volume/md/__init__.py": {
+      "sha256": "bcce1cb22cc555eab9b1f7b831db86edde56cd938d81ffd9dcc4f952548507bd"
+    },
+    "dissect/volume/md/c_md.py": {
+      "sha256": "7f7e37c41271acdac1384a5b602c24e549254d88c249c0a39d5c4919fd3a99f4"
+    },
+    "dissect/volume/md/c_md.pyi": {
+      "sha256": "6f8deb276a75986d5e74544be4ceab3ce3c4f405bb3709a4ef049b85a12bdcc7"
+    },
+    "dissect/volume/md/md.py": {
+      "sha256": "e56dd024fa9972a1804e5c7df3a0f4d0d6897d2830efba001451b4e7c5ba3ba3"
+    },
+    "dissect/volume/raid/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "dissect/volume/raid/raid.py": {
+      "sha256": "098d60eab290e67e5423f8cc4356c4d184fde847be3d7ae192654f52aef641ff"
+    },
+    "dissect/volume/raid/stream.py": {
+      "sha256": "8c768b4fd54f10b1aea9397cd9cad9ffbeb5ee1703d0de53c2d8f44ea1604b65"
+    },
+    "dissect/volume/vinum/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "dissect/volume/vinum/c_vinum.py": {
+      "sha256": "6fa6c4870f97519c9b63e77ba491b6d70185665ff6bc7d316a9bf125fce9da6e"
+    },
+    "dissect/volume/vinum/c_vinum.pyi": {
+      "sha256": "7a5a5c22d69a2a55363c69e377bcf09d3ec53a63f34f4e77266c4c4ad97493b7"
+    },
+    "dissect/volume/vinum/config.py": {
+      "sha256": "3b28207698f462f65908e60ea0355a6bdd4f86968150cfc6ebad7c6d00ad8e7b"
+    },
+    "dissect/volume/vinum/vinum.py": {
+      "sha256": "4ce005550724735c5f616a5025f77a9560ae734e944e63a9e965c5a9a95b9934"
+    },
+    "dissect/volume/vss.py": {
+      "sha256": "f24f6b28f34ecafbb6cfa1b3144dcfc91a4038ed6d17a5ab61a974cb19236e1a"
+    },
+    "pyproject.toml": {
+      "sha256": "d9a8e656072dc2c963a9fc1574a75d477117a27f0d90125e4328e225d4efa231"
+    },
+    "tests/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "tests/_data/ddf/ddf-raid0-1.bin.gz": {
+      "sha256": "6af563006dc1fb72a8d6cf7feb1c6d8eb4866c8ffe86e6625e300400995485ad"
+    },
+    "tests/_data/ddf/ddf-raid0-2.bin.gz": {
+      "sha256": "bd6f6277ca5b96252f595062d6bc0af3910ff84bd2f1fa78099452f2e8da86b3"
+    },
+    "tests/_data/ddf/ddf-raid0-3.bin.gz": {
+      "sha256": "a558809184ee3f3e6bd7d312e23fe297b156d2279640d0cc1c7248c32bc3be2d"
+    },
+    "tests/_data/ddf/ddf-raid0-raid1-1.bin.gz": {
+      "sha256": "175641442c08c9f7f581f6f732c1fe9a35b0339bedfd6a809fabd4a5f3a74097"
+    },
+    "tests/_data/ddf/ddf-raid0-raid1-2.bin.gz": {
+      "sha256": "7e0bd5f4a783f18ac3b12cd3bbd506bce86b404d0966c953ccd9922d7eb480b4"
+    },
+    "tests/_data/ddf/ddf-raid1-1.bin.gz": {
+      "sha256": "5351955ef3ca4b38a67dfac619848f28bf1170ea5a199d692f9832eebfcc6be1"
+    },
+    "tests/_data/ddf/ddf-raid1-2.bin.gz": {
+      "sha256": "6c9941687b70a541948c55c08a59b89d5de273d5c1fdc3a9a5f653c53dac76a5"
+    },
+    "tests/_data/ddf/ddf-raid10-1.bin.gz": {
+      "sha256": "1a227f43bc116efedf5d5f0cdbd0ec3e391d2208b8631d646eb0b95e1a635e30"
+    },
+    "tests/_data/ddf/ddf-raid10-2.bin.gz": {
+      "sha256": "39534ea5b59d5b6f2c609ac097ae8c83b095deab82681304b4fbd82a964e35e2"
+    },
+    "tests/_data/ddf/ddf-raid10-3.bin.gz": {
+      "sha256": "153b84ed8d8834845c80a9e211875ad7c1049008ed85e79efcf3dcb04472d93f"
+    },
+    "tests/_data/ddf/ddf-raid10-4.bin.gz": {
+      "sha256": "0dda9295196a2c20f68f1ae923ee01f08c740f83acbcd74acbb9fa7c6226043f"
+    },
+    "tests/_data/ddf/ddf-raid4-1.bin.gz": {
+      "sha256": "311c9b7af3c5a7a0fc0cfdde5a5e448c5345d2db2fdbd87ad7d6a6fee83c22bf"
+    },
+    "tests/_data/ddf/ddf-raid4-2.bin.gz": {
+      "sha256": "ef9318e7aeb715fe3b344084d7381f13f24f23628f8f373f876bf03dfba5455b"
+    },
+    "tests/_data/ddf/ddf-raid5-1.bin.gz": {
+      "sha256": "1bac4ba8c5daf88600da49c6de5a2430551d57d605ec99e52a55bfcc528af1d6"
+    },
+    "tests/_data/ddf/ddf-raid5-2.bin.gz": {
+      "sha256": "2b1d109634883cbb0d176461290bde728b1c0e7a3df7d1f8291951f977f7b5f5"
+    },
+    "tests/_data/ddf/ddf-raid5-3.bin.gz": {
+      "sha256": "3288c67155db996fe4b463147b75c8eaf78d5448b2386ab487743ba118215a4e"
+    },
+    "tests/_data/ddf/ddf-raid6-1.bin.gz": {
+      "sha256": "6ef1ad75ea5cf8acec1e9b77af0f629e9105fe0ca494fc90ccfd3f3a6b922fd4"
+    },
+    "tests/_data/ddf/ddf-raid6-2.bin.gz": {
+      "sha256": "d2eee57f1f5b052da4532f7f45446eae1070f3a3d8b37bbf18b702a026ec11d4"
+    },
+    "tests/_data/ddf/ddf-raid6-3.bin.gz": {
+      "sha256": "fc0475b46f6d6dd759fe6d7014700143a30bb6eb10ae93a30b4683cd094dfef7"
+    },
+    "tests/_data/ddf/ddf-raid6-4.bin.gz": {
+      "sha256": "8de14e29600eb44c9c7d9e6d0d07a7c7a713cdac66f8130ce52aa750545a4e5d"
+    },
+    "tests/_data/disk/apm.bin": {
+      "sha256": "067580c7551e4f882ce0205085c1d46e226548567dc0f8073657531f288c0b89"
+    },
+    "tests/_data/disk/bsd.bin": {
+      "sha256": "5cbedbabe2c47fff83782d70d5acfc32039c0134f7d97197031d0890a11bcc62"
+    },
+    "tests/_data/disk/bsd64.bin.gz": {
+      "sha256": "9d21630770526007377c1a746685341f43322675b89880e3427881f978f88d09"
+    },
+    "tests/_data/disk/gpt.bin": {
+      "sha256": "052ffc1d2b14968357d5878d2cba6e702f95e5334c99e6c0b1b2a38ac554d94d"
+    },
+    "tests/_data/disk/gpt_4k.bin": {
+      "sha256": "1725daacad8d31dade0985ff565727e930e7a9ad272d927f408dbf3a5b466972"
+    },
+    "tests/_data/disk/gpt_esxi.bin": {
+      "sha256": "03e34797f6cc07a1026b0199d74fc89e361c79a72c3b78694559d5510455ee17"
+    },
+    "tests/_data/disk/gpt_hybrid.bin": {
+      "sha256": "feba080057cfe80b20bc93b03a09bf55ab51ae6b07e18df0063895eb35f66ade"
+    },
+    "tests/_data/disk/gpt_no_name_xff.bin": {
+      "sha256": "cfcddb0fdb547d9faa30edcd06a7d99a7c275d829cc0fc72bc0da15dd86afa8e"
+    },
+    "tests/_data/disk/mbr.bin": {
+      "sha256": "a8c2eea876db89f9a99bb55193acc9400d078bc8c5dfe80519e415f9076ca2d4"
+    },
+    "tests/_data/dm/dm-thin-data.bin.gz": {
+      "sha256": "9b3f2f847ebbe695bafba0276f14078b3caf8812785197e163a30adce15e2f8a"
+    },
+    "tests/_data/dm/dm-thin-empty-data.bin.gz": {
+      "sha256": "db7742bd62e3da6deb87c830411ce4327464c4a5c154e129145ee455dc8b7438"
+    },
+    "tests/_data/dm/dm-thin-empty-metadata.bin.gz": {
+      "sha256": "fbe7bb1aa11f9c94abd9779ec42460039100dad1ebba3f6f1f252869dbc8ccbd"
+    },
+    "tests/_data/dm/dm-thin-metadata.bin.gz": {
+      "sha256": "670b4c312b19fc4673b91cba297cff69b5b4398ba9057b446292fa1abfc25717"
+    },
+    "tests/_data/lvm/lvm-inconsistent-sizes.bin.gz": {
+      "sha256": "005d1ecc43d7703bb38f3ac3ddf95013c5f9fcc345b5a4acbfb44a700ebb44c6"
+    },
+    "tests/_data/lvm/lvm-mirror-1.bin.gz": {
+      "sha256": "29a63de431742dfd359871d39c256b5f9894d556612b37c41f25676098d41f55"
+    },
+    "tests/_data/lvm/lvm-mirror-2.bin.gz": {
+      "sha256": "b0d884e59508059db9f743c2be45919c2272ec73128b224319979fb7d638a50f"
+    },
+    "tests/_data/lvm/lvm-thin.bin.gz": {
+      "sha256": "3c5abaf9e16dd1f4c29d0ba148d9af0dd3ca812226afa7bdb7c4aeb807ae887a"
+    },
+    "tests/_data/lvm/lvm.bin.gz": {
+      "sha256": "7130e9958d6d62ed2320de7630734091d30615ae26574b406e061c04e3d7a8e2"
+    },
+    "tests/_data/md/md-90-1.bin.gz": {
+      "sha256": "22de67ccf4f268696b940feea8b4728b9c89141b5655ee43f63f774c8e230e09"
+    },
+    "tests/_data/md/md-90-2.bin.gz": {
+      "sha256": "b8ad36d1754b5fdb14b53376055d2720712508e426521bc37418b30ad30e0b3b"
+    },
+    "tests/_data/md/md-90-raid1-1.bin.gz": {
+      "sha256": "2205cfb674a1256921b7241c646f9df9b7dfec7994449037616d484f12e7c45a"
+    },
+    "tests/_data/md/md-90-raid1-2.bin.gz": {
+      "sha256": "de869c9bbbd938f273120b42bf885d5153566fab6244cf984f34ea470b33d27f"
+    },
+    "tests/_data/md/md-linear-1.bin.gz": {
+      "sha256": "34f8b7e4112cb4f4b0e99cf5d8f85a3b677d62447b8dfec842ecc03342098302"
+    },
+    "tests/_data/md/md-linear-2.bin.gz": {
+      "sha256": "0cfee27888f7a35a22a54a0169a33648af60c3a99b0c03a2069ead5d68a34c50"
+    },
+    "tests/_data/md/md-raid0-1.bin.gz": {
+      "sha256": "f5f9f87e4e0ab06b9feb8fc6ec9ae5ee62046da6701549fda9478f7693aeb40d"
+    },
+    "tests/_data/md/md-raid0-2.bin.gz": {
+      "sha256": "0efbea7ef47e8e6b6654b9d595f61ea74cbabacd03610566743df82b1ec3fa8b"
+    },
+    "tests/_data/md/md-raid0-3.bin.gz": {
+      "sha256": "553a9608eca4631169360571a84d2e9e4efd5633417b5684fb299c4fc3599ee3"
+    },
+    "tests/_data/md/md-raid1-1.bin.gz": {
+      "sha256": "060ffa7d955caa9632c4cbc2ff75e6729a2dcbda737707cd27cd63987f5d61d0"
+    },
+    "tests/_data/md/md-raid1-2.bin.gz": {
+      "sha256": "7d02441be5cff6c6ba863b5f95ae992793be61a0530a67dfe99970acf30c4176"
+    },
+    "tests/_data/md/md-raid10-1.bin.gz": {
+      "sha256": "3c2872a8a1c3359ac1afbcb6d1b61fa72ebc784317975c16c425faa82af98f54"
+    },
+    "tests/_data/md/md-raid10-2.bin.gz": {
+      "sha256": "a1885d7aa71988e798ad1e19e1d9cdaf42911e068dbf86f19e40f3ced267bb8f"
+    },
+    "tests/_data/md/md-raid4-1.bin.gz": {
+      "sha256": "332672bb2fefc1c3e561d34887debfd26fa9db21c6a325aaf961eb46b39ef2a0"
+    },
+    "tests/_data/md/md-raid4-2.bin.gz": {
+      "sha256": "7e6f77f0cf886e586f52b609e27b248c937621c5af6dc81d8785c9ee55edc287"
+    },
+    "tests/_data/md/md-raid4-3.bin.gz": {
+      "sha256": "ca8d9888e99a9e5c4b607cbd344459934351943b394cf4cded007fd40e20f76e"
+    },
+    "tests/_data/md/md-raid5-1.bin.gz": {
+      "sha256": "c38aa5505b6d76d41f4f8d1e12a349fb6b7a048ad6d4a824c525517376afd5ae"
+    },
+    "tests/_data/md/md-raid5-2.bin.gz": {
+      "sha256": "c41ac1edb552b671f6194fbd66b97d57539254954e5e4757357d635a5424b8b0"
+    },
+    "tests/_data/md/md-raid5-3.bin.gz": {
+      "sha256": "ad0d8f04b35263dad3989ba95694313d924261e1070670d9345d2d552bb1d259"
+    },
+    "tests/_data/md/md-raid6-1.bin.gz": {
+      "sha256": "acaf69f486f8eb969be83939df2d54bbf1896f974d7c8d884e03f680d3b8d2f6"
+    },
+    "tests/_data/md/md-raid6-2.bin.gz": {
+      "sha256": "87a45edea722c61d809b3880508e2c60327b9b23e4ddab36aab509108c690ebe"
+    },
+    "tests/_data/md/md-raid6-3.bin.gz": {
+      "sha256": "50fcf2b94b23d399ba272fa33be1cb1e85274ffb289a820f6b6e35d83e607982"
+    },
+    "tests/_data/md/md-raid6-4.bin.gz": {
+      "sha256": "e7b94b3d7fc15387ad1c4185a51fe0acb0b0d0c5a2b09bd1658ddcada9174e44"
+    },
+    "tests/_data/vinum/vinum-concat_diska.bin.gz": {
+      "sha256": "6a04425ec1faf94ce618f4fc7c7de440f0561d555cd2d9d41efc950616a43b38"
+    },
+    "tests/_data/vinum/vinum-concat_diskb.bin.gz": {
+      "sha256": "1c81d0ef66b1cef357b331acdcb9d065ad4b8b1ae24912505d8d7740f6334632"
+    },
+    "tests/_data/vinum/vinum-mirror_diska.bin.gz": {
+      "sha256": "7154b249f704683a7bcf15dadc9e69088463bb1e14406b8bfe46cde8b19ed7a3"
+    },
+    "tests/_data/vinum/vinum-mirror_diskb.bin.gz": {
+      "sha256": "dda71043228062d9c74771ac0562d6f70b2168a0a29143742c7b7ea582ab51f9"
+    },
+    "tests/_data/vinum/vinum-raid5_diska.bin.gz": {
+      "sha256": "99d948a769bd33d7c5fbe0555cdbe421bb8f2cd5fa4c36ac354a475156b7ec6b"
+    },
+    "tests/_data/vinum/vinum-raid5_diskb.bin.gz": {
+      "sha256": "d702c2c1659d35a370a49035b026ac0415a281e770e7fd9c4469eca16c64421e"
+    },
+    "tests/_data/vinum/vinum-raid5_diskc.bin.gz": {
+      "sha256": "94f225676d287bee5e8fad6ee104d1f2f5935db6577f7bb0efde61ac76a4a551"
+    },
+    "tests/_data/vinum/vinum-raid5_diskd.bin.gz": {
+      "sha256": "c9a68cf5a3ef47892f292a27c19a046e29097f0488c70b952f3e94162f4db6f8"
+    },
+    "tests/_data/vinum/vinum-striped_diska.bin.gz": {
+      "sha256": "9342dd58ed4f60a927112933445934b097a324e892d2c1979d45157bb21eae99"
+    },
+    "tests/_data/vinum/vinum-striped_diskb.bin.gz": {
+      "sha256": "5eb9b2a4f18408a0091e16319b86906f41464f1873608394755a8c79c2b6cb27"
+    },
+    "tests/_data/vinum/vinum-stripedmirror_diska.bin.gz": {
+      "sha256": "d17a4beed17cae5595622c021ba45ae8133810037ed34cbf94a6033efe186803"
+    },
+    "tests/_data/vinum/vinum-stripedmirror_diskb.bin.gz": {
+      "sha256": "94b6c633b2cc247f3182aaf9cc625d708b7f8ee5359dafefbba6df1b70857553"
+    },
+    "tests/_data/vinum/vinum-stripedmirror_diskc.bin.gz": {
+      "sha256": "e7922422fe58b03692793ecc4caf63eed852c8bfebe4d1bf34d4c7c6b029871d"
+    },
+    "tests/_data/vinum/vinum-stripedmirror_diskd.bin.gz": {
+      "sha256": "92197ecbb9f32fcaecda56cae4a2f007ca2de2727957115c277b763a0587592c"
+    },
+    "tests/_docs/Makefile": {
+      "sha256": "0261bd1f089a883d010084bd0e8942f935eba87cf2a60504d304e03ce44a1428"
+    },
+    "tests/_docs/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "tests/_docs/conf.py": {
+      "sha256": "f00017d931f8f694a25ddaff956e1cda6170105c1ae547804208725db2f0028c"
+    },
+    "tests/_docs/index.rst": {
+      "sha256": "37adb68f2c51a830d0ece6eac531387ffbba57c2e1935547eec9d16b53d64fd5"
+    },
+    "tests/_tools/lvm/generate.sh": {
+      "sha256": "948a73c4124a28f51a8cd4d5262fa39b30c2759bf5acffac78f7e64305f7a8b1"
+    },
+    "tests/conftest.py": {
+      "sha256": "12a458500fb20840096c6c4d39d6085c0cc4d8276099dc5f16ac97b01de30c2d"
+    },
+    "tests/ddf/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "tests/ddf/test_ddf.py": {
+      "sha256": "8fa818579b4b9b6fcb1f31ec02d88c30706e5b1f924ffe5e8075e5bb778f998e"
+    },
+    "tests/disk/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "tests/disk/test_apm.py": {
+      "sha256": "5c9aef7ea4517c7fb018aead6b43dff4bf4e98137b3349b7355d0534dc3aa2f5"
+    },
+    "tests/disk/test_bsd.py": {
+      "sha256": "41d3d764ca99e9b8919aea4a9074557774ce03d58c98bce8d381388aafac6b03"
+    },
+    "tests/disk/test_gpt.py": {
+      "sha256": "de2d0921d5eec0d1b19f98b4ea2d37ada414c702598e9927b5f7e0bd9ada8fd9"
+    },
+    "tests/disk/test_mbr.py": {
+      "sha256": "b261ffb504fc50fea28ed128ffec211215eadd444181839dd744f5bb69ebbf80"
+    },
+    "tests/dm/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "tests/dm/test_dm.py": {
+      "sha256": "edb07e58b285c808650dcf3a4331ad4ca07d8edcbedb5d7e201dab6111280fdd"
+    },
+    "tests/lvm/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "tests/lvm/test_lvm.py": {
+      "sha256": "99041b52804c00abeb153cbe5576ffbc257403d99e18b6e402e4e5385dff05e2"
+    },
+    "tests/md/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "tests/md/test_md.py": {
+      "sha256": "132b1f58184099db2a2d82e26d68c9f8e5bae50b70b3a8403a5f463cc446646e"
+    },
+    "tests/vinum/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "tests/vinum/test_config.py": {
+      "sha256": "24cb7a18008383e18350e77477834923e1e3543deabab761ccdd785ab468f15a"
+    },
+    "tests/vinum/test_vinum.py": {
+      "sha256": "b06f12cb66eafcb2cd3d2a8b6c27ed0fe8da9d2971b05ba36c606acd0992f0a1"
+    },
+    "tox.ini": {
+      "sha256": "cdb5ce7e024b097dc2d6bd7449aa2e0409aecba3c9d9b869338823998a87b5e6"
+    }
+  },
+  "license": "AGPL-3.0-or-later",
+  "name": "dissect.volume",
+  "role": "metadata and readonly RAID streams",
+  "url": "https://github.com/fox-it/dissect.volume.git"
+}

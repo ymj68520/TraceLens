@@ -13,7 +13,7 @@
  *    logical Android source (dir / zip / MIUI backup). Logical sources bypass
  *    the TSK pipeline entirely.
  */
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { createTask, fetchTasks } from '../../store/taskSlice';
 import { closeModal } from '../../store/uiSlice';
@@ -21,11 +21,13 @@ import Button from '../common/Button';
 import { useToast } from '../common/ToastContext';
 import FilterProfileSelector from '../filters/FilterProfileSelector';
 import FilterProfileEditor from '../filters/FilterProfileEditor';
+import RaidImageSource from './RaidImageSource';
 
 // Data source kinds. The value is sent to the backend as android_source and
 // selects the AndroidAnalyzer backend / analysis pipeline branch.
 const DATA_SOURCES = [
   { value: 'tsk', label: '磁盘镜像', desc: '.dd / .E01 / raw 镜像（走 TSK 文件系统解析）' },
+  { value: 'raid', label: 'RAID 系统镜像', desc: '选择成员镜像，准备后按普通磁盘镜像分析' },
   { value: 'dir', label: 'Android 目录', desc: '已解压的逻辑提取目录树' },
   { value: 'zip', label: 'Android ZIP', desc: '逻辑提取打包成的单个 .zip' },
   { value: 'miui-backup', label: 'MIUI 备份', desc: '小米 MIUI 离线备份目录（含 descript.xml + .bak）' },
@@ -59,10 +61,13 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
   const [error, setError] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showProfileEditor, setShowProfileEditor] = useState(false);
+  const [raidSource, setRaidSource] = useState(null);
+  const handleRaidSource = useCallback((value) => setRaidSource(value), []);
 
   const set = (key, val) => setForm((f) => ({ ...f, [key]: val }));
 
-  const isLogical = form.android_source !== 'tsk';
+  const isRaid = form.android_source === 'raid';
+  const isLogical = form.android_source !== 'tsk' && !isRaid;
   const isMiui = form.android_source === 'miui-backup';
   const isArchive = ['tar', 'seven-zip', 'android-backup', 'filesystem-image', 'android-container'].includes(form.android_source);
 
@@ -104,9 +109,11 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
       // A logical Android source (dir / zip / MIUI backup) is always Android —
       // force the scenario so the backend runs the Android analyzer path and
       // skips the TSK disk-image pipeline.
-      const isLogical = form.android_source !== 'tsk';
+      if (isRaid && !raidSource) throw new Error('请先完成 RAID 布局确认和系统镜像准备');
+      const isLogical = form.android_source !== 'tsk' && !isRaid;
       const payload = {
         ...form,
+        ...(isRaid ? raidSource : {}),
         scenarios: isLogical ? ['android'] : form.scenarios,
         llm_analyze: true,
         llm_event_analyze: false,
@@ -138,7 +145,7 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-lg">
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
           <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Create New Task</h2>
@@ -157,7 +164,7 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
             <select
               disabled={isCreating}
               value={form.android_source}
-              onChange={(e) => set('android_source', e.target.value)}
+              onChange={(e) => { setRaidSource(null); set('android_source', e.target.value); }}
               className={inputCls}
             >
               {DATA_SOURCES.map((s) => (
@@ -167,6 +174,7 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
           </Field>
 
           {/* Image Path / data source path */}
+          {isRaid ? <Field label="RAID 成员镜像 *"><RaidImageSource onSource={handleRaidSource} disabled={isCreating} /></Field> :
           <Field label={pathLabel} hint={initialSource ? '由检材预检结果预填；分析前请确认来源未改变。' : undefined}>
             <input
               type="text" required disabled={isCreating}
@@ -176,6 +184,7 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
               placeholder={pathPlaceholder}
             />
           </Field>
+          }
 
           {/* Runtime-only password; never persisted in Task serialization. */}
           {(isMiui || form.android_source === 'seven-zip' || form.android_source === 'android-backup') && (
@@ -319,7 +328,7 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
           {/* Actions */}
           <div className="flex justify-end space-x-3 pt-2">
             <Button type="button" variant="secondary" onClick={() => { dispatch(closeModal()); onClose(); }} disabled={isCreating}>Cancel</Button>
-            <Button type="submit" disabled={isCreating}>{isCreating ? 'Creating...' : 'Create Task'}</Button>
+            <Button type="submit" disabled={isCreating || (isRaid && !raidSource)}>{isCreating ? 'Creating...' : 'Create Task'}</Button>
           </div>
         </form>
       </div>

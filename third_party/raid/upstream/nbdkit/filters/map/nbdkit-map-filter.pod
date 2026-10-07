@@ -1,0 +1,104 @@
+=head1 NAME
+
+nbdkit-map-filter - remap disk blocks
+
+=head1 SYNOPSIS
+
+ nbdkit --filter=map PLUGIN [map=START-END:DEST [map=...]]
+                            [map-size=SIZE]
+
+=head1 DESCRIPTION
+
+C<nbdkit-map-filter> is an L<nbdkit(1)> filter which can remap parts
+of the underlying plugin, such as moving a sector or partition.
+
+To select part of a disk, use L<nbdkit-offset-filter(1)> instead.  To
+select a partition, use L<nbdkit-partition-filter(1)>.  Although this
+filter can change the size of the disk, L<nbdkit-truncate-filter(1)>
+is easier to use.
+
+=head1 EXAMPLES
+
+=head2 Swap over the first two sectors in a disk
+
+Using two C<map> parameters, this remaps the first sector (bytes
+C<0-511>) on to the second sector (starting at C<512>), and the second
+sector (bytes C<512-1023>) on to the first sector (C<0>).
+
+ nbdkit --filter=map file orig.img map=0-511:512 map=512-1023:0
+
+=head1 PARAMETERS
+
+=over 4
+
+=item B<map=>STARTB<->ENDB<:>DEST
+
+Map bytes in the range C<START> to C<END> (inclusive) to C<DEST> in
+the underlying plugin.  The destination range ends at:
+
+ DEST_END = DEST+END-START
+
+This means that when the byte at offset C<START> is read or written
+(or any other operation such as trim), the request is redirected to
+the byte at offset C<DEST> in the underlying plugin, and so on for the
+following bytes up to and including offset C<END> which is mapped
+to C<DEST_END>.
+
+C<DEST> through to C<DEST_END> must exist in the underlying plugin.
+Attempts to map requests beyond the end of the underlying plugin will
+return I/O errors.
+
+You can give this parameter multiple times.  If overlapping ranges are
+described then the first matching range on the command line takes
+precedence.  There is an implicit 1-1 mapping covering parts of the
+disk not covered by explicit C<map> parameters.
+
+If you have a large number of mappings, consider using the nbdkit
+C<@PATH> parameter to read them from an external file (see
+L<nbdkit(1)/@PATH>).
+
+=item B<map-size=>SIZE
+
+If this parameter is set, the size of the disk is set to C<SIZE>.
+Note if C<SIZE> is larger than the underlying plugin then you must map
+areas of the disk beyond the plugin up to C<SIZE>, otherwise accesses
+will return I/O errors.
+
+If this parameter is not set, the size of the underlying plugin is
+used.
+
+=back
+
+=head1 FILES
+
+=over 4
+
+=item F<$filterdir/nbdkit-map-filter.so>
+
+The filter.
+
+Use C<nbdkit --dump-config> to find the location of C<$filterdir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-map-filter> first appeared in nbdkit 1.46.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-extentlist-filter(1)>,
+L<nbdkit-offset-filter(1)>,
+L<nbdkit-partition-filter(1)>,
+L<nbdkit-protect-filter(1)>,
+L<nbdkit-truncate-filter(1)>,
+L<nbdkit-filter(3)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

@@ -1,0 +1,266 @@
+=head1 NAME
+
+nbdkit-S3-plugin - expose data in Amazon S3 or Ceph buckets as block device
+
+=head1 SYNOPSIS
+
+ nbdkit S3 [access-key=...] [secret-key=...] [session-token=...]
+           [endpoint-url=...]
+           [size=NN object-size=NN]
+           bucket=BUCKET key=STRING
+
+=head1 DESCRIPTION
+
+C<nbdkit-S3-plugin> is a plugin for L<nbdkit(1)> which lets you open
+objects stored in Amazon S3 or Ceph as disk images.
+
+This plugin uses the Python Amazon Web Services SDK called Boto3.
+
+=head1 EXAMPLES
+
+ nbdkit S3 endpoint-url=https://ceph.example.com \
+           bucket=MY-BUCKET key=disk.img
+
+
+Provides read only block device holding the data contained in the "disk.img"
+object.
+
+ nbdkit S3 endpoint-url=https://ceph.example.com \
+           size=50G object-size=128k \
+           bucket=MY-BUCKET key=disk
+
+Provides a read-write block device with size 50G, whose contents are stored
+multiple in objects of size 128k, prefixed with I<disk/>
+
+=head1 PARAMETERS
+
+=over 4
+
+=item B<access-key=>ACCESS_KEY
+
+=item B<access-key=+>FILENAME
+
+=item B<access-key=->
+
+=item B<access-key=->FD
+
+=item B<secret-key=>SECRET_KEY
+
+=item B<secret-key=+>FILENAME
+
+=item B<secret-key=->
+
+=item B<secret-key=->FD
+
+=item B<session-token=>SESSION_TOKEN
+
+=item B<session-token=+>FILENAME
+
+=item B<session-token=->
+
+=item B<session-token=->FD
+
+Pass AWS credentials.  See L</CREDENTIALS>.
+
+=item B<endpoint-url=>ENDPOINT
+
+If accessing Ceph or another compatible S3 service, provide the
+endpoint URL through this parameter.
+
+=item B<bucket=>BUCKET
+
+The bucket containing the object(s).  This parameter is required.
+
+=item B<key=>STRING
+
+The object name (if C<size> is not specified) or object prefix (if
+C<size> is specified) to use within the bucket.  This parameter is
+required.
+
+=item B<size=>SIZE
+
+=item B<object-size=>SIZE
+
+These two parameters must always be specified together. If set, data
+will be split into blocks of C<object-size> and stored as separate
+objects. The block device will report a total size of C<size> and be
+writeable and trim-able.
+
+Object names will have the form I<key/%16x>, where C<%16x> is the
+16-digit hexadecimal block number. If there are existing objects
+under such name that do not have the expected size, the plugin
+will crash.
+
+=back
+
+=head1 PERFORMANCE CONSIDERATIONS
+
+It is highly recommended that clients do their utmost to issue
+requests that exactly match the object size: Smaller write requests
+will incur a performance penalty due to the need for read-modify-write
+cycles (thus also incurring latency from two network
+round-trips). Larger read and write requests will incur a performance
+penalty because of sequential execution.
+
+The L<nbdkit-blocksize-filter(1)> can be used to alleviate the impact
+of requests larger than the object size, but does not help if the
+client issues requests smaller than the block size.
+
+The L<nbdkit-stats-filter(1)> can be used to investigate what block
+sizes and alignments are used by the client.
+
+When connecting through the Linux kernel's NBD module, consider
+setting C</sys/block/nbdE<lt>XE<gt>/queue/max_sectors_kb> to match the
+object size.
+
+=head1 CREDENTIALS
+
+You can pass AWS credentials in several ways:
+
+=over 4
+
+=item In plaintext on the nbdkit command line
+
+For example:
+
+ nbdkit S3 access-key=ABC secret-key=SECRET session-token=123
+
+This is B<not secure> since a user on the same machine could read them
+using L<ps(1)>.
+
+=item Via files on the nbdkit command line
+
+(nbdkit E<ge> 1.38)
+
+For example:
+
+ nbdkit S3 access-key=+/tmp/access [...]
+
+Be careful with the permissions on these files to ensure that no one
+else can read the sensitive information.
+
+=item Interactively when nbdkit starts up
+
+(nbdkit E<ge> 1.38)
+
+For example:
+
+ nbdkit S3 access-key=- [...]
+
+nbdkit will ask for each key to be entered interactively.
+
+=item Inherited through a file descriptor
+
+(nbdkit E<ge> 1.38)
+
+For example:
+
+ nbdkit S3 access-key=-3 [...]
+
+The parent process must set up the file descriptor (FD 3 in the
+example) so that nbdkit can read the key from it.
+
+=item Using F<~/.aws/credentials> file
+
+This file takes the form:
+
+ [default]
+ aws_access_key_id = XXX
+ aws_secret_access_key = YYY
+
+ [profile]
+ aws_access_key_id = XXX
+ aws_secret_access_key = YYY
+
+Different profiles from the file can be selected by setting
+the C<AWS_PROFILE> environment variable.
+
+=item Through environment variables
+
+Use the environment variables C<AWS_ACCESS_KEY_ID>,
+C<AWS_SECRET_ACCESS_KEY> and C<AWS_SESSION_TOKEN>.
+
+=back
+
+There is much more information about credentials in
+L<the Boto3 documentation|https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html>.
+
+=head1 COMPARISON TO S3FS-FUSE AND S3BACKER
+
+s3fs-fuse (L<https://github.com/s3fs-fuse/s3fs-fuse>) and s3backer
+(L<https://github.com/archiecobbs/s3backer>) provide similar
+functionality but are based on FUSE (rather than NBD). They provide a
+regular file (backed by S3) which can then be loopback-mounted to
+provide a block device. s3backer also supports to optionally encrypt
+and compress objects.
+
+In theory, NBD should provide better performance than FUSE, because:
+
+=over 4
+
+=item * The kernel no longer serializes write and read requests but
+issues them concurrently.
+
+=item * Read and write request size can exceed 128 kB
+
+=item * The system can still be reliably hibernated (a running FUSE
+daemon may prevent this)
+
+=item * Requests pass through the VFS only once, not twice
+
+=item * Data is present in the page cache only once, not twice
+
+=back
+
+However, for high-bandwidth network connections s3backer and s3fs-fuse
+may be faster because they are written in C rather than Python.
+
+=head1 FILES
+
+=over 4
+
+=item F<$plugindir/nbdkit-S3-plugin>
+
+The plugin.
+
+Use C<nbdkit --dump-config> to find the location of C<$plugindir>.
+
+=item F<$HOME/.aws/credentials>
+
+AWS credentials can be passed to boto3 using this file.
+
+=back
+
+=head1 ENVIRONMENT VARIABLES
+
+=over 4
+
+=item C<AWS_*>
+
+Boto3 reads some credential information from C<AWS_*> environment variables.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-S3-plugin> first appeared in nbdkit 1.24.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-plugin(3)>,
+L<nbdkit-python-plugin(3)>,
+L<nbdkit-gcs-plugin(1)>,
+L<https://pypi.org/project/boto3/>,
+L<https://boto3.amazonaws.com/v1/documentation/api/latest/index.html>,
+L<https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+Nikolaus Rath
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

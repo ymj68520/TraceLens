@@ -1,0 +1,629 @@
+#!/usr/bin/env perl
+# podwrapper.pl
+# @configure_input@
+# Copyright Red Hat
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are
+# met:
+#
+# * Redistributions of source code must retain the above copyright
+# notice, this list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright
+# notice, this list of conditions and the following disclaimer in the
+# documentation and/or other materials provided with the distribution.
+#
+# * Neither the name of Red Hat nor the names of its contributors may be
+# used to endorse or promote products derived from this software without
+# specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY RED HAT AND CONTRIBUTORS ''AS IS'' AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+# THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+# PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL RED HAT OR
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+# USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+# OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+# SUCH DAMAGE.
+
+use warnings;
+use strict;
+
+#use Carp;
+#$SIG{ __DIE__ } = sub { Carp::confess( @_ ) };
+
+use Pod::Usage;
+use Getopt::Long;
+use Pod::Man;
+use Pod::Simple;
+use Pod::Simple::Text;
+use Pod::Simple::XHTML;
+use File::Basename;
+
+# https://www.redhat.com/archives/libguestfs/2013-May/thread.html#00088
+eval { $Text::Wrap::huge = "overflow" };
+
+# All man page names must match this function.
+sub validate_name_field
+{
+    local $_ = shift;
+    $_ =~ m/^libnbd/ || $_ =~ m/^nbd/;
+}
+
+# The license for man pages in this package - see LICENSE below.
+my $package_license = "lgplv2plus";
+
+=head1 NAME
+
+podwrapper.pl - generate documentation from POD input files
+
+=head1 SYNOPSIS
+
+ EXTRA_DIST = foo.pod
+ 
+ if HAVE_POD
+ 
+ man_MANS = foo.1
+ CLEANFILES += $(man_MANS)
+ 
+ foo.1: foo.pod
+         $(PODWRAPPER) --section 1 --man $@ \
+           --html $(top_builddir)/html/$@.html \
+           $<
+ 
+ endif HAVE_POD
+
+=head1 DESCRIPTION
+
+podwrapper.pl is a Perl script that generates various output formats
+from POD input files that this project uses for most documentation.
+
+You must specify one input file, and one or more output formats.  The
+output options are I<--man>, I<--html> and I<--text> (see below).
+
+In C<Makefile.am> files, use a variation of the boilerplate shown in
+the L</SYNOPSIS> section above.
+
+For information about the POD format, see L<perlpod(1)>.
+
+=head1 OPTIONS
+
+=over 4
+
+=cut
+
+my $help;
+
+=item B<--help>
+
+Display brief help.
+
+=cut
+
+my $allow_long_lines;
+
+=item B<--allow-long-lines>
+
+Allow lines longer than 76 characters in the input.  Use this
+if the man page is not written by hand.
+
+=cut
+
+my $html;
+
+=item B<--html> output.html
+
+Write a web page to F<output.html>.  If this option is not
+given, then no web page output is produced.
+
+=cut
+
+my @inserts;
+
+=item B<--insert> filename:__PATTERN__
+
+In the input file, replace the literal text C<__PATTERN__> with the
+replacement file F<filename>.  You can give this option multiple
+times.
+
+The contents of F<filename> are treated as POD.
+Compare and contrast with I<--verbatim>.
+
+Although it is conventional to use C<__...__> (double underscores) for
+patterns, in fact you can use any string as the pattern.
+
+=cut
+
+my $man;
+
+=item B<--man> output.n
+
+Write a man page to F<output.n> (C<n> is the manual section number).
+If this option is not given, then no man page output is produced.
+
+=cut
+
+my $name;
+
+=item B<--name> NAME
+
+Set the name of the man page.  If not set, defaults to the basename
+of the input file.
+
+=cut
+
+my @replaces;
+
+=item B<--replace> __PATTERN__:CONTENT
+
+In the input file, replace the literal text C<__PATTERN__> with the
+literal replacement string <CONTENT>.  You can give this option
+multiple times.
+
+Although it is conventional to use C<__...__> (double underscores) for
+patterns, in fact you can use any string as the pattern.
+
+=cut
+
+my $section;
+
+=item B<--section> N
+
+Set the section of the man page (a number such as C<1> for
+command line utilities or C<3> for C API documentation).  If
+not set, defaults to C<1>.
+
+=cut
+
+my $text;
+
+=item B<--text> output.txt
+
+Write a text file to F<output.txt>.  If this option is not
+given, then no text output is produced.
+
+=cut
+
+my @verbatims;
+
+=item B<--verbatim> filename:__PATTERN__
+
+In the input file, replace the literal text C<__PATTERN__> with the
+replacement file F<filename>.  You can give this option multiple
+times.
+
+The contents of F<filename> are inserted as verbatim text, and
+are I<not> interpreted as POD.
+Compare and contrast with I<--insert>.
+
+Although it is conventional to use C<__...__> (double underscores) for
+patterns, in fact you can use any string as the pattern.
+
+=cut
+
+# Clean up the program name.
+my $progname = $0;
+$progname =~ s{.*/}{};
+
+# Parse options.
+GetOptions ("help|?" => \$help,
+            "allow-long-lines" => \$allow_long_lines,
+            "html=s" => \$html,
+            "insert=s" => \@inserts,
+            "man=s" => \$man,
+            "name=s" => \$name,
+            "replace=s" => \@replaces,
+            "section=s" => \$section,
+            "text=s" => \$text,
+            "verbatim=s" => \@verbatims,
+    ) or pod2usage (2);
+pod2usage (1) if $help;
+
+die "$progname: missing argument: podwrapper input.pod\n" unless @ARGV == 1;
+my $input = $ARGV[0];
+
+# There should be at least one output.
+die "$progname: $input: no output format specified.  Use --man and/or --html and/or --text.\n"
+    unless defined $man || defined $html || defined $text;
+
+# Default for $name and $section.
+$name = basename ($input, ".pod") unless defined $name;
+$section = 1 unless defined $section;
+
+# Note that these @...@ are substituted by ./configure.
+my $abs_top_srcdir = "@abs_top_srcdir@";
+my $abs_top_builddir = "@abs_top_builddir@";
+my $package_name = "@PACKAGE_NAME@";
+my $package_version = "@PACKAGE_VERSION@";
+
+die "$progname: ./configure substitutions were not performed"
+    unless $abs_top_srcdir && $abs_top_builddir &&
+    $package_name && $package_version;
+
+# Create a stable date (thanks Hilko Bengen).
+my $date;
+my $filename = "$abs_top_srcdir/.git";
+if (!$date && -d $filename) {
+    local $ENV{GIT_DIR} = $filename;
+    $date = `git show -O/dev/null -s --format=format:%cs`;
+}
+if (!$date) {
+    my ($day, $month, $year) = (gmtime($ENV{SOURCE_DATE_EPOCH} || time))[3,4,5];
+    $date = sprintf ("%04d-%02d-%02d", $year+1900, $month+1, $day);
+}
+
+# Create a release string.
+my $release = "$package_name-$package_version";
+
+#print "input=$input\n";
+#print "name=$name\n";
+#print "section=$section\n";
+#print "date=$date\n";
+
+# Read the input.
+my $content = read_whole_file ($input);
+
+# Perform @inserts.
+foreach (@inserts) {
+    my @a = split /:/, $_, 2;
+    die "$progname: $input: no colon in parameter of --insert\n" unless @a >= 2;
+    my $replacement = read_whole_file ($a[0]);
+    my $oldcontent = $content;
+    $content =~ s/$a[1]/$replacement/ge;
+    die "$progname: $input: could not find pattern '$a[1]' in input file\n"
+        if $content eq $oldcontent;
+}
+
+# Turn external links to this man page into simple cross-section links.
+$content =~ s,\QL<$name($section)/\E,L</,g;
+
+# Perform @replaces.
+foreach (@replaces) {
+    my @a = split /:/, $_, 2;
+    die "$progname: $input: no colon in parameter of --replace\n" unless @a >= 2;
+    my $oldcontent = $content;
+    $content =~ s/$a[0]/$a[1]/g;
+    die "$progname: $input: could not find pattern '$a[0]' in input file\n"
+        if $content eq $oldcontent;
+}
+
+# Perform @verbatims.
+foreach (@verbatims) {
+    my @a = split /:/, $_, 2;
+    die "$progname: $input: no colon in parameter of --verbatim\n" unless @a >= 2;
+    my $replacement = read_verbatim_file ($a[0]);
+    my $oldcontent = $content;
+    $content =~ s/$a[1]/$replacement/ge;
+    die "$progname: $input: could not find pattern '$a[1]' in input file\n"
+        if $content eq $oldcontent;
+}
+
+# Check the content is valid UTF8.
+die "$progname: $input: is not valid utf8" unless utf8::is_utf8 ($content);
+
+# There should be no =encoding line present in the content.
+die "$progname: $input: =encoding must not be present in input\n"
+    if $content =~ /^=encoding/m;
+
+# Don't permit trailing whitespace.
+die "$progname: $input: trailing whitespace in input\n"
+    if $content =~ /[ \t]$/m;
+
+# We may add an encoding line, but this breaks RHEL 6-era Pod::Simple
+# with the error "Cannot decode string with wide characters".
+$content =~ s/^=(.*)/\n=encoding utf8\n\n=$1/m
+    if $] >= 5.011;		# Perl >= 5.11
+
+# Verify sections present / not present.
+die "$progname: $input: missing NAME section\n"
+    if $content !~ /^=head1 NAME/m;
+die "$progname: $input: missing DESCRIPTION section\n"
+    if $content !~ /^=head1 DESCRIPTION/m;
+die "$progname: $input: missing AUTHOR or AUTHORS section\n"
+    unless $content =~ /^=head1 AUTHOR/m;
+die "$progname: $input: missing SEE ALSO section\n"
+    unless $content =~ /^=head1 SEE ALSO/m;
+die "$progname: $input: missing COPYRIGHT section\n"
+    unless $content =~ /^=head1 COPYRIGHT/m;
+die "$progname: $input: BUGS is now added automatically, do not add it to the POD file\n"
+    if $content =~ /^=head1 (REPORTING )?BUGS/m;
+die "$progname: $input: LICENSE is now added automatically, do not add it to the POD file\n"
+    if $content =~ /^=head1 LICENSE/m;
+
+# Check NAME section conformity.
+my @lines = split /\n/, $content;
+my @name;
+foreach (@lines) {
+    push @name, $_ if /^=head1 NAME/../^=head1 (?!NAME)/
+}
+shift @name;                    # remove =head1 and empty line
+shift @name;                    # from beginning and end
+pop @name;
+pop @name;
+die "$progname: $input: empty NAME section\n"
+    unless @name >= 1;
+die "$progname: $input: NAME doesn't start with $package_name\n"
+    unless validate_name_field ($name[0]);
+die "$progname: $input: NAME doesn't match man page name\n"
+    unless $name[0] =~ /\b$name\b.* - /;
+die "$progname: $input: NAME does not conform with Linux man pages standard\n"
+    if $name[0] !~ m/- [a-z]/ || $name[@name-1] =~ m/\.$/;
+
+unless ($allow_long_lines) {
+    # Check no over-long lines in the input.  (As a special exception
+    # this is permitted in verbatim sections or if the line contains a
+    # URL).
+    foreach (@lines) {
+        die "$progname: $input: line too long:\n$_\n"
+            if length $_ > 76 &&
+            substr ($_, 0, 1) ne ' ' &&
+            ! m/https?:/;
+    }
+}
+
+# Check for bare URLs.  They should probably be replaced by L<> links.
+# (Allow them in verbatim sections)
+# Older Perl did not support variable length lookbehind, hence the
+# eval here.
+my $re = eval ' qr/(?<!(?:L<|C<|\/|\|))(https?:.*)/ ';
+if ($@ eq "") {
+    foreach (@lines) {
+        my $fc = substr ($_, 0, 1);
+        if ($fc ne ' ' && $fc ne '=' && m/$re/) {
+            my $frag = substr ($1, 0, 40);
+            die "$progname: $input: Bare URL $frag.. should be replaced by L<...> link\n"
+        }
+    }
+}
+
+# Add standard LICENSE section at the end.
+my $license_lgplv2plus = "\
+This library is free software; you can redistribute it and/or
+modify it under the terms of the GNU Lesser General Public
+License as published by the Free Software Foundation; either
+version 2 of the License, or (at your option) any later version.
+
+This library is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public
+License along with this library; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+";
+
+my $license_bsd = "\
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+=over 4
+
+=item *
+
+Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+
+=item *
+
+Redistributions in binary form must reproduce the above copyright
+notice, this list of conditions and the following disclaimer in the
+documentation and/or other materials provided with the distribution.
+
+=item *
+
+Neither the name of Red Hat nor the names of its contributors may be
+used to endorse or promote products derived from this software without
+specific prior written permission.
+
+=back
+
+THIS SOFTWARE IS PROVIDED BY RED HAT AND CONTRIBUTORS ''AS IS'' AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL RED HAT OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+SUCH DAMAGE.
+";
+
+$content .= "\n=head1 LICENSE\n";
+$content .= eval "\$license_$package_license";
+
+# Check cross-references to other nbdkit man pages exist.
+my @xrefs = $content =~ /L<(nbd_.*?\([1-9]\))>/g;
+foreach (@xrefs) {
+    # All documentation in section 3.
+    if (m/^nbd_(.*)\(3\)$/) {
+        my $name = $1;
+        die "$progname: $input: cannot find cross reference for $_\n"
+            unless -f "$abs_top_srcdir/docs/nbd_$name.pod" ||
+                   -f "$abs_top_srcdir/docs/nbd_$name.3";
+    }
+    else {
+        die "$progname: $input: cannot find cross-reference for $_\n"
+    }
+}
+
+# Output man page.
+SUBMAN: {
+    package Podwrapper::Man;
+
+    use vars qw(@ISA $VERSION);
+    @ISA = qw(Pod::Man);
+    $VERSION = $package_version;
+
+    # Override the L<> method.
+    sub cmd_l
+    {
+        my ($self, $attrs, $text) = @_;
+        return $text;
+    }
+}
+
+if ($man) {
+    my $parser = Podwrapper::Man->new (
+        name => $name,
+        release => $release, section => $section,
+        center => uc $package_name,
+        date => $date,
+        stderr => 1, utf8 => 1
+    );
+    my $output;
+    $parser->no_errata_section (1);
+    $parser->complain_stderr (1);
+    $parser->output_string (\$output);
+    $parser->parse_string_document ($content)
+        or die "$progname: could not parse input document";
+    open OUT, ">$man" or die "$progname: $man: $!";
+    print OUT $output or die "$progname: $man: $!";
+    close OUT or die "$progname: $man: $!";
+    if ($parser->any_errata_seen) {
+        unlink $man;
+        die "$input: errors or warnings in this POD file, see messages above\n"
+    }
+    #print "$progname: wrote $man\n";
+}
+
+# Output HTML.
+SUBHTML: {
+    # Subclass Pod::Simple::XHTML.  See the documentation.
+    package Podwrapper::XHTML;
+
+    use vars qw(@ISA $VERSION);
+    @ISA = qw(Pod::Simple::XHTML);
+    $VERSION = $package_version;
+
+    # Note this also allows links to related projects because they all
+    # appear together under the http://libguestfs.org website.
+    sub is_a_local_page
+    {
+        local $_ = shift;
+
+        return 1 if /^Sys::Guestfs/;
+        return 0 if /^virt-install/;
+        return 1 if /^virt-/;
+        return 1 if /^libguestf/;
+        return 1 if /^guestf/;
+        return 1 if /^guestmount/;
+        return 1 if /^guestunmount/;
+        return 1 if /^hivex/;
+        return 1 if /^supermin/;
+        return 1 if /^libnbd/;
+        return 0 if /^nbd-server\(/ || /^nbd-client\(/;
+        return 1 if /^nbd/;
+        return 0;
+    }
+
+    sub resolve_man_page_link
+    {
+        my $self = shift;
+        my $name = $_[0];   # eg. "foobar(3)", can be undef
+        my $anchor = $_[1]; # eg. "SYNOPSIS", can be undef
+        my $r = "";
+        if (defined $name) {
+            return $self->SUPER::resolve_man_page_link (@_)
+                unless is_a_local_page ($name);
+            $name =~ s/\((.*)\)$/.$1/;
+            $r .= "$name.html";
+        }
+        $r .= "#" . $self->idify ($anchor, 1) if defined $anchor;
+        $r;
+    }
+}
+
+if ($html) {
+    mkdir "$abs_top_builddir/html";
+
+    my $parser = Podwrapper::XHTML->new;
+    my $output;
+    $parser->no_errata_section (1);
+    $parser->complain_stderr (1);
+    $parser->force_title ($name[0]); # from @name above
+    $parser->output_string (\$output);
+    # Added in Pod::Simple 3.16, 2011-03-14.
+    eval { $parser->html_charset ("UTF-8") };
+    $parser->html_css ("pod.css");
+    $parser->index (1);
+    $parser->parse_string_document ($content);
+
+    # Hack for Perl 5.16.
+    $output =~ s{/>pod.css<}{/>\n<};
+
+    open OUT, ">$html" or die "$progname: $html: $!";
+    print OUT $output or die "$progname: $html: $!";
+    close OUT or die "$progname: $html: $!";
+    if ($parser->any_errata_seen) {
+        unlink $html;
+        die "$input: errors or warnings in this POD file, see messages above\n"
+    }
+    #print "$progname: wrote $html\n";
+}
+
+# Output text.
+if ($text) {
+    my $parser = Pod::Simple::Text->new;
+    my $output;
+    $parser->no_errata_section (1);
+    $parser->complain_stderr (1);
+    $parser->output_string (\$output);
+    $parser->parse_string_document ($content);
+    open OUT, ">$text" or die "$progname: $text: $!";
+    binmode OUT, ":utf8";
+    print OUT $output or die "$progname: $text: $!";
+    close OUT or die "$progname: $text: $!";
+    if ($parser->any_errata_seen) {
+        unlink $text;
+        die "$input: errors or warnings in this POD file, see messages above\n"
+    }
+    #print "$progname: wrote $text\n";
+}
+
+sub read_whole_file
+{
+    my $input = shift;
+    local $/ = undef;
+
+    open FILE, "<:encoding(UTF-8)", $input or die "$progname: $input: $!";
+    $_ = <FILE>;
+    close FILE;
+    $_;
+}
+
+sub read_verbatim_file
+{
+    my $input = shift;
+    my @r = ();
+
+    open FILE, "<:encoding(UTF-8)", $input or die "$progname: $input: $!";
+    while (<FILE>) {
+        chomp;
+        if (length) { push @r, " $_" } else { push @r, "" }
+    }
+    close FILE;
+    return join ("\n", @r) . "\n";
+}
+
+=head1 SEE ALSO
+
+L<perlpod(1)>,
+L<Pod::Simple(3pm)>.
+
+=head1 AUTHOR
+
+Richard W.M. Jones.
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

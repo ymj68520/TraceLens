@@ -1,0 +1,28 @@
+{
+  "archive_sha256": "2c24b0994933a582f885cab4f4648f277feeb7dd33926a8822c691abd7e79cfc",
+  "commit": "701921327cf8109566b8da86de6994cc23d5fa6c",
+  "files": {
+    ".gitignore": {
+      "sha256": "1674ac8ed7488af605be80c1f3a20bc1f4c2b47b8549346722948385ffc87e8c"
+    },
+    "LICENSE": {
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+    },
+    "README.md": {
+      "sha256": "9740f6d7fcab23cf137e2ad9aab2bd77173d308a9b80e2b035c849abe77ae0af"
+    },
+    "geometry_example.txt": {
+      "sha256": "a3cc5af4b32703038219d9f74a808e245b1b46d5fac2adf08ce5dc97e7d04345"
+    },
+    "nbd_raid5.py": {
+      "sha256": "291d437d57ed1f435e02cd77c26b7b9c07b1f7103c5fee2f843fd0bdd6858992"
+    },
+    "recovery.py": {
+      "sha256": "f896553da08b9dae2f42c36c8410d2418255cc219d922eaaccb803c3397b2fa7"
+    }
+  },
+  "license": "GPL-3.0",
+  "name": "raid_recovery",
+  "role": "experimental metadata-free RAID5 candidate generator; not enabled",
+  "url": "https://github.com/alfiopuglisi/raid_recovery.git"
+}

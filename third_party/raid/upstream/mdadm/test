@@ -1,0 +1,434 @@
+#!/bin/bash
+#
+# run test suite for mdadm
+mdadm=`which mdadm`
+targetdir="/var/tmp"
+logdir="$targetdir"
+config=/tmp/mdadm.conf
+testdir=$PWD/tests
+dir=${dir:-$(dirname "$mdadm")}
+
+# used by tests
+system_speed_limit_max=0
+system_speed_limit_min=0
+test_speed_limit_min=100
+test_speed_limit_max=500
+
+# used by clustermd_tests
+nodes_system_speed_limit_min=()
+nodes_system_speed_limit_max=()
+# NODE1, NODE2
+nodes_test_speed_limit_min=(100 1000)
+nodes_test_speed_limit_max=(500 100000)
+
+devlist=
+# If super1 metadata name doesn't have the same hostname with machine,
+# it's treated as foreign.
+# For example, /dev/md0 is created, stops it, then assemble it, the
+# device node will be /dev/md127 (127 is choosed by mdadm autumatically)
+is_foreign="no"
+#disable selinux
+sys_selinux="Permissive"
+
+skipping_linear="no"
+skipping_multipath="no"
+
+savelogs=0
+exitonerror=1
+ctrl_c_error=0
+skipbroken=0
+skipbigcase=0
+skipfile="skiptests"
+skipcheckfile=$testdir/$skipfile
+checkscript=""
+loop=1
+prefix='[0-9][0-9]'
+
+# use loop devices by default if doesn't specify --dev
+DEVTYPE=loop
+INTEGRITY=yes
+LVM_VOLGROUP=mdtest
+
+# assume md0, md1, md2 exist in /dev
+md0=/dev/md0
+md1=/dev/md1
+md2=/dev/md2
+# if user doesn't specify minor number, mdadm chooses minor number
+# automatically from 127.
+md127=/dev/md127
+md126=/dev/md126
+md125=/dev/md125
+mdp0=/dev/md_d0
+mdp1=/dev/md_d1
+
+SKIP=3
+
+die() {
+	echo -e "\n\tERROR: $* \n"
+	save_log fail
+	exit 2
+}
+
+skip() {
+	echo -e "\n\tSKIPPING, REASON: $* \n"
+	exit $SKIP
+}
+
+ctrl_c() {
+	exitonerror=1
+	ctrl_c_error=1
+}
+
+mdadm() {
+	rm -f $targetdir/stderr
+	case $* in
+	*-S* )
+		udevadm settle
+		p=`cat /proc/sys/dev/raid/speed_limit_max`
+		echo 20000 > /proc/sys/dev/raid/speed_limit_max
+		;;
+	esac
+	case $* in
+	*-C* | *--create* | *-B* | *--build* )
+		# clear superblock every time once creating or
+		# building arrays, because it's always creating
+		# and building array many times in a test case.
+		for args in $*
+		do
+			[[ $args =~ "/dev/" ]] && {
+				[[ $args =~ "md" ]] ||
+					$mdadm --zero $args > /dev/null
+			}
+		done
+		$mdadm 2> $targetdir/stderr "$@"
+		;;
+	* )
+		$mdadm 2> $targetdir/stderr "$@"
+		;;
+	esac
+	rv=$?
+	case $* in
+	*-S* )
+		udevadm settle
+		echo $p > /proc/sys/dev/raid/speed_limit_max
+		;;
+	esac
+	cat >&2 $targetdir/stderr
+	return $rv
+}
+
+print_time_elapsed() {
+	local start_sec=$1
+	local end_sec=$(date +%s)
+
+	local execution_time=$((end_sec - start_sec))
+
+	echo -ne "Execution time (seconds): ${execution_time} "
+}
+
+do_test() {
+	_script=$1
+	_basename=`basename $_script`
+	_broken=0
+
+	local start_sec=$(date +%s)
+
+	if [ -f "$_script" ]
+	then
+		if [ -f "${_script}.broken" ]; then
+			_broken=1
+			_broken_msg=$(head -n1 "${_script}.broken" | tr -d '\n')
+			if [ "$skipbroken" == "all" ]; then
+				return
+			elif [ "$skipbroken" == "always" ] &&
+			     [[ "$_broken_msg" == *always* ]]; then
+				return
+			fi
+		fi
+
+		rm -f $targetdir/stderr
+		do_clean
+		# source script in a subshell, so it has access to our
+		# namespace, but cannot change it.
+		control_system_speed_limit
+		echo -ne "$_script... "
+		if ( set -ex ; . $_script ) &> $targetdir/log
+		then
+			print_time_elapsed $start_sec
+			if [ -f "${_script}.inject_error" ]; then
+				echo "dmesg checking is skipped because test inject error"
+			else
+				dmesg | grep -iq "error\|call trace\|segfault" | grep -v "systemd" &&
+					die "dmesg prints errors when testing $_basename!"
+			fi
+			succeed "succeeded\n"
+			_fail=0
+		else
+			exit_code=$?  # Capture the exit code from the script
+			if [ $exit_code -eq $SKIP ]; then
+				warn "skipping"
+				save_log
+				_fail=0
+			else
+				print_time_elapsed $start_sec
+				save_log fail
+				_fail=1
+				if [ "$_broken" == "1" ]; then
+					echo "  (KNOWN BROKEN TEST: $_broken_msg)"
+				fi
+			fi
+		fi
+		restore_system_speed_limit
+
+		[ "$savelogs" == "1" ] && mv -f $targetdir/log $logdir/$_basename.log
+
+		[ "$ctrl_c_error" == "1" ] && exit 1
+
+		[ "$_fail" == "1" -a "$exitonerror" == "1" -a "$_broken" == "0" ] && exit 1
+
+		[ "$_fail" == "1" ] && do_test_ret=1
+	fi
+}
+
+do_help() {
+	cat <<-EOF
+	Usage: $0 [options]
+	Example for disk mode: ./test --dev=disk --disks=/dev/sda{2..15}
+	Options:
+		--tests=test1,test2,...     Comma separated list of tests to run
+		--testdir=                  Specify testdir as tests|clustermd_tests
+		--raidtype=                 raid0|linear|raid1|raid456|raid10|ddf|imsm
+		--disable-multipath         Disable any tests involving multipath
+		--disable-integrity         Disable slow tests of RAID[56] consistency
+		--disable-linear            Disable any tests involving linear
+		--logdir=directory          Directory to save all logfiles in
+		--save-logs                 Usually use with --logdir together
+		--keep-going | --no-error   Don't stop on error, ie. run all tests
+		--loop=N                    Run tests N times (0 to run forever)
+		--skip-broken               Skip tests that are known to be broken
+		--skip-always-broken        Skip tests that are known to always fail
+		--skip-bigcase              Skip tests that need time than 200 seconds
+		--dev=loop|lvm|ram|disk     Use loop devices (default), LVM, RAM or disk
+		--disks=                    Provide a bunch of physical devices for test
+		--volgroup=name             LVM volume group for LVM test
+		setup                       Setup test environment and exit
+		cleanup                     Cleanup test environment
+		prefix                      Run tests with <prefix>
+		--help | -h                 Print this usage
+	EOF
+}
+
+resolve_test_path() {
+	local script=$1
+
+	if [ -f "$script" ]; then
+		echo "$script"
+	elif [ -f "$testdir/$script" ]; then
+		echo "$testdir/$script"
+	else
+		echo "Invalid script: '$script'." >&2
+		echo "Looked for '$script' and '$testdir/$script'." >&2
+		return 1
+	fi
+}
+
+parse_args() {
+	for i in $*
+	do
+		case $i in
+		--testdir=* )
+			case ${i##*=} in
+			tests )
+				testdir=tests
+			;;
+			clustermd_tests )
+				testdir=clustermd_tests
+				CLUSTER_CONF="$PWD/$testdir/cluster_conf"
+			;;
+			* )
+				echo "Unknown argument: $i"
+				do_help
+				exit 1
+			;;
+			esac
+		;;
+		esac
+	done
+	[ -z "$testdir" ] && testdir=tests
+	. $testdir/func.sh
+	for i in $*
+	do
+		case $i in
+		[0-9][0-9] )
+			prefix=$i
+			;;
+		setup )
+			echo "mdadm test environment setup"
+			do_setup
+			trap 0
+			exit 0
+			;;
+		cleanup )
+			cleanup
+			exit 0
+			;;
+		--testdir=* )
+			;;
+		--tests=* )
+			TESTLIST=($(echo ${i##*=} | sed -e 's/,/ /g'))
+			;;
+		--raidtype=* )
+			case ${i##*=} in
+			raid0 )
+				TESTLIST=($(ls $testdir | grep "[0-9][0-9]r0\|raid0"))
+				;;
+			linear )
+				TESTLIST=($(ls $testdir | grep "linear"))
+				;;
+			raid1 )
+				TESTLIST=($(ls $testdir | grep "[0-9][0-9]r1\|raid1" | grep -vi "r10\|raid10"))
+				;;
+			raid456 )
+				TESTLIST=($(ls $testdir | grep "[0-9][0-9]r[4-6]\|raid[4-6]"))
+				;;
+			raid10 )
+				TESTLIST=($(ls $testdir | grep "[0-9][0-9]r10\|raid10"))
+				;;
+			ddf )
+				TESTLIST=($(ls $testdir | grep "[0-9][0-9]ddf"))
+				;;
+			imsm )
+				TESTLIST=($(ls $testdir | grep "[0-9][0-9]imsm"))
+				;;
+			* )
+				echo "Unknown argument: $i"
+				do_help
+				exit 1
+				;;
+			esac
+			;;
+		--logdir=* )
+			logdir="${i##*=}"
+			;;
+		--save-logs )
+			savelogs=1
+			;;
+		--keep-going | --no-error )
+			exitonerror=0
+			;;
+		--loop=* )
+			loop="${i##*=}"
+			;;
+		--skip-broken )
+			skipbroken=all
+			;;
+		--skip-always-broken )
+			skipbroken=always
+			;;
+		--skip-bigcase )
+			skipbigcase=all
+			;;
+		--disable-multipath )
+			unset MULTIPATH
+			;;
+		--disable-integrity )
+			unset INTEGRITY
+			;;
+		--disable-linear )
+			unset LINEAR
+			;;
+		--dev=* )
+			case ${i##*=} in
+			loop )
+				DEVTYPE=loop
+				;;
+			lvm )
+				DEVTYPE=lvm
+				;;
+			ram )
+				DEVTYPE=ram
+				;;
+			disk )
+				DEVTYPE=disk
+				;;
+			* )
+				echo "Unknown argument: $i"
+				do_help
+				exit 1
+				;;
+			esac
+			;;
+		--disks=* )
+			disks=(${disks[*]} ${i##*=})
+			;;
+		--volgroup=* )
+			LVM_VOLGROUP=`expr "x$i" : 'x[^=]*=\(.*\)'`
+			;;
+		--help | -h )
+			do_help
+			exit 0
+			;;
+		* )
+			echo " $0: Unknown argument: $i"
+			do_help
+			exit 1
+			;;
+		esac
+	done
+}
+
+print_warning() {
+	warn "Warning! Tests are performed on system level mdadm!\n"
+	echo "If you want to test local build, you need to install it first!"
+}
+
+main() {
+	print_warning
+	do_setup
+
+	echo "Testing on linux-$(uname -r) kernel"
+	[ "$savelogs" == "1" ] &&
+		echo "Saving logs to $logdir"
+
+	do_test_ret=0
+
+	while true; do
+		if [ "x$TESTLIST" != "x" ]
+		then
+			for script in ${TESTLIST[@]}
+			do
+				if ! script_path=$(resolve_test_path "$script"); then
+					exit 1
+				fi
+				do_test "$script_path"
+			done
+		else
+			for script in $testdir/$prefix $testdir/$prefix*[^~]
+			do
+				checkscript="${script##*/}"
+				case $script in
+				*.broken)
+					;;
+				*)
+					if grep -q "$checkscript" "$skipcheckfile"; then
+						if [ "$skipbigcase" == "all" ]; then
+							continue
+						fi
+					fi
+					do_test $script
+				esac
+			done
+		fi
+
+		let loop=$loop-1
+		if [ "$loop" == "0" ]; then
+			break
+		fi
+	done
+
+	restore_selinux
+	exit $do_test_ret
+}
+
+parse_args $@
+main

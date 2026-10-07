@@ -1,0 +1,93 @@
+# nbd client library in userspace
+# Copyright Red Hat
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2 of the License, or (at your option) any later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+
+# This is the handler function which completes nbd* commands.
+_libnbd_command ()
+{
+    local prog="$1"
+    local cur prev words cword split
+    local shortopts longopts
+
+    _init_completion -s || return
+
+    case "$cur" in
+        --*)
+            # long options
+            longopts="$($prog --long-options)"
+            COMPREPLY=( $(compgen -W "$longopts" -- "$cur") )
+            return ;;
+        -*)
+            # -o and --options
+            shortopts="$($prog --short-options)"
+            longopts="$($prog --long-options)"
+            COMPREPLY=( $(compgen -W "$shortopts $longopts" -- "$cur") )
+            return ;;
+        *)
+            COMPREPLY=( $(compgen "$cur") )
+            return ;;
+    esac
+}
+
+_nbdcopy ()
+{
+    _libnbd_command nbdcopy
+}
+
+_nbddiscard ()
+{
+    _libnbd_command nbddiscard
+}
+
+_nbddump ()
+{
+    _libnbd_command nbddump
+}
+
+_nbdfuse ()
+{
+    _libnbd_command nbdfuse
+}
+
+_nbdinfo ()
+{
+    _libnbd_command nbdinfo
+}
+
+_nbdsh ()
+{
+    _libnbd_command nbdsh
+}
+
+_nbdublk ()
+{
+    _libnbd_command nbdublk
+}
+
+_nbdzero ()
+{
+    _libnbd_command nbdzero
+}
+
+# Install the handler function.
+complete -o default -F _nbdcopy nbdcopy
+complete -o default -F _nbddiscard nbddiscard
+complete -o default -F _nbddump nbddump
+complete -o default -F _nbdfuse nbdfuse
+complete -o default -F _nbdinfo nbdinfo
+complete -o default -F _nbdsh nbdsh
+complete -o default -F _nbdublk nbdublk
+complete -o default -F _nbdzero nbdzero

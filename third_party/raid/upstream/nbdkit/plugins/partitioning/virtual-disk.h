@@ -1,0 +1,117 @@
+/* nbdkit
+ * Copyright Red Hat
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *
+ * * Redistributions of source code must retain the above copyright
+ * notice, this list of conditions and the following disclaimer.
+ *
+ * * Redistributions in binary form must reproduce the above copyright
+ * notice, this list of conditions and the following disclaimer in the
+ * documentation and/or other materials provided with the distribution.
+ *
+ * * Neither the name of Red Hat nor the names of its contributors may be
+ * used to endorse or promote products derived from this software without
+ * specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY RED HAT AND CONTRIBUTORS ''AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+ * PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL RED HAT OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ * USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+#ifndef NBDKIT_VIRTUAL_DISK_H
+#define NBDKIT_VIRTUAL_DISK_H
+
+#include <stdbool.h>
+#include <sys/types.h>
+
+#include "rounding.h"
+
+#include "gpt.h"
+#include "regions.h"
+
+#define SECTOR_SIZE UINT64_C (512)
+
+/* Maximum size of MBR disks.  This is an approximation based on the
+ * known limit (2^32 sectors) and an estimate based on the amount of
+ * padding between partitions.
+ */
+#define MAX_MBR_DISK_SIZE (UINT32_MAX * SECTOR_SIZE - 5 * MAX_ALIGNMENT)
+
+/* For GPT, the number of entries in the partition table array (PTA),
+ * and the number of LBAs which the PTA occupies.  The latter will be
+ * 32 if the number of files is <= GPT_MIN_PARTITIONS, which is the
+ * normal case.
+ */
+#define GPT_PTA_SIZE ROUND_UP (the_files.len, GPT_MIN_PARTITIONS)
+#define GPT_PTA_LBAs (GPT_PTA_SIZE * GPT_PT_ENTRY_SIZE / SECTOR_SIZE)
+
+/* Maximum possible and default alignment between partitions. */
+#define MAX_ALIGNMENT (2048 * SECTOR_SIZE)
+#define DEFAULT_ALIGNMENT MAX_ALIGNMENT
+
+/* Default MBR partition ID and GPT partition type GUID. */
+#define DEFAULT_MBR_ID 0x83
+#define DEFAULT_TYPE_GUID "0FC63DAF-8483-4772-8E79-3D69D8477DE4"
+
+extern int partitioning_debug_regions;
+
+extern unsigned long alignment;
+extern uint8_t mbr_id;
+extern char type_guid[16];
+
+#define PARTTYPE_UNSET 0
+#define PARTTYPE_MBR   1
+#define PARTTYPE_GPT   2
+extern int parttype;
+
+/* A file supplied on the command line. */
+struct file {
+  const char *filename;         /* file= supplied on the command line */
+  int fd;
+  int64_t size;
+  char guid[16];                /* random GUID used for GPT */
+  unsigned long alignment;      /* alignment of this partition */
+  uint8_t mbr_id;               /* MBR ID of this partition */
+  char type_guid[16];           /* partition type GUID of this partition */
+};
+
+DEFINE_VECTOR_TYPE (files, struct file);
+
+extern files the_files;
+extern regions the_regions;
+extern unsigned char *primary, *secondary, **ebr;
+
+/* Main entry point called after files array has been populated. */
+extern int create_virtual_disk_layout (void);
+
+/* Parse a GPT GUID.  Note that GPT GUIDs have peculiar
+ * characteristics which make them unlike general GUIDs.
+ */
+extern int parse_guid (const char *str, char *out)
+  NBDKIT_ATTRIBUTE_NONNULL ((1, 2));
+
+/* Internal function for creating a single MBR PTE.  The GPT code
+ * calls this for creating the protective MBR.
+ */
+extern void create_mbr_partition_table_entry (const struct region *,
+                                              bool bootable, int partition_id,
+                                              unsigned char *)
+  NBDKIT_ATTRIBUTE_NONNULL ((1, 4));
+
+/* Create MBR or GPT layout. */
+extern void create_mbr_layout (void);
+extern void create_gpt_layout (void);
+
+#endif /* NBDKIT_VIRTUAL_DISK_H */

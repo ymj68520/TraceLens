@@ -1,0 +1,65 @@
+=head1 NAME
+
+nbdkit_nanosleep - suspend the current thread for nbdkit
+
+=head1 SYNOPSIS
+
+ #include <nbdkit-plugin.h>
+
+ int nbdkit_nanosleep (unsigned sec, unsigned nsec);
+
+=head1 DESCRIPTION
+
+The utility function C<nbdkit_nanosleep> suspends the current
+L<nbdkit(1)> thread for C<sec> seconds plus C<nsec> nanoseconds.
+
+Plugins or filters that need to sleep may call L<sleep(2)>,
+L<nanosleep(2)> and similar.  However that can cause nbdkit to delay
+excessively when shutting down (since the server must wait for any
+plugin or filter which is sleeping).  The purpose of this function is
+to provide a way for sleeps to be interrupted when nbdkit is shutting
+down.
+
+Use L<nbdkit_parse_delay(3)> to parse delays and sleeps from
+configuration parameters for use by this function.
+
+=head1 RETURN VALUE
+
+This function returns C<0> if it slept at least as many seconds and
+nanoseconds as requested.
+
+If there is an error it calls L<nbdkit_error(3)> and returns C<-1>.
+Attempts to sleep more than C<INT_MAX> seconds are treated as an
+error.
+
+=head1 LANGUAGE BINDINGS
+
+In L<nbdkit-ocaml-plugin(3)>:
+
+ NBDKit.nanosleep : int -> int -> unit
+
+In L<nbdkit-python-plugin(3)>:
+
+ import nbdkit
+ nbdkit.nanosleep(sec, nsec)
+
+=head1 HISTORY
+
+C<nbdkit_nanosleep> was added in nbdkit 1.16.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit_shutdown(3)>,
+L<nbdkit-plugin(3)>,
+L<nbdkit-filter(3)>,
+L<nbdkit-delay-filter(1)>,
+L<nbdkit_parse_delay(3)>.
+
+=head1 AUTHORS
+
+Eric Blake
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

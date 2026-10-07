@@ -1,0 +1,64 @@
+=head1 NAME
+
+nbdkit_parse_bool - parse human-readable boolean strings for nbdkit
+
+=head1 SYNOPSIS
+
+ #include <nbdkit-plugin.h>
+
+ int nbdkit_parse_bool (const char *str);
+
+=head1 DESCRIPTION
+
+Use the C<nbdkit_parse_bool> utility function to parse human-readable
+strings such as C<"on">, C<"off">, C<"true">, C<"no"> etc into a
+boolean value.
+
+=head1 RETURN VALUE
+
+The function returns 0 or 1 if the parse was successful.
+
+If there is an error it calls L<nbdkit_error(3)> and returns C<-1>.
+
+=head1 LANGUAGE BINDINGS
+
+In L<nbdkit-golang-plugin(3)>:
+
+ import "libguestfs.org/nbdkit"
+ b, err := nbdkit.ParseBool(value)
+
+In L<nbdkit-ocaml-plugin(3)>:
+
+ NBDKit.parse_bool : string -> bool
+
+In L<nbdkit-python-plugin(3)>:
+
+ import nbdkit
+ bool = nbdkit.parse_bool(str)
+
+In L<nbdkit-rust-plugin(3)>:
+
+ use nbdkit::*;
+ pub fn parse_bool(s: &str) -> Result<bool>
+
+=head1 HISTORY
+
+C<nbdkit_parse_bool> was added in nbdkit 1.8.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit_parse_delay(3)>,
+L<nbdkit_parse_int(3)>,
+L<nbdkit_parse_probability(3)>,
+L<nbdkit_parse_size(3)>,
+L<nbdkit-plugin(3)>,
+L<nbdkit-filter(3)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

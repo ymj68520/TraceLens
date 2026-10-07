@@ -1,0 +1,440 @@
+=head1 NAME
+
+nbdkit-data-plugin - nbdkit plugin for serving data from the command line
+
+=head1 SYNOPSIS
+
+ nbdkit data [data=]'0 1 2 3 @0x1fe 0x55 0xaa'
+             [size=SIZE] [allocator=sparse|malloc|zstd]
+
+=for paragraph
+
+ nbdkit data base64='aGVsbG8gbmJka2l0IHVzZXI='
+             [size=SIZE] [allocator=sparse|malloc|zstd]
+
+=for paragraph
+
+ nbdkit data raw='binary_data'
+             [size=SIZE] [allocator=sparse|malloc|zstd]
+
+=head1 DESCRIPTION
+
+C<nbdkit-data-plugin> is a plugin for L<nbdkit(1)> which serves a
+small amount of data specified directly on the command line.  The
+plugin gets its name from the C<data:> URI scheme used by web
+browsers.  This is mainly useful for testing NBD clients.
+
+You can serve data read-only using the I<-r> flag, or read-write.  Any
+writes are thrown away when nbdkit exits.
+
+Most operating systems have command line size limits which are quite a
+lot smaller than any desirable disk image, so specifying a large,
+fully populated disk image on the command line would not be possible.
+However you can specify a small amount of data at the beginning of the
+image, possibly followed by zeroes (using the C<size> parameter to pad
+the image to the full size), or use the C<data> parameter creatively
+to make mostly sparse disk images.
+
+The C<size> parameter can specify any virtual size up to the maximum
+supported by nbdkit (S<2⁶³-1 bytes>).
+
+=head1 EXAMPLES
+
+=head2 Create small disks filled with test patterns
+
+ nbdkit data ' ( 0x55 0xAA )*2048 '
+ nbdkit data ' ( "Hello" )*2000 ' size=8192
+
+The first command creates a disk containing 4096 bytes filled with the
+repeating bytes 0x55 0xAA.  The second command repeats
+C<HelloHelloHello...>, truncating the disk to exactly 8192 bytes.
+
+See also L<nbdkit-pattern-plugin(3)>.
+
+=head2 Create a 1 MB disk with MBR-format partition table
+
+ nbdkit data '
+   @0x1be    # MBR first partition entry
+     0           # Partition status
+     0 2 0       # CHS start
+     0x83        # Partition type (Linux)
+     0x20 0x20 0 # CHS last sector
+     le32:1      # LBA first sector
+     le32:0x7ff  # LBA number of sectors
+   @0x1fe    # Boot signature
+     0x55 0xaa
+   ' size=1M
+
+A more flexible way to create partitions is to use
+L<nbdkit-partitioning-plugin(1)>.  To create a data string from an
+existing disk use the C<disk2data.pl> script provided in the nbdkit
+sources
+(L<https://gitlab.com/nbdkit/nbdkit/blob/master/plugins/data/disk2data.pl>).
+
+=head2 Create a disk image with sector-aligned data
+
+ nbdkit data ' <file1 @^512 <file2 @^512 <file3 @^512 '
+
+Local binary files F<file1>, F<file2> and F<file3> are copied into the
+disk image.  Regardless of the size of these files, they will all be
+aligned to 512-byte sector boundaries.  Furthermore because of the
+final alignment operation (C<@^512>) the total size of the disk will
+also be rounded to a whole number of sectors.
+
+=head2 Create a disk with the same random data in each sector
+
+ nbdkit data ' </dev/urandom[:512]*16 '
+
+The expression C<E<lt>/dev/urandom[:512]> reads 512 bytes (one sector)
+of randomness from the system.  The same random data is repeated over
+16 sectors.
+
+=head2 Create a 1 MB disk with some nonsense data at the beginning
+
+ nbdkit data base64=MTIz size=1M
+
+The above command serves the bytes C<0x31 0x32 0x33> (which is the
+base64 decoding of C<MTIz>), followed by S<1M - 3 bytes> of zeroes.
+
+=head2 "Hello, world" using this plugin
+
+ $ nbdkit data raw='Hello, world!' --run 'nbdcopy "$uri" - | cat'
+ Hello, world!
+
+This works by creating a disk containing the string
+C<"Hello, world!">.  L<nbdcopy(1)> connects to the server using an NBD
+URI (C<"$uri">) and copies the disk to stdout (C<->).  The extra
+L<cat(1)> is needed because nbdcopy refuses to write raw disk data to
+a terminal.
+
+=head1 PARAMETERS
+
+Exactly one of the C<data>, C<base64> or C<raw> parameters must be
+supplied.
+
+=over 4
+
+=item [B<data=>]DATA
+
+Specify the disk data using a simple compact format.  See
+L</DATA FORMAT> below.
+
+C<data=> __IS_MAGIC__
+
+=item B<base64=>BASE64
+
+The C<base64> parameter can be used to supply binary data encoded in
+base64 on the command line.
+
+This is only supported if nbdkit was compiled with GnuTLS E<ge> 3.6.0.
+You can find out by checking if:
+
+ $ nbdkit data --dump-plugin
+
+contains:
+
+ data_base64=yes
+
+=item B<raw=>BINARY
+
+The C<raw> parameter can be used to supply raw binary data directly on
+the command line.
+
+It is usually quite difficult to do this unless you are running nbdkit
+from another program (see L<nbdkit-captive(1)>).  One particular
+problem is that the data must not contain zero bytes (ie. C<\0>) since
+those will be processed in C to mean the end of the string.  In almost
+all cases it is better to use base64 encoding or the custom C<data>
+format.
+
+=item B<size=>SIZE
+
+The data is truncated or extended to the size specified.
+
+This parameter is optional: If omitted the size is defined by the size
+of the C<data>, C<raw> or C<base64> parameter.
+
+=item B<allocator=sparse>
+
+=item B<allocator=malloc>[,B<mlock=true>]
+
+=item B<allocator=zstd>
+
+(nbdkit E<ge> 1.22)
+
+Select the backend allocation strategy.  See
+L<nbdkit-memory-plugin(1)/ALLOCATORS>.  The default is sparse.
+
+=back
+
+=head1 DATA FORMAT
+
+The C<data> parameter lets you specify small disk images in a simple,
+compact format.  It is a string containing a list of bytes which are
+written into the disk image sequentially.  You can move the virtual
+offset where bytes are written using C<@offset>.
+
+ nbdkit data '0 1 2 3 @0x1fe 0x55 0xaa'
+
+creates:
+
+             total size 0x200 = 512 bytes (1 sector)
+┌──────┬──────┬──────┬──────┬───────── ── ── ───┬──────┬──────┐
+│   0  │   1  │   2  │   3  │  0     0  ...  0  │ 0x55 │ 0xaa │
+└──────┴──────┴──────┴──────┴───────── ── ── ───┴──────┴──────┘
+                                                  ↑
+                                            offset 0x1fe
+
+In this example the size is implied by the data.  But you could also
+use the C<size> parameter to either truncate or extend (with zeroes)
+the disk image.  Another way to write the same disk would be this,
+where we align the offset to the end of the sector and move back 2
+bytes to write the signature:
+
+ nbdkit data '0 1 2 3 @^0x200 @-2 le16:0xaa55'
+
+Fields in the string can be:
+
+=over 4
+
+=item BYTE
+
+Write a byte at the current offset and advance the offset by 1.  The
+byte may be specified as either decimal, octal (prefixed by C<0>) or
+hexadecimal (prefixed by C<0x>).  To add repeated bytes use the C<*>
+operator (eg. C<0xFF*16>).
+
+=item B<le16:>WORD
+
+=item B<be16:>WORD
+
+=item B<le32:>WORD
+
+=item B<be32:>WORD
+
+=item B<le64:>WORD
+
+=item B<be64:>WORD
+
+(nbdkit E<ge> 1.28)
+
+Write a word expressed in little endian (le) or big endian (be) of
+length 16/32/64 bits and advance the offset by 2/4/8.  The word may be
+specified in decimal, octal or hexadecimal.  For example:
+
+ nbdkit data ' be32:0x1 '
+
+generates the 4 byte sequence C<0 0 0 1>.
+
+=item B<base64:>BASE64
+
+(nbdkit E<ge> 1.46)
+
+Decode the BASE64 string into bytes and write these into the image.
+The offset is advanced by the number of decoded bytes.  The BASE64
+string cannot contain any whitespace.
+
+This is only supported if nbdkit was compiled with S<GnuTLS E<ge> 3.6.0>.
+The output of C<nbdkit data --dump-plugin> will contain
+C<data_base64=yes>.
+
+=item B<@>OFFSET
+
+Moves the current offset to C<OFFSET>.  The offset may be specified as
+either decimal, octal (prefixed by C<0>) or hexadecimal (prefixed by
+C<0x>); when using decimal, it is also possible to supply a scaling
+suffix such as C<k> or C<M>.  Offset C<@0> is the first byte of the disk.
+
+=item B<@+>N
+
+=item B<@->N
+
+(nbdkit E<ge> 1.22)
+
+Add or subtract C<N> from the current offset.
+
+=item B<@^>ALIGNMENT
+
+(nbdkit E<ge> 1.22)
+
+If the current offset is not a multiple of C<ALIGNMENT> then the
+offset is moved forward to the next multiple.  The next byte written
+will be aligned to C<ALIGNMENT>.
+
+=item B<E<lt>>FILE
+
+(nbdkit E<ge> 1.8)
+
+Read the contents of binary F<FILE> into the disk image at the current
+offset.  The offset is incremented by the size of the file.  The
+filename can be a relative or absolute path, but cannot contain
+whitespace in the name.
+
+=item B<E<lt>(>SCRIPTB<)>
+
+(nbdkit E<ge> 1.24, not Windows)
+
+Substitute the output of the shell script or external program as a
+binary blob and advance the offset by the length in bytes of the
+output.  You can use this to create more complex test patterns.  For
+example this produces a 32K disk image with an incrementing test
+pattern in groups of 4 bytes:
+
+ nbdkit data ' <( i=0
+                  while :; do
+                      printf "%04d" $i; i=$((i+1))
+                  done )[:32768] '
+
+The script may contain C<(> and C<)> characters, but they must be in
+matching pairs.  A script can produce a finite amount of output; or
+(as in the example) an infinite amount which must be truncated using
+the C<[:len]> slice operator.
+
+Scripts must be idempotent, producing the same output each time they
+are run.  This is because optimizations might change the order of
+evaluation or number of times the script is called and you could get
+different output in a future version of nbdkit.
+
+Note that the script is passed to F</bin/sh>.  On some platforms like
+Debian this might not be a full-featured shell.
+
+=item B<">STRINGB<">
+
+(nbdkit E<ge> 1.22)
+
+Write a string into the image at the current offset and advance the
+offset by the length of the string.  To include special characters in
+the string you can escape them in the same way as C strings (eg. a
+double quote character within the string should be written C<\">).  Be
+careful with shell quoting around the whole data parameter.
+
+=item B<(> ... B<)>
+
+(nbdkit E<ge> 1.24)
+
+Group a set of expressions into a single expression.
+
+S<C<( ... )>> recursively creates a new data parser so any expression
+can appear inside, including nested S<C<( ... )>>.  Note that offsets
+and alignments within the subpattern are relative to the start of the
+subpattern, not relative to the final disk image.
+
+=item expression B<*> N
+
+(nbdkit E<ge> 1.24)
+
+Repeat the expression C<N> times.  The offset is incremented by the
+length of the expression × N.  For example to create a repeating
+pattern of 0x55, 0xAA for 512 (2×256) bytes do:
+
+ nbdkit data '( 0x55 0xAA ) * 256'
+
+=item expression B<[>NB<:>MB<]>
+
+=item expression B<[>startB<:]>
+
+=item expression B<[:>lenB<]>
+
+(nbdkit E<ge> 1.24)
+
+Take a slice of the expression.  Slices are S<B<[>startB<:>end+1B<]>>
+where I<start> and I<end> are the first and last byte offsets of the
+expression desired.  Either or both may be omitted.
+
+S<B<[>startB<:]>> means to take bytes from offset I<start> to the end
+of the expression.  S<B<[:>lenB<]>> means truncate the expression to
+I<len> bytes.
+
+=item expression B<-E<gt> \>NAME
+
+=item B<\>NAME
+
+(nbdkit E<ge> 1.24)
+
+Assign an expression to a name which can be used later.  Names can be
+used in the current scope (or any scopes nested within the current
+scope), but disappear at the end of the current scope.  Names start
+with a backslash character followed by one or more alphanumeric, dash
+and underscore.  For example this makes two identical sectors both
+containing a boot signature at the end:
+
+ nbdkit data ' ( 0x55 0xAA ) -> \boot-signature
+               ( @0x1fe \boot-signature ) -> \sector
+               \sector \sector '
+
+=item B<$>VAR
+
+(nbdkit E<ge> 1.24)
+
+Substitute command line parameters or environment variables.  The
+variable is written in the same language as the C<data> parameter, and
+when substituted it creates a nested scope like S<C<( ... )>>
+expressions.  These three commands do the same thing:
+
+ nbdkit data '$pattern*16' pattern='0x55 0xAA'
+
+=for paragraph
+
+ export pattern='0x55 0xAA' ; nbdkit data '$pattern*16'
+
+=for paragraph
+
+ nbdkit data '( 0x55 0xAA )*16'
+
+=item B<#> COMMENT
+
+(nbdkit E<ge> 1.24)
+
+C<#> begins a comment stretching to the end of the current line.
+
+=back
+
+=head2 disk2data.pl script
+
+This script can convert from small disk images into the data format
+described above.
+
+It is provided in the nbdkit sources.  See
+L<https://gitlab.com/nbdkit/nbdkit/blob/master/plugins/data/disk2data.pl>
+
+=head1 FILES
+
+=over 4
+
+=item F<$plugindir/nbdkit-data-plugin.so>
+
+The plugin.
+
+Use C<nbdkit --dump-config> to find the location of C<$plugindir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-data-plugin> first appeared in nbdkit 1.6.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-captive(1)>,
+L<nbdkit-plugin(3)>,
+L<nbdkit-info-plugin(1)>,
+L<nbdkit-memory-plugin(1)>,
+L<nbdkit-null-plugin(1)>,
+L<nbdkit-ones-plugin(1)>,
+L<nbdkit-partitioning-plugin(1)>,
+L<nbdkit-pattern-plugin(1)>,
+L<nbdkit-random-plugin(1)>,
+L<nbdkit-sparse-random-plugin(1)>,
+L<nbdkit-tmpdisk-plugin(1)>,
+L<nbdkit-zero-plugin(1)>,
+L<https://gitlab.com/nbdkit/nbdkit/blob/master/plugins/data/disk2data.pl>,
+L<https://en.wikipedia.org/wiki/Base64>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

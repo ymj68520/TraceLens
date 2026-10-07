@@ -1,0 +1,94 @@
+=head1 NAME
+
+nbdkit_realpath,
+nbdkit_absolute_path - convert relative to absolute paths for nbdkit
+
+=head1 SYNOPSIS
+
+ #include <nbdkit-plugin.h>
+
+ char *nbdkit_realpath (const char *filename);
+ char *nbdkit_absolute_path (const char *filename);
+
+=head1 DESCRIPTION
+
+L<nbdkit(1)> usually (not always) changes directory to F</> before it
+starts serving connections.  This means that any relative paths passed
+during configuration will not work when the server is running.  In a
+naive implementation of a plugin, a configuration like
+
+ nbdkit plugin file=disk.img
+
+might attempt to open F</disk.img> instead of the file in the user's
+current directory.
+
+To avoid this problem, you can:
+
+=over 4
+
+=item *
+
+convert relative paths to absolute paths using one of the functions
+described here, or
+
+=item *
+
+open the file at configure time and store the file descriptor.
+
+=back
+
+=head2 nbdkit_realpath
+
+The utility function C<nbdkit_realpath> converts any path to an
+absolute path, resolving symlinks.  Under the hood it uses the
+L<realpath(3)> function, and thus it fails if the path does not exist,
+or it is not possible to access components of the path.
+
+This function works I<only> when used in the C<.config>,
+C<.config_complete> and C<.get_ready> callbacks.
+
+=head2 nbdkit_absolute_path
+
+The utility function C<nbdkit_absolute_path> converts any path to an
+absolute path: if it is relative, then all this function does is
+prepend the current working directory to the path, with no extra
+checks.
+
+Unlike C<nbdkit_realpath>, this function does not check that the file
+exists.
+
+This function works I<only> when used in the C<.config>,
+C<.config_complete> and C<.get_ready> callbacks.
+
+=head1 RETURN VALUE
+
+On success these functions return a newly allocated string.  The
+returned string must be freed by the caller.
+
+On error these call L<nbdkit_error(3)> and return C<NULL>.
+
+=head1 LANGUAGE BINDINGS
+
+In L<nbdkit-ocaml-plugin(3)>:
+
+ NBDKit.realpath : string -> string
+
+=head1 HISTORY
+
+C<nbdkit_absolute_path> was present in nbdkit 0.1.0.
+
+C<nbdkit_realpath> was added in nbdkit 1.4.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-plugin(3)>,
+L<nbdkit-filter(3)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

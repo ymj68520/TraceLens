@@ -1,0 +1,525 @@
+=head1 NAME
+
+nbdinfo - display information and metadata about NBD servers and exports
+
+=head1 SYNOPSIS
+
+ nbdinfo [--json] NBD
+
+C<NBD> is an NBD URI or subprocess:
+
+ NBD := nbd://... | nbd+unix:// (or other URI formats)
+      | [ CMD ARGS ... ]
+
+=for paragraph
+
+ nbdinfo --size [--json] NBD
+
+=for paragraph
+
+ nbdinfo --uri [--json] NBD
+
+=for paragraph
+
+ nbdinfo --is read-only|rotational NBD
+ nbdinfo --isnt read-only|rotational NBD
+
+=for paragraph
+
+ nbdinfo --can cache|connect|... NBD
+ nbdinfo --cannot cache|connect|... NBD
+
+=for paragraph
+
+ nbdinfo --map [--totals] [--json] NBD
+
+=for paragraph
+
+ nbdinfo -L|--list [--json] NBD
+
+=for paragraph
+
+ nbdinfo --help
+
+=for paragraph
+
+ nbdinfo --version
+
+=head1 DESCRIPTION
+
+nbdinfo displays information and metadata about an NBD server.
+
+The single required parameter can be the NBD URI of the server (see
+L<https://github.com/NetworkBlockDevice/nbd/blob/master/doc/uri.md>):
+
+ $ nbdinfo nbd://localhost
+ protocol: newstyle-fixed without TLS, using structured packets
+ export="":
+         export-size: 1048576 (1M)
+         content: data
+         uri: nbd://localhost:10809/
+         is_rotational: false
+         is_read_only: false
+         can_cache: true
+         can_df: true
+         can_fast_zero: true
+         can_flush: true
+         can_fua: true
+         can_multi_conn: true
+         can_trim: true
+         can_zero: true
+         block_size_minimum: 1
+         block_size_preferred: 4096 (4K)
+         block_size_maximum: 33554432 (32M)
+
+For an NBD server on a local Unix domain socket you would use a
+command such as this (with similar output to above):
+
+ $ nbdinfo "nbd+unix:///?socket=/tmp/unixsock"
+
+Or you can run the NBD server as a subprocess (see section
+L</Subprocess> below):
+
+ $ nbdinfo -- [ qemu-nbd -r -f qcow2 file.qcow2 ]
+
+=head2 JSON output
+
+To display the output as JSON (eg. for scripting with L<jq(1)>) add
+the I<--json> parameter:
+
+ $ nbdinfo --json nbd://localhost | jq .
+ {
+   "protocol": "newstyle-fixed",
+   "TLS": false,
+   "structured": true,
+   "extended": false,
+   "exports": [
+     {
+       "export-name": "",
+       "content": "DOS/MBR boot sector; partition 1 : ID=0xc, start-CHS (0x3ff,254,63), end-CHS (0x3ff,254,63), startsector 2048, 4148704 sectors",
+       "uri": "nbd://localhost:10809/",
+       "is_rotational": false,
+       "is_read_only": true,
+       "can_cache": true,
+       "can_df": true,
+       "can_fast_zero": false,
+       "can_flush": false,
+       "can_fua": false,
+       "can_multi_conn": true,
+       "can_trim": false,
+       "can_zero": false,
+       "block_size_minimum": 1,
+       "block_size_preferred": 4096,
+       "block_size_maximum": 33554432,
+       "export-size": 2125119488,
+       "export-size-str": "2075312K"
+     }
+   ]
+ }
+
+=head2 Size
+
+To display only the size in bytes of the NBD export (useful for
+scripting) use the I<--size> parameter:
+
+ $ nbdinfo --size nbd://localhost
+ 1048576
+
+=for paragraph
+
+ $ nbdinfo --size [ nbdkit null 1M ]
+ 1048576
+
+=head2 URI
+
+To display the canonical URI:
+
+ $ nbdinfo --uri nbd://localhost
+ nbd://localhost:10809/
+
+=head2 Test for flags
+
+Use one of the I<--can>, I<--is> or I<--has> options below to test NBD
+flags.  The command does not print anything.  Instead it exits with
+success (S<exit code 0>) if true, or failure (S<exit code 2>) if
+false.  (Other exit codes indicate an error querying the flag).
+
+I<--cannot>, I<--isnt> and I<--hasnt> negate the test.
+
+You can use it in shell scripts like this:
+
+ if nbdinfo --is read-only nbd://localhost ||
+    nbdinfo --cannot trim nbd://localhost
+ then
+     error "the device must support writing and trimming"
+ fi
+
+=over 4
+
+=item nbdinfo --is read-only URI
+
+Test if the server export is read-only.
+
+=item nbdinfo --can write URI
+
+For convenience this is the opposite of I<--is read-only>.
+
+=item nbdinfo --can open URI
+
+=item nbdinfo --can read URI
+
+Test if we can connect to the NBD URI and open the named export.  As
+all NBD servers must support read, I<--can read> is a synonym.
+
+=item nbdinfo --can connect URI
+
+Test if we can connect to the NBD URI.  This tests the NBD handshake
+as far as NBD options processing, but does not guarantee that the
+export can be opened (see I<--can open>).
+
+=item nbdinfo --is tls URI
+
+Test if the NBD URI connection is using TLS.
+
+=item nbdinfo --has structured-reply URI
+
+Test if server has support for structured replies (a prerequisite
+for supporting block status commands).
+
+=item nbdinfo --has extended-headers URI
+
+Test if server supports extended headers (a prerequisite for
+supporting 64-bit commands; implies structured replies as well).
+
+=item nbdinfo --is rotational URI
+
+Test if the server export is backed by something which behaves like a
+rotating disk: accessing nearby blocks may be faster than random
+access and requests should be sorted to improve performance.  Many
+servers do not or cannot report this accurately.
+
+=item nbdinfo --can block-status-payload URI
+
+Test if the server export has support for passing a client payload to
+limit the response to a block status command.
+
+=item nbdinfo --can cache URI
+
+=item nbdinfo --can df URI
+
+=item nbdinfo --can fast-zero URI
+
+=item nbdinfo --can flush URI
+
+=item nbdinfo --can fua URI
+
+=item nbdinfo --can multi-conn URI
+
+=item nbdinfo --can trim URI
+
+=item nbdinfo --can zero URI
+
+Test other properties of the NBD server export.
+
+=back
+
+In fact I<--can>/I<--is>/I<--has>, and
+I<--cannot>/I<--isnt>/I<--hasnt> are synonyms, you can use them
+interchangeably.
+
+=head2 Map
+
+To show a map of which areas of the disk are allocated and sparse, use
+the I<--map> option:
+
+ $ nbdinfo --map nbd://localhost/
+       0  1048576  0  data
+ 1048576  1048576  3  hole,zero
+
+The fields are: start, size, type, description (optional).
+
+The type field is an integer showing the raw value from the NBD
+protocol.  For some maps nbdinfo knows how to translate the type into
+a printable description.
+
+To get parseable JSON output, add I<--json>:
+
+ $ nbdinfo --map --json nbd://localhost/
+ [{ "offset": 0, "length": 1048576,
+    "type": 0, "description": "data" },
+  { "offset": 1048576, "length": 1048576,
+    "type": 3, "description": "hole,zero" }]
+
+By default this shows the C<"base:allocation"> map, but you can show
+other maps too:
+
+ $ nbdinfo --map=qemu:dirty-bitmap:bitmap nbd://localhost/
+ 0  1048576  1  dirty
+
+For more information on NBD maps, see I<Metadata querying> in the NBD
+protocol.
+
+=head2 Map totals
+
+Using S<I<--map --totals>> performs the same operation as I<--map> but
+displays a summary of the total size of each type of allocation, in
+bytes and as a percentage (of the virtual size of the export).  This
+is useful for estimating how much real storage is used on the server,
+or might be required when copying a sparse image with L<nbdcopy(1)>.
+
+In the example below, half (50.0%) of the disk is allocated data and
+half is unallocated:
+
+ $ nbdinfo --map --totals nbd://localhost/
+ 1048576  50.0%  0  data
+ 1048576  50.0%  3  hole,zero
+
+The fields are: total size in bytes, percentage of the virtual size,
+type, description (optional).
+
+You can also get the same information in parseable form using I<--json>:
+
+ $ nbdinfo --map --totals --json nbd://localhost/
+ [{ "size": 1048576, "percent": 50,
+    "type": 0, "description": "data" },
+  { "size": 1048576, "percent": 50,
+    "type": 3, "description": "hole,zero" }]
+
+As with the I<--map> option, by default this shows the
+C<"base:allocation"> map, but you can show the summary for other maps.
+
+=head2 List all exports
+
+To list all the exports available on an NBD server use the I<--list>
+(I<-L>) option.  To get parseable JSON output, add I<--json>.
+
+For example:
+
+ $ nbdkit file dir=. --run 'nbdinfo --list "$uri"'
+ protocol: newstyle-fixed without TLS
+ export="Fedora-Workstation-Live-x86_64-29-1.2.iso":
+     export-size: 1931476992 (1842M)
+     uri: nbd://localhost:10809/Fedora-Workstation-Live-x86_64-29-1.2.iso
+     [...]
+ export="debian-10.4.0-amd64-DVD-1.iso":
+     export-size: 3955556352 (3862848K)
+     uri: nbd://localhost:10809/debian-10.4.0-amd64-DVD-1.iso
+     [...]
+
+=head2 Subprocess
+
+nbdinfo can also run an NBD server as a subprocess.  This requires an
+NBD server which understands systemd socket activation, such as
+L<qemu-nbd(8)> or L<nbdkit(1)>.  All the usual nbdinfo modes can be
+used.
+
+For example, to give general information or display the map of a qcow2
+file:
+
+ nbdinfo -- [ qemu-nbd -r -f qcow2 file.qcow2 ]
+
+=for paragraph
+
+ nbdinfo --map -- [ qemu-nbd -r -f qcow2 file.qcow2 ]
+
+Note that S<C<[ ... ]>> are separate parameters, and must be
+surrounded by spaces.  C<--> separates nbdinfo parameters from
+subprocess parameters.
+
+=head2 Alternative tools
+
+You could use S<C<qemu-img info>> (see L<qemu-img(1)>) to query a
+single export from an NBD server.  S<C<qemu-nbd -L>> (see
+L<qemu-nbd(8)>) can list NBD exports.  L<nbdsh(1)> or the L<libnbd(3)>
+API can be used for more complex queries.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<--help>
+
+Display brief command line help and exit.
+
+=item B<--can block-status-payload>
+
+=item B<--can cache>
+
+=item B<--can connect>
+
+=item B<--can df>
+
+=item B<--can fast-zero>
+
+=item B<--can flush>
+
+=item B<--can fua>
+
+=item B<--can multi-conn>
+
+=item B<--can open>
+
+=item B<--can read>
+
+=item B<--can trim>
+
+=item B<--can write>
+
+=item B<--can zero>
+
+Test properties of the NBD server export.  The command does not print
+anything.  Instead it exits with success (S<exit code 0>) if true, or
+failure (S<exit code 2>) if false.  (Other exit codes indicate an
+error querying the flag).
+
+For further information see the L<NBD
+protocol|https://github.com/NetworkBlockDevice/nbd/blob/master/doc/proto.md>
+and the following libnbd functions:
+L<nbd_can_block_status_payload(3)>, L<nbd_can_cache(3)>,
+L<nbd_can_df(3)>, L<nbd_can_fast_zero(3)>, L<nbd_can_flush(3)>,
+L<nbd_can_fua(3)>, L<nbd_can_multi_conn(3)>, L<nbd_can_trim(3)>,
+L<nbd_can_zero(3)>, L<nbd_is_read_only(3)>.
+
+=item B<--cannot> flag
+
+Test the negation of flag.
+
+=item B<--color>
+
+=item B<--colour>
+
+=item B<--no-color>
+
+=item B<--no-colour>
+
+Enable or disable ANSI colours in output.  By default we use colours
+if the output seems to be a terminal, and disable them if not.
+
+=item B<--content>
+
+=item B<--no-content>
+
+Mostly the information displayed comes from the metadata sent by the
+NBD server during the handshake.  However nbdinfo also downloads a
+small amount of data from the beginning of the export to try to probe
+the content with L<file(1)>.
+
+When I<not> using I<--list>, the default is I<--content>, ie.  probing
+the content.  To prevent content probing, use I<--no-content>.
+
+When using I<--list>, the default is I<--no-content> (since
+downloading from each export is expensive).  To enable content probing
+use I<--list --content>.
+
+=item B<--has extended-headers>
+
+=item B<--has structured-reply>
+
+Test properties of the NBD server connection.  The command does not
+print anything.  Instead it exits with success (S<exit code 0>) if
+true, or failure (S<exit code 2>) if false.  (Other exit codes
+indicate an error querying the flag).
+
+For further information see the L<NBD
+protocol|https://github.com/NetworkBlockDevice/nbd/blob/master/doc/proto.md>
+and the following libnbd functions:
+L<nbd_get_extended_headers_negotiated(3)>,
+L<nbd_get_structured_replies_negotiated(3)>.
+
+=item B<--hasnt> flag
+
+Test the negation of flag.
+
+=item B<--is read-only>
+
+=item B<--is rotational>
+
+=item B<--is tls>
+
+Test if the NBD server export is read-only and rotational, or whether
+the connection itself is using TLS.  The command does not print
+anything.  Instead it exits with success (S<exit code 0>) if true, or
+failure (S<exit code 2>) if false.  (Other exit codes indicate an
+error querying the flag).
+
+For further information see the L<NBD
+protocol|https://github.com/NetworkBlockDevice/nbd/blob/master/doc/proto.md>
+and the following libnbd functions: L<nbd_is_read_only(3)>,
+L<nbd_is_rotational(3)>, L<nbd_get_tls_negotiated(3)>.
+
+=item B<--isnt> flag
+
+Test the negation of flag.
+
+=item B<--json>
+
+The output is displayed in JSON format.
+
+=item B<-L>
+
+=item B<--list>
+
+List all the exports on an NBD server.  The export name in the NBD URI
+is ignored.
+
+=item B<--map>
+
+=item B<--map=>MAP
+
+Display the map (usually whether parts of the disk are allocated or
+sparse) of the given export.  This displays the C<"base:allocation">
+map by default, you can choose a different map with the optional
+parameter.
+
+See the L</Map> section above.
+
+=item B<--map> B<--totals>
+
+=item B<--map=>MAP B<--totals>
+
+The same as I<--map>, but displays a summary of the total size of each
+type of allocation.
+
+See the L</Map totals> section above.
+
+=item B<--size>
+
+Display only the size in bytes of the export.
+
+=item B<--uri>
+
+Display only the canonical URI.  If combined with I<--json> then the
+output is a JSON-quoted string.
+
+=item B<-V>
+
+=item B<--version>
+
+Display the package name and version and exit.
+
+=back
+
+=head1 SEE ALSO
+
+L<libnbd(3)>,
+L<nbdcopy(1)>,
+L<nbddiscard(1)>,
+L<nbddump(1)>,
+L<nbdfuse(1)>,
+L<nbdsh(1)>,
+L<nbdublk(1)>,
+L<nbdzero(1)>,
+L<file(1)>,
+L<jq(1)>,
+L<qemu-img(1)>,
+L<qemu-nbd(8)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+Eric Blake
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

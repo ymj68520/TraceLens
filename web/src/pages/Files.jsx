@@ -20,6 +20,7 @@ import ExtensionAnalysisTab from '../components/files/ExtensionAnalysisTab';
 import OfficePreviewTab from '../components/files/OfficePreviewTab';
 import ReanalyzeModal from '../components/files/ReanalyzeModal';
 import FilePagination from '../components/files/FilePagination';
+import RaidTaskOrigin from '../components/files/RaidTaskOrigin';
 
 // 子页签：文件列表视图的过滤口径（服务端分页）
 const FILE_SUBTABS = [
@@ -1056,6 +1057,7 @@ ${detail}
 
   return (
     <div className="space-y-6">
+      <RaidTaskOrigin taskId={taskId} enabled={currentTask?.metadata?.source_kind === 'raid'} />
       <FilesHeader
         currentTask={currentTask}
         taskId={taskId}

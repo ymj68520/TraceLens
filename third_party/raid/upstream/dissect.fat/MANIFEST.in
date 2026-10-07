@@ -1,0 +1,3 @@
+exclude .gitattributes
+exclude .gitignore
+recursive-exclude .github/ *

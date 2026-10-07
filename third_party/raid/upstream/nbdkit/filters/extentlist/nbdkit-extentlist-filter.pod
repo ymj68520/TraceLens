@@ -1,0 +1,121 @@
+=head1 NAME
+
+nbdkit-extentlist-filter - place extent list over a plugin
+
+=head1 SYNOPSIS
+
+ nbdkit -r --filter=extentlist plugin extentlist=FILENAME
+
+=head1 DESCRIPTION
+
+C<nbdkit-extentlist-filter> is an nbdkit filter that lets you place a
+static list of extents on top of an existing plugin.  Extents record
+whether or not specific parts of the disk are allocated or sparse.
+
+You can use this with plugins which cannot get extent information
+themselves, but where you can get this information from another
+source.  One place where it is useful is with L<nbdkit-ssh-plugin(1)>
+because the sftp protocol does not support reading sparseness
+information, but you may be able to get this information directly from
+the source disk on the remote server using commands such as
+L<xfs_bmap(8)>.  A similar situation applies to
+L<nbdkit-curl-plugin(1)>.
+
+Note that the extent list is read-only.  This filter does not monitor
+writes and trims in order to update the extent list.  What can happen
+is that you would write to a “hole” in the disk, but would not be able
+to read it back because the NBD client would still think that part of
+the disk is a hole.  So it is generally only safe to use this filter
+in read-only mode (I<-r> option).
+
+=head1 FILE FORMAT
+
+The list of extents is specified in a text file.  There is one extent
+specified per line.  Each line, other than blank lines or comment
+lines beginning with C<#>, has the format:
+
+ offset length type
+
+The C<offset> and C<length> fields may use any format understood by
+L<nbdkit_parse_size(3)>.  The optional C<type> field may be an
+integer, missing (same as 0), or a comma-separated list of the words
+C<hole> and C<zero>.  (The fields correspond to the inputs of the
+C<nbdkit_add_extent> function, see L<nbdkit-plugin(3)>).
+
+An example of a valid set of extents covering a C<10M> disk where the
+first megabyte only is allocated data:
+
+ 0  1M
+ 1M 9M  hole,zero
+
+Or you could omit the C<hole,zero> extent since any gaps are assumed
+to be holes with that type:
+
+ 0  1M
+
+The extent list need not cover the whole disk, and does not need to be
+in ascending order, but it must I<not> contain overlapping extents.
+
+=head2 Parsing qemu-img map
+
+The output of L<qemu-img(1)> map is a list of allocated blocks like
+this:
+
+ Offset          Length          Mapped to       File
+ 0               0x10000         0               disk.img
+ 0x100000        0x20000         0x100000        disk.img
+
+The third and fourth columns can be ignored, and the header line
+removed, to produce input which can be directly imported into this
+filter.
+
+For example, to make a disk which has the same "shape" (but different
+data) as an existing disk image:
+
+ disk=disk.img
+ size=$( qemu-img info $disk --output=json | jq '.["virtual-size"]' )
+ qemu-img map $disk |
+     tr -s " " | cut -d " " -f 1-2 | tail -n +2 > extents.txt
+ nbdkit -r ones $size --filter=extentlist extentlist=extents.txt
+
+=head1 PARAMETERS
+
+=over 4
+
+=item B<extentlist=>FILENAME
+
+Specify the file containing the extent list, in the format described
+in L</FILE FORMAT> above.
+
+=back
+
+=head1 FILES
+
+=over 4
+
+=item F<$filterdir/nbdkit-extentlist-filter.so>
+
+The filter.
+
+Use C<nbdkit --dump-config> to find the location of C<$filterdir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-extentlist-filter> first appeared in nbdkit 1.18.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-noextents-filter(1)>,
+L<nbdkit-filter(3)>,
+L<nbdkit-plugin(3)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

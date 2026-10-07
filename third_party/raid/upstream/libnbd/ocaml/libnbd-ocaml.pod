@@ -1,0 +1,91 @@
+=head1 NAME
+
+libnbd-ocaml - how to use libnbd from OCaml
+
+=head1 SYNOPSIS
+
+ let nbd = NBD.create () in
+ NBD.connect_uri nbd "nbd://localhost";
+ let size = NBD.get_size nbd in
+ printf "%Ld\n" size;
+ NBD.close ()
+
+Alternate syntax which ensures that close is called even if an
+exception is thrown:
+
+ let size =
+   NBD.with_handle (
+     fun nbd ->
+       NBD.connect_uri nbd "nbd://localhost";
+       NBD.get_size nbd
+   ) in
+ printf "%Ld\n" size
+
+To compile:
+
+ ocamlopt -I +nbd mlnbd.cmxa prog.ml -o prog
+
+or using findlib:
+
+ ocamlfind opt -package nbd -linkpkg prog.ml -o prog
+
+=head1 DESCRIPTION
+
+This manual page documents how to use libnbd to access Network Block
+Device (NBD) servers from the OCaml programming language.
+
+The OCaml bindings work very similarly to the C bindings so you should
+start by reading L<libnbd(3)>.
+
+For OCaml API documentation see L<NBD(3)>.
+
+=head1 HANDLES
+
+Create a libnbd handle of type C<NBD.t> by calling S<C<NBD.create ()>>.
+
+You can either close the handle explicitly by calling C<NBD.close> or
+it will be closed automatically when it is garbage collected.  If you
+call any other method on a handle which you have explicitly closed
+then the API will throw an C<NBD.Closed> exception.
+
+C<NBD.with_handle> can be used to make sure the handle is closed in a
+timely manner.  See the example in the L</SYNOPSIS> above.
+
+=head1 ERRORS
+
+Libnbd errors are turned automatically into exceptions of type:
+
+ NBD.Error (str, Unix.error option)
+
+The first exception parameter is a string which is the printable error
+message.  The second is the OCaml C<Unix.error> code, if available
+(see L<nbd_get_errno(3)>).
+
+=head2 Callbacks with "int ref" error parameter
+
+Some callbacks take an error parameter of type C<int ref>,
+corresponding to the C<int *error> passed to those callbacks in C.
+See also: L<libnbd(3)/Callbacks with "int *error" parameter>
+
+If an error occurs during the callback you can update the C<int> in
+the reference, setting it to a I<C-compatible errno>.  To convert an
+OCaml C<Unix.error> into a C-compatible errno call
+C<NBD.errno_of_unix_error>.
+
+=head1 EXAMPLES
+
+This directory contains examples written in OCaml:
+
+L<https://gitlab.com/nbdkit/libnbd/tree/master/ocaml/examples>
+
+=head1 SEE ALSO
+
+L<libnbd(3)>, L<NBD(3)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

@@ -1,0 +1,220 @@
+=head1 NAME
+
+nbdkit-log-filter - nbdkit log filter
+
+=head1 SYNOPSIS
+
+ nbdkit --filter=log PLUGIN
+                     [logfile=FILE | logscript=SCRIPT] [logappend=BOOL]
+                     [PLUGIN-ARGS...]
+
+=head1 DESCRIPTION
+
+C<nbdkit-log-filter> is a filter that logs all transactions to a file
+or external script.
+
+When used as the first filter, it can show the original client
+requests.  As a later filter, it can show how earlier filters have
+modified the original request.
+
+When using C<logfile=FILE>, logs are written to a log file with the
+format described in L</LOG FILE FORMAT> below.
+
+When using C<logscript=SCRIPT>, logs invoke the external script.  See
+L</LOG SCRIPT> below.
+
+An alternative to this filter is simply to run nbdkit with the I<-f>
+and I<-v> flags which enable verbose debugging to stderr.  This logs
+many aspects of nbdkit operation, but requires running nbdkit in the
+foreground.  The log filter uses a more parsimonious and more easily
+parsable format and works when nbdkit runs in the background.
+
+=head1 PARAMETERS
+
+C<logfile> or C<logscript> or both can be given.  If neither then the
+filter is inactive.
+
+=over 4
+
+=item B<logfile=>FILE
+
+The file where the log is written.  See L</LOG FILE FORMAT> below.
+
+=item B<logscript=>SCRIPT
+
+(nbdkit E<ge> 1.24)
+
+Log lines invoke an external script.  See L</LOG SCRIPT> below.
+
+=item B<logappend=true>
+
+=item B<logappend=false>
+
+(nbdkit E<ge> 1.8)
+
+This only affects C<logfile>.  If C<false> (the default), if the file
+already exists it will be truncated.  If C<true>, the filter appends
+to the existing log file.
+
+=back
+
+=head1 EXAMPLES
+
+Serve the file F<disk.img>, and log each client transaction in the
+file F<disk.log>:
+
+ nbdkit --filter=log file disk.img logfile=disk.log
+
+Repeat the task, but with the cow (copy-on-write) filter to perform
+local caching of data served from the original plugin:
+
+ nbdkit --filter=cow --filter=log file disk.img logfile=disk.log2
+
+After running a client that performs the same operations under each of
+the two servers, you can compare F<disk.log> and F<disk.log2> to see
+the impact of the caching.
+
+=head1 LOG FILE FORMAT
+
+An example logging session of a client that requests an export list
+before performing a single successful read is:
+
+ 2020-08-06 02:07:23.080415 ListExports id=1 readonly=0 tls=0 ...
+ 2020-08-06 02:07:23.080502 ...ListExports id=1 exports=("") return=0
+ 2020-08-06 02:07:23.080712 connection=1 Connect export="" tls=0 size=0x400 minsize=0x1 prefsize=0x200 maxsize=0xffffffff write=1 flush=1 rotational=0 trim=1 zero=2 fua=2 extents=1 cache=2 fast_zero=1
+ 2020-08-06 02:07:23.080907 connection=1 Read id=1 offset=0x0 count=0x200 ...
+ 2020-08-06 02:07:23.080927 connection=1 ...Read id=1 return=0
+ 2020-08-06 02:07:23.081255 connection=1 Disconnect transactions=1
+
+All lines start with a timestamp in C<YYYY-MM-DD HH:MM:ZZ.MS> format.
+
+For connected calls, C<connection=N> is present to distinguish
+between clients.
+
+The action follows.  Currently the following actions are logged:
+ListExports, Ready, Fork, Preconnect, Connect, Read, Write, Zero,
+Trim, Extents, Cache, Flush and Disconnect.
+
+Some actions are logged across two lines showing the call and return
+value.  Because nbdkit handles requests in parallel different requests
+may be intermingled.  Use the C<id=N> field for correlation, it is
+unique per connection.
+
+Strings and lists are shell-quoted.
+
+=head1 LOG SCRIPT
+
+If C<logscript=SCRIPT> is given on the command line then log entries
+are passed to the external script.
+
+The script is passed several shell variables:
+
+=over 4
+
+=item C<$act>
+
+The action name, like C<"Read">, C<"Write"> etc.
+
+=item C<$connection>
+
+The connection ID identifying the client, only for connected calls
+like C<"Read">.
+
+=item C<$error>
+
+For messages of type C<"LEAVE"> which fail (C<$return = -1>), this
+contains the errno as a string, for example C<"EIO">.
+
+=item C<$id>
+
+The transaction ID, used to correlate actions which are split into two
+messages C<"ENTER"> and C<"LEAVE">.
+
+=item C<$return>
+
+For messages of type C<"LEAVE"> this is the return code, usually C<0>
+for success and C<-1> if there was an error.
+
+=item C<$type>
+
+The message type: C<"ENTER">, C<"LEAVE"> or C<"PRINT">.
+
+=item other shell variables
+
+Other parameters like C<offset=N> are turned into shell variables
+C<$offset> etc.
+
+=back
+
+Note the return value of the script is ignored.  Log scripts cannot
+modify or interrupt request processing.
+
+=head2 Log script examples
+
+The script:
+
+ nbdkit -f --filter=log null 10M \
+        logscript='echo $connection $type $id $act $offset >&2'
+
+might print lines like:
+
+ PRINT Ready
+ 1 ENTER 1 Read 0x0
+ 1 ENTER 2 Write 0x200
+ 1 LEAVE 2 Write
+ 1 LEAVE 1 Read
+
+corresponding to log file lines:
+
+ Ready thread_model=3
+ connection=1 Read id=1 offset=0x0 count=0x200 ...
+ connection=1 Write id=2 offset=0x200 count=0x200 ...
+ connection=1 ...Write id=2
+ connection=1 ...Read id=1
+
+This script will trigger a message when any client reads:
+
+ nbdkit -f --filter=log memory 10M \
+        logscript='
+            if [ "$act" = "Read" -a "$type" = "ENTER" ]; then
+                echo Client is reading $count bytes from $offset >&2
+            fi
+        '
+
+=head1 FILES
+
+=over 4
+
+=item C<logfile=FILE> parameter
+
+This filter writes to the file specified by the C<logfile=FILE>
+parameter.
+
+=item F<$filterdir/nbdkit-log-filter.so>
+
+The filter.
+
+Use C<nbdkit --dump-config> to find the location of C<$filterdir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-log-filter> first appeared in nbdkit 1.4.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-file-plugin(1)>,
+L<nbdkit-cow-filter(1)>,
+L<nbdkit-filter(3)>,
+L<nbdkit-count-filter(1)>,
+L<nbdkit-stats-filter(1)>.
+
+=head1 AUTHORS
+
+Eric Blake
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

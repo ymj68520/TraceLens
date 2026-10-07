@@ -1,0 +1,1050 @@
+=head1 NAME
+
+nbdkit - network block device (NBD) server
+
+=head1 SYNOPSIS
+
+__SYNOPSIS__
+
+=head1 DESCRIPTION
+
+Network Block Device (NBD) is a network protocol for accessing block
+devices over the network.  Block devices are hard disks and things
+that behave like hard disks such as disk images and virtual machines.
+
+nbdkit is an NBD server, and also a powerful toolkit for creating your
+own NBD servers from “unconventional” sources.  nbdkit ships with many
+plugins for performing common tasks like serving local files.
+
+=head2 Plugins and filters
+
+nbdkit is different from other NBD servers because you can easily
+create new Network Block Device sources by writing a few glue
+functions, possibly in C, or perhaps in a high level language like
+Perl or Python.  The liberal licensing of nbdkit is meant to allow you
+to link nbdkit with proprietary libraries or to include nbdkit in
+proprietary code.
+
+If you want to write your own nbdkit plugin you should read
+L<nbdkit-plugin(3)>.
+
+nbdkit also has a concept of filters which can be layered on top of
+plugins.  Several filters are provided with nbdkit and if you want to
+write your own you should read L<nbdkit-filter(3)>.
+
+=head1 EXAMPLES
+
+=head2 Basic file serving
+
+=over 4
+
+=item *
+
+Serve file F<disk.img> on port 10809 using L<nbdkit-file-plugin(1)>,
+and connect to it using L<guestfish(1)>:
+
+ nbdkit file disk.img
+ guestfish --rw --format=raw -a nbd://localhost
+
+=item *
+
+Serve file F<disk.img> on port 10809, requiring clients to use
+encrypted (TLS) connections:
+
+ nbdkit --tls=require file disk.img
+
+=back
+
+=head2 Other nbdkit plugins
+
+=over 4
+
+=item *
+
+Create a small disk containing test patterns using
+L<nbdkit-data-plugin(1)>:
+
+ nbdkit data ' ( 0x55 0xAA )*2048 '
+
+=item *
+
+Forward an NBD connection to a remote server over HTTPS or SSH using
+L<nbdkit-curl-plugin(1)> or L<nbdkit-ssh-plugin(1)>:
+
+ nbdkit -r curl https://example.com/disk.img
+
+=for paragraph
+
+ nbdkit ssh host=example.com /var/tmp/disk.img
+
+=item *
+
+Create a sparse 1 terabyte RAM disk using L<nbdkit-memory-plugin(1)>
+and use it as a loop device (L<nbdkit-loop(1)>):
+
+ nbdkit memory 1T
+ nbd-client localhost /dev/nbd0
+
+=item *
+
+Create a floppy disk image containing files from a local directory
+using L<nbdkit-floppy-plugin(1)>:
+
+ nbdkit floppy dir/
+
+=back
+
+=head2 Combining plugins and filters
+
+=over 4
+
+=item *
+
+Serve only the first partition from compressed disk image
+F<disk.img.xz>, combining L<nbdkit-partition-filter(1)>,
+L<nbdkit-xz-filter(1)> and L<nbdkit-file-plugin(1)>.
+
+ nbdkit --filter=partition --filter=xz file disk.img.xz partition=1
+
+To understand this command line:
+
+                             plugin name and plugin parameter
+                                               │
+                                       ┌───────┴──────┐
+                                       │              │
+ nbdkit --filter=partition --filter=xz file disk.img.xz partition=1
+                 │              │                          │
+                 └──────────────┴────┬─────────────────────┘
+                                     │
+                        filters and filter parameter
+
+=item *
+
+Create a scratch, empty nbdkit device and inject errors and delays,
+for testing clients, using L<nbdkit-memory-plugin(1)>,
+L<nbdkit-error-filter(1)> and L<nbdkit-delay-filter(1)>:
+
+ nbdkit --filter=error --filter=delay memory 100M \
+        error-rate=10% rdelay=1 wdelay=1
+
+=back
+
+=head2 Writing plugins in shell script
+
+=over 4
+
+=item *
+
+Write a simple, custom plugin in shell script using
+L<nbdkit-sh-plugin(3)>:
+
+ nbdkit sh - <<'EOF'
+   case "$1" in
+     get_size) echo 1M ;;
+     pread) dd if=/dev/zero count=$3 iflag=count_bytes ;;
+     *) exit 2 ;;
+   esac
+ EOF
+
+=item *
+
+The same example as above can be written entirely on the command line
+using L<nbdkit-eval-plugin(1)>:
+
+ nbdkit eval get_size='echo 1M' \
+             pread='dd if=/dev/zero count=$3 iflag=count_bytes'
+
+=back
+
+=head2 Display information
+
+Display information about nbdkit or a specific plugin:
+
+ nbdkit --help
+ nbdkit --version
+ nbdkit --dump-config
+ nbdkit example1 --help
+ nbdkit example1 --dump-plugin
+
+=head2 NBD URIs and endpoints
+
+NBD has a way to specify the
+L<URI|https://github.com/NetworkBlockDevice/nbd/blob/master/doc/uri.md>
+of an NBD endpoint to make it easy to interconnect NBD tools.  Use the
+nbdkit I<--print-uri> option to print the URI of this server instance.
+For example:
+
+ $ nbdkit -U /tmp/socket --print-uri null
+ nbd+unix://?socket=/tmp/socket
+ Shell-quoted URI: "nbd+unix://?socket=/tmp/socket"
+ Command to query the NBD endpoint:
+   nbdinfo "nbd+unix://?socket=/tmp/socket"
+
+For common URI formats and extensions supported by libnbd see
+L<nbd_connect_uri(3)>.
+
+=head1 GLOBAL OPTIONS
+
+=over 4
+
+=item B<--help>
+
+Display brief command line usage information and exit.
+
+=item B<-4>
+
+=item B<--ipv4-only>
+
+=item B<-6>
+
+=item B<--ipv6-only>
+
+When a non-numeric argument is passed to the I<-i> option (such as a
+Fully Qualified Domain Name, or a host name from C</etc/hosts>),
+restrict the name resolution to IPv4 or IPv6 addresses.
+
+When the I<-i> option is omitted, listen on only the IPv4 or IPv6
+address of all interfaces (C<0.0.0.0> or C<::>, respectively).
+
+When both I<-4> and I<-6> options are present on the command line, the
+last one takes effect.
+
+=item B<-D> PLUGINB<.>FLAGB<=>N
+
+=item B<-D> FILTERB<.>FLAGB<=>N
+
+=item B<--debug> PLUGINB<.>FLAGB<=>N
+
+=item B<--debug> FILTERB<.>FLAGB<=>N
+
+Set the plugin or filter Debug Flag called C<FLAG> to the integer
+value C<N>.  See L<nbdkit-plugin(3)/Debug Flags>.
+
+=item B<-D> B<nbdkit.>FLAGB<=>N
+
+=item B<--debug> B<nbdkit.>FLAGB<=>N
+
+(nbdkit E<ge> 1.18)
+
+Set the nbdkit server Debug Flag called C<FLAG> to the integer value
+C<N>.  See L</SERVER DEBUG FLAGS> below.
+
+=item B<--dump-config>
+
+Dump out the compile-time configuration values and exit.
+See L<nbdkit-probing(1)>.
+
+=item B<--dump-plugin>
+
+Dump out information about the plugin and exit.
+See L<nbdkit-probing(1)>.
+
+=item B<--exit-with-parent>
+
+If the parent process exits, we exit.  This can be used to avoid
+complicated cleanup or orphaned nbdkit processes.  There are some
+important caveats with this, see L<nbdkit-captive(1)/EXIT WITH PARENT>.
+
+An alternative to this is L<nbdkit-captive(1)/CAPTIVE NBDKIT>.
+
+This option implies I<--foreground>.
+
+=item B<-e> EXPORTNAME
+
+=item B<--export=>EXPORTNAME
+
+=item B<--export-name=>EXPORTNAME
+
+=item B<--exportname=>EXPORTNAME
+
+Set a preferred exportname to expose in the shell environment created
+during I<--run>.  The use of this option without I<--run> has no
+effect.  This option does I<not> change what nbdkit advertises as a
+server, but can aid in writing a captive client that wants to access
+particular content from a plugin that differentiates content based on
+the client's choice of export name.
+
+If not set, the I<--run> environment is set to access the default
+exportname C<""> (empty string).
+
+=item B<--filter=>FILTER
+
+Add a filter before the plugin.  This option may be given one or more
+times to stack filters in front of the plugin.  They are processed in
+the order they appear on the command line.  See L</FILTERS> and
+L<nbdkit-filter(3)>.
+
+=item B<-f>
+
+=item B<--foreground>
+
+=item B<--no-fork>
+
+I<Don't> fork into the background.
+
+=item B<-g> GROUP
+
+=item B<--group=>GROUP
+
+Change group to C<GROUP> after starting up.  A group name or numeric
+group ID can be used.
+
+The server needs sufficient permissions to be able to do this.
+Normally this would mean starting the server up as root.
+
+See also I<-u>.
+
+=item B<-i> IPADDR
+
+=item B<--ip-addr=>IPADDR
+
+=item B<--ipaddr=>IPADDR
+
+Listen on the specified interface.  The default is to listen on all
+interfaces.  See also I<-4>, I<-6>, and I<-p>.
+
+=item B<--keep-alive>
+
+=item B<--keepalive>
+
+Enable TCP keepalive (C<SO_KEEPALIVE>) on TCP sockets.  This can allow
+clients that reboot to be detected earlier.  You may also have to
+adjust kernel parameters.  For Linux see:
+L<https://tldp.org/HOWTO/TCP-Keepalive-HOWTO/usingkeepalive.html>
+
+Only has an effect if nbdkit uses a TCP socket (so not for I<-U>,
+I<-s>, etc.)
+
+=item B<--log=stderr>
+
+=item B<--log=syslog>
+
+=item B<--log=null>
+
+=item B<--log=>/path
+
+=item B<--log=default>
+
+Send error messages to standard error (I<--log=stderr>), or to the
+system log (I<--log=syslog>), discard them completely (I<--log=null>,
+not recommended for normal use), or append them to a file (which must
+be an absolute path).
+
+The default (if I<--log> is not used, or if you use I<--log=default>)
+is: send error messages to stderr, unless nbdkit forks into the
+background in which case they are sent to syslog.
+
+These messages can be generated from plugins by calling
+L<nbdkit_error(3)> or L<nbdkit_verror(3)>.
+
+Debug messages (I<-v>/I<--verbose>) always go to standard error and
+are never sent to the system log.
+
+=item B<--long-options>
+
+List the long command line options (those starting with I<-->)
+supported by this build of nbdkit.  The options are listed one per
+line, and then nbdkit exits.  This is used mainly to implement tab
+completion.  See also I<--short-options>.
+
+=item B<--mask-handshake=>MASK
+
+This option can be used to mask off particular global features which
+are advertised during new-style handshake (defaulting to all supported
+bits set).  See L<nbdkit-protocol(1)>.
+
+=item B<--name=>NAME
+
+Name this nbdkit instance.  This allows you to associate names with
+nbdkit processes, if you have several.  The name appears in error and
+debug messages, but is otherwise unused by nbdkit.  The name can be
+any string, but usually a short string containing only letters,
+numbers and common punctuation is best.  See also L<nbdkit_name(3)>.
+
+=item B<-n>
+
+=item B<--new-style>
+
+=item B<--newstyle>
+
+Use the newstyle NBD protocol.  This is the default in nbdkit
+E<ge> 1.3.  In earlier versions the default was oldstyle.
+See L<nbdkit-protocol(1)>.
+
+=item B<--no-mc>
+
+=item B<--no-meta-contexts>
+
+Do not advertise meta contexts.  Normally, nbdkit handles all client
+requests for arbitrary meta context names, with the response being
+affirmative for only the C<base:allocation> meta context (nbdkit
+synthesizes this context even when the plugin does not support
+extents), so that clients can use the block status command.  However,
+meta contexts are not a mandatory part of the newstyle NBD protocol,
+so this option can be used to debug client fallbacks for dealing with
+older servers that lack meta context support.  See
+L<nbdkit-protocol(1)>.
+
+=item B<--no-sr>
+
+=item B<--no-structured-replies>
+
+Do not advertise structured replies.  A client must request structured
+replies to take advantage of block status and potential sparse reads;
+however, as structured reads are not a mandatory part of the newstyle
+NBD protocol, this option can be used to debug client fallbacks for
+dealing with older servers.  See L<nbdkit-protocol(1)>.
+
+=item B<-o>
+
+=item B<--old-style>
+
+=item B<--oldstyle>
+
+Use the oldstyle NBD protocol.  This I<was> the default in nbdkit
+E<le> 1.2, but now the default is newstyle.  Note this is incompatible
+with newer features such as export names and TLS.
+See L<nbdkit-protocol(1)>.
+
+=item B<-P> PIDFILE
+
+=item B<--pid-file=>PIDFILE
+
+=item B<--pidfile=>PIDFILE
+
+Write C<PIDFILE> (containing the process ID of the server) after
+nbdkit becomes ready to accept connections.
+
+If the file already exists, it is overwritten.  nbdkit I<does not>
+delete the file when it exits.
+
+=item B<-p> PORT
+
+=item B<--port=>PORT
+
+Change the TCP/IP port number on which nbdkit serves requests.
+The default is C<10809>.  See also I<-i>.
+
+=item B<-p 0>
+
+=item B<--port=0>
+
+Setting port to C<0> causes nbdkit to bind to a random free port
+number.  On a dual-stack host it will usually bind to a I<different>
+localhost port number for IPv4 and IPv6.
+
+Currently I<--print-uri> will still print the port as C<":0"> (this is
+a bug), but the true port is available using the C<$port> variable in
+I<--run> scripts.
+
+=item B<--print-uri>
+
+Print the URI.  See L</NBD URIs and endpoints> above.
+
+=item B<-r>
+
+=item B<--read-only>
+
+=item B<--readonly>
+
+The export will be read-only.  If a client writes, then it will get an
+error.
+
+Note that some plugins inherently don't support writes.  With those
+plugins the I<-r> option is added implicitly.
+
+L<nbdkit-cow-filter(1)> can be placed over read-only plugins to
+provide copy-on-write (or "snapshot") functionality.  If you are using
+qemu as a client then it also supports snapshots.
+L<nbdkit-readonly-filter(1)> or L<nbdkit-protect-filter(1)> can
+selectively add write-protection.
+
+=item B<--run> 'COMMAND ARGS ...'
+
+Run nbdkit as a captive subprocess of the command.  When the command
+exits, nbdkit is killed.  See L<nbdkit-captive(1)/CAPTIVE NBDKIT>.
+
+Note that the command is executed by F</bin/sh>.  On some platforms
+like Debian this might not be a full-featured shell.
+
+This option implies I<--foreground>.
+
+In nbdkit E<le> 1.34 you normally had to add I<-U ->, otherwise nbdkit
+would use a TCP/IP port which was not what you wanted.  In nbdkit
+E<ge> 1.36, using I<--run> implies I<-U ->.  If you want the old
+behaviour of nbdkit then you must use the I<--port> option explicitly.
+
+=item B<--selinux-label=>SOCKET-LABEL
+
+Apply the SELinux label C<SOCKET-LABEL> to the nbdkit listening
+socket.
+
+The common — perhaps only — use of this option is to allow libvirt
+guests which are using SELinux and sVirt confinement to access nbdkit
+Unix domain sockets.  The example below shows how to do this.  Note
+that the socket and filesystem labels are different.
+
+ nbdkit -U /tmp/sock --selinux-label=system_u:object_r:svirt_socket_t:s0 ...
+ chcon system_u:object_r:svirt_image_t:s0 /tmp/sock
+
+=item B<--short-options>
+
+List the short command line options (single letter options starting
+with I<->) supported by this build of nbdkit.  The options are listed
+one per line, and then nbdkit exits.  This is used mainly to implement
+tab completion.  See also I<--long-options>.
+
+=item B<-s>
+
+=item B<--single>
+
+=item B<--stdin>
+
+Don't fork.  Handle a single NBD connection on stdin/stdout.  After
+stdin closes, the server exits.
+
+You can use this option to run nbdkit from inetd or similar
+superservers; or just for testing; or if you want to run nbdkit in a
+non-conventional way.  Note that if you want to run nbdkit from
+systemd, then it may be better to use
+L<nbdkit-service(1)/SOCKET ACTIVATION> instead of this option.
+
+This option implies I<--foreground>.
+
+=item B<--swap>
+
+(nbdkit E<ge> 1.18)
+
+Specifies that the NBD device will be used as swap space loop mounted
+on the same machine which is running nbdkit.  To avoid deadlocks this
+locks the whole nbdkit process into memory using L<mlockall(2)>.  This
+may require additional permissions, such as starting the server as
+root or raising the C<RLIMIT_MEMLOCK> (L<ulimit(1)> I<-l>) limit on
+the process.
+
+=item B<-t> THREADS
+
+=item B<--threads=>THREADS
+
+Set the number of threads to be used per connection, which in turn
+controls the number of outstanding requests that can be processed at
+once.  Only matters for plugins with thread_model=parallel (where it
+defaults to 16).  To force serialized behavior (useful if the client
+is not prepared for out-of-order responses), set this to 1.
+
+=item B<--timeout=>TIMEOUT
+
+(nbdkit E<ge> 1.42, not Windows)
+
+If the client does not negotiate a full NBD session within C<TIMEOUT>
+seconds, then drop the connection.  This can be used as an additional
+security measure to ensure that clients don't consume resources by
+opening lots of connections and then not negotiating (or negotiating
+slowly) the full NBD session.  It is particularly useful in
+conjunction with TLS client authentication (see L<nbdkit-tls(1)>).
+
+The timeout is measured from the point of the initial TCP connection
+to the point where NBD session negotiation ends (including TLS, if
+used).  If the timeout is exceeded during this negotiation, the
+connection is dropped.  Setting this too low will cause problems for
+clients listing lots of exports.
+
+The default is I<no timeout>.
+
+C<TIMEOUT> can be any format supported by L<nbdkit_parse_delay(3)>.
+
+=item B<--tls=off>
+
+=item B<--tls=on>
+
+=item B<--tls=require>
+
+Disable, enable or require TLS (authentication and encryption
+support).  See L<nbdkit-tls(1)>.
+
+=item B<--tls-certificates=>/path/to/certificates
+
+Set the path to the TLS certificates directory.  If not specified,
+some built-in paths are checked.  See L<nbdkit-tls(1)> for more
+details.
+
+=item B<--tls-priority=>PRIORITY
+
+Override the TLS priority string.  The TLS priority controls which
+ciphers, key exchange methods and MACs are used and in what order.
+See L<"Priority strings" in the GnuTLS
+manual|https://gnutls.org/manual/html_node/Priority-Strings.html>
+
+The default may be set when nbdkit is built (and if not set, defaults
+to C<NORMAL>).
+
+=item B<--tls-psk=>/path/to/pskfile
+
+Set the path to the pre-shared keys (PSK) file.  If used, this
+overrides certificate authentication.  There is no built-in path.  See
+L<nbdkit-tls(1)> for more details.
+
+=item B<--tls-verify-peer>
+
+Enables TLS client certificate verification.  The default is I<not> to
+check the client's certificate.
+
+=item B<-U> SOCKET
+
+=item B<--unix=>SOCKET
+
+=item B<-U ->
+
+=item B<--unix ->
+
+Accept connections on the Unix domain socket C<SOCKET> (which is a
+path).
+
+nbdkit creates this socket, but it will probably have incorrect
+permissions (too permissive).  If it is a problem that some
+unauthorized user could connect to this socket between the time that
+nbdkit starts up and the authorized user connects, then put the socket
+into a directory that has restrictive permissions.
+
+nbdkit does B<not> delete the socket file when it exits.  The caller
+should delete the socket file after use (else if you try to start
+nbdkit up again you will get an C<Address already in use> error).
+
+If the socket name is I<-> then nbdkit generates a randomly named
+private socket.  This is implied by the I<--run> option.  See also
+L<nbdkit-captive(1)/CAPTIVE NBDKIT>.
+
+=item B<-u> USER
+
+=item B<--user=>USER
+
+Change user to C<USER> after starting up.  A user name or numeric user
+ID can be used.
+
+The server needs sufficient permissions to be able to do this.
+Normally this would mean starting the server up as root.
+
+See also I<-g>.
+
+=item B<-v>
+
+=item B<--verbose>
+
+Enable verbose messages.
+
+It's a good idea to use I<-f> as well so the process does not fork
+into the background.  The messages are sent to stderr.  Note they are
+I<not> affected by the I<--log> option (which is only for error
+messages).
+
+These messages can be generated from plugins by calling
+L<nbdkit_debug(3)> or L<nbdkit_vdebug(3)>.
+
+=item B<-V>
+
+=item B<--version>
+
+Print the version number of nbdkit and exit.
+
+The I<--dump-config> option provides separate major and minor numbers
+and may be easier to parse from shell scripts.
+
+=item B<--vsock>
+
+(nbdkit E<ge> 1.16)
+
+Use the AF_VSOCK protocol (instead of TCP/IP).  You must use this in
+conjunction with I<-p>/I<--port>.  See L<nbdkit-service(1)/AF_VSOCK>.
+
+=back
+
+=head1 PLUGIN NAME
+
+You can give the full path to the plugin, like this:
+
+ nbdkit $libdir/nbdkit/plugins/nbdkit-file-plugin.so [...]
+
+but it is usually more convenient to use this equivalent syntax:
+
+ nbdkit file [...]
+
+C<$libdir> is set at compile time.  To print it out, do:
+
+ nbdkit --dump-config
+
+=head1 PLUGIN CONFIGURATION
+
+After specifying the plugin name you can (optionally, it depends
+on the plugin) give plugin configuration on the command line in
+the form of C<key=value>.  For example:
+
+ nbdkit file file=disk.img
+
+To list all the options supported by a plugin, do:
+
+ nbdkit --help file
+
+To dump information about a plugin, do:
+
+ nbdkit file --dump-plugin
+
+=head2 Magic parameters
+
+Some plugins declare a special "magic config key".  This is a key
+which is assumed if no C<key=> part is present.  For example:
+
+ nbdkit file disk.img
+
+is assumed to be C<file=disk.img> because the file plugin declares
+C<file> as its magic config key.  There can be ambiguity in the
+parsing of magic config keys if the value might look like a
+C<key=value>.  If there could be ambiguity then modify the value,
+eg. by prefixing it with C<./>
+
+There is also a special exception for plugins which do not declare a
+magic config key, but where the first plugin argument does not contain
+an C<'='> character: it is assumed to be C<script=value>.  This is
+used by scripting language plugins:
+
+ nbdkit perl foo.pl [args...]
+
+has the same meaning as:
+
+ nbdkit perl script=foo.pl [args...]
+
+=head2 @PATH
+
+If you need to pass a large number of key=value parameters, you can
+place them in an external file, for example:
+
+ $ cat partitions.txt
+ # The list of partitions to load:
+ file=partition1.img
+ file=partition2.img
+ file=partition3.img
+ $ nbdkit partitioning @./partitions.txt
+
+The pathname after the C<@> must contain at least one C</> character
+(this is to avoid compatibility problems with some existing plugins),
+so if the file is the current directory as in the example above, use
+C<@./filename>
+
+There must be one parameter per line.  Lines beginning with C<#> and
+blank lines are ignored.
+
+This only works for C<key=value> plugin & filter parameters (not for
+the plugin name or I<--options>).  You can use multiple C<@PATH>
+parameters.
+
+You or use C<@PATH> recursively in another C<@PATH> file.  The path in
+that case is taken relative to the containing file.
+
+=head2 Shebang scripts
+
+You can use C<#!> to run nbdkit plugins written in most scripting
+languages.  The file should be executable.  For example:
+
+ #!/usr/sbin/nbdkit perl
+ sub open {
+   # etc
+ }
+
+(see L<nbdkit-perl-plugin(3)> for a full example).
+
+=head1 SERVER DEBUG FLAGS
+
+As well as enabling or disabling debugging in the server using
+I<--verbose> you can control extra debugging in the server using the
+S<I<-D nbdkit.*>> flags listed in this section.  Note these flags are
+an internal implementation detail of the server and may be changed or
+removed at any time in the future.
+
+=over 4
+
+=item B<-D nbdkit.backend.controlpath=0>
+
+=item B<-D nbdkit.backend.controlpath=1>
+
+=item B<-D nbdkit.backend.datapath=0>
+
+=item B<-D nbdkit.backend.datapath=1>
+
+These flags control the verbosity of nbdkit backend debugging messages
+(the ones which show every request processed by the server).  The
+default for both settings is C<1> (normal debugging) but you can set
+them to C<0> to suppress these messages.
+
+S<I<-D nbdkit.backend.datapath=0>> is the more useful setting which
+lets you suppress messages about pread, pwrite, zero, trim,
+etc. commands.  When transferring large amounts of data these messages
+are numerous and not usually very interesting.
+
+S<I<-D nbdkit.backend.controlpath=0>> suppresses the non-datapath
+commands (config, open, close, can_write, etc.)
+
+=item B<-D nbdkit.environ=1>
+
+Print nbdkit's environment variables in the debug output at start up.
+This is insecure because environment variables may contain both
+sensitive and user-controlled information, so it should not be used
+routinely.  But it is useful for tracking down problems related to
+environment variables.
+
+=item B<-D nbdkit.tls.log=>N
+
+Enable TLS logging.  C<N> can be in the range 0 (no logging) to 99.
+See L<gnutls_global_set_log_level(3)>.
+
+=item B<-D nbdkit.tls.session=1>
+
+Print additional information about the TLS session, such as the type
+of authentication and encryption, and client certificate information.
+
+=back
+
+=head1 SIGNALS
+
+nbdkit responds to the following signals:
+
+=over 4
+
+=item C<SIGINT>
+
+=item C<SIGQUIT>
+
+=item C<SIGTERM>
+
+The server exits cleanly.
+
+=item C<SIGPIPE>
+
+This signal is ignored.
+
+=back
+
+=head1 ENVIRONMENT VARIABLES
+
+=over 4
+
+=item C<LISTEN_FDNAMES>
+
+=item C<LISTEN_FDS>
+
+=item C<LISTEN_PID>
+
+If present in the environment when nbdkit starts up, these are used
+for L<nbdkit-service(1)/SOCKET ACTIVATION>.
+
+=item C<GLIBC_TUNABLES=glibc.cpu.x86_shstk=off>
+
+Set this environment variable if you see the error below when loading
+a plugin or filter:
+
+ error: dlopen: <plugin.so>: rebuild shared object with SHSTK support enabled
+
+or recompile the plugin/filter with shadow stack support enabled if
+you can.
+
+=back
+
+=head1 SEE ALSO
+
+=head2 Other topics
+
+L<nbdkit-captive(1)> — Run nbdkit under another process and have it
+reliably cleaned up.
+
+L<nbdkit-client(1)> — How to mount NBD filesystems on a client machine.
+
+L<nbdkit-loop(1)> — Use nbdkit with the Linux kernel client to create
+loop devices and loop mounts.
+
+L<nbdkit-probing(1)> — How to probe for nbdkit configuration and plugins.
+
+L<nbdkit-protocol(1)> — Which parts of the NBD protocol nbdkit supports.
+
+L<nbdkit-security(1)> — Lists past security issues in nbdkit.
+
+L<nbdkit-service(1)> — Running nbdkit as a service, and systemd socket
+activation.
+
+L<nbdkit-tls(1)> — Authentication and encryption of NBD connections
+(sometimes incorrectly called "SSL").
+
+L<nbdkit-tracing(3)> — Adding user statically defined tracing (USDT)
+probes to nbdkit.
+
+=head2 Plugins
+
+__PLUGIN_LINKS__.
+
+=head2 Filters
+
+__FILTER_LINKS__.
+
+=head2 For developers
+
+L<nbdkit-plugin(3)>,
+L<nbdkit-filter(3)>.
+
+=head2 Writing plugins in other programming languages
+
+__LANG_PLUGIN_LINKS__.
+
+=head2 Release notes for previous releases of nbdkit
+
+L<nbdkit-release-notes-1.48(1)>,
+L<nbdkit-release-notes-1.46(1)>,
+L<nbdkit-release-notes-1.44(1)>,
+L<nbdkit-release-notes-1.42(1)>,
+L<nbdkit-release-notes-1.40(1)>,
+L<nbdkit-release-notes-1.38(1)>,
+L<nbdkit-release-notes-1.36(1)>,
+L<nbdkit-release-notes-1.34(1)>,
+L<nbdkit-release-notes-1.32(1)>,
+L<nbdkit-release-notes-1.30(1)>,
+L<nbdkit-release-notes-1.28(1)>,
+L<nbdkit-release-notes-1.26(1)>,
+L<nbdkit-release-notes-1.24(1)>,
+L<nbdkit-release-notes-1.22(1)>,
+L<nbdkit-release-notes-1.20(1)>,
+L<nbdkit-release-notes-1.18(1)>,
+L<nbdkit-release-notes-1.16(1)>,
+L<nbdkit-release-notes-1.14(1)>,
+L<nbdkit-release-notes-1.12(1)>,
+L<nbdkit-release-notes-1.10(1)>,
+L<nbdkit-release-notes-1.8(1)>,
+L<nbdkit-release-notes-1.6(1)>,
+L<nbdkit-release-notes-1.4(1)>.
+
+=head2 NBD clients
+
+L<guestfish(1)>,
+L<libnbd(3)>,
+L<nbd-client(1)>,
+L<nbdcopy(1)>,
+L<nbdfuse(1)>,
+L<nbdinfo(1)>,
+L<nbdsh(1)>,
+L<qemu(1)>.
+
+=head2 nbdkit links
+
+L<http://gitlab.com/nbdkit/nbdkit> — Source code.
+
+=head2 Other NBD servers
+
+=over 4
+
+=item L<qemu-nbd(1)>
+
+The L<QEMU project|https://www.qemu.org/> ships with an NBD server
+which can natively open many formats supported by QEMU, especially
+qcow2.
+
+=item L<nbd-server(1)>
+
+The L<original Linux NBD server|https://github.com/NetworkBlockDevice/nbd>.
+
+=back
+
+=head2 Documentation for the NBD protocol
+
+L<https://github.com/NetworkBlockDevice/nbd/blob/master/doc/proto.md>,
+L<https://github.com/NetworkBlockDevice/nbd/blob/master/doc/uri.md>,
+L<https://nbd.sourceforge.io/>.
+
+=head2 Similar protocols
+
+L<https://en.wikipedia.org/wiki/iSCSI>,
+L<https://en.wikipedia.org/wiki/ATA_over_Ethernet>,
+L<https://en.wikipedia.org/wiki/Fibre_Channel_over_Ethernet>.
+
+=head2 Other manual pages of interest
+
+L<gnutls_priority_init(3)>,
+L<qemu-img(1)>,
+L<psktool(1)>,
+L<systemd.socket(5)>.
+
+=head1 AUTHORS
+
+=over 4
+
+=item *
+
+Hilko Bengen
+
+=item *
+
+Daniel P. Berrangé
+
+=item *
+
+Eric Blake
+
+=item *
+
+Brian Carnes
+
+=item *
+
+Shasheen Ediriweera
+
+=item *
+
+Laszlo Ersek
+
+=item *
+
+Carl-Daniel Hailfinger
+
+=item *
+
+Mykola Ivanets
+
+=item *
+
+Richard W.M. Jones
+
+=item *
+
+Martin Kletzander
+
+=item *
+
+Jan Felix Langenbach
+
+=item *
+
+Yann E. MORIN
+
+=item *
+
+Nikolaus Rath
+
+=item *
+
+François Revol
+
+=item *
+
+Nir Soffer
+
+=item *
+
+Alan Somers
+
+=item *
+
+Pino Toscano
+
+=item *
+
+Ming Xie
+
+=back
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

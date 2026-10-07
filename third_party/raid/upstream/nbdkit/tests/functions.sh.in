@@ -1,0 +1,667 @@
+# nbdkit
+# @configure_input@
+# Copyright Red Hat
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are
+# met:
+#
+# * Redistributions of source code must retain the above copyright
+# notice, this list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright
+# notice, this list of conditions and the following disclaimer in the
+# documentation and/or other materials provided with the distribution.
+#
+# * Neither the name of Red Hat nor the names of its contributors may be
+# used to endorse or promote products derived from this software without
+# specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY RED HAT AND CONTRIBUTORS ''AS IS'' AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+# THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+# PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL RED HAT OR
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+# USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+# OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+# SUCH DAMAGE.
+
+# Common functions and variables used by tests.
+#
+# Most test scripts (tests/*.sh files) start with:
+#
+# source ./functions.sh
+# set -e
+# set -x
+# set -u
+
+#----------------------------------------------------------------------
+# Variable declarations.
+
+# Various variables defined by autoconf that test scripts might want
+# to use.
+abs_top_srcdir="@abs_top_srcdir@"
+
+CXX="@CXX@"
+GOLANG="@GOLANG@"
+OCAMLOPT="@OCAMLOPT@"
+OCAML_STD_INCLUDES="@OCAML_STD_INCLUDES@"
+OCAML_PLUGIN_LIBRARIES="@OCAML_PLUGIN_LIBRARIES@"
+PYTHON="@PYTHON@"
+
+SOEXT="@SOEXT@"
+EXEEXT="@EXEEXT@"
+
+CUT="@CUT@"
+QEMU_IMG="@QEMU_IMG@"
+SED="@SED@"
+STAT="@STAT@"
+TRUNCATE="@TRUNCATE@"
+
+# Largest size of disk that nbdkit supports, 2^63-1.
+#
+# Because we might be using a 32 bit shell, express this as a constant
+# rather than using $(()) calculations.
+largest_disk=9223372036854775807
+
+# Largest size of disk that qemu supports.
+#
+# Up to qemu 5.2.0 that was 2^63 - 512 (because of the requirement for
+# a whole number of sectors).  qemu > 5.2.0 reduced this to 2^63 - 2^30
+# https://git.qemu.org/?p=qemu.git;a=commitdiff;h=8b1170012b1de6649c66ac1887f4df7e312abf3b
+#
+# qemu-io has further bugs which limit what we can test.  See this
+# thread:
+# https://www.mail-archive.com/qemu-devel@nongnu.org/msg770572.html
+#
+# Because we might be using a 32 bit shell, express this as a constant
+# rather than using $(()) calculations.
+largest_qemu_disk=9223372035781033984
+
+# The TLS certificates directory.  However this is only valid if you
+# use 'requires_tls_certificates'.
+pkidir="@abs_top_builddir@/tests/pki"
+
+# The TLS PSK keys file.  However this is only valid if you use
+# 'requires_tls_psk'.
+pskfile="@abs_top_builddir@/tests/keys.psk"
+
+#----------------------------------------------------------------------
+# Cleanup primitives; functions to start and stop an nbdkit background
+# process.
+
+# cleanup_fn cmd [args]
+#
+# Run the command ‘cmd [args]’ when the test script exits.  This is
+# run in all cases when the script exits, so is a reliable way to
+# clean up test files, external processes etc.  Cleanup hooks are run
+# in the order of registration.
+#
+# Examples:
+#   cleanup_fn rm -f test.out
+#   cleanup_fn kill $pid
+_cleanup_hook_count=0
+cleanup_fn ()
+{
+    local _hook=_cleanup_hook$((_cleanup_hook_count++))
+    declare -ag $_hook
+    eval $_hook'=("$@")'
+}
+
+_run_cleanup_hooks ()
+{
+    local _status=$? _i
+
+    set +e
+    trap '' INT QUIT TERM EXIT ERR
+    echo $0: run cleanup hooks: exit code $_status
+
+    for (( _i = 0; _i < $_cleanup_hook_count; ++_i )); do
+        eval '"${_cleanup_hook'$_i'[@]}"'
+    done
+
+    exit $_status
+}
+trap _run_cleanup_hooks INT QUIT TERM EXIT ERR
+
+# start_nbdkit -P pidfile args...
+#
+# Run nbdkit with args and wait for it to start up.  If it fails to
+# start up, exit with an error message.  Also a cleanup handler is
+# installed automatically which kills nbdkit on exit.
+start_nbdkit ()
+{
+    local _is_windows _pidfile _i
+
+    # Save whether we are running on Windows.  We have to do this test
+    # here because 'is_windows' under valgrind doesn't always work
+    # when we are running cleanup functions.
+    if is_windows; then _is_windows=1; else _is_windows=; fi
+
+    # -P <pidfile> must be the first two parameters.
+    if [ "$1" != "-P" ]; then
+       echo "$0: start_nbdkit: -P <pidfile> option must be first"
+       exit 1
+    fi
+    _pidfile="$2"
+
+    # Run nbdkit.
+    #
+    # Until Windows supports daemonization we run nbdkit in the
+    # foreground (-f) and background it ourselves.
+    if ! test "$_is_windows"; then nbdkit -v "$@"; else nbdkit -f -v "$@" & fi
+
+    # Wait for the pidfile to appear.
+    for _i in {1..60}; do
+        if test -s "$_pidfile"; then
+            break
+        fi
+        sleep 1
+    done
+    if ! test -s "$_pidfile"; then
+        echo "$0: start_nbdkit: PID file $_pidfile was not created"
+        exit 1
+    fi
+
+    # Kill nbdkit on exit.
+    if ! test "$_is_windows"; then
+        cleanup_fn _kill_nbdkit_unix "$(cat "$_pidfile")"
+    else
+        cleanup_fn _kill_nbdkit_windows "$(cat "$_pidfile")"
+    fi
+}
+
+# _kill_nbdkit_unix pid
+#
+# End the nbdkit process with the given pid.  Exit this script with an
+# error if nbdkit does not gracefully shutdown in a timely manner.
+_kill_nbdkit_unix ()
+{
+    local pid=$1 i
+
+    # Start with SIGTERM, and wait for graceful exit
+    kill $pid
+    for i in {1..60}; do
+        if ! kill -0 $pid 2>/dev/null; then
+            break
+        fi
+        sleep 1
+    done
+    # If nbdkit has not exited, try SIGKILL and fail the test
+    if test $i = 60; then
+        echo "error: nbdkit pid $pid failed to respond to SIGTERM"
+        kill -9 $pid
+        # Append our failure after other cleanups
+        cleanup_fn exit 1
+    fi
+}
+
+# Same as above, for Windows.
+_kill_nbdkit_windows ()
+{
+    wine taskkill /f /pid $1
+}
+
+# Variant of start_nbdkit which always runs nbdkit in the foreground.
+# The one significant use for this is with golang plugins.
+start_nbdkit_foreground ()
+{
+    local _is_windows _pidfile _i
+
+    # Save whether we are running on Windows.  We have to do this test
+    # here because 'is_windows' under valgrind doesn't always work
+    # when we are running cleanup functions.
+    if is_windows; then _is_windows=1; else _is_windows=; fi
+
+    # -P <pidfile> must be the first two parameters.
+    if [ "$1" != "-P" ]; then
+       echo "$0: start_nbdkit: -P <pidfile> option must be first"
+       exit 1
+    fi
+    _pidfile="$2"
+
+    # Run nbdkit in the foreground and background it ourselves.
+    nbdkit -f -v "$@" &
+
+    # Wait for the pidfile to appear.
+    for _i in {1..60}; do
+        if test -s "$_pidfile"; then
+            break
+        fi
+        sleep 1
+    done
+    if ! test -s "$_pidfile"; then
+        echo "$0: start_nbdkit: PID file $_pidfile was not created"
+        exit 1
+    fi
+
+    # Kill nbdkit on exit.
+    if ! test "$_is_windows"; then
+        cleanup_fn _kill_nbdkit_unix "$(cat "$_pidfile")"
+    else
+        cleanup_fn _kill_nbdkit_windows "$(cat "$_pidfile")"
+    fi
+}
+
+#----------------------------------------------------------------------
+# Safely prepend on a colon-separated path variable
+# eg:
+# prepend PATH "$srcdir/foo"
+
+prepend()
+{
+    eval $1="$2\${$1:+:\$$1}"
+}
+
+#----------------------------------------------------------------------
+# Define a variable from a heredoc.
+# eg:
+# define var <<'EOF'
+# ...anything here...
+# EOF
+# https://stackoverflow.com/a/8088167
+
+define()
+{
+    IFS= read -r -d '' ${1} || true
+}
+
+#----------------------------------------------------------------------
+# Test prerequisites.
+#
+# Various 'requires' and related functions that can be used at the top
+# of tests to check whether the test is able to run on this platform,
+# or should be skipped.
+
+# requires program [args]
+#
+# Check that ‘program [args]’ works.  If not, skip the test.
+# For example to check that 'jq' is available, do:
+#
+#   requires jq --version
+requires ()
+{
+    ( "$@" ) </dev/null >/dev/null 2>&1 || {
+        echo "$0: ‘$*’ failed with error code $?"
+        echo "$0: test prerequisite is missing or not working"
+        exit 77
+    }
+}
+
+# Opposite of requires - the test must not succeed.
+requires_not ()
+{
+    if ( "$@" ) </dev/null >/dev/null 2>&1 ; then
+        echo "$0: test prerequisite is missing or not working"
+        exit 77
+    fi
+}
+
+# qemu cannot connect to ::1 if IPv6 is disabled because of the way it
+# uses getaddrinfo.  This checks that the IPv6 loopback address is
+# available and qemu can connect to it, else it skips.
+#
+# See:
+# https://bugzilla.redhat.com/show_bug.cgi?id=808147
+# https://lists.fedoraproject.org/archives/list/devel@lists.fedoraproject.org/thread/SXDLSZ3GKXL6NDAKP4MPJ25IMHKN67X3/
+requires_ipv6_loopback ()
+{
+    requires "$QEMU_IMG" --version
+
+    # This should fail with "Connection refused".  If IPv6 is broken
+    # then it fails with "Address family for hostname not supported"
+    # instead.  It's very unlikely that port 1 is open.
+    if LANG=C "$QEMU_IMG" info "nbd:[::1]:1" |& \
+       grep -sq "Address family for hostname not supported"; then
+        echo "$0: IPv6 loopback is not available, skipping this test"
+        exit 77
+    fi
+}
+
+# Test that /bin/sh is really bash.
+#
+# While we run test-*.sh scripts with explicit bash, nbdkit itself
+# doesn't depend on bash.  When nbdkit runs a script (eg. --run
+# parameter, or nbdkit-sh-plugin), it uses system(3) which uses
+# /bin/sh.  However sometimes we would like to use /bin/bash in
+# scripts that are run from nbdkit, in the test suite.  That's the
+# only place you need to use this test.
+requires_bin_sh_is_bash ()
+{
+    BASH_VERSION=no requires /bin/sh -c 'test "x$BASH_VERSION" != "xno"'
+}
+
+# Test host kernel is Linux and minimum version.
+#
+# It's usually better to test features rather than using this, but
+# there are cases where testing features of the current kernel is too
+# hard.
+requires_linux_kernel_version ()
+{
+    local kver
+    local min="$1"
+
+    # Check that nbdkit was built for Linux.  This can appear to be a
+    # peculiar test, but if we cross-compiled nbdkit for Windows and
+    # are running it under Wine then the host kernel will still be
+    # Linux, but the test will fail anyway.
+    host_os="$(nbdkit --dump-config | grep ^host_os | $CUT -d= -f2)"
+    if [[ ! "$host_os" =~ linux ]]; then
+        echo "$0: binary was built for $host_os (not Linux), skipping test"
+        exit 77
+    fi
+
+    # Test the host kernel is Linux.
+    requires test "$(uname -s)" = "Linux"
+
+    # Test that it's the minimum version.
+    # https://stackoverflow.com/a/24067243
+    requires $CUT --version
+    requires sort -V /dev/null
+    kver=$(uname -r | $CUT -d. -f1-2)
+    requires test "$(printf "$kver\n$min" | sort -V | head -n 1)" = "$min"
+}
+
+# For any test using TLS.
+requires_tls ()
+{
+    # Does the nbdkit binary support TLS?
+    if ! nbdkit --dump-config | grep -sq tls=yes; then
+        echo "$0: nbdkit built without TLS support"
+        exit 77
+    fi
+}
+
+# For tests that need the TLS certificates, use this.
+# Note that $pkidir points to the certificates directory.
+requires_tls_certificates ()
+{
+    requires_tls
+    if [ ! -f "$pkidir/ca-cert.pem" ]; then
+        echo "$0: PKI files were not created by the test harness"
+        exit 77
+    fi
+}
+
+# For tests that need the TLS PSK keys file.
+# Note that $pskfile points to the file.
+requires_tls_psk ()
+{
+    requires_tls
+    if [ ! -s "$pskfile" ]; then
+        echo "$0: PSK keys file was not created by the test harness"
+        exit 77
+    fi
+}
+
+# Test if nbdsh was compiled with support for URIs.
+requires_nbdsh_uri ()
+{
+    requires nbdsh -c 'exit(not h.supports_uri())'
+}
+
+# Test if nbdinfo is available
+requires_nbdinfo ()
+{
+    requires nbdinfo --version
+    # Our most common use of nbdinfo is with URIs, so require that too
+    requires_nbdsh_uri
+}
+
+# Test if nbdcopy is available
+requires_nbdcopy ()
+{
+    requires nbdcopy --version
+    # Our most common use of nbdcopy is with URIs, so require that too
+    requires_nbdsh_uri
+}
+
+# Test if nbdcopy supports null: pseudo-target (added 1.8, not in RHEL 8)
+requires_nbdcopy_null_output ()
+{
+    requires_nbdcopy
+    requires_libnbd_version 1.8
+}
+
+# Test if a plugin has been built locally.
+requires_plugin ()
+{
+    # See nbdkit-probing(1).
+    requires nbdkit "$1" --version
+}
+
+# Test if a filter has been built locally.
+requires_filter ()
+{
+    # See nbdkit-probing(1).
+    requires nbdkit --filter="$1" null --version
+}
+
+# Return true if nbdkit was built (or cross-compiled) for Windows.
+is_windows ()
+{
+    # Test that nbdkit is generally working on this platform, in
+    # case Wine is broken again.
+    if ! nbdkit --dump-config; then
+        echo "$0: something is broken about nbdkit on this platform" >&2
+        exit 1
+    fi
+
+    host_os="$(nbdkit --dump-config | grep ^host_os | $CUT -d= -f2)"
+    [[ "$host_os" =~ mingw|msys ]]
+}
+
+# The Windows port does not yet support --run (captive nbdkit).  Add a
+# uniquely named requires test for this.
+requires_run ()
+{
+    if is_windows; then
+        echo "$0: Windows port does not support --run (captive nbdkit)"
+        exit 77
+    fi
+}
+
+# The Windows port does not yet support -s (single mode).  Add a
+# uniquely named requires test for this.
+requires_single_mode ()
+{
+    if is_windows; then
+        echo "$0: Windows port does not support -s (single mode)"
+        exit 77
+    fi
+}
+
+# Check for minimum version of libnbd (also nbdsh, nbdinfo, nbdcopy etc.)
+# eg: requires_libnbd_version 1.6
+requires_libnbd_version ()
+{
+    requires nbdsh --version
+    requires $PYTHON --version
+    requires $PYTHON -c 'from packaging import version'
+    export v="$1"
+    if ! nbdsh -c '
+import os
+import sys
+from packaging import version
+v=os.getenv("v")
+vv=h.get_version()
+if version.parse(vv) < version.parse(v):
+    print("libnbd is too old to run this test: %s < %s" % (vv, v))
+    sys.exit(1)
+'; then exit 77; fi
+}
+
+# Tests may fail when the test suite is run as root.  While it's a bad
+# idea to run the whole test suite as root (except for the specific
+# "make check-root" tests), people do it anyway so for tests that we
+# know cannot work if run as root we can use this to skip.
+requires_non_root ()
+{
+    if test $(id -u) -eq 0; then
+        echo "$0: test skipped because running as root"
+        echo "$0: tip: don't run the general test suite as root"
+        exit 77
+    fi
+}
+
+# Tests that run under check-root should use this.
+requires_root ()
+{
+    if test $(id -u) -ne 0; then
+        echo "$0: test skipped because not running as root"
+        echo "$0: use ‘sudo make check-root’ to run these tests"
+        exit 77
+    fi
+}
+
+# Tests that use the vsock interface will fail if vsock is not
+# supported.  On Linux you have to load the kernel module
+# vsock_loopback.  See also
+# https://bugzilla.redhat.com/show_bug.cgi?id=2069558
+requires_vsock_support ()
+{
+    if ! grep -q ^AF_VSOCK /proc/net/protocols ||
+       ! lsmod | grep -q ^vsock_loopback; then
+        echo "$0: test skipped because AF_VSOCK is not supported."
+        exit 77
+    fi
+}
+
+# requires_caps
+#
+# Check for linux capabilities.  Parameters are in the form of "cap_name", e.g.
+#   requires_caps cap_net_admin cap_chown
+#
+# This should be coupled with requires_root as it will not fail when capsh
+# utility from libcapng is not installed or the capabilities are not found in
+# /proc/<pid>/status (to future-proof this against non-Linux platforms).
+requires_caps ()
+{
+    test -r /proc/$$/status || return 0
+    type capsh 2>/dev/null >&2 || return 0
+
+    local cap_eff
+    local cap_str
+
+    cap_eff="$($SED -n 's/CapEff:\s*\([^0-9a-fA-F]*\)/\1/p' /proc/$$/status)"
+    test -z "$cap_eff" && return 0
+
+    cap_str=$(capsh --decode="$cap_eff")
+    while test "$#" -gt 0; do
+        if [[ ! "$cap_str" =~ [,=]$1(,|$) ]]; then
+            echo "$0: test skipped because of missing capability: $1"
+            exit 77
+        fi
+        shift
+    done
+}
+
+# Test the curl plugin supports a particular protocol.  Some versions
+# of curl are compiled "minimally", leaving out protocols that you
+# might expect to be present (https://lwn.net/Articles/887313/).
+requires_curl_protocol ()
+{
+    name="$1"
+
+    requires_plugin curl
+    if ! nbdkit curl --dump-plugin | grep "curl_protocol_$name=yes"; then
+        echo "$0: skipping test: curl does not support protocol \"$name\""
+        exit 77
+    fi
+}
+
+# skip_if_valgrind ["reason"]
+#
+# Skip test under 'make check-valgrind'.  An optional reason can be given.
+skip_if_valgrind ()
+{
+    if [ "${NBDKIT_VALGRIND:-0}" = "1" ]; then
+        echo "$0: skipping test under valgrind $@"
+        exit 77
+    fi
+}
+
+# Some tests assume that common/allocators/sparse.c: SPARSE_PAGE is
+# defined as 32768.  If we ever changed that definition the test would
+# break.  Fail noisily instead.  Note this is *not* a skip.
+error_if_sparse_page_not_32768 ()
+{
+    requires nbdsh -c 'print(h.get_block_size)'
+    nbdkit memory 0 allocator=sparse --run '
+        nbdsh -c "h.connect_unix(\"$unixsocket\")" \
+              -c "assert h.get_block_size(nbd.SIZE_PREFERRED) == 32768"
+    '
+}
+
+#----------------------------------------------------------------------
+# Miscellaneous functions.
+
+# foreach_plugin f [args]
+#
+# For each plugin that was built, run the function or command f with
+# the plugin name as the first argument, optionally followed by the
+# remaining args.
+foreach_plugin ()
+{
+    local f d p
+
+    f="$1"
+    shift
+
+    for p in @plugins@; do
+        # Was the plugin built?
+        d="@top_builddir@/plugins/$p"
+        if [ -f "$d/.libs/nbdkit-$p-plugin.$SOEXT" ] ||
+           [ -f "$d/nbdkit-$p-plugin" ]; then
+            # Yes so run the test.
+            "$f" "$p" "$@"
+        fi
+    done
+}
+
+# foreach_filter f [args]
+#
+# For each filter that was built, run the function or command f with
+# the filter name as the first argument, optionally followed by the
+# remaining args.
+foreach_filter ()
+{
+    local f d fi
+
+    f="$1"
+    shift
+
+    for fi in @filters@; do
+        # Was the filter built?
+        d="@top_builddir@/filters/$fi"
+        if [ -f "$d/.libs/nbdkit-$fi-filter.$SOEXT" ]; then
+            # Yes so run the test.
+            "$f" "$fi" "$@"
+        fi
+    done
+}
+
+# pick_unused_port
+#
+# Picks and returns an "unused" port, setting the global variable
+# $port.
+#
+# This is inherently racy so we only use it where it's absolutely
+# necessary.
+pick_unused_port ()
+{
+    requires ss --version
+
+    # Start at a random port to make it less likely that two parallel
+    # tests will conflict.
+    port=$(( 50000 + (RANDOM%15000) ))
+    while ss -ltn | grep -sqE ":$port\b"; do
+        ((port++))
+        if [ $port -eq 65000 ]; then port=50000; fi
+    done
+    echo picked unused port $port
+}

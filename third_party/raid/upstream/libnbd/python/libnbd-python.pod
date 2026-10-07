@@ -1,0 +1,97 @@
+=head1 NAME
+
+libnbd-python - how to use libnbd from Python
+
+=head1 SYNOPSIS
+
+ #!/usr/bin/python3
+ import nbd
+ h = nbd.NBD()
+ h.connect_uri("nbd://localhost")
+ sector = h.pread(512, 0)
+
+=head1 DESCRIPTION
+
+This manual page documents how to use libnbd to access Network Block
+Device (NBD) servers from the Python programming language.  The Python
+bindings work very similarly to the C bindings so you should start by
+reading L<libnbd(3)>.
+
+There is a convenient interactive command line shell called
+L<nbdsh(1)> which makes it easier to play with the Python API.
+
+Detailed documentation of the Python API is provided in the Python
+code.  To read it, open L<nbdsh(1)> and type:
+
+ help(nbd)
+
+There are some example Python scripts in the libnbd source repository
+under F<python/examples> or see
+L<https://gitlab.com/nbdkit/libnbd/tree/master/python/examples>.
+
+=head1 HANDLES
+
+Create a libnbd handle by calling C<nbd.NBD()>.
+
+You can either close the handle explicitly with C<h.close()> (added in
+S<libnbd 1.16>), or it will be closed automatically when it goes out
+of scope.
+
+Calling any method on a handle that has been closed will raise
+C<nbd.ClosedHandle>.
+
+=head1 ERRORS
+
+Errors from API calls are turned into the Python C<nbd.Error>
+exception (derived from C<Exception>).  The C<nbd.Error> object has
+three properties of interest:
+
+=over 4
+
+=item C<ex.string>
+
+The full error message as a printable string.
+
+Example: C<"nbd_pread: invalid state: START: the handle must be
+connected with the server: Transport endpoint is not connected">
+
+=item C<ex.errnum>
+
+The errno object (from the Python C<errno> module), I<if> this is
+available.  Not all errors that are raised will have an errno.
+
+Example: C<errno.EINVAL>
+
+For common error codes see L<libnbd(3)/Errno>.
+
+=item C<ex.errno>
+
+The errno as a string (or C<None> if this is not available).
+
+Example: C<"ENOTCONN">
+
+=back
+
+=head1 BUFFERS
+
+Synchronous calls (eg. C<h.pwrite>, C<h.pread>) take and return normal
+Python C<bytearray>s.
+
+Asynchronous calls (eg. C<h.aio_pwrite>, C<h.aio_pread>) use the
+C<nbd.Buffer> type, which is a persistent, modifiable, zero-copy
+buffer.  The buffer also supports indexing and slicing.  These are
+more complicated to use, and in particular the caller must ensure the
+buffer remains valid while the asynchronous operation is taking place.
+
+=head1 SEE ALSO
+
+L<libnbd(3)>,
+L<nbdsh(1)>.
+
+=head1 AUTHORS
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

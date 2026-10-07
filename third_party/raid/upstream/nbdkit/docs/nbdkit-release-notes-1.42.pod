@@ -1,0 +1,137 @@
+=head1 NAME
+
+nbdkit-release-notes-1.42 - release notes for nbdkit 1.42
+
+=head1 DESCRIPTION
+
+These are the release notes for nbdkit stable release 1.42.
+This describes the major changes since 1.40.
+
+nbdkit 1.42.0 was released on B<11 February 2025>.
+
+=head2 Security
+
+L<nbdkit-ip-filter(1)> has been fixed to close an information leak.
+In an unusual configuration of the filter, it could leak the list of
+exports to clients that are supposed to be blocked.
+
+All past security issues and information about how to report new ones
+can be found in L<nbdkit-security(1)>.
+
+=head2 Plugins
+
+L<nbdkit-ondemand-plugin(1)> now allows more characters to appear in
+filenames.  Colons are now allowed, so filenames containing MAC
+addresses can be used, which is useful when using NBD in pre-boot
+environments.  Also add the C<share=true> option to allow sharing.
+(Thanks Markus Hartung)
+
+L<nbdkit-vddk-plugin(1)> now prints the default list of transports in
+I<--dump-plugin> output.  Also this plugin now handles partial chunks
+correctly when reading extents for disks with a non-aligned size
+(thanks Ming Xie).
+
+=head2 Filters
+
+New L<nbdkit-time-limit-filter(1)> can be used to specify the maximum
+time limit for a connection.  (See also the new I<--timeout> option
+below).
+
+New L<nbdkit-lzip-filter(1)> implements random access to
+lzip-compressed files (Jan Felix Langenbach).
+
+=head2 Language bindings
+
+Multiple updates to L<nbdkit-rust-plugin(3)> to keep up to date with
+latest changes in the Rust language (Alan Somers).
+
+Fix crash that happened in L<nbdkit-ocaml-plugin(3)> plugins with
+OCaml E<ge> 5 (thanks Guillaume Munch-Maccagnoni, Gabriel Scherer).
+Also update the ocamldoc documentation.  Fix more OCaml 5 deprecation
+warnings.
+
+Add support for Tcl 9.0 to L<nbdkit-tcl-plugin(3)>.
+
+=head2 Server
+
+nbdkit will now try to send the last plugin error message over the NBD
+protocol to the client, to provide additional information.  This
+requires an NBD client which supports this, such as S<qemu E<ge> 2.12>
+or S<libnbd E<ge> 1.22>.
+
+New nbdkit I<--timeout> flag can be used as a security measure to
+ensure that clients don't consume resources by opening lots of
+connections and then not negotiating (or negotiating slowly) the full
+NBD session.
+
+New nbdkit I<--keepalive> option which enables TCP-level keepalives.
+This is useful for detecting dead clients.
+
+nbdkit I<--dump-config> output now includes C<timeout_option=yes|no>
+and C<vsock_option=yes|no> reflecting whether the I<--timeout> and
+I<--vsock> options are available.
+
+=begin comment
+
+=head2 API
+
+=end comment
+
+=head2 Bug fixes
+
+Detect and warn about certain conditions which can cause the
+closed-source VDDK library to crash the server (Matthew Arnold, Nijin
+Ashok, Eric Blake).
+
+=begin comment
+
+=head2 Documentation
+
+=end comment
+
+=head2 Tests
+
+Plugins from nbdkit 1.38 have been added to the F<tests/old-plugins>
+directory.
+
+=head2 Build
+
+nbdkit should be buildable again on macOS.
+
+Add support for GCC 15.
+
+=begin comment
+
+=head2 Internals
+
+=end comment
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>.
+
+=head1 AUTHORS
+
+Authors of nbdkit 1.42:
+
+=begin comment
+
+git shortlog -s v1.40.0..
+
+=end comment
+
+=over 4
+
+=item Alan Somers
+
+=item Eric Blake
+
+=item Jan Felix Langenbach
+
+=item Richard W.M. Jones
+
+=back
+
+=head1 COPYRIGHT
+
+Copyright Red Hat

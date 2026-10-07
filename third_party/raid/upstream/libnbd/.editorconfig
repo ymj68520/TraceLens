@@ -1,0 +1,30 @@
+# https://editorconfig.org/
+
+root = true
+
+[*]
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+charset = utf-8
+
+[*.pod]
+# Indented code samples in pod require trailing whitespace
+trim_trailing_whitespace = false
+
+[{*.py,*.py.in,*.pl,*.pl.in,*.sh,*.sh.in}]
+indent_size = 4
+
+[{*.go,go.mod,go.sum}]
+# Match gofmt style
+indent_style = tab
+indent_size = 4
+
+[*.rs]
+# Match rustfmt style
+indent_size = 4
+
+[{Makefile,Makefile.in,Makefile.am,*.mk}]
+# Make requires tabs.
+indent_style = tab

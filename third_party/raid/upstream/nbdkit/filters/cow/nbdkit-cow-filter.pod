@@ -1,0 +1,192 @@
+=head1 NAME
+
+nbdkit-cow-filter - nbdkit copy-on-write (COW) filter
+
+=head1 SYNOPSIS
+
+ nbdkit --filter=cow plugin [plugin-args...]
+                            [cow-block-size=N]
+                            [cow-on-cache=false|true]
+                            [cow-on-read=false|true|/PATH]
+
+=head1 DESCRIPTION
+
+C<nbdkit-cow-filter> is a filter that makes a temporary writable copy
+on top of a plugin.  It can also be used to enable writes for plugins
+which are read-only.
+
+The underlying plugin is opened read-only.  This filter does not pass
+any writes or write-like operations (like trim and zero) through to
+the underlying plugin.
+
+B<Note that anything written is thrown away as soon as nbdkit exits.>
+If you want to save changes, either copy out the whole disk using a
+tool like L<nbdcopy(1)>, or use the method described in L</NOTES>
+below to create a diff.
+
+Since nbdkit 1.44, this filter is safe to use with plugins that serve
+multiple exports (such as L<nbdkit-file-plugin(1)> with the C<dir>
+parameter).  A separate copy-on-write overlay is created for each
+export.  For earlier versions this did not work correctly.
+
+Limitations of the filter include:
+
+=over 4
+
+=item *
+
+The underlying file/device must not be resized.
+
+=item *
+
+The underlying plugin must behave “normally”, meaning that it must
+serve the same data to each client, for each export.
+
+=back
+
+=head1 PARAMETERS
+
+=over 4
+
+=item B<cow-block-size=>N
+
+Set the block size used by the filter.  This has to be a power of two
+and the minimum block size is 4K.  The maximum block size depends on
+the plugin, but a block size larger than a few megabytes is not
+usually a good idea.
+
+The default is 64K.
+
+=item B<cow-on-cache=false>
+
+Do not save data from cache (prefetch) requests in the overlay.  This
+leaves the overlay as small as possible.  This is the default.
+
+=item B<cow-on-cache=true>
+
+When the client issues a cache (prefetch) request, preemptively save
+the data from the plugin into the overlay.
+
+=item B<cow-on-read=false>
+
+Do not save data from read requests in the overlay.  This leaves the
+overlay as small as possible.  This is the default.
+
+=item B<cow-on-read=true>
+
+When the client issues a read request, copy the data into the overlay
+so that the same data can be served more quickly later.
+
+=item B<cow-on-read=/PATH>
+
+When F</PATH> (which must be an absolute path) exists, this behaves
+like C<cow-on-read=true>, and when it does not exist like
+C<cow-on-read=false>.  This allows you to control the C<cow-on-read>
+behaviour while nbdkit is running.
+
+=back
+
+=head1 EXAMPLES
+
+=head2 nbdkit --filter=cow file disk.img
+
+Serve the file F<disk.img>, allowing writes, but do not save any
+changes into the file.
+
+=head2 nbdkit --filter=cow --filter=xz file disk.xz cow-on-read=true
+
+L<nbdkit-xz-filter(1)> only supports read access, but you can provide
+temporary write access by using the command above.  Because xz
+decompression is slow, using C<cow-on-read=true> causes reads to be
+cached as well as writes, improving performance at the expense of
+using more temporary space.  Note that writes are thrown away when
+nbdkit exits and do not get saved into the file.
+
+=head1 NOTES
+
+=head2 Creating a diff with qemu-img
+
+Although nbdkit-cow-filter itself cannot save the differences, it is
+possible to do this using an obscure feature of L<qemu-img(1)>.
+B<nbdkit must remain continuously running during the whole operation,
+otherwise all changes will be lost>.
+
+Run nbdkit:
+
+ nbdkit --filter=cow file disk.img
+
+and then connect with a client and make whatever changes you need.
+At the end, disconnect the client.
+
+Run these C<qemu-img> commands to construct a qcow2 file containing
+the differences:
+
+ qemu-img create -F raw -b nbd:localhost -f qcow2 diff.qcow2
+ qemu-img rebase -F raw -b disk.img -f qcow2 diff.qcow2
+
+F<diff.qcow2> now contains the differences between the base
+(F<disk.img>) and the changes stored in nbdkit-cow-filter.  C<nbdkit>
+can now be killed.
+
+=head2 Compared to nbd-server -c option
+
+All connections to the nbdkit instance see the same view of the disk.
+This is different from L<nbd-server(1)> I<-c> option where each
+connection sees its own copy-on-write overlay and simply disconnecting
+the client throws that away.  It also allows us to create diffs as
+above.
+
+=head2 Client authentication is advisable
+
+When using this filter it is advisable to authenticate, filter, or use
+socket permissions, so only trusted clients can connect (see
+L<nbdkit-tls(1)>, L<nbdkit-ip-filter(1)>).  Clients could abuse this
+filter to allocate fairly arbitrary amounts of storage and RAM.
+
+=head1 ENVIRONMENT VARIABLES
+
+=over 4
+
+=item C<TMPDIR>
+
+The copy-on-write changes are stored in a temporary file located in
+F</var/tmp> by default.  You can override this location by setting the
+C<TMPDIR> environment variable before starting nbdkit.
+
+=back
+
+=head1 FILES
+
+=over 4
+
+=item F<$filterdir/nbdkit-cow-filter.so>
+
+The filter.
+
+Use C<nbdkit --dump-config> to find the location of C<$filterdir>.
+
+=back
+
+=head1 VERSION
+
+C<nbdkit-cow-filter> first appeared in nbdkit 1.2.
+
+=head1 SEE ALSO
+
+L<nbdkit(1)>,
+L<nbdkit-file-plugin(1)>,
+L<nbdkit-cache-filter(1)>,
+L<nbdkit-xz-filter(1)>,
+L<nbdkit-filter(3)>,
+L<nbdcopy(1)>,
+L<qemu-img(1)>.
+
+=head1 AUTHORS
+
+Eric Blake
+
+Richard W.M. Jones
+
+=head1 COPYRIGHT
+
+Copyright Red Hat
