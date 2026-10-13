@@ -798,6 +798,10 @@ def _execute_with_wiring(
 
             return _run()
 
+        from httpserver.services.investigation.agent_failure_diagnostics import (
+            failure_diagnostics_sink as failure_diagnostics_sink_from_settings,
+        )
+
         orchestrator = AgentOrchestrator(
             alias_backend,
             supervisor=supervisor,
@@ -812,6 +816,11 @@ def _execute_with_wiring(
             # trusted binding contract (gates unchanged).
             supervisor_contract_version=(
                 getattr(settings, "agent_supervisor_contract_version", "v1")
+            ),
+            # RCA-1.3 / RCA-2A.2: benchmark path mirrors the ServiceManager
+            # diagnostics wiring (default off; env/settings opt-in)
+            failure_diagnostics_sink=(
+                failure_diagnostics_sink_from_settings(settings)
             ),
         )
         await orchestrator.initialize()
