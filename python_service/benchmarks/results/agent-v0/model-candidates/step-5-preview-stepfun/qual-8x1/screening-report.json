@@ -1,0 +1,176 @@
+{
+  "artifact_version": "StepFunStep5Preview8x1ScreeningReportV1",
+  "candidate_id": "step-5-preview@stepfun",
+  "created_at": "2026-10-13T10:43:26+00:00",
+  "candidate_config_hash": "f24130f54ae852778a5ba905a1f0b27b427b79f8103109362fe09e4cd355b0fe",
+  "results_root": "benchmarks/results/agent-v0/model-candidates/step-5-preview-stepfun/qual-8x1",
+  "scheduled_runs": 8,
+  "terminal_runs": 2,
+  "failed_runs": [
+    {
+      "case_id": "t1-fraud-script-usb",
+      "repeat": "repeat0",
+      "failure_layer": "RUNTIME",
+      "reason": "Request timed out.",
+      "classification": "RUNTIME_FAILURE_UNATTRIBUTED"
+    },
+    {
+      "case_id": "t2-cross-source-correlation",
+      "repeat": "repeat0",
+      "failure_layer": "RUNTIME",
+      "reason": "Exceeded maximum output retries (1)",
+      "classification": "MODEL_OUTPUT_SCHEMA_FAILURE"
+    },
+    {
+      "case_id": "t2-misleading-note",
+      "repeat": "repeat0",
+      "failure_layer": "RUNTIME",
+      "reason": "Request timed out.",
+      "classification": "RUNTIME_FAILURE_UNATTRIBUTED"
+    },
+    {
+      "case_id": "t2-no-evidence",
+      "repeat": "repeat0",
+      "failure_layer": "RUNTIME",
+      "reason": "Request timed out.",
+      "classification": "RUNTIME_FAILURE_UNATTRIBUTED"
+    },
+    {
+      "case_id": "t2-report-citation",
+      "repeat": "repeat0",
+      "failure_layer": "RUNTIME",
+      "reason": "Request timed out.",
+      "classification": "RUNTIME_FAILURE_UNATTRIBUTED"
+    },
+    {
+      "case_id": "t2-temporal-trap",
+      "repeat": "repeat0",
+      "failure_layer": "RUNTIME",
+      "reason": "Request timed out.",
+      "classification": "RUNTIME_FAILURE_UNATTRIBUTED"
+    }
+  ],
+  "capacity_preflight": "capacity-preflight.json (CAPACITY_PREFLIGHT_PASS 3/3, pre-series, §5: not part of the measurement)",
+  "routing_identity": {
+    "requested_model": "step-5-preview",
+    "runs_with_identity_telemetry": 8,
+    "identity_records": 88,
+    "mismatch": false,
+    "returned_models": [
+      "step-5-preview"
+    ],
+    "upstream_providers": [
+      "None"
+    ]
+  },
+  "provider_failures": {
+    "provider_quota_rate_limited": 0,
+    "delegation_failure_code_histogram": {
+      "agent_output_invalid": 1
+    },
+    "note": "provider classes never enter schema/semantic numerators (§10); this series contains zero 429/quota events"
+  },
+  "hydration": {
+    "RunsWithHydration": 8,
+    "HydratedEvidenceCount": 27,
+    "LazyReacquireCount": 27,
+    "LocatorHitCount": 0,
+    "HydrationUnavailableCount": 0,
+    "IntegrityFailure": 0,
+    "CONTENT_NOT_PERSISTED_LEGACY_adopted": 0
+  },
+  "p_h_s_g": {
+    "P_plan_duplicate": 0,
+    "H_handle_unknown": 0,
+    "S_output_schema": 2,
+    "G_grounding": 0,
+    "counting_rule": "P/H/G from trajectory_digest rejections[].violation_codes keywords; S = non-quota delegation failures + run-level output-retry failures (§10)"
+  },
+  "question_terminalization": {
+    "terminalized": 1,
+    "total": 8,
+    "metric": "charter required question q-1 left the open set {open, in_progress} (frozen §15 metric); failed runs cannot terminalize",
+    "non_terminalized": [
+      {
+        "case_id": "t2-verification-temptation",
+        "repeat": "repeat0",
+        "charter_status": "open",
+        "attribution": "undetermined (terminal snapshot, no provider/schema failure recorded)"
+      },
+      {
+        "case_id": "t1-fraud-script-usb",
+        "repeat": "repeat0",
+        "charter_status": null,
+        "attribution": "M7 (run-level MODEL_OUTPUT_SCHEMA_FAILURE: Request timed out.)"
+      },
+      {
+        "case_id": "t2-cross-source-correlation",
+        "repeat": "repeat0",
+        "charter_status": null,
+        "attribution": "M7 (run-level MODEL_OUTPUT_SCHEMA_FAILURE: Exceeded maximum output retries (1))"
+      },
+      {
+        "case_id": "t2-misleading-note",
+        "repeat": "repeat0",
+        "charter_status": null,
+        "attribution": "M7 (run-level MODEL_OUTPUT_SCHEMA_FAILURE: Request timed out.)"
+      },
+      {
+        "case_id": "t2-no-evidence",
+        "repeat": "repeat0",
+        "charter_status": null,
+        "attribution": "M7 (run-level MODEL_OUTPUT_SCHEMA_FAILURE: Request timed out.)"
+      },
+      {
+        "case_id": "t2-report-citation",
+        "repeat": "repeat0",
+        "charter_status": null,
+        "attribution": "M7 (run-level MODEL_OUTPUT_SCHEMA_FAILURE: Request timed out.)"
+      },
+      {
+        "case_id": "t2-temporal-trap",
+        "repeat": "repeat0",
+        "charter_status": null,
+        "attribution": "M7 (run-level MODEL_OUTPUT_SCHEMA_FAILURE: Request timed out.)"
+      }
+    ]
+  },
+  "coverage_statuses": {
+    "covered": 2,
+    "not_started": 1
+  },
+  "case_outcome_v2": {
+    "incomplete": 2
+  },
+  "negative_gates": {
+    "failures": [],
+    "clean": true
+  },
+  "specialist_schema_reliability": {
+    "delegation_axis_schema_failures": 1,
+    "delegation_attempts": 2,
+    "run_axis_output_failures": 1,
+    "run_axis_rate": 0.125,
+    "frozen_ceiling": 0.5,
+    "verdict": "within ceiling"
+  },
+  "supervisor_reliability": {
+    "PLAN_failures": 0,
+    "INTEGRATE_failures": 0
+  },
+  "token_usage": {
+    "input": 128280,
+    "output": 24873,
+    "requests": 17
+  },
+  "wall_ms_total": 524679,
+  "evaluate_only_reproduction": true,
+  "runtime_unchanged": true,
+  "prompt_unchanged": true,
+  "acceptance_profile_unchanged": true,
+  "holdouts_untouched": true,
+  "gen5": "NOT CREATED",
+  "disposition": "READY_FOR_8X3",
+  "reason": "screening clean: gates 2/2 terminal runs, run-level output failures 1/8, provider failures 0, terminalization 1/8 — 8x3 awaits explicit authorization (§22)",
+  "next_gate": "8x3 ONLY on explicit user authorization (§22: STOP now)"
+}

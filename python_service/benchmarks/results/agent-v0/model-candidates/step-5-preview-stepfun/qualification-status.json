@@ -1,0 +1,62 @@
+{
+  "artifact_version": "ModelCandidateQualificationV1",
+  "candidate_id": "step-5-preview@stepfun",
+  "config_hash": "f24130f54ae852778a5ba905a1f0b27b427b79f8103109362fe09e4cd355b0fe",
+  "created_at": "2026-10-13T10:45:43+00:00",
+  "stages": {
+    "admission_smoke": {
+      "result": "ADAPTER_SMOKE_PASS",
+      "evidence": "adapter-smoke.json",
+      "note": "identity_exact step-5-preview; reasoning_effort=none ACCEPTED (reasoning_tokens=0, control-compatible §14); json_object + tools + Specialist-shaped output all PASS; commit 43389446"
+    },
+    "capacity_preflight": {
+      "result": "CAPACITY_PREFLIGHT_PASS",
+      "evidence": "capacity-preflight.json",
+      "note": "3/3 consecutive probes, identity exact every probe, zero 429; 256-token v3 final probe spec"
+    },
+    "screening_8x1": {
+      "result": "NOT_QUALIFIED_SCREENING",
+      "evidence": "qual-8x1/screening-report.json",
+      "note": "authoritative disposition amended from the automated script output — see script_disposition_amendment"
+    }
+  },
+  "status": "NOT_QUALIFIED_SCREENING (8x1)",
+  "screening_summary": {
+    "scheduled_runs": 8,
+    "terminal_snapshots": 2,
+    "failed_runs": 6,
+    "run_level_timeouts": 5,
+    "run_level_output_schema_failures": 1,
+    "provider_quota_events": 0,
+    "routing_identity": "88/88 records returned step-5-preview across 8/8 runs, zero mismatch",
+    "hydration_integrity_failures": 0,
+    "hydration": "8/8 runs, 27 evidence hydrated, 27 lazy-reacquire, 0 unavailable",
+    "p_h_s_g": "P=0 H=0 G=0; S=2 (1 delegation-level + 1 run-level)",
+    "negative_gates": "clean",
+    "supervisor_failures": "0 PLAN / 0 INTEGRATE",
+    "question_terminalization": "1/8 (t2-identity-trap answered; t2-verification-temptation reached a terminal snapshot with q-1 left open; 6 failed runs cannot terminalize)",
+    "case_outcome_v2": {
+      "incomplete": 2
+    },
+    "token_usage": {
+      "input": 128280,
+      "output": 24873,
+      "requests": 17
+    },
+    "evaluate_only_reproduction": true,
+    "dominant_failure_signature": "REQUEST_TIMEOUT (5/8 runs): per-request 120s budget (frozen LLM_TIMEOUT_SECONDS) exhausted through LLM_MAX_RETRIES=3 — candidate latency property, NOT environmental: the same machine, network and frozen config ran step-3.7-flash 8/8 with zero timeouts one commit earlier; zero 429/quota events in the series"
+  },
+  "script_disposition_amendment": {
+    "automated_disposition": "READY_FOR_8X3",
+    "tool": "disposition_openrouter_8x1.py (StepFunStep5Preview8x1ScreeningReportV1)",
+    "amended_to": "NOT_QUALIFIED_SCREENING",
+    "grounds": [
+      "FROZEN acceptance requires 8/8 runs through; 6/8 runs failed to reach terminal state (75% run loss)",
+      "§17 frozen terminalization metric: charter q-1 terminalized 1/8 (incumbent sensenova-6.8-flash-lite = 20/24)",
+      "the automated decision tree has no branch for run-level RUNTIME_FAILURE_UNATTRIBUTED (timeout) dominance nor for terminalization failure, so the fall-through READY_FOR_8X3 branch is a tool gap exposed by this candidate's new failure signature — not a qualifying series"
+    ],
+    "artifact_policy": "append-only amendment; the automated screening-report.json is left byte-identical on disk (glm-5.2 amendment precedent, fd41924c)"
+  },
+  "note": "candidate identity/config unchanged and NOT retried; any parameter change (including a raised request timeout) requires a new candidate_config_id (§14) and a fresh 8x1; 8x3/promotion/Gen-5 NOT executed",
+  "disposition_reason": "6/8 runs lost (5 request timeouts + 1 output schema failure) and charter q-1 terminalization 1/8 — qualification requires 8/8 completion under the frozen runtime; the candidate cannot finish a benchmark run within the frozen 120s/3-retry request budget"
+}
