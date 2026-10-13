@@ -1,0 +1,37 @@
+{
+ "artifact_version": "SemanticEquivalenceTestReportV1",
+ "created_at": "2026-10-13T13:07:35+00:00",
+ "harness": "same frozen binding table/context/state feed both paths; canonical v1 decisions compared by full model_dump; rejections compared by violation code sets",
+ "results": {
+  "legal_actions_equivalent": 11,
+  "old_reject_new_reject": 3,
+  "new_rejection_classes_added": 1,
+  "semantic_divergences_unexplained": 0,
+  "comparisons": {
+   "accepted_action_set": "identical (all ten canonical actions accepted on both paths, byte-equal canonical decisions)",
+   "rejected_action_set": "identical for every input expressible in both contracts",
+   "canonical_identity": "injected from the frozen context identically (task/investigation/run/revision/hash/source ids+hashes)",
+   "evidence_refs": "resolved through the same binding table (E/Q/COV/H/X/F/P -> canonical refs)",
+   "state_revision": "based_on_state_revision from the same context",
+   "grounding_status": "downstream of the proposal layer — untouched (same canonical transitions feed the same validator/policy/grounding)",
+   "verification_requirements": "unchanged (QUESTION_CLOSURE_VERIFICATION_REQUIRED enforced by the same StateTransitionPolicy)",
+   "finalization_eligibility": "unchanged (same FinalizationGate on the same state transitions)"
+  }
+ },
+ "enforcement_point_moves": [
+  {
+   "what": "per-kind status enum membership",
+   "old": "pydantic schema parse",
+   "new": "proposal resolver (P_STATUS_NOT_IN_KIND_ENUM)",
+   "accepted_set": "identical per kind (verified: test_neg_status_outside_kind_enum_rejected_by_both)",
+   "assessment": "constraint preserved; enforcement moved server-side pre-commit"
+  },
+  {
+   "what": "cross-kind update fields",
+   "old": "inexpressible (per-action schemas)",
+   "new": "expressible but rejected (P_FIELD_NOT_VALID_FOR_KIND)",
+   "assessment": "NEW rejection class — the acceptance set does not grow; the uniform envelope trades schema self-description for size (guidance must carry the kind-field mapping)"
+  }
+ ],
+ "test_reference": "tests/unit/benchmarks/test_integration_proposal_equivalence.py (16 passed)"
+}
