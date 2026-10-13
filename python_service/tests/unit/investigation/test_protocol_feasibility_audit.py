@@ -233,14 +233,14 @@ async def test_conflicting_evidence_reachable_via_contradiction(tmp_path):
 
 async def test_integrate_schema_violation_reproduces_historical_signature(
         tmp_path):
-    """§3/§12 mechanism reproduction: an INTEGRATE output whose tool args
-    violate the extra=forbid schema produces EXACTLY the historical run
-    failure — pydantic-ai UnexpectedModelBehavior('Exceeded maximum output
-    retries (1)') after the supervisor's default retry budget (1), with the
-    retry feedback delivered to the model between attempts. This pins the
-    '(1)' marker to the supervisor layer (specialist budget is 2) and
-    separates schema retries from provider retries (zero HTTP involved:
-    TestModel never leaves the process)."""
+    """§3/§12 mechanism reproduction, UPDATED BY RCA-1: the INTEGRATE
+    output-retry exhaustion signature is still produced by pydantic-ai
+    ('Exceeded maximum output retries (1)', supervisor default budget),
+    but since the RCA-1.1 containment it no longer ESCAPES the run — it
+    is contained as a first-class failed outcome with the normalized
+    failure class persisted to the trajectory (pre-RCA-1, the exception
+    propagated to the benchmark runner and collapsed into
+    failure_layer=RUNTIME + str(exc)[:500])."""
     repo, db, investigation_id = _build_env(tmp_path)
     _seed_passed_verification(repo, investigation_id)
 
@@ -272,27 +272,31 @@ async def test_integrate_schema_violation_reproduces_historical_signature(
             agent = SupervisorAgentFactory(model=model).build_integration_agent(
                 context
             )
-            # no local catch: the INTEGRATE model call is uncaught in
-            # production too (agent_orchestrator.py integrate_v2/integrate)
             result = await agent.run("integrate")
             return result.output
 
-    supervisor = SchemaViolatingSupervisor()
     orchestrator = AgentOrchestrator(
         FakeCppBackend(tmp_path),
-        supervisor=supervisor,
+        supervisor=SchemaViolatingSupervisor(),
         delegation_dispatcher=OfflineSpecialistDispatcher(repo, db),
         source_scope_provider=lambda task_id: ("windows",),
     )
-    # the exception escapes run_loop exactly as it escapes into the
-    # benchmark runner (which persists failure_layer=RUNTIME, str(exc)[:500])
-    with pytest.raises(Exception) as exc_info:
-        await orchestrator.run_loop("task-A", investigation_id)
-    assert "Exceeded maximum output retries (1)" in str(exc_info.value)
-    assert exc_info.value.__class__.__name__ == "UnexpectedModelBehavior"
-    # the true last validation error IS on __cause__ — the runtime simply
-    # never serializes it (audit finding, §3 telemetry gap)
-    assert exc_info.value.__cause__ is not None
+    outcome = (await orchestrator.run_loop("task-A", investigation_id))[0]
+    # RCA-1.1 containment: first-class outcome, run failed closed
+    assert outcome.integration_status == "failed"
+    assert outcome.integration_violation_codes == ("model_output_retry_exhausted",)
+    assert outcome.run_stop_reason == "internal_failure"
+    # the historical signature is preserved in the durable trajectory
+    events = [
+        e for e in repo.list_trajectory(investigation_id)
+        if e.event_type.value == "transition_decision_rejected"
+        and "supervisor_failure" in (e.payload or {})
+    ]
+    assert events
+    payload = events[0].payload
+    assert payload["supervisor_failure"] == "supervisor_integration_failed"
+    assert payload["underlying_code"] == "model_output_retry_exhausted"
+    assert payload["exception_class"] == "UnexpectedModelBehavior"
     # q-1 was never terminalized by the failed cycle
     latest = repo.get_latest_working_state(investigation_id)
     q1 = next(q for q in latest.state.get("questions")

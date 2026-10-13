@@ -119,7 +119,16 @@ class AblationContractV1(BaseModel):
 
 
 class FailedRunRecordV1(BaseModel):
-    """§65: a failed run is NEVER deleted; diagnostics are preserved."""
+    """§65: a failed run is NEVER deleted; diagnostics are preserved.
+
+    RCA-1.2: ``failure_class`` carries the type-derived canonical code from
+    ``agent_failure_taxonomy.classify_failure`` (never string matching);
+    ``failure_classified=False`` means NO rule matched and downstream
+    disposition MUST route to REVIEW_REQUIRED. The original SDK exception
+    identity is preserved in ``exception_class``/``exception_module``/
+    ``cause_chain``. All fields optional for backwards compatibility with
+    pre-RCA-1 artifacts (which carry only the legacy flat record).
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -128,6 +137,12 @@ class FailedRunRecordV1(BaseModel):
     failure_reason: str
     partial_telemetry: dict = Field(default_factory=dict)
     failed_at: str
+    failure_class: Optional[str] = None
+    failure_classified: Optional[bool] = None
+    exception_class: Optional[str] = None
+    exception_module: Optional[str] = None
+    cause_chain: tuple[str, ...] = Field(default_factory=tuple)
+    http_status: Optional[int] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -286,6 +301,13 @@ class BenchmarkRunner:
                 "result": result,
             }
         except Exception as exc:
+            from httpserver.services.investigation.agent_failure_taxonomy import (
+                classify_failure,
+            )
+
+            # RCA-1.2: type-derived classification beside the legacy flat
+            # record; CancelledError (BaseException) is never caught here.
+            classification = classify_failure(exc)
             failed_manifest = BenchmarkRunManifestV1(
                 **{
                     **run_manifest.model_dump(mode="json"),
@@ -304,6 +326,12 @@ class BenchmarkRunner:
                     run_manifest=failed_manifest.model_dump(mode="json"),
                     failure_layer=FailureLayer.RUNTIME.value,
                     failure_reason=str(exc)[:500],
+                    failure_class=classification.code,
+                    failure_classified=classification.classified,
+                    exception_class=classification.exception_class,
+                    exception_module=classification.exception_module,
+                    cause_chain=classification.cause_chain,
+                    http_status=classification.http_status,
                 ),
             }
 

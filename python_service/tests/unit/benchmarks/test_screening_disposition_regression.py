@@ -43,7 +43,8 @@ SNAPSHOT_VERSION = "benchmark-run-snapshot:v1"
 
 
 def _terminal_run(run_dir: Path, case_id: str, *, charter_status: str = "answered",
-                  quota_digest: bool = False):
+                  quota_digest: bool = False,
+                  integration_failure: dict | None = None):
     snapshot = {
         "snapshot_version": SNAPSHOT_VERSION,
         "run_id": f"brun:{case_id}",
@@ -75,6 +76,8 @@ def _terminal_run(run_dir: Path, case_id: str, *, charter_status: str = "answere
     if quota_digest:
         digest["delegation_failures"] = [
             {"failure_code": "agent_rate_limited"}]
+    if integration_failure is not None:
+        digest["supervisor_failures"] = [integration_failure]
     (run_dir / "trajectory_digest.json").write_text(
         json.dumps(digest), encoding="utf-8")
 
@@ -108,7 +111,12 @@ def _make_series(root: Path, spec: list[tuple[str, dict]]) -> Path:
         if kind.startswith("terminal"):
             charter = "open" if kind == "terminal_open" else "answered"
             _terminal_run(run_dir, case, charter_status=charter,
-                          quota_digest=(kind == "terminal_quota_digest"))
+                          quota_digest=(kind == "terminal_quota_digest"),
+                          integration_failure=(
+                              {"code": "supervisor_integration_failed",
+                               "stage": "integrate",
+                               "underlying_code": "provider_request_timeout"}
+                              if kind == "terminal_integrate_failed" else None))
         elif kind == "failed_timeout":
             _failed_run(run_dir, "Request timed out.")
         elif kind == "failed_schema":
@@ -148,39 +156,61 @@ def _series(tmp_path, spec):
     return _make_series(root, spec)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="BENCHMARK_DISPOSITION_DEFECT (audit-confirmed): the disposition "
-           "decision tree has no RUNTIME_FAILURE_UNATTRIBUTED/timeout branch "
-           "and no terminalization gate, so a 6/8-failed timeout-dominant "
-           "series falls through to READY_FOR_8X3. Fix pending authorization.",
-)
 def test_timeout_dominant_series_must_not_be_ready_for_8x3(tmp_path):
     """The observed step-5-preview shape: 2 terminal (1 answered, 1 open)
-    + 6 request timeouts. The only acceptable dispositions are
-    NOT_QUALIFIED_SCREENING or PROVIDER_TIMEOUT-class blockers."""
+    + 6 request timeouts. RCA-1.5 fix: classified PROVIDER_REQUEST_TIMEOUT
+    failures block READY with their class-specific reason — the fallback
+    branch can no longer produce READY_FOR_8X3. (Was xfail-pinned as
+    BENCHMARK_DISPOSITION_DEFECT; converted to a PASS regression by RCA-1.)"""
     qual = _series(tmp_path, [
         ("terminal", {}), ("terminal_open", {})] +
         [("failed_timeout", {})] * 6)
     report = _run_disposition(qual)
-    assert report["disposition"] != "READY_FOR_8X3"
     assert report["disposition"] == "NOT_QUALIFIED_SCREENING"
+    assert "PROVIDER_REQUEST_TIMEOUT" in report["reason"]
+    assert report["run_level_failure_classes"] == {
+        "provider_request_timeout": 6}
+    # explicit accounting: snapshot reproduction is 2/8, never presented
+    # as full-measurement verification
+    acc = report["accounting"]
+    assert acc["scheduled_count"] == 8
+    assert acc["run_terminal_count"] == 2
+    assert acc["run_failed_count"] == 6
+    assert acc["snapshot_reproduced_count"] == 2
+    assert acc["failure_classified_count"] == 6
+    assert acc["unclassified_failure_count"] == 0
 
 
-def test_timeout_series_currently_falls_through_to_ready_false_positive(
-        tmp_path):
-    """Documents the CURRENT behaviour as a pinned defect reference: the
-    same series the required-behaviour test rejects is returned as
-    READY_FOR_8X3 today. If this test starts failing because the required
-    behaviour landed, remove it together with the xfail above."""
+def test_unclassified_run_failure_forces_review_required(tmp_path):
+    """RCA-1.0 exhaustiveness: a run failure that matches no classification
+    rule routes to REVIEW_REQUIRED — the fallback branch can never turn an
+    unclassifiable failure into a pass-ish disposition."""
     qual = _series(tmp_path, [
-        ("terminal", {}), ("terminal_open", {})] +
-        [("failed_timeout", {})] * 6)
+        ("terminal", {}), ("terminal", {}), ("terminal", {})] +
+        [("failed_other", {"reason": "RuntimeError: cosmic ray"})] * 5)
     report = _run_disposition(qual)
-    assert report["disposition"] == "READY_FOR_8X3"
-    assert report["failed_runs"]  # the losses are at least visible
-    assert report["question_terminalization"]["terminalized"] == 1
-    assert report["question_terminalization"]["total"] == 8
+    assert report["disposition"] == "REVIEW_REQUIRED"
+    acc = report["accounting"]
+    assert acc["unclassified_failure_count"] == 5
+    assert acc["failure_classified_count"] == 0
+
+
+def test_integration_failed_terminal_run_counts_as_run_level_failure(tmp_path):
+    """RCA-1.1 interplay: a contained INTEGRATE failure produces a terminal
+    snapshot (no failure.json) whose digest carries the supervisor
+    integration failure — the disposition must count it as a run-level
+    failure, never as a clean terminal run."""
+    qual = _series(tmp_path, [
+        ("terminal", {}), ("terminal", {}), ("terminal", {}),
+        ("terminal_integrate_failed", {}),
+        ("terminal_integrate_failed", {}),
+    ] + [("failed_timeout", {})] * 3)
+    report = _run_disposition(qual)
+    assert report["disposition"] == "NOT_QUALIFIED_SCREENING"
+    assert report["accounting"]["run_integration_failed_count"] == 2
+    # 3 failed-run timeouts + 2 contained INTEGRATE timeouts = same class
+    assert report["run_level_failure_classes"].get(
+        "provider_request_timeout") == 5
 
 
 def test_schema_dominant_series_not_qualified(tmp_path):

@@ -295,6 +295,7 @@ class AgentOrchestrator:
         cycle_policy=None,
         final_review_runner=None,
         supervisor_contract_version: str = "v1",
+        failure_diagnostics_sink=None,
     ):
         self._cpp_backend = cpp_backend
         self._attention_config = attention_config or AttentionPolicyConfig()
@@ -341,6 +342,53 @@ class AgentOrchestrator:
                 f"{supervisor_contract_version!r}"
             )
         self._supervisor_contract_version = supervisor_contract_version
+        # RCA-1.3: optional structured failure diagnostics (default OFF —
+        # None keeps every code path byte-identical to pre-RCA-1 behaviour)
+        self._failure_diagnostics_sink = failure_diagnostics_sink
+
+    def _record_failure_diagnostics(
+        self,
+        *,
+        stage: str,
+        exc: Exception,
+        output_type=None,
+        context: dict | None = None,
+        request_latency_ms: float | None = None,
+    ) -> None:
+        """Best-effort diagnostics emission — never fatal, never enabling."""
+        if self._failure_diagnostics_sink is None:
+            return
+        try:
+            import time as _time
+
+            from .agent_failure_diagnostics import (
+                build_failure_entry,
+                schema_hash_of,
+            )
+            from .agent_failure_taxonomy import classify_failure
+
+            started = getattr(exc, "_tracelens_started", None)
+            latency = (
+                (_time.monotonic() - started) * 1000.0
+                if started is not None and request_latency_ms is None
+                else request_latency_ms
+            )
+            self._failure_diagnostics_sink.record_failure(
+                build_failure_entry(
+                    stage=stage,
+                    exc=exc,
+                    classification=classify_failure(exc),
+                    output_schema_hash=(
+                        schema_hash_of(output_type)
+                        if output_type is not None
+                        else None
+                    ),
+                    request_latency_ms=latency,
+                    context=context,
+                )
+            )
+        except Exception:  # noqa: BLE001 — diagnostics are never fatal
+            pass
 
     # =====================================================================
     # lifecycle (ServiceManager startup hook, P2 §44/§45)
@@ -1322,6 +1370,12 @@ class AgentOrchestrator:
             )
 
             code = _map(exc)
+            self._record_failure_diagnostics(
+                stage="SUPERVISOR_PLAN",
+                exc=exc,
+                output_type=self._plan_output_type(),
+                context={"run_id": run_id},
+            )
             runtime.append_trajectory(
                 investigation_id,
                 AgentTrajectoryEventType.transition_decision_rejected,
@@ -1556,6 +1610,65 @@ class AgentOrchestrator:
             )
 
         # ---- INTEGRATE (supervisor proposes, policy disposes) ----------
+        def _integrate_failure_outcome(exc: Exception):
+            """RCA-1.1: contain an INTEGRATE-stage model/provider failure as
+            a first-class cycle outcome — the PLAN-path pattern, without
+            copying its state transitions. Fail closed: no integration
+            decision is committed, nothing is re-executed automatically
+            (the run stops), CancelledError/base exceptions are never
+            caught by the caller (``except Exception`` only). The already
+            committed delegations and their provenance stay untouched."""
+            from .agent_failure_taxonomy import classify_failure
+            from .agent_specialist_executor import (
+                DelegationFailureCode,
+                safe_failure_message as _safe,
+            )
+
+            classification = classify_failure(exc)
+            code = DelegationFailureCode.SUPERVISOR_INTEGRATION_FAILED
+            runtime.append_trajectory(
+                investigation_id,
+                AgentTrajectoryEventType.transition_decision_rejected,
+                run_id=run_id,
+                payload={
+                    "supervisor_failure": code.value,
+                    "stage": "integrate",
+                    "message": _safe(exc, code),
+                    "underlying_code": classification.code,
+                    "classified": classification.classified,
+                    "exception_class": classification.exception_class,
+                    "exception_module": classification.exception_module,
+                    "cause_chain": list(classification.cause_chain),
+                },
+            )
+            self._record_failure_diagnostics(
+                stage="SUPERVISOR_INTEGRATE",
+                exc=exc,
+                output_type=self._integrate_output_type(),
+                context={"run_id": run_id},
+            )
+            runtime.fail_run(
+                run_id,
+                stop_reason=RunStopReason.internal_failure,
+                error_code=code.value,
+                error_message=_safe(exc, code),
+            )
+            return _outcome(
+                delegation_ids=tuple(s.delegation_id for s in summaries),
+                delegation_terminal_statuses=tuple(
+                    s.status for s in summaries
+                ),
+                stale_delegation_ids=tuple(stale_ids),
+                failure_delegation_ids=tuple(failure_ids),
+                integration_status="failed",
+                integration_violation_codes=(classification.code,),
+                warnings=(
+                    f"supervisor integration failed: {classification.code}",
+                    "run failed closed; no integration decision committed",
+                ),
+                run_stop_reason=RunStopReason.internal_failure.value,
+            )
+
         integration_context = build_integration_context(
             task_id=task_id,
             investigation_id=investigation_id,
@@ -1593,9 +1706,14 @@ class AgentOrchestrator:
             integration_availability = availability_projection(
                 integration_table
             )
-            raw_integration_v2 = await self._supervisor.integrate_v2(
-                integration_context, integration_table, current_state
-            )
+            try:
+                raw_integration_v2 = await self._supervisor.integrate_v2(
+                    integration_context, integration_table, current_state
+                )
+            except Exception as exc:  # noqa: BLE001 - RCA-1.1 containment
+                # provider/output failures become a first-class outcome;
+                # CancelledError (BaseException) is never caught here
+                return _integrate_failure_outcome(exc)
             integration_decision, integration_resolution = (
                 resolve_integration_proposal_v2(
                     raw_integration_v2,
@@ -1678,9 +1796,12 @@ class AgentOrchestrator:
                 ),
             }
         else:
-            integration_decision = await self._supervisor.integrate(
-                integration_context
-            )
+            try:
+                integration_decision = await self._supervisor.integrate(
+                    integration_context
+                )
+            except Exception as exc:  # noqa: BLE001 - RCA-1.1 containment
+                return _integrate_failure_outcome(exc)
         integration_validator = IntegrationDecisionValidator(
             evidence_ref_validator=getattr(
                 self, "_integration_evidence_validator", None
@@ -1827,6 +1948,28 @@ class AgentOrchestrator:
             integration_revision=commit.state_revision,
             progress=progress,
         )
+
+    def _integrate_output_type(self):
+        """The INTEGRATE structured-output contract for the active supervisor
+        contract version (diagnostics identity only — never a behavior)."""
+        if self._supervisor_contract_version == "v2":
+            from .agent_integration_v2 import SupervisorIntegrationDecisionV2
+
+            return SupervisorIntegrationDecisionV2
+        from .agent_integration import SupervisorIntegrationDecisionV1
+
+        return SupervisorIntegrationDecisionV1
+
+    def _plan_output_type(self):
+        """The PLAN structured-output contract for the active supervisor
+        contract version (diagnostics identity only — never a behavior)."""
+        if self._supervisor_contract_version == "v2":
+            from .agent_integration_v2 import SupervisorPlanDecisionV2
+
+            return SupervisorPlanDecisionV2
+        from .agent_supervisor import SupervisorPlanDecisionV1
+
+        return SupervisorPlanDecisionV1
 
     def _state_hash(self, runtime, investigation_id: str) -> str:
         latest = runtime.get_latest_working_state(investigation_id)

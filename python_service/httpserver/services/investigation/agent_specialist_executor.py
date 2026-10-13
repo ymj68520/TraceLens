@@ -15,12 +15,21 @@ integrates. Supervisor / Integration mode stay in P4B.
 """
 
 import asyncio
+import time
 from enum import Enum
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .agent_context import SpecialistContextPack
+from .agent_failure_taxonomy import classify_failure
+from .agent_failure_taxonomy import (
+    PROVIDER_CONNECTION_ERROR as _TAX_CONNECTION_ERROR,
+)
+from .agent_failure_taxonomy import (
+    PROVIDER_REQUEST_TIMEOUT as _TAX_REQUEST_TIMEOUT,
+)
+from . import agent_failure_taxonomy as taxonomy
 from .agent_runtime import AgentRuntimeRepository, canonical_state_json, state_hash_of
 from .agent_skills import FrozenSkillBinding
 from .agent_specialist_result import (
@@ -55,6 +64,9 @@ class DelegationFailureCode(str, Enum):
     AGENT_OUTPUT_INVALID = "agent_output_invalid"
     AGENT_TOOL_FAILURE = "agent_tool_failure"
     AGENT_INTERNAL_FAILURE = "agent_internal_failure"
+    # RCA-1.1: the supervisor INTEGRATE stage failed and was contained as a
+    # first-class cycle outcome; the underlying cause rides beside the code
+    SUPERVISOR_INTEGRATION_FAILED = "supervisor_integration_failed"
     # binding mismatch before execution (P4A §36); precise stale
     # classification is P4B MergeGuard work
     INPUT_CONTRACT_CHANGED = "input_contract_changed"
@@ -74,7 +86,19 @@ _RETRYABLE_PROVIDER_CODES = frozenset(
 
 
 def map_provider_exception(exc: Exception) -> DelegationFailureCode:
-    """Map a PydanticAI/provider failure to its stable delegation code."""
+    """Map a PydanticAI/provider failure to its stable delegation code.
+
+    RCA-1.2 (audit F-4): openai transport errors are recognized by TYPE
+    first. ``openai.APITimeoutError`` subclasses neither the builtin
+    ``TimeoutError`` nor carries a ``status_code``, so the pre-RCA-1 order
+    classified every transport timeout as AGENT_INTERNAL_FAILURE
+    (non-retryable); it is AGENT_TIMEOUT exactly like the builtin family.
+    """
+    classification = classify_failure(exc)
+    if classification.code == taxonomy.PROVIDER_REQUEST_TIMEOUT:
+        return DelegationFailureCode.AGENT_TIMEOUT
+    if classification.code == taxonomy.PROVIDER_CONNECTION_ERROR:
+        return DelegationFailureCode.AGENT_PROVIDER_UNAVAILABLE
     # pydantic-ai wraps provider HTTP errors in ModelHTTPError
     status_code = getattr(exc, "status_code", None)
     if status_code is not None:
@@ -128,6 +152,8 @@ def safe_failure_message(exc: Exception, code: DelegationFailureCode) -> str:
         detail = "provider unavailable"
     elif code is DelegationFailureCode.AGENT_OUTPUT_INVALID:
         detail = "agent output did not satisfy the specialist result contract"
+    elif code is DelegationFailureCode.SUPERVISOR_INTEGRATION_FAILED:
+        detail = "supervisor INTEGRATE stage failed (contained, fail-closed)"
     return f"{code.value}: {detail or type(exc).__name__}"
 
 
@@ -438,6 +464,7 @@ class SpecialistDelegationExecutor:
         policy: Optional[AgentRunPolicy] = None,
         investigation_db_path_for_task=None,
         observation_sink_factory=None,
+        failure_diagnostics_sink=None,
     ):
         self._cpp_backend = cpp_backend
         self._settings = settings
@@ -450,7 +477,35 @@ class SpecialistDelegationExecutor:
             investigation_db_path_for_task = trusted_path
         self._db_path_for = investigation_db_path_for_task
         self._observation_sink_factory = observation_sink_factory
+        # RCA-1.3: optional structured failure diagnostics (default OFF)
+        self._failure_diagnostics_sink = failure_diagnostics_sink
         self._model = None
+
+    def _emit_failure_diagnostics(
+        self, exc: Exception, *, attempt: int, latency_ms: float | None = None
+    ) -> None:
+        if self._failure_diagnostics_sink is None:
+            return
+        try:
+            from .agent_failure_diagnostics import (
+                build_failure_entry,
+                schema_hash_of,
+            )
+            from .agent_failure_taxonomy import classify_failure
+
+            self._failure_diagnostics_sink.record_failure(
+                build_failure_entry(
+                    stage="SPECIALIST",
+                    exc=exc,
+                    classification=classify_failure(exc),
+                    output_schema_hash=schema_hash_of(
+                        SpecialistResultProposalV1),
+                    retry_attempts=attempt,
+                    request_latency_ms=latency_ms,
+                )
+            )
+        except Exception:  # noqa: BLE001 — diagnostics are never fatal
+            pass
 
     # -- lifecycle ------------------------------------------------------
 
@@ -609,6 +664,7 @@ class SpecialistDelegationExecutor:
         attempts = self._policy.max_provider_retries + 1
         last_exc: Optional[Exception] = None
         for attempt in range(attempts):
+            agent_started = time.monotonic()
             try:
                 agent_result = await agent.run(
                     prompt, deps=deps, usage_limits=usage_limits
@@ -617,6 +673,11 @@ class SpecialistDelegationExecutor:
             except Exception as exc:  # noqa: BLE001 - provider/tool/output all mapped
                 code = map_provider_exception(exc)
                 last_exc = exc
+                self._emit_failure_diagnostics(
+                    exc,
+                    attempt=attempt + 1,
+                    latency_ms=(time.monotonic() - agent_started) * 1000.0,
+                )
                 if (
                     code in _RETRYABLE_PROVIDER_CODES
                     and attempt + 1 < attempts

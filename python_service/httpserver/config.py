@@ -249,6 +249,19 @@ class Settings(BaseSettings):
             )
         return version
 
+    # RCA-1.3: optional structured failure diagnostics. DEFAULT OFF — when
+    # disabled every agent failure path is byte-identical to pre-RCA-1
+    # behaviour. When enabled, sanitized failure entries (stage, normalized
+    # code, exception class chain, validation-error type/location, schema
+    # hash) are appended as JSONL; prompts, responses, evidence bodies,
+    # reasoning content and validation input values are never recorded.
+    llm_failure_diagnostics: bool = Field(
+        default=False, alias="LLM_FAILURE_DIAGNOSTICS"
+    )
+    llm_failure_diagnostics_path: str = Field(
+        default="", alias="LLM_FAILURE_DIAGNOSTICS_PATH"
+    )
+
     llm_text_base_url: str = Field(default="http://192.168.31.170:1234", alias="LLM_TEXT_BASE_URL")
     llm_text_model: str = Field(default="openai/gpt-oss-20b", alias="LLM_TEXT_MODEL")
     llm_text_max_tokens: int = Field(default=4096, alias="LLM_TEXT_MAX_TOKENS")

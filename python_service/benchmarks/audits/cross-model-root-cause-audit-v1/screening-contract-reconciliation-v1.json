@@ -1,0 +1,65 @@
+{
+  "artifact_version": "ScreeningContractReconciliationV1",
+  "created_at": "2026-10-13T00:00:00+00:00",
+  "authority": "RCA-1 directive (RCA-1.0); CrossModelFailureRootCauseAuditV1 (a79bf406)",
+  "method": "reconciled the Wave-2 8x1 screening contract across (a) session-level historical directives as relayed by committed qualification artifacts and operator memory, (b) the disposition scripts' coded behavior at audit commit a79bf406, (c) the persisted qualification artifacts. Original artifacts untouched.",
+  "clarifications": [
+    {
+      "id": "SC-1",
+      "statement": "8x1 is a low-cost SCREENING (one fresh run per calibration case, single repeat). It is NOT B6 acceptance and produces no acceptance semantics.",
+      "basis": "all committed qualification artifacts name the stage 'screening_8x1' with disposition vocabulary READY_FOR_8X3 / NOT_QUALIFIED_SCREENING; 8x3 entry is gated on explicit user authorization (§22 of the relayed directive); B6 acceptance requires frozen holdouts and an AdmissionAudit (Gen-4 closure precedent)."
+    },
+    {
+      "id": "SC-2",
+      "statement": "Every scheduled run must be accounted — including abnormal failures. The accounting block reports scheduled_count, run_terminal_count, run_failed_count, run_integration_failed_count, snapshot_reproduced_count, failure_classified_count, unclassified_failure_count.",
+      "basis": "historical screening reports always reported scheduled_runs=8 with failed runs listed; RCA-1.5 makes the accounting explicit and machine-readable."
+    },
+    {
+      "id": "SC-3",
+      "statement": "READY_FOR_8X3 is UNREACHABLE through any fallback branch. Exhaustiveness rule: an unclassified run-level failure forces REVIEW_REQUIRED; a classified run-level failure blocks READY with its class-specific reason. The only path to READY_FOR_8X3 is a series with zero run-level failures (all classified checks pass).",
+      "basis": "this clause is a CLARIFICATION ADOPTED UNDER THE RCA-1 DIRECTIVE (it was the audited defect, not a historical rule); it creates no new numeric threshold."
+    },
+    {
+      "id": "SC-4",
+      "statement": "Failure classes are separated: MODEL_OUTPUT_RETRY_EXHAUSTED / MODEL_OUTPUT_VALIDATION_ERROR (model output), PROVIDER_RATE_LIMITED / PROVIDER_REQUEST_TIMEOUT / PROVIDER_CONNECTION_ERROR / PROVIDER_SERVER_ERROR (provider), SUPERVISOR_INTEGRATION_FAILED (runtime stage), BENCHMARK_RUNTIME_FAILURE (unclassified fallback). Provider classes never enter schema numerators (frozen §10 invariant).",
+      "basis": "wave-2 §18 taxonomy invariant + RCA-1.2 code changes (type-derived classification)."
+    },
+    {
+      "id": "SC-5",
+      "statement": "Question terminalization (charter q-1 leaving {open, in_progress}) is an INDEPENDENT reported metric. It is NOT automatically wired as a 100% screening gate in the disposition script. Run-level failure classes gate independently.",
+      "basis": "the coded contract never gated on terminalization; the relayed directive's frozen acceptance criteria mention q-1 terminalization as a qualification expectation. See CC-2."
+    },
+    {
+      "id": "SC-6",
+      "statement": "The 0.5 collapse ceiling is split by axis with explicit denominators: RUN_AXIS = run-level output-retry failures / scheduled runs (screening stage); DELEGATION_AXIS = non-quota delegation failures / delegation attempts (B2-style measurement stage). Both remain 0.5; no value changed.",
+      "basis": "audit F-8: the constant had silently served two denominators across eras."
+    },
+    {
+      "id": "SC-7",
+      "statement": "2/2 snapshot reproduction is NEVER presentable as 8/8 evaluate-only completeness. snapshot_reproduced_count is reported against scheduled_count.",
+      "basis": "audit §9 (evaluate-only completeness)."
+    }
+  ],
+  "contract_review_required": [
+    {
+      "id": "CC-1",
+      "ambiguity": "The relayed historical directive phrase '8/8 通过' (8/8 pass) is not decidable from in-repo evidence: it may mean '8/8 runs reached terminal state' or '8/8 case successes (CaseOutcomeV2 success)'. The historical directive documents themselves are session-level and not committed to the repository.",
+      "resolution_adopted_here": "NONE. The reconciled machine contract does not need the reading: any run-level failure blocks READY regardless, so both readings agree that e.g. 2 terminal + 6 timeout is never READY. No new threshold was created.",
+      "action": "CONTRACT_REVIEW_REQUIRED — the operator should ratify the historical directive text into an in-repo frozen document."
+    },
+    {
+      "id": "CC-2",
+      "ambiguity": "Whether READY_FOR_8X3 additionally requires 100% charter terminalization (SC-5 keeps it independent per the RCA-1.0 directive text; the relayed qualification criteria list q-1 terminalization among acceptance expectations).",
+      "resolution_adopted_here": "NONE — terminalization is reported as an independent metric; since any run-level failure already blocks READY, the practical difference is limited to all-terminal all-clean series with low terminalization (historically not observed).",
+      "action": "CONTRACT_REVIEW_REQUIRED — operator ratification alongside CC-1."
+    }
+  ],
+  "disposition_vocabulary_unchanged": [
+    "READY_FOR_8X3",
+    "NOT_QUALIFIED_SCREENING",
+    "PROVIDER_CAPACITY_BLOCKED",
+    "PROVIDER_ROUTING_IDENTITY_MISMATCH",
+    "MEASUREMENT_INVALID",
+    "REVIEW_REQUIRED (added by the RCA-1 directive for unclassifiable failures)"
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "artifact_version": "RuntimeBehaviorCompatibilityAssessmentV1",
+  "created_at": "2026-10-13T00:00:00+00:00",
+  "baseline": {
+    "audit_commit": "a79bf406",
+    "runtime_baseline_v3_file": "benchmarks/profiles/precalibration-runtime-baseline-v3.json",
+    "runtime_baseline_v3_sha256_before": "b7ef22d65f85c8dcd951ef5c636705d56f86ed6490f670ec24abafd7a91daca5",
+    "acceptance_profile_v2_file": "benchmarks/profiles/agent-v0-acceptance-profile-v2.json",
+    "acceptance_profile_v2_sha256_before": "c40f1adcad816e433f7edfc6cbc0b56dc32c031bf1fcb31528523ffa62f0e98d"
+  },
+  "nature_of_change": "OBSERVABILITY_AND_FAILURE_PATH — this stage modifies exception handling, failure classification and optional diagnostics wiring. It is NOT a byte-identical runtime change claim.",
+  "explicit_non_claim": "The post-RCA-1 runtime is NOT the frozen RuntimeBaselineV3 byte-identity and MUST NOT be treated as the runtime that produced the B2 24-run series or the Gen-4 acceptance series. Any future model qualification re-runs on a fresh measurement root under §14 regardless.",
+  "changed": [
+    {
+      "area": "supervisor INTEGRATE exception containment",
+      "files": ["httpserver/services/investigation/agent_orchestrator.py"],
+      "behavior_delta": "pre-RCA-1: an INTEGRATE-stage model/provider exception propagated out of run_loop into the benchmark runner and collapsed into failure_layer=RUNTIME + str(exc)[:500] with NO trajectory event. post-RCA-1: it is contained as a first-class cycle outcome (integration_status='failed'), persists a supervisor_integration_failed trajectory event with the type-derived cause, fails the AgentRun (internal_failure), and stops the loop. Fail-closed: no decision is committed, nothing re-executes.",
+      "visibility": "failure path only; zero effect on any success path"
+    },
+    {
+      "area": "failure classification",
+      "files": ["httpserver/services/investigation/agent_failure_taxonomy.py (new)", "httpserver/services/investigation/agent_specialist_executor.py", "httpserver/services/benchmarks/runner.py"],
+      "behavior_delta": "map_provider_exception now recognizes openai transport errors BY TYPE (APITimeoutError -> agent_timeout retryable; APIConnectionError -> agent_provider_unavailable). BenchmarkRunner failure records gain optional type-derived fields (failure_class/failure_classified/exception_class/exception_module/cause_chain/http_status) beside the legacy flat record. Legacy artifacts remain parseable.",
+      "visibility": "failure paths only; delegation failure codes for already-correct classes unchanged"
+    },
+    {
+      "area": "diagnostics sink (default OFF)",
+      "files": ["httpserver/services/investigation/agent_failure_diagnostics.py (new)", "httpserver/config.py", "httpserver/services/service_manager.py", "agent_orchestrator.py", "agent_specialist_executor.py"],
+      "behavior_delta": "when LLM_FAILURE_DIAGNOSTICS is unset/false (default) the sink resolves to None and every emission site is a no-op — byte-identical behaviour. When explicitly enabled, sanitized JSONL failure entries are appended.",
+      "visibility": "none by default"
+    },
+    {
+      "area": "screening disposition script",
+      "files": ["scripts/disposition_openrouter_8x1.py"],
+      "behavior_delta": "RCA-1.5 corrected decision tree (exhaustiveness, REVIEW_REQUIRED, class-specific blockers, explicit accounting block, per-class attribution text, axis-split ceiling names). Benchmark-side script, not production runtime.",
+      "visibility": "screening reports only"
+    }
+  ],
+  "unchanged_and_verified": [
+    {"area": "Agent-visible prompts", "evidence": "no prompt/instruction strings touched; SupervisorAgentFactory and build_specialist_agent instruction builders untouched"},
+    {"area": "Structured-output schemas", "evidence": "SpecialistResultProposalV1 / SpecialistResultV1 / SupervisorPlanDecisionV1|V2 / SupervisorIntegrationDecisionV1|V2 model files untouched"},
+    {"area": "ToolRegistry semantics", "evidence": "pydantic_bridge.py, agent_tools/* untouched"},
+    {"area": "StateTransitionPolicy", "evidence": "agent_transitions.py untouched; W3/CANNOT_DEFER invariants pinned by tests"},
+    {"area": "Retry budgets", "evidence": "agent output retries unchanged (supervisor default 1, specialist AgentRunPolicy 2); provider retry loop untouched; SDK max_retries untouched; recorded-only facts in agent_retry_timeout_facts.py"},
+    {"area": "Timeout budgets", "evidence": "LLM_TIMEOUT_SECONDS unchanged; per-attempt scope unchanged; run-level wait_for budget NOT enabled; LLM_MAX_RETRIES left as documented dead config"},
+    {"area": "Evidence integrity", "evidence": "content store / hydration / snapshot acquisition paths untouched"},
+    {"area": "FinalizationGate", "evidence": "agent_finalization.py untouched; UNINTEGRATED_COMPLETED_DELEGATION / REQUIRED_QUESTION_DEFERRED denials pinned by tests"},
+    {"area": "Frozen file identity", "evidence": "sha256 of RuntimeBaselineV3 and AcceptanceProfileV2 identical before and after RCA-1 (re-verified post-change)"}
+  ],
+  "test_evidence": {
+    "focused_suites": "tests/unit/investigation/ + tests/unit/benchmarks/: 1098 passed, 1 skipped, 0 failed (pre-change baseline run of the touched suites: 86 passed + 1 xfail; the xfail converted to PASS by the fix)",
+    "audit_era_test_updates": "test_integrate_schema_violation_reproduces_historical_signature updated: the pinned pre-RCA-1 escape behaviour no longer exists (it was the defect); the test now pins the containment semantics"
+  }
+}

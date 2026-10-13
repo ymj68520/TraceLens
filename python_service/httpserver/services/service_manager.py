@@ -827,11 +827,19 @@ class ServiceManager:
 
             return _run()
 
+        from .investigation.agent_failure_diagnostics import (
+            failure_diagnostics_sink as failure_diagnostics_sink_from_settings,
+        )
+
         return AgentOrchestrator(
             self._cpp_backend,
             final_review_runner=_final_review_runner,
             supervisor_contract_version=(
                 self.settings.agent_supervisor_contract_version
+            ),
+            # RCA-1.3: optional structured failure diagnostics (default off)
+            failure_diagnostics_sink=(
+                failure_diagnostics_sink_from_settings(self.settings)
             ),
         )
 
@@ -928,12 +936,20 @@ class ServiceManager:
                 or AgentObservationSink(runtime),
             )
 
+        from .investigation.agent_failure_diagnostics import (
+            failure_diagnostics_sink as failure_diagnostics_sink_from_settings,
+        )
+
         return SpecialistDelegationExecutor(
             cpp_backend=self._cpp_backend,
             settings=self.settings,
             tool_services=_LazyToolServices(),
             registry_builder=registry_builder,
             investigation_db_path_for_task=None,  # trusted default from .paths
+            # RCA-1.3: optional structured failure diagnostics (default off)
+            failure_diagnostics_sink=(
+                failure_diagnostics_sink_from_settings(self.settings)
+            ),
         )
 
     @property
