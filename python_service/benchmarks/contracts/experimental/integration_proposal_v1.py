@@ -146,12 +146,12 @@ class UpdateAction(_ProposalAction):
     target_handle: str
     to_status: str
     disposition: Optional[str] = None          # question only
-    basis_handles: Tuple[str, ...] = ()        # evidence handles (Q closure)
+    basis_handles: Optional[Tuple[str, ...]] = None  # None=omit (keep current); []=explicit no-basis (A1 §26)
     limitations: Tuple[str, ...] = ()          # question only
     investigated_summary: Optional[str] = None  # question only
     blocker: Optional[str] = None              # question only
     superseded_by_handle: Optional[str] = None  # question only
-    resolution_basis_handles: Tuple[str, ...] = ()  # contradiction only
+    resolution_basis_handles: Optional[Tuple[str, ...]] = None  # None=omit; []=explicit
     attempted_resolution: Optional[str] = None  # contradiction only
     impact: Optional[str] = None               # contradiction only
     limitation: Optional[str] = None           # coverage only
@@ -241,6 +241,11 @@ def _require_enum(enum_cls, value, code, label):
 
 
 def _basis_evidence_handles(raw, label):
+    """None (omitted) stays None = 'keep current'; an EXPLICIT empty list
+    resolves to () so the unchanged CLOSURE_BASIS_REQUIRED gate still
+    fires (A1 §26 — the None-vs-[] distinction is preserved)."""
+    if raw is None:
+        return None
     out = []
     for handle in raw:
         kind = infer_handle_kind(handle)
@@ -251,7 +256,7 @@ def _basis_evidence_handles(raw, label):
                 "operands must be evidence handles)",
             )
         out.append(EvidenceHandle(handle))
-    return out or None
+    return tuple(out)
 
 
 def _resolve_update(action: UpdateAction) -> object:
@@ -484,3 +489,199 @@ __all__ = [
     "infer_handle_kind",
     "resolve_proposal_to_canonical",
 ]
+
+
+# ---------------------------------------------------------------------------
+# RCA-2A.1 §6 option B / §8 alternative: STRICT + COMPACT-TYPED variants.
+# Both restore PARSE-LAYER rejection (and therefore pydantic-ai output
+# retry feedback) for the dimensions that the draft moved to the resolver.
+# Handle EXISTENCE can never be validated at parse time (it needs the
+# frozen binding table) — it stays at the resolver, fail-closed.
+# ---------------------------------------------------------------------------
+
+
+def _validate_update_semantics(target_handle: str, to_status: str, values: dict) -> None:
+    kind = infer_handle_kind(target_handle)
+    if kind is None:
+        raise ValueError(
+            f"proposal_unknown_handle_prefix: {target_handle!r} has no "
+            "known kind prefix (F/P handles are reference-only)")
+    if not to_status:
+        raise ValueError("proposal_missing_status: update requires to_status")
+    enum_cls = _KIND_STATUS_ENUMS.get(kind)
+    if enum_cls is None:
+        raise ValueError(
+            f"proposal_handle_not_updatable: kind {kind!r} is not updatable")
+    if _enum_member(enum_cls, to_status) is None:
+        raise ValueError(
+            f"proposal_status_not_in_kind_enum: to_status={to_status!r} is "
+            f"not a member of {enum_cls.__name__} for a {kind!r} update")
+    forbidden = {
+        "question": set(),
+        "evidence": {"disposition", "limitations", "investigated_summary",
+                     "blocker", "superseded_by_handle"},
+        "hypothesis": {"disposition", "limitations", "investigated_summary",
+                       "blocker", "superseded_by_handle",
+                       "resolution_basis_handles", "attempted_resolution",
+                       "impact", "limitation", "capability_basis",
+                       "related_question_handles"},
+        "contradiction": {"disposition", "limitations",
+                          "investigated_summary", "blocker",
+                          "superseded_by_handle", "capability_basis",
+                          "related_question_handles"},
+        "coverage": {"disposition", "limitations", "investigated_summary",
+                     "blocker", "superseded_by_handle",
+                     "resolution_basis_handles", "attempted_resolution",
+                     "impact"},
+    }[kind]
+    for field in forbidden:
+        value = values.get(field)
+        if value is not None and value != () and value != "":
+            raise ValueError(
+                f"proposal_field_not_valid_for_kind: field {field!r} is "
+                f"not valid for a {kind!r} update")
+
+
+class StrictUpdateAction(UpdateAction):
+    """Uniform update with parse-layer per-kind status + field validation
+    (RCA-2A.1 option B)."""
+
+    def model_post_init(self, __context) -> None:
+        _validate_update_semantics(
+            self.target_handle, self.to_status,
+            self.model_dump(exclude={"target_handle", "to_status"}))
+
+
+_MERGED_STATUS_VALUES = sorted(
+    {member.value for enum_cls in _KIND_STATUS_ENUMS.values()
+     for member in enum_cls}
+)
+
+MergedStatusEnum = Enum(
+    "MergedStatusEnum",
+    {v.upper(): v for v in _MERGED_STATUS_VALUES},
+    type=str,
+)
+"""Every legal update status across all updatable kinds — ONE enum in the
+model-facing schema (compact typed alternative, RCA-2A.1 §8). The PER-KIND
+scoping is enforced by StrictUpdateAction semantics."""
+
+
+class CompactTypedUpdateAction(_ProposalAction):
+    """RCA-2A.1 §8 alternative B: uniform update whose to_status keeps a
+    REAL model-facing enum (the merged status vocabulary — partial type
+    information preserved in schema) with per-kind scoping enforced by the
+    strict validator (parse layer -> retry feedback)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    action: Literal["update"] = "update"
+    target_handle: str
+    to_status: MergedStatusEnum
+    disposition: Optional[str] = None
+    basis_handles: Optional[Tuple[str, ...]] = None
+    limitations: Tuple[str, ...] = ()
+    investigated_summary: Optional[str] = None
+    blocker: Optional[str] = None
+    superseded_by_handle: Optional[str] = None
+    resolution_basis_handles: Optional[Tuple[str, ...]] = None
+    attempted_resolution: Optional[str] = None
+    impact: Optional[str] = None
+    limitation: Optional[str] = None
+    capability_basis: Optional[str] = None
+    related_question_handles: Tuple[str, ...] = ()
+
+    def model_post_init(self, __context) -> None:
+        _validate_update_semantics(
+            self.target_handle, self.to_status.value,
+            self.model_dump(exclude={"target_handle", "to_status"}))
+
+
+class SupervisorIntegrationProposalV1Strict(BaseModel):
+    """Option B draft: identical accept/reject surface to
+    SupervisorIntegrationProposalV1, with update-action violations moved
+    INTO output validation (retry feedback) where they are checkable
+    without the binding table."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    proposal_version: str = PROPOSAL_VERSION
+    integration_summary: str = ""
+    actions: Tuple[
+        StrictUpdateAction,
+        CreateQuestionAction,
+        CreateHypothesisAction,
+        CreateContradictionAction,
+        AddFindingReferenceAction,
+        AddPendingProposalReferenceAction,
+    ] = ()
+    limitations: Tuple[str, ...] = ()
+    warnings: Tuple[str, ...] = ()
+
+
+def resolve_strict_proposal_to_canonical(
+    proposal: SupervisorIntegrationProposalV1Strict,
+) -> SupervisorIntegrationDecisionV2:
+    """Same canonical mapping as the draft resolver (strict update actions
+    are structurally compatible with UpdateAction)."""
+    return resolve_proposal_to_canonical(
+        SupervisorIntegrationProposalV1(
+            proposal_version=proposal.proposal_version,
+            integration_summary=proposal.integration_summary,
+            actions=tuple(
+                UpdateAction(**{
+                    k: v for k, v in a.model_dump().items() if k != "action"
+                }) if isinstance(a, StrictUpdateAction) else a
+                for a in proposal.actions
+            ),
+            limitations=proposal.limitations,
+            warnings=proposal.warnings,
+        )
+    )
+
+
+# ---------------------------------------------------------------------------
+# RCA-2A.1 §4: experimental affordance projection for the proposal
+# vocabulary (mirrors availability_projection discipline; never changes it)
+# ---------------------------------------------------------------------------
+
+
+def proposal_affordances(table) -> dict:
+    """Which proposal actions are OFFERED given the frozen binding table:
+    an update target kind is offered only when at least one handle of that
+    kind exists (zero-domain branches are not offered — same discipline as
+    the production availability projection); add/create branches mirror
+    availability_projection exactly."""
+    counts = dict.fromkeys(("Q", "E", "COV", "H", "X", "F", "P", "D"), 0)
+    for binding in table.bindings:
+        handle = binding.handle
+        if handle.startswith("COV"):
+            counts["COV"] += 1
+        else:
+            counts[handle[0]] = counts.get(handle[0], 0) + 1
+    offered_updates = [
+        {"kind": "question", "prefix": "Q", "handles": counts["Q"],
+         "statuses": [m.value for m in QuestionStatus]},
+        {"kind": "evidence", "prefix": "E", "handles": counts["E"],
+         "statuses": [m.value for m in EvidenceRelevanceStatus]},
+        {"kind": "hypothesis", "prefix": "H", "handles": counts["H"],
+         "statuses": [m.value for m in HypothesisStatus]},
+        {"kind": "contradiction", "prefix": "X", "handles": counts["X"],
+         "statuses": [m.value for m in ContradictionStatus]},
+        {"kind": "coverage", "prefix": "COV", "handles": counts["COV"],
+         "statuses": [m.value for m in CoverageStatus]},
+    ]
+    return {
+        "handle_counts_by_kind": counts,
+        "offered_updates": [u for u in offered_updates if u["handles"]],
+        "not_offered_updates": [u for u in offered_updates if not u["handles"]],
+        "offered_other_actions": [
+            action for action, present in (
+                ("create_question", True),
+                ("create_hypothesis", True),
+                ("create_contradiction", True),
+                ("add_finding_reference", counts["F"] > 0),
+                ("add_pending_proposal_reference", counts["P"] > 0),
+            ) if present
+        ],
+    }

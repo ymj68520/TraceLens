@@ -1,0 +1,31 @@
+{
+ "artifact_version": "ModelFacingInformationComparisonV1",
+ "method": "production v2 instructions (agent_supervisor._integration_instructions_v2 with a real projection) + model-facing schema bytes vs proposal schema + DRAFTED offline supplement (never a production prompt); token estimates are chars/4 approximations",
+ "old": {
+  "instructions_chars": 1828,
+  "schema_bytes_facing": 8494,
+  "total_chars": 10322,
+  "token_estimate": 2580,
+  "note": "statuses/scoping carried by the typed schema itself (per-kind enums)"
+ },
+ "proposal_draft": {
+  "supplement_chars": 1379,
+  "schema_bytes_facing": 5249,
+  "total_chars": 8456,
+  "total_vs_old_pct": -18.1,
+  "token_estimate": 2114,
+  "note": "kind-field map + per-kind status vocabularies MUST live in instructions (schema no longer self-describing)"
+ },
+ "proposal_strict_optionB": {
+  "schema_bytes_facing": 5152,
+  "total_chars": 8359,
+  "total_vs_old_pct": -19.0,
+  "note": "merged status enum in schema (partial type info) + in-band retry feedback; same supplement needed"
+ },
+ "findings": [
+  "schema byte savings are PARTIALLY offset by the required instruction supplement at the model-facing total",
+  "the information itself is PRESERVED (nothing the old schema communicated is lost) — its CARRIER moves from schema to instructions",
+  "under-informing the model (schema-only) would surface as avoidable resolver violations/retries"
+ ],
+ "supplement_text_draft": "Proposal vocabulary (integration proposal v1): one uniform update action covers ALL updatable entities — infer the entity kind from the handle prefix and use ONLY the statuses legal for that kind: Q* questions: open|in_progress|answered|unresolved|blocked|deferred|superseded (answered REQUIRES disposition supported|not_supported|inconclusive|unavailable|not_applicable; unresolved requires basis + limitations + investigated_summary; blocked requires blocker; superseded requires superseded_by_handle Q*; required questions cannot be deferred and need a passed closure verification); E* evidence: irrelevant|potentially_relevant|relevant; H* hypotheses: active|supported|weakened|rejected|retired; X* contradictions: open|resolved|explained|unresolved; COV* coverage: not_started|in_progress|covered|partial|unavailable|not_applicable. Field-to-kind map for update: disposition/limitations/investigated_summary/blocker/superseded_by_handle are QUESTION-only; resolution_basis_handles/attempted_resolution/impact are CONTRADICTION-only; capability_basis is COVERAGE-only; related_question_handles are E*/COV*-only; basis_handles are E*-handles for Q* closure. basis_handles: [] means 'no basis' and is rejected wherever basis is required; omitting the field keeps the current value. Unknown or zero-domain handles and unavailable actions are rejected exactly as the v2 contract."
+}

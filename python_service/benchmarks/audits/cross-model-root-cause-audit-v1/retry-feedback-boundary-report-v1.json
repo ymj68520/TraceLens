@@ -1,0 +1,53 @@
+{
+ "artifact_version": "RetryFeedbackBoundaryReportV1",
+ "layer_vocabulary": {
+  "schema_parse_success": "pydantic output-tool validation passed",
+  "proposal_resolution_success": "resolve_proposal_to_canonical passed (handle-prefix/kind/enum checks)",
+  "canonical_integration_success": "resolve_integration_proposal_v2 + validator + policy accepted"
+ },
+ "scenarios": {
+  "A_old_enum_error": {
+   "schema_parse": "rejected",
+   "retry_prompt_count": 1,
+   "agent_run_returned": false,
+   "resolver_called": false,
+   "committed": false,
+   "terminal_exception": "UnexpectedModelBehavior"
+  },
+  "B_draft_illegal_status": {
+   "schema_parse": "accepted",
+   "retry_prompt_count": 0,
+   "agent_run_returned": true,
+   "resolver_called": false,
+   "resolver_violation_code": "proposal_status_not_in_kind_enum",
+   "committed": false
+  },
+  "C_draft_cross_kind_field": {
+   "schema_parse": "accepted",
+   "resolver_violation_code": "proposal_field_not_valid_for_kind",
+   "committed": false
+  },
+  "D_draft_unknown_handle": {
+   "schema_parse": "accepted",
+   "resolver_violation_code": "proposal_unknown_handle_prefix",
+   "committed": false
+  },
+  "E_draft_legal": {
+   "schema_parse": "accepted",
+   "resolver_violation_code": null,
+   "canonical_action": "UpdateQuestionActionV2",
+   "committed": false
+  },
+  "B_strict_illegal_status": {
+   "schema_parse": "rejected",
+   "retry_prompt_count": 1,
+   "agent_run_returned": false,
+   "resolver_called": false,
+   "committed": false,
+   "terminal_exception": "UnexpectedModelBehavior"
+  }
+ },
+ "option_A": "Agent.run -> proposal -> resolver -> invalid -> fail closed (no retry feedback for resolver-class violations)",
+ "option_B": "in-band validation (Strict variant) -> bounded output retry with structured feedback; handle EXISTENCE still resolver-side",
+ "note": "three success layers are DISTINCT; proposal parse success is never integration success"
+}
