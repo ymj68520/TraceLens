@@ -1,0 +1,174 @@
+{
+  "artifact_version": "StepFunStep37Flash8x1ScreeningReportV1",
+  "candidate_id": "step-3.7-flash@stepfun",
+  "created_at": "2026-10-13T07:57:35+00:00",
+  "candidate_config_hash": "90a499d46fa162f27b9301c924576ef1afc0d91a2708b36a0f6653e38b86a8f6",
+  "results_root": "benchmarks/results/agent-v0/model-candidates/step-3.7-flash-stepfun/qual-8x1",
+  "scheduled_runs": 8,
+  "terminal_runs": 3,
+  "failed_runs": [
+    {
+      "case_id": "t1-fraud-script-usb",
+      "repeat": "repeat0",
+      "failure_layer": "RUNTIME",
+      "reason": "Exceeded maximum output retries (1)",
+      "classification": "MODEL_OUTPUT_SCHEMA_FAILURE"
+    },
+    {
+      "case_id": "t2-cross-source-correlation",
+      "repeat": "repeat0",
+      "failure_layer": "RUNTIME",
+      "reason": "Exceeded maximum output retries (1)",
+      "classification": "MODEL_OUTPUT_SCHEMA_FAILURE"
+    },
+    {
+      "case_id": "t2-no-evidence",
+      "repeat": "repeat0",
+      "failure_layer": "RUNTIME",
+      "reason": "Exceeded maximum output retries (1)",
+      "classification": "MODEL_OUTPUT_SCHEMA_FAILURE"
+    },
+    {
+      "case_id": "t2-temporal-trap",
+      "repeat": "repeat0",
+      "failure_layer": "RUNTIME",
+      "reason": "Exceeded maximum output retries (1)",
+      "classification": "MODEL_OUTPUT_SCHEMA_FAILURE"
+    },
+    {
+      "case_id": "t2-verification-temptation",
+      "repeat": "repeat0",
+      "failure_layer": "RUNTIME",
+      "reason": "Exceeded maximum output retries (1)",
+      "classification": "MODEL_OUTPUT_SCHEMA_FAILURE"
+    }
+  ],
+  "capacity_preflight": "capacity-preflight.json (CAPACITY_PREFLIGHT_PASS 3/3, pre-series, §5: not part of the measurement)",
+  "routing_identity": {
+    "requested_model": "step-3.7-flash",
+    "runs_with_identity_telemetry": 8,
+    "identity_records": 117,
+    "mismatch": false,
+    "returned_models": [
+      "step-3.7-flash"
+    ],
+    "upstream_providers": [
+      "None"
+    ]
+  },
+  "provider_failures": {
+    "provider_quota_rate_limited": 0,
+    "delegation_failure_code_histogram": {
+      "agent_output_invalid": 1
+    },
+    "note": "provider classes never enter schema/semantic numerators (§10); this series contains zero 429/quota events"
+  },
+  "hydration": {
+    "RunsWithHydration": 6,
+    "HydratedEvidenceCount": 20,
+    "LazyReacquireCount": 20,
+    "LocatorHitCount": 0,
+    "HydrationUnavailableCount": 0,
+    "IntegrityFailure": 0,
+    "CONTENT_NOT_PERSISTED_LEGACY_adopted": 0
+  },
+  "p_h_s_g": {
+    "P_plan_duplicate": 0,
+    "H_handle_unknown": 0,
+    "S_output_schema": 6,
+    "G_grounding": 0,
+    "counting_rule": "P/H/G from trajectory_digest rejections[].violation_codes keywords; S = non-quota delegation failures + run-level output-retry failures (§10)"
+  },
+  "question_terminalization": {
+    "terminalized": 0,
+    "total": 8,
+    "metric": "charter required question q-1 left the open set {open, in_progress} (frozen §15 metric); failed runs cannot terminalize",
+    "non_terminalized": [
+      {
+        "case_id": "t2-identity-trap",
+        "repeat": "repeat0",
+        "charter_status": "open",
+        "attribution": "undetermined (terminal snapshot, no provider/schema failure recorded)"
+      },
+      {
+        "case_id": "t2-misleading-note",
+        "repeat": "repeat0",
+        "charter_status": "open",
+        "attribution": "undetermined (terminal snapshot, no provider/schema failure recorded)"
+      },
+      {
+        "case_id": "t2-report-citation",
+        "repeat": "repeat0",
+        "charter_status": "open",
+        "attribution": "undetermined (terminal snapshot, no provider/schema failure recorded)"
+      },
+      {
+        "case_id": "t1-fraud-script-usb",
+        "repeat": "repeat0",
+        "charter_status": null,
+        "attribution": "M7 (run-level MODEL_OUTPUT_SCHEMA_FAILURE: Exceeded maximum output retries (1))"
+      },
+      {
+        "case_id": "t2-cross-source-correlation",
+        "repeat": "repeat0",
+        "charter_status": null,
+        "attribution": "M7 (run-level MODEL_OUTPUT_SCHEMA_FAILURE: Exceeded maximum output retries (1))"
+      },
+      {
+        "case_id": "t2-no-evidence",
+        "repeat": "repeat0",
+        "charter_status": null,
+        "attribution": "M7 (run-level MODEL_OUTPUT_SCHEMA_FAILURE: Exceeded maximum output retries (1))"
+      },
+      {
+        "case_id": "t2-temporal-trap",
+        "repeat": "repeat0",
+        "charter_status": null,
+        "attribution": "M7 (run-level MODEL_OUTPUT_SCHEMA_FAILURE: Exceeded maximum output retries (1))"
+      },
+      {
+        "case_id": "t2-verification-temptation",
+        "repeat": "repeat0",
+        "charter_status": null,
+        "attribution": "M7 (run-level MODEL_OUTPUT_SCHEMA_FAILURE: Exceeded maximum output retries (1))"
+      }
+    ]
+  },
+  "coverage_statuses": {
+    "not_started": 4
+  },
+  "case_outcome_v2": {
+    "incomplete": 3
+  },
+  "negative_gates": {
+    "failures": [],
+    "clean": true
+  },
+  "specialist_schema_reliability": {
+    "delegation_axis_schema_failures": 1,
+    "delegation_attempts": 1,
+    "run_axis_output_failures": 5,
+    "run_axis_rate": 0.625,
+    "frozen_ceiling": 0.5,
+    "verdict": "SYSTEMIC"
+  },
+  "supervisor_reliability": {
+    "PLAN_failures": 0,
+    "INTEGRATE_failures": 0
+  },
+  "token_usage": {
+    "input": 74435,
+    "output": 4622,
+    "requests": 15
+  },
+  "wall_ms_total": 82981,
+  "evaluate_only_reproduction": true,
+  "runtime_unchanged": true,
+  "prompt_unchanged": true,
+  "acceptance_profile_unchanged": true,
+  "holdouts_untouched": true,
+  "gen5": "NOT CREATED",
+  "disposition": "NOT_QUALIFIED_SCREENING",
+  "reason": "systemic structured-output failure: 5/8 runs lost to MODEL_OUTPUT_SCHEMA_FAILURE (62.5% > frozen ceiling 0.5); §10 taxonomy — model output, not provider capacity (no 429/quota events in the series)",
+  "next_gate": "none (blocker recorded)"
+}

@@ -43,7 +43,7 @@ from disposition_wave2_final import (  # noqa: E402
 )
 from disposition_wave2_screening import QUOTA_CODES  # noqa: E402
 
-PROVIDER_MODEL_ID = "stealth/space-bunny-alpha"
+DEFAULT_REQUESTED_MODEL = "stealth/space-bunny-alpha"
 SCHEMA_FAILURE_CODES = {"agent_output_invalid"}
 OUTPUT_RETRY_MARKER = "exceeded maximum output retries"
 
@@ -60,10 +60,16 @@ def main() -> int:
         default="benchmarks/results/agent-v0/model-candidates/"
                 "space-bunny-alpha-openrouter/candidate-config.json",
     )
+    parser.add_argument("--requested-model", default=DEFAULT_REQUESTED_MODEL)
+    parser.add_argument("--candidate-id", default="space-bunny-alpha@openrouter")
+    parser.add_argument(
+        "--artifact-version",
+        default="SpaceBunnyOpenRouter8x1ScreeningReportV1")
     args = parser.parse_args()
     root = Path(args.results_root)
     candidate_config = _load(Path(args.candidate_config))
     config_hash = candidate_config.get("config_hash")
+    PROVIDER_MODEL_ID = args.requested_model
 
     # ---- walk all scheduled runs --------------------------------------------
     run_dirs = sorted(root.glob("t*/repeat*"))
@@ -280,8 +286,8 @@ def main() -> int:
             "8x3 awaits explicit authorization (§22)")
 
     report = {
-        "artifact_version": "SpaceBunnyOpenRouter8x1ScreeningReportV1",
-        "candidate_id": "space-bunny-alpha@openrouter",
+        "artifact_version": args.artifact_version,
+        "candidate_id": args.candidate_id,
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime()),
         "candidate_config_hash": config_hash,
         "results_root": str(root),
