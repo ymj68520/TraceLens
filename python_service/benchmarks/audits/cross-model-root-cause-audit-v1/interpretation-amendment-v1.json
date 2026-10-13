@@ -1,0 +1,75 @@
+{
+ "artifact_version": "CrossModelFailureInterpretationAmendmentV1",
+ "created_at": "2026-10-13T11:42:54+00:00",
+ "policy": "append-only; original artifacts byte-identical; this file only reinterprets, never overwrites (audit directive §10)",
+ "amendments": [
+  {
+   "id": "AMD-1",
+   "original_artifacts": [
+    {
+     "path": "benchmarks/results/agent-v0/model-candidates/space-bunny-alpha-openrouter/qual-8x1/screening-report.json",
+     "sha256": "3e9bfa9790c7598283fac11a3551a3f5301be2bc16c61d787df0f999c30b7de4"
+    },
+    {
+     "path": "benchmarks/results/agent-v0/model-candidates/step-3.7-flash-stepfun/qual-8x1/screening-report.json",
+     "sha256": "9d406953270fc1248c31168ddbfe3521938e08fabcf0213da8dfc2b050187a6b"
+    },
+    {
+     "path": "benchmarks/results/agent-v0/model-candidates/step-5-preview-stepfun/qual-8x1/screening-report.json",
+     "sha256": "65edbe8715a3f2e3481a7f267b15782d8132a95566925c0caf54773890dcddd1"
+    }
+   ],
+   "original_claim": "5/8, 5/8, 1/8 runs lost to run-level MODEL_OUTPUT_SCHEMA_FAILURE attributed to model structured-output capability",
+   "amended_interpretation": "All 16 run-level failures across the three candidate series are stage-localized to SUPERVISOR_INTEGRATE (first INTEGRATE after the first delegation): the '(1)' retry marker pins the pydantic-ai supervisor default retry budget, the PLAN catch topology excludes PLAN, and the durable store timeline shows last event = delegation_completed in 16/16. The specialist layer (retries=2, marker would read '(2)') NEVER failed in any post-A1-T series. The actual failing model outputs and validation errors were never persisted, so 'model output contract failure' remains SUSPECTED with INCOMPLETE_TELEMETRY, not proven capability failure.",
+   "verdict_impact": "NONE — all three dispositions (NOT_QUALIFIED_SCREENING) stand under the directed contract; only the mechanism attribution is refined"
+  },
+  {
+   "id": "AMD-2",
+   "original_artifacts": [
+    {
+     "path": "benchmarks/results/agent-v0/model-candidates/step-5-preview-stepfun/qual-8x1/screening-report.json",
+     "sha256": "65edbe8715a3f2e3481a7f267b15782d8132a95566925c0caf54773890dcddd1"
+    }
+   ],
+   "original_claim": "non_terminalized attribution text labels ALL failed runs 'M7 (run-level MODEL_OUTPUT_SCHEMA_FAILURE: ...)' including the five timeout runs",
+   "amended_interpretation": "Cosmetic mislabel in disposition_openrouter_8x1.py non_terminalized attribution: the failed_runs classification itself is correct (RUNTIME_FAILURE_UNATTRIBUTED for timeouts); only the attribution prose is wrong. BENCHMARK_DISPOSITION_DEFECT (reporting class).",
+   "verdict_impact": "NONE"
+  },
+  {
+   "id": "AMD-3",
+   "original_artifacts": [
+    {
+     "path": "benchmarks/results/agent-v0/model-candidates/step-5-preview-stepfun/qualification-status.json",
+     "sha256": "5a57a54c7a1342431299b4b97e7db7b113b015cefc0faa8c5c625401f15f3907"
+    }
+   ],
+   "original_claim": "script_disposition_amendment: automated READY_FOR_8X3 overridden to NOT_QUALIFIED_SCREENING",
+   "amended_interpretation": "CONFIRMED and upgraded to a pinned regression: the automated READY_FOR_8X3 is a deterministic false positive of the disposition decision tree (no RUNTIME_FAILURE_UNATTRIBUTED branch, no terminalization gate), reproduced on synthetic series by tests/unit/benchmarks/test_screening_disposition_regression.py::test_timeout_series_currently_falls_through_to_ready_false_positive",
+   "verdict_impact": "SUPPORTS the original amendment"
+  },
+  {
+   "id": "AMD-4",
+   "original_artifacts": [
+    {
+     "path": "benchmarks/results/agent-v0/model-candidates/step-5-preview-stepfun/qualification-status.json",
+     "sha256": "5a57a54c7a1342431299b4b97e7db7b113b015cefc0faa8c5c625401f15f3907"
+    }
+   ],
+   "original_claim": "'Timeout attribution: candidate latency property, NOT environmental' + dominant failure REQUEST_TIMEOUT classified at the run level",
+   "amended_interpretation": "Mechanism refined: the 120s budget applies PER HTTP ATTEMPT (pydantic-ai model_settings['timeout']); the openai SDK internally retries APITimeoutError with DEFAULT_MAX_RETRIES=2 so one logical request costs 3x120s+backoff (measured gap 362s in 5/5 timeout runs). LLM_MAX_RETRIES=3 is dead config on the agent path; pydantic-ai does not retry transport errors; the production run-level wait_for budget is not armed (generation_params carries no timeout_seconds). map_provider_exception misclasses APITimeoutError as AGENT_INTERNAL_FAILURE (it subclasses neither TimeoutError nor carries status_code). Primary classification: PROVIDER_RESPONSE_LATENCY manifesting as PROVIDER_TRANSPORT_TIMEOUT with SDK retry amplification.",
+   "verdict_impact": "NONE — NOT_QUALIFIED_SCREENING stands; 'candidate latency under frozen budget' attribution survives (same machine/config ran step-3.7-flash with zero timeouts)"
+  },
+  {
+   "id": "AMD-5",
+   "original_artifacts": [
+    {
+     "path": "benchmarks/results/agent-v0/b2-runtime-v3/b2-runtime-v3-measurement-report.json",
+     "sha256": "62bce5b6163e70a0b42f93a92741335cc61fc11f933c1e35144559ae830eb466"
+    }
+   ],
+   "original_claim": "incumbent terminalization 20/24",
+   "amended_interpretation": "VERIFIED, no change: recomputation under the single frozen definition (charter q-1 leaving {open,in_progress}, disposition_wave2_final.OPEN_STATUSES shared by all three disposition scripts) reproduces 20/24 (incumbent V3), 10/24 (glm-5.2 24-run) and the screening x/8 figures exactly. status and disposition are distinct fields; the metric uses status only; the observed status=in_progress|disposition=inconclusive pair is correctly counted as NOT terminalized.",
+   "verdict_impact": "NONE (verification, not correction)"
+  }
+ ]
+}

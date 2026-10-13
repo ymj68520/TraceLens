@@ -1,0 +1,382 @@
+{
+ "artifact_version": "OutputRetryForensicsV1",
+ "total_occurrences": 11,
+ "occurrences": [
+  {
+   "series": "space-bunny-alpha-openrouter",
+   "case_id": "t2-misleading-note",
+   "repeat": "repeat0",
+   "failure_reason": "Exceeded maximum output retries (1)",
+   "retry_marker_count": 1,
+   "localized_stage": "SUPERVISOR_INTEGRATE",
+   "store_last_event": "delegation_completed",
+   "evidence_availability": {
+    "original_output_tool_call": false,
+    "actual_model_response": false,
+    "local_validation_errors": false,
+    "retry_feedback_content": false,
+    "last_failure_cause_chain": false,
+    "expected_pydantic_schema": true,
+    "retry_attempt_count_from_marker": true
+   },
+   "telemetry_note": "runner persists str(exc)[:500] only (benchmarks/runner.py:306); delegation/supervisor failures are sanitized via safe_failure_message (agent_specialist_executor.py:116); pydantic-ai UnexpectedModelBehavior.__cause__ (last ValidationError with field paths) is never serialized",
+   "integrate_vs_plan_schema_asymmetry": {
+    "plan_v2": {
+     "schema_bytes": 2686,
+     "top_level_fields": 5,
+     "defs": 3,
+     "extra": "forbid"
+    },
+    "integrate_v2": {
+     "schema_bytes": 9833,
+     "top_level_fields": 5,
+     "defs": 19,
+     "extra": "forbid"
+    },
+    "note": "INTEGRATE output tool carries ~3.7x the PLAN schema size and 6x the $defs; both extra=forbid; both delivered as output TOOLS (default_structured_output_mode='tool', text output disallowed)"
+   }
+  },
+  {
+   "series": "space-bunny-alpha-openrouter",
+   "case_id": "t2-no-evidence",
+   "repeat": "repeat0",
+   "failure_reason": "Exceeded maximum output retries (1)",
+   "retry_marker_count": 1,
+   "localized_stage": "SUPERVISOR_INTEGRATE",
+   "store_last_event": "delegation_completed",
+   "evidence_availability": {
+    "original_output_tool_call": false,
+    "actual_model_response": false,
+    "local_validation_errors": false,
+    "retry_feedback_content": false,
+    "last_failure_cause_chain": false,
+    "expected_pydantic_schema": true,
+    "retry_attempt_count_from_marker": true
+   },
+   "telemetry_note": "runner persists str(exc)[:500] only (benchmarks/runner.py:306); delegation/supervisor failures are sanitized via safe_failure_message (agent_specialist_executor.py:116); pydantic-ai UnexpectedModelBehavior.__cause__ (last ValidationError with field paths) is never serialized",
+   "integrate_vs_plan_schema_asymmetry": {
+    "plan_v2": {
+     "schema_bytes": 2686,
+     "top_level_fields": 5,
+     "defs": 3,
+     "extra": "forbid"
+    },
+    "integrate_v2": {
+     "schema_bytes": 9833,
+     "top_level_fields": 5,
+     "defs": 19,
+     "extra": "forbid"
+    },
+    "note": "INTEGRATE output tool carries ~3.7x the PLAN schema size and 6x the $defs; both extra=forbid; both delivered as output TOOLS (default_structured_output_mode='tool', text output disallowed)"
+   }
+  },
+  {
+   "series": "space-bunny-alpha-openrouter",
+   "case_id": "t2-report-citation",
+   "repeat": "repeat0",
+   "failure_reason": "Exceeded maximum output retries (1)",
+   "retry_marker_count": 1,
+   "localized_stage": "SUPERVISOR_INTEGRATE",
+   "store_last_event": "delegation_completed",
+   "evidence_availability": {
+    "original_output_tool_call": false,
+    "actual_model_response": false,
+    "local_validation_errors": false,
+    "retry_feedback_content": false,
+    "last_failure_cause_chain": false,
+    "expected_pydantic_schema": true,
+    "retry_attempt_count_from_marker": true
+   },
+   "telemetry_note": "runner persists str(exc)[:500] only (benchmarks/runner.py:306); delegation/supervisor failures are sanitized via safe_failure_message (agent_specialist_executor.py:116); pydantic-ai UnexpectedModelBehavior.__cause__ (last ValidationError with field paths) is never serialized",
+   "integrate_vs_plan_schema_asymmetry": {
+    "plan_v2": {
+     "schema_bytes": 2686,
+     "top_level_fields": 5,
+     "defs": 3,
+     "extra": "forbid"
+    },
+    "integrate_v2": {
+     "schema_bytes": 9833,
+     "top_level_fields": 5,
+     "defs": 19,
+     "extra": "forbid"
+    },
+    "note": "INTEGRATE output tool carries ~3.7x the PLAN schema size and 6x the $defs; both extra=forbid; both delivered as output TOOLS (default_structured_output_mode='tool', text output disallowed)"
+   }
+  },
+  {
+   "series": "space-bunny-alpha-openrouter",
+   "case_id": "t2-temporal-trap",
+   "repeat": "repeat0",
+   "failure_reason": "Exceeded maximum output retries (1)",
+   "retry_marker_count": 1,
+   "localized_stage": "SUPERVISOR_INTEGRATE",
+   "store_last_event": "delegation_completed",
+   "evidence_availability": {
+    "original_output_tool_call": false,
+    "actual_model_response": false,
+    "local_validation_errors": false,
+    "retry_feedback_content": false,
+    "last_failure_cause_chain": false,
+    "expected_pydantic_schema": true,
+    "retry_attempt_count_from_marker": true
+   },
+   "telemetry_note": "runner persists str(exc)[:500] only (benchmarks/runner.py:306); delegation/supervisor failures are sanitized via safe_failure_message (agent_specialist_executor.py:116); pydantic-ai UnexpectedModelBehavior.__cause__ (last ValidationError with field paths) is never serialized",
+   "integrate_vs_plan_schema_asymmetry": {
+    "plan_v2": {
+     "schema_bytes": 2686,
+     "top_level_fields": 5,
+     "defs": 3,
+     "extra": "forbid"
+    },
+    "integrate_v2": {
+     "schema_bytes": 9833,
+     "top_level_fields": 5,
+     "defs": 19,
+     "extra": "forbid"
+    },
+    "note": "INTEGRATE output tool carries ~3.7x the PLAN schema size and 6x the $defs; both extra=forbid; both delivered as output TOOLS (default_structured_output_mode='tool', text output disallowed)"
+   }
+  },
+  {
+   "series": "space-bunny-alpha-openrouter",
+   "case_id": "t2-verification-temptation",
+   "repeat": "repeat0",
+   "failure_reason": "Exceeded maximum output retries (1)",
+   "retry_marker_count": 1,
+   "localized_stage": "SUPERVISOR_INTEGRATE",
+   "store_last_event": "delegation_completed",
+   "evidence_availability": {
+    "original_output_tool_call": false,
+    "actual_model_response": false,
+    "local_validation_errors": false,
+    "retry_feedback_content": false,
+    "last_failure_cause_chain": false,
+    "expected_pydantic_schema": true,
+    "retry_attempt_count_from_marker": true
+   },
+   "telemetry_note": "runner persists str(exc)[:500] only (benchmarks/runner.py:306); delegation/supervisor failures are sanitized via safe_failure_message (agent_specialist_executor.py:116); pydantic-ai UnexpectedModelBehavior.__cause__ (last ValidationError with field paths) is never serialized",
+   "integrate_vs_plan_schema_asymmetry": {
+    "plan_v2": {
+     "schema_bytes": 2686,
+     "top_level_fields": 5,
+     "defs": 3,
+     "extra": "forbid"
+    },
+    "integrate_v2": {
+     "schema_bytes": 9833,
+     "top_level_fields": 5,
+     "defs": 19,
+     "extra": "forbid"
+    },
+    "note": "INTEGRATE output tool carries ~3.7x the PLAN schema size and 6x the $defs; both extra=forbid; both delivered as output TOOLS (default_structured_output_mode='tool', text output disallowed)"
+   }
+  },
+  {
+   "series": "step-3.7-flash-stepfun",
+   "case_id": "t1-fraud-script-usb",
+   "repeat": "repeat0",
+   "failure_reason": "Exceeded maximum output retries (1)",
+   "retry_marker_count": 1,
+   "localized_stage": "SUPERVISOR_INTEGRATE",
+   "store_last_event": "delegation_completed",
+   "evidence_availability": {
+    "original_output_tool_call": false,
+    "actual_model_response": false,
+    "local_validation_errors": false,
+    "retry_feedback_content": false,
+    "last_failure_cause_chain": false,
+    "expected_pydantic_schema": true,
+    "retry_attempt_count_from_marker": true
+   },
+   "telemetry_note": "runner persists str(exc)[:500] only (benchmarks/runner.py:306); delegation/supervisor failures are sanitized via safe_failure_message (agent_specialist_executor.py:116); pydantic-ai UnexpectedModelBehavior.__cause__ (last ValidationError with field paths) is never serialized",
+   "integrate_vs_plan_schema_asymmetry": {
+    "plan_v2": {
+     "schema_bytes": 2686,
+     "top_level_fields": 5,
+     "defs": 3,
+     "extra": "forbid"
+    },
+    "integrate_v2": {
+     "schema_bytes": 9833,
+     "top_level_fields": 5,
+     "defs": 19,
+     "extra": "forbid"
+    },
+    "note": "INTEGRATE output tool carries ~3.7x the PLAN schema size and 6x the $defs; both extra=forbid; both delivered as output TOOLS (default_structured_output_mode='tool', text output disallowed)"
+   }
+  },
+  {
+   "series": "step-3.7-flash-stepfun",
+   "case_id": "t2-cross-source-correlation",
+   "repeat": "repeat0",
+   "failure_reason": "Exceeded maximum output retries (1)",
+   "retry_marker_count": 1,
+   "localized_stage": "SUPERVISOR_INTEGRATE",
+   "store_last_event": "delegation_completed",
+   "evidence_availability": {
+    "original_output_tool_call": false,
+    "actual_model_response": false,
+    "local_validation_errors": false,
+    "retry_feedback_content": false,
+    "last_failure_cause_chain": false,
+    "expected_pydantic_schema": true,
+    "retry_attempt_count_from_marker": true
+   },
+   "telemetry_note": "runner persists str(exc)[:500] only (benchmarks/runner.py:306); delegation/supervisor failures are sanitized via safe_failure_message (agent_specialist_executor.py:116); pydantic-ai UnexpectedModelBehavior.__cause__ (last ValidationError with field paths) is never serialized",
+   "integrate_vs_plan_schema_asymmetry": {
+    "plan_v2": {
+     "schema_bytes": 2686,
+     "top_level_fields": 5,
+     "defs": 3,
+     "extra": "forbid"
+    },
+    "integrate_v2": {
+     "schema_bytes": 9833,
+     "top_level_fields": 5,
+     "defs": 19,
+     "extra": "forbid"
+    },
+    "note": "INTEGRATE output tool carries ~3.7x the PLAN schema size and 6x the $defs; both extra=forbid; both delivered as output TOOLS (default_structured_output_mode='tool', text output disallowed)"
+   }
+  },
+  {
+   "series": "step-3.7-flash-stepfun",
+   "case_id": "t2-no-evidence",
+   "repeat": "repeat0",
+   "failure_reason": "Exceeded maximum output retries (1)",
+   "retry_marker_count": 1,
+   "localized_stage": "SUPERVISOR_INTEGRATE",
+   "store_last_event": "delegation_completed",
+   "evidence_availability": {
+    "original_output_tool_call": false,
+    "actual_model_response": false,
+    "local_validation_errors": false,
+    "retry_feedback_content": false,
+    "last_failure_cause_chain": false,
+    "expected_pydantic_schema": true,
+    "retry_attempt_count_from_marker": true
+   },
+   "telemetry_note": "runner persists str(exc)[:500] only (benchmarks/runner.py:306); delegation/supervisor failures are sanitized via safe_failure_message (agent_specialist_executor.py:116); pydantic-ai UnexpectedModelBehavior.__cause__ (last ValidationError with field paths) is never serialized",
+   "integrate_vs_plan_schema_asymmetry": {
+    "plan_v2": {
+     "schema_bytes": 2686,
+     "top_level_fields": 5,
+     "defs": 3,
+     "extra": "forbid"
+    },
+    "integrate_v2": {
+     "schema_bytes": 9833,
+     "top_level_fields": 5,
+     "defs": 19,
+     "extra": "forbid"
+    },
+    "note": "INTEGRATE output tool carries ~3.7x the PLAN schema size and 6x the $defs; both extra=forbid; both delivered as output TOOLS (default_structured_output_mode='tool', text output disallowed)"
+   }
+  },
+  {
+   "series": "step-3.7-flash-stepfun",
+   "case_id": "t2-temporal-trap",
+   "repeat": "repeat0",
+   "failure_reason": "Exceeded maximum output retries (1)",
+   "retry_marker_count": 1,
+   "localized_stage": "SUPERVISOR_INTEGRATE",
+   "store_last_event": "delegation_completed",
+   "evidence_availability": {
+    "original_output_tool_call": false,
+    "actual_model_response": false,
+    "local_validation_errors": false,
+    "retry_feedback_content": false,
+    "last_failure_cause_chain": false,
+    "expected_pydantic_schema": true,
+    "retry_attempt_count_from_marker": true
+   },
+   "telemetry_note": "runner persists str(exc)[:500] only (benchmarks/runner.py:306); delegation/supervisor failures are sanitized via safe_failure_message (agent_specialist_executor.py:116); pydantic-ai UnexpectedModelBehavior.__cause__ (last ValidationError with field paths) is never serialized",
+   "integrate_vs_plan_schema_asymmetry": {
+    "plan_v2": {
+     "schema_bytes": 2686,
+     "top_level_fields": 5,
+     "defs": 3,
+     "extra": "forbid"
+    },
+    "integrate_v2": {
+     "schema_bytes": 9833,
+     "top_level_fields": 5,
+     "defs": 19,
+     "extra": "forbid"
+    },
+    "note": "INTEGRATE output tool carries ~3.7x the PLAN schema size and 6x the $defs; both extra=forbid; both delivered as output TOOLS (default_structured_output_mode='tool', text output disallowed)"
+   }
+  },
+  {
+   "series": "step-3.7-flash-stepfun",
+   "case_id": "t2-verification-temptation",
+   "repeat": "repeat0",
+   "failure_reason": "Exceeded maximum output retries (1)",
+   "retry_marker_count": 1,
+   "localized_stage": "SUPERVISOR_INTEGRATE",
+   "store_last_event": "delegation_completed",
+   "evidence_availability": {
+    "original_output_tool_call": false,
+    "actual_model_response": false,
+    "local_validation_errors": false,
+    "retry_feedback_content": false,
+    "last_failure_cause_chain": false,
+    "expected_pydantic_schema": true,
+    "retry_attempt_count_from_marker": true
+   },
+   "telemetry_note": "runner persists str(exc)[:500] only (benchmarks/runner.py:306); delegation/supervisor failures are sanitized via safe_failure_message (agent_specialist_executor.py:116); pydantic-ai UnexpectedModelBehavior.__cause__ (last ValidationError with field paths) is never serialized",
+   "integrate_vs_plan_schema_asymmetry": {
+    "plan_v2": {
+     "schema_bytes": 2686,
+     "top_level_fields": 5,
+     "defs": 3,
+     "extra": "forbid"
+    },
+    "integrate_v2": {
+     "schema_bytes": 9833,
+     "top_level_fields": 5,
+     "defs": 19,
+     "extra": "forbid"
+    },
+    "note": "INTEGRATE output tool carries ~3.7x the PLAN schema size and 6x the $defs; both extra=forbid; both delivered as output TOOLS (default_structured_output_mode='tool', text output disallowed)"
+   }
+  },
+  {
+   "series": "step-5-preview-stepfun",
+   "case_id": "t2-cross-source-correlation",
+   "repeat": "repeat0",
+   "failure_reason": "Exceeded maximum output retries (1)",
+   "retry_marker_count": 1,
+   "localized_stage": "SUPERVISOR_INTEGRATE",
+   "store_last_event": "delegation_completed",
+   "evidence_availability": {
+    "original_output_tool_call": false,
+    "actual_model_response": false,
+    "local_validation_errors": false,
+    "retry_feedback_content": false,
+    "last_failure_cause_chain": false,
+    "expected_pydantic_schema": true,
+    "retry_attempt_count_from_marker": true
+   },
+   "telemetry_note": "runner persists str(exc)[:500] only (benchmarks/runner.py:306); delegation/supervisor failures are sanitized via safe_failure_message (agent_specialist_executor.py:116); pydantic-ai UnexpectedModelBehavior.__cause__ (last ValidationError with field paths) is never serialized",
+   "integrate_vs_plan_schema_asymmetry": {
+    "plan_v2": {
+     "schema_bytes": 2686,
+     "top_level_fields": 5,
+     "defs": 3,
+     "extra": "forbid"
+    },
+    "integrate_v2": {
+     "schema_bytes": 9833,
+     "top_level_fields": 5,
+     "defs": 19,
+     "extra": "forbid"
+    },
+    "note": "INTEGRATE output tool carries ~3.7x the PLAN schema size and 6x the $defs; both extra=forbid; both delivered as output TOOLS (default_structured_output_mode='tool', text output disallowed)"
+   }
+  }
+ ],
+ "historical_evidence_exists": "b2-restart era: scripts/diagnose_specialist_output.py (monkey-patch capturing pydantic-ai retry-prompt parts) produced benchmarks/results/agent-v0/b2-restart/specialist-output-diagnosis.v1.json with REAL validation errors for the specialist layer '(2)' failures (model filled server-computed tool_call_count/observation_count + stringified execution_digest; retry feedback was delivered and partially acted on). That hook covers ONLY build_specialist_agent — supervisor INTEGRATE runs were never instrumented, and it was not re-armed for any of the three 2026-10 candidate screenings.",
+ "conclusion": "all occurrences localize to SUPERVISOR_INTEGRATE (retry marker '(1)' + PLAN-is-caught topology + last durable event delegation_completed); the actual failing outputs are NOT recoverable from any persisted artifact — historical 'model capability' attributions rest on the exception string alone and are downgraded to MODEL_OUTPUT_CONTRACT_FAILURE(suspected)+INSUFFICIENT_TELEMETRY"
+}

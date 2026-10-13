@@ -1,0 +1,529 @@
+{
+ "artifact_version": "TerminalizationAuditV1",
+ "frozen_definition": "charter question q-1 of the run snapshot has left {open, in_progress} (disposition_wave2_final.OPEN_STATUSES, imported unchanged by disposition_wave2_screening and disposition_openrouter_8x1 — single shared definition)",
+ "question_status_vs_disposition": "snapshot records BOTH status and disposition per question; the frozen metric uses status only; observed pairs listed per series",
+ "series": {
+  "b2-runtime-v3-incumbent": {
+   "terminal_snapshots": 24,
+   "terminalized_q1": 20,
+   "ratio": "20/24",
+   "historical_claim": "20/24",
+   "status_disposition_pairs": {
+    "status=answered|disposition=supported": 16,
+    "status=open|disposition=None": 4,
+    "status=answered|disposition=inconclusive": 2,
+    "status=answered|disposition=not_supported": 2
+   },
+   "non_terminalized": [
+    {
+     "case_id": "t2-identity-trap",
+     "repeat": "repeat1",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-misleading-note",
+     "repeat": "repeat2",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-report-citation",
+     "repeat": "repeat2",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-verification-temptation",
+     "repeat": "repeat1",
+     "q1": "status=open|disposition=None"
+    }
+   ]
+  },
+  "b2-runtime-v3-glm52": {
+   "terminal_snapshots": 24,
+   "terminalized_q1": 10,
+   "ratio": "10/24",
+   "historical_claim": "10/24",
+   "status_disposition_pairs": {
+    "status=answered|disposition=supported": 9,
+    "status=answered|disposition=not_supported": 1,
+    "status=open|disposition=None": 14
+   },
+   "non_terminalized": [
+    {
+     "case_id": "t2-misleading-note",
+     "repeat": "repeat1",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-misleading-note",
+     "repeat": "repeat2",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-no-evidence",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-no-evidence",
+     "repeat": "repeat1",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-no-evidence",
+     "repeat": "repeat2",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-report-citation",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-report-citation",
+     "repeat": "repeat1",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-report-citation",
+     "repeat": "repeat2",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-temporal-trap",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-temporal-trap",
+     "repeat": "repeat1",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-temporal-trap",
+     "repeat": "repeat2",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-verification-temptation",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-verification-temptation",
+     "repeat": "repeat1",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-verification-temptation",
+     "repeat": "repeat2",
+     "q1": "status=open|disposition=None"
+    }
+   ]
+  },
+  "b2-restart-sensenova": {
+   "terminal_snapshots": 24,
+   "terminalized_q1": 10,
+   "ratio": "10/24",
+   "historical_claim": null,
+   "status_disposition_pairs": {
+    "status=open|disposition=None": 14,
+    "status=answered|disposition=supported": 6,
+    "status=answered|disposition=not_supported": 4
+   },
+   "non_terminalized": [
+    {
+     "case_id": "t1-fraud-script-usb",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t1-fraud-script-usb",
+     "repeat": "repeat1",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t1-fraud-script-usb",
+     "repeat": "repeat2",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-cross-source-correlation",
+     "repeat": "repeat2",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-identity-trap",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-identity-trap",
+     "repeat": "repeat1",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-identity-trap",
+     "repeat": "repeat2",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-misleading-note",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-no-evidence",
+     "repeat": "repeat2",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-report-citation",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-report-citation",
+     "repeat": "repeat2",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-temporal-trap",
+     "repeat": "repeat1",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-verification-temptation",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-verification-temptation",
+     "repeat": "repeat1",
+     "q1": "status=open|disposition=None"
+    }
+   ]
+  },
+  "baseline-mimo": {
+   "terminal_snapshots": 24,
+   "terminalized_q1": 0,
+   "ratio": "0/24",
+   "historical_claim": null,
+   "status_disposition_pairs": {
+    "status=open|disposition=None": 24
+   },
+   "non_terminalized": [
+    {
+     "case_id": "t1-fraud-script-usb",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t1-fraud-script-usb",
+     "repeat": "repeat1",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t1-fraud-script-usb",
+     "repeat": "repeat2",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-cross-source-correlation",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-cross-source-correlation",
+     "repeat": "repeat1",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-cross-source-correlation",
+     "repeat": "repeat2",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-identity-trap",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-identity-trap",
+     "repeat": "repeat1",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-identity-trap",
+     "repeat": "repeat2",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-misleading-note",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-misleading-note",
+     "repeat": "repeat1",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-misleading-note",
+     "repeat": "repeat2",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-no-evidence",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-no-evidence",
+     "repeat": "repeat1",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-no-evidence",
+     "repeat": "repeat2",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-report-citation",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-report-citation",
+     "repeat": "repeat1",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-report-citation",
+     "repeat": "repeat2",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-temporal-trap",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-temporal-trap",
+     "repeat": "repeat1",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-temporal-trap",
+     "repeat": "repeat2",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-verification-temptation",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-verification-temptation",
+     "repeat": "repeat1",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-verification-temptation",
+     "repeat": "repeat2",
+     "q1": "status=open|disposition=None"
+    }
+   ]
+  },
+  "wave2-dsv4f-sensenova": {
+   "terminal_snapshots": 8,
+   "terminalized_q1": 0,
+   "ratio": "0/8",
+   "historical_claim": null,
+   "status_disposition_pairs": {
+    "status=open|disposition=None": 8
+   },
+   "non_terminalized": [
+    {
+     "case_id": "t1-fraud-script-usb",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-cross-source-correlation",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-identity-trap",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-misleading-note",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-no-evidence",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-report-citation",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-temporal-trap",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-verification-temptation",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    }
+   ]
+  },
+  "dsv4f-sensenova": {
+   "terminal_snapshots": 8,
+   "terminalized_q1": 0,
+   "ratio": "0/8",
+   "historical_claim": null,
+   "status_disposition_pairs": {
+    "status=open|disposition=None": 8
+   },
+   "non_terminalized": [
+    {
+     "case_id": "t1-fraud-script-usb",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-cross-source-correlation",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-identity-trap",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-misleading-note",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-no-evidence",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-report-citation",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-temporal-trap",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-verification-temptation",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    }
+   ]
+  },
+  "glm-5.2-sensenova": {
+   "terminal_snapshots": 8,
+   "terminalized_q1": 6,
+   "ratio": "6/8",
+   "historical_claim": "10/24 (wave-1 b2 claim)",
+   "status_disposition_pairs": {
+    "status=answered|disposition=supported": 4,
+    "status=answered|disposition=not_supported": 2,
+    "status=in_progress|disposition=inconclusive": 1,
+    "status=open|disposition=None": 1
+   },
+   "non_terminalized": [
+    {
+     "case_id": "t2-no-evidence",
+     "repeat": "repeat0",
+     "q1": "status=in_progress|disposition=inconclusive"
+    },
+    {
+     "case_id": "t2-verification-temptation",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    }
+   ]
+  },
+  "space-bunny-alpha-openrouter": {
+   "terminal_snapshots": 3,
+   "terminalized_q1": 1,
+   "ratio": "1/3",
+   "historical_claim": "1/8",
+   "status_disposition_pairs": {
+    "status=open|disposition=None": 2,
+    "status=answered|disposition=not_supported": 1
+   },
+   "non_terminalized": [
+    {
+     "case_id": "t1-fraud-script-usb",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-cross-source-correlation",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    }
+   ]
+  },
+  "step-3.7-flash-stepfun": {
+   "terminal_snapshots": 3,
+   "terminalized_q1": 0,
+   "ratio": "0/3",
+   "historical_claim": "0/8",
+   "status_disposition_pairs": {
+    "status=open|disposition=None": 3
+   },
+   "non_terminalized": [
+    {
+     "case_id": "t2-identity-trap",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-misleading-note",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    },
+    {
+     "case_id": "t2-report-citation",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    }
+   ]
+  },
+  "step-5-preview-stepfun": {
+   "terminal_snapshots": 2,
+   "terminalized_q1": 1,
+   "ratio": "1/2",
+   "historical_claim": "1/8",
+   "status_disposition_pairs": {
+    "status=answered|disposition=supported": 1,
+    "status=open|disposition=None": 1
+   },
+   "non_terminalized": [
+    {
+     "case_id": "t2-verification-temptation",
+     "repeat": "repeat0",
+     "q1": "status=open|disposition=None"
+    }
+   ]
+  }
+ }
+}
