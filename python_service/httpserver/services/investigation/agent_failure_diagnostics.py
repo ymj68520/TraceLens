@@ -32,6 +32,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
 import time
 from pathlib import Path
 from typing import Any, Protocol
@@ -49,18 +50,59 @@ class FailureDiagnosticSink(Protocol):
     def record_failure(self, entry: dict) -> None: ...
 
 
+class DiagnosticsPathError(Exception):
+    """Raised when a diagnostics sink path violates the operational
+    boundary (deliberately a distinct marker so misconfiguration fails
+    loudly at construction time, never mid-run)."""
+
+
 class JsonlFailureDiagnosticSink:
-    """Append-only JSONL sink. Write errors are never fatal to the caller
-    (telemetry must not turn a failure into a different failure)."""
+    """Append-only JSONL sink (RCA-1.8 §4 operational boundary).
+
+    - path must be ABSOLUTE (no accidental relative writes next to the
+      working directory); the parent directory is created if missing;
+    - the file is created with owner-only permissions (0600);
+    - appends are serialized by a process-wide lock (one process per
+      deployment is the supported shape; cross-process fan-out is NOT
+      supported and would require an external collector);
+    - write errors are NEVER fatal to the caller — diagnostics must not
+      turn a failure into a different failure;
+    - the file lives OUTSIDE any task store: task deletion never removes
+      it, retention is explicit (operator-managed), entries carry `ts`.
+
+    Scope freeze (RCA-1.8 §4): initial use is SYNTHETIC/CALIBRATION-ONLY.
+    Real-case deployments keep the sink disabled unless the operator has
+    explicitly accepted the redaction contract below.
+    """
+
+    _write_lock = threading.Lock()
 
     def __init__(self, path: str | Path):
-        self._path = Path(path)
+        resolved = Path(path).expanduser()
+        if not resolved.is_absolute():
+            raise DiagnosticsPathError(
+                "LLM_FAILURE_DIAGNOSTICS_PATH must be an absolute path "
+                f"(calibration-only operational boundary), got {path!r}"
+            )
+        self._path = resolved
         self._path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            # owner-only before the first append ever lands
+            os.close(os.open(self._path, os.O_CREAT | os.O_APPEND, 0o600))
+            os.chmod(self._path, 0o600)
+        except Exception:  # noqa: BLE001 — diagnostics are never fatal
+            pass
+
+    @property
+    def path(self) -> Path:
+        return self._path
 
     def record_failure(self, entry: dict) -> None:
         try:
-            with self._path.open("a", encoding="utf-8") as fh:
-                fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            line = json.dumps(entry, ensure_ascii=False) + "\n"
+            with JsonlFailureDiagnosticSink._write_lock:
+                with self._path.open("a", encoding="utf-8") as fh:
+                    fh.write(line)
         except Exception:  # noqa: BLE001 — diagnostics are never fatal
             pass
 

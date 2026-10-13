@@ -437,3 +437,39 @@ def test_historical_artifacts_match_amendment_chain():
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             assert digest == artifact["sha256"], (
                 f"HISTORICAL ARTIFACT MODIFIED: {artifact['path']}")
+
+
+def test_sink_operational_boundary(tmp_path):
+    """RCA-1.8 §4: path safety, owner-only permissions, serialized appends,
+    and write-failure isolation are pinned before first operational use."""
+    import os
+    import threading
+
+    from httpserver.services.investigation.agent_failure_diagnostics import (
+        DiagnosticsPathError,
+        JsonlFailureDiagnosticSink,
+    )
+
+    # relative paths are rejected at construction (fail loud, never mid-run)
+    with pytest.raises(DiagnosticsPathError):
+        JsonlFailureDiagnosticSink("relative/diagnostics.jsonl")
+
+    sink = JsonlFailureDiagnosticSink(tmp_path / "diag" / "failures.jsonl")
+    sink.record_failure({"normalized_failure_code": "probe", "stage": "X"})
+    mode = os.stat(sink.path).st_mode & 0o777
+    assert mode == 0o600, f"diagnostics file must be owner-only, got {oct(mode)}"
+    content = sink.path.read_text()
+    assert "probe" in content
+
+    # serialized appends: a class-level lock exists and is held during writes
+    assert isinstance(
+        JsonlFailureDiagnosticSink._write_lock, type(threading.Lock()))
+
+    # write failures never propagate (telemetry is never fatal): turn the
+    # target into a DIRECTORY so the append raises IsADirectoryError inside
+    # record_failure -- the sink must swallow it
+    hostile = tmp_path / "diag3" / "f.jsonl"
+    hostile_sink = JsonlFailureDiagnosticSink(hostile)
+    hostile.unlink()
+    hostile.mkdir()
+    hostile_sink.record_failure({"normalized_failure_code": "probe2"})

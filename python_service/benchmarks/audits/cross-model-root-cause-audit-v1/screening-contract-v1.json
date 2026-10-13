@@ -1,0 +1,115 @@
+{
+  "artifact_version": "ScreeningContractV1",
+  "created_at": "2026-10-13T00:00:00+00:00",
+  "supersedes": "ScreeningContractReconciliationV1 (closes CC-1/CC-2)",
+  "authority": "RCA-1.8 directive; provenance audited against git history and committed artifacts",
+  "scope": {
+    "R1": "8x1 is a low-cost SCREENING, never B6 acceptance. It produces no acceptance semantics; 8x3 entry stays behind explicit operator authorization.",
+    "R2": "Every scheduled attempt is accounted, including abnormal failures (accounting block: scheduled/run_terminal/run_failed/run_integration_failed/snapshot_reproduced/classified/unclassified counts).",
+    "R3": "No requirement that every run reaches finalization success. Runs with case_outcome_v2=incomplete and/or finalization denial remain valid screening observations (historical precedent: the qualified incumbent's own 24-run series).",
+    "R4": "Question terminalization (charter q-1 leaving {open, in_progress}) is an INDEPENDENT reported metric and is NOT required to reach 100% for any disposition, including READY_FOR_8X3.",
+    "R5": "Structural hard gates, grounding regression and negative-case gates remain ZERO-TOLERANCE: any violation blocks READY with NOT_QUALIFIED_SCREENING.",
+    "R6": "Provider, schema and runtime failures are judged by the frozen applicable thresholds listed under 'gates' — each gate carries its provenance.",
+    "R7": "Unclassified run-level failures can never enter READY: they force REVIEW_REQUIRED.",
+    "R8": "No new numeric threshold is introduced by this closure. Qualitative blocking rules (R7 and classified-failure-blocks-READY) come from the RCA-1/RCA-1.8 directives, not from invented tolerance numbers."
+  },
+  "gates": [
+    {
+      "id": "G1",
+      "kind": "structural_hard_gates",
+      "tolerance": 0,
+      "provenance": "P8A frozen zero-tolerance structural gates (§51); historical, committed",
+      "status": "FROZEN"
+    },
+    {
+      "id": "G2",
+      "kind": "grounding_regression_events",
+      "tolerance": 0,
+      "provenance": "wave-2 §20 grounding separation (commit e3962940 lineage); historical, committed",
+      "status": "FROZEN"
+    },
+    {
+      "id": "G3",
+      "kind": "negative_case_overclaim_components",
+      "tolerance": 0,
+      "provenance": "B5.5 acceptance semantics closure / CaseOutcomeV2 overclaim channel; historical, committed",
+      "status": "FROZEN"
+    },
+    {
+      "id": "G4",
+      "kind": "routing_identity_mismatch",
+      "tolerance": 0,
+      "provenance": "wave-2 §1 identity rule (e3962940); historical, committed",
+      "status": "FROZEN"
+    },
+    {
+      "id": "G5",
+      "kind": "delegation_axis_schema_rate",
+      "formula": "non-quota schema delegation failures / delegation attempts",
+      "ceiling": 0.5,
+      "provenance": "'§15 frozen reliability collapse ceiling (AcceptanceProfile era freeze)', disposition_wave2_screening.py since e3962940 — original denominator is the DELEGATION axis",
+      "status": "FROZEN"
+    },
+    {
+      "id": "G6",
+      "kind": "run_axis_output_retry_rate",
+      "formula": "run-level output-retry failures (failure.json + contained INTEGRATE exhaustion) / scheduled runs",
+      "ceiling": 0.5,
+      "provenance": "NO historical normative support for the run-axis denominator: the space-bunny/stepfun screening (3be45146/582bc443) reused the delegation-axis constant on a run-axis fraction. Value retained as the operative screen; provenance must not be presented as historically frozen.",
+      "status": "CONTRACT_UNRESOLVED"
+    },
+    {
+      "id": "G7",
+      "kind": "quota_dominance",
+      "formula": "provider_failures > 0 AND (finalized_runs + run_output_schema_failures) < max(1, scheduled // 2)",
+      "provenance": "wave-2 §7/§28 quota-degraded-measurement rule (e3962940 lineage); historical, committed",
+      "status": "FROZEN"
+    },
+    {
+      "id": "G8",
+      "kind": "classified_run_failure_blocks_ready",
+      "formula": "any classified run-level failure (failure.json or contained INTEGRATE failure) blocks READY with its class-specific reason",
+      "provenance": "RCA-1 directive (RCA-1.5) + RCA-1.8 R8: qualitative rule, zero invented tolerance numbers",
+      "status": "ADOPTED_UNDER_DIRECTIVE"
+    },
+    {
+      "id": "G9",
+      "kind": "unclassified_failure_routing",
+      "formula": "any run-level failure with classified=false forces REVIEW_REQUIRED",
+      "provenance": "RCA-1 directive (exhaustiveness); RCA-1.8 R7",
+      "status": "ADOPTED_UNDER_DIRECTIVE"
+    }
+  ],
+  "independent_metrics": [
+    {
+      "id": "M1",
+      "metric": "question_terminalization",
+      "definition": "charter q-1 left {open, in_progress} (OPEN_STATUSES shared by all disposition scripts)",
+      "required_for_ready": false,
+      "note": "reported for every series; denominators: scheduled (screening) — failed runs cannot terminalize"
+    },
+    {
+      "id": "M2",
+      "metric": "case_outcome_v2_distribution",
+      "required_for_ready": false
+    },
+    {
+      "id": "M3",
+      "metric": "evaluate_only_snapshot_reproduction",
+      "required_for_ready": false,
+      "note": "covers snapshot-bearing runs only; never presentable as full-measurement verification"
+    }
+  ],
+  "cc_resolution": {
+    "CC-1": "RESOLVED: '8/8 pass' at screening level means 'all scheduled runs accounted with zero blocking gate/failure findings' (R2+R5+R6+R7+G8). The stronger acceptance reading is out of scope for 8x1 by R1.",
+    "CC-2": "RESOLVED: terminalization is NOT a READY gate (R4/M1). An all-terminal clean series with partial terminalization may reach READY_FOR_8X3 with the metric reported."
+  },
+  "disposition_vocabulary": [
+    "READY_FOR_8X3",
+    "NOT_QUALIFIED_SCREENING",
+    "PROVIDER_CAPACITY_BLOCKED",
+    "PROVIDER_ROUTING_IDENTITY_MISMATCH",
+    "MEASUREMENT_INVALID",
+    "REVIEW_REQUIRED"
+  ]
+}

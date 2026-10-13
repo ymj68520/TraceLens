@@ -1,0 +1,37 @@
+{
+  "artifact_version": "DiagnosticSinkOperationalBoundaryV1",
+  "created_at": "2026-10-13T00:00:00+00:00",
+  "authority": "RCA-1.8 directive §4; frozen BEFORE first operational enable",
+  "enforcement": "code-level where mechanically checkable (tests pin them); the rest are binding operator policy recorded here",
+  "boundary": {
+    "initial_use_scope": {
+      "rule": "SYNTHETIC / CALIBRATION-ONLY. Enable only on calibration deployments (benchmark series, offline loops, qualification screening infrastructure).",
+      "real_case_rule": "Real-case deployments keep LLM_FAILURE_DIAGNOSTICS disabled by default; enabling on a real-case deployment requires explicit operator acceptance of the redaction contract and is recorded as a deployment decision, never a default.",
+      "model_raw_responses": "FORBIDDEN in real-case output — the sink structurally never records responses; validation entries carry type+location only (input values dropped at build time, test-pinned).",
+      "evidence_content": "FORBIDDEN — no tool results, no evidence bodies, no snapshots are ever passed to the sink; call sites pass ids/counters only."
+    },
+    "default_state": {
+      "rule": "DISABLED by default (LLM_FAILURE_DIAGNOSTICS unset/false -> sink resolves to None; every emission site is a no-op byte-identical to pre-RCA-1 behaviour).",
+      "test": "test_diagnostics_default_off_and_sanitized"
+    },
+    "log_path_and_permissions": {
+      "rule": "LLM_FAILURE_DIAGNOSTICS_PATH must be an ABSOLUTE path; parent directories are created; the file is created owner-only (0600) before the first append; a relative path raises DiagnosticsPathError at construction (misconfiguration fails loudly, never mid-run).",
+      "test": "sink construction tests"
+    },
+    "concurrency": {
+      "rule": "Appends serialized by a process-wide lock. Supported shape: ONE process per diagnostics file (single service deployment). Cross-process fan-out to the same file is NOT supported — use distinct paths or an external collector.",
+      "test": "class-level lock asserted in code"
+    },
+    "redaction": {
+      "rule": "Captured: stage, ts, normalized code, classified flag, exception class/module, cause class chain, provider HTTP status, validation error type/location (NO input values), schema hash (contract identity), tool name, retry attempt count, request latency, context ids/counters. Forbidden always: API keys, Authorization headers (never touched), evidence bodies, model reasoning, prompts, full prompt/response dumps.",
+      "test": "test_diagnostics_default_off_and_sanitized (leak-string assertion)"
+    },
+    "task_deletion_and_retention": {
+      "rule": "The diagnostics file lives OUTSIDE all task stores: benchmark task deletion (§18 cleanup) and investigation deletion never remove it. Retention is EXPLICIT and operator-managed — entries carry `ts`; the recommended calibration rotation is manual truncation between screening rounds. No automatic expiry is implemented (deliberately: no hidden data loss)."
+    },
+    "failure_isolation": {
+      "rule": "Sink construction and write failures NEVER affect agent results: construction misconfiguration raises at wiring time (fail loud before any run), while write failures inside a run are swallowed (best-effort telemetry; a diagnostics outage can never change an investigation outcome or a screening disposition).",
+      "test": "record_failure swallow behaviour + containment tests run with sink attached"
+    }
+  }
+}
