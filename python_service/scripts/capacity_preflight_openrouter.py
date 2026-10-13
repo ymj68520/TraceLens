@@ -41,12 +41,26 @@ PROBES = 3
 RATE_LIMIT_HEADER_HINTS = ("ratelimit", "rate-limit", "x-ratelimit")
 
 
-async def _probe(base_url: str, api_key: str, index: int) -> dict:
+async def _probe(base_url: str, api_key: str, index: int, max_tokens: int) -> dict:
+    import httpx
     from openai import AsyncOpenAI
 
-    client = AsyncOpenAI(base_url=base_url, api_key=api_key, timeout=120)
     record: dict = {"probe": index, "requested_model": PROVIDER_MODEL_ID}
-    response_headers = {}
+    # §4: capture only rate-limit-ish response headers (never auth headers)
+    # via an httpx response hook — the openai SDK does not retain headers.
+    response_headers: dict = {}
+
+    def _capture(response: httpx.Response) -> None:
+        for name, value in response.headers.items():
+            if any(hint in name.lower() for hint in RATE_LIMIT_HEADER_HINTS):
+                response_headers[name] = value
+
+    http = httpx.AsyncClient(
+        timeout=120, event_hooks={"response": [_capture]}
+    )
+    client = AsyncOpenAI(
+        base_url=base_url, api_key=api_key, timeout=120, http_client=http
+    )
     try:
         response = await client.with_options().chat.completions.create(
             model=PROVIDER_MODEL_ID,
@@ -54,7 +68,7 @@ async def _probe(base_url: str, api_key: str, index: int) -> dict:
                 "role": "user",
                 "content": f"Reply with exactly: CAPACITY-OK-{index}",
             }],
-            max_tokens=16,
+            max_tokens=max_tokens,
             temperature=0.7,
         )
         raw = response.model_dump()
@@ -75,17 +89,25 @@ async def _probe(base_url: str, api_key: str, index: int) -> dict:
             getattr(exc, "status_code", None), text
         )
     finally:
-        # capture only rate-limit-ish response headers (never auth headers)
-        last_response = getattr(client, "_last_response", None)
-    # openai SDK doesn't retain per-call headers on the client; use the
-    # response hook pattern instead — see below (headers recorded via
-    # httpx event hook would be cleaner; OpenRouter exposes quota state in
-    # error bodies, which the classification already covers).
-    record["rate_limit_headers"] = response_headers
+        record["rate_limit_headers"] = response_headers
+        await http.aclose()
     return record
 
 
 def main() -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="capacity_preflight_openrouter")
+    parser.add_argument(
+        "--out", default=str(RESULTS / "capacity-preflight.json"),
+        help="artifact path (default: candidate dir capacity-preflight.json)",
+    )
+    parser.add_argument(
+        "--probe-max-tokens", type=int, default=16,
+        help="per-probe completion budget (lightweight synthetic requests)",
+    )
+    args = parser.parse_args()
+
     RESULTS.mkdir(parents=True, exist_ok=True)
     settings = Settings(_env_file=str(REPO_ROOT / ".env"))
     api_key = getattr(settings, "openrouter_api_key", "") or "EMPTY"
@@ -93,11 +115,14 @@ def main() -> int:
     base_url = "https://openrouter.ai/api/v1"
 
     print(f"[preflight] {PROBES} consecutive lightweight probes "
-          f"(key present: {key_present})", flush=True)
+          f"(key present: {key_present}, max_tokens={args.probe_max_tokens})",
+          flush=True)
 
     probes = []
     for i in range(1, PROBES + 1):
-        record = asyncio.run(_probe(base_url, api_key, i))
+        record = asyncio.run(
+            _probe(base_url, api_key, i, args.probe_max_tokens)
+        )
         probes.append(record)
         if record.get("error"):
             print(f"  probe{i}: FAIL {record['classification']}: "
@@ -124,6 +149,13 @@ def main() -> int:
         "candidate_id": "space-bunny-alpha@openrouter",
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime()),
         "api_key_present": key_present,
+        "probe_spec": {
+            "probe_count": PROBES,
+            "max_tokens_per_probe": args.probe_max_tokens,
+            "note": "lightweight synthetic echo requests; budget sized to "
+                    "absorb endpoint-side hidden reasoning so truncation is "
+                    "never misread as a capacity signal (§4/§5)",
+        },
         "probes": probes,
         "probe_count": PROBES,
         "consecutive_success_required": PROBES,
@@ -140,7 +172,8 @@ def main() -> int:
         "disposition": disposition,
         "note": "§5: preflight is NOT part of 8x1 or any semantic measurement; one-shot entry check only — no watchdog, no retry loop (§4)",
     }
-    out = RESULTS / "capacity-preflight.json"
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n",
                    encoding="utf-8")
     print(f"[preflight] disposition: {disposition}")
