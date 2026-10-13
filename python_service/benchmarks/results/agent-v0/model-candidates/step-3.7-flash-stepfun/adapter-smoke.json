@@ -1,0 +1,26 @@
+{
+  "artifact_version": "StepFunStep37FlashAdapterSmokeV1",
+  "candidate_id": "step-3.7-flash@stepfun",
+  "created_at": "2026-10-13T07:31:15+00:00",
+  "api_key_present": true,
+  "provider_endpoint": "https://api.stepfun.com/step_plan/v1",
+  "requested_model": "step-3.7-flash",
+  "accepted_reasoning_mode": null,
+  "data_policy": {
+    "candidate_data_policy": "CALIBRATION_ONLY",
+    "real_case_evidence_allowed": false
+  },
+  "checks": {
+    "S1_identity_reasoning_none": {
+      "pass": false,
+      "error": "PermissionDeniedError: Error code: 403 - {'error': {'message': 'real-name verification is required for your free step plan before calling this API. please complete face verification at https://account.stepfun.com/security?action=realname', 'type': 'r",
+      "classification": "PROVIDER_AUTH_BLOCKED"
+    },
+    "S7_reasoning_fallback": {
+      "pass": false,
+      "error": "PermissionDeniedError: Error code: 403 - {'error': {'message': 'real-name verification is required for your free step plan before calling this API. please complete face verification at https://account.stepfun.com/security?action=realname', 'type': 'r",
+      "classification": "PROVIDER_AUTH_BLOCKED"
+    }
+  },
+  "disposition": "PROVIDER_AUTH_BLOCKED"
+}
