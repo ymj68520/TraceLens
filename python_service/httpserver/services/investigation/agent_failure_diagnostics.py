@@ -192,6 +192,14 @@ def build_failure_entry(
         "exception_module": classification.exception_module,
         "cause_class_chain": list(classification.cause_chain),
         "provider_status": classification.http_status,
+        # RCA-2A.2 §2: the retry budget exhausted by the failure, parsed
+        # from the exception TYPE metadata (supplemental, never the
+        # classification signal)
+        "retry_attempts": (
+            classification.output_retry_budget_exhausted
+            if retry_attempts is None
+            else retry_attempts
+        ),
         "validation_error_details": _validation_error_details(exc),
     }
     if output_schema_hash is not None:

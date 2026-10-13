@@ -1,0 +1,72 @@
+{
+ "artifact_version": "RCA2A2DiagnosticExperimentManifestV1",
+ "created_at": "2026-10-13T13:50:37+00:00",
+ "head_commit": "4a4b5b6a",
+ "worktree_clean": true,
+ "runtime": {
+  "nature": "RCA-1-modified production runtime — the RuntimeBaselineV3 qualification identity does NOT apply (see RCA1RuntimeIdentityRecordV1 declaration)",
+  "key_files": {
+   "agent_orchestrator.py": "52e468b42e1c26a2a9835ba8e2ac2f625f8e142f97c62c7b6b9a421c18f14763",
+   "agent_model_adapter.py": "9d4f6482ef35eafd5761d7a5f8b08acbbab984f898558845c944b448908bbc1f",
+   "agent_failure_taxonomy.py": "c293d4773b0d7defd84b754f81343c2e42445156fda3b10e545268edf4ddbe5a",
+   "agent_failure_diagnostics.py": "76c4b23f1fb5226f7f12c946577a820ba720033d5f4941a7d6472566f2069b7e",
+   "agent_specialist_executor.py": "9c3a78bc6f3a2630f75ca307cc721058d2ff6b597270072ec537be35eb2b4ad1",
+   "benchmarks_runner.py": "6cefad3b7311661a62e8b745a76badfd7566204df3f8bf3d533c64b686b7fc14"
+  }
+ },
+ "model_configuration": {
+  "candidate_id": "space-bunny-alpha@openrouter",
+  "exact_frozen_config": "benchmarks/results/agent-v0/model-candidates/space-bunny-alpha-openrouter/model-config-8x1.json",
+  "model_config_sha256": "2adf2a179ad62a7cfbbc1e361d70badc3bca8993a3ee3a2c798825dd2e4fd942",
+  "candidate_config_sha256": "3611c1b76e5439e69a8339492dcf99161dce28c512ff03d34ff562ae34f5709f",
+  "historical_record": "5/8 INTEGRATE-position output retry exhaustions in the 3be45146-era screening; capacity-clean at admission; NO parameters adjusted for this diagnostic"
+ },
+ "corpus": {
+  "file": "benchmarks/corpus/corpus-agent-v0-calibration.v2.json",
+  "sha256_file": "9b9eee734b231a204edd10b085dd5628e09b3ceb9f1ce1d97b5237e8307f9240",
+  "input_hash": "25c216e85acc32f22c5231924730956c24de6a04cc2c4f7173483c9b557916c4"
+ },
+ "diagnostic_code": {
+  "taxonomy": "c293d4773b0d7defd84b754f81343c2e42445156fda3b10e545268edf4ddbe5a",
+  "diagnostics_sink": "76c4b23f1fb5226f7f12c946577a820ba720033d5f4941a7d6472566f2069b7e",
+  "schema_audit_reference": "benchmarks/audits/cross-model-root-cause-audit-v1/integration-schema-audit-v1.json"
+ },
+ "output_contract": {
+  "schema": "SupervisorIntegrationDecisionV2 (UNCHANGED production contract; RCA-2A.1 proposal NOT injected)",
+  "model_facing_schema_sha256_note": "hash recorded per-failure in diagnostics entries (schema_hash field)"
+ },
+ "diagnostics": {
+  "enabled": true,
+  "env": "LLM_FAILURE_DIAGNOSTICS=1, LLM_FAILURE_DIAGNOSTICS_PATH=<abs>/calibration-failures.jsonl",
+  "path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a2-diagnostic/diagnostics/calibration-failures.jsonl",
+  "boundary": "diagnostic-sink-operational-boundary-v1.json (0600, single-process, redaction contract, write-failure isolation)",
+  "readiness_gate": "tests/unit/benchmarks/test_rca2a2_diagnostic_readiness.py PASSED (field-level cause observable)"
+ },
+ "preregistered_samples": {
+  "order_frozen_before_first_model_call": true,
+  "cases": [
+   {
+    "case_id": "t2-identity-trap",
+    "rationale": "historical success contrast (space-bunny terminalized it in the 3be45146 screening)"
+   },
+   {
+    "case_id": "t2-no-evidence",
+    "rationale": "semantic no-evidence trap; historical INTEGRATE failure"
+   },
+   {
+    "case_id": "t2-temporal-trap",
+    "rationale": "temporal reasoning trap; historical INTEGRATE failure"
+   },
+   {
+    "case_id": "t2-report-citation",
+    "rationale": "citation/reporting semantics; historical INTEGRATE failure"
+   }
+  ],
+  "attempts": "4 cases x 1 attempt = 4 scheduled runs; failed runs NOT replaced"
+ },
+ "stop_conditions": [
+  "PROVIDER_BLOCKED (429 / auth / identity mismatch)",
+  "PROVIDER_CAPACITY_BLOCKED (preflight or in-series)",
+  "structural invariant violation (zero tolerance — halt further scheduled runs, keep diagnostics)"
+ ]
+}

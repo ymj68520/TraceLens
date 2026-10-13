@@ -352,6 +352,7 @@ class AgentOrchestrator:
         stage: str,
         exc: Exception,
         output_type=None,
+        tool_name: str | None = None,
         context: dict | None = None,
         request_latency_ms: float | None = None,
     ) -> None:
@@ -383,6 +384,7 @@ class AgentOrchestrator:
                         if output_type is not None
                         else None
                     ),
+                    tool_name=tool_name,
                     request_latency_ms=latency,
                     context=context,
                 )
@@ -1645,6 +1647,10 @@ class AgentOrchestrator:
                 stage="SUPERVISOR_INTEGRATE",
                 exc=exc,
                 output_type=self._integrate_output_type(),
+                # pydantic-ai tool-mode structured output is delivered via
+                # the default output tool named "final_result" (empirically
+                # confirmed in b2-restart/specialist-output-diagnosis.v1.json)
+                tool_name="final_result",
                 context={"run_id": run_id},
             )
             runtime.fail_run(
