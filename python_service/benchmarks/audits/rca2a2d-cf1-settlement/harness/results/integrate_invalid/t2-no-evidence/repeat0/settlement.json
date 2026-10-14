@@ -1,0 +1,18 @@
+{
+  "action": "settled",
+  "task_id": "bench-brun:f2cfaf049ad014890c15d890",
+  "investigation_id": "inv-brun:f2cfaf049ad014890c15d890",
+  "execution_cancelled": false,
+  "runs": [
+    {
+      "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+      "before": "failed",
+      "after": "failed",
+      "transition": "already_terminal",
+      "stop_reason": "internal_failure",
+      "error_code": "supervisor_integration_failed"
+    }
+  ],
+  "investigation_finalized": false,
+  "settlement_events_appended": 0
+}

@@ -1,0 +1,228 @@
+{
+  "real_task_id": "23b1bdc4-486f-4de0-8da0-954965712844",
+  "alias_task_id": "bench-brun:9acf41f72ad927b3e745aec3",
+  "recovery_summary": {
+    "runs_failed": 0,
+    "delegations_failed": 0,
+    "investigations_paused": 1,
+    "obligations_expired": 0
+  },
+  "settlement_artifact": {
+    "action": "settled",
+    "task_id": "bench-brun:9acf41f72ad927b3e745aec3",
+    "investigation_id": "inv-brun:9acf41f72ad927b3e745aec3",
+    "execution_cancelled": false,
+    "runs": [
+      {
+        "run_id": "run_7f8383e6b7734f0cb5162af312322f98",
+        "before": "running",
+        "after": "failed",
+        "transition": "failed",
+        "stop_reason": "internal_failure",
+        "error_code": "agent_timeout"
+      }
+    ],
+    "investigation_finalized": false,
+    "settlement_events_appended": 1
+  },
+  "at_cli_exit": {
+    "db_path": "/home/ymj68520/projects/TraceLens/build/data/tasks/23b1bdc4-486f-4de0-8da0-954965712844/investigation.db",
+    "investigations": [
+      {
+        "investigation_id": "inv-brun:9acf41f72ad927b3e745aec3",
+        "status": "active",
+        "pause_reason": null
+      }
+    ],
+    "runs": [
+      {
+        "run_id": "run_7f8383e6b7734f0cb5162af312322f98",
+        "status": "failed",
+        "stop_reason": "internal_failure",
+        "error_code": "agent_timeout",
+        "error_message": "one-shot execution ended before finalization; contained supervisor failure at stage 'plan': agent_timeout: provider call timed out"
+      }
+    ],
+    "delegations": [],
+    "trajectory_events": [
+      {
+        "seq": 1,
+        "event_type": "investigation_created",
+        "run_id": null,
+        "payload": {}
+      },
+      {
+        "seq": 2,
+        "event_type": "run_admitted",
+        "run_id": "run_7f8383e6b7734f0cb5162af312322f98",
+        "payload": {
+          "idempotency_key": null
+        }
+      },
+      {
+        "seq": 3,
+        "event_type": "attention_compiled",
+        "run_id": "run_7f8383e6b7734f0cb5162af312322f98",
+        "payload": {
+          "attention_hash": "500b4153adb5c24c7d9b19ea8b9ec209b6fe38c0e86b943817559f6843c8fb15",
+          "attention_policy_version": "attention-policy:v1",
+          "item_count": 1,
+          "state_revision": 1
+        }
+      },
+      {
+        "seq": 4,
+        "event_type": "run_started",
+        "run_id": "run_7f8383e6b7734f0cb5162af312322f98",
+        "payload": {}
+      },
+      {
+        "seq": 5,
+        "event_type": "transition_decision_rejected",
+        "run_id": "run_7f8383e6b7734f0cb5162af312322f98",
+        "payload": {
+          "message": "agent_timeout: provider call timed out",
+          "supervisor_failure": "agent_timeout"
+        }
+      },
+      {
+        "seq": 6,
+        "event_type": "finalization_requested",
+        "run_id": null,
+        "payload": {
+          "expected_state_revision": 1,
+          "review_mode": "best_effort"
+        }
+      },
+      {
+        "seq": 7,
+        "event_type": "finalization_denied",
+        "run_id": "run_7f8383e6b7734f0cb5162af312322f98",
+        "payload": {
+          "violation_codes": [
+            "COVERAGE_NOT_TERMINAL"
+          ]
+        }
+      },
+      {
+        "seq": 8,
+        "event_type": "run_failed",
+        "run_id": "run_7f8383e6b7734f0cb5162af312322f98",
+        "payload": {
+          "error_code": "agent_timeout",
+          "stop_reason": "internal_failure"
+        }
+      }
+    ],
+    "finalizations": []
+  },
+  "after_production_recovery": {
+    "db_path": "/home/ymj68520/projects/TraceLens/build/data/tasks/23b1bdc4-486f-4de0-8da0-954965712844/investigation.db",
+    "investigations": [
+      {
+        "investigation_id": "inv-brun:9acf41f72ad927b3e745aec3",
+        "status": "paused",
+        "pause_reason": "runtime_restart"
+      }
+    ],
+    "runs": [
+      {
+        "run_id": "run_7f8383e6b7734f0cb5162af312322f98",
+        "status": "failed",
+        "stop_reason": "internal_failure",
+        "error_code": "agent_timeout",
+        "error_message": "one-shot execution ended before finalization; contained supervisor failure at stage 'plan': agent_timeout: provider call timed out"
+      }
+    ],
+    "delegations": [],
+    "trajectory_events": [
+      {
+        "seq": 1,
+        "event_type": "investigation_created",
+        "run_id": null,
+        "payload": {}
+      },
+      {
+        "seq": 2,
+        "event_type": "run_admitted",
+        "run_id": "run_7f8383e6b7734f0cb5162af312322f98",
+        "payload": {
+          "idempotency_key": null
+        }
+      },
+      {
+        "seq": 3,
+        "event_type": "attention_compiled",
+        "run_id": "run_7f8383e6b7734f0cb5162af312322f98",
+        "payload": {
+          "attention_hash": "500b4153adb5c24c7d9b19ea8b9ec209b6fe38c0e86b943817559f6843c8fb15",
+          "attention_policy_version": "attention-policy:v1",
+          "item_count": 1,
+          "state_revision": 1
+        }
+      },
+      {
+        "seq": 4,
+        "event_type": "run_started",
+        "run_id": "run_7f8383e6b7734f0cb5162af312322f98",
+        "payload": {}
+      },
+      {
+        "seq": 5,
+        "event_type": "transition_decision_rejected",
+        "run_id": "run_7f8383e6b7734f0cb5162af312322f98",
+        "payload": {
+          "message": "agent_timeout: provider call timed out",
+          "supervisor_failure": "agent_timeout"
+        }
+      },
+      {
+        "seq": 6,
+        "event_type": "finalization_requested",
+        "run_id": null,
+        "payload": {
+          "expected_state_revision": 1,
+          "review_mode": "best_effort"
+        }
+      },
+      {
+        "seq": 7,
+        "event_type": "finalization_denied",
+        "run_id": "run_7f8383e6b7734f0cb5162af312322f98",
+        "payload": {
+          "violation_codes": [
+            "COVERAGE_NOT_TERMINAL"
+          ]
+        }
+      },
+      {
+        "seq": 8,
+        "event_type": "run_failed",
+        "run_id": "run_7f8383e6b7734f0cb5162af312322f98",
+        "payload": {
+          "error_code": "agent_timeout",
+          "stop_reason": "internal_failure"
+        }
+      },
+      {
+        "seq": 9,
+        "event_type": "investigation_paused",
+        "run_id": null,
+        "payload": {
+          "pause_reason": "runtime_restart"
+        }
+      },
+      {
+        "seq": 10,
+        "event_type": "runtime_recovered",
+        "run_id": null,
+        "payload": {
+          "delegations_failed": 0,
+          "investigations_paused": 1,
+          "runs_failed": 0
+        }
+      }
+    ],
+    "finalizations": []
+  }
+}

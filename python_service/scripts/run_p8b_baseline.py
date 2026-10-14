@@ -390,6 +390,11 @@ def _execute_with_wiring(
         AgentOrchestrator,
         DelegationExecutionSummary,
     )
+
+    # RCA-2A.2d (CF-1 fix): the one-shot settlement report travels from
+    # the execution closure out to artifact finalization through this
+    # holder — never through the BenchmarkRunner's outcome contract.
+    settlement_holder: list = []
     from httpserver.services.investigation.agent_supervisor import (
         InvestigationSupervisor,
     )
@@ -830,11 +835,56 @@ def _execute_with_wiring(
             runtime_factory=open_runtime_for_state,
             investigation_seed=_seed_state,
         )
-        snapshot = await executor.execute(
-            case_input=case_input,
-            run_manifest=run_manifest,
-            finalization_request_factory=_finalization_request_factory,
-            timeout_seconds=900,
+
+        # RCA-2A.2d (CF-1 fix): one-shot exit boundary.  Whether the
+        # execution returns or raises, the runs of THIS execution's
+        # investigation are settled through the targeted repository
+        # primitives BEFORE artifact finalization; the store is deleted
+        # (if requested) only later, after evaluate-only reproduction.
+        # Recovery is NOT invoked here — it remains the owner of
+        # abnormal-interrupt cleanup, not of normal one-shot exits.
+        from httpserver.services.benchmarks.one_shot_settlement import (
+            settle_one_shot_execution,
+        )
+        from httpserver.services.investigation.paths import (
+            investigation_db_path_for_task as _dbp,
+        )
+
+        def _settle(execution_cancelled: bool = False):
+            report = settle_one_shot_execution(
+                db_path=_dbp(_TASK_SNAPSHOT[REAL_TASK_ID]),
+                task_id=f"bench-{run_manifest.benchmark_run_id}",
+                investigation_id=f"inv-{run_manifest.benchmark_run_id}",
+                execution_cancelled=execution_cancelled,
+            )
+            settlement_holder.append(report)
+            return report
+
+        try:
+            snapshot = await executor.execute(
+                case_input=case_input,
+                run_manifest=run_manifest,
+                finalization_request_factory=_finalization_request_factory,
+                timeout_seconds=900,
+            )
+        except BaseException as exc:
+            # CancelledError keeps its semantics (settled cancelled, then
+            # re-raised untouched); any other exception settles failed.
+            # A settlement that cannot persist raises out of _settle and
+            # replaces the original propagation — never a silent success.
+            await asyncio.to_thread(
+                _settle, isinstance(exc, asyncio.CancelledError)
+            )
+            raise
+        settlement = await asyncio.to_thread(_settle, False)
+        print(
+            f"       [settlement] {settlement['action']}: runs="
+            + ",".join(
+                f"{r['run_id']}:{r['before']}->{r['after']}"
+                for r in settlement["runs"]
+            )
+            + f" finalized={settlement['investigation_finalized']}",
+            flush=True,
         )
         return {"snapshot": json.loads(snapshot.model_dump_json())}
 
@@ -878,6 +928,11 @@ def _execute_with_wiring(
         repeat_index=int(str(repeat).replace("repeat", "")),
         environment=collect_environment_digest(),
     )
+    if settlement_holder:
+        # RCA-2A.2d: benchmark accounting keeps CLI-exited / AgentRun
+        # terminal / Investigation finalized as independent facts; the
+        # settlement report is persisted beside the run artifacts.
+        outcome["settlement"] = settlement_holder[-1]
     return outcome
 
 
@@ -889,6 +944,14 @@ def _persist(out_dir: Path, outcome: dict) -> None:
     (out_dir / "run_manifest.json").write_text(
         manifest.model_dump_json(), encoding="utf-8"
     )
+    if outcome.get("settlement") is not None:
+        # RCA-2A.2d: durable one-shot settlement evidence beside the run
+        # artifacts (independent of snapshot terminal_status accounting)
+        (out_dir / "settlement.json").write_text(
+            json.dumps(outcome["settlement"], indent=2, ensure_ascii=False)
+            + "\n",
+            encoding="utf-8",
+        )
     if outcome["status"] == "completed":
         (out_dir / "snapshot.json").write_text(
             outcome["snapshot"].model_dump_json(), encoding="utf-8"
