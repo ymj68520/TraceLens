@@ -1,0 +1,51 @@
+{
+  "artifact_version": "PreflightArtifactProtectionReportV1",
+  "created_at": "2026-10-14T00:00:00+00:00",
+  "baseline_commit": "4b006c287d8a7822dae96a678b8835a9b71fdfc4",
+  "scope": "benchmark capacity-preflight scripts ONLY; provider request content and preflight gate thresholds/threshold logic byte-identical (verified: probe functions, gate composition, disposition strings and exit codes untouched)",
+  "risk_addressed": "the capacity preflights wrote capacity-preflight.json into hardcoded model-candidate directories with plain write_text (overwrite semantics, no explicit path argument for the stepfun pair) — the same overwrite mechanism that produced hand-placed copies inside the rca2a2/rca2a2b audit dirs; a re-run could silently clobber a historical qualification artifact",
+  "changes": {
+    "new_shared_guard": {
+      "path": "python_service/scripts/benchmark_output_guard.py",
+      "contract": [
+        "caller names the output path explicitly on every invocation",
+        "atomic exclusive create (os.O_WRONLY|os.O_CREAT|os.O_EXCL, mode 0600) — an existing file is NEVER opened for writing, so a failed or aborted run cannot modify it",
+        "OutputPathError raised on an existing path (scripts map it to a distinct exit code 3)",
+        "no key/auth material passes through the module"
+      ]
+    },
+    "capacity_preflight_stepfun.py": [
+      "--out is now a REQUIRED argparse argument (no implicit default write target); RESULTS constant retained as a commented historical reference only",
+      "artifact write goes through exclusive_output_file; OutputPathError -> exit 3, original file untouched",
+      "probe/gate/disposition logic byte-identical; key handling unchanged (boolean api_key_present only)"
+    ],
+    "capacity_preflight_stepfun_step5preview.py": [
+      "same --out-required + exclusive-create treatment"
+    ],
+    "capacity_preflight_openrouter.py": [
+      "existing --out flag changed from defaulted to REQUIRED (the default pointed into the candidate dir); write goes through the exclusive guard; probe budget flag untouched"
+    ]
+  },
+  "historical_dirs": {
+    "policy": "writing into historical qualification/audit directories is not special-cased — the exclusive-create contract already makes overwriting an EXISTING artifact impossible (exit 3); creating a new file inside such a directory remains possible by explicit human choice of path",
+    "historical_artifacts_verified": "44 artifacts across rca2a2-stepfun-diagnostic and rca2a2b-stepfun-diagnostic hashed before and after the audit — all byte-identical (rca2a2c-baseline-artifact-hashes-v1.json)"
+  },
+  "key_hygiene": {
+    "verified": "only the boolean api_key_present is persisted; probes record rate-limit-ish headers only, never auth headers (pre-existing behavior, unchanged); the new synthetic tests assert the artifact contains no key material and that the module never sees more than a filesystem path"
+  },
+  "tests": {
+    "file": "python_service/tests/unit/benchmarks/test_rca2a2c_preflight_output_protection.py",
+    "count": 16,
+    "coverage": [
+      "guard: fresh exclusive create; refusal on existing file with original bytes intact; raw O_EXCL atomicity; 0600 mode",
+      "all three scripts: missing --out rejected by argparse (exit 2) before any settings/probe/network activity",
+      "all three scripts: artifact writes only through the exclusive guard (source contract check)",
+      "all three scripts: full write path with synthetic monkeypatched probes (zero network) into a fresh --out; disposition and key-hygiene asserted",
+      "all three scripts: existing artifact -> exit 3, original byte-identical"
+    ]
+  },
+  "out_of_scope_unchanged": [
+    "preflight_b6_*.py, preflight_runtime_v3_requalification.py, preflight_b55_final_bootstrap.py (different preflight family: git/health/zero-model; not part of the capacity-preflight track named in the directive §1; recorded here as scoping decision)",
+    "run_p8b_baseline.py output semantics (out of §4 scope; its experiment/results overwrite behavior is documented in the consistency audit)"
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "task_id": "6f0a3502-9828-4aec-9747-ec1a9da34df2",
+  "alias_task_id": "bench-brun:148c5555950359ee8699ffb6",
+  "at_cli_exit": {
+    "runs": [
+      [
+        "running",
+        null
+      ]
+    ],
+    "events": [
+      "investigation_created",
+      "run_admitted",
+      "attention_compiled",
+      "run_started"
+    ]
+  },
+  "recovery_summary": {
+    "runs_failed": 1,
+    "delegations_failed": 0,
+    "investigations_paused": 1,
+    "obligations_expired": 0
+  },
+  "after_production_recovery": {
+    "runs": [
+      [
+        "failed",
+        "runtime_restart"
+      ]
+    ],
+    "events": [
+      "investigation_created",
+      "run_admitted",
+      "attention_compiled",
+      "run_started",
+      "run_failed",
+      "investigation_paused",
+      "runtime_recovered"
+    ],
+    "investigation": [
+      [
+        "paused",
+        "runtime_restart"
+      ]
+    ]
+  }
+}

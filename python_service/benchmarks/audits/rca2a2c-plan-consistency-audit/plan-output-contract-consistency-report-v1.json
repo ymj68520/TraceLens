@@ -1,0 +1,52 @@
+{
+  "artifact_version": "PlanOutputContractConsistencyReportV1",
+  "created_at": "2026-10-14T00:00:00+00:00",
+  "baseline_commit": "4b006c287d8a7822dae96a678b8835a9b71fdfc4",
+  "supervisor_contract_version": "v2 (production default; config.py:237)",
+  "method": "the ACTUAL model-visible contract was captured from the production path (FunctionModel AgentInfo.output_tools during a real-CLI cycle), then compared field-by-field against the production SupervisorPlanDecisionV2 schema, the rendered plan projection, and _planning_instructions_v2; all constructibility/invalidity claims verified deterministically offline",
+  "verdict": "PLAN_CONTRACT_CONSISTENT_ON_TESTED_DOMAIN",
+  "verdict_basis": [
+    "no prompt-required field is schema-forbidden (schema identity: structural match after pydantic-ai strips non-semantic title/description annotations; every property/const/required/additionalProperties survives)",
+    "the action discriminants named by the instructions (delegate_investigation / request_finalization / no_action) exactly equal the three Literal const values; phase_capabilities in the projection match the union literals as a set",
+    "availability: the projection exposes eligibility per attention item and status per question, plus source_scopes; no action variant is offered that the deterministic gate would not adjudicate (PLAN has no availability_projection unlike INTEGRATE — see documented_weaknesses)",
+    "no operand field is shared across variants with conflicting meaning; attention_handle/question_handle/source_scope_id exist only on the delegate branch, reason_code only on request_finalization/no_action",
+    "a legal NoPlanActionV2 is constructible from the instruction-visible surface alone ({action_type:'no_action', reason_code:...}); the empty plan (actions:[]) is also schema-legal",
+    "the t2-no-evidence legal no-evidence path is explicitly expressible and was executed END-TO-END through the real CLI with an honest empty specialist result (delegate_investigation -> search_evidence round-trip -> empty proposal -> integration committed, zero fabricated evidence; CF-1 valid-scenario evidence)"
+  ],
+  "schema_field_inventory": {
+    "DelegateInvestigationActionV2": ["action_type (const delegate_investigation, default)", "action_id (default '')", "attention_handle (required)", "question_handle (required)", "source_scope_id (required)", "time_scope (optional)", "investigation_intent (default '')", "execution_group (optional)"],
+    "RequestFinalizationActionV2": ["action_type (const request_finalization, default)", "action_id (default '')", "reason_code (required)", "summary (default '')"],
+    "NoPlanActionV2": ["action_type (const no_action, default)", "action_id (default '')", "reason_code (required)"],
+    "top_level": ["decision_version (default supervisor-plan-decision:v2)", "actions (default [])", "summary", "warnings", "limitations"],
+    "additionalProperties": "false on every branch (the INVALID_UNION guard)"
+  },
+  "historical_failure_attribution": {
+    "rca2a2b_observed": "SUPERVISOR_PLAN INVALID_UNION: one action payload matching NO union variant; 8-error presentation (extra_forbidden x7 + missing reason_code x1 across all three branches); one in-band retry then exhaustion",
+    "reproduction": "the same payload with the discriminant field named 'type' instead of 'action_type' and otherwise-correct handles reproduces the production 8-error presentation BYTE-IDENTICALLY through the pydantic-ai output-tool path (raw pydantic model_validate yields the 11-pair superset; production diagnostics record the tool path)",
+    "cause_classification": "MODEL-SIDE field-naming failure. The discriminant field action_type IS present in every branch of the model-visible schema (const + default); no instruction requests a field named 'type'; the instructions and schema are mutually consistent. This is a model capability failure on the output contract, NOT a prompt/schema mismatch.",
+    "explicitly_not_claimed": "this audit does NOT claim the Strict+CompactTyped unified envelope (RCA-2A.1) would have prevented this specific failure; it is recorded as hypothesis only, per the 2A.2b report"
+  },
+  "documented_weaknesses": {
+    "weakness_1_non_discriminated_union": {
+      "observation": "PlanActionV2 is a plain Union (no Field(discriminator='action_type')), so the rendered schema is anyOf without a discriminator mapping, and a payload matching no branch produces cascading errors from ALL branches (8-error presentation) instead of one targeted discriminant error",
+      "impact": "weaker models get a noisier, less actionable retry prompt; retry feedback was verified working but produced no self-correction (2A.2b: 4/4 exhausted; 2A.2c reproduction: same)",
+      "disposition": "recorded as hardening opportunity only; any schema change is a production model-face change and is NOT authorized in RCA-2A.2c"
+    },
+    "weakness_2_v2_instruction_regression_on_eligibility": {
+      "observation": "the v1 planning instructions stated 'delegate_investigation actions must reference an eligible attention item, an active question and an allowed source scope'; the v2 instructions retain only the handle-reference rule and the source_scope allow-list rule — the eligibility/active-question constraint is enforced deterministically (PLAN_ATTENTION_ITEM_INELIGIBLE / PLAN_QUESTION_INACTIVE) and the data is visible (eligibility/status fields) but the RULE is no longer stated in the model-visible contract",
+      "impact": "none on the tested domain (t2-no-evidence: one eligible item, one open question); a model could lawfully pick an ineligible item and get deterministically rejected",
+      "disposition": "recorded as instruction-regression candidate for a future authorized prompt revision; NOT changed here"
+    },
+    "weakness_3_no_plan_side_availability_projection": {
+      "observation": "INTEGRATE carries availability_projection (offered action variants by handle-kind counts); PLAN carries only phase_capabilities (all three actions always) — with zero eligible items the delegate variant remains schema-legal though deterministically doomed",
+      "disposition": "recorded; same authorization boundary as above"
+    },
+    "leniency_note": "because every branch's action_type carries a default, the JSON-schema field is not required; a payload omitting the discriminant entirely resolves to DelegateInvestigationActionV2 (smart-union best match). Leniency is fail-open at the schema layer only — handle resolution and the deterministic validator remain fail-closed."
+  },
+  "verification_artifact": "plan-contract-verification-v1.json",
+  "live_evidence": [
+    "cf1-harness/evidence/cf1-valid-model-calls.jsonl (captured output_tool_schema for the production final_result tool, plan stage)",
+    "cf1-harness/evidence/cf1-invalid_union-diagnostics.jsonl (byte-identical 8-error reproduction)",
+    "tests/unit/investigation/test_rca2a2c_plan_lifecycle_contract.py (13 deterministic tests)"
+  ]
+}

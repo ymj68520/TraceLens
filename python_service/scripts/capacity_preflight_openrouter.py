@@ -30,6 +30,8 @@ from httpserver.services.investigation.agent_model_adapter import (  # noqa: E40
 )
 
 REPO_ROOT = PYTHON_SERVICE_ROOT.parent
+# Historical default location (RCA-2A.2 era). Since RCA-2A.2c the output
+# path is a REQUIRED fresh --out argument; never written implicitly.
 RESULTS = (
     PYTHON_SERVICE_ROOT
     / "benchmarks" / "results" / "agent-v0" / "model-candidates"
@@ -97,10 +99,13 @@ async def _probe(base_url: str, api_key: str, index: int, max_tokens: int) -> di
 def main() -> int:
     import argparse
 
+    from benchmark_output_guard import OutputPathError, exclusive_output_file
+
     parser = argparse.ArgumentParser(prog="capacity_preflight_openrouter")
     parser.add_argument(
-        "--out", default=str(RESULTS / "capacity-preflight.json"),
-        help="artifact path (default: candidate dir capacity-preflight.json)",
+        "--out", required=True,
+        help="fresh artifact path (REQUIRED since RCA-2A.2c: an existing "
+        "file is never overwritten)",
     )
     parser.add_argument(
         "--probe-max-tokens", type=int, default=16,
@@ -108,7 +113,6 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    RESULTS.mkdir(parents=True, exist_ok=True)
     settings = Settings(_env_file=str(REPO_ROOT / ".env"))
     api_key = getattr(settings, "openrouter_api_key", "") or "EMPTY"
     key_present = bool(getattr(settings, "openrouter_api_key", ""))
@@ -172,10 +176,14 @@ def main() -> int:
         "disposition": disposition,
         "note": "§5: preflight is NOT part of 8x1 or any semantic measurement; one-shot entry check only — no watchdog, no retry loop (§4)",
     }
+    try:
+        with exclusive_output_file(args.out) as fh:
+            fh.write(json.dumps(record, indent=2, ensure_ascii=False) + "\n")
+    except OutputPathError as exc:
+        # the pre-existing artifact was never opened for writing
+        print(f"[preflight] OUTPUT REFUSED: {exc}", flush=True)
+        return 3
     out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n",
-                   encoding="utf-8")
     print(f"[preflight] disposition: {disposition}")
     print(f"-> {out}")
     return 0 if gate_pass else 2

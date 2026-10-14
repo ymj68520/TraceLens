@@ -8,11 +8,16 @@ part of any semantic measurement (§5): it only decides whether starting
 the 8x1 is worth it.
 
 Usage (from python_service/):
-    .venv/bin/python scripts/capacity_preflight_stepfun.py
+    .venv/bin/python scripts/capacity_preflight_stepfun.py --out <path>
+
+RCA-2A.2c: the output path is REQUIRED and must be fresh — an existing
+artifact is never overwritten (atomic exclusive create; the historical
+qualification/audit artifact sets stay immutable).
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import sys
@@ -24,12 +29,16 @@ PYTHON_SERVICE_ROOT = SCRIPT_PATH.parents[1]
 if str(PYTHON_SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_SERVICE_ROOT))
 
+from benchmark_output_guard import OutputPathError, exclusive_output_file  # noqa: E402
 from httpserver.config import Settings  # noqa: E402
 from httpserver.services.investigation.agent_model_adapter import (  # noqa: E402
     classify_provider_http_error,
 )
 
 REPO_ROOT = PYTHON_SERVICE_ROOT.parent
+# Historical default location (RCA-2A.2 era). Since RCA-2A.2c the output
+# path is a REQUIRED fresh --out argument; this constant is a reference
+# for where that era's artifacts live and is never written to implicitly.
 RESULTS = (
     PYTHON_SERVICE_ROOT
     / "benchmarks" / "results" / "agent-v0" / "model-candidates"
@@ -91,7 +100,17 @@ async def _probe(base_url: str, api_key: str, index: int) -> dict:
 
 
 def main() -> int:
-    RESULTS.mkdir(parents=True, exist_ok=True)
+    parser = argparse.ArgumentParser(
+        prog="capacity_preflight_stepfun",
+        description="one-shot capacity preflight for step-3.7-flash@stepfun",
+    )
+    parser.add_argument(
+        "--out",
+        required=True,
+        help="fresh output path for capacity-preflight.json "
+        "(REQUIRED; an existing file is never overwritten)",
+    )
+    args = parser.parse_args()
     settings = Settings(_env_file=str(REPO_ROOT / ".env"))
     api_key = getattr(settings, "llm_api_key", "") or "EMPTY"
     key_present = bool(getattr(settings, "llm_api_key", ""))
@@ -145,9 +164,14 @@ def main() -> int:
         "disposition": disposition,
         "note": "§5: preflight is NOT part of 8x1 or any semantic measurement; one-shot entry check only — no watchdog, no retry loop (§4). Probe budget history: v1/v2 16/64-token budgets truncated behind endpoint hidden reasoning (completion_tokens hit the cap with empty visible content; reasoning_tokens now recorded); v3 = 256-token budget, FINAL probe spec.",
     }
-    out = RESULTS / "capacity-preflight.json"
-    out.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n",
-                   encoding="utf-8")
+    try:
+        with exclusive_output_file(args.out) as fh:
+            fh.write(json.dumps(record, indent=2, ensure_ascii=False) + "\n")
+    except OutputPathError as exc:
+        # the pre-existing artifact was never opened for writing
+        print(f"[preflight] OUTPUT REFUSED: {exc}", flush=True)
+        return 3
+    out = Path(args.out)
     print(f"[preflight] disposition: {disposition}")
     print(f"-> {out}")
     return 0 if gate_pass else 2

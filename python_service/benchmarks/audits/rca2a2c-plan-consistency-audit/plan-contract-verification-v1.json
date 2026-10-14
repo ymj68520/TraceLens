@@ -1,0 +1,190 @@
+{
+  "schema_identity_code_vs_captured": true,
+  "three_action_variants_construct": {
+    "delegate": "DelegateInvestigationActionV2",
+    "finalize": "RequestFinalizationActionV2",
+    "no_plan": "NoPlanActionV2"
+  },
+  "historical_payload_error_count": 11,
+  "historical_payload_primary": "INVALID_UNION",
+  "historical_payload_pairs": [
+    [
+      "extra_forbidden",
+      [
+        "actions",
+        0,
+        "DelegateInvestigationActionV2",
+        "type"
+      ]
+    ],
+    [
+      "missing",
+      [
+        "actions",
+        0,
+        "RequestFinalizationActionV2",
+        "reason_code"
+      ]
+    ],
+    [
+      "extra_forbidden",
+      [
+        "actions",
+        0,
+        "RequestFinalizationActionV2",
+        "type"
+      ]
+    ],
+    [
+      "extra_forbidden",
+      [
+        "actions",
+        0,
+        "RequestFinalizationActionV2",
+        "attention_handle"
+      ]
+    ],
+    [
+      "extra_forbidden",
+      [
+        "actions",
+        0,
+        "RequestFinalizationActionV2",
+        "question_handle"
+      ]
+    ],
+    [
+      "extra_forbidden",
+      [
+        "actions",
+        0,
+        "RequestFinalizationActionV2",
+        "source_scope_id"
+      ]
+    ],
+    [
+      "missing",
+      [
+        "actions",
+        0,
+        "NoPlanActionV2",
+        "reason_code"
+      ]
+    ],
+    [
+      "extra_forbidden",
+      [
+        "actions",
+        0,
+        "NoPlanActionV2",
+        "type"
+      ]
+    ],
+    [
+      "extra_forbidden",
+      [
+        "actions",
+        0,
+        "NoPlanActionV2",
+        "attention_handle"
+      ]
+    ],
+    [
+      "extra_forbidden",
+      [
+        "actions",
+        0,
+        "NoPlanActionV2",
+        "question_handle"
+      ]
+    ],
+    [
+      "extra_forbidden",
+      [
+        "actions",
+        0,
+        "NoPlanActionV2",
+        "source_scope_id"
+      ]
+    ]
+  ],
+  "omit_discriminant_resolves_to": "DelegateInvestigationActionV2",
+  "projection": {
+    "projection_version": "plan-context-v2-projection:v1",
+    "binding_table_id": "rbt:76c89969bb2276c743d3d8d0fc2eb1ff",
+    "objective": "",
+    "attention_items": [
+      {
+        "handle": "A1",
+        "band": "b1",
+        "eligibility": "eligible",
+        "title": "t",
+        "reason_codes": [],
+        "eligible_action_types": [
+          "delegate_source"
+        ],
+        "related_question_handles": [
+          "Q1"
+        ]
+      }
+    ],
+    "questions": [
+      {
+        "handle": "Q1",
+        "status": "open"
+      }
+    ],
+    "coverage_digests": [],
+    "contradiction_digests": [],
+    "source_scopes": [
+      "windows"
+    ],
+    "active_delegations": [],
+    "recent_terminal_delegations": [],
+    "capability_summaries": [],
+    "progress_digest": null,
+    "budget_digest": null,
+    "last_finalization_denial": null,
+    "phase_capabilities": [
+      "delegate_investigation",
+      "request_finalization",
+      "no_action"
+    ]
+  },
+  "instruction_len": 1362,
+  "instruction_tokens": {
+    "source_scope_id": true,
+    "handles": true,
+    "delegate_investigation": true,
+    "request_finalization": true,
+    "no_action": true,
+    "reason code": true
+  },
+  "schema_branch_fields": {
+    "DelegateInvestigationActionV2": [
+      "action_id",
+      "action_type",
+      "attention_handle",
+      "execution_group",
+      "investigation_intent",
+      "question_handle",
+      "source_scope_id",
+      "time_scope"
+    ],
+    "NoPlanActionV2": [
+      "action_id",
+      "action_type",
+      "reason_code"
+    ],
+    "RequestFinalizationActionV2": [
+      "action_id",
+      "action_type",
+      "reason_code",
+      "summary"
+    ]
+  },
+  "phase_capabilities_match_literals": true,
+  "empty_actions_legal": true,
+  "schema_identity_note": "pydantic-ai strips non-semantic 'title'/'description' annotations; every property/const/required/additionalProperties survives byte-identical",
+  "error_count_note": "raw pydantic model_validate yields 11 (type,loc) pairs; the pydantic-ai output-tool path yields the 8-pair presentation captured in production diagnostics (matches RCA-2A.2b byte-for-byte). Same INVALID_UNION class."
+}

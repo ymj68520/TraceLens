@@ -64,3 +64,34 @@ scheduled 1 / started 1 / benchmark-completed 1 / AgentRun contained-failed 1；
 原 RCA-2A.2 OpenRouter BLOCKED 工件、StepFun 4-run 工件、step-3.7-flash NOT_QUALIFIED_SCREENING 工件全部字节不动（amendment 均为 append-only）。全量测试 **1136 passed / 0 failed**（新增 V2 就绪门）。
 
 **STOP**：单 attempt 完成（成功与否均止步）；禁止扩大至第二案例；等待架构审查。
+
+---
+
+# RCA2A2bInterpretationAddendumV1（RCA-2A.2c 追加，append-only；上文原内容一字未动）
+
+基线 `4b006c28`。本节仅追加解释记录，原始工件（本报告 §1–§11、JSONL、gate 证据、qual-8x1）字节不动；机器可读版见 `python_service/benchmarks/audits/rca2a2b-stepfun-diagnostic/rca2a2b-interpretation-addendum-v1.json`。
+
+## 追加判定
+
+| 项 | 值 |
+|---|---|
+| Diagnostic execution | COMPLETED |
+| Field-level failure | IDENTIFIED_AT_SUPERVISOR_PLAN |
+| INTEGRATE field-level cause | NOT_OBSERVED |
+| AgentRun persistent status | RUNNING_AT_BENCHMARK_EXIT |
+| CF-1 | UNDER_LIFECYCLE_REVIEW |
+| RCA-2B | NOT_AUTHORIZED |
+
+## 追加约束（约束后续一切解读）
+
+1. 本记录的失败是 **PLAN 阶段**输出验证失败（单一载荷不匹配任何 union 变体 = INVALID_UNION 主违规，8 错误级联）；INTEGRATE 在该 attempt 中**未到达**。本记录中的任何内容不得被读作 INTEGRATE 证据。
+2. 不得将该 PLAN INVALID_UNION 自动归因为 INTEGRATE 统一信封提案（RCA-2A.1）所能解决的问题；此类归因必须来自真正到达 INTEGRATE 输出验证层的字段级证据，在此之前 INTEGRATE 位的字段级原因维持 NOT_OBSERVED，历史 INTEGRATE 归因维持 SUSPECTED。
+3. AgentRun 行在 benchmark CLI 退出时持久化 `running` 是 CF-1 症状（P4B 既有 re-plan 语义；restart-recovery sweep 是终态化者）。该状态由本附录记录；生命周期审查结论由 RCA-2A.2c 审计拥有。
+
+## RCA-2A.2c 审计补充（2026-10-14，离线，零真实模型调用）
+
+- 真实 `run_p8b_baseline` CLI + 确定性 FunctionModel 离线复现：仅凭判别字段命名错误（`type` 而非 `action_type`）即逐字节复现历史 8 错误 INVALID_UNION 呈现与遏制形态（SUPERVISOR_PLAN / model_output_retry_exhausted / retry_attempts=1 / UnexpectedModelBehavior ← ValidationError）。
+- PLAN v2 模型可见契约一致性判定：**PLAN_CONTRACT_CONSISTENT_ON_TESTED_DOMAIN**（输出工具 schema 与生产 schema 字段全等；指令与 schema 无互相矛盾；三个 action 变体与 no_action 路径均可合法构造）——INVALID_UNION 是模型侧字段命名失败，不是 prompt/schema 矛盾。
+- CF-1 生命周期审查结论：**RUNTIME_LIFECYCLE_DEFECT_CONFIRMED**（范围限定于一次性调用退出边界：控制进程正常退出时非终态 AgentRun 行无确定性终态化者；PLAN 遏制在活服务内的非终态性是刻意设计）。修复设计已记录，生产行为本阶段**未改动**，等待独立授权。
+- 审计工件：`python_service/benchmarks/audits/rca2a2c-plan-consistency-audit/`。
+
