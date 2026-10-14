@@ -1,5 +1,21 @@
 import api, { pythonApi } from './api';
-export const getAnalysisHealth = () => pythonApi.get('/api/system/analysis-health');
+// 后端没有实现聚合的 /api/system/analysis-health；依赖状态由三个真实端点拼装。
+export const getAnalysisHealth = async () => {
+  const [graphiti, redis, llm] = await Promise.allSettled([
+    pythonApi.get('/api/graphiti/status'),
+    pythonApi.get('/api/system/redis/status'),
+    pythonApi.get('/api/llm/status'),
+  ]);
+  const payload = (r) => (r.status === 'fulfilled' ? (r.value?.data ?? r.value) : undefined);
+  const g = payload(graphiti);
+  const r = payload(redis);
+  const l = payload(llm);
+  return {
+    neo4j: { connected: g ? (g.neo4j_connected ?? g.status === 'connected') : false },
+    redis: { connected: !!r?.connected },
+    translation: { connected: l ? ['available', 'healthy'].includes(l.status) : false },
+  };
+};
 
 export const getSystemHealth = async () => {
   return await api.get('/api/system/health');
