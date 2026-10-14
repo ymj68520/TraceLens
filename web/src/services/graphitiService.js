@@ -72,18 +72,22 @@ export const listRelationships = async (taskId, params = {}) => {
 
 /**
  * 获取 Graphiti 服务状态 (可选任务特定)
+ * 后端没有 /api/knowledge-graph/*，真实状态在 /api/graphiti/status（同形响应）。
  * @param {string} taskId - 任务 ID (可选)
  */
 export const getGraphitiStatus = async (taskId = null) => {
     const params = taskId ? { task_id: taskId } : {};
-    return await pythonApi.get('/api/knowledge-graph/status', { params });
+    return await pythonApi.get('/api/graphiti/status', { params });
 };
 
 /**
  * 列出所有有知识图谱数据的任务
+ * /api/knowledge-graph/tasks 没有后端实现；从已完成的摄入作业推导任务列表。
  */
 export const listTaskGraphs = async () => {
-    return await pythonApi.get('/api/knowledge-graph/tasks');
+    const data = await pythonApi.get('/api/graphiti/jobs', { params: { status: 'completed', limit: 500 } });
+    const taskIds = [...new Set((data?.jobs || []).map((job) => job.task_id).filter(Boolean))];
+    return { task_ids: taskIds };
 };
 
 /**
