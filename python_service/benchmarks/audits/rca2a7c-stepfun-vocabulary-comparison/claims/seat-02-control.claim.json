@@ -1,0 +1,11 @@
+{
+  "artifact_version": "RCA2A7SeatClaimV1",
+  "experiment_id": "rca2a7b-runner-hardening",
+  "pair_id": 2,
+  "arm": "control",
+  "seat_index": 4,
+  "claimed_phase": "RESULT_RECORDED",
+  "claimed_at_monotonic": 2832858.388471322,
+  "status": "COMPLETED",
+  "finalized_at_monotonic": 2832877.569108822
+}

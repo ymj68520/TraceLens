@@ -1,0 +1,31 @@
+{
+  "artifact_version": "RCA2A7cRuntimeIdentityRecordV1",
+  "baseline_commit": "47bd3749e5bf6da0b6ebeecc39bb85fb87ccd3e0",
+  "code_hashes": {
+    "cross_arm_parity": "f7313a7637decc498848944513a31f427778a003b1c958c08ae4ecb7358a4c26",
+    "diagnostic_hardening": "0811ac8b2642185dee751a4a4bdb713969a7adf28122a961142e05ab03e2fd07",
+    "diagnostic_sink": "76c4b23f1fb5226f7f12c946577a820ba720033d5f4941a7d6472566f2069b7e",
+    "diagnostic_taxonomy": "c293d4773b0d7defd84b754f81343c2e42445156fda3b10e545268edf4ddbe5a",
+    "fixture_builder": "d7ad2a13a9c1fbb442af8dfa11727351cc1f2284101e1542c1d9b5389868006f",
+    "guidance_factory": "55160ec25b60b06f5a60dfe122c39a999dba427f239ce3dd3217190a3ee581a0",
+    "model_adapter": "9d4f6482ef35eafd5761d7a5f8b08acbbab984f898558845c944b448908bbc1f",
+    "runner": "ce433704050b1ee0a560cfa6d1d10af1227857c1df39b701d922391dc5ba75c9",
+    "schema": "9be8946460d63993192c2abb58391bc6aa5af2617412ee27377f3275846439a0",
+    "stage_harness": "80359cbb6a442b2fa34a94d1852d5d22c30d3b608bcd422fcabb05d5470192aa",
+    "supervisor": "8621316a59b9c016c6eacbe9742eb439532af26b401f09d0eef3c263acd8cd25",
+    "transition_policy": "77300b8d079fb21891ac59dd14732a5f1b611c719e2c5bfc924637166f250e54",
+    "validator": "6d93e4e40b671ce3109b3c3678cd0396013bfc079bd1113b8b8f71ed2c4fc97a",
+    "working_state": "adc51cc6d200c5bce37cd2e8f23d54ad063932c8af1129859d952c62219ddd06"
+  },
+  "experiment_id": "rca2a7c-stepfun-vocabulary-comparison",
+  "git_head": "47bd3749e5bf6da0b6ebeecc39bb85fb87ccd3e0",
+  "guidance_sha256": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+  "interpretation_decision": "GUIDANCE_BENEFIT_OBSERVED_ON_SAMPLE",
+  "model": "step-3.7-flash",
+  "observation_mode": "LIVE_STEPFUN_STEP_3.7_FLASH",
+  "output_schema_hash": "a214ec4f5e81fcbb",
+  "preflight_logical_requests": 3,
+  "provider": "stepfun",
+  "real_model_requests": 16,
+  "stop_reason": null
+}
