@@ -1,0 +1,129 @@
+{
+  "artifact_version": "RCA2A5ObservedPayloadEvidenceV1",
+  "attempts": {
+    "attempt_1": {
+      "genuine_action_type_declared": "update_question",
+      "observable_scope": "NOT_PERSISTED — the production sink records only the terminal (retry-exhausted) validation error; attempt 1's ValidationError is reconstructed by deterministic replay against the identical frozen schema",
+      "observable_validation_error": null,
+      "raw_args_sha256": "d6d467cdfca67fcc74fe475cbcc80b73180f9625f0d11cdef254cf2a950bc945",
+      "role": "initial output-tool response",
+      "tool_name": "final_result"
+    },
+    "attempt_2": {
+      "genuine_action_type_declared": "update_question",
+      "observable_scope": "PERSISTED — terminal sink entry (model_output_retry_exhausted, retry_attempts=1); type+loc pairs only (RCA-1 redaction: no input values)",
+      "observable_validation_error": [
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateQuestionActionV2",
+            "to_status"
+          ],
+          "type": "enum"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "question_handle"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "to_status"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "disposition"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "action_type"
+          ],
+          "type": "literal_error"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "text"
+          ],
+          "type": "missing"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "question_handle"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "disposition"
+          ],
+          "type": "extra_forbidden"
+        }
+      ],
+      "raw_args_sha256": "726479d79c4b23ff120a67700a3ecf3cfe9b715d66a0046299a036aa3d107938",
+      "role": "single frozen-budget output retry response",
+      "tool_name": "final_result"
+    }
+  },
+  "created_from": {
+    "parent_baseline_commit": "3ad0dcf531975a4133f0e75b9d93f118967e4842",
+    "stage_execution_evidence": "benchmarks/audits/rca2a4-stepfun-isolated-integration/rca2a4-stage-execution-evidence-v1.json"
+  },
+  "experiment_id": "rca2a5-failure-explanation",
+  "identity": {
+    "integration_context_hash": "18602d862446b491ef4945938b4b278167e23942e91e8d8680112cd4cc238e64",
+    "model_visible_instructions_hash": "d35dad367c17c5914c38d0a4c951a9cc47a350a9e72c5f0f3fc1a77c585763b7",
+    "output_tool_schema_hash": "a214ec4f5e81fcbb",
+    "provider": "stepfun",
+    "reference_binding_table_hash": "735daa6d2145996829b4292a533967f5950cd5ef1cc8f6da4efbbf8abd583fa8",
+    "requested_model": "step-3.7-flash",
+    "returned_model_per_response": [
+      "step-3.7-flash",
+      "step-3.7-flash"
+    ],
+    "runtime_commit": "3ad0dcf531975a4133f0e75b9d93f118967e4842",
+    "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96",
+    "working_state_revision": 1
+  },
+  "parent_experiment_id": "rca2a4-stepfun-isolated-integration",
+  "payload_immutability": {
+    "corrected_or_reserialized": false,
+    "raw_args_equal_parent_field_report_embedding": true
+  },
+  "redaction": {
+    "api_keys": "absent (never read into reports)",
+    "evidence_bodies": "absent (fixture is honest-empty; no evidence content exists)",
+    "full_prompts": "absent (hashes only)"
+  },
+  "retry_feedback_observable_range": {
+    "model_request_count": 2,
+    "note": "the retry prompt delivered to the model between attempt 1 and attempt 2 is not persisted verbatim; its effective content class is INFERRED from the observed field-name self-correction (handle->question_handle, status->to_status) — marked HYPOTHESIS where used",
+    "output_retry_budget": 1
+  }
+}

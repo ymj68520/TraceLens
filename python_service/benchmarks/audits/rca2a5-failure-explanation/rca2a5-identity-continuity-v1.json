@@ -1,0 +1,45 @@
+{
+  "artifact_version": "RCA2A5IdentityContinuityV1",
+  "baseline_commit": "69e5bdc78e4280464b8a087d9e797f9ab66078e0",
+  "checks": {
+    "agent_runtime_unchanged": true,
+    "frozen_input_context_unchanged": true,
+    "parent_identity_exact": true,
+    "schema_hash_unchanged": true
+  },
+  "experiment_id": "rca2a5-failure-explanation",
+  "historical_artifact_sha256": {
+    "capacity-preflight.json": "90278d7539693773fe7a9b0377f9ad2ee24c5257b2d7e21c33973a3595226d42",
+    "diagnostics/sink-readiness.jsonl": "ad60aecf6d1be29add239af10b6b46e603496e968c64f9329e5d586ef3f30068",
+    "diagnostics/stepfun-integrate-failures.jsonl": "c086e1d3973a59d799c7d9208a24032d8ea8fb81d6f2bd128a473a257b411b27",
+    "rca2a4-field-level-failure-report-v1.json": "a28f47e361f6413a9c564ea3e9a1aa75106cf7c35717180fe8d5f9a273e483da",
+    "rca2a4-input-parity-gate-report-v1.json": "d07592eb6fdf405a936b1df980248d725d5a41e025fe1a12023b9db0ae6fd78c",
+    "rca2a4-provider-verification-v1.attempt1-blocked-system-sitecustomize.json": "4241e8fea93c402c55f6503e8dcf904627df49fee6b23326f116bbf5351a3714",
+    "rca2a4-provider-verification-v1.json": "444c48af74a0bb36323fd6a3e1e49c0e9de7ca171651d687647e4bbbbda5d2e4",
+    "rca2a4-runtime-identity-record-v1.json": "655f01f1d4c451aa28b74dee4d794d7038fc96b3bd001b051ef3aa7ecb1bf7fa",
+    "rca2a4-sink-readiness-gate-v1.json": "08f9e2e5dc6f2626ed2886e324f9b46deab447a4392575382a1ebb084e8eddd0",
+    "rca2a4-stage-execution-evidence-v1.json": "e146719e4fa9e8a99feb498bf8ea57482d319fac5077f577f9d8a21bb4568ea3",
+    "rca2a4-stage-execution-report-v1.json": "a18c60ecd5f241c72c53aae4574d709aedba81f76a3251c19903a1226f4cd026",
+    "rca2a4-stepfun-diagnostic-manifest-v1.json": "790358dab599a6173000c12bfa0424a446c33436b2695ba8211c5f8f9e7bf048",
+    "scratch/fixture-identity.json": "9715ca803a61b7b8b1434618fe9795d3c846039a3286c184c953a0c65ad62d69"
+  },
+  "model": {
+    "identity_exact": true,
+    "provider": "stepfun",
+    "requested_model": "step-3.7-flash"
+  },
+  "parent_baseline_commit": "3ad0dcf531975a4133f0e75b9d93f118967e4842",
+  "parent_experiment_id": "rca2a4-stepfun-isolated-integration",
+  "production_continuity": {
+    "agent_runtime_sha256_current": "8d0448e7f69ff03a1f1545d6fd23b1ae888e589093f07f9f362f51ab93c2fb00",
+    "agent_runtime_sha256_frozen_manifest": "8d0448e7f69ff03a1f1545d6fd23b1ae888e589093f07f9f362f51ab93c2fb00",
+    "binding_table_hash_current": "735daa6d2145996829b4292a533967f5950cd5ef1cc8f6da4efbbf8abd583fa8",
+    "binding_table_hash_frozen": "735daa6d2145996829b4292a533967f5950cd5ef1cc8f6da4efbbf8abd583fa8",
+    "integration_context_hash_current": "18602d862446b491ef4945938b4b278167e23942e91e8d8680112cd4cc238e64",
+    "integration_context_hash_frozen": "18602d862446b491ef4945938b4b278167e23942e91e8d8680112cd4cc238e64",
+    "schema_hash_current": "a214ec4f5e81fcbb",
+    "schema_hash_frozen_fixture": "a214ec4f5e81fcbb",
+    "schema_hash_frozen_manifest": "a214ec4f5e81fcbb"
+  },
+  "verdict": "IDENTITY_CONTINUOUS"
+}

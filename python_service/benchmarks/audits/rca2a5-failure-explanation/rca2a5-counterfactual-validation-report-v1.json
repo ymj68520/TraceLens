@@ -1,0 +1,295 @@
+{
+  "artifact_version": "RCA2A5CounterfactualValidationReportV1",
+  "baseline_commit": "69e5bdc78e4280464b8a087d9e797f9ab66078e0",
+  "disposition": "COUNTERFACTUALS_REJECTED_AT_POLICY_LAYER__FAIL_CLOSED_HOLDING",
+  "evidence_class_markers": {
+    "counterfactual_simulation": [
+      "all three to_status replacements — these are SIMULATIONS of repaired payloads, NOT model behavior"
+    ],
+    "deterministic_replay": [],
+    "hypothesis": [],
+    "observed_real_model_behavior": [
+      "the base payload and every field of it except to_status"
+    ],
+    "unverified_model_reliability": [
+      "no claim that the model WOULD produce any of these repairs"
+    ]
+  },
+  "experiment_id": "rca2a5-failure-explanation",
+  "frozen_store_protection": {
+    "store_sha256_after": "0c696fcb2166a7eb37ae840e2a21264c3eae8871e683edbe70c3757d578b45a3",
+    "store_sha256_before": "0c696fcb2166a7eb37ae840e2a21264c3eae8871e683edbe70c3757d578b45a3",
+    "unchanged": true
+  },
+  "method": "attempt 2's raw payload (immutable copy) with ONE field replaced per variant, executed through the FULL production stage path on per-variant COPIES of the frozen RCA-2A.4 store (pydantic-ai FunctionModel injection; zero real model calls); the frozen original store is never opened for write",
+  "t2_no_evidence_analysis": {
+    "answered_plus_not_supported": {
+      "explanation": "QUESTION_CLOSURE_BASIS_REQUIRED: answered closure demands non-empty basis refs; the honest-empty fixture has no evidence, so an evidence-less 'answered' closure is correctly rejected fail-closed. Q1 is additionally priority=required, so a passed closure verification would also be required (none exists). An illegal auto-terminalization did NOT occur",
+      "passes_policy": false,
+      "passes_pydantic": true,
+      "policy_codes": [
+        "QUESTION_CLOSURE_BASIS_REQUIRED",
+        "QUESTION_CLOSURE_VERIFICATION_REQUIRED"
+      ]
+    },
+    "auto_finalization": {
+      "finalization": "NOT_EXERCISED in every variant; the stage owns no finalization path",
+      "occurred": false
+    },
+    "blocked": {
+      "explanation": "blocked closure requires a verifiable blocker string; attempt 2 carries none (single-field replacement cannot add one)",
+      "passes_policy": false,
+      "passes_pydantic": true,
+      "policy_codes": [
+        "QUESTION_BLOCKER_REQUIRED"
+      ]
+    },
+    "fact_promotion": {
+      "action_count": 1,
+      "add_finding_reference_actions": 0,
+      "create_hypothesis_actions": 0,
+      "evidence_refs_in_payload": [],
+      "evidence_snapshot_refs_in_fixture": [],
+      "fact_promotion_attempted": false
+    },
+    "fixture": "A_no_evidence (t2-no-evidence semantics; zero E* handles bound)",
+    "single_field_repair_conclusion": "COUNTERFACTUAL RESULT: NO single-field to_status replacement of attempt 2 is integration-eligible on this honest-empty fixture — pydantic validity is necessary but nowhere near sufficient; the 2A.4 'minimal-repair witness' was a SCHEMA-level witness and must not be read as a legal investigation outcome",
+    "unresolved": {
+      "explanation": "unresolved closure requires basis refs AND limitations AND investigated_summary; attempt 2 dropped all three on retry, and none may be auto-filled (not auto-filled here)",
+      "passes_policy": false,
+      "passes_pydantic": true,
+      "policy_codes": [
+        "QUESTION_CLOSURE_BASIS_REQUIRED"
+      ]
+    }
+  },
+  "variants": {
+    "answered": {
+      "diagnostics_emitted": [],
+      "exception_class": null,
+      "finalization": "NOT_EXERCISED",
+      "layer_labels": {
+        "CANONICAL_VALID": true,
+        "DECISION_VALIDATOR_PASSED": true,
+        "INTEGRATION_ELIGIBLE": false,
+        "PYDANTIC_VALID": true,
+        "TRANSITION_VALID": false
+      },
+      "policy_violation_codes": [
+        "QUESTION_CLOSURE_BASIS_REQUIRED",
+        "QUESTION_CLOSURE_VERIFICATION_REQUIRED"
+      ],
+      "question_after": [
+        {
+          "basis_refs_count": 0,
+          "disposition": null,
+          "handle": "Q1",
+          "has_blocker": false,
+          "has_investigated_summary": false,
+          "limitations_count": 0,
+          "priority": "required",
+          "status": "open"
+        }
+      ],
+      "question_before": [
+        {
+          "basis_refs_count": 0,
+          "disposition": null,
+          "handle": "Q1",
+          "has_blocker": false,
+          "has_investigated_summary": false,
+          "limitations_count": 0,
+          "priority": "required",
+          "status": "open"
+        }
+      ],
+      "replacement": {
+        "to_status": "answered"
+      },
+      "scratch_commit_success": false,
+      "scratch_store": "benchmarks/audits/rca2a5-failure-explanation/scratch/counterfactual/answered/investigation.db",
+      "single_field_difference_verified": true,
+      "steps": {
+        "canonical_resolution": {
+          "detail": {
+            "actions": 1
+          },
+          "ok": true
+        },
+        "decision_validator": {
+          "detail": {},
+          "ok": true
+        },
+        "model_output_received": {
+          "detail": {},
+          "ok": true
+        },
+        "pydantic_validation": {
+          "detail": {
+            "decision_version": "supervisor-integration-decision:v3"
+          },
+          "ok": true
+        },
+        "transition_validation": {
+          "detail": {
+            "codes": [
+              "QUESTION_CLOSURE_BASIS_REQUIRED",
+              "QUESTION_CLOSURE_VERIFICATION_REQUIRED"
+            ]
+          },
+          "ok": false
+        }
+      }
+    },
+    "blocked": {
+      "diagnostics_emitted": [],
+      "exception_class": null,
+      "finalization": "NOT_EXERCISED",
+      "layer_labels": {
+        "CANONICAL_VALID": true,
+        "DECISION_VALIDATOR_PASSED": true,
+        "INTEGRATION_ELIGIBLE": false,
+        "PYDANTIC_VALID": true,
+        "TRANSITION_VALID": false
+      },
+      "policy_violation_codes": [
+        "QUESTION_BLOCKER_REQUIRED"
+      ],
+      "question_after": [
+        {
+          "basis_refs_count": 0,
+          "disposition": null,
+          "handle": "Q1",
+          "has_blocker": false,
+          "has_investigated_summary": false,
+          "limitations_count": 0,
+          "priority": "required",
+          "status": "open"
+        }
+      ],
+      "question_before": [
+        {
+          "basis_refs_count": 0,
+          "disposition": null,
+          "handle": "Q1",
+          "has_blocker": false,
+          "has_investigated_summary": false,
+          "limitations_count": 0,
+          "priority": "required",
+          "status": "open"
+        }
+      ],
+      "replacement": {
+        "to_status": "blocked"
+      },
+      "scratch_commit_success": false,
+      "scratch_store": "benchmarks/audits/rca2a5-failure-explanation/scratch/counterfactual/blocked/investigation.db",
+      "single_field_difference_verified": true,
+      "steps": {
+        "canonical_resolution": {
+          "detail": {
+            "actions": 1
+          },
+          "ok": true
+        },
+        "decision_validator": {
+          "detail": {},
+          "ok": true
+        },
+        "model_output_received": {
+          "detail": {},
+          "ok": true
+        },
+        "pydantic_validation": {
+          "detail": {
+            "decision_version": "supervisor-integration-decision:v3"
+          },
+          "ok": true
+        },
+        "transition_validation": {
+          "detail": {
+            "codes": [
+              "QUESTION_BLOCKER_REQUIRED"
+            ]
+          },
+          "ok": false
+        }
+      }
+    },
+    "unresolved": {
+      "diagnostics_emitted": [],
+      "exception_class": null,
+      "finalization": "NOT_EXERCISED",
+      "layer_labels": {
+        "CANONICAL_VALID": true,
+        "DECISION_VALIDATOR_PASSED": true,
+        "INTEGRATION_ELIGIBLE": false,
+        "PYDANTIC_VALID": true,
+        "TRANSITION_VALID": false
+      },
+      "policy_violation_codes": [
+        "QUESTION_CLOSURE_BASIS_REQUIRED"
+      ],
+      "question_after": [
+        {
+          "basis_refs_count": 0,
+          "disposition": null,
+          "handle": "Q1",
+          "has_blocker": false,
+          "has_investigated_summary": false,
+          "limitations_count": 0,
+          "priority": "required",
+          "status": "open"
+        }
+      ],
+      "question_before": [
+        {
+          "basis_refs_count": 0,
+          "disposition": null,
+          "handle": "Q1",
+          "has_blocker": false,
+          "has_investigated_summary": false,
+          "limitations_count": 0,
+          "priority": "required",
+          "status": "open"
+        }
+      ],
+      "replacement": {
+        "to_status": "unresolved"
+      },
+      "scratch_commit_success": false,
+      "scratch_store": "benchmarks/audits/rca2a5-failure-explanation/scratch/counterfactual/unresolved/investigation.db",
+      "single_field_difference_verified": true,
+      "steps": {
+        "canonical_resolution": {
+          "detail": {
+            "actions": 1
+          },
+          "ok": true
+        },
+        "decision_validator": {
+          "detail": {},
+          "ok": true
+        },
+        "model_output_received": {
+          "detail": {},
+          "ok": true
+        },
+        "pydantic_validation": {
+          "detail": {
+            "decision_version": "supervisor-integration-decision:v3"
+          },
+          "ok": true
+        },
+        "transition_validation": {
+          "detail": {
+            "codes": [
+              "QUESTION_CLOSURE_BASIS_REQUIRED"
+            ]
+          },
+          "ok": false
+        }
+      }
+    }
+  }
+}
