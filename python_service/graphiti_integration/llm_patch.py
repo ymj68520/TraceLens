@@ -18,6 +18,8 @@ import logging
 import os
 import re
 
+from openai import BadRequestError
+
 logger = logging.getLogger(__name__)
 
 
@@ -55,8 +57,11 @@ def _structured_output_mode() -> str:
 
     DeepSeek rejects ``json_schema`` ("This response_format type is unavailable
     now") with a hard 400, so cloud runs set ``json_object``: the schema is
-    injected into the prompt instead. Empty env keeps the legacy json_schema
-    behaviour for local servers (LM Studio) that support it.
+    injected into the prompt instead. LM Studio conversely rejects
+    ``json_object`` (only ``json_schema``/``text``), so local runs set
+    ``json_schema``. Empty env defaults to ``json_object`` — the wider
+    OpenAI-compatible baseline; a provider that rejects it falls back to the
+    plain-text retry in ``_patched_generate_response``.
     """
     mode = (os.getenv("GRAPHITI_STRUCTURED_OUTPUT_MODE") or "").strip().lower()
     return mode if mode in {"json_schema", "json_object"} else ""
@@ -136,24 +141,34 @@ def apply_patch():
                     openai_messages.insert(0, {'role': 'system', 'content': notice.strip()})
 
         # --- Attempt 1: with response_format ---
-        response = await self.client.chat.completions.create(
-            model=self.model or 'gpt-4.1-mini',
-            messages=openai_messages,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            response_format=response_format,
-            extra_body=_request_tweaks() or None,
-        )
-        raw = response.choices[0].message.content or ''
-        result = _strip_llm_artifacts(raw)
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model or 'gpt-4.1-mini',
+                messages=openai_messages,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                response_format=response_format,
+                extra_body=_request_tweaks() or None,
+            )
+            raw = response.choices[0].message.content or ''
+            result = _strip_llm_artifacts(raw)
 
-        if result:
-            try:
-                return json.loads(result)
-            except json.JSONDecodeError as e:
-                logger.warning(f"JSON parse failed after stripping artifacts: {e}. Raw snippet: {raw[:200]}")
-        else:
-            logger.warning(f"LLM returned only thinking/noise. Raw snippet: {raw[:300]}")
+            if result:
+                try:
+                    return json.loads(result)
+                except json.JSONDecodeError as e:
+                    logger.warning(f"JSON parse failed after stripping artifacts: {e}. Raw snippet: {raw[:200]}")
+            else:
+                logger.warning(f"LLM returned only thinking/noise. Raw snippet: {raw[:300]}")
+        except BadRequestError as e:
+            # Some providers reject the requested response_format outright
+            # (e.g. LM Studio only accepts json_schema/text, not json_object)
+            # with a hard 400. The structured format is optional — fall through
+            # to the plain-text retry below instead of failing the episode.
+            logger.warning(
+                f"Provider rejected response_format {response_format.get('type')!r}: {e}. "
+                'Retrying without response_format.'
+            )
 
         # --- Attempt 2: retry WITHOUT response_format, add /no_think hint ---
         logger.info("Retrying without response_format and with /no_think hint")
