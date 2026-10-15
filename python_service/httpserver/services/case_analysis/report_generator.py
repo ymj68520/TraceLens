@@ -196,7 +196,7 @@ class ReportGenerator(ReportGeneratorHelpersMixin):
                     # database (data/cases/{case_id}/{case_id}.db), keyed by
                     # the case_id, so they survive beyond the in-memory job and
                     # can be retrieved via the case-report-by-case endpoint.
-                    from ..db_utils import get_case_db_path
+                    from .db_utils import get_case_db_path
                     case_db = get_case_db_path(task_id)
                     self._persist_case_report(case_db, task_id, case_description, report_text)
                 elif files_db_path:
