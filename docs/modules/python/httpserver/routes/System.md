@@ -10,7 +10,7 @@
 
 ## 2. 典型调用方（前端哪个页面/组件）
 
-- `/logs` 页（web/src/pages/Logs.jsx）：`fetch(`${PYTHON_BASE}/api/system/logs/${service}?lines=200`)`（:20）+ `new EventSource(`${PYTHON_BASE}/api/system/logs-stream/${service}`)`（:37）。
+- `/logs` 页（web/src/pages/Logs.jsx）：`fetch(`${PYTHON_BASE}/api/system/logs/${service}?lines=200`)`（:20）+ `new EventSource(`${PYTHON_BASE}/api/system/logs-stream/${service}?window=10`)`（:39）。注意：Logs.jsx 目前**没有注册路由**（routes.jsx 无引用），属暂未挂载的页面——端点契约以本文件与 api_reference 第 15 节为准。
 - 通用终端组件 `web/src/components/common/TerminalOutput.jsx`：SSE 端点 :54-55、拉取端点 :91-92（cpp/python 双 tab）。
 - 服务端无调用方；C++ 不调它。注意区分：`web/src/services/systemService.js` 里的 `/api/system/health`、`/api/system/info` 等走的是 C++ 前缀（`api` 客户端），与本组无关。
 
@@ -20,7 +20,7 @@
 
 - `GET /api/system/logs`（system.py:16-22）——旧组件不带服务名的兜底，等价于 `/logs/python`。
 - `GET /api/system/logs/{service}`（:64-93）——service ∈ {cpp, python}，返回尾部 `lines` 行（默认 100，1-2000）的结构化数组 `{service, logs[], total_lines}`。
-- `GET /api/system/logs-stream/{service}`（:95-127）——SSE（text/event-stream），`data:` 载荷为逐行解析的 JSON，follow 模式（从文件末尾起，无新行时 0.5s 轮询）。
+- `GET /api/system/logs-stream/{service}`（:124-163）——SSE（text/event-stream），`data:` 载荷为逐行解析的 JSON，follow 模式（从文件末尾起，无新行时 0.5s 轮询）。可选 `window`（秒）：>0 时先发 `retry: 3000` 提示、窗口到期干净关窗——给无法增量冲刷 SSE 的缓冲网关（8666 `/python` 代理）用，EventSource 自动重连续窗；0/缺省保持无界 tail。
 
 ## 4. 数据流（读什么库/服务、写什么；关键机制 file:line）
 

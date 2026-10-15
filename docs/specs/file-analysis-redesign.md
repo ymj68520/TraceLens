@@ -168,6 +168,7 @@ Step5   报告（不变）
 
 - 共享常量/Settings：`episode_chunk_max_chars = floor(max_episode_tokens × 3)`；`cluster_analyzer` 两处与 `file_analyzer` 一处全部改为引用，禁止新字面量。
 - 探测：`graphiti_integration` 初始化时 `GET {text_base_url}/api/v0/models`（2s 超时），匹配所选模型的 context length；成功 → `max_episode_tokens = min(配置值, floor(context × 0.15))`；失败/超时/字段缺失 → 配置值，仅记日志。进程内缓存，失败后本进程不再重试。探测不新增任何调用方可见行为。
+- **2026-10-15 演进（CJK 感知）**：本地模型（phi-4）实测中文按 ~1 token/字切分，×3 字符比将中文 episode 低估 ~4 倍，致 3/12 集在生成中途撑爆 16K 窗口（LM Studio "Context size has been exceeded"）。`TOONTransformer.estimate_episode_tokens` 改为 CJK 感知（CJK 字符计 1 token、其余按 4 字符/token）；`graphiti_parts/_ingest.py` 的 Path-A 分块改为按该估算 tokens ≤ 探测预算切分（段落累积 + 单段超限自校准硬切），不再使用字符字面量。验证：raw_llm.img 重摄 12/12（原 9/12）。chars 比仍保留给 `episode_chunk_chars` 的既有调用方。
 
 ## 7. 输出质量与交互规范
 

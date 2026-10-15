@@ -942,7 +942,7 @@ curl -X POST http://localhost:8090/api/forensics/oss/ai/analyze \
 |------|------|------|
 | GET | `/api/system/logs` | 读取服务日志 |
 | GET | `/api/system/logs/{service}` | 指定服务日志（找不到 404） |
-| GET | `/api/system/logs-stream/{service}` | **SSE** 日志流（StreamingResponse） |
+| GET | `/api/system/logs-stream/{service}` | **SSE** 日志流（StreamingResponse）；可选 `window` 秒数限定流窗口（到时干净关窗，EventSource 自动重连取下一窗） |
 
 > `routes/system_logs.py` 中定义的 `/api/system/logs/stream` router **未在 main.py 注册**（死代码），运行时不存在。
 > Redis 状态与系统信息在 `health.py` 中注册：`/api/system/redis/status`、`/api/system/info`（见第 1 节）。
@@ -953,7 +953,7 @@ curl http://localhost:8090/api/system/logs/httpserver
 curl -N http://localhost:8090/api/system/logs-stream/httpserver
 ```
 
-响应要点：logs 返回日志文本/行数组（`lines` 可截取尾部）；`logs/{service}` 找不到服务 404；`logs-stream/{service}` 为 SSE（`curl -N` 才能看到流式推送）。
+响应要点：logs 返回日志文本/行数组（`lines` 可截取尾部）；`logs/{service}` 找不到服务 404；`logs-stream/{service}` 为 SSE（`curl -N` 才能看到流式推送），带 `?window=N` 时先发 `retry: 3000` 提示、N 秒后关窗——供无法增量冲刷的缓冲网关使用（前端 Logs 页固定 window=10）。
 
 ---
 
