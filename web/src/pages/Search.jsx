@@ -8,11 +8,13 @@ import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Spinner from '../components/common/Spinner';
 import Badge from '../components/common/Badge';
+import { useToast } from '../components/common/useToast';
 
 const Search = () => {
   const [searchParams] = useSearchParams();
   const taskId = searchParams.get('task_id');
   const { tasks } = useSelector((state) => state.tasks);
+  const toast = useToast();
 
   const currentTask = tasks.find((t) => t.id === taskId);
 
@@ -61,7 +63,7 @@ const Search = () => {
     setError(null);
     try {
       const result = await createSearchIndex(sourcePath, index, true);
-      alert('Index created successfully! You can now search.');
+      toast.success(`索引创建完成（${result?.indexed ?? result?.count ?? 'ok'}），已切换到搜索页`);
       console.log('Index created:', result);
       // Switch to search tab after indexing
       setActiveTab('search');
@@ -157,9 +159,12 @@ const Search = () => {
                 </p>
               )}
             </div>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading || !query.trim()}>
               {loading ? 'Searching...' : '🔍 Search'}
             </Button>
+            {!query.trim() && (
+              <p className="text-xs text-slate-500 dark:text-slate-400">请输入搜索关键词</p>
+            )}
           </form>
         </Card>
       )}

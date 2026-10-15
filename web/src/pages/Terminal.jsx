@@ -8,7 +8,10 @@ import { CPP_BASE_URL, PYTHON_API_BASE_URL } from '../services/api';
 const CPP_BASE = CPP_BASE_URL;
 const PYTHON_BASE = PYTHON_API_BASE_URL;
 const CPP_PORT = new URL(CPP_BASE, window.location.origin).port || '80';
-const PYTHON_PORT = new URL(PYTHON_BASE, window.location.origin).port || '80';
+// 生产模式下 Python 走 C++ 的 "/python" 反代（相对路径没有独立端口），直连模式下才是显式端口。
+const PYTHON_ENDPOINT = PYTHON_BASE.startsWith('/')
+  ? `${PYTHON_BASE} (经 C++ 反代)`
+  : `Port ${new URL(PYTHON_BASE, window.location.origin).port || '80'}`;
 
 const Terminal = () => {
   const { t } = useTranslation();
@@ -45,7 +48,7 @@ const Terminal = () => {
               Python Service
             </div>
             <div className="text-2xl font-bold text-blue-900 dark:text-blue-100 mt-1">
-              Port {PYTHON_PORT}
+              {PYTHON_ENDPOINT}
             </div>
             <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">
               LLM Analysis, Knowledge Graph

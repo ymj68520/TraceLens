@@ -173,6 +173,11 @@ export const appRoutes = [
         path: 'distributed',
         element: <Distributed />,
       },
+      {
+        // 未知路由兜底：避免 React Router 默认的 "Unexpected Application Error!" 裸错误页
+        path: '*',
+        element: <Navigate to="/dashboard" replace />,
+      },
     ],
   },
 ];
