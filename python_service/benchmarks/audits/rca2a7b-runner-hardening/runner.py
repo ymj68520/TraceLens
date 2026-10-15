@@ -351,6 +351,7 @@ class SeatExecutionContext:
     fixture_record: dict[str, Any]
     harness: IsolatedIntegrationHarness
     diagnostic_sink_path: Path
+    claim_path: Optional[Path] = None
     phase: SeatPhase = SeatPhase.NOT_STARTED
     stage_invocations_started: int = 0
     stage_invocations_finished: int = 0
@@ -360,6 +361,8 @@ class SeatExecutionContext:
     stage_result: Optional[Any] = None
     stop_reason: Optional[str] = None
     executed: bool = False
+    outcome_status: Optional[str] = None
+    claim_record: Optional[dict[str, Any]] = None
     record: Optional[dict[str, Any]] = None
 
 
@@ -428,11 +431,14 @@ def build_seat_record(ctx: SeatExecutionContext) -> dict[str, Any]:
         bool(e.get("response_metadata")) or bool(e.get("provider_error_class")) for e in events
     )
 
+    status = ctx.outcome_status or ("EXECUTED" if ctx.executed else "NOT_STARTED")
+
     return {
         "pair_id": ctx.pair_id,
         "arm": ctx.arm,
-        "status": "EXECUTED" if ctx.executed else "NOT_STARTED",
+        "status": status,
         "phase": ctx.phase.value,
+        "durable_claim": ctx.claim_record,
         "logical_model_generations": logical_gens,
         "provider_error_classes": [
             e["provider_error_class"] for e in events if e.get("provider_error_class")
@@ -500,12 +506,16 @@ async def run_eight_seats(
     fixtures: list[dict[str, Any]],
     diagnostics_dir: Path,
     *,
+    claims_dir: Path | None = None,
     model_factory: Callable[[SeatExecutionContext], _PydanticAiModel],
     stop_early_after_seat: int | None = None,
     allow_reexecution: bool = False,
+    crash_before_result_recording: bool = False,
 ) -> dict[str, Any]:
     """Execute all 8 seats with strict lifecycle management, budget bounds, and stop rules."""
     diagnostics_dir.mkdir(parents=True, exist_ok=True)
+    claims_dir = (claims_dir or (diagnostics_dir / "claims")).resolve()
+    claims_dir.mkdir(parents=True, exist_ok=True)
     fixture_map = {(x["pair_id"], x["arm"]): x for x in fixtures}
 
     seat_contexts: list[SeatExecutionContext] = []
@@ -528,6 +538,7 @@ async def run_eight_seats(
 
             fixture_path = Path(fix_item["fixture_path"])
             sink_path = (diagnostics_dir / f"pair-{pair_id:02d}-{arm_name}.jsonl").resolve()
+            claim_path = (claims_dir / f"seat-{pair_id:02d}-{arm_name}.claim.json").resolve()
 
             harness = IsolatedIntegrationHarness(
                 db_path=fixture_path / "investigation.db",
@@ -548,6 +559,7 @@ async def run_eight_seats(
                 fixture_record=fix_item,
                 harness=harness,
                 diagnostic_sink_path=sink_path,
+                claim_path=claim_path,
             )
             seat_contexts.append(ctx)
 
@@ -565,6 +577,30 @@ async def run_eight_seats(
                 ctx.phase = SeatPhase.NOT_STARTED
                 ctx.record = build_seat_record(ctx)
                 break
+
+            # Check durable seat claim collision / prior in-flight crash
+            if claim_path.exists():
+                try:
+                    claim_data = json.loads(claim_path.read_text(encoding="utf-8"))
+                except Exception:
+                    claim_data = {"status": "ATTEMPT_OUTCOME_UNKNOWN"}
+                ctx.claim_record = claim_data
+                if (
+                    claim_data.get("status") in ("ATTEMPT_OUTCOME_UNKNOWN", "CLAIMED_BEFORE_INVOCATION")
+                    or claim_data.get("claimed_phase") == "INVOCATION_STARTED"
+                ):
+                    global_stop_reason = "SEAT_ALREADY_CLAIMED_OR_OUTCOME_UNKNOWN"
+                    ctx.outcome_status = "ATTEMPT_OUTCOME_UNKNOWN"
+                    ctx.stop_reason = global_stop_reason
+                    ctx.phase = SeatPhase.INVOCATION_STARTED
+                    ctx.record = build_seat_record(ctx)
+                    break
+                elif claim_data.get("status") == "COMPLETED" and not allow_reexecution:
+                    global_stop_reason = "SEAT_ALREADY_COMPLETED_REEXECUTION_PROHIBITED"
+                    ctx.stop_reason = global_stop_reason
+                    ctx.phase = SeatPhase.RESULT_RECORDED
+                    ctx.record = build_seat_record(ctx)
+                    break
 
             # Phase 1 -> 2: INPUT_VERIFIED
             before = harness.isolated_input()
@@ -603,6 +639,32 @@ async def run_eight_seats(
                 ctx.stop_reason = global_stop_reason
                 ctx.record = build_seat_record(ctx)
                 break
+
+            # Durable Seat Claim: persist exclusively to disk BEFORE any remote/model invocation
+            claim_data = {
+                "artifact_version": "RCA2A7SeatClaimV1",
+                "experiment_id": EXPERIMENT_ID,
+                "pair_id": pair_id,
+                "arm": arm_name,
+                "seat_index": seat_index,
+                "claimed_phase": "INVOCATION_STARTED",
+                "claimed_at_monotonic": time.monotonic(),
+                "status": "ATTEMPT_OUTCOME_UNKNOWN",
+            }
+            try:
+                with open(claim_path, "x", encoding="utf-8") as f:
+                    os.chmod(claim_path, 0o600)
+                    json.dump(claim_data, f, indent=2)
+                    f.flush()
+                    os.fsync(f.fileno())
+            except FileExistsError:
+                global_stop_reason = "SEAT_ALREADY_CLAIMED_OR_OUTCOME_UNKNOWN"
+                ctx.outcome_status = "ATTEMPT_OUTCOME_UNKNOWN"
+                ctx.stop_reason = global_stop_reason
+                ctx.phase = SeatPhase.INVOCATION_STARTED
+                ctx.record = build_seat_record(ctx)
+                break
+            ctx.claim_record = claim_data
 
             # Phase 2 -> 3: INVOCATION_STARTED
             ctx.phase = SeatPhase.INVOCATION_STARTED
@@ -646,8 +708,27 @@ async def run_eight_seats(
             gens = len(proxy_model.events)
             total_logical_generations += gens
 
+            # Crash simulation before result recording (durable seat claim test)
+            if crash_before_result_recording and seat_index == 1:
+                global_stop_reason = "SIMULATED_CRASH_BEFORE_RESULT_RECORDING"
+                ctx.outcome_status = "ATTEMPT_OUTCOME_UNKNOWN"
+                ctx.stop_reason = global_stop_reason
+                ctx.record = build_seat_record(ctx)
+                break
+
             # Phase 4 -> 5: RESULT_RECORDED
             ctx.phase = SeatPhase.RESULT_RECORDED
+
+            # Finalize durable claim
+            claim_data["claimed_phase"] = "RESULT_RECORDED"
+            claim_data["finalized_at_monotonic"] = time.monotonic()
+            claim_data["status"] = "COMPLETED"
+            tmp_claim = claim_path.with_suffix(".tmp")
+            tmp_claim.write_text(json.dumps(claim_data, indent=2), encoding="utf-8")
+            os.chmod(tmp_claim, 0o600)
+            tmp_claim.replace(claim_path)
+            ctx.claim_record = claim_data
+
             record = build_seat_record(ctx)
             ctx.record = record
 

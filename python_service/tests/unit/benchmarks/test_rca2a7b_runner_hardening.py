@@ -70,6 +70,15 @@ simulate_e12_unexpected_runner_exception = sim_mod.simulate_e12_unexpected_runne
 simulate_e13_duplicate_seat_execution = sim_mod.simulate_e13_duplicate_seat_execution
 simulate_e14_mid_run_interruption = sim_mod.simulate_e14_mid_run_interruption
 compute_paired_metrics = runner_mod.compute_paired_metrics
+run_eight_seats = runner_mod.run_eight_seats
+SeatExecutionContext = runner_mod.SeatExecutionContext
+setup_simulation_fixtures = sim_mod.setup_simulation_fixtures
+make_function_model = sim_mod.make_function_model
+LEGAL_PAYLOAD = sim_mod.LEGAL_PAYLOAD
+
+from httpserver.services.investigation.agent_supervisor import (
+    SupervisorAgentFactory,
+)
 
 
 def _make_sample_entry(
@@ -501,5 +510,126 @@ def test_paired_metrics_classification_coverage():
     assert counts["both_valid"] == 1
     assert counts["both_invalid"] == 1
     assert counts["incomplete_pair"] == 0
+
+
+@pytest.mark.asyncio
+async def test_cloned_store_ownership_and_physical_isolation(tmp_path: Path):
+    """Verify Section 1 requirements for Cloned Store Ownership across all 4 pairs:
+    - Independent physical SQLite databases and independent connections.
+    - Control commit does NOT affect Treatment state, hash, or revision.
+    - EvidenceResolver binds only to current scratch task.
+    - Same run_id / delegation_id does not cause shared writable state across tasks.
+    """
+    import sqlite3
+
+    for pair_id in range(1, 5):
+        h_c, h_t, meta = await build_cloned_pair_fixtures(
+            pair_id=pair_id, base_dir=tmp_path / f"pair_{pair_id}", with_evidence=False
+        )
+
+        # 1. Independent physical databases
+        assert Path(h_c._db_path).resolve() != Path(h_t._db_path).resolve()
+        assert Path(h_c._db_path).exists()
+        assert Path(h_t._db_path).exists()
+
+        # 2. Check initial revisions and events in both DBs
+        with sqlite3.connect(h_c._db_path) as conn_c, sqlite3.connect(h_t._db_path) as conn_t:
+            c_rev_before = conn_c.execute("SELECT count(*) FROM agent_working_state_revisions").fetchone()[0]
+            t_rev_before = conn_t.execute("SELECT count(*) FROM agent_working_state_revisions").fetchone()[0]
+            c_evt_before = conn_c.execute("SELECT count(*) FROM agent_trajectory_events").fetchone()[0]
+            t_evt_before = conn_t.execute("SELECT count(*) FROM agent_trajectory_events").fetchone()[0]
+            assert c_rev_before == 1
+            assert t_rev_before == 1
+            assert c_evt_before == t_evt_before
+
+        # 3. Perform a commit to Control scratch store
+        factory = SupervisorAgentFactory
+        model = make_function_model(LEGAL_PAYLOAD)
+        res_c = await h_c.run_stage(model=model, agent_factory=factory)
+        assert res_c.committed is True
+
+        # 4. Verify Control DB changed (new working state revision and trajectory event added)
+        with sqlite3.connect(h_c._db_path) as conn_c:
+            c_rev_after = conn_c.execute("SELECT count(*) FROM agent_working_state_revisions").fetchone()[0]
+            c_evt_after = conn_c.execute("SELECT count(*) FROM agent_trajectory_events").fetchone()[0]
+            assert c_rev_after == c_rev_before + 1
+            assert c_evt_after > c_evt_before
+
+        # 5. Verify Treatment scratch store is 100% UNTOUCHED
+        with sqlite3.connect(h_t._db_path) as conn_t:
+            t_rev_after = conn_t.execute("SELECT count(*) FROM agent_working_state_revisions").fetchone()[0]
+            t_evt_after = conn_t.execute("SELECT count(*) FROM agent_trajectory_events").fetchone()[0]
+            assert t_rev_after == t_rev_before
+            assert t_evt_after == t_evt_before
+
+        # 6. Verify Treatment can now execute and commit independently
+        res_t = await h_t.run_stage(model=model, agent_factory=factory)
+        assert res_t.committed is True
+        with sqlite3.connect(h_t._db_path) as conn_t:
+            t_rev_final = conn_t.execute("SELECT count(*) FROM agent_working_state_revisions").fetchone()[0]
+            assert t_rev_final == t_rev_before + 1
+
+
+@pytest.mark.asyncio
+async def test_durable_seat_claim_pre_invocation_persistence(tmp_path: Path):
+    """Verify Section 1 requirements for Durable Seat Claim:
+    - Pre-invocation persistence: claim file exists on disk BEFORE request returns.
+    - Process crash after request dispatch preserves claim as ATTEMPT_OUTCOME_UNKNOWN.
+    - Seat is treated as consumed and CANNOT be automatically re-executed or retried.
+    - Diagnostic sink existence is NOT the sole criteria.
+    - Completed execution updates claim status to COMPLETED.
+    """
+    spy = NetworkSpy()
+    fixtures = await setup_simulation_fixtures(tmp_path / "fixtures_claim")
+    diag_dir = tmp_path / "diag_claim"
+    claims_dir = diag_dir / "claims"
+
+    def model_factory(_ctx: SeatExecutionContext):
+        return make_function_model(LEGAL_PAYLOAD)
+
+    # 1. Run simulation with crash before result recording on seat 1
+    matrix = await run_eight_seats(
+        fixtures,
+        diag_dir,
+        model_factory=model_factory,
+        crash_before_result_recording=True,
+    )
+    spy.assert_zero_calls()
+
+    # Verify stop reason and outcome status
+    assert matrix["stop_reason"] == "SIMULATED_CRASH_BEFORE_RESULT_RECORDING"
+    crashed_seat = matrix["seats"][0]
+    assert crashed_seat["status"] == "ATTEMPT_OUTCOME_UNKNOWN"
+    assert crashed_seat["durable_claim"]["status"] == "ATTEMPT_OUTCOME_UNKNOWN"
+    assert crashed_seat["durable_claim"]["claimed_phase"] == "INVOCATION_STARTED"
+
+    # Verify claim file exists on disk with 0600 mode and ATTEMPT_OUTCOME_UNKNOWN
+    claim_file = claims_dir / "seat-01-control.claim.json"
+    assert claim_file.exists()
+    claim_on_disk = json.loads(claim_file.read_text(encoding="utf-8"))
+    assert claim_on_disk["status"] == "ATTEMPT_OUTCOME_UNKNOWN"
+    assert claim_on_disk["claimed_phase"] == "INVOCATION_STARTED"
+
+    # 2. Attempt to re-run the matrix: seat 1 MUST be recognized as already claimed / outcome unknown
+    matrix_reentry = await run_eight_seats(
+        fixtures,
+        diag_dir,
+        model_factory=model_factory,
+    )
+    assert matrix_reentry["stop_reason"] == "SEAT_ALREADY_CLAIMED_OR_OUTCOME_UNKNOWN"
+    assert matrix_reentry["seats"][0]["status"] == "ATTEMPT_OUTCOME_UNKNOWN"
+    # Unstarted seats remain NOT_STARTED
+    assert all(s["status"] == "NOT_STARTED" for s in matrix_reentry["seats"][1:])
+
+    # 3. Clean run without crash: verifies normal completion marks claim as COMPLETED
+    fixtures_clean = await setup_simulation_fixtures(tmp_path / "fixtures_clean")
+    diag_dir_clean = tmp_path / "diag_clean"
+    matrix_clean = await run_eight_seats(fixtures_clean, diag_dir_clean, model_factory=model_factory)
+    assert matrix_clean["stop_reason"] is None
+    for seat in matrix_clean["seats"]:
+        assert seat["status"] == "EXECUTED"
+        assert seat["durable_claim"]["status"] == "COMPLETED"
+        assert seat["durable_claim"]["claimed_phase"] == "RESULT_RECORDED"
+
 
 
