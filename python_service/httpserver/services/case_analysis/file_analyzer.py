@@ -103,10 +103,18 @@ class FileAnalyzer:
                     from ..llm.video_analyzer import VIDEO_EXTENSIONS
                     from ..llm.audio_analyzer import AUDIO_EXTENSIONS
 
-                    # Resolve full file path
+                    # Resolve full file path: a host-existing path wins (already
+                    # extracted elsewhere); otherwise probe the task's
+                    # extraction roots — image-internal absolute paths are NOT
+                    # host paths, and platform analyzers materialize
+                    # <stem>_extracted_files instead of the recorded dir.
                     full_path = file_path
-                    if not Path(file_path).is_absolute() and extraction_dir:
-                        full_path = str(Path(extraction_dir) / file_path)
+                    if not Path(full_path).exists() and extraction_dir:
+                        from ..extraction_layout import resolve_relative_path
+
+                        resolved = resolve_relative_path(extraction_dir, file_path)
+                        if resolved:
+                            full_path = resolved
 
                     # Check if file exists
                     if not Path(full_path).exists():

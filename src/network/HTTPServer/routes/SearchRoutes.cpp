@@ -164,11 +164,39 @@ crow::response SearchRoutes::handle_fulltext_index(const crow::request& req) {
         }
 
         if (!std::filesystem::exists(source_path)) {
-            json error = {{"error", "Source path does not exist"}};
-            res.code = 400;
-            res.set_header("Content-Type", "application/json");
-            res.write(error.dump());
-            return res;
+            // Platform analyzers materialize <stem>_extracted_files siblings
+            // (linux_extracted_files, ...) next to the recorded
+            // extracted_files; when the recorded source path is absent, fall
+            // back to a single such sibling. Same parent => still inside the
+            // allowed root checked above.
+            std::error_code ec;
+            const std::filesystem::path recorded(source_path);
+            std::filesystem::path fallback;
+            try {
+                if (recorded.has_parent_path()) {
+                    for (const auto& entry :
+                         std::filesystem::directory_iterator(recorded.parent_path(), ec)) {
+                        const std::string name = entry.path().filename().string();
+                        std::error_code entry_ec;
+                        if (entry.is_directory(entry_ec) && !entry_ec &&
+                            name.size() > std::string("_extracted_files").size() &&
+                            name.ends_with("_extracted_files")) {
+                            fallback = entry.path();
+                            break;
+                        }
+                    }
+                }
+            } catch (...) {
+                fallback.clear();
+            }
+            if (fallback.empty()) {
+                json error = {{"error", "Source path does not exist"}};
+                res.code = 400;
+                res.set_header("Content-Type", "application/json");
+                res.write(error.dump());
+                return res;
+            }
+            source_path = fallback.string();
         }
 
         XapianIndexer indexer(index_path);

@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from ...config import Settings
+from ..extraction_layout import resolve_relative_path
 from ...prompts import (
     TEXT_ANALYSIS_SYSTEM,
     TEXT_ANALYSIS_USER_TEMPLATE,
@@ -60,11 +61,9 @@ def resolve_analysis_path(file_path: str, extraction_dir: Optional[str]) -> Opti
     relative = file_path.lstrip("/")
     if not relative or ".." in Path(relative).parts:
         return None
-    resolved = Path(extraction_dir) / relative
-    try:
-        return str(resolved) if resolved.is_file() else None
-    except OSError:
-        return None
+    # Extraction roots probe: the recorded extraction_directory may not exist
+    # when a platform analyzer wrote <stem>_extracted_files instead.
+    return resolve_relative_path(extraction_dir, relative)
 
 
 class FileAnalyzer:

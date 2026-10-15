@@ -234,14 +234,23 @@ async def _resolve_task_file(
         # A task workspace path is not automatically a known Evidence file.
         # Accept exact files.path membership, or the server-derived extraction
         # directory used by the C++ FileAnalyzer/OfficeAnalyzer pipeline.
+        # Platform analyzers materialize <stem>_extracted_files siblings
+        # instead of the recorded extracted_files, so every candidate root
+        # counts as inside the task workspace.
         known = task_store.file_known_to_task(files_db, file_path) if files_db else False
         if not known:
             extraction_dir = task.get("extraction_directory") if task else None
             if extraction_dir:
-                task_store.resolved_within(
-                    extraction_dir, Path(file_path)
-                )
-                known = True
+                from ..services.extraction_layout import candidate_roots
+
+                for root in candidate_roots(extraction_dir):
+                    try:
+                        task_store.resolved_within(str(root), Path(file_path))
+                        known = True
+                        break
+                    except task_store.TaskStoreError as exc:
+                        if exc.code != task_store.PATH_OUTSIDE_WORKSPACE:
+                            raise
             elif workspace_root:
                 task_store.resolved_within(workspace, Path(file_path))
                 known = True
@@ -261,9 +270,11 @@ async def _resolve_task_file(
     # ask the C++ backend to extract the file from the image on demand.
     path = Path(file_path)
     if not path.exists() and task.get("extraction_directory"):
-        candidate = Path(task["extraction_directory"]) / file_path.lstrip("/")
-        if candidate.exists():
-            path = candidate
+        from ..services.extraction_layout import resolve_relative_path
+
+        resolved = resolve_relative_path(task["extraction_directory"], file_path)
+        if resolved:
+            path = Path(resolved)
     if not path.exists():
         scratch_candidate = (
             Path(tempfile.gettempdir())

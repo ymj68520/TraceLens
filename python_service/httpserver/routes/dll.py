@@ -118,11 +118,11 @@ async def analyze_dll(
                 task = await task_store.get_task_record(request.task_id)
                 extraction_dir = (task or {}).get("extraction_directory")
                 if extraction_dir:
-                    candidate = os.path.join(
-                        extraction_dir, request.file_path.lstrip("/").replace("/", os.sep)
-                    )
-                    if os.path.exists(candidate):
-                        host_path = candidate
+                    from ..services.extraction_layout import resolve_relative_path
+
+                    resolved = resolve_relative_path(extraction_dir, request.file_path)
+                    if resolved:
+                        host_path = resolved
                     else:
                         from ..services.llm.auto_extractor import (
                             AutoExtractionError,

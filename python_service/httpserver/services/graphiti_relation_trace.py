@@ -46,9 +46,11 @@ def _file_metadata(files_db: str, normalized_path: str) -> dict:
 def _preview_extracted(task: dict, normalized_path: str) -> dict:
     files_db = task.get("output_files_db") or ""
     metadata = _file_metadata(files_db, normalized_path) if files_db else {}
-    roots = [task.get("extraction_directory")]
+    from .extraction_layout import candidate_roots
+
+    roots = list(candidate_roots(task.get("extraction_directory")))
     if files_db:
-        roots.append(str(Path(files_db).resolve().parent / "extracted_files"))
+        roots.append(Path(files_db).resolve().parent / "extracted_files")
     for configured in roots:
         if not configured:
             continue
