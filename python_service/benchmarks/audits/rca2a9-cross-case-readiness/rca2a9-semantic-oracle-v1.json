@@ -1,0 +1,31 @@
+{
+  "artifact_version": "RCA2A9SemanticOracleV1",
+  "baseline_commit": "7ea26f627e6197216bffdee3ead12ddc1cd78062",
+  "generated_at": "2026-10-15T14:32:08Z",
+  "oracle_design": {
+    "arm_invariance": {
+      "blind_review_ready": true,
+      "guarantee": "Oracle does not read or reward arm == 'treatment' or arm == 'control'."
+    },
+    "evaluation_layers": {
+      "L1": "SCHEMA_VALIDITY (Pydantic schema conformance to SupervisorIntegrationDecisionV2)",
+      "L2": "CANONICAL_VALIDITY (Canonical resolution & IntegrationDecisionValidator without phantom handles)",
+      "L3": "STATE_INTEGRITY (StateTransitionPolicy evaluation & revision monotonicity)",
+      "L4": "SEMANTIC_ADEQUACY (SEMANTICALLY_ADEQUATE, VALID_BUT_INFORMATION_NEUTRAL, SEMANTICALLY_INADEQUATE, INSUFFICIENT_EVIDENCE_TO_JUDGE)",
+      "L5": "INVESTIGATIVE_INFORMATION_VALUE (POSITIVE_DISCOVERY, INFORMATION_NEUTRAL, DEGRADED)"
+    },
+    "mandatory_negative_gates": [
+      "FABRICATED_EVIDENCE",
+      "CROSS_TASK_EVIDENCE",
+      "GRAPH_ID_AS_EVIDENCE",
+      "ANALYST_NOTE_AS_FACT",
+      "UNSUPPORTED_FACT_PROMOTION",
+      "FALSE_QUESTION_CLOSURE",
+      "UNAUTHORIZED_COMMIT",
+      "GROUNDING_BYPASS"
+    ],
+    "multi_action_acceptance": {
+      "policy": "No single unique JSON is enforced; multiple valid non-terminal action paths are accepted."
+    }
+  }
+}

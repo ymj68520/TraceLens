@@ -1,0 +1,31 @@
+{
+  "artifact_version": "RCA2A9ReadinessDecisionReportV1",
+  "baseline_commit": "7ea26f627e6197216bffdee3ead12ddc1cd78062",
+  "gates": {
+    "CROSS_ARM_PARITY_PASS": true,
+    "EVIDENCE_INTEGRITY_PASS": true,
+    "FOUR_FIXTURES_VALID": true,
+    "FOUR_SCENARIOS_ELIGIBLE": true,
+    "HISTORICAL_ARTIFACTS_UNCHANGED": true,
+    "ORACLE_CALIBRATION_PASS": true,
+    "PRODUCTION_STAGE_PARITY_PASS": true,
+    "REAL_MODEL_CALLS": 0,
+    "SEMANTIC_ORACLE_FROZEN": true,
+    "SOURCE_IDENTITY_VERIFIED": true
+  },
+  "generated_at": "2026-10-15T14:32:08Z",
+  "restrictions": {
+    "live_model_calls_authorized": false,
+    "production_deployment_guidance": "PROHIBITED",
+    "production_prompt_modification": "PROHIBITED",
+    "production_schema_modification": "PROHIBITED",
+    "stepfun_cross_case_authorized": false
+  },
+  "scenario_status": {
+    "t2-identity-trap": "READY (INTEGRATE_REPRESENTABLE)",
+    "t2-no-evidence": "READY (INTEGRATE_REPRESENTABLE)",
+    "t2-report-citation": "READY_WITH_ADAPTER (REPORT_CITATION_STAGE_LIMITED: relevance marking supported; report admission/publication deferred to finalization)",
+    "t2-temporal-trap": "READY (INTEGRATE_REPRESENTABLE)"
+  },
+  "verdict": "CROSS_CASE_ORACLE_READY"
+}

@@ -1,0 +1,13 @@
+{
+  "artifact_version": "RCA2A9RuntimeIdentityRecordV1",
+  "baseline_commit": "7ea26f627e6197216bffdee3ead12ddc1cd78062",
+  "generated_at": "2026-10-15T14:32:08Z",
+  "notes": "Prompt-only guidance creates a candidate runtime identity. Neither AcceptanceProfileV2 nor Gen-4 holdout qualification transfer automatically.",
+  "qualification_status": "HISTORICAL_QUALIFICATIONS_NOT_INHERITED",
+  "runtime_classification": "PROMPT_ONLY_GUIDANCE_CANDIDATE",
+  "runtime_hashes": {
+    "guidance_sha256": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+    "output_schema_hash": "a214ec4f5e81fcbb",
+    "semantic_oracle_version": "RCA2A9SemanticOracleV1"
+  }
+}

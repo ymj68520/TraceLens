@@ -1,0 +1,25 @@
+{
+  "artifact_version": "RCA2A8InterpretationAmendmentV1",
+  "baseline_commit": "7ea26f627e6197216bffdee3ead12ddc1cd78062",
+  "clarifications": [
+    {
+      "clarification": "Treatment mean stage latency is 26.55s, Control is 19.64s, representing an increase of approximately 35.2%. This replaces the informal ~25.4% approximation originally cited in the architecture decision narrative. Token increase remains approximately 11.4%.",
+      "item": 1,
+      "topic": "Latency Discrepancy Reconciliation"
+    },
+    {
+      "clarification": "Prompt-only guidance does not alter the production schema or validator definitions, but modifies the model-visible instructions. It therefore establishes a distinct Candidate Runtime Identity rather than an interchangeable deployment configuration.",
+      "item": 2,
+      "topic": "Runtime Identity Distinction"
+    },
+    {
+      "clarification": "Historical qualification conclusions (AcceptanceProfileV2, Gen-4 holdout tests) belong strictly to the unmodified baseline and cannot be automatically inherited by the modified prompt candidate. Any qualification claims require independent, authorized verification.",
+      "item": 3,
+      "topic": "Qualification Transferability"
+    }
+  ],
+  "generated_at": "2026-10-15T14:32:08Z",
+  "historical_integrity": "RCA-2A.8 original artifacts remain immutable and unchanged.",
+  "mode": "APPEND_ONLY_CORRECTION",
+  "target_audit": "RCA-2A.8"
+}
