@@ -464,3 +464,8 @@ src/http_agent/tests/test_http_agent.cpp.pre-gtest
 
 # Local STT models (SenseVoice/VAD) — downloaded, never committed
 python_service/models/
+
+# 运行时产物（案件库/任务库根目录与本地状态标记），不入库
+/data/
+python_service/investigation.db
+python_service/.deps_installed

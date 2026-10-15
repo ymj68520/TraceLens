@@ -1,0 +1,10 @@
+# 夹具由 prepare_fixtures.py 生成（mkfs.ext4/debugfs/ffmpeg/PIL），体积大且可
+# 再生成，不入库；manifest.json 是第三方复现的夹具组成契约，保留。
+*.img
+*.dd
+*.mp4
+*.png
+_text_sample.html
+_md_in/
+_md_out/
+_markitdown_out/
