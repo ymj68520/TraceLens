@@ -398,6 +398,44 @@ class IngestionJobWorkerMixin:
             }
         )
 
+        # Honest terminal state: the completion gate on the C++ side (mvp SPEC
+        # §5) treats a COMPLETED job as a successful ingestion, so a job where
+        # nothing actually landed must not report COMPLETED. Partial success
+        # (>= 1 episode) stays COMPLETED with the stats in the job result; a
+        # total of 0 with no error is the legitimate "nothing analyzed yet"
+        # state. Raising here lands in _process_job's except → FAILED with
+        # this message, which the C++ wait loop retries before failing the
+        # task with an interpolated budget message.
+        gate_error = self._episode_gate_error(ep_stats)
+        if gate_error:
+            raise RuntimeError(gate_error)
+
+    @staticmethod
+    def _episode_gate_error(ep_stats: dict) -> Optional[str]:
+        """Failure message when no Path-A episode actually landed, else None.
+
+        Fails when the extractor ran and every episode failed (total > 0,
+        successful == 0) or when a hard error produced nothing at all
+        (service unavailable, missing database, unexpected exception). The
+        legitimate empty state — nothing analyzed yet, no error — stays
+        COMPLETED so an unanalyzed task can still build its :File graph.
+        """
+        if ep_stats.get("episodes_successful", 0):
+            return None
+        error_detail = ep_stats.get("error") or ""
+        attempted = ep_stats.get("episodes_total", 0) > 0
+        hard_error = attempted or (
+            bool(error_detail) and error_detail != "no analyzed descriptions to ingest"
+        )
+        if not hard_error:
+            return None
+        return (
+            "episode ingestion produced no results "
+            f"(successful={ep_stats.get('episodes_successful', 0)}/"
+            f"{ep_stats.get('episodes_total', 0)}): "
+            f"{error_detail or 'all episodes failed'}"
+        )
+
     async def _process_files_only(self, job_id: str, task_id: str):
         """Process files-only ingestion (no events)."""
         # Check if Neo4j components are available
