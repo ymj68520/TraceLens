@@ -36,8 +36,11 @@ const Logs = () => {
     }
 
     setIsStreaming(true);
+    // window=10: the SSE tail closes after 10s and EventSource reconnects for
+    // the next burst — required behind the buffered /python gateway, which
+    // cannot flush an unbounded stream to the browser.
     const eventSource = openAuthenticatedEventStream(
-      `${PYTHON_BASE}/api/system/logs-stream/${service}`,
+      `${PYTHON_BASE}/api/system/logs-stream/${service}?window=10`,
       (data) => setLogs((prevLogs) => [...prevLogs.slice(-499), data]),
       () => { setIsStreaming(false); eventSource.close(); },
     );

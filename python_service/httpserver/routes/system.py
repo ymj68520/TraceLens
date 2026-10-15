@@ -124,10 +124,18 @@ async def get_service_logs(
 @router.get("/logs-stream/{service}")
 async def stream_service_logs(
     service: str,
+    window: int = 0,
     settings: Settings = Depends(get_settings),
 ):
     """
     Stream logs for a specific service (Server-Sent Events).
+
+    ``window`` (seconds, optional) bounds the stream: the connection closes
+    cleanly after the window elapses and the browser EventSource reconnects
+    automatically (the file is re-seeked to EOF per connection, so no line is
+    lost or duplicated). Required behind gateways that buffer responses and
+    cannot flush SSE incrementally — an unbounded tail would hang those
+    clients forever. 0 keeps the legacy unbounded tail.
     """
     log_path = _service_log_path(service, stream=True)
     if not log_path or not os.path.exists(log_path):
@@ -135,11 +143,17 @@ async def stream_service_logs(
 
     async def log_generator():
         import json
+        import time
+        deadline = time.monotonic() + window if window and window > 0 else None
         with open(log_path, 'r', errors='replace') as f:
             # Start at the end
             f.seek(0, os.SEEK_END)
-            import asyncio
+            if deadline is not None:
+                # Reconnect hint so the next window starts promptly.
+                yield "retry: 3000\n\n"
             while True:
+                if deadline is not None and time.monotonic() >= deadline:
+                    return
                 line = f.readline()
                 if not line:
                     await asyncio.sleep(0.5)
