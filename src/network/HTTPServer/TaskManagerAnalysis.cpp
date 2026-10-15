@@ -1063,9 +1063,13 @@ void TaskManager::start_analysis(const std::string& task_id) {
 
             set_result_db(task_id, fileDbPath);
             if (!ingestion_ok) {
+                const int budget_minutes = forensics::ConfigManager::instance()
+                                               .getInt("GRAPHITI_INGEST_WAIT_TIMEOUT_MIN", 720);
                 update_status(task_id, TaskStatus::FAILED,
                               "Knowledge graph ingestion did not complete",
-                              "Graphiti ingestion failed or timed out (budget: GRAPHITI_INGEST_WAIT_TIMEOUT_MIN minutes). Analysis artifacts remain available for browsing.");
+                              "Graphiti ingestion failed or timed out (budget: " +
+                                  std::to_string(budget_minutes) +
+                                  " minutes). Analysis artifacts remain available for browsing.");
                 add_audit_log(task_id, "ERROR", "Analysis failed at the Graphiti ingestion gate");
                 return;
             }
