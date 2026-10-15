@@ -1,0 +1,71 @@
+{
+  "artifact_version": "RCA2A7bSinkIdempotencyReportV1",
+  "baseline_commit": "cb78ea813cdc2678b352c80a77fcf57bc4ec96b9",
+  "design_principles": {
+    "deterministic_probe_identity": "Readiness probes require explicit probe_id and deterministic event payloads.",
+    "exclusive_creation": "Sinks created exclusively with O_CREAT | O_EXCL and permissions 0600 (owner read/write only).",
+    "fail_closed_on_corruption": "Any JSON corruption, stage mismatch, or write failure causes an immediate DIAGNOSTIC_INSTRUMENTATION_FAILURE stop.",
+    "read_only_recovery": "Gate recovery checks existing sink content without appending duplicate records or modifying files.",
+    "retry_observation_integrity": "Normal model output retries within an invocation produce legitimate multiple diagnostic observations."
+  },
+  "experiment_id": "rca2a7b-runner-hardening",
+  "historical_rca2a7_audit": {
+    "explanation": "RCA-2A.7 contains two duplicate synthetic entries resulting from an interrupted gate run. In RCA-2A.7b, these entries remain untouched. The remediated execute_or_verify_readiness_probe prevents recurrence.",
+    "file": "benchmarks/audits/rca2a7-stepfun-vocabulary-comparison/rca2a7-preflight-readiness.jsonl",
+    "line_1_sha256": "439ce8d5f3595cf28a0e28eb38e8ec4eef47cf5da01026079979965b7190d65b",
+    "line_2_sha256": "439ce8d5f3595cf28a0e28eb38e8ec4eef47cf5da01026079979965b7190d65b",
+    "status": "PRESERVED_IMMUTABLE",
+    "total_lines": 2
+  },
+  "scenarios_tested": [
+    {
+      "description": "Exclusive file creation, writes exactly 1 probe record, 0600 mode.",
+      "id": "S1",
+      "name": "First probe",
+      "result": "PASS"
+    },
+    {
+      "description": "Existing probe detected by probe_id, verifies existing record, 0 new writes.",
+      "id": "S2",
+      "name": "Repeated probe identity",
+      "result": "PASS"
+    },
+    {
+      "description": "Gate recovery mode strictly verifies existing sink records without appending.",
+      "id": "S3",
+      "name": "Interrupted gate recovery",
+      "result": "PASS"
+    },
+    {
+      "description": "Validates schema compliance and failure taxonomy without modifying file.",
+      "id": "S4",
+      "name": "Existing sink read-only verification",
+      "result": "PASS"
+    },
+    {
+      "description": "Fails closed with DiagnosticSinkCollisionError if sink file already exists.",
+      "id": "S5",
+      "name": "Exclusive-create collision",
+      "result": "PASS"
+    },
+    {
+      "description": "Read-only filesystem or OS write failure raises DiagnosticSinkError and halts runner.",
+      "id": "S6",
+      "name": "Sink write failure",
+      "result": "PASS"
+    },
+    {
+      "description": "Distinguishes legitimate model retry diagnostics from probe duplicates.",
+      "id": "S7",
+      "name": "Valid model retry emits distinct observations",
+      "result": "PASS"
+    },
+    {
+      "description": "Confirms strict 0600 file permissions and payload sanitization.",
+      "id": "S8",
+      "name": "Sanitized output and file permissions",
+      "result": "PASS"
+    }
+  ],
+  "status": "VERIFIED_IDEMPOTENT"
+}

@@ -1,0 +1,23 @@
+{
+  "artifact_version": "RCA2A7InterpretationAmendmentV1",
+  "formal_interpretation": "RCA-2A.7 was correctly blocked before any live model requests or stage invocations occurred. The experiment block resulted from: (1) cross-arm input disparity caused by independent synthetic orchestrator seeds; (2) duplicate synthetic readiness probe records appended during interrupted gate recovery; and (3) runner variable scoping omissions in _seat_record. RCA-2A.7 does NOT represent a valid A/B comparison of model capability, and its 0/8 execution status is frozen. All identified defects have been remediated in RCA-2A.7b without mutating RCA-2A.7 files.",
+  "historical_accounting": {
+    "closure_runner_hash": "a0243424ea36c84c1f6b86cf33ba3e7381ff5dc1f8553d100063ec6415707764",
+    "frozen_runner_hash": "3fe1bdd02936a58296a1a7c3ce044cf4817a56111a43292418a0ea4c1d68370e",
+    "guidance_sha256": "e00c1549284cfc83b8ebdc62be362ee15993510e404b9015bc2fddc84b1dbdc7",
+    "output_schema_hash": "a214ec4f5e81fcbb",
+    "preflight_requests": 0,
+    "provider_requests": 0,
+    "stage_invocations_executed": 0,
+    "stage_invocations_scheduled": 8,
+    "stage_invocations_started": 0
+  },
+  "original_artifacts_state": "UNMODIFIED_IMMUTABLE",
+  "remediation_reference": {
+    "audit_directory": "benchmarks/audits/rca2a7b-runner-hardening",
+    "remediation_campaign": "rca2a7b-runner-hardening",
+    "remediation_report": "rca2a7b-remediation-report-v1.json"
+  },
+  "status": "EXPERIMENT_BLOCKED",
+  "subject_experiment_id": "rca2a7-stepfun-vocabulary-comparison"
+}

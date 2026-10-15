@@ -1,0 +1,59 @@
+{
+  "artifact_version": "RCA2A7bRunnerDefectInventoryV1",
+  "audit_scope": "RCA-2A.7 runner, harness, diagnostic sink, cross-arm fixtures",
+  "baseline_commit": "cb78ea813cdc2678b352c80a77fcf57bc4ec96b9",
+  "defects": [
+    {
+      "affected_scope": "RCA-2A.7 benchmark runner (run_stepfun_vocabulary_comparison.py).",
+      "defect_id": "D1",
+      "name": "Runner Seat Record Parameter Passing Omission",
+      "regression_test": "test_e1_simulation_all_legal, test_e14_simulation_mid_run_interruption",
+      "required_change": "Introduce explicit SeatExecutionContext dataclass tracking lifecycle phases (NOT_STARTED, INPUT_VERIFIED, INVOCATION_STARTED, INVOCATION_FINISHED, RESULT_RECORDED) and pass directly to build_seat_record(ctx).",
+      "root_cause": "Omission of an explicit execution context parameter in _seat_record helper function during RCA-2A.7 implementation.",
+      "status": "REMEDIATED",
+      "trigger": "Runner loop constructed _seat_record without explicit parameter passing, relying on local closure state that was not uniformly initialized across error branches."
+    },
+    {
+      "affected_scope": "RCA-2A.7 preflight readiness probe (rca2a7-preflight-readiness.jsonl).",
+      "defect_id": "D2",
+      "name": "Duplicate Readiness Probe Append on Interrupted Gate Recovery",
+      "regression_test": "test_s1_first_probe through test_s8_sanitized_output_and_file_permissions",
+      "required_change": "Implement execute_or_verify_readiness_probe with deterministic probe identity; read-only verification of existing sinks during gate recovery; exclusive 0600 file creation via create_exclusive_diagnostic_sink.",
+      "root_cause": "Sink file was opened in unconditional append mode ('a') without deterministic probe identity checking or read-only recovery validation.",
+      "status": "REMEDIATED",
+      "trigger": "Re-running or recovering a preflight readiness check appended duplicate synthetic diagnostic records into the existing sink."
+    },
+    {
+      "affected_scope": "RCA-2A.7 cross-arm parity gate (rca2a7-preflight-gate-report-v1.json).",
+      "defect_id": "D3",
+      "name": "Cross-Arm Canonical Input Disparity from Independent Orchestrator Seeds",
+      "regression_test": "test_cloned_pair_cross_arm_parity, test_historical_rca2a7_cross_arm_difference_classification",
+      "required_change": "Implement cloned scratch store architecture (build_cloned_pair_fixtures) cloning the same post-delegation SQLite database into isolated physical files (pair-XX-control.db and pair-XX-treatment.db), proving canonical_control_hash == canonical_treatment_hash with identical projections, bindings, and exact guidance delta.",
+      "root_cause": "Independent synthetic orchestrator invocations produced ephemeral identity differences that prevented proving cross-arm byte parity.",
+      "status": "REMEDIATED",
+      "trigger": "Control and treatment fixtures generated independently invoked the orchestrator with separate random run IDs, timestamps, and synthetic delegation UUIDs, creating divergent context, projection, and binding table hashes."
+    },
+    {
+      "affected_scope": "Exception taxonomy in benchmark runner.",
+      "defect_id": "D4",
+      "name": "Provider Exception vs Internal Runner Bug Misclassification",
+      "regression_test": "test_e12_simulation_unexpected_runner_exception",
+      "required_change": "Differentiate network/provider errors (is_provider_error_class, checking for timeout, connection, rate limit, status codes) from internal runner bugs (UNEXPECTED_EXCEPTION:<class>), ensuring internal crashes stop the run cleanly without disguising them as model or provider faults.",
+      "root_cause": "classify_provider_http_error defaulted non-status HTTP exceptions to PROVIDER_INFRA_FAILURE, and runner stop logic treated any non-empty provider_error_classes as a provider network failure.",
+      "status": "REMEDIATED",
+      "trigger": "Internal Python exceptions (e.g. RuntimeError, KeyError) raised during execution were unconditionally attributed to provider failure in telemetry / stop conditions."
+    },
+    {
+      "affected_scope": "Experiment matrix integrity and budget guarantees.",
+      "defect_id": "D5",
+      "name": "Missing Explicit Seat Accounting Lifecycle & Stop-on-Failure Boundaries",
+      "regression_test": "test_e5_simulation_provider_timeout, test_e6_simulation_provider_429, test_e13_simulation_duplicate_seat_execution, test_e14_simulation_mid_run_interruption",
+      "required_change": "Strict 5-phase seat accounting; halt remaining seats immediately as NOT_STARTED with recorded stop_reason; enforce maximum budgets (8 invocations, 16 logical generations, 3 preflight requests).",
+      "root_cause": "Runner lacked explicit phase state machine and monotonic counter tracking for stage_invocations_started, stage_invocations_finished, and logical_model_generations.",
+      "status": "REMEDIATED",
+      "trigger": "Partial failures or stop conditions left unstarted seats in an ambiguous state, risking double-counting or accidental continuation."
+    }
+  ],
+  "experiment_id": "rca2a7b-runner-hardening",
+  "summary": "All 5 identified defects have been remediated, structurally decoupled from production code, and verified by unit tests S1-S8 and E1-E14."
+}

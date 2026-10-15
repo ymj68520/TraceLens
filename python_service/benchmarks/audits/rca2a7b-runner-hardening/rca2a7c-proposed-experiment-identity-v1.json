@@ -1,0 +1,49 @@
+{
+  "artifact_version": "RCA2A7cProposedExperimentIdentityV1",
+  "authorization_requirement": "Requires explicit user authorization before launching preflight or live invocations.",
+  "baseline_commit": "cb78ea813cdc2678b352c80a77fcf57bc4ec96b9",
+  "execution_plan": {
+    "logical_model_generations_budget": 16,
+    "pairs": [
+      {
+        "order": [
+          "C",
+          "T"
+        ],
+        "pair_id": 1
+      },
+      {
+        "order": [
+          "T",
+          "C"
+        ],
+        "pair_id": 2
+      },
+      {
+        "order": [
+          "T",
+          "C"
+        ],
+        "pair_id": 3
+      },
+      {
+        "order": [
+          "C",
+          "T"
+        ],
+        "pair_id": 4
+      }
+    ],
+    "preflight_budget": 3,
+    "scratch_store_strategy": "Cloned isolated SQLite database per pair arm",
+    "stage_invocation_budget": 8,
+    "stop_on_first_provider_or_model_identity_failure": true
+  },
+  "guidance_sha256": "e00c1549284cfc83b8ebdc62be362ee15993510e404b9015bc2fddc84b1dbdc7",
+  "output_schema_hash": "a214ec4f5e81fcbb",
+  "proposed_experiment_id": "rca2a7c-stepfun-vocabulary-comparison",
+  "runner_hash": "db33fa8675ffa60599e43d234d59136e3a8f62d6f4e06178969814dc2b2eeb2f",
+  "status": "PROPOSED_NOT_AUTHORIZED",
+  "target_model": "step-3.7-flash",
+  "target_provider": "stepfun"
+}
