@@ -1,0 +1,33 @@
+{
+  "artifact_version": "RCA2A8EvidenceAndPolicyAuditV1",
+  "epistemic_claim_strength": {
+    "claim_strength_classification": "NOT_APPLICABLE (No claims proposed in Fixture A runs)",
+    "claims_accepted": 0,
+    "fact_without_evidence_prevented": true,
+    "total_claims_proposed": 0
+  },
+  "epistemic_classification": "PERSISTED_STATE_FACT_AND_POLICY_VERIFICATION",
+  "evidence_integrity": {
+    "analyst_note_as_evidence_refs": 0,
+    "binding_table_scope": "Resolved solely against current synthetic scratch task",
+    "cross_task_evidence_refs": 0,
+    "evidence_resolver_check": "PASS (0 refs required resolution; zero illegal bindings)",
+    "fabricated_evidence_refs": 0,
+    "graph_node_as_evidence_refs": 0,
+    "llm_result_as_evidence_source_refs": 0,
+    "total_evidence_refs_submitted": 0
+  },
+  "experiment_id": "rca2a8-semantic-validity",
+  "finalization_gate": {
+    "analyst_acceptance_claimed": false,
+    "finalization_status": "NOT_EXERCISED",
+    "investigation_closed": false,
+    "report_published": false
+  },
+  "question_closure_policy": {
+    "honesty_preservation": "Non-terminal statuses correctly maintained under absence of evidence",
+    "required_question_closures_attempted": 0,
+    "required_question_closures_committed": 0,
+    "state_transition_policy_closure_gate": "NOT_EXERCISED_FOR_TERMINAL_CLOSURE"
+  }
+}

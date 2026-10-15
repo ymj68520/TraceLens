@@ -1,0 +1,90 @@
+{
+  "artifact_version": "RCA2A8CostAndAccountingAuditV1",
+  "epistemic_classification": "PERSISTED_STATE_FACT_AND_STATISTICAL_RECONCILIATION",
+  "experiment_id": "rca2a8-semantic-validity",
+  "latency_reconciliation": {
+    "audit_of_informal_reporting_numbers": {
+      "forensic_finding": "The informal report numbers (~12.6s and ~15.8s) represented an ungrounded or blended approximation that conflated per-response latency (Control 9.8s vs Treatment 13.3s) and per-seat stage latency (Control 19.6s vs Treatment 26.5s). The actual per-response mean is 9.82s (Control) vs 13.27s (Treatment), and per-stage mean is 19.64s (Control) vs 26.55s (Treatment).",
+      "reported_control_approx": "~12.6s",
+      "reported_treatment_approx": "~15.8s"
+    },
+    "control": {
+      "attempt_1_mean_seconds": 15.52,
+      "attempt_2_mean_seconds": 4.12,
+      "mean_latency_per_response_seconds": 9.82,
+      "mean_latency_per_seat_seconds": 19.64,
+      "mean_latency_per_successful_integration": "UNDEFINED (0 successful integrations)",
+      "per_response_latencies_ms": [
+        16930.1,
+        4139.3,
+        15722.1,
+        3288.7,
+        25017.7,
+        5637.1,
+        4409.5,
+        3398.1
+      ],
+      "per_seat_latencies_ms": [
+        21069.399999999998,
+        19010.8,
+        30654.800000000003,
+        7807.6
+      ]
+    },
+    "treatment": {
+      "attempt_1_mean_seconds": 22.56,
+      "attempt_2_mean_seconds": 3.99,
+      "mean_latency_per_response_seconds": 13.27,
+      "mean_latency_per_seat_seconds": 26.55,
+      "mean_latency_per_successful_integration_seconds": 26.55,
+      "per_response_latencies_ms": [
+        22990.8,
+        3752.2,
+        21141.9,
+        5312.8,
+        14958.6,
+        3543.3,
+        31147.1,
+        3344.8
+      ],
+      "per_seat_latencies_ms": [
+        26743.0,
+        26454.7,
+        18501.9,
+        34491.9
+      ]
+    }
+  },
+  "monetary_billing": {
+    "justification": "StepFun billing invoices and exact per-token pricing tiers were not observable through the API responses. Pure token counts and latency metrics are recorded without fabricated currency calculations.",
+    "status": "PROVIDER_BILLING_UNOBSERVABLE"
+  },
+  "token_reconciliation": {
+    "control": {
+      "mean_input_tokens_per_seat": 10904.25,
+      "mean_output_tokens_per_seat": 3082.75,
+      "mean_total_tokens_per_seat": 13987.0,
+      "tokens_per_successful_integration": "UNDEFINED (0 successful integrations; division by zero)",
+      "total_input_tokens": 43617,
+      "total_output_tokens": 12331,
+      "total_tokens": 55948
+    },
+    "deltas_treatment_vs_control": {
+      "guidance_input_overhead_explanation": "Frozen Vocabulary Guidance adds ~351 input tokens per generation (~702 tokens per seat across 2 generations).",
+      "input_token_delta_per_generation": 351.25,
+      "input_token_delta_per_seat": 702.5,
+      "input_token_delta_total": 2810,
+      "output_token_delta_total": 3591,
+      "output_token_percentage": "+29.1%"
+    },
+    "treatment": {
+      "mean_input_tokens_per_seat": 11606.75,
+      "mean_output_tokens_per_seat": 3980.5,
+      "mean_total_tokens_per_seat": 15587.25,
+      "tokens_per_successful_integration": 15587.25,
+      "total_input_tokens": 46427,
+      "total_output_tokens": 15922,
+      "total_tokens": 62349
+    }
+  }
+}

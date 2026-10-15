@@ -1,0 +1,217 @@
+{
+  "artifact_version": "RCA2A8SourceEvidenceInventoryV1",
+  "baseline_commit": "d4300d4cff64bbb4e68109ed3d5b3c3039d116ac",
+  "claims_audit": {
+    "attempt_outcome_unknown_claims": 0,
+    "completed_claims": 8,
+    "items": [
+      {
+        "arm": "control",
+        "claimed_at_monotonic": 2832783.439028376,
+        "claimed_phase": "RESULT_RECORDED",
+        "finalized_at_monotonic": 2832804.680930398,
+        "pair_id": 1,
+        "path": "benchmarks/audits/rca2a7c-stepfun-vocabulary-comparison/claims/seat-01-control.claim.json",
+        "sha256": "b36792dc742ecadc712cd96c1d7cddbbdaf82bbc5cc8c8eaf81f0e7edbeee34e",
+        "status": "COMPLETED"
+      },
+      {
+        "arm": "treatment",
+        "claimed_at_monotonic": 2832804.7354515,
+        "claimed_phase": "RESULT_RECORDED",
+        "finalized_at_monotonic": 2832831.653500595,
+        "pair_id": 1,
+        "path": "benchmarks/audits/rca2a7c-stepfun-vocabulary-comparison/claims/seat-01-treatment.claim.json",
+        "sha256": "e3a8e166d436cf95e0e1bdd1ef7e2930d214225aed86f2d9ab75c2eb44785448",
+        "status": "COMPLETED"
+      },
+      {
+        "arm": "control",
+        "claimed_at_monotonic": 2832858.388471322,
+        "claimed_phase": "RESULT_RECORDED",
+        "finalized_at_monotonic": 2832877.569108822,
+        "pair_id": 2,
+        "path": "benchmarks/audits/rca2a7c-stepfun-vocabulary-comparison/claims/seat-02-control.claim.json",
+        "sha256": "3b8010c161ac371fa86627a725dd8eeaae2c66897b455236abfd70342131ac8e",
+        "status": "COMPLETED"
+      },
+      {
+        "arm": "treatment",
+        "claimed_at_monotonic": 2832831.708693596,
+        "claimed_phase": "RESULT_RECORDED",
+        "finalized_at_monotonic": 2832858.33332031,
+        "pair_id": 2,
+        "path": "benchmarks/audits/rca2a7c-stepfun-vocabulary-comparison/claims/seat-02-treatment.claim.json",
+        "sha256": "4d4902f1ca4def03a4f1259db2766a58c85d9821238eff47c9c096d44e319457",
+        "status": "COMPLETED"
+      },
+      {
+        "arm": "control",
+        "claimed_at_monotonic": 2832896.351703693,
+        "claimed_phase": "RESULT_RECORDED",
+        "finalized_at_monotonic": 2832927.192193968,
+        "pair_id": 3,
+        "path": "benchmarks/audits/rca2a7c-stepfun-vocabulary-comparison/claims/seat-03-control.claim.json",
+        "sha256": "6506ef27fbe493c6427fae3d39dc1e13d6f9ae1e0e59f3f333209da6d18f3db7",
+        "status": "COMPLETED"
+      },
+      {
+        "arm": "treatment",
+        "claimed_at_monotonic": 2832877.622591215,
+        "claimed_phase": "RESULT_RECORDED",
+        "finalized_at_monotonic": 2832896.293762875,
+        "pair_id": 3,
+        "path": "benchmarks/audits/rca2a7c-stepfun-vocabulary-comparison/claims/seat-03-treatment.claim.json",
+        "sha256": "ca0dbed583801630802ad63fa3c50f1ac9e3fe65fc5b45d38edefdf1be84c2cc",
+        "status": "COMPLETED"
+      },
+      {
+        "arm": "control",
+        "claimed_at_monotonic": 2832927.252378015,
+        "claimed_phase": "RESULT_RECORDED",
+        "finalized_at_monotonic": 2832935.231082587,
+        "pair_id": 4,
+        "path": "benchmarks/audits/rca2a7c-stepfun-vocabulary-comparison/claims/seat-04-control.claim.json",
+        "sha256": "4d05a2e60fc28fd2dcfffb93d21f9f816f15ccd20570e80724be80a6345d6c07",
+        "status": "COMPLETED"
+      },
+      {
+        "arm": "treatment",
+        "claimed_at_monotonic": 2832935.286241978,
+        "claimed_phase": "RESULT_RECORDED",
+        "finalized_at_monotonic": 2832969.942651847,
+        "pair_id": 4,
+        "path": "benchmarks/audits/rca2a7c-stepfun-vocabulary-comparison/claims/seat-04-treatment.claim.json",
+        "sha256": "3a732fb7edbf461d59a7c5ce9b62e7eb76bbfa5fda0f9746ccd19e32f8115118",
+        "status": "COMPLETED"
+      }
+    ],
+    "total_claims": 8
+  },
+  "current_git_head": "d4300d4cff64bbb4e68109ed3d5b3c3039d116ac",
+  "diagnostics_audit": {
+    "control_error_sinks": 4,
+    "items": [
+      {
+        "arm": "control",
+        "expected_non_empty": true,
+        "pair_id": 1,
+        "path": "benchmarks/audits/rca2a7c-stepfun-vocabulary-comparison/diagnostics/pair-01-control.jsonl",
+        "sha256": "46f21e9841125c1d18e0a4ea36b96474d9cd70f2728ffdbd9c48188b83ed9aa8",
+        "size_bytes": 1288
+      },
+      {
+        "arm": "treatment",
+        "expected_non_empty": false,
+        "pair_id": 1,
+        "path": "benchmarks/audits/rca2a7c-stepfun-vocabulary-comparison/diagnostics/pair-01-treatment.jsonl",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "arm": "control",
+        "expected_non_empty": true,
+        "pair_id": 2,
+        "path": "benchmarks/audits/rca2a7c-stepfun-vocabulary-comparison/diagnostics/pair-02-control.jsonl",
+        "sha256": "a0511908135d2f5b3e7be0c6dc652b36181c185c25c14610c614aa20c0b14231",
+        "size_bytes": 1255
+      },
+      {
+        "arm": "treatment",
+        "expected_non_empty": false,
+        "pair_id": 2,
+        "path": "benchmarks/audits/rca2a7c-stepfun-vocabulary-comparison/diagnostics/pair-02-treatment.jsonl",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "arm": "control",
+        "expected_non_empty": true,
+        "pair_id": 3,
+        "path": "benchmarks/audits/rca2a7c-stepfun-vocabulary-comparison/diagnostics/pair-03-control.jsonl",
+        "sha256": "6e95fad93885366bbbe00825e13ab95479e0a98e3f4d5134f6af7c1649ec14f3",
+        "size_bytes": 1258
+      },
+      {
+        "arm": "treatment",
+        "expected_non_empty": false,
+        "pair_id": 3,
+        "path": "benchmarks/audits/rca2a7c-stepfun-vocabulary-comparison/diagnostics/pair-03-treatment.jsonl",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "arm": "control",
+        "expected_non_empty": true,
+        "pair_id": 4,
+        "path": "benchmarks/audits/rca2a7c-stepfun-vocabulary-comparison/diagnostics/pair-04-control.jsonl",
+        "sha256": "5b65473c7ec8c9b3be4d422726b57cacbc5a44d77b4e571bddd7922a13bfdf30",
+        "size_bytes": 1255
+      },
+      {
+        "arm": "treatment",
+        "expected_non_empty": false,
+        "pair_id": 4,
+        "path": "benchmarks/audits/rca2a7c-stepfun-vocabulary-comparison/diagnostics/pair-04-treatment.jsonl",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      }
+    ],
+    "total_sinks": 8,
+    "treatment_clean_sinks": 4
+  },
+  "epistemic_classification": "PERSISTED_STATE_FACT",
+  "experiment_id": "rca2a8-semantic-validity",
+  "historical_hashes": {
+    "frozen_guidance_sha256": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+    "frozen_schema_hash": "a214ec4f5e81fcbb",
+    "manifest_sha256": "104d274fef6d6891eeaff76757d641669990ead40db96d9e1439bfaa66be9271",
+    "matrix_sha256": "ac87e483e42de2b208ce7b0c468d2c3962af402ac3104f74fec415000c752ab7",
+    "preflight_sha256": "46c0a8f419a0bd5eb04cf02e225f674a6cb72e3269879611c60bf64b1c5a7968",
+    "runtime_record_sha256": "bef8e4700fe6df56a6e5751135bb8e986d05c8b200fe1dc5d730917e4ad4d333",
+    "vocab_report_sha256": "9f6a428bf0f49608c8f2a9c33dc5486905cf2a0c098e60d3731d362eda0d7991"
+  },
+  "logical_generations_reconciled": 16,
+  "real_model_calls_in_current_audit": 0,
+  "scratch_stores_audit": {
+    "control_unmodified_pass_count": 4,
+    "items": [
+      {
+        "control_clean_identity_pass": true,
+        "control_db_sha256": "551c775b45c89e3887ba35bf97525d315426e2ed04f0cd1810c27ed9e2ef8d70",
+        "pair_id": 1,
+        "source_db_sha256": "551c775b45c89e3887ba35bf97525d315426e2ed04f0cd1810c27ed9e2ef8d70",
+        "treatment_commit_observed": true,
+        "treatment_db_sha256": "d5f523f30d9c994f5f490df33cdc531e4b819fa844549e4e228f1c97424ad857"
+      },
+      {
+        "control_clean_identity_pass": true,
+        "control_db_sha256": "7c73076b6e58c770522796ecbe67645810c299b2c8885c970249774efc59b7e7",
+        "pair_id": 2,
+        "source_db_sha256": "7c73076b6e58c770522796ecbe67645810c299b2c8885c970249774efc59b7e7",
+        "treatment_commit_observed": true,
+        "treatment_db_sha256": "1fa223e851f7632080fc3bc596f86908b5af5837a66024c6e9509dbe500bc088"
+      },
+      {
+        "control_clean_identity_pass": true,
+        "control_db_sha256": "9135cd793e091f80fcc2aac1d314a321403d555358355bc11ecb48244db798c2",
+        "pair_id": 3,
+        "source_db_sha256": "9135cd793e091f80fcc2aac1d314a321403d555358355bc11ecb48244db798c2",
+        "treatment_commit_observed": true,
+        "treatment_db_sha256": "33131f2992200c28ba5fa78a779abce83ea1701352f2e3fee6e37586c83e8c3c"
+      },
+      {
+        "control_clean_identity_pass": true,
+        "control_db_sha256": "a5a214a14d4f2d472de1ecd664c054a7a9a9d452aa59bc745e43dd631dc6a046",
+        "pair_id": 4,
+        "source_db_sha256": "a5a214a14d4f2d472de1ecd664c054a7a9a9d452aa59bc745e43dd631dc6a046",
+        "treatment_commit_observed": true,
+        "treatment_db_sha256": "279daf8ff59b3b5b5829cdd78208e3d3fb94eaad8cfe942419be920c15b004ed"
+      }
+    ],
+    "total_pairs": 4,
+    "treatment_committed_pass_count": 4
+  },
+  "source_experiment_id": "rca2a7c-stepfun-vocabulary-comparison",
+  "worktree_clean": true
+}

@@ -1,0 +1,80 @@
+{
+  "arms": {
+    "control": "Original V2 Instructions",
+    "treatment": "Original V2 Instructions + Frozen Vocabulary Guidance V1"
+  },
+  "artifact_version": "RCA2A8CrossCaseComparisonProtocolV1",
+  "authorization_gate": "STOP. Requires explicit user authorization before any execution.",
+  "candidate_scenarios": [
+    {
+      "blocking_reasons": null,
+      "case_id": "t2-no-evidence",
+      "fixture_implementation_status": "AVAILABLE_IN_ISOLATED_INTEGRATION (Fixture A)",
+      "focus": "Honest no-evidence, zero basis fabrication, non-terminal progression"
+    },
+    {
+      "blocking_reasons": null,
+      "case_id": "t2-temporal-trap",
+      "fixture_implementation_status": "AVAILABLE_IN_ISOLATED_INTEGRATION (Fixture B)",
+      "focus": "Temporal sequence, legitimate visible evidence, inference vs contradiction"
+    },
+    {
+      "blocking_reasons": "Exists in end-to-end qualification suite; isolated post-delegation fixture builder has not yet been authored.",
+      "case_id": "t2-identity-trap",
+      "fixture_implementation_status": "BLOCKED_REQUIRES_SYNTHETIC_FIXTURE",
+      "focus": "Identity confusion, cross-task references, rejected evidence refs"
+    },
+    {
+      "blocking_reasons": "Exists in end-to-end qualification suite; isolated post-delegation fixture builder has not yet been authored.",
+      "case_id": "t2-report-citation",
+      "fixture_implementation_status": "BLOCKED_REQUIRES_SYNTHETIC_FIXTURE",
+      "focus": "Citation provenance, report evidence boundaries, secondary analysis"
+    }
+  ],
+  "epistemic_classification": "PROTOCOL_DESIGN_PROPOSAL",
+  "experiment_id": "rca2a8-semantic-validity",
+  "mandatory_negative_gates": {
+    "cross_task_leak": 0,
+    "fabricated_evidence": 0,
+    "false_question_closure": 0,
+    "grounding_bypass": 0,
+    "unauthorized_commit": 0
+  },
+  "registered_outcomes": {
+    "primary": [
+      "canonical_integration_valid",
+      "semantic_adequacy"
+    ],
+    "secondary": [
+      "pydantic_parse_success",
+      "policy_acceptance",
+      "grounding_validity",
+      "question_closure_correctness",
+      "unsupported_claims_count",
+      "latency_ms",
+      "token_usage"
+    ]
+  },
+  "sample_size_and_budget_proposals": {
+    "phase_1_exploratory_coverage": {
+      "allocation": "1 pair per available scenario",
+      "logical_generations_budget": 16,
+      "pairs_count": 4,
+      "purpose": "Exploratory scenario coverage only; explicitly cannot estimate model reliability rate.",
+      "total_seats": 8
+    },
+    "phase_2_statistical_estimation": {
+      "allocation": "4 pairs per scenario across 4 scenarios",
+      "logical_generations_budget": 64,
+      "pairs_count": 16,
+      "purpose": "Statistically powered comparison to estimate cross-case reliability.",
+      "total_seats": 32
+    }
+  },
+  "status": "PROPOSED_NOT_AUTHORIZED",
+  "target_model": {
+    "model": "step-3.7-flash",
+    "output_schema": "SupervisorIntegrationDecisionV2",
+    "provider": "stepfun"
+  }
+}
