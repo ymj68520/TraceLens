@@ -1,0 +1,53 @@
+{
+  "artifact_version": "RCA2A6PromptContractConsistencyReportV1",
+  "baseline_commit": "85ab57523c966576b080846a6721e79ffa990b23",
+  "checks": {
+    "INPUT_IDENTITY_PASS__frozen_store": true,
+    "PROMPT_DIFF_PASS__exact_suffix_only": true,
+    "SCHEMA_UNCHANGED": true,
+    "model_settings_unchanged": true,
+    "output_tool_names_unchanged": true,
+    "projection_unchanged": true,
+    "retry_timeout_unchanged": "structural: neither arm touches the output retry budget (pydantic-ai default 1), the frozen model config, or the adapter; the protocol binds the identical frozen config for both arms",
+    "schema_hash_matches_frozen_manifest": true,
+    "shared_prefix_identical": true
+  },
+  "comparison": {
+    "capture_store": "frozen RCA-2A.4 fixture store (read-only)",
+    "control_arm": "production SupervisorAgentFactory.build_integration_agent_v2 (untouched)",
+    "treatment_arm": "GuidanceIntegrationAgentFactory — same model, same output_type, production instruction text + frozen guidance suffix"
+  },
+  "delta_accounting": {
+    "guidance_bytes": 1427,
+    "guidance_chars": 1427,
+    "guidance_tokens": {
+      "estimated": true,
+      "tokenizer": "cl100k_base (approximation)",
+      "tokens": 302
+    },
+    "instructions_delta_bytes": 1429,
+    "instructions_delta_chars": 1429,
+    "note": "the ONLY model-visible difference is the pre-registered guidance suffix; everything else is byte-identical",
+    "schema_delta_bytes": 0
+  },
+  "experiment_id": "rca2a6-vocabulary-guidance",
+  "guidance": {
+    "artifact": "benchmarks/contracts/experimental/integration_vocabulary_guidance_v1.py",
+    "bytes": 1427,
+    "chars": 1427,
+    "self_verification_violations": [],
+    "sha256": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+    "version": "integration-vocabulary-guidance:v1",
+    "vocabulary_source": "rendered programmatically from the production QuestionStatus/QuestionDisposition enums — no second state definition exists"
+  },
+  "input_identity": {
+    "captured_schema_fingerprint": "2facc1fcd0fe5890460f43e95b834cff18eede1563f6ab4664da051e4d554aff",
+    "equals_frozen_2a4": true,
+    "integration_context_hash": "18602d862446b491ef4945938b4b278167e23942e91e8d8680112cd4cc238e64",
+    "model_visible_instructions_hash": "d35dad367c17c5914c38d0a4c951a9cc47a350a9e72c5f0f3fc1a77c585763b7",
+    "output_schema_hash": "a214ec4f5e81fcbb",
+    "reference_binding_table_hash": "735daa6d2145996829b4292a533967f5950cd5ef1cc8f6da4efbbf8abd583fa8",
+    "schema_definition_matches_frozen_manifest": true
+  },
+  "verdict": "PROMPT_CONTRACT_CONSISTENT"
+}

@@ -323,9 +323,17 @@ class IsolatedIntegrationHarness:
 
     # -- stage execution ---------------------------------------------------
 
-    async def capture_model_visible_input(self) -> dict:
+    async def capture_model_visible_input(
+        self,
+        *,
+        agent_factory=None,
+    ) -> dict:
         """Build the production INTEGRATE agent and capture exactly what
-        the model would see (instructions / output tool / settings)."""
+        the model would see (instructions / output tool / settings).
+        ``agent_factory`` optionally substitutes the factory class
+        (experimental INTEGRATE-only variants, e.g. RCA-2A.6 vocabulary
+        guidance); the default remains the untouched production
+        factory."""
         captured: dict = {}
 
         def capture_fn(messages, info):  # noqa: ANN001
@@ -356,7 +364,9 @@ class IsolatedIntegrationHarness:
 
         from pydantic_ai.models.function import FunctionModel
 
-        agent = SupervisorAgentFactory(
+        factory = agent_factory if agent_factory is not None \
+            else SupervisorAgentFactory
+        agent = factory(
             model=FunctionModel(capture_fn)
         ).build_integration_agent_v2(self._projection)
         try:
@@ -371,12 +381,17 @@ class IsolatedIntegrationHarness:
         *,
         diagnostic_sink=None,
         model: Any = None,
+        agent_factory=None,
     ) -> StageResult:
         """Run one isolated stage.  ``model_function`` drives an offline
         FunctionModel; pass ``model`` instead to inject a REAL pydantic-ai
-        model (production adapter) — exactly one of the two.  Everything
-        downstream (output contract, validation, resolver, policy,
-        commit, diagnostics) is identical in both modes."""
+        model (production adapter) — exactly one of the two.
+        ``agent_factory`` optionally substitutes the factory class for
+        the INTEGRATE agent construction (experimental INTEGRATE-only
+        variants, e.g. RCA-2A.6 vocabulary guidance); the default is the
+        untouched production factory.  Everything downstream (output
+        contract, validation, resolver, policy, commit, diagnostics) is
+        identical in every mode."""
         """One isolated stage execution: production agent -> production
         validation -> production resolution -> production policy ->
         production commit.  Failures are contained inside the stage and
@@ -399,7 +414,9 @@ class IsolatedIntegrationHarness:
             )
         from pydantic_ai.models.function import FunctionModel as _FM
 
-        agent = SupervisorAgentFactory(
+        factory = agent_factory if agent_factory is not None \
+            else SupervisorAgentFactory
+        agent = factory(
             model=model if model is not None else _FM(model_function)
         ).build_integration_agent_v2(self._projection)
 
