@@ -15,7 +15,10 @@ def _load_config(monkeypatch: pytest.MonkeyPatch, **env: str):
     from graphiti_integration import config as config_module
 
     graphiti_config = config_module.GraphitiConfig
-    for key in ("GRAPHITI_LLM_MODEL", "LLM_TEXT_MODEL"):
+    # Collection-time imports load_dotenv the repo .env into os.environ, so
+    # every key from_env reads must be scrubbed before applying explicit env.
+    for key in ("GRAPHITI_LLM_MODEL", "LLM_TEXT_MODEL",
+                "GRAPHITI_LLM_BASE_URL", "LLM_TEXT_BASE_URL"):
         monkeypatch.delenv(key, raising=False)
     for key, value in env.items():
         monkeypatch.setenv(key, value)
@@ -70,3 +73,42 @@ def test_pinned_constant_matches(monkeypatch):
 
     cfg = _load_config(monkeypatch)
     assert cfg.llm_model == PINNED_GRAPHITI_MODEL
+
+
+# ---------------------------------------------------------------------------
+# GRAPHITI_LLM_BASE_URL: ingestion server override (cloud text + local phi-4)
+# ---------------------------------------------------------------------------
+
+def test_graphiti_base_url_override_wins(monkeypatch):
+    cfg = _load_config(
+        monkeypatch,
+        GRAPHITI_LLM_BASE_URL="http://localhost:9999",
+        LLM_TEXT_BASE_URL="http://cloud.example/step_plan",
+    )
+    assert cfg.llm_base_url == "http://localhost:9999/v1"
+
+
+def test_graphiti_base_url_override_appends_v1_once(monkeypatch):
+    cfg = _load_config(
+        monkeypatch,
+        GRAPHITI_LLM_BASE_URL="http://localhost:9999/v1",
+        LLM_TEXT_BASE_URL="http://cloud.example/step_plan",
+    )
+    assert cfg.llm_base_url == "http://localhost:9999/v1"
+
+
+def test_graphiti_base_url_blank_falls_back_to_text_base(monkeypatch):
+    cfg = _load_config(
+        monkeypatch,
+        GRAPHITI_LLM_BASE_URL="   ",
+        LLM_TEXT_BASE_URL="http://cloud.example/step_plan",
+    )
+    assert cfg.llm_base_url == "http://cloud.example/step_plan/v1"
+
+
+def test_graphiti_base_url_unset_falls_back_to_text_base(monkeypatch):
+    cfg = _load_config(
+        monkeypatch,
+        LLM_TEXT_BASE_URL="http://localhost:1234",
+    )
+    assert cfg.llm_base_url == "http://localhost:1234/v1"

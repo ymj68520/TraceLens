@@ -82,8 +82,13 @@ class GraphitiConfig:
                         break
                     current = current.parent
         
-        # Get LLM base URL - use the text model URL from .env
-        llm_base_url = os.getenv("LLM_TEXT_BASE_URL", "http://192.168.31.170:1234")
+        # Get LLM base URL - GRAPHITI_LLM_BASE_URL overrides so ingestion can
+        # ride a different server than the pipeline analysis LLM (e.g. cloud
+        # chat + local phi-4); falls back to the text model URL from .env.
+        llm_base_url = (
+            (os.getenv("GRAPHITI_LLM_BASE_URL") or "").strip()
+            or os.getenv("LLM_TEXT_BASE_URL", "http://192.168.31.170:1234")
+        )
         llm_base_url = llm_base_url.rstrip("/")
         if not llm_base_url.endswith("/v1"):
             llm_base_url += "/v1"

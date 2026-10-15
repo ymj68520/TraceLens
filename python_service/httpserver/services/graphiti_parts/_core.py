@@ -114,7 +114,13 @@ class GraphitiCoreMixin:
         """
         from graphiti_integration.config import PINNED_GRAPHITI_MODEL, GraphitiConfig
 
-        base = self.settings.llm_text_base_url.rstrip("/")
+        # GRAPHITI_LLM_BASE_URL lets ingestion ride a different server than
+        # the pipeline analysis LLM (e.g. cloud chat + local phi-4
+        # extraction); empty falls back to LLM_TEXT_BASE_URL as before.
+        base = (
+            (getattr(self.settings, "graphiti_llm_base_url", "") or "").strip()
+            or self.settings.llm_text_base_url
+        ).rstrip("/")
         llm_base_url = base if base.endswith("/v1") else base + "/v1"
 
         # mvp-phase1-acceptance SPEC §3: the ingestion model is pinned to

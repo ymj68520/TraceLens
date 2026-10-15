@@ -49,6 +49,9 @@ def settings():
     s.llm_text_base_url = "http://localhost:1234"
     s.llm_text_model = "test/model"
     s.llm_api_key = "key"
+    # Pin the ingestion-server override off: Settings() reads the repo .env,
+    # which may carry a real GRAPHITI_LLM_BASE_URL that would leak in here.
+    s.graphiti_llm_base_url = ""
     s.graphiti_use_local_llm = True
     s.graphiti_batch_size = 5
     s.graphiti_max_retries = 2
@@ -100,6 +103,25 @@ class TestBuildGraphitiConfig:
         svc._initialized = True
         config = svc._build_graphiti_config(group_id="t1")
         assert config.llm_base_url == "http://localhost:1234/v1"
+
+    def test_graphiti_llm_base_url_override_wins(self, settings):
+        """Ingestion may ride a different server (cloud text + local phi-4)."""
+        from httpserver.services.graphiti_service import GraphitiService
+
+        settings.graphiti_llm_base_url = "http://localhost:9999"
+        svc = GraphitiService(settings)
+        svc._initialized = True
+        config = svc._build_graphiti_config(group_id="t1")
+        assert config.llm_base_url == "http://localhost:9999/v1"
+
+    def test_graphiti_llm_base_url_override_appends_v1_once(self, settings):
+        from httpserver.services.graphiti_service import GraphitiService
+
+        settings.graphiti_llm_base_url = "http://localhost:9999/v1"
+        svc = GraphitiService(settings)
+        svc._initialized = True
+        config = svc._build_graphiti_config(group_id="t1")
+        assert config.llm_base_url == "http://localhost:9999/v1"
 
     def test_ingestion_model_pinned_to_phi4(self, service, settings):
         """mvp-phase1-acceptance §3: pipeline model must not leak into ingestion."""

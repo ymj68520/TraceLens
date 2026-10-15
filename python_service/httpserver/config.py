@@ -264,6 +264,10 @@ class Settings(BaseSettings):
     # mvp-phase1-acceptance SPEC §3: ingestion model pinned to phi-4; the env
     # var may override, empty/unset falls back to the pin (never LLM_TEXT_MODEL).
     graphiti_llm_model: str = Field(default="microsoft/phi-4", alias="GRAPHITI_LLM_MODEL")
+    # Ingestion LLM server override: lets the knowledge graph ride a different
+    # server than the pipeline analysis LLM (e.g. cloud chat + local phi-4
+    # extraction). Empty/unset follows LLM_TEXT_BASE_URL.
+    graphiti_llm_base_url: str = Field(default="", alias="GRAPHITI_LLM_BASE_URL")
 
     # mvp-phase1-acceptance SPEC §4: MVP scope switches. Defaults are the
     # acceptance form; set the env var to "true" to restore full behaviour.
