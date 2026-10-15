@@ -1,0 +1,48 @@
+{
+  "artifact_version": "RCA2A7ProtocolAmendmentV1",
+  "authorization": "RCA-2A.7 explicit bounded real-model controlled comparison",
+  "created_before_any_provider_request": true,
+  "experiment_id": "rca2a7-stepfun-vocabulary-comparison",
+  "http_attempts_max_diagnostic": 48,
+  "http_attempts_max_preflight": 9,
+  "logical_model_generations_max": 16,
+  "old_protocol_path": "../rca2a6-vocabulary-guidance/rca2a6-controlled-comparison-protocol-v1.json",
+  "old_protocol_sha256": "7c17d799d1402be4e7ea5133d54f0c4bcdb5ce761c099486b8e84ed27d42cbbf",
+  "output_retry_budget": 1,
+  "pairs": 4,
+  "preflight_logical_requests": 3,
+  "prior_protocol_mutated": false,
+  "reason": "balance arm order to remove fixed Control-before-Treatment sequence confounding before first model request",
+  "run_order": [
+    [
+      "C",
+      "T"
+    ],
+    [
+      "T",
+      "C"
+    ],
+    [
+      "T",
+      "C"
+    ],
+    [
+      "C",
+      "T"
+    ]
+  ],
+  "sdk_retry_policy": "openai SDK 2.46.0 default max_retries=2; 3 attempts/logical request",
+  "sequence": [
+    "C",
+    "T",
+    "T",
+    "C",
+    "T",
+    "C",
+    "C",
+    "T"
+  ],
+  "stage_invocations": 8,
+  "stop_rule": "retain frozen per-seat rules; any stop condition halts remaining seats, each unstarted seat recorded NOT_STARTED",
+  "supersedes_for_this_experiment_only": "RCA2A6ControlledComparisonProtocolV1"
+}

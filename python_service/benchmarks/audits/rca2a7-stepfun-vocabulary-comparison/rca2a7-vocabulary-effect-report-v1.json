@@ -1,0 +1,35 @@
+{
+  "acceptance_profile_changed": false,
+  "answers": {
+    "canonical_integration_legality_changed": "NO_MODEL_OBSERVATIONS",
+    "completed_recurred": "NO_MODEL_OBSERVATIONS",
+    "final_pydantic_legality_changed": "NO_MODEL_OBSERVATIONS",
+    "guidance_reduced_observed_vocabulary_errors": "NO_MODEL_OBSERVATIONS",
+    "new_grounding_or_policy_violations": "NO_MODEL_OBSERVATIONS",
+    "rca2b_schema_change_still_worth_considering": "remains a separate architectural question; this blocked experiment provides no evidence",
+    "retry_or_token_cost_increased": "NO_MODEL_OBSERVATIONS",
+    "supports_further_prompt_only_work": false
+  },
+  "artifact_version": "RCA2A7VocabularyEffectReportV1",
+  "design_limits": [
+    "No provider requests were made.",
+    "No sample-level model conclusion is available."
+  ],
+  "experiment_id": "rca2a7-stepfun-vocabulary-comparison",
+  "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+  "interpretation": "EXPERIMENT_BLOCKED",
+  "logical_model_generations": 0,
+  "paired_counts": {
+    "both_invalid": 0,
+    "both_valid": 0,
+    "control_win": 0,
+    "incomplete_pair": 4,
+    "treatment_win": 0
+  },
+  "preflight_logical_requests": 0,
+  "production_change_authorized": false,
+  "rca2b_authorized": false,
+  "reason": "The sink readiness probes created duplicate diagnostic JSONL lines and subsequent runner correction changed the frozen runner hash. The experiment was stopped before provider preflight; no semantic observations exist.",
+  "stage_invocations_executed": 0,
+  "stage_invocations_scheduled": 8
+}

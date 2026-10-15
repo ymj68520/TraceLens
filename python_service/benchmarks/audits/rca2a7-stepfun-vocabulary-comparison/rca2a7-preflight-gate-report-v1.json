@@ -1,0 +1,1036 @@
+{
+  "recovered_after_interrupted_gate_attempt": true,
+  "diagnostic_sink_history_note": "A prior gate attempt appended a duplicate deterministic control diagnostic before stopping on an inverted gate-summary flag. The retry used an in-memory sink and did not append further lines. The control pair-01 sink therefore has 2 identical sanitized records; both remain immutable and owner-only.",
+  "intermediate_gate_attempts": 2,
+  "real_model_requests": 0,
+  "baseline_commit": "c4f291a51cdb83431b4adf1c03eca99548dd44dc",
+  "diagnostic_probe_records": [
+    {
+      "arm": "control",
+      "diagnostic_stage": "SUPERVISOR_INTEGRATE",
+      "exception_class": "UnexpectedModelBehavior",
+      "finalization": "NOT_EXERCISED",
+      "pair_id": 1,
+      "passed": true,
+      "real_model_requests": 0,
+      "repeat_probe_mode": "memory_sink_no_append_existing_jsonl",
+      "schema_hash": "a214ec4f5e81fcbb",
+      "sink_entries_existing": 2,
+      "sink_mode": "0o600",
+      "tool_name": "final_result",
+      "validation_error_details": [
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateQuestionActionV2",
+            "to_status"
+          ],
+          "type": "enum"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "question_handle"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "to_status"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "action_type"
+          ],
+          "type": "literal_error"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "text"
+          ],
+          "type": "missing"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "question_handle"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "action_type"
+          ],
+          "type": "literal_error"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "evidence_handle"
+          ],
+          "type": "missing"
+        }
+      ]
+    },
+    {
+      "arm": "treatment",
+      "diagnostic_stage": "SUPERVISOR_INTEGRATE",
+      "exception_class": "UnexpectedModelBehavior",
+      "finalization": "NOT_EXERCISED",
+      "pair_id": 1,
+      "passed": true,
+      "real_model_requests": 0,
+      "repeat_probe_mode": "memory_sink_no_append_existing_jsonl",
+      "schema_hash": "a214ec4f5e81fcbb",
+      "sink_entries_existing": 1,
+      "sink_mode": "0o600",
+      "tool_name": "final_result",
+      "validation_error_details": [
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateQuestionActionV2",
+            "to_status"
+          ],
+          "type": "enum"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "question_handle"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "to_status"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "action_type"
+          ],
+          "type": "literal_error"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "text"
+          ],
+          "type": "missing"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "question_handle"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "action_type"
+          ],
+          "type": "literal_error"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "evidence_handle"
+          ],
+          "type": "missing"
+        }
+      ]
+    },
+    {
+      "arm": "treatment",
+      "diagnostic_stage": "SUPERVISOR_INTEGRATE",
+      "exception_class": "UnexpectedModelBehavior",
+      "finalization": "NOT_EXERCISED",
+      "pair_id": 2,
+      "passed": true,
+      "real_model_requests": 0,
+      "repeat_probe_mode": "memory_sink_no_append_existing_jsonl",
+      "schema_hash": "a214ec4f5e81fcbb",
+      "sink_entries_existing": 1,
+      "sink_mode": "0o600",
+      "tool_name": "final_result",
+      "validation_error_details": [
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateQuestionActionV2",
+            "to_status"
+          ],
+          "type": "enum"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "question_handle"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "to_status"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "action_type"
+          ],
+          "type": "literal_error"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "text"
+          ],
+          "type": "missing"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "question_handle"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "action_type"
+          ],
+          "type": "literal_error"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "evidence_handle"
+          ],
+          "type": "missing"
+        }
+      ]
+    },
+    {
+      "arm": "control",
+      "diagnostic_stage": "SUPERVISOR_INTEGRATE",
+      "exception_class": "UnexpectedModelBehavior",
+      "finalization": "NOT_EXERCISED",
+      "pair_id": 2,
+      "passed": true,
+      "real_model_requests": 0,
+      "repeat_probe_mode": "memory_sink_no_append_existing_jsonl",
+      "schema_hash": "a214ec4f5e81fcbb",
+      "sink_entries_existing": 1,
+      "sink_mode": "0o600",
+      "tool_name": "final_result",
+      "validation_error_details": [
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateQuestionActionV2",
+            "to_status"
+          ],
+          "type": "enum"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "question_handle"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "to_status"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "action_type"
+          ],
+          "type": "literal_error"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "text"
+          ],
+          "type": "missing"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "question_handle"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "action_type"
+          ],
+          "type": "literal_error"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "evidence_handle"
+          ],
+          "type": "missing"
+        }
+      ]
+    },
+    {
+      "arm": "treatment",
+      "diagnostic_stage": "SUPERVISOR_INTEGRATE",
+      "exception_class": "UnexpectedModelBehavior",
+      "finalization": "NOT_EXERCISED",
+      "pair_id": 3,
+      "passed": true,
+      "real_model_requests": 0,
+      "repeat_probe_mode": "memory_sink_no_append_existing_jsonl",
+      "schema_hash": "a214ec4f5e81fcbb",
+      "sink_entries_existing": 1,
+      "sink_mode": "0o600",
+      "tool_name": "final_result",
+      "validation_error_details": [
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateQuestionActionV2",
+            "to_status"
+          ],
+          "type": "enum"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "question_handle"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "to_status"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "action_type"
+          ],
+          "type": "literal_error"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "text"
+          ],
+          "type": "missing"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "question_handle"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "action_type"
+          ],
+          "type": "literal_error"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "evidence_handle"
+          ],
+          "type": "missing"
+        }
+      ]
+    },
+    {
+      "arm": "control",
+      "diagnostic_stage": "SUPERVISOR_INTEGRATE",
+      "exception_class": "UnexpectedModelBehavior",
+      "finalization": "NOT_EXERCISED",
+      "pair_id": 3,
+      "passed": true,
+      "real_model_requests": 0,
+      "repeat_probe_mode": "memory_sink_no_append_existing_jsonl",
+      "schema_hash": "a214ec4f5e81fcbb",
+      "sink_entries_existing": 1,
+      "sink_mode": "0o600",
+      "tool_name": "final_result",
+      "validation_error_details": [
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateQuestionActionV2",
+            "to_status"
+          ],
+          "type": "enum"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "question_handle"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "to_status"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "action_type"
+          ],
+          "type": "literal_error"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "text"
+          ],
+          "type": "missing"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "question_handle"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "action_type"
+          ],
+          "type": "literal_error"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "evidence_handle"
+          ],
+          "type": "missing"
+        }
+      ]
+    },
+    {
+      "arm": "control",
+      "diagnostic_stage": "SUPERVISOR_INTEGRATE",
+      "exception_class": "UnexpectedModelBehavior",
+      "finalization": "NOT_EXERCISED",
+      "pair_id": 4,
+      "passed": true,
+      "real_model_requests": 0,
+      "repeat_probe_mode": "memory_sink_no_append_existing_jsonl",
+      "schema_hash": "a214ec4f5e81fcbb",
+      "sink_entries_existing": 1,
+      "sink_mode": "0o600",
+      "tool_name": "final_result",
+      "validation_error_details": [
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateQuestionActionV2",
+            "to_status"
+          ],
+          "type": "enum"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "question_handle"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "to_status"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "action_type"
+          ],
+          "type": "literal_error"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "text"
+          ],
+          "type": "missing"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "question_handle"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "action_type"
+          ],
+          "type": "literal_error"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "evidence_handle"
+          ],
+          "type": "missing"
+        }
+      ]
+    },
+    {
+      "arm": "treatment",
+      "diagnostic_stage": "SUPERVISOR_INTEGRATE",
+      "exception_class": "UnexpectedModelBehavior",
+      "finalization": "NOT_EXERCISED",
+      "pair_id": 4,
+      "passed": true,
+      "real_model_requests": 0,
+      "repeat_probe_mode": "memory_sink_no_append_existing_jsonl",
+      "schema_hash": "a214ec4f5e81fcbb",
+      "sink_entries_existing": 1,
+      "sink_mode": "0o600",
+      "tool_name": "final_result",
+      "validation_error_details": [
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateQuestionActionV2",
+            "to_status"
+          ],
+          "type": "enum"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "question_handle"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "to_status"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "action_type"
+          ],
+          "type": "literal_error"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "CreateQuestionActionV2",
+            "text"
+          ],
+          "type": "missing"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "question_handle"
+          ],
+          "type": "extra_forbidden"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "action_type"
+          ],
+          "type": "literal_error"
+        },
+        {
+          "loc": [
+            "actions",
+            "0",
+            "UpdateEvidenceRelevanceActionV2",
+            "evidence_handle"
+          ],
+          "type": "missing"
+        }
+      ]
+    }
+  ],
+  "experiment_id": "rca2a7-stepfun-vocabulary-comparison",
+  "fixture_arm_records": [
+    {
+      "arm": "control",
+      "control_instruction_hash": "87a212ae5f0170a6c256a60bfe46fa11c583e5b0d4ab2b9e98d4e0d0dd55627c",
+      "fixture": {
+        "arm": "control",
+        "available_actions_hash": "e5b3665eec0d331d3c673f7be405a3cdaa73b39c7cef5f226083363b210f5393",
+        "binding_table_hash": "257363387dc51cde7276736256ee2857ab1170d71d722f347cff2b3c45db4b59",
+        "binding_table_resolves_to_current_synthetic_task": true,
+        "context_hash": "5f0719ea73781bba3a4d33b62e8e583b076dab19f2978a37d8d94a69bc14187c",
+        "fixture_hash": "ffd441ee82cf8651bca03ddc5014546294897186afa389b2d4bc641254a34e7d",
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "fixture_path": "scratch/pair-01-control",
+        "handle_domains_hash": "cc920c6ce9d9ac40b62c77d197eb6016b204357c4de52ecd3895a2ba402edf8b",
+        "instructions_hash": "87a212ae5f0170a6c256a60bfe46fa11c583e5b0d4ab2b9e98d4e0d0dd55627c",
+        "investigation_id": "inv-cccccccc",
+        "pair_id": 1,
+        "plan_and_specialist_real_model_requests": 0,
+        "projection_hash": "2ffad5ca4d90004075be20d224513982648defcc7cd8d90464ac4611cf8e4674",
+        "run_id": "run_a789dc88a9c843748f14df9822d787f3",
+        "schema_hash": "a214ec4f5e81fcbb",
+        "semantic_input_hash": "9dfb0353eabc00e29d0fe070b1a7d012a7b4767206be12229045eaf361ffc362",
+        "source_refs_hash": "9a92af345c9397a727068122f3718148d1b7849aa2e66651252c1da82bb38235",
+        "task_id": "task-A",
+        "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+      },
+      "input_contract_violations": [],
+      "pair_id": 1,
+      "parity": {
+        "instructions_exact_suffix": true,
+        "model_settings_equal": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "tool_names_equal": true
+      },
+      "schema_fingerprint": "a214ec4f5e81fcbb",
+      "treatment_instruction_hash": "f020ad53ce94b9f8d7b234bdf5641db713575fd5fe01ab84dbf21279b2961fab"
+    },
+    {
+      "arm": "treatment",
+      "control_instruction_hash": "b62bbd7e3df3c7351e61f26377f11828cf16486fc913abb47cf6e1ec370fdba9",
+      "fixture": {
+        "arm": "treatment",
+        "available_actions_hash": "e5b3665eec0d331d3c673f7be405a3cdaa73b39c7cef5f226083363b210f5393",
+        "binding_table_hash": "63cc54b9bd3da52e455e2f3da7f660851830555233b5037ff8d7e56f508fefe2",
+        "binding_table_resolves_to_current_synthetic_task": true,
+        "context_hash": "8b4600ebac0887f3d1a16003dbc3356130bf3686c1e9a87282611e2e080e7ccf",
+        "fixture_hash": "9fa344a92fed27ed0ed199511ad5f9ba020722293f355597b5e0a8b5793a0a8a",
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "fixture_path": "scratch/pair-01-treatment",
+        "handle_domains_hash": "cc920c6ce9d9ac40b62c77d197eb6016b204357c4de52ecd3895a2ba402edf8b",
+        "instructions_hash": "fc9e68c8342a67b38c2e098ce2bd7ba1f4b5858853a0ba5236ba8208bb51d7d2",
+        "investigation_id": "inv-cccccccc",
+        "pair_id": 1,
+        "plan_and_specialist_real_model_requests": 0,
+        "projection_hash": "7cafa4abe362a984cd7ad25cb280c86906a64dfda869c382277283ad5fe3d942",
+        "run_id": "run_e01e905032b049caaf7e7b42ddc9102e",
+        "schema_hash": "a214ec4f5e81fcbb",
+        "semantic_input_hash": "1438ca853c35b9c8e1424b75cb109bf2860e377ef1202b289f60f3110b395efd",
+        "source_refs_hash": "3307825778ef4ae511ee46c3be0eb6ee21972115efa73cb148596ca81a81a8c9",
+        "task_id": "task-A",
+        "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+      },
+      "input_contract_violations": [],
+      "pair_id": 1,
+      "parity": {
+        "instructions_exact_suffix": true,
+        "model_settings_equal": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "tool_names_equal": true
+      },
+      "schema_fingerprint": "a214ec4f5e81fcbb",
+      "treatment_instruction_hash": "fc9e68c8342a67b38c2e098ce2bd7ba1f4b5858853a0ba5236ba8208bb51d7d2"
+    },
+    {
+      "arm": "treatment",
+      "control_instruction_hash": "90da13323914d5f50c364d1d21325fc17b394d373e4f853ca7cf11cc660efdf1",
+      "fixture": {
+        "arm": "treatment",
+        "available_actions_hash": "e5b3665eec0d331d3c673f7be405a3cdaa73b39c7cef5f226083363b210f5393",
+        "binding_table_hash": "28c97ed196ee642c06154764188c1007fed16c410cd103e1c0e80d779aa2c6cb",
+        "binding_table_resolves_to_current_synthetic_task": true,
+        "context_hash": "7027051bb0afe0e327069b3d2ae846426f5094677a259e35bc3a9ac3937a6c9d",
+        "fixture_hash": "496276a167031e67549a44562e8183cbb86a5f29bc5c6e4565d4d4b9b4e6b6ca",
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "fixture_path": "scratch/pair-02-treatment",
+        "handle_domains_hash": "cc920c6ce9d9ac40b62c77d197eb6016b204357c4de52ecd3895a2ba402edf8b",
+        "instructions_hash": "142fe67b5312efef3e7b3a2848bd8430f95b45a6f65a465c9938cabfb9ea8a20",
+        "investigation_id": "inv-cccccccc",
+        "pair_id": 2,
+        "plan_and_specialist_real_model_requests": 0,
+        "projection_hash": "34bc886be50c03ca86095dbe07b2f0970f084ffb5c2e2d53f453db4a068846e4",
+        "run_id": "run_b4b0ac3372a14b2994d8f295cbd5080b",
+        "schema_hash": "a214ec4f5e81fcbb",
+        "semantic_input_hash": "efa2fc9c9ed705544591c1dc0bade753f66a9e6de8939b4c2ef70d6b706f058b",
+        "source_refs_hash": "53fb15ebd253c407974457db3e9c65bbeaa8b9ebbf7d34ddb904f201bcbca119",
+        "task_id": "task-A",
+        "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+      },
+      "input_contract_violations": [],
+      "pair_id": 2,
+      "parity": {
+        "instructions_exact_suffix": true,
+        "model_settings_equal": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "tool_names_equal": true
+      },
+      "schema_fingerprint": "a214ec4f5e81fcbb",
+      "treatment_instruction_hash": "142fe67b5312efef3e7b3a2848bd8430f95b45a6f65a465c9938cabfb9ea8a20"
+    },
+    {
+      "arm": "control",
+      "control_instruction_hash": "3a2b2130c9c33119e036140e763d8c48db3772f17354c31e77e32f18a209e459",
+      "fixture": {
+        "arm": "control",
+        "available_actions_hash": "e5b3665eec0d331d3c673f7be405a3cdaa73b39c7cef5f226083363b210f5393",
+        "binding_table_hash": "9dd4d2492e8e6515174037d809e2682c36a83851fe6c16849072fd6dc913767d",
+        "binding_table_resolves_to_current_synthetic_task": true,
+        "context_hash": "8c49d9cf5e61a7e729701849add24ecec74f0bf5b820702e5f330db71eea8ed8",
+        "fixture_hash": "a8a83de80de1ae664f942c3391064b66f23be08173a3c282db24f54b30648d10",
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "fixture_path": "scratch/pair-02-control",
+        "handle_domains_hash": "cc920c6ce9d9ac40b62c77d197eb6016b204357c4de52ecd3895a2ba402edf8b",
+        "instructions_hash": "3a2b2130c9c33119e036140e763d8c48db3772f17354c31e77e32f18a209e459",
+        "investigation_id": "inv-cccccccc",
+        "pair_id": 2,
+        "plan_and_specialist_real_model_requests": 0,
+        "projection_hash": "41d7e0f3ca9836ffeb785286dc4f3f44fffef7050ef8a919ed03802021a14861",
+        "run_id": "run_7e74545fc11c4dca85158e29780990fb",
+        "schema_hash": "a214ec4f5e81fcbb",
+        "semantic_input_hash": "af9a74fc74dcfb756c5882d4b42f77daceb04f6dc6b998da85e8516c642a6263",
+        "source_refs_hash": "202f87170fde1ce94ec452ec3965dad493ffa83b749eb1b06b26fd3d51c2a1f8",
+        "task_id": "task-A",
+        "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+      },
+      "input_contract_violations": [],
+      "pair_id": 2,
+      "parity": {
+        "instructions_exact_suffix": true,
+        "model_settings_equal": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "tool_names_equal": true
+      },
+      "schema_fingerprint": "a214ec4f5e81fcbb",
+      "treatment_instruction_hash": "ca5b8b58355537c911600b5f079c18d6533df83e68a711e8250ad7fa4d265d8e"
+    },
+    {
+      "arm": "treatment",
+      "control_instruction_hash": "2491251bb964a92d2ae350b55bf47b688598679b81409c99576a1508dd75e735",
+      "fixture": {
+        "arm": "treatment",
+        "available_actions_hash": "e5b3665eec0d331d3c673f7be405a3cdaa73b39c7cef5f226083363b210f5393",
+        "binding_table_hash": "58c6e92ca6a0ba3e37f2a800567875de27251bb1ef853832de4a2812e7ef9f3e",
+        "binding_table_resolves_to_current_synthetic_task": true,
+        "context_hash": "41829f1d4fa628e2e75e64b88de81e091c2fad6b149f3b70cdb3fc56aafc69cb",
+        "fixture_hash": "c7e6b9d2d16a9c8f9d8de4a08e58ad7531d38bd3fbc61596e8f3b223ff2e4fc1",
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "fixture_path": "scratch/pair-03-treatment",
+        "handle_domains_hash": "cc920c6ce9d9ac40b62c77d197eb6016b204357c4de52ecd3895a2ba402edf8b",
+        "instructions_hash": "f39926c3b8d2572eb717309479b6d0a04af0e7bd541d9f616b0a9c1879d8828d",
+        "investigation_id": "inv-cccccccc",
+        "pair_id": 3,
+        "plan_and_specialist_real_model_requests": 0,
+        "projection_hash": "b1b8f81aff7b6aa221ee6e9239d1e4fc2237a9a56b4b088c11fef05f2615e4cd",
+        "run_id": "run_344ee17e1f2b49838fbe94514ff6dca2",
+        "schema_hash": "a214ec4f5e81fcbb",
+        "semantic_input_hash": "6845a2825112748fef3668bc3ba0b9ba2ea9171235e46196f7daf6ed79b8bfa0",
+        "source_refs_hash": "9dcdcec4eadd5d81563e4c89c3fcc1612ba0d5accd7c8553642886868db35257",
+        "task_id": "task-A",
+        "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+      },
+      "input_contract_violations": [],
+      "pair_id": 3,
+      "parity": {
+        "instructions_exact_suffix": true,
+        "model_settings_equal": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "tool_names_equal": true
+      },
+      "schema_fingerprint": "a214ec4f5e81fcbb",
+      "treatment_instruction_hash": "f39926c3b8d2572eb717309479b6d0a04af0e7bd541d9f616b0a9c1879d8828d"
+    },
+    {
+      "arm": "control",
+      "control_instruction_hash": "2268d2e33843ff3961f237ab5e6c6a0629f5de32df41c6943e63e600c7774dae",
+      "fixture": {
+        "arm": "control",
+        "available_actions_hash": "e5b3665eec0d331d3c673f7be405a3cdaa73b39c7cef5f226083363b210f5393",
+        "binding_table_hash": "8c827b0d6fdb3c0b06d6f6405e58ff596cf5c6f8acd7ca6a1d1e68d4e46f49d3",
+        "binding_table_resolves_to_current_synthetic_task": true,
+        "context_hash": "c3b34175bbe4a789da335901d31b79685549d0098accef4dfb4d03d8fc3b7603",
+        "fixture_hash": "06a32424dba431cd7c17549a5ed898587e9e2d779a78a2dc7716b2efb1d18da0",
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "fixture_path": "scratch/pair-03-control",
+        "handle_domains_hash": "cc920c6ce9d9ac40b62c77d197eb6016b204357c4de52ecd3895a2ba402edf8b",
+        "instructions_hash": "2268d2e33843ff3961f237ab5e6c6a0629f5de32df41c6943e63e600c7774dae",
+        "investigation_id": "inv-cccccccc",
+        "pair_id": 3,
+        "plan_and_specialist_real_model_requests": 0,
+        "projection_hash": "2b531f13b0ae4836f938d6eb69a4b14d83679e1a72eaba4920d54cbef58907f0",
+        "run_id": "run_cf955fae10da4487bde13dd4c1217ab9",
+        "schema_hash": "a214ec4f5e81fcbb",
+        "semantic_input_hash": "d1a02e19fb0b6aa240e6115bb8685d4969c1c029ab950071eabd659dcaa2405e",
+        "source_refs_hash": "491ddb0de5021baebdbcbd57c1b420feef3a19bf8398bcafcbe88b93cbfc7098",
+        "task_id": "task-A",
+        "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+      },
+      "input_contract_violations": [],
+      "pair_id": 3,
+      "parity": {
+        "instructions_exact_suffix": true,
+        "model_settings_equal": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "tool_names_equal": true
+      },
+      "schema_fingerprint": "a214ec4f5e81fcbb",
+      "treatment_instruction_hash": "f23eb2f8e75b06816ade7797ecc9526e36934e327ab9f8c448af07f862f43890"
+    },
+    {
+      "arm": "control",
+      "control_instruction_hash": "3bc1135d3db2dd9dd638b8613573d65edd00609f0a1ca02bee2b576bcd0db252",
+      "fixture": {
+        "arm": "control",
+        "available_actions_hash": "e5b3665eec0d331d3c673f7be405a3cdaa73b39c7cef5f226083363b210f5393",
+        "binding_table_hash": "73f492b92818562636ea1309c5b2ee41bb4eb3688bcd32b248a1d10eae19c5cb",
+        "binding_table_resolves_to_current_synthetic_task": true,
+        "context_hash": "a672977295d8d7ac19eefc820254cb788ac00eddea5bde35be5179e3525fc2d1",
+        "fixture_hash": "4094e7b9a404efb340fd00e5c3ec4752de9279ad8fb612663ac08cbbe797df04",
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "fixture_path": "scratch/pair-04-control",
+        "handle_domains_hash": "cc920c6ce9d9ac40b62c77d197eb6016b204357c4de52ecd3895a2ba402edf8b",
+        "instructions_hash": "3bc1135d3db2dd9dd638b8613573d65edd00609f0a1ca02bee2b576bcd0db252",
+        "investigation_id": "inv-cccccccc",
+        "pair_id": 4,
+        "plan_and_specialist_real_model_requests": 0,
+        "projection_hash": "82f4238c7525e8915166d82296dea33954a2c4aa064598155d3e74c77ac7b08f",
+        "run_id": "run_cd49a4efa4f84f86ab96de71b3f17888",
+        "schema_hash": "a214ec4f5e81fcbb",
+        "semantic_input_hash": "171e581fa6ced8596d692fa1cffbf6d26ab0fa5939d17aa3eb32994cbb128cc5",
+        "source_refs_hash": "082bba6aeb6da6a623e069411c7931efe89b116ffff1779c91eb1086edbf402a",
+        "task_id": "task-A",
+        "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+      },
+      "input_contract_violations": [],
+      "pair_id": 4,
+      "parity": {
+        "instructions_exact_suffix": true,
+        "model_settings_equal": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "tool_names_equal": true
+      },
+      "schema_fingerprint": "a214ec4f5e81fcbb",
+      "treatment_instruction_hash": "8fed2b88b74cb2e9c902cf74bf6d3ea785995decfc19f67cec81d9ca9ee4bf58"
+    },
+    {
+      "arm": "treatment",
+      "control_instruction_hash": "c15eda76eba92205041a79a75e3f2a5d35a31667dcc2221e40c1922def604442",
+      "fixture": {
+        "arm": "treatment",
+        "available_actions_hash": "e5b3665eec0d331d3c673f7be405a3cdaa73b39c7cef5f226083363b210f5393",
+        "binding_table_hash": "3de8e344e54d24fe5144601113e49f603971b3e77582ba5b1822b51db0d73b1a",
+        "binding_table_resolves_to_current_synthetic_task": true,
+        "context_hash": "8d1d1743d48711bb910a9dcb47074ad96c041c0c647103772069ac0c9e44dfab",
+        "fixture_hash": "8d4bb473f5a12d9f1bdd4d3479fecd117c3d188ee262a7435eb92e7174b75912",
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "fixture_path": "scratch/pair-04-treatment",
+        "handle_domains_hash": "cc920c6ce9d9ac40b62c77d197eb6016b204357c4de52ecd3895a2ba402edf8b",
+        "instructions_hash": "7dc67f0d81f4a066fdc783cb8c0f4cedead3d5ce524b86ada53460894fbda41e",
+        "investigation_id": "inv-cccccccc",
+        "pair_id": 4,
+        "plan_and_specialist_real_model_requests": 0,
+        "projection_hash": "b433a3de4d91d173ad83a8bedd6c3d91a25ef849c352dbefaa9251caafc269d5",
+        "run_id": "run_625c3351b3484dafa76099305c0ad1b4",
+        "schema_hash": "a214ec4f5e81fcbb",
+        "semantic_input_hash": "5223cf4d2511d6fe121d11493b887204560687422e1fc9c1dcbcb4012a76e1cf",
+        "source_refs_hash": "f1acdc46c8ba8402e8a145dad454eaa8b8047575859232af40e7d018b53ac677",
+        "task_id": "task-A",
+        "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+      },
+      "input_contract_violations": [],
+      "pair_id": 4,
+      "parity": {
+        "instructions_exact_suffix": true,
+        "model_settings_equal": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "tool_names_equal": true
+      },
+      "schema_fingerprint": "a214ec4f5e81fcbb",
+      "treatment_instruction_hash": "7dc67f0d81f4a066fdc783cb8c0f4cedead3d5ce524b86ada53460894fbda41e"
+    }
+  ],
+  "gates": {
+    "DIAGNOSTICS_READY": true,
+    "INPUT_IDENTITY_PASS": true,
+    "PROMPT_DIFF_PASS": true,
+    "SCHEMA_UNCHANGED": true,
+    "finalization_not_exercised": true,
+    "independent_scratch_fixtures": true,
+    "no_historical_or_real_evidence_writes": true,
+    "no_plan_or_specialist_real_requests": true,
+    "offline_gate_artifacts_new_and_exclusive": true,
+    "worktree_clean_at_offline_gate": true
+  },
+  "historical_2a6_protocol_order": [
+    "C",
+    "T",
+    "C",
+    "T",
+    "C",
+    "T",
+    "C",
+    "T"
+  ],
+  "real_model_requests": 0,
+  "verdict": "ALL_DETERMINISTIC_GATES_PASS"
+}

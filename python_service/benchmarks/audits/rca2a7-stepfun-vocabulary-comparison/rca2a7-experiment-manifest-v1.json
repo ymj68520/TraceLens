@@ -1,0 +1,126 @@
+{
+  "amendment_sha256": "50fa93b8ef0b5e1a54f04aa2b7c4bacb73af69107a1f2e34e3b802c19f6940c8",
+  "artifact_version": "RCA2A7ExperimentManifestV1",
+  "baseline_commit": "c4f291a51cdb83431b4adf1c03eca99548dd44dc",
+  "binding_table_hashes": [
+    "257363387dc51cde7276736256ee2857ab1170d71d722f347cff2b3c45db4b59",
+    "63cc54b9bd3da52e455e2f3da7f660851830555233b5037ff8d7e56f508fefe2",
+    "28c97ed196ee642c06154764188c1007fed16c410cd103e1c0e80d779aa2c6cb",
+    "9dd4d2492e8e6515174037d809e2682c36a83851fe6c16849072fd6dc913767d",
+    "58c6e92ca6a0ba3e37f2a800567875de27251bb1ef853832de4a2812e7ef9f3e",
+    "8c827b0d6fdb3c0b06d6f6405e58ff596cf5c6f8acd7ca6a1d1e68d4e46f49d3",
+    "73f492b92818562636ea1309c5b2ee41bb4eb3688bcd32b248a1d10eae19c5cb",
+    "3de8e344e54d24fe5144601113e49f603971b3e77582ba5b1822b51db0d73b1a"
+  ],
+  "context_hashes": [
+    "5f0719ea73781bba3a4d33b62e8e583b076dab19f2978a37d8d94a69bc14187c",
+    "8b4600ebac0887f3d1a16003dbc3356130bf3686c1e9a87282611e2e080e7ccf",
+    "7027051bb0afe0e327069b3d2ae846426f5094677a259e35bc3a9ac3937a6c9d",
+    "8c49d9cf5e61a7e729701849add24ecec74f0bf5b820702e5f330db71eea8ed8",
+    "41829f1d4fa628e2e75e64b88de81e091c2fad6b149f3b70cdb3fc56aafc69cb",
+    "c3b34175bbe4a789da335901d31b79685549d0098accef4dfb4d03d8fc3b7603",
+    "a672977295d8d7ac19eefc820254cb788ac00eddea5bde35be5179e3525fc2d1",
+    "8d1d1743d48711bb910a9dcb47074ad96c041c0c647103772069ac0c9e44dfab"
+  ],
+  "control_instructions_hash": "87a212ae5f0170a6c256a60bfe46fa11c583e5b0d4ab2b9e98d4e0d0dd55627c",
+  "diagnostics_code_hash": "b7dc0d8752739ace19ea247278074c0fb03873f826e3d221d58b08dd1f888757",
+  "experiment_id": "rca2a7-stepfun-vocabulary-comparison",
+  "fixture_hashes": [
+    "ffd441ee82cf8651bca03ddc5014546294897186afa389b2d4bc641254a34e7d",
+    "9fa344a92fed27ed0ed199511ad5f9ba020722293f355597b5e0a8b5793a0a8a",
+    "496276a167031e67549a44562e8183cbb86a5f29bc5c6e4565d4d4b9b4e6b6ca",
+    "a8a83de80de1ae664f942c3391064b66f23be08173a3c282db24f54b30648d10",
+    "c7e6b9d2d16a9c8f9d8de4a08e58ad7531d38bd3fbc61596e8f3b223ff2e4fc1",
+    "06a32424dba431cd7c17549a5ed898587e9e2d779a78a2dc7716b2efb1d18da0",
+    "4094e7b9a404efb340fd00e5c3ec4752de9279ad8fb612663ac08cbbe797df04",
+    "8d4bb473f5a12d9f1bdd4d3479fecd117c3d188ee262a7435eb92e7174b75912"
+  ],
+  "frozen_historical_artifacts_unchanged": true,
+  "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+  "model_config": {
+    "llm_endpoint": "/v1/chat/completions",
+    "llm_text_base_url": "https://api.stepfun.com/step_plan",
+    "llm_text_max_tokens": 16384,
+    "llm_text_temperature": 0.7,
+    "llm_thinking_mode": "disabled",
+    "llm_timeout_seconds": 120,
+    "output_retry_budget": 1,
+    "provider": "stepfun",
+    "requested_model": "step-3.7-flash",
+    "sdk_retry_policy": "openai SDK client default (OpenAIProvider(base_url, api_key) unchanged construction)"
+  },
+  "model_config_equals_rca2a6_frozen": true,
+  "model_config_hash": "c36be1e01786aa5f4d046b54c49a150a9966805f7a5b040379f9e252dd9e8f6b",
+  "request_budget": {
+    "diagnostic_http_attempts_max": 48,
+    "logical_model_generations_max": 16,
+    "preflight_http_attempts_max": 9,
+    "preflight_logical_requests": 3,
+    "sdk_http_attempts_per_logical_request_max": 3,
+    "sdk_max_retries": 2,
+    "stage_invocations": 8
+  },
+  "run_order": [
+    [
+      "C",
+      "T"
+    ],
+    [
+      "T",
+      "C"
+    ],
+    [
+      "T",
+      "C"
+    ],
+    [
+      "C",
+      "T"
+    ]
+  ],
+  "runtime_code_hashes": {
+    "diagnostic_sink": "76c4b23f1fb5226f7f12c946577a820ba720033d5f4941a7d6472566f2069b7e",
+    "diagnostic_taxonomy": "c293d4773b0d7defd84b754f81343c2e42445156fda3b10e545268edf4ddbe5a",
+    "fixture_builder": "d7ad2a13a9c1fbb442af8dfa11727351cc1f2284101e1542c1d9b5389868006f",
+    "guidance_factory": "55160ec25b60b06f5a60dfe122c39a999dba427f239ce3dd3217190a3ee581a0",
+    "model_adapter": "9d4f6482ef35eafd5761d7a5f8b08acbbab984f898558845c944b448908bbc1f",
+    "runner": "3fe1bdd02936ec4d996b4d7a09fea0c6c21c4a0a67ef042f55c6d98baa540d19",
+    "schema": "9be8946460d63993192c2abb58391bc6aa5af2617412ee27377f3275846439a0",
+    "stage_harness": "80359cbb6a442b2fa34a94d1852d5d22c30d3b608bcd422fcabb05d5470192aa",
+    "supervisor": "8621316a59b9c016c6eacbe9742eb439532af26b401f09d0eef3c263acd8cd25",
+    "transition_policy": "77300b8d079fb21891ac59dd14732a5f1b611c719e2c5bfc924637166f250e54",
+    "validator": "6d93e4e40b671ce3109b3c3678cd0396013bfc079bd1113b8b8f71ed2c4fc97a",
+    "working_state": "adc51cc6d200c5bce37cd2e8f23d54ad063932c8af1129859d952c62219ddd06"
+  },
+  "runtime_commit": "c4f291a51cdb83431b4adf1c03eca99548dd44dc",
+  "schema_hash": "a214ec4f5e81fcbb",
+  "source_hashes": {
+    "diagnostic_sink": "76c4b23f1fb5226f7f12c946577a820ba720033d5f4941a7d6472566f2069b7e",
+    "diagnostic_taxonomy": "c293d4773b0d7defd84b754f81343c2e42445156fda3b10e545268edf4ddbe5a",
+    "fixture_builder": "d7ad2a13a9c1fbb442af8dfa11727351cc1f2284101e1542c1d9b5389868006f",
+    "guidance_factory": "55160ec25b60b06f5a60dfe122c39a999dba427f239ce3dd3217190a3ee581a0",
+    "model_adapter": "9d4f6482ef35eafd5761d7a5f8b08acbbab984f898558845c944b448908bbc1f",
+    "runner": "3fe1bdd02936ec4d996b4d7a09fea0c6c21c4a0a67ef042f55c6d98baa540d19",
+    "schema": "9be8946460d63993192c2abb58391bc6aa5af2617412ee27377f3275846439a0",
+    "stage_harness": "80359cbb6a442b2fa34a94d1852d5d22c30d3b608bcd422fcabb05d5470192aa",
+    "supervisor": "8621316a59b9c016c6eacbe9742eb439532af26b401f09d0eef3c263acd8cd25",
+    "transition_policy": "77300b8d079fb21891ac59dd14732a5f1b611c719e2c5bfc924637166f250e54",
+    "validator": "6d93e4e40b671ce3109b3c3678cd0396013bfc079bd1113b8b8f71ed2c4fc97a",
+    "working_state": "adc51cc6d200c5bce37cd2e8f23d54ad063932c8af1129859d952c62219ddd06"
+  },
+  "status": "FROZEN_BEFORE_PROVIDER_REQUEST",
+  "stop_conditions": [
+    "any deterministic pre-call gate fails",
+    "provider auth/capacity/connectivity failure",
+    "requested/returned model identity mismatch",
+    "runtime/schema/guidance/config/fixture identity drift",
+    "cross-task or fabricated evidence/basis handle",
+    "unauthorized state commit or production mutation",
+    "diagnostic instrumentation failure",
+    "unexpected exception outside frozen model-output/provider classes",
+    "never retry or replace a stage invocation",
+    "never add pairs after observing results"
+  ],
+  "treatment_instructions_hash": "fc9e68c8342a67b38c2e098ce2bd7ba1f4b5858853a0ba5236ba8208bb51d7d2",
+  "worktree_clean_at_freeze": false
+}
