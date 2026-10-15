@@ -1,0 +1,18 @@
+{
+  "artifact_version": "RCA2A4ProviderVerificationV1",
+  "checks": {
+    "actual_model_is_step_3_7_flash": true,
+    "api_key_present": true,
+    "base_url_is_frozen_stepfun": true,
+    "max_tokens_frozen": true,
+    "no_openrouter": true,
+    "no_sitecustomize_active": false,
+    "reasoning_effort_frozen": true,
+    "temperature_frozen": true,
+    "timeout_frozen": true
+  },
+  "experiment_id": "rca2a4-stepfun-isolated-integration",
+  "identity_sink_wired": true,
+  "resolved_base_url": "https://api.stepfun.com/step_plan/v1",
+  "verdict": "BLOCKED"
+}

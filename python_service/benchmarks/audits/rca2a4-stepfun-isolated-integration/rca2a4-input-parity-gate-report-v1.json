@@ -1,0 +1,19 @@
+{
+  "artifact_version": "RCA2A4InputParityGateReportV1",
+  "case_id": "t2-no-evidence",
+  "contract_violations": [],
+  "experiment_id": "rca2a4-stepfun-isolated-integration",
+  "fields_compared": {
+    "available_actions": true,
+    "integration_context_projection": true,
+    "model_instructions": true,
+    "model_settings": true,
+    "output_tool_names": true,
+    "output_tool_schema": true,
+    "source_result_references": true,
+    "typed_handle_domains": true
+  },
+  "fixture": "A_no_evidence (t2-no-evidence semantics)",
+  "identity_note": "same frozen store on both paths — even identity fields equal; NO normalization applied",
+  "verdict": "INTEGRATION_INPUT_PARITY_PASS"
+}

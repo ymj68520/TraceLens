@@ -367,10 +367,16 @@ class IsolatedIntegrationHarness:
 
     async def run_stage(
         self,
-        model_function: Callable,
+        model_function: Callable | None = None,
         *,
         diagnostic_sink=None,
+        model: Any = None,
     ) -> StageResult:
+        """Run one isolated stage.  ``model_function`` drives an offline
+        FunctionModel; pass ``model`` instead to inject a REAL pydantic-ai
+        model (production adapter) — exactly one of the two.  Everything
+        downstream (output contract, validation, resolver, policy,
+        commit, diagnostics) is identical in both modes."""
         """One isolated stage execution: production agent -> production
         validation -> production resolution -> production policy ->
         production commit.  Failures are contained inside the stage and
@@ -386,8 +392,15 @@ class IsolatedIntegrationHarness:
             "finalization": "NOT_EXERCISED",
             "specialist_reexecuted": False,
         }
+        if (model_function is None) == (model is None):
+            raise ValueError(
+                "run_stage requires exactly one of model_function "
+                "(offline FunctionModel) or model (real pydantic-ai model)"
+            )
+        from pydantic_ai.models.function import FunctionModel as _FM
+
         agent = SupervisorAgentFactory(
-            model=FunctionModel(model_function)
+            model=model if model is not None else _FM(model_function)
         ).build_integration_agent_v2(self._projection)
 
         try:

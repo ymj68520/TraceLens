@@ -1,0 +1,21 @@
+{
+  "artifact_version": "RCA2A4SinkReadinessGateV1",
+  "checks": {
+    "frozen_state_untouched": true,
+    "no_api_key_leak": true,
+    "no_evidence_content_leak": true,
+    "no_sqlite_commit": true,
+    "no_validation_input_leak": true,
+    "permissions_0600": true,
+    "pydantic_parse_failed": true,
+    "retry_attempts_observable": true,
+    "run_id_correlated": true,
+    "schema_hash_matches_frozen_v2": true,
+    "stage_is_supervisor_integrate": true,
+    "tool_name_observable": true,
+    "validation_error_details_observable": true
+  },
+  "experiment_id": "rca2a4-stepfun-isolated-integration",
+  "sink_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a4-stepfun-isolated-integration/diagnostics/sink-readiness.jsonl",
+  "verdict": "READY"
+}
