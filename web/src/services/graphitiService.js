@@ -33,7 +33,7 @@ export const searchGraph = async (query, taskId, options = {}) => {
         limit: options.limit || 100,
         include_relationships: options.includeRelationships !== false,
     };
-    return await pythonApi.post('/api/knowledge-graph/search', payload);
+    return await pythonApi.post('/api/graphiti/search', payload);
 };
 
 /**
@@ -42,7 +42,7 @@ export const searchGraph = async (query, taskId, options = {}) => {
  * @param {Object} params - 分页参数
  */
 export const listEntities = async (taskId, params = {}) => {
-    return await pythonApi.get('/api/knowledge-graph/entities', {
+    return await pythonApi.get('/api/graphiti/entities', {
         params: {
             task_id: taskId,
             entity_type: params.entityType,
@@ -58,7 +58,7 @@ export const listEntities = async (taskId, params = {}) => {
  * @param {Object} params - 分页和过滤参数
  */
 export const listRelationships = async (taskId, params = {}) => {
-    return await pythonApi.get('/api/knowledge-graph/relationships', {
+    return await pythonApi.get('/api/graphiti/relationships', {
         params: {
             task_id: taskId,
             relationship_type: params.relationshipType,
@@ -72,7 +72,6 @@ export const listRelationships = async (taskId, params = {}) => {
 
 /**
  * 获取 Graphiti 服务状态 (可选任务特定)
- * 后端没有 /api/knowledge-graph/*，真实状态在 /api/graphiti/status（同形响应）。
  * @param {string} taskId - 任务 ID (可选)
  */
 export const getGraphitiStatus = async (taskId = null) => {
@@ -82,7 +81,7 @@ export const getGraphitiStatus = async (taskId = null) => {
 
 /**
  * 列出所有有知识图谱数据的任务
- * /api/knowledge-graph/tasks 没有后端实现；从已完成的摄入作业推导任务列表。
+ * 没有专门的任务列表端点；从已完成的摄入作业推导任务列表。
  */
 export const listTaskGraphs = async () => {
     const data = await pythonApi.get('/api/graphiti/jobs', { params: { status: 'completed', limit: 500 } });
@@ -135,18 +134,18 @@ export const reingestAnalyzedData = async (taskId) => {
  * @param {number} maxNodes - 最多返回节点数量
  */
 export const getGraphData = async (taskId, maxNodes = 200) => {
-    return await pythonApi.get('/api/knowledge-graph/graph', {
+    return await pythonApi.get('/api/graphiti/graph', {
         params: { task_id: taskId, max_nodes: maxNodes },
     });
 };
 
 export const getRelationshipTrace = (taskId, relationshipId) =>
-    pythonApi.get(`/api/knowledge-graph/relationships/${encodeURIComponent(relationshipId)}/trace`, {
+    pythonApi.get(`/api/graphiti/relationships/${encodeURIComponent(relationshipId)}/trace`, {
         params: { task_id: taskId },
     });
 
 export const getGraphSourceFile = (taskId, evidenceKey) =>
-    pythonApi.get('/api/knowledge-graph/source-file', {
+    pythonApi.get('/api/graphiti/source-file', {
         params: { task_id: taskId, evidence_key: evidenceKey },
     });
 
