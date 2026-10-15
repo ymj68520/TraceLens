@@ -100,5 +100,9 @@ namespace forensics {
         void setup_static_routes();
         std::string get_mime_type(const std::string& path);
         bool serve_static_file(crow::response& res, const std::string& relative_path);
+        // Same-origin gateway: forward browser calls under /python to the
+        // Python service so Python-backed pages work without a direct
+        // cross-origin hop to the Python port.
+        crow::response proxy_python_request(const crow::request& req, const std::string& path);
     };
 }

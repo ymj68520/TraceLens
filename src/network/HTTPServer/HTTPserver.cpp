@@ -7,6 +7,8 @@
 #include "tracelens/build_identity.h"
 #include "FullTextSearch/FullTextSearch.h"
 #include "FullTextSearch/TextExtractor.h"
+#include "ConfigManager/ConfigManager.h"
+#include <httplib.h>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -160,6 +162,17 @@ namespace forensics {
         // Register global middleware - but we need to use it differently
         // For now, let's just add catch-all routes after the specific routes
 
+        // Browser-facing "/python" gateway. The frontend release build sends
+        // every Python-service call through the same-origin "/python" prefix
+        // (runtime.js PYTHON_API_BASE_URL); forward those requests so pages
+        // backed by the Python service (workbench, reports, knowledge graph,
+        // dependency health) work without a direct cross-origin hop.
+        CROW_ROUTE(app_, "/python/<path>")
+            .methods("GET"_method, "POST"_method, "PUT"_method, "DELETE"_method, "PATCH"_method)
+            ([this](const crow::request& req, const std::string& path) {
+                return proxy_python_request(req, path);
+            });
+
         // SPA fallback route - all paths fallback to index.html for client-side routing
         CROW_ROUTE(app_, "/<path>")
         .methods("GET"_method)
@@ -225,8 +238,61 @@ namespace forensics {
         });
     }
 
-    bool HTTPServer::serve_static_file(crow::response& res, const std::string& file_path) {
-        std::error_code ec;
+    crow::response HTTPServer::proxy_python_request(const crow::request& req, const std::string& path) {
+        const std::string query = req.raw_url.find('?') == std::string::npos
+            ? std::string() : req.raw_url.substr(req.raw_url.find('?'));
+        const std::string target = "/" + path + query;
+        const std::string content_type = req.get_header_value("Content-Type");
+
+        httplib::Client cli(ConfigManager::instance().getPythonServiceUrl());
+        if (std::getenv("TRACELENS_FIELD_AUTH") &&
+            std::string(std::getenv("TRACELENS_FIELD_AUTH")) == "enabled") {
+            const char* token = std::getenv("FIELD_CPP_TO_PYTHON_TOKEN");
+            cli.set_default_headers({{"X-TraceLens-Service-Token", token ? token : ""}});
+        }
+        cli.set_connection_timeout(10);
+        cli.set_read_timeout(600);
+        cli.set_write_timeout(600);
+
+        httplib::Headers headers;
+        const std::string authorization = req.get_header_value("Authorization");
+        if (!authorization.empty()) headers.emplace("Authorization", authorization);
+        const std::string accept = req.get_header_value("Accept");
+        if (!accept.empty()) headers.emplace("Accept", accept);
+
+        httplib::Result result;
+        if (req.method == "POST"_method) {
+            result = cli.Post(target, headers, req.body, content_type.c_str());
+        } else if (req.method == "PUT"_method) {
+            result = cli.Put(target, headers, req.body, content_type.c_str());
+        } else if (req.method == "PATCH"_method) {
+            result = cli.Patch(target, headers, req.body, content_type.c_str());
+        } else if (req.method == "DELETE"_method) {
+            result = cli.Delete(target, headers, req.body, content_type.c_str());
+        } else if (req.method == "HEAD"_method) {
+            result = cli.Head(target, headers);
+        } else {
+            result = cli.Get(target, headers);
+        }
+
+        crow::response res;
+        if (!result) {
+            res.code = 502;
+            res.set_header("Content-Type", "application/json");
+            res.write(nlohmann::json{{"detail", "python service unreachable"}}.dump());
+            return res;
+        }
+        res.code = result->status;
+        for (const auto& [name, value] : result->headers) {
+            if (name == "Content-Type" || name == "Content-Disposition") {
+                res.set_header(name, value);
+            }
+        }
+        res.write(result->body);
+        return res;
+    }
+
+    bool HTTPServer::serve_static_file(crow::response& res, const std::string& file_path) {        std::error_code ec;
         const fs::path root = fs::weakly_canonical("web/dist", ec);
         if (ec) return false;
         const fs::path target = fs::weakly_canonical(file_path, ec);
