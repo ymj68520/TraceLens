@@ -9,6 +9,7 @@ at toon_transformer's conservative 3 chars/token ratio.
 """
 
 import logging
+import os
 from typing import Optional
 
 import httpx
@@ -21,6 +22,7 @@ _MIN_EFFECTIVE_TOKENS = 256
 _DEFAULT_CONFIGURED_TOKENS = 3000
 
 _cached_chars: Optional[int] = None
+_cached_tokens: Optional[int] = None
 
 
 def _configured_tokens(settings) -> int:
@@ -48,13 +50,26 @@ async def resolve_and_cache(settings) -> int:
     configured = _configured_tokens(settings)
     effective = configured
     try:
-        base = (getattr(settings, "llm_text_base_url", "") or "").rstrip("/")
+        # Probe the server that actually consumes episodes — the
+        # GRAPHITI_LLM_BASE_URL override when set (ingestion may ride local
+        # phi-4 while the pipeline text model is cloud), else the text base.
+        base = (
+            (getattr(settings, "graphiti_llm_base_url", "") or "").strip()
+            or (os.getenv("GRAPHITI_LLM_BASE_URL") or "").strip()
+            or (getattr(settings, "llm_text_base_url", "") or "")
+        ).rstrip("/")
         if base:
             async with httpx.AsyncClient(timeout=2.0) as client:
                 resp = await client.get(f"{base}/api/v0/models")
                 payload = resp.json()
             models = payload.get("data") or payload.get("models") or []
-            wanted = (getattr(settings, "llm_text_model", "") or "").split("/")[-1].lower()
+            # Match the episode consumer's context: the Graphiti ingestion
+            # model (GRAPHITI_LLM_MODEL pin), not the pipeline text model.
+            wanted = (
+                getattr(settings, "graphiti_llm_model", "")
+                or getattr(settings, "llm_text_model", "")
+                or ""
+            ).split("/")[-1].lower()
             context = None
             for model in models:
                 model_id = str(model.get("id") or model.get("key") or "").lower()
@@ -72,8 +87,25 @@ async def resolve_and_cache(settings) -> int:
     except Exception as e:
         logger.warning(f"LM Studio context probe failed, using configured episode budget: {e}")
 
+    _cached_tokens = effective
     _cached_chars = chars_from_tokens(effective)
     return _cached_chars
+
+
+def effective_episode_tokens(settings=None) -> int:
+    """Cached probed token budget; falls back to the configured ceiling.
+
+    Without a probe (standalone/unit-test contexts) this is the configured
+    ``GRAPHITI_MAX_EPISODE_TOKENS`` — or the SPEC default when no settings are
+    available. Callers should size chunks against tokens via the CJK-aware
+    ``TOONTransformer.estimate_episode_tokens``, not raw characters.
+    """
+    global _cached_tokens
+    if _cached_tokens is not None:
+        return _cached_tokens
+    if settings is not None:
+        return _configured_tokens(settings)
+    return _DEFAULT_CONFIGURED_TOKENS
 
 
 def episode_chunk_chars(settings=None) -> int:

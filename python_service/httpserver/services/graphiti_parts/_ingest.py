@@ -97,7 +97,7 @@ class GraphitiIngestMixin:
                             tagged_path = f"[IMG{idx+1}] {file_path}"
 
                             # Chunk long descriptions
-                            chunks = self._chunk_text_for_graph(description, max_chars=3000)
+                            chunks = self._chunk_text_for_graph(description)
                             for j, chunk in enumerate(chunks):
                                 ep_name = f"文件分析: {tagged_path}"
                                 if len(chunks) > 1:
@@ -246,7 +246,7 @@ class GraphitiIngestMixin:
 
             # 1. Case context (chunked) — gives the extractor shared background
             if case_description:
-                case_chunks = self._chunk_text_for_graph(case_description, max_chars=3000)
+                case_chunks = self._chunk_text_for_graph(case_description)
                 for i, chunk in enumerate(case_chunks):
                     ep_name = f"案情描述 (第{i+1}部分)" if len(case_chunks) > 1 else "案情描述"
                     episodes.append(EpisodeData(
@@ -266,7 +266,7 @@ class GraphitiIngestMixin:
                 description = desc.get("description", "")
                 if not description:
                     continue
-                chunks = self._chunk_text_for_graph(description, max_chars=3000)
+                chunks = self._chunk_text_for_graph(description)
                 for j, chunk in enumerate(chunks):
                     ep_name = f"文件分析: {file_path}"
                     if len(chunks) > 1:
@@ -342,24 +342,56 @@ class GraphitiIngestMixin:
             logger.error(f"[{task_id}] Episode ingestion failed: {e}", exc_info=True)
             return {"success": False, "error": str(e), "episodes_built": 0}
 
-    @staticmethod
-    def _chunk_text_for_graph(text: str, max_chars: int = 3000) -> List[str]:
-        """Split text into chunks for graph ingestion."""
-        if len(text) <= max_chars:
+    def _chunk_text_for_graph(self, text: str, max_tokens: Optional[int] = None) -> List[str]:
+        """Split text into chunks that fit the per-episode token budget.
+
+        The budget is the LM Studio-probed per-episode ceiling (SPEC D13) when
+        resolved, else the configured ``GRAPHITI_MAX_EPISODE_TOKENS``. Chunking
+        by CJK-aware token estimate — not raw characters — matters because CJK
+        evidence text tokenizes at ~1 token per character: the legacy fixed
+        3000-character chunks were up to ~4x over budget for Chinese files and
+        overflowed the local model's context window mid-generation
+        ("Context size has been exceeded").
+        """
+        from graphiti_integration.toon_transformer import TOONTransformer as _TT
+        from .episode_budget import effective_episode_tokens
+
+        if max_tokens is None:
+            max_tokens = effective_episode_tokens(getattr(self, "settings", None))
+
+        if _TT.estimate_episode_tokens(text) <= max_tokens:
             return [text]
 
-        chunks = []
-        paragraphs = text.split("\n\n")
+        chunks: List[str] = []
         current = ""
-        for para in paragraphs:
-            if len(current) + len(para) + 2 > max_chars and current:
+        for para in text.split("\n\n"):
+            candidate = f"{current}\n\n{para}" if current else para
+            if current and _TT.estimate_episode_tokens(candidate) > max_tokens:
                 chunks.append(current.strip())
                 current = para
             else:
-                current = current + "\n\n" + para if current else para
+                current = candidate
         if current.strip():
             chunks.append(current.strip())
-        return chunks if chunks else [text]
+
+        # A single paragraph over budget cannot be split on paragraph bounds —
+        # hard-split it with a self-calibrating character window derived from
+        # the chunk's own characters-per-token density.
+        result: List[str] = []
+        for chunk in chunks:
+            est = _TT.estimate_episode_tokens(chunk)
+            if est <= max_tokens:
+                result.append(chunk)
+                continue
+            rest = chunk
+            while _TT.estimate_episode_tokens(rest) > max_tokens:
+                ratio = len(rest) / max(_TT.estimate_episode_tokens(rest), 1)
+                cut = max(64, int(max_tokens * ratio * 0.95))
+                result.append(rest[:cut])
+                rest = rest[cut:]
+            if rest.strip():
+                result.append(rest)
+        return result or [text]
 
     async def ingest_case_data_incremental(
         self,
@@ -451,7 +483,7 @@ class GraphitiIngestMixin:
 
                             if description:
                                 # Chunk long descriptions
-                                chunks = self._chunk_text_for_graph(description, max_chars=3000)
+                                chunks = self._chunk_text_for_graph(description)
                                 for j, chunk in enumerate(chunks):
                                     ep_name = f"文件分析: {Path(file_path).name}"
                                     if len(chunks) > 1:

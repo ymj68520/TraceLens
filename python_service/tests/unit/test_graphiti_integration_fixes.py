@@ -198,14 +198,18 @@ class TestIngestTaskEpisodes:
 
     @pytest.mark.asyncio
     async def test_long_description_is_chunked(self, service):
-        """A description longer than the chunk limit yields multiple episodes."""
+        """A description longer than the token budget yields multiple episodes.
+
+        Chunking is CJK-aware token-based (SPEC D13 budget): the fixture
+        settings pin 2500 tokens, so the description must estimate above that.
+        """
         mock_ingestor = MagicMock()
         mock_ingestor.batch_ingest = AsyncMock(return_value=MagicMock(
             successful=3, total_episodes=3, failed=0, errors=[]
         ))
         service._task_graphs["t1"] = {"config": MagicMock(), "ingestor": mock_ingestor}
 
-        long_desc = "para.\n\n".join([f"paragraph {i} " + "x" * 2000 for i in range(3)])
+        long_desc = "para.\n\n".join([f"paragraph {i} " + "x" * 3000 for i in range(4)])
 
         result = await service.ingest_task_episodes(
             task_id="t1",

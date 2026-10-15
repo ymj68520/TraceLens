@@ -258,8 +258,12 @@ class TOONTransformer:
         """
         Estimate token count for an episode body.
 
-        Uses a simple heuristic: ~4 characters per token for English text.
-        This is a rough estimate - actual tokenization depends on the LLM's tokenizer.
+        CJK-aware heuristic: CJK characters tokenize at roughly one token per
+        character on local models (phi-4 / Qwen), while Latin text averages
+        ~4 characters per token. Estimating CJK at the English ratio undershot
+        Chinese evidence bodies by ~4x and let them overflow the local model's
+        context window mid-generation (LM Studio: "Context size has been
+        exceeded").
 
         Args:
             episode_body: JSON string episode body
@@ -269,7 +273,16 @@ class TOONTransformer:
         """
         # Rough estimate: 1 token ≈ 4 characters for English text
         # Add 20% buffer for JSON structure and metadata
-        return int(len(episode_body) / 4) + (len(episode_body) // 20)
+        if not episode_body:
+            return 0
+        cjk = 0
+        for ch in episode_body:
+            code = ord(ch)
+            if (0x3400 <= code <= 0x9FFF or 0xF900 <= code <= 0xFAFF
+                    or 0x3000 <= code <= 0x303F or 0xFF00 <= code <= 0xFFEF):
+                cjk += 1
+        other = len(episode_body) - cjk
+        return cjk + other // 4 + other // 20
 
     @staticmethod
     def truncate_if_needed(episode_body: str, max_tokens: int = 3000) -> str:
