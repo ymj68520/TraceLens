@@ -1,0 +1,97 @@
+{
+  "artifact_version": "RCA2A9aCrossCaseComparisonProtocolV2",
+  "baseline_commit": "325fa4eb8a86bc347484eea22d9116f22f2d1977",
+  "candidate_experiment_id": "rca2a10-cross-case-vocabulary-comparison",
+  "execution_protections": [
+    "Durable Seat Claim",
+    "Exclusive Output Guard",
+    "Cloned SQLite Store per seat",
+    "Diagnostic Sink idempotency",
+    "Runtime Identity Gate"
+  ],
+  "experimental_design": {
+    "arms_per_pair": 2,
+    "balanced_execution_sequence": "Pair A: Control -> Treatment; Pair B: Treatment -> Control",
+    "cross_scenario_sequence_freeze": "Scenario execution order frozen prior to initial invocation",
+    "paired_repetitions_per_scenario": 2,
+    "total_pairs": 8,
+    "total_scenarios": 4,
+    "total_seats": 16
+  },
+  "generated_at": "2026-10-16T00:56:49.679533+00:00",
+  "model_and_provider_configuration": {
+    "fallback_permitted": false,
+    "guidance_sha256": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+    "model": "step-3.7-flash",
+    "output_schema_hash": "a214ec4f5e81fcbb",
+    "prohibited_providers": [
+      "openrouter",
+      "deepseek",
+      "qwen",
+      "openai"
+    ],
+    "provider": "stepfun",
+    "sdk_max_retries": 2
+  },
+  "pre_registered_outcomes": {
+    "dual_primary_metrics": [
+      "canonical_integration_valid",
+      "semantic_adequacy"
+    ],
+    "mandatory_negative_gates": [
+      "FABRICATED_EVIDENCE",
+      "CROSS_TASK_EVIDENCE",
+      "GRAPH_ID_AS_EVIDENCE",
+      "ANALYST_NOTE_AS_FACT",
+      "UNSUPPORTED_FACT_PROMOTION",
+      "FALSE_QUESTION_CLOSURE",
+      "UNAUTHORIZED_COMMIT",
+      "GROUNDING_BYPASS"
+    ],
+    "secondary_metrics": [
+      "investigative_information_value",
+      "pydantic_parse_success",
+      "canonical_resolution_success",
+      "state_transition_valid",
+      "grounding_validity",
+      "false_question_closure",
+      "unsupported_claims",
+      "output_retry_exhaustion",
+      "token_usage",
+      "latency"
+    ]
+  },
+  "qualification_boundary": "EXPLORATORY_DIAGNOSTIC ONLY. Even 16/16 success does not constitute AcceptanceProfileV2 qualification. Gen-4 holdouts are not consumed; Gen-5 is NOT created.",
+  "request_budget": {
+    "max_diagnostic_http_attempts": 96,
+    "max_logical_model_generations": 32,
+    "max_preflight_http_attempts": 9,
+    "output_retry_budget_per_invocation": 1,
+    "preflight_logical_requests": 3,
+    "stage_invocations": 16,
+    "total_max_http_attempts": 105
+  },
+  "scenario_eligibility": {
+    "f1_no_evidence": {
+      "eligibility": "INTEGRATE_REPRESENTABLE",
+      "obligation": "Honest non-terminal question / limitation recording; zero unsupported fact promotions.",
+      "scenario_id": "t2-no-evidence"
+    },
+    "f2_temporal_trap": {
+      "eligibility": "INTEGRATE_REPRESENTABLE",
+      "obligation": "Temporal sequence observation; strictly no causal overclaims from temporal proximity.",
+      "scenario_id": "t2-temporal-trap"
+    },
+    "f3_identity_trap": {
+      "eligibility": "INTEGRATE_REPRESENTABLE",
+      "obligation": "Disambiguate distinct files; promote only app1.log; reject app2.log, node IDs, and cross-task refs.",
+      "scenario_id": "t2-identity-trap"
+    },
+    "f4_report_citation": {
+      "eligibility": "STAGE_LIMITED",
+      "obligation": "Update evidence relevance and question coverage; Report Admission is NOT_EXERCISED.",
+      "scenario_id": "t2-report-citation"
+    }
+  },
+  "status": "PROPOSED_NOT_AUTHORIZED"
+}

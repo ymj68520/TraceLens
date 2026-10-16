@@ -1,0 +1,25 @@
+{
+  "amendment_statement": "Treatment mean stage latency was observed to be higher by approximately 6.91 seconds (+35.2%). However, exact causal component attribution is NOT ESTABLISHED from aggregate stage timings. Prior RCA-2A.9 text attributing the latency specifically to JSON parsing and guidance text is amended to recognize candidate contributing factors without asserting speculative millisecond allocations.",
+  "amendment_verdict": "CAUSAL_COMPONENT_ATTRIBUTION_NOT_ESTABLISHED",
+  "artifact_version": "RCA2A9aLatencyAttributionAmendmentV1",
+  "baseline_commit": "325fa4eb8a86bc347484eea22d9116f22f2d1977",
+  "candidate_explanations": [
+    "Longer model-visible instructions (guidance prompt injection)",
+    "Different output token volume",
+    "Different provider-side generation time",
+    "Response processing and validation overhead",
+    "Sampling variance"
+  ],
+  "generated_at": "2026-10-16T00:56:49.679533+00:00",
+  "integrity_preservation": "Original RCA-2A.8 and RCA-2A.9 reports remain immutable; amendment appended.",
+  "observed_measurements": {
+    "control_mean_stage_latency_seconds": 19.64,
+    "difference_seconds": 6.91,
+    "relative_percentage": "+35.2%",
+    "treatment_mean_stage_latency_seconds": 26.55
+  },
+  "target_audits": [
+    "RCA-2A.8",
+    "RCA-2A.9"
+  ]
+}

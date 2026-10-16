@@ -1,0 +1,18 @@
+{
+  "artifact_version": "RCA2A9aSemanticOracleExtensionV1",
+  "base_version": "RCA2A9SemanticOracleV1",
+  "capabilities": [
+    "Blind arm invariance",
+    "Insufficient evidence to judge (unknown semantic support)",
+    "Stale revision and stale source hash rejection",
+    "Equivalent acceptable actions support",
+    "Hard negative gate enforcement"
+  ],
+  "generated_at": "2026-10-16T00:56:49.679533+00:00",
+  "hashes": {
+    "base_oracle_sha256": "52e3a57d5116c3fb290158d26eaaff1a69f95fa92efd6e06434a72c454f91a55",
+    "combined_contract_hash": "739b6683707d1b4c7339cf20eaf861514c902e9ac4b8ac8b3969fa02aef9a782",
+    "extension_oracle_sha256": "922db5e943ca2c980e8227743555a845d4452b0a6f9c0d9e7d0154fdc4b28348"
+  },
+  "status": "FROZEN"
+}
