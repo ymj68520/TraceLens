@@ -557,6 +557,53 @@ int LLMAnalysisService::forensicPathPriority(const std::string& path) {
     lower.reserve(path.size());
     for (char c : path) lower += static_cast<char>(::tolower(static_cast<unsigned char>(c)));
 
+    // Non-document binaries and UI resource packs: no text for the LLM, and a
+    // credential word inside them is an identifier (WPS Shadow_Settings.kuip,
+    // chrome_child.dll). Windows-image replay showed these flooding the whole
+    // budget — .dll/.pak under AppData inherit the 90 user-area score, .kuip
+    // even hits the shadow credential pattern.
+    static const std::vector<std::string> binaryResourceSuffixes = {
+        ".dll", ".sys", ".ocx", ".efi", ".msi", ".cab", ".pak", ".kuip",
+        ".exe", ".mui", ".ico", ".pb"};
+    for (const auto& s : binaryResourceSuffixes) {
+        if (lower.size() >= s.size() &&
+            lower.compare(lower.size() - s.size(), s.size(), s) == 0) {
+            return 5;
+        }
+    }
+    // Program-install trees under user profiles are the same noise class
+    // (chrome.exe payloads, WPS office6), as are GPU font caches.
+    static const std::vector<std::string> programTreeMarkers = {
+        "chrome/application", "appdata/local/programs", "fontcache",
+        "kingsoft", "iconcache.db"};
+    for (const auto& p : programTreeMarkers) {
+        if (lower.find(p) != std::string::npos) return 5;
+    }
+    // Chromium runtime state: leveldb stores are binary, the component
+    // directories hold update manifests — neither is analysable text, and on
+    // Windows images they inherit the 90 user-area score wholesale.
+    if (lower.find("leveldb") != std::string::npos) return 5;
+    // Leveldb-internal filenames carry no path hint of their store, hence the
+    // name shapes: a pure-numeric .log segment and LOG.old. Both are binary
+    // storage internals wherever they sit.
+    if (lower.size() > 4 && lower.find_last_of('.') != std::string::npos) {
+        const std::size_t dot = lower.find_last_of('.');
+        const std::string stem = lower.substr(lower.find_last_of('/') + 1, dot - lower.find_last_of('/') - 1);
+        const std::string ext = lower.substr(dot);
+        if (ext == ".log" && !stem.empty() &&
+            stem.find_first_not_of("0123456789") == std::string::npos) {
+            return 5;
+        }
+        if (ext == ".old" && stem == "log") return 5;
+    }
+    static const std::vector<std::string> chromeComponentDirs = {
+        "certificaterevocation", "certificatetransparency", "crashpad",
+        "filetypepolicies", "meipreload", "origintrials", "pnacl",
+        "sslerrorassistant", "subresource filter", "swreporter",
+        "software reporter tool", "widevinecdm", "system profile"};
+    for (const auto& p : chromeComponentDirs) {
+        if (lower.find(p) != std::string::npos) return 5;
+    }
     // Distro-owned content trees never hold a credential data file, yet their
     // basenames are full of the words above (locale catalogs passwd.mo in 30+
     // languages, yumdb package dirs, firewalld kpasswd.xml, sample.sudoers).
@@ -602,7 +649,17 @@ int LLMAnalysisService::forensicPathPriority(const std::string& path) {
     };
     const std::size_t baseStart =
         (lastSlash == std::string::npos) ? 0 : lastSlash + 1;
+    // Images are vision-pipeline evidence, never credential data files: a
+    // credential word in "tile_drop_shadow.png" is a graphic-asset name.
+    static const std::vector<std::string> imageSuffixes = {
+        ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff"};
+    const bool isImageFile = std::any_of(
+        imageSuffixes.begin(), imageSuffixes.end(), [&](const std::string& s) {
+            return lower.size() >= s.size() &&
+                   lower.compare(lower.size() - s.size(), s.size(), s) == 0;
+        });
     for (const auto& p : credPatterns) {
+        if (isImageFile) break;
         std::size_t at = basename.find(p);
         while (at != std::string::npos) {
             if (wordBoundedAt(baseStart + at, p.size())) return 100;

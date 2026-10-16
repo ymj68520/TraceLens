@@ -439,6 +439,40 @@ TEST_F(SceneClassifierTest, HeuristicPriorityJunkMatrix) {
     low("/usr/sbin/saslpasswd2");
     low("/usr/bin/grub2-mkpasswd-pbkdf2");
 
+    // Windows system images: program files under AppData inherit the 90
+    // user-area score, and WPS UI resources even hit the shadow credential
+    // pattern. Non-document binaries / resource packs go to the low bucket —
+    // the text pipeline cannot analyse them, so they are budget noise.
+    low("/Users/Administrator/AppData/Local/Kingsoft/WPS Office/11.1.0.11744/office6/res/commands/et/classics/Shadow_Settings.kuip");
+    low("/Users/Administrator/AppData/Local/Google/Chrome/Application/68.0.3423.2/chrome_child.dll");
+    low("/Users/Administrator/AppData/Local/Google/Chrome/Application/68.0.3423.2/Locales/ja.pak");
+    low("/Users/Administrator/AppData/Local/Google/Chrome/Application/68.0.3423.2/Installer/chrome.msi");
+    low("/Users/Administrator/AppData/Local/GDIPFONTCACHEV1.DAT");
+    low("/Users/Administrator/AppData/Local/Programs/SomeApp/app.exe");
+    low("/Windows/System32/drivers/x.sys");
+    low("/Windows/Installer/2a3b/patch.msi");
+    // Windows own binaries named with the credential word: shadow.exe (volume
+    // shadow copy tool) is a program, tile_drop_shadow.png a gadget texture.
+    low("/Windows/System32/shadow.exe");
+    low("/Windows/System32/en-US/shadow.exe.mui");
+    low("/Program Files/Windows Sidebar/Gadgets/PicturePuzzle.Gadget/Images/tile_drop_shadow.png");
+    low("/Windows/winsxs/amd64_microsoft-windows-g..picturepuzzlegadget/tile_drop_shadow.png");
+    // Chromium runtime state under User Data: leveldb stores and component
+    // update manifests are binary/机器生成, flooding the 90 band wholesale.
+    low("/Users/Administrator/AppData/Local/Google/Chrome/User Data/Default/Local Storage/leveldb/000038.log");
+    low("/Users/Administrator/AppData/Local/Google/Chrome/User Data/CertificateRevocation/7404/manifest.json");
+    low("/Users/Administrator/AppData/Local/Google/Chrome/User Data/Crashpad/settings.dat");
+    low("/Users/Administrator/AppData/Local/Google/Chrome/User Data/SwReporter/100.282.200/manifest.json");
+    low("/Users/Administrator/AppData/Local/Google/Chrome/User Data/SSLErrorAssistant/7/ssl_error_assistant.pb");
+    low("/Users/Administrator/AppData/Local/Google/Chrome/User Data/WidevineCdm/4.10.2391.0/manifest.json");
+    low("/Users/Administrator/AppData/Local/Google/Chrome/User Data/Default/Feature Engagement Tracker/EventDB/000003.log");
+    low("/Users/Administrator/AppData/Local/Google/Chrome/User Data/Default/Thumbnails/LOG.old");
+    low("/Users/Administrator/AppData/Local/Google/Software Reporter Tool/settings.dat");
+    low("/Users/Administrator/AppData/Local/IconCache.db");
+    low("/Users/Administrator/AppData/Local/Kingsoft/WPS Office/11.1.0.11744/office6/addons/createcompany/mui/zh_CN/res/web/error-page/close_default.png");
+    low("/Users/Administrator/AppData/Local/Kingsoft/WPS Office/11.1.0.11744/office6/addons/kaiwpp/mui/zh_CN/res/smartchart/mark.pptx");
+    low("/Users/Administrator/AppData/Local/Kingsoft/WPS Cloud Files/userdata/qing/qing.db");
+
     // Container / distro bulk trees.
     low("/var/lib/docker/overlay2/abc123/diff/usr/bin/python3");
     low("/var/lib/docker/volumes/data/_data/dump.log");
@@ -556,6 +590,9 @@ TEST_F(SceneClassifierTest, HeuristicPriorityRealArtefactBoundaries) {
     // A document whose name merely contains a junk substring is not junk:
     // the vendor marker carries its path separator.
     EXPECT_EQ(A::priority("/home/u/Documents/vendor-audit-notes.txt"), 90);
+    // Windows user documents keep the user-area band.
+    EXPECT_EQ(A::priority("/Users/Administrator/Desktop/转账记录.xlsx"), 90);
+    EXPECT_EQ(A::priority("/Users/john/Documents/WeChat Files/wxid_x/Msg/MicroMsg.db"), 90);
 }
 
 TEST_F(SceneClassifierTest, WindowsAppDataWildcardMatch) {
