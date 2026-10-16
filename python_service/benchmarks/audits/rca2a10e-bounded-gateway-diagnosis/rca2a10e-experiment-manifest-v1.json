@@ -1,0 +1,24 @@
+{
+  "artifact_version": "RCA2A10eExperimentManifestV1",
+  "experiment_id": "rca2a10e-bounded-gateway-diagnosis",
+  "created_at_utc": "2026-10-16T06:04:46.170794+00:00",
+  "runtime_commit": "4f4d277b707d7d58c63cf2b28dcfcb656afc591e",
+  "effective_model_config": {
+    "provider": "generic",
+    "base_url": "https://api.hcnsec.cn/v1",
+    "model_name": "step-5-preview",
+    "temperature": 1.0,
+    "max_tokens": 4096,
+    "timeout_seconds": 360.0,
+    "reasoning_effort": null,
+    "credential_source_id": "LLM_API_KEY_ENV",
+    "credential_available": true
+  },
+  "schema_hash": "a214ec4f5e81fcbb",
+  "d3_envelope_hash": "2d552657564be19c3e4ae41d2e02761ae0108ae95610c4dfa92a9672a65a45b8",
+  "d4_envelope_hash": "c5ce880a627c1a9ba881641578cbd5364ba6fe9dace2db3a1b17fdfaa33ec2cf",
+  "budget": {
+    "max_logical_generations": 2,
+    "max_physical_attempts": 2
+  }
+}
