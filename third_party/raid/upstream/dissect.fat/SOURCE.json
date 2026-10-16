@@ -5,9 +5,6 @@
     ".git-blame-ignore-revs": {
       "sha256": "dcef310cdfbb0fd89e00ed6e43e1331c9850eb828cf3a2f65aa19a0080cc9f3f"
     },
-    ".gitattributes": {
-      "sha256": "4420c380badfd36207771c7718239506035cc9497a697556d6e4457fc2e966d1"
-    },
     ".github/pull_request_template.md": {
       "sha256": "c81c987221ae6bc8995e929d0dd10aaf3ac557cf7d812fda8c73cfc854973222"
     },
@@ -64,21 +61,6 @@
     },
     "tests/conftest.py": {
       "sha256": "41d7d4871f89fe8418a913cd6690193ef0790f469936124de6bdec5dda826f54"
-    },
-    "tests/data/exfat.bin": {
-      "sha256": "569808d79f6953f15f5660567cf83ff853e949571b7c410afcadee83fb7a06c7"
-    },
-    "tests/data/exfat4m.bin": {
-      "sha256": "f95b9b3801f67f21453460e9e95bee369912ba987f53f4d8dde35b1a35a58928"
-    },
-    "tests/data/fat12.bin": {
-      "sha256": "791a007b5919452c6c2621b17e197b832733505d183cacc56cf20848cc1d9091"
-    },
-    "tests/data/fat16.bin": {
-      "sha256": "dc6534d97b32d37c5bc04b4e6c06d15ff21a34441c93427c5407d89081ed3ab9"
-    },
-    "tests/data/fat32.bin": {
-      "sha256": "317c6f704966c3cee296bef52aecc072c0034fb84afc6695e0d8f3cdfadc16bd"
     },
     "tests/test_exceptions.py": {
       "sha256": "001173a9ccd188281792a62192563af28fc49b1e679e68fa8b4a7437b4bcbd93"

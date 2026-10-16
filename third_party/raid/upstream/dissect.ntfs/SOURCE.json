@@ -5,9 +5,6 @@
     ".git-blame-ignore-revs": {
       "sha256": "51b39c5904c0aec09a4398d451a4443e4df30383f9b2d207806bbe7dd5b936a2"
     },
-    ".gitattributes": {
-      "sha256": "f1d0d27d6a12fdf08e4e3290b230921a0f3970d725a7bd18f8f472f7958187cc"
-    },
     ".github/pull_request_template.md": {
       "sha256": "c81c987221ae6bc8995e929d0dd10aaf3ac557cf7d812fda8c73cfc854973222"
     },
@@ -70,27 +67,6 @@
     },
     "tests/__init__.py": {
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    },
-    "tests/_data/boot_2m.bin.gz": {
-      "sha256": "bc6fffeae76755374b80f36cb34655b632c8eafc7e6fe9f311c3a6c454daca85"
-    },
-    "tests/_data/mft.bin.gz": {
-      "sha256": "165298701582bac9bbb710a6e0dbeb31b0d2aaeb2467586c57b33cb93523e822"
-    },
-    "tests/_data/ntfs-cloud.bin.gz": {
-      "sha256": "837cef8c0fef47c5224c66be31c820940e4a4d08e1c3db2bb97c8aeb0b26082e"
-    },
-    "tests/_data/ntfs.bin.gz": {
-      "sha256": "58216443f16e78495e3761fec2bec695b29ab5e9e8170874ab59407f9c1bc23d"
-    },
-    "tests/_data/ntfs_fragmented_mft.csv.gz": {
-      "sha256": "e5218f814f3b6b9f59551a90050ac772e45d2263a671a3b634c4fcb62d7030ce"
-    },
-    "tests/_data/sds.bin.gz": {
-      "sha256": "66caf920a4d16c4cd9f1b29ef29f5218738a4b4076cfac0a9c88810f339f562d"
-    },
-    "tests/_data/sds_complex.bin.gz": {
-      "sha256": "ef0397ef89c6d0fbb724c64dd2fa10be28e2c676cbf3f35a832d8e1eb4760ecb"
     },
     "tests/_docs/Makefile": {
       "sha256": "0261bd1f089a883d010084bd0e8942f935eba87cf2a60504d304e03ce44a1428"

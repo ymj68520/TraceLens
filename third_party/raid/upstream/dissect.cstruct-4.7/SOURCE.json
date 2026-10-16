@@ -5,9 +5,6 @@
     ".git-blame-ignore-revs": {
       "sha256": "479d10327e65b2cb0536387130a072be522c1ea9d67edf2581fc771a94faff67"
     },
-    ".gitattributes": {
-      "sha256": "f1d0d27d6a12fdf08e4e3290b230921a0f3970d725a7bd18f8f472f7958187cc"
-    },
     ".github/pull_request_template.md": {
       "sha256": "c81c987221ae6bc8995e929d0dd10aaf3ac557cf7d812fda8c73cfc854973222"
     },
@@ -118,9 +115,6 @@
     },
     "tests/__init__.py": {
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    },
-    "tests/_data/testdef.txt": {
-      "sha256": "3173b9a129195487e245f297eea21d38efbdcc23476ad03779f8cea56adf0dbe"
     },
     "tests/_docs/Makefile": {
       "sha256": "0261bd1f089a883d010084bd0e8942f935eba87cf2a60504d304e03ce44a1428"

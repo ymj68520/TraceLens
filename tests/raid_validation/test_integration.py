@@ -215,6 +215,8 @@ def test_full_source_distribution_is_offline_verifiable(tmp_path):
     projects = json.loads((tmp_path / "sources.lock.json").read_text())["projects"]
     assert len(projects) == 9
     inventory = [tool.verify(project) for project in projects]
+    # Frozen milestone artifact: this bundle predates dropping the upstream
+    # test images from the checked-in snapshots.
     assert sum(p["files"] for p in inventory) == 2806
     assert (tmp_path / "upstream/nbdkit/common/replacements/win32/nbdkit-cat.h").is_file()
     assert (tmp_path / "upstream/nbdkit/filters/log/log.c").is_file()

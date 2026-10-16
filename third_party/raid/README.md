@@ -20,6 +20,9 @@ Acquiring sources does not enable them as runtime dependencies automatically.
 
 `sources.bundle.tar.gz` includes every upstream file and original notice, even
 fuzz seeds and Windows sources ignored by parent/upstream `.gitignore` rules.
+Upstream test images (`tests/_data`, `tests/data`) are not part of the checked-in
+snapshots: they were Git LFS pointers, unused by the adapter, and omitted from
+`SOURCE.json`. The historical bundles still contain the older inventory.
 `sources.bundle.sha256` verifies this complete source delivery artifact. Include
 the bundle when publishing; don't assume a default `git add` picks every file in
 the unpacked source tree. Offline restoration in a fresh checkout is simply

@@ -461,6 +461,16 @@ src/http_agent/tests/test_http_agent.cpp.pre-gtest
 /web/**/Makefile
 /web/**/*.o
 /web/**/*.o.d
+# 误提交的本机构建产物：web/tests 下的测试可执行文件、web/libs 下的静态库。
+# DuckX / cpp-dotenv 由 libs/ 源码经 add_subdirectory 编译，不链接这些 .a。
+/web/tests/
+/web/libs/**/*.a
+
+# Windows 链接产物，误随 amalgamation 入库。源码 sqlite3.c/h 仍跟踪；
+# 构建链接的是 find_package 找到的 SQLite3，不是这三个文件。
+/libs/sqlite3/sqlite3.dll
+/libs/sqlite3/sqlite3.lib
+/libs/sqlite3/sqlite3.exp
 
 # Local STT models (SenseVoice/VAD) — downloaded, never committed
 python_service/models/

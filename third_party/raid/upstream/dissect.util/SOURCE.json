@@ -8,9 +8,6 @@
     ".git-blame-ignore-revs": {
       "sha256": "90121e6217cd287ebc29d6c782f5e30c5f28026be2119845a205b8d12c5d56e3"
     },
-    ".gitattributes": {
-      "sha256": "f1d0d27d6a12fdf08e4e3290b230921a0f3970d725a7bd18f8f472f7958187cc"
-    },
     ".github/pull_request_template.md": {
       "sha256": "c81c987221ae6bc8995e929d0dd10aaf3ac557cf7d812fda8c73cfc854973222"
     },
@@ -175,24 +172,6 @@
     },
     "tests/__init__.py": {
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    },
-    "tests/_data/bin.cpio.gz": {
-      "sha256": "a567c336a7797577031f37ca71615967f04a6093e828f3d1ba27ead137dc47a6"
-    },
-    "tests/_data/crc.cpio.gz": {
-      "sha256": "6c1a8b3a90127f22ef9251365133c3a9d30f5adef3154e512ed44bdefd9acfc4"
-    },
-    "tests/_data/hpbin.cpio.gz": {
-      "sha256": "c1e475c97d1dd3ba4abff5c62323a8eb15a5015fbb230f73d77b5d851af96d8d"
-    },
-    "tests/_data/hpodc.cpio.gz": {
-      "sha256": "adccecf189b8144b7a6236049320f94dd151c4baeb0af69088417b80724c4939"
-    },
-    "tests/_data/newc.cpio.gz": {
-      "sha256": "d2f7f20fb0c2a2f1cd86aa638f56bd6a2f62a187e1301afe32dae3362c062b44"
-    },
-    "tests/_data/odc.cpio.gz": {
-      "sha256": "97616fb9b4b995319b2a5d02f1188a799ee583255370378bb9bff3f7c2dcd77a"
     },
     "tests/_docs/Makefile": {
       "sha256": "0261bd1f089a883d010084bd0e8942f935eba87cf2a60504d304e03ce44a1428"
