@@ -567,6 +567,142 @@ class FileEntityIngestor:
 
         return await self._run_query(query, params)
 
+    # UNWIND batching: one transaction (one tx-log fsync) per batch instead of
+    # two commits per file. On slow-disk deployments this is the difference
+    # between ~1 s/file and ~1 s per batch.
+    _BATCH_MAX_ROWS = 500
+    # Rough payload cap (sum of string field lengths) per batch so a single
+    # bolt RUN message stays modest even when LLM summaries are long.
+    _BATCH_MAX_BYTES = 200_000
+    # A batch that keeps failing is split in half until single-row batches,
+    # which run through the per-file path for precise error reporting.
+    _BATCH_MIN_ROWS = 2
+
+    _BATCH_UPSERT_QUERY = """
+        UNWIND $rows AS row
+        MERGE (f:File {id: row.id})
+        ON CREATE SET
+            f.path_hash = row.path_hash,
+            f.path = row.path,
+            f.filename = row.filename,
+            f.extension = row.extension,
+            f.md5 = row.md5,
+            f.inode = row.inode,
+            f.size_bytes = row.size,
+            f.category = row.category,
+            f.file_type = row.file_type,
+            f.is_deleted = row.is_deleted,
+            f.tasks = [$task_id],
+            f.events = [],
+            f.created_at = datetime(),
+            f.updated_at = datetime()
+        ON MATCH SET
+            f.tasks = CASE WHEN $task_id IN f.tasks THEN f.tasks ELSE f.tasks + $task_id END,
+            f.md5 = CASE WHEN f.md5 IS NULL OR f.md5 = '' THEN row.md5 ELSE f.md5 END,
+            f.size_bytes = CASE WHEN f.size_bytes = 0 THEN row.size ELSE f.size_bytes END,
+            f.llm_summary = row.llm_summary,
+            f.llm_description = row.llm_description,
+            f.llm_keywords = row.llm_keywords,
+            f.llm_analyzed_at = row.llm_analyzed_at,
+            f.llm_model = row.llm_model,
+            f.updated_at = datetime()
+        MERGE (t:Task {id: $task_id})
+        ON CREATE SET t.created_at = datetime()
+        MERGE (t)-[:CONTAINS_FILE]->(f)
+        RETURN size(f.tasks) > 1 AS is_update
+    """
+
+    @staticmethod
+    def _row_weight(file: FileRecord) -> int:
+        """Estimate a row's serialized size for batch payload budgeting."""
+        return (
+            len(file.path)
+            + len(file.name)
+            + len(file.extension)
+            + len(file.llm_summary or "")
+            + len(file.llm_description or "")
+            + len(file.llm_keywords or "")
+        )
+
+    def _file_upsert_row(self, file: FileRecord) -> dict[str, Any]:
+        """Build one UNWIND row mirroring ``_ensure_file_entity_core`` params."""
+        path_hash = self._generate_path_hash(file.path)
+        keywords = file.keywords_list if file.has_llm_analysis else []
+
+        llm_analyzed_at = None
+        if file.llm_analyzed_at and file.llm_analyzed_at > 0:
+            llm_analyzed_at = datetime.fromtimestamp(file.llm_analyzed_at).isoformat()
+
+        return {
+            "id": path_hash,
+            "path_hash": path_hash,
+            "path": file.path,
+            "filename": file.name,
+            "extension": file.extension,
+            "md5": file.md5 or "",
+            "inode": file.inode,
+            "size": file.size,
+            "category": file.category,
+            "file_type": file.file_type,
+            "is_deleted": file.is_deleted,
+            "llm_summary": file.llm_summary,
+            "llm_description": file.llm_description,
+            "llm_keywords": keywords,
+            "llm_analyzed_at": llm_analyzed_at,
+            "llm_model": file.llm_model_used,
+        }
+
+    async def _upsert_batch(
+        self,
+        batch: list[FileRecord],
+        task_id: str,
+        result: FileIngestionResult,
+    ) -> None:
+        """Upsert one batch, splitting in half on failure.
+
+        Single-row batches go through ``_ensure_file_entity_core`` so a
+        persistently failing file is reported per-file like the old serial
+        loop did.
+        """
+        if len(batch) < self._BATCH_MIN_ROWS:
+            for file in batch:
+                try:
+                    _, is_update = await self._ensure_file_entity_core(file, task_id)
+                    if is_update:
+                        result.files_updated += 1
+                    else:
+                        result.files_created += 1
+                except Exception as e:
+                    error_msg = f"Error processing file {file.path}: {str(e)}"
+                    result.errors.append(error_msg)
+                    logger.error(error_msg)
+            return
+
+        rows = [self._file_upsert_row(file) for file in batch]
+        # Lock rows in ascending id order: two concurrent batch writers would
+        # otherwise deadlock holding each other's File nodes.
+        rows.sort(key=lambda row: row["id"])
+        try:
+            data = await self._run_query(
+                self._BATCH_UPSERT_QUERY, {"rows": rows, "task_id": task_id}
+            )
+        except Exception as e:
+            logger.warning(
+                "Batch upsert of %d files failed (%s); splitting",
+                len(batch),
+                str(e)[:120],
+            )
+            mid = len(batch) // 2
+            await self._upsert_batch(batch[:mid], task_id, result)
+            await self._upsert_batch(batch[mid:], task_id, result)
+            return
+
+        for record in data:
+            if record.get("is_update"):
+                result.files_updated += 1
+            else:
+                result.files_created += 1
+
     async def batch_ensure_files(
         self,
         files: list[FileRecord],
@@ -575,6 +711,12 @@ class FileEntityIngestor:
     ) -> FileIngestionResult:
         """
         Create/update multiple File entities in batch.
+
+        Files are grouped into UNWIND batches so each batch costs one
+        transaction commit instead of two commits per file. Batches are
+        deduped by File id (MERGE under UNWIND must not see same-batch
+        duplicates). Failed batches degrade to the per-file path via
+        ``_upsert_batch``.
 
         Args:
             files: List of FileRecord objects.
@@ -586,29 +728,39 @@ class FileEntityIngestor:
         """
         result = FileIngestionResult()
 
-        for i, file in enumerate(files):
-            try:
-                # Use the single atomic MERGE result to decide create-vs-update.
-                # No separate read-then-write: that pattern races under concurrent
-                # ingestion and is what produced the unique-constraint violations.
-                _, is_update = await self._ensure_file_entity_core(file, task_id)
+        batches: list[list[FileRecord]] = []
+        current: list[FileRecord] = []
+        current_ids: set[str] = set()
+        current_bytes = 0
+        for file in files:
+            file_id = self._generate_path_hash(file.path)
+            weight = self._row_weight(file)
+            if current and (
+                len(current) >= self._BATCH_MAX_ROWS
+                or current_bytes + weight > self._BATCH_MAX_BYTES
+                or file_id in current_ids
+            ):
+                batches.append(current)
+                current = []
+                current_ids = set()
+                current_bytes = 0
+            current.append(file)
+            current_ids.add(file_id)
+            current_bytes += weight
+        if current:
+            batches.append(current)
 
-                if is_update:
-                    result.files_updated += 1
-                else:
-                    result.files_created += 1
-
-            except Exception as e:
-                error_msg = f"Error processing file {file.path}: {str(e)}"
-                result.errors.append(error_msg)
-                logger.error(error_msg)
-
+        processed = 0
+        for batch in batches:
+            await self._upsert_batch(batch, task_id, result)
+            processed += len(batch)
             if progress_callback:
-                progress_callback(i + 1, len(files))
+                progress_callback(processed, len(files))
 
         logger.info(
             f"Batch file ingestion complete: "
             f"{result.files_created} created, {result.files_updated} updated"
+            f"{f', {len(result.errors)} errors' if result.errors else ''}"
         )
 
         return result
