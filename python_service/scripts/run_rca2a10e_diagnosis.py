@@ -12,7 +12,7 @@ from benchmarks.isolated_integration.gateway_diagnostic_runner import (
 
 
 async def main() -> int:
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     audit_dir = repo_root / "python_service/benchmarks/audits/rca2a10e-bounded-gateway-diagnosis"
     scratch_dir = repo_root / "python_service/benchmarks/scratch/rca2a10e_diagnostic"
 
