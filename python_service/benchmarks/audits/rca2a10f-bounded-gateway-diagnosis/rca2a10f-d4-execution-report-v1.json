@@ -1,0 +1,13 @@
+{
+  "artifact_version": "RCA2A10FD4ExecutionReportV1",
+  "experiment_id": "rca2a10f-bounded-gateway-diagnosis",
+  "created_at_utc": "2026-10-16T07:31:33.653139+00:00",
+  "result": {
+    "transport_mode": "streaming",
+    "logical_request_dispatched": false,
+    "status": "D4_NOT_AUTHORIZED_BY_CONDITIONS",
+    "blocked_reason": "D4_NOT_AUTHORIZED_BY_CONDITIONS: D3 status was D3_MODEL_OUTPUT_INVALID",
+    "wire_attempts": [],
+    "physical_http_attempts": 0
+  }
+}

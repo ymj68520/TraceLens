@@ -1,0 +1,37 @@
+{
+  "artifact_version": "RCA2A10FRequestEnvelopeIdentityV1",
+  "experiment_id": "rca2a10f-bounded-gateway-diagnosis",
+  "created_at_utc": "2026-10-16T07:31:33.653139+00:00",
+  "d3_non_streaming_envelope": {
+    "instructions_chars": 3113,
+    "instructions_utf8_bytes": 3117,
+    "instructions_hash": "b776d752f923da60dca080554fd87ba0bcf5a741a3a22e6c31dd8e552c12078b",
+    "tool_schema_chars": 7616,
+    "tool_schema_utf8_bytes": 7616,
+    "tool_schema_hash": "8482351da72d7ac8fb3567578f644951e9a858ba8895696c66375e981008581c",
+    "messages_hash": "a68b085c89753af5c96c1b12a8d63a2f0773718320a9c4fcc4a5a68bf5d494a8",
+    "serialized_http_body_bytes": 11254,
+    "request_body_sha256": "c5291341cd10b4f0877bb78bd000617003290932fde2fb521631853a49419511",
+    "model_name": "longcat-2.5",
+    "stream": false,
+    "temperature": 1.0,
+    "max_tokens": 4096,
+    "timeout_seconds": 360.0
+  },
+  "d4_streaming_envelope": {
+    "instructions_chars": 3113,
+    "instructions_utf8_bytes": 3117,
+    "instructions_hash": "b776d752f923da60dca080554fd87ba0bcf5a741a3a22e6c31dd8e552c12078b",
+    "tool_schema_chars": 7616,
+    "tool_schema_utf8_bytes": 7616,
+    "tool_schema_hash": "8482351da72d7ac8fb3567578f644951e9a858ba8895696c66375e981008581c",
+    "messages_hash": "a68b085c89753af5c96c1b12a8d63a2f0773718320a9c4fcc4a5a68bf5d494a8",
+    "serialized_http_body_bytes": 11253,
+    "request_body_sha256": "0e8d80eeb67713f266da254a3b9b3acc862ae2759ad475f4507a60947b2ac55b",
+    "model_name": "longcat-2.5",
+    "stream": true,
+    "temperature": 1.0,
+    "max_tokens": 4096,
+    "timeout_seconds": 360.0
+  }
+}
