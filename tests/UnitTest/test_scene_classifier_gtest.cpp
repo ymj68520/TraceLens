@@ -5,10 +5,12 @@
 #include <gtest/gtest.h>
 #include "DatabaseManager/FileClassifier/FileClassifier.h"
 #include "DatabaseManager/DatabaseManagerDataTypes.h"
+#include "DatabaseManager/DatabaseManager.h"
 #include "LLMAnalysisService.h"
 #include <sqlite3.h>
 #include <cstdio>
 #include <algorithm>
+#include <chrono>
 #include <string>
 
 class SceneClassifierTest : public ::testing::Test {
@@ -593,6 +595,83 @@ TEST_F(SceneClassifierTest, HeuristicPriorityRealArtefactBoundaries) {
     // Windows user documents keep the user-area band.
     EXPECT_EQ(A::priority("/Users/Administrator/Desktop/转账记录.xlsx"), 90);
     EXPECT_EQ(A::priority("/Users/john/Documents/WeChat Files/wxid_x/Msg/MicroMsg.db"), 90);
+}
+
+// DatabaseManager::insertFileRecord batches rows into one transaction per
+// kInsertBatchRows rows. Regression: per-row autocommit cost one WAL fsync per
+// file on the extraction disk (~0.5 s each), capping the metadata walk at
+// single-digit files/s. Correctness first: every row must survive, batches
+// must be visible to OTHER connections after flush/count, and a reused
+// prepared statement must not corrupt neighbouring rows.
+TEST_F(SceneClassifierTest, DatabaseManagerBatchedInsertCorrectness) {
+    const std::string dbPath = "/tmp/tl_dbmanager_batched_test.db";
+    std::remove(dbPath.c_str());
+
+    DatabaseManager db(dbPath);
+    ASSERT_TRUE(db.initialize());
+
+    FileRecord r;
+    r.type = "REG"; r.isDeleted = 0; r.isAllocated = 1;
+    r.permissions = "644"; r.uid = 0; r.gid = 0; r.partitionNum = 2;
+    const int kRows = 5000;  // spans 2.5 batches of 2000
+    for (int i = 0; i < kRows; ++i) {
+        r.inode = 100000 + i;
+        r.name = "file_" + std::to_string(i) + ".txt";
+        r.path = "/dir" + std::to_string(i % 7) + "/" + r.name;
+        r.size = 1024 * i;
+        r.md5 = "md5_" + std::to_string(i);
+        ASSERT_TRUE(db.insertFileRecord(r)) << "row " << i;
+    }
+    // Same-connection count also flushes the open batch.
+    EXPECT_EQ(db.getFileCount(), kRows);
+
+    // External-reader visibility + round-trip of two distant rows.
+    sqlite3* rd = nullptr;
+    ASSERT_EQ(sqlite3_open_v2(dbPath.c_str(), &rd, SQLITE_OPEN_READONLY, nullptr), SQLITE_OK);
+    sqlite3_stmt* st = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(rd, "SELECT COUNT(*) FROM files;", -1, &st, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_step(st), SQLITE_ROW);
+    EXPECT_EQ(sqlite3_column_int(st, 0), kRows);
+    sqlite3_finalize(st);
+    ASSERT_EQ(sqlite3_prepare_v2(rd, "SELECT path, md5 FROM files WHERE inode IN (?, ?) ORDER BY inode;", -1, &st, nullptr), SQLITE_OK);
+    sqlite3_bind_int64(st, 1, 100000);
+    sqlite3_bind_int64(st, 2, 100000 + kRows - 1);
+    ASSERT_EQ(sqlite3_step(st), SQLITE_ROW);
+    EXPECT_EQ(std::string(reinterpret_cast<const char*>(sqlite3_column_text(st, 0))), "/dir0/file_0.txt");
+    EXPECT_EQ(std::string(reinterpret_cast<const char*>(sqlite3_column_text(st, 1))), "md5_0");
+    ASSERT_EQ(sqlite3_step(st), SQLITE_ROW);
+    EXPECT_EQ(std::string(reinterpret_cast<const char*>(sqlite3_column_text(st, 0))), "/dir" + std::to_string((kRows - 1) % 7) + "/file_" + std::to_string(kRows - 1) + ".txt");
+    sqlite3_finalize(st);
+    sqlite3_close(rd);
+}
+
+// Throughput guard: 20k rows must complete well under a minute with batching.
+// The pre-fix behaviour (one autocommit per row) measured ~2 rows/s on the
+// extraction disk and would need hours for this loop.
+TEST_F(SceneClassifierTest, DatabaseManagerBatchedInsertThroughput) {
+    const std::string dbPath = "/tmp/tl_dbmanager_throughput_test.db";
+    std::remove(dbPath.c_str());
+
+    DatabaseManager db(dbPath);
+    ASSERT_TRUE(db.initialize());
+
+    FileRecord r;
+    r.type = "REG"; r.isDeleted = 0; r.isAllocated = 1;
+    const auto t0 = std::chrono::steady_clock::now();
+    const int kRows = 20000;
+    for (int i = 0; i < kRows; ++i) {
+        r.inode = i;
+        r.name = "f" + std::to_string(i);
+        r.path = "/d" + std::to_string(i % 11) + "/" + r.name;
+        r.size = i;
+        ASSERT_TRUE(db.insertFileRecord(r)) << "row " << i;
+    }
+    const auto elapsed = std::chrono::steady_clock::now() - t0;
+    const double seconds = std::chrono::duration<double>(elapsed).count();
+    db.flushInsertBatch();
+    EXPECT_EQ(db.getFileCount(), kRows);
+    EXPECT_LT(seconds, 30.0) << "batched insert regressed: " << seconds << "s for " << kRows << " rows";
+    std::printf("[perf] %d rows in %.2fs (%.0f rows/s)\n", kRows, seconds, kRows / seconds);
 }
 
 TEST_F(SceneClassifierTest, WindowsAppDataWildcardMatch) {

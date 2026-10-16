@@ -5,6 +5,7 @@
 #include <string>
 #include <sqlite3.h>
 #include <memory>
+#include <mutex>
 #include <vector>
 #include <tsk/libtsk.h>
 
@@ -40,6 +41,18 @@ public:
 	 * @return true if insertion successful
 	 */
 	bool insertFileRecord(const FileRecord& record);
+
+	/**
+	 * @brief Commit rows batched by insertFileRecord's auto-batching.
+	 *
+	 * insertFileRecord wraps rows in implicit multi-row transactions (one
+	 * commit per kInsertBatchRows rows) so a per-row autocommit fsync cannot
+	 * dominate extraction throughput on spinning disks (measured ~0.5 s per
+	 * fsync on the extraction disk). Readers on OTHER connections only see
+	 * committed rows — call this after a bulk walk and before the DB is
+	 * handed to downstream consumers on new connections.
+	 */
+	void flushInsertBatch();
 
 	/**
 	 * @brief Insert an event record into the database
@@ -85,6 +98,14 @@ private:
 	bool createTables();
 	bool executeSQL(const std::string& sql);
 	void checkAndMigrate();
+
+	// insertFileRecord keeps its INSERT prepared across calls (re-preparing
+	// the 16-parameter statement per row is pure CPU overhead) and batches
+	// rows into one transaction per kInsertBatchRows rows.
+	std::mutex insertMutex_;
+	sqlite3_stmt* insertFileStmt_ = nullptr;
+	int uncommittedInserts_ = 0;
+	static constexpr int kInsertBatchRows = 2000;
 };
 
 #endif // DATABASE_MANAGER_H
