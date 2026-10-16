@@ -1,0 +1,7 @@
+{
+  "artifact_version": "RCA2A10bVocabularyEffectReportV1",
+  "effect_observed": "UNOBSERVABLE",
+  "experiment_id": "rca2a10b-rebased-cross-case-vocabulary-comparison",
+  "paired_observations_completed": 0,
+  "reason": "Execution halted before live model calls due to CONFIGURATION_BLOCKED."
+}
