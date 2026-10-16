@@ -187,6 +187,9 @@ private:
     static std::vector<std::string> selectByHeuristic(std::vector<std::string> files,
                                                       size_t maxFiles);
 
+    // Test-only seam: unit tests assert on the heuristic ranking rules directly.
+    friend struct LLMSelectionHeuristicTestAccess;
+
     /**
      * @brief Resolve a file path from the image to a host-filesystem path
      *

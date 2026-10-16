@@ -304,6 +304,63 @@ TEST_F(SceneClassifierTest, LLMAnalysisScenePriority) {
     EXPECT_EQ(allFiles.size(), 4u);
 }
 
+// Access seam for the private heuristic statics on LLMAnalysisService.
+namespace forensics {
+struct LLMSelectionHeuristicTestAccess {
+    static int priority(const std::string& path) {
+        return LLMAnalysisService::forensicPathPriority(path);
+    }
+    static std::vector<std::string> select(std::vector<std::string> files, size_t maxFiles) {
+        return LLMAnalysisService::selectByHeuristic(std::move(files), maxFiles);
+    }
+};
+}
+
+// Regression: pip http-cache *.tmp blobs under /root once inherited the
+// user-area score (90) and filled a 50-file smart-selection budget, crowding
+// out /etc and /var/log artefacts. Cache/temp paths must land in the
+// low-value bucket regardless of the directory they sit under.
+TEST_F(SceneClassifierTest, HeuristicPriorityCacheTempJunk) {
+    using A = forensics::LLMSelectionHeuristicTestAccess;
+
+    EXPECT_EQ(A::priority("/root/.cache/pip/http/e/2/0/7/4/e207426c.tmp"), 5);
+    EXPECT_EQ(A::priority("/home/alice/.cache/mozilla/firefox/abc.jpg"), 5);
+    EXPECT_EQ(A::priority("/var/cache/apt/archives/openssl.deb"), 5);
+    EXPECT_EQ(A::priority("/usr/lib/python3.11/__pycache__/os.cpython-311.pyc"), 5);
+    EXPECT_EQ(A::priority("/opt/venv/lib/python3.11/site-packages/requests/api.py"), 5);
+    EXPECT_EQ(A::priority("/root/virt-sysprep-tmpfile.tmp"), 5);
+
+    EXPECT_LT(A::priority("/root/.cache/pip/http/x.tmp"), A::priority("/etc/passwd"));
+    EXPECT_LT(A::priority("/root/.cache/pip/http/x.tmp"), A::priority("/var/log/secure"));
+    EXPECT_LT(A::priority("/root/.cache/pip/http/x.tmp"), A::priority("/home/user/report.pdf"));
+
+    // Real user artefacts keep their established scores.
+    EXPECT_EQ(A::priority("/root/.bash_history"), 100);
+    EXPECT_EQ(A::priority("/root/.bashrc"), 90);
+    EXPECT_EQ(A::priority("/var/log/secure"), 80);
+    EXPECT_EQ(A::priority("/etc/chrony.conf"), 60);
+}
+
+// The heuristic budget must be spent on evidence, not cache noise: with more
+// worthwhile files than slots, no cache/temp path may survive the truncation.
+TEST_F(SceneClassifierTest, HeuristicSelectionKeepsJunkOutOfBudget) {
+    using A = forensics::LLMSelectionHeuristicTestAccess;
+
+    std::vector<std::string> files = {
+        "/root/.cache/pip/http/1/e/6/f/1e6f2fa.tmp",
+        "/root/.cache/pip/http/1/d/a/3/1da3b99.tmp",
+        "/root/.cache/pip/http/1/4/1/1/3/14113e97.tmp",
+        "/var/log/secure",
+        "/etc/passwd",
+        "/home/alice/contract.pdf",
+    };
+    auto picked = A::select(files, 3);
+    ASSERT_EQ(picked.size(), 3u);
+    EXPECT_EQ(picked[0], "/etc/passwd");
+    EXPECT_EQ(picked[1], "/home/alice/contract.pdf");
+    EXPECT_EQ(picked[2], "/var/log/secure");
+}
+
 TEST_F(SceneClassifierTest, WindowsAppDataWildcardMatch) {
     FileClassifier classifier(":memory:", ":memory:");
     classifier.setSceneType(SceneType::WINDOWS);

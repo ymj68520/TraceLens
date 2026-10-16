@@ -511,6 +511,7 @@ add_executable(
   ../src/integration/LLMIntegration/FileContentExtractor.cpp
   ../src/integration/LLMIntegration/FileTextProcessor.cpp
   ../src/integration/LLMIntegration/MarkitdownProxy.cpp
+  ../src/integration/LLMIntegration/MediaAnalysisProxy.cpp
   ../src/core/ThreadPool/ThreadPool.cpp
   ../src/analyzers/PDFAnalyzer/PDFAnalyzer.cpp
   ../src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp)

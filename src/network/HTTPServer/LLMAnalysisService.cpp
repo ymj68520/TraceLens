@@ -554,6 +554,19 @@ int LLMAnalysisService::forensicPathPriority(const std::string& path) {
     for (const auto& p : credPatterns) {
         if (lower.find(p) != std::string::npos) return 100;
     }
+    // Package-manager / browser cache blobs are bulk noise even under /root or
+    // /home. Scored here, before the user-area rule below, otherwise every pip
+    // http-cache *.tmp inherits 90 and eats the smart-selection budget.
+    if (lower.find(".cache/") != std::string::npos ||
+        lower.find("/var/cache/") != std::string::npos ||
+        lower.find("__pycache__") != std::string::npos ||
+        lower.find("site-packages") != std::string::npos) {
+        return 5;
+    }
+    // Temp-file suffixes (pip cache chunks etc.) are the same noise class.
+    if (lower.size() >= 4 && lower.compare(lower.size() - 4, 4, ".tmp") == 0) {
+        return 5;
+    }
     // User data areas beat system areas
     if (lower.find("/home/") != std::string::npos || lower.rfind("/home/", 0) == 0 ||
         lower.find("/users/") != std::string::npos || lower.find("/root/") != std::string::npos ||
