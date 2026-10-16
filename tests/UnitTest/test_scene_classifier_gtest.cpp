@@ -8,6 +8,7 @@
 #include "LLMAnalysisService.h"
 #include <sqlite3.h>
 #include <cstdio>
+#include <algorithm>
 #include <string>
 
 class SceneClassifierTest : public ::testing::Test {
@@ -359,6 +360,202 @@ TEST_F(SceneClassifierTest, HeuristicSelectionKeepsJunkOutOfBudget) {
     EXPECT_EQ(picked[0], "/etc/passwd");
     EXPECT_EQ(picked[1], "/home/alice/contract.pdf");
     EXPECT_EQ(picked[2], "/var/log/secure");
+}
+
+// Every bulk-junk family that floods real images must land in the low-value
+// bucket regardless of where it sits: package-manager caches outside ~/.cache,
+// vendored dependency trees, VCS internals, Windows system junk, editor/office
+// droppings, container and distro bulk trees. Nothing here may outrank an
+// /etc config (60).
+TEST_F(SceneClassifierTest, HeuristicPriorityJunkMatrix) {
+    using A = forensics::LLMSelectionHeuristicTestAccess;
+    auto low = [](const std::string& p) {
+        EXPECT_LE(forensics::LLMSelectionHeuristicTestAccess::priority(p), 10)
+            << "junk scored too high: " << p;
+    };
+
+    // Package-manager / language-runtime caches outside ~/.cache.
+    low("/root/.npm/_cacache/content-v2/sha512/ab/cd/ef");
+    low("/home/u/.npm/_logs/2026-10-15T10_00_00-debug.log");
+    low("/home/u/.yarn/berry/cache/webpack-npm-abc.zip");
+    low("/home/u/.pnpm-store/v3/files/ab/cdef");
+    low("/root/.cargo/registry/src/index.crates.io/serde-1.0.0/src/lib.rs");
+    low("/root/.m2/repository/org/apache/commons-lang3/commons-lang3-3.12.jar");
+    low("/root/.gradle/caches/modules-2/files-2.1/com.google/guava.jar");
+    low("/root/go/pkg/mod/golang.org/x/net@v0.17.0/internal/socket.go");
+    low("/srv/app/bower_components/jquery/dist/jquery.min.js");
+    // Third-party vendored dependency trees (composer/npm/go vendor dirs).
+    low("/www/wwwroot/jijin/vendor/phpoffice/phpexcel/Classes/PHPExcel/Cell.php");
+
+    // VCS internals: object blobs are binary noise by the thousand.
+    low("/home/u/repo/.git/objects/ab/cdef1234567890");
+    low("/home/u/repo/.git/modules/sub/n/git-cli.exe");
+
+    // Windows system junk (image paths are normalised to forward slashes).
+    low("C:/Users/X/Desktop/desktop.ini");
+    low("C:/Users/X/AppData/Roaming/Microsoft/Windows/Desktop.ini");
+    low("D:/data/Thumbs.db");
+    low("C:/Users/X/AppData/Local/Microsoft/Windows/Explorer/thumbcache_256.db");
+    low("C:/pagefile.sys");
+    low("C:/hiberfil.sys");
+    low("C:/swapfile.sys");
+    low("C:/Windows/SoftwareDistribution/Download/7a2b/x.dll");
+    low("C:/Windows/WinSxS/amd64_microsoft-windows-servicing.dll");
+    low("C:/Users/X/AppData/Local/Microsoft/Windows/INetCache/IE/abc.htm");
+    low("C:/Users/X/AppData/Local/Temp/tmpA1B2/chrome_installer.exe");
+    low("D:/documents/$RECYCLE.BIN/S-1-5-18/$I3X2F.txt");
+
+    // Editor / office droppings inside user areas.
+    low("/home/u/reports/.DS_Store");
+    low("/home/u/.report.txt.swp");
+    low("/etc/nginx/.nginx.conf.swp");
+    low("/home/u/.main.py.swo");
+    low("/home/u/contract.docx~");
+    low("/home/u/.~lock.报表.xlsx#");
+
+    // Package-manager bookkeeping whose DIRECTORY name contains credential
+    // words: basename-scoped credential matching must not promote these.
+    low("/var/lib/yum/yumdb/p/c9825339/passwd-0.79-4.el7/checksum_data");
+    low("/var/lib/yum/yumdb/s/839fb8a4/shadow-utils-4.1.5/reason");
+    low("/var/lib/dnf/history/db/version");
+
+    // Distro content trees: locale catalogs repeat passwd.mo per language,
+    // doc trees carry sample.sudoers, /usr/lib holds kpasswd.xml and
+    // libuser_shadow.so — credential words in the basename, never credentials.
+    low("/usr/share/locale/zh_CN/LC_MESSAGES/passwd.mo");
+    low("/usr/share/locale/bs/LC_MESSAGES/shadow.mo");
+    low("/usr/share/doc/sudo-1.8.6p7/sample.sudoers");
+    low("/usr/share/doc/wget-1.14/passwd");
+    low("/usr/lib/firewalld/services/kpasswd.xml");
+    low("/usr/lib64/libuser/libuser_shadow.so");
+    low("/usr/include/gshadow.h");
+    low("/usr/include/shadow.h");
+    low("/www/server/panel/pyenv/lib/python3.7/site-packages/future/backports/test/keycert.passwd.pem");
+    low("/www/wwwroot/jijin/vendor/phpoffice/phpexcel/Classes/PHPExcel/Worksheet/Drawing/Shadow.php");
+
+    // Compound binary names are executables, not credential data.
+    low("/usr/bin/gpasswd");
+    low("/usr/sbin/chpasswd");
+    low("/usr/sbin/saslpasswd2");
+    low("/usr/bin/grub2-mkpasswd-pbkdf2");
+
+    // Container / distro bulk trees.
+    low("/var/lib/docker/overlay2/abc123/diff/usr/bin/python3");
+    low("/var/lib/docker/volumes/data/_data/dump.log");
+    low("/snap/core20/2105/usr/bin/base32");
+    low("/var/lib/snapd/snaps/core20_2105.snap");
+    low("/mnt/disk1/lost+found/#237001");
+}
+
+// Junk must not merely score low: with a full budget of real evidence the
+// truncation must drop every junk family, and the kept evidence must come out
+// in band order (credentials, user artefacts, logs, configs).
+TEST_F(SceneClassifierTest, HeuristicSelectionMixedRealWorld) {
+    using A = forensics::LLMSelectionHeuristicTestAccess;
+
+    std::vector<std::string> evidence = {
+        "/etc/passwd",                                  // 100 credential
+        "/root/.bash_history",                          // 100 credential
+        "/etc/shadow",                                  // 100 credential
+        "/home/alice/contract.pdf",                     // 90 user area
+        "/home/alice/桌面/转账记录.xlsx",                  // 90 user area
+        "/home/u2/chat/wechat.db",                      // 90 user area (IM artefact)
+        "/var/log/secure",                              // 80 log
+        "/var/log/cron",                                // 80 log
+        "/var/log/journal/long/system.journal",         // 80 log
+        "/etc/nginx/nginx.conf",                        // 60 config
+    };
+    std::vector<std::string> junk = {
+        "/root/.npm/_cacache/content-v2/sha512/aa",
+        "/root/.gradle/caches/modules-2/x.jar",
+        "/home/u/repo/.git/objects/aa/1111",
+        "/home/u/repo/.git/objects/bb/2222",
+        "/www/wwwroot/jijin/vendor/phpoffice/Classes/PHPExcel/Cell.php",
+        "/www/wwwroot/jijin/vendor/qiniu/php-sdk/src/Qiniu/Storage.php",
+        "C:/Users/X/Desktop/desktop.ini",
+        "D:/data/Thumbs.db",
+        "C:/pagefile.sys",
+        "/home/u/contract.docx~",
+        "/home/u/.report.txt.swp",
+        "/home/u/.DS_Store",
+        "/var/lib/docker/overlay2/abc/diff/usr/bin/python3",
+        "/snap/core20/2105/usr/bin/base32",
+        "/root/.cache/pip/http/x/y/z.tmp",
+        "/usr/share/man/man3/xcb.3.gz",
+        "/usr/share/doc/gcc/copyright",
+        "/usr/lib/x86_64-linux-gnu/libssl.so.3",
+        "/usr/share/icons/hicolor/48x48/apps/x.png",
+        "/var/lib/snapd/snaps/core20_2105.snap",
+        "C:/Windows/WinSxS/amd64_microsoft-windows-servicing.dll",
+        "C:/Users/X/AppData/Local/Temp/chrome_installer.exe",
+        "C:/Users/X/AppData/Local/Microsoft/Windows/INetCache/IE/abc.htm",
+        "/root/go/pkg/mod/golang.org/x/net@v0.17.0/socket.go",
+        "/root/.cargo/registry/src/index.crates.io/serde/src/lib.rs",
+        "/root/.m2/repository/org/apache/commons.jar",
+        "/srv/app/bower_components/jquery/dist/jquery.min.js",
+        "/var/lib/docker/volumes/data/_data/dump.log",
+        "/mnt/disk1/lost+found/#237001",
+        "/root/virt-sysprep-tmpfile.tmp",
+    };
+
+    std::vector<std::string> files = evidence;
+    files.insert(files.end(), junk.begin(), junk.end());
+    auto picked = A::select(files, evidence.size());
+    ASSERT_EQ(picked.size(), evidence.size());
+    for (const auto& p : picked) {
+        EXPECT_TRUE(std::find(evidence.begin(), evidence.end(), p) != evidence.end())
+            << "junk selected into budget: " << p;
+    }
+    // stable_sort keeps same-band inputs in insertion order: credentials
+    // (passwd, bash_history, shadow), then user artefacts, then logs, config.
+    EXPECT_EQ(picked[0], "/etc/passwd");
+    EXPECT_EQ(picked[1], "/root/.bash_history");
+    EXPECT_EQ(picked[2], "/etc/shadow");
+    EXPECT_EQ(picked[3], "/home/alice/contract.pdf");
+    EXPECT_EQ(picked[4], "/home/alice/桌面/转账记录.xlsx");
+    EXPECT_EQ(picked[5], "/home/u2/chat/wechat.db");
+    EXPECT_EQ(picked[6], "/var/log/secure");
+    EXPECT_EQ(picked[7], "/var/log/cron");
+    EXPECT_EQ(picked[8], "/var/log/journal/long/system.journal");
+    EXPECT_EQ(picked[9], "/etc/nginx/nginx.conf");
+}
+
+// Explicit boundaries: real artefacts sharing substrings with junk rules — or
+// sitting in junk-adjacent bands — must keep their established scores.
+TEST_F(SceneClassifierTest, HeuristicPriorityRealArtefactBoundaries) {
+    using A = forensics::LLMSelectionHeuristicTestAccess;
+
+    // Credential patterns win over every junk marker (basename scope).
+    EXPECT_EQ(A::priority("/root/.cache/pip/passwd.bak"), 100);
+    EXPECT_EQ(A::priority("/home/u/vendor/authorized_keys"), 100);
+    EXPECT_EQ(A::priority("/mnt/usb/backup/etc/shadow"), 100);
+    // Word-bounded basename hits keep 100 for real credential data, including
+    // compound names that need their own pattern (gshadow, opasswd) and
+    // backup/lock suffixed variants.
+    EXPECT_EQ(A::priority("/etc/gshadow"), 100);
+    EXPECT_EQ(A::priority("/etc/gshadow-"), 100);
+    EXPECT_EQ(A::priority("/etc/security/opasswd"), 100);
+    EXPECT_EQ(A::priority("/etc/passwd.lock"), 100);
+    EXPECT_EQ(A::priority("/etc/shadow+"), 100);
+    // Credential word only in a directory name: not a credential artefact.
+    EXPECT_LT(A::priority("/var/lib/yum/yumdb/x/passwd-0.79/checksum_type"), 60);
+    // Executables that merely embed a credential word are not credentials.
+    EXPECT_LT(A::priority("/usr/bin/gpasswd"), 60);
+    EXPECT_LT(A::priority("/usr/sbin/saslpasswd2"), 60);
+    // IM/browser/mail profile artefacts under user areas stay high (the
+    // user-area rule runs before the profile band; both are keepers).
+    EXPECT_GE(A::priority("/home/u2/chat/wechat.db"), 75);
+    EXPECT_GE(A::priority("/root/.mozilla/firefox/x.default/places.sqlite"), 75);
+    EXPECT_GE(A::priority("/users/john/Mail/INBOX"), 75);
+    // Plain databases, configs, logs, docs keep their bands.
+    EXPECT_EQ(A::priority("/var/lib/mysql/app/users.db"), 70);
+    EXPECT_EQ(A::priority("/home/alice/contract.pdf"), 90);
+    EXPECT_EQ(A::priority("/var/log/secure"), 80);
+    EXPECT_EQ(A::priority("/etc/nginx/nginx.conf"), 60);
+    EXPECT_EQ(A::priority("/www/wwwroot/jijin/application/index/view/user/login.html"), 30);
+    // A document whose name merely contains a junk substring is not junk:
+    // the vendor marker carries its path separator.
+    EXPECT_EQ(A::priority("/home/u/Documents/vendor-audit-notes.txt"), 90);
 }
 
 TEST_F(SceneClassifierTest, WindowsAppDataWildcardMatch) {

@@ -538,9 +538,16 @@ std::vector<std::string> LLMAnalysisService::getFilesFromDatabase(const std::str
 }
 
 int LLMAnalysisService::forensicPathPriority(const std::string& path) {
+    // Key-material filenames are data whatever directory they sit in: an
+    // authorized_keys copy inside a vendored tree is still evidence.
+    static const std::vector<std::string> keyFilePatterns = {
+        "authorized_keys", "known_hosts", "id_rsa", "id_ed25519"};
     static const std::vector<std::string> credPatterns = {
-        "shadow", "passwd", "authorized_keys", "known_hosts", "id_rsa", "id_ed25519",
-        ".bash_history", ".zsh_history", "sh_history", "history.db", "sudoers"};
+        "shadow", "passwd",
+        ".bash_history", ".zsh_history", "sh_history", "history.db", "sudoers",
+        // compound names the word-boundary check below cannot reach via the
+        // bare words ("gshadow" has g before shadow, "opasswd" an o before passwd)
+        "gshadow", "opasswd"};
     static const std::vector<std::string> highExt = {
         ".log", ".db", ".sqlite", ".sqlite3", ".md", ".txt", ".json", ".xml",
         ".csv", ".conf", ".cfg", ".ini", ".yaml", ".yml", ".sh", ".py", ".pdf",
@@ -550,23 +557,93 @@ int LLMAnalysisService::forensicPathPriority(const std::string& path) {
     lower.reserve(path.size());
     for (char c : path) lower += static_cast<char>(::tolower(static_cast<unsigned char>(c)));
 
-    // Credentials / histories / access artefacts: top priority
+    // Distro-owned content trees never hold a credential data file, yet their
+    // basenames are full of the words above (locale catalogs passwd.mo in 30+
+    // languages, yumdb package dirs, firewalld kpasswd.xml, sample.sudoers).
+    // Checked before the credential rule: junk wins over credentials here.
+    static const std::vector<std::string> distroJunkTrees = {
+        "/usr/share/", "/usr/lib", "/usr/include", "/var/lib/yum", "/var/lib/dnf",
+        "/var/lib/docker", "/var/lib/snapd", "/snap/", "/lost+found",
+    };
+    const std::size_t lastSlashEarly = lower.find_last_of('/');
+    const std::string baseEarly =
+        (lastSlashEarly == std::string::npos) ? lower : lower.substr(lastSlashEarly + 1);
+    for (const auto& p : keyFilePatterns) {
+        if (baseEarly.find(p) != std::string::npos) return 100;
+    }
+    for (const auto& p : distroJunkTrees) {
+        if (lower.find(p) != std::string::npos) return 5;
+    }
+    // Dependency trees same as above: a credential word inside site-packages or
+    // vendor/ is a code identifier or test fixture (keycert.passwd.pem,
+    // Cython/Shadow.py), never a credential data file. User caches (.cache/)
+    // stay credential-first — exported credentials do land in caches.
+    static const std::vector<std::string> dependencyTreeMarkers = {
+        "__pycache__", "site-packages", "node_modules", "vendor/",
+        "bower_components", ".git/objects", ".git/modules",
+    };
+    for (const auto& p : dependencyTreeMarkers) {
+        if (lower.find(p) != std::string::npos) return 5;
+    }
+    // Credentials / histories / access artefacts: top priority. Matched on the
+    // basename only, and the hit must be word-bounded: directory-name and
+    // compound-binary hits (yumdb .../passwd-0.79.../checksum_type, gpasswd,
+    // saslpasswd2) are bookkeeping or executables, not credential data.
+    const std::size_t lastSlash = lower.find_last_of('/');
+    const std::string basename =
+        (lastSlash == std::string::npos) ? lower : lower.substr(lastSlash + 1);
+    auto wordBoundedAt = [&lower](std::size_t pos, std::size_t len) {
+        const bool before = (pos == 0) ||
+            !::isalnum(static_cast<unsigned char>(lower[pos - 1]));
+        const std::size_t end = pos + len;
+        const bool after = (end >= lower.size()) ||
+            !::isalnum(static_cast<unsigned char>(lower[end]));
+        return before && after;
+    };
+    const std::size_t baseStart =
+        (lastSlash == std::string::npos) ? 0 : lastSlash + 1;
     for (const auto& p : credPatterns) {
-        if (lower.find(p) != std::string::npos) return 100;
+        std::size_t at = basename.find(p);
+        while (at != std::string::npos) {
+            if (wordBoundedAt(baseStart + at, p.size())) return 100;
+            at = basename.find(p, at + 1);
+        }
     }
-    // Package-manager / browser cache blobs are bulk noise even under /root or
-    // /home. Scored here, before the user-area rule below, otherwise every pip
-    // http-cache *.tmp inherits 90 and eats the smart-selection budget.
-    if (lower.find(".cache/") != std::string::npos ||
-        lower.find("/var/cache/") != std::string::npos ||
-        lower.find("__pycache__") != std::string::npos ||
-        lower.find("site-packages") != std::string::npos) {
-        return 5;
+    // Bulk-junk markers: package-manager caches, vendored dependency trees,
+    // VCS internals, Windows system droppings, container/distro bulk. These
+    // are noise even under /root or /home and are scored before the user-area
+    // rule below, otherwise they inherit 90 and eat the smart-selection
+    // budget. Marker notes: "vendor/" carries its separator so an ordinary
+    // document named vendor-audit-notes.txt stays user data; ".gradle" has no
+    // separator because the dir is dot-prefixed already.
+    static const std::vector<std::string> junkMarkers = {
+        // caches & package-manager stores (dependency trees are checked
+        // earlier, before the credential rule)
+        ".cache/", "/var/cache/",
+        ".npm/", "_cacache", ".yarn/", ".pnpm-store", ".cargo/registry",
+        ".m2/repository", ".gradle", "go/pkg/mod",
+        // windows system junk
+        "desktop.ini", "thumbs.db", "thumbcache", "pagefile.sys", "hiberfil.sys",
+        "swapfile.sys", "$recycle.bin", "inetcache", "softwaredistribution",
+        "winsxs", "appdata/local/temp", "appdata\\local\\temp",
+        // container / distro bulk trees
+        "/var/lib/docker", "/var/lib/snapd", "/snap/", "/lost+found",
+        "/var/lib/yum", "/var/lib/dnf",
+    };
+    for (const auto& p : junkMarkers) {
+        if (lower.find(p) != std::string::npos) return 5;
     }
-    // Temp-file suffixes (pip cache chunks etc.) are the same noise class.
-    if (lower.size() >= 4 && lower.compare(lower.size() - 4, 4, ".tmp") == 0) {
-        return 5;
+    // Temp / backup / editor droppings: suffix- and prefix-shaped junk.
+    static const std::vector<std::string> junkSuffixes = {".tmp", ".swp", ".swo"};
+    for (const auto& s : junkSuffixes) {
+        if (lower.size() >= s.size() &&
+            lower.compare(lower.size() - s.size(), s.size(), s) == 0) {
+            return 5;
+        }
     }
+    if (!lower.empty() && lower.back() == '~') return 5;        // emacs/gedit backups
+    if (lower.find(".~lock") != std::string::npos) return 5;    // office lock files
+    if (lower.find(".ds_store") != std::string::npos) return 5; // macOS finder droppings
     // User data areas beat system areas
     if (lower.find("/home/") != std::string::npos || lower.rfind("/home/", 0) == 0 ||
         lower.find("/users/") != std::string::npos || lower.find("/root/") != std::string::npos ||
@@ -599,9 +676,7 @@ int LLMAnalysisService::forensicPathPriority(const std::string& path) {
         return 50;
     }
     // Low-value bulk content
-    if (lower.find("/usr/share/") != std::string::npos ||
-        lower.find("/usr/lib") != std::string::npos ||
-        lower.find("fonts") != std::string::npos ||
+    if (lower.find("fonts") != std::string::npos ||
         lower.find("ssl/certs") != std::string::npos ||
         lower.find("locale") != std::string::npos ||
         lower.find("icons") != std::string::npos ||
