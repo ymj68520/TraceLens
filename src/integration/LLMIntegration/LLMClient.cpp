@@ -239,6 +239,13 @@ LLMResponse LLMClient::chat(const std::vector<ChatMessage>& messages,
         }
         
         lastError_ = "Server error: " + std::to_string(res->status) + " - " + res->body;
+        // Same diagnostic as the transport-error path: non-200 retries were
+        // fully silent, which made slow-selection forensics (e.g. a 29-minute
+        // smart selection with zero failure logs) impossible to attribute.
+        std::cerr << "[LLMClient] " << config_.model << " POST " << config_.endpoint
+                  << " returned " << res->status << " (attempt " << (retries + 1)
+                  << "/" << (config_.maxRetries + 1) << ", body=" << requestBody.size()
+                  << " bytes, resp=" << res->body.substr(0, 200) << ")" << std::endl;
         retries++;
         if (retries <= config_.maxRetries) {
             std::this_thread::sleep_for(std::chrono::milliseconds(500 * retries));
