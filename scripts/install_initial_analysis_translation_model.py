@@ -40,7 +40,9 @@ def install() -> None:
         temp = Path(temp_name)
         archive = temp / "model.argosmodel"
         digest = hashlib.sha256()
-        with urllib.request.urlopen(URL, timeout=60) as response, archive.open("wb") as output:
+        # argos-net.com rejects the default Python-urllib user agent with 403.
+        request = urllib.request.Request(URL, headers={"User-Agent": "tracelens-setup"})
+        with urllib.request.urlopen(request, timeout=60) as response, archive.open("wb") as output:
             while chunk := response.read(1024 * 1024):
                 digest.update(chunk)
                 output.write(chunk)

@@ -1,10 +1,31 @@
 #!/bin/bash
-# ForensicsProject - One-click Dependency Setup
-# Installs all C++ system libraries, Java 21, Neo4j, Redis, TSK, Crow and the
-# Aliyun OSS SDK, sets up the Python venv, and builds the project.
+# TraceLens - One-click setup: dependencies + build + runtime configuration.
+# When this script finishes, the system is ready to start:
+#   ./scripts/start_all_services.sh      (or: make start, or: ./run.sh --no-build)
+#
+# What it does:
+#   1. Bootstraps .env from .env.example (generated secrets) when missing
+#   2. Installs system packages (apt): C++ libs, TSK deps, Redis, Neo4j, PostgreSQL
+#   3. Installs Java 21 + Neo4j; ensures Redis/Neo4j/PostgreSQL are running and
+#      provisions the DATABASE_URL role/database for the distributed C/S server
+#   4. Builds The Sleuth Kit, Crow, and the vendored Aliyun OSS SDK
+#   5. Creates the Python venv (both requirements files + large optional wheels)
+#   6. Builds the C++ server and the web frontend (synced to build/web/dist,
+#      from where the C++ server serves the SPA and proxies /python/*)
+#   7. Downloads the local CPU models by default (checksum-pinned, tolerant of
+#      network failure): Argos en_zh 1.9 EN→ZH translation (OPUS-MT via
+#      CTranslate2) and SenseVoice int8 + silero VAD audio transcription
 #
 # Usage:
 #   chmod +x setup.sh && ./setup.sh
+#   ./setup.sh --start     # also start all services when setup completes
+#
+# Notes:
+#   - Fresh clone on a host where the Git LFS fixture server is unreachable:
+#     clone with GIT_LFS_SKIP_SMUDGE=1 (LFS objects are test data only, the
+#     build and all services run without them).
+#   - Without root, libarchive-dev may be substituted by a conda libarchive
+#     (pkg-config + linker -L/-rpath) matching the CMake lookup.
 
 set -eo pipefail
 
@@ -24,6 +45,18 @@ info()  { echo -e "${BLUE}➤ $*${NC}"; }
 ok()    { echo -e "${GREEN}✓ $*${NC}"; }
 warn()  { echo -e "${YELLOW}⚠ $*${NC}"; }
 fail()  { echo -e "${RED}✗ $*${NC}"; exit 1; }
+
+# ── Command-line arguments ────────────────────────────────────────────────────
+START_SERVICES=0
+for arg in "$@"; do
+    case "$arg" in
+        --start) START_SERVICES=1 ;;
+        -h|--help)
+            sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'
+            exit 0 ;;
+        *) echo "未知参数: $arg（用 --help 查看用法）"; exit 1 ;;
+    esac
+done
 
 # CMake caches absolute source paths. Reusing a build directory after moving or
 # copying the repository otherwise fails before CMake can regenerate it.
@@ -45,6 +78,42 @@ prepare_cmake_build_dir() {
     fi
 }
 
+# ------------------------------------------------------------------------
+# Runtime configuration: .env
+# The C++ ConfigManager, both Python services, and every start script read
+# the root .env (gitignored). Bootstrap it from .env.example on a fresh
+# clone so setup truly ends in a runnable system, with real secrets
+# generated for the placeholders. An existing .env is never touched.
+# ------------------------------------------------------------------------
+ENV_FILE="$PROJECT_ROOT/.env"
+if [ -f "$ENV_FILE" ]; then
+    echo "Using existing .env"
+else
+    if [ ! -f "$PROJECT_ROOT/.env.example" ]; then
+        warn "Neither .env nor .env.example present — services will run on built-in defaults"
+    else
+        gen_hex() {
+            openssl rand -hex "$1" 2>/dev/null \
+                || od -An -N"$1" -tx1 /dev/urandom | tr -d ' \n'
+        }
+        cp "$PROJECT_ROOT/.env.example" "$ENV_FILE"
+        GENERATED_SECRET="$(gen_hex 32)"
+        GENERATED_NEO4J_PW="$(gen_hex 12)"
+        GENERATED_PG_PW="$(gen_hex 12)"
+        if [ -n "$GENERATED_SECRET" ]; then
+            sed -i "s|^JWT_SECRET_KEY=.*|JWT_SECRET_KEY=${GENERATED_SECRET}|" "$ENV_FILE"
+        fi
+        if [ -n "$GENERATED_NEO4J_PW" ]; then
+            sed -i "s|^NEO4J_PASSWORD=.*|NEO4J_PASSWORD=${GENERATED_NEO4J_PW}|" "$ENV_FILE"
+        fi
+        if [ -n "$GENERATED_PG_PW" ]; then
+            sed -i "s|^DATABASE_URL=postgresql://postgres:change-me@|DATABASE_URL=postgresql://postgres:${GENERATED_PG_PW}@|" "$ENV_FILE"
+        fi
+        ok ".env created from .env.example (JWT / Neo4j / PostgreSQL secrets generated)"
+        warn "Review $ENV_FILE: the LLM endpoints default to a LAN LM Studio host (LLM_TEXT_BASE_URL / LLM_VISION_BASE_URL / GRAPHITI_LLM_BASE_URL) — point them at a reachable OpenAI-compatible server to enable AI features"
+    fi
+fi
+
 # Optional download proxy for flaky networks. Set PIP_PROXY in the environment
 # or .env (e.g. PIP_PROXY=http://192.168.31.226:7897); it is exported as
 # HTTP_PROXY/HTTPS_PROXY so pip/git/curl route through it.
@@ -62,7 +131,7 @@ fi
 # ========================================================================
 # Step 0: Setup NVM and Node.js (LTS, with npm 10+)
 # ========================================================================
-info "Step 0/8: Checking NVM and Node.js..."
+info "Step 0/10: Checking NVM and Node.js..."
 
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 
@@ -105,7 +174,7 @@ fi
 
 echo -e "${CYAN}${BOLD}"
 echo "╔════════════════════════════════════════════════════════════╗"
-echo "║       ForensicsProject - Dependency Setup Script           ║"
+echo "║              TraceLens - Setup Script                      ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
@@ -191,17 +260,63 @@ read_dotenv_value() {
     printf '%s' "$value"
 }
 
+# ------------------------------------------------------------------------
+# libarchive discovery fallback.
+# CMake requires libarchive through pkg-config (Android TAR/7z/AB container
+# reader).  When libarchive-dev is not installed and cannot be (no root), a
+# conda installation ships a compatible one: point pkg-config at its .pc file
+# and hand CMake -L/-rpath so linking and runtime both resolve that library
+# instead of the older system runtime (libarchive.so.13 exists on most
+# distros but the linker needs the unversioned .so from the -dev package).
+# Idempotent; a no-op whenever a system libarchive-dev is discoverable.
+# ------------------------------------------------------------------------
+LIBARCHIVE_CMAKE_FLAGS=()
+configure_libarchive_fallback() {
+    if [ "${#LIBARCHIVE_CMAKE_FLAGS[@]}" -gt 0 ]; then
+        return 0
+    fi
+    if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists libarchive 2>/dev/null; then
+        local pc_libdir
+        pc_libdir="$(pkg-config --variable=libdir libarchive 2>/dev/null || true)"
+        case "$pc_libdir" in
+            /usr/lib*|/lib*|/usr/local/lib*)
+                ok "libarchive found via pkg-config (${pc_libdir:-system})"
+                ;;
+            *)
+                # Non-default prefix (e.g. a user-exported PKG_CONFIG_PATH):
+                # the bare -larchive needs -L/-rpath to resolve at link and
+                # run time.
+                LIBARCHIVE_CMAKE_FLAGS+=("-DCMAKE_EXE_LINKER_FLAGS=-L$pc_libdir -Wl,-rpath,$pc_libdir")
+                warn "libarchive lives outside the default linker path ($pc_libdir); adding -L/-rpath"
+                ;;
+        esac
+        return 0
+    fi
+    local conda_root
+    for conda_root in "$HOME/anaconda3" "$HOME/miniconda3" "$HOME/miniforge3" "/opt/anaconda3" "/opt/miniconda3"; do
+        if [ -f "$conda_root/lib/pkgconfig/libarchive.pc" ]; then
+            export PKG_CONFIG_PATH="$conda_root/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+            LIBARCHIVE_CMAKE_FLAGS+=("-DCMAKE_EXE_LINKER_FLAGS=-L$conda_root/lib -Wl,-rpath,$conda_root/lib")
+            warn "libarchive-dev not installed; using $conda_root's libarchive (pkg-config + linker -L/-rpath)"
+            return 0
+        fi
+    done
+    return 1
+}
+
 init_privileges
 
 # ========================================================================
-# Step 1/8: Install system packages (apt)
+# Step 1/10: Install system packages (apt)
 # ========================================================================
-info "Step 1/8: Installing system packages via apt..."
+info "Step 1/10: Installing system packages via apt..."
 
 APT_PACKAGES=(
     # Build tools
     build-essential cmake pkg-config git wget gnupg software-properties-common
     ca-certificates
+    # Download proxy health checks and port cleanup in the start scripts
+    curl lsof
     # Python runtime and venv support (python3 -m venv needs the distro package)
     python3 python3-venv
     # Core libraries
@@ -230,7 +345,8 @@ APT_PACKAGES=(
     libcurl4-openssl-dev
     # ZIP
     libzip-dev
-    # TAR/7z Android logical sources (libarchive, BSD-style license)
+    # TAR/7z Android logical sources (libarchive, BSD-style license;
+    # REQUIRED by this branch's CMake)
     libarchive-dev
     # Word document parsing
     antiword
@@ -242,6 +358,10 @@ APT_PACKAGES=(
     libmysqlclient-dev libpq-dev
     # Redis (job storage for IngestionJobManager)
     redis-server redis-tools
+    # PostgreSQL (distributed C/S server database, DATABASE_URL). Optional at
+    # setup level: only the C/S server needs it, and the provisioning below
+    # degrades to warnings — a sudo-less machine must still be able to build.
+    postgresql postgresql-client
 )
 
 # These packages enable optional features, but the project can still build and
@@ -252,6 +372,8 @@ OPTIONAL_APT_PACKAGES=(
     ffmpeg
     redis-server
     redis-tools
+    postgresql
+    postgresql-client
 )
 
 is_optional_apt_package() {
@@ -299,6 +421,16 @@ else
             fi
         done
 
+        # libarchive-dev has a no-root fallback (a conda libarchive via
+        # pkg-config + -L/-rpath, see configure_libarchive_fallback); don't
+        # hard-fail a sudo-less setup when that fallback is available.
+        if [ ${#MISSING_REQUIRED[@]} -gt 0 ] \
+            && printf '%s\n' "${MISSING_REQUIRED[@]}" | grep -qx 'libarchive-dev' \
+            && configure_libarchive_fallback; then
+            MISSING_REQUIRED=($(printf '%s\n' "${MISSING_REQUIRED[@]}" | grep -vx 'libarchive-dev' || true))
+            warn "Continuing without libarchive-dev; the conda libarchive will be used at link time"
+        fi
+
         if [ ${#MISSING_REQUIRED[@]} -gt 0 ]; then
             fail "Required system packages are missing and sudo is unavailable: ${MISSING_REQUIRED[*]}. Install them with: sudo apt-get install ${MISSING_REQUIRED[*]}"
         fi
@@ -326,9 +458,9 @@ else
 fi
 
 # ========================================================================
-# Step 2/8: Install Java 21 and Neo4j (if not present)
+# Step 2/10: Java 21 + Neo4j, then PostgreSQL
 # ========================================================================
-info "Step 2/8: Checking Java 21 and Neo4j..."
+info "Step 2/10: Checking Java 21 and Neo4j..."
 
 JAVA_PACKAGES=(openjdk-21-jre-headless openjdk-21-jdk)
 MISSING_JAVA=()
@@ -433,10 +565,102 @@ if dpkg -s neo4j &>/dev/null; then
     fi
 fi
 
+# ------------------------------------------------------------------------
+# PostgreSQL — the distributed C/S server (:8091) hard-depends on the
+# DATABASE_URL from .env. Ensure the server is running and provision the
+# role/database named there so the C/S server works right after setup.
+# Best effort: any failure degrades to a warning because the legacy
+# httpserver (:8090) and the C++ server do not need PostgreSQL.
+# ------------------------------------------------------------------------
+info "Ensuring PostgreSQL is ready (distributed C/S server database)..."
+if command -v systemctl &>/dev/null && [ "$CAN_ELEVATE" = true ]; then
+    run_root systemctl enable --now postgresql >/dev/null 2>&1 || true
+fi
+if command -v pg_isready >/dev/null 2>&1; then
+    for _ in $(seq 1 15); do
+        pg_isready -h 127.0.0.1 -q 2>/dev/null && break
+        if [ "$CAN_ELEVATE" = true ]; then
+            run_root service postgresql start >/dev/null 2>&1 || true
+        fi
+        sleep 1
+    done
+fi
+
+PG_READY=false
+if command -v pg_isready >/dev/null 2>&1 && pg_isready -h 127.0.0.1 -q 2>/dev/null; then
+    PG_READY=true
+    ok "PostgreSQL is running on 127.0.0.1:5432"
+else
+    warn "PostgreSQL is not responding on 127.0.0.1:5432 — the distributed C/S server will fail to start; the rest of the stack is unaffected"
+fi
+
+if [ "$PG_READY" = true ]; then
+    DB_URL="$(read_dotenv_value DATABASE_URL)"
+    if [ -z "$DB_URL" ]; then
+        warn "DATABASE_URL is not set in .env; configure it before using the distributed C/S server"
+    elif ! command -v python3 >/dev/null 2>&1; then
+        warn "python3 unavailable; cannot parse DATABASE_URL — provision the database manually if needed"
+    elif [ "$CAN_ELEVATE" != true ]; then
+        warn "No root/sudo: skipping PostgreSQL provisioning — create the DATABASE_URL role/database manually if missing"
+    else
+        DB_PARSED="$(python3 - "$DB_URL" <<'PY'
+import sys, urllib.parse as up
+p = up.urlparse(sys.argv[1].strip())
+print("|".join([
+    p.username or "postgres",
+    up.unquote(p.password or ""),
+    p.hostname or "127.0.0.1",
+    str(p.port or 5432),
+    (p.path or "/").lstrip("/") or "tracelens",
+]))
+PY
+)"
+        IFS='|' read -r DB_USER DB_PASS DB_HOST DB_PORT DB_NAME <<< "$DB_PARSED"
+        case "$DB_HOST" in
+            localhost|127.0.0.1|::1)
+                DB_PASS_ESC="${DB_PASS//\'/\'\'}"
+
+                role_exists="$(run_as_user postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" 2>/dev/null || true)"
+                if [ "$role_exists" != "1" ]; then
+                    info "Creating PostgreSQL role '${DB_USER}'..."
+                    if run_as_user postgres psql -c "CREATE ROLE \"${DB_USER}\" LOGIN PASSWORD '${DB_PASS_ESC}'" >/dev/null 2>&1; then
+                        ok "PostgreSQL role '${DB_USER}' created"
+                    else
+                        warn "Could not create PostgreSQL role '${DB_USER}'"
+                    fi
+                elif [ -n "$DB_PASS" ] && ! PGPASSWORD="$DB_PASS" psql -h 127.0.0.1 -p "$DB_PORT" -U "$DB_USER" -d postgres -tAc "SELECT 1" >/dev/null 2>&1; then
+                    # Existing role, but the DATABASE_URL password doesn't work
+                    # (fresh installs ship the role without a password). Align
+                    # the role with .env; never touch a working configuration.
+                    info "Resetting PostgreSQL role '${DB_USER}' password to match DATABASE_URL..."
+                    if run_as_user postgres psql -c "ALTER ROLE \"${DB_USER}\" WITH LOGIN PASSWORD '${DB_PASS_ESC}'" >/dev/null 2>&1; then
+                        ok "PostgreSQL role '${DB_USER}' password aligned with DATABASE_URL"
+                    else
+                        warn "Could not update the '${DB_USER}' password"
+                    fi
+                fi
+
+                db_exists="$(run_as_user postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" 2>/dev/null || true)"
+                if [ "$db_exists" != "1" ]; then
+                    info "Creating PostgreSQL database '${DB_NAME}'..."
+                    if run_as_user postgres createdb -O "$DB_USER" "$DB_NAME" >/dev/null 2>&1; then
+                        ok "PostgreSQL database '${DB_NAME}' created (owner: ${DB_USER})"
+                    else
+                        warn "Could not create PostgreSQL database '${DB_NAME}'"
+                    fi
+                fi
+                ;;
+            *)
+                warn "DATABASE_URL points at ${DB_HOST} — skipping local provisioning; ensure the role/database exist there"
+                ;;
+        esac
+    fi
+fi
+
 # ========================================================================
-# Step 3/8: Install The Sleuth Kit 4.14.0 (if not present)
+# Step 3/10: Install The Sleuth Kit 4.14.0 (if not present)
 # ========================================================================
-info "Step 3/8: Checking The Sleuth Kit (TSK)..."
+info "Step 3/10: Checking The Sleuth Kit (TSK)..."
 
 TSK_LIB="/usr/local/lib/libtsk.so"
 TSK_VERSION="4.14.0"
@@ -471,9 +695,9 @@ else
 fi
 
 # ========================================================================
-# Step 4/8: Install Crow framework (if not present)
+# Step 4/10: Install Crow framework (if not present)
 # ========================================================================
-info "Step 4/8: Checking Crow HTTP framework..."
+info "Step 4/10: Checking Crow HTTP framework..."
 
 CROW_HEADER="/usr/local/include/crow.h"
 if [ -f "$CROW_HEADER" ] || [ -d "/usr/local/include/crow" ]; then
@@ -497,9 +721,9 @@ else
 fi
 
 # ========================================================================
-# Step 5/8: Install Google Test (if not present)
+# Step 5/10: Install Google Test (if not present)
 # ========================================================================
-info "Step 5/8: Checking Google Test..."
+info "Step 5/10: Checking Google Test..."
 
 if pkg-config --exists gtest 2>/dev/null \
     || [ -f "/usr/local/lib/libgtest.a" ] \
@@ -532,9 +756,9 @@ if [ "$CAN_ELEVATE" = true ]; then
 fi
 
 # ========================================================================
-# Step 6/8: Build Aliyun OSS C++ SDK (if not present)
+# Step 6/10: Build Aliyun OSS C++ SDK (if not present)
 # ========================================================================
-info "Step 6/8: Checking Aliyun OSS C++ SDK..."
+info "Step 6/10: Checking Aliyun OSS C++ SDK..."
 
 OSS_SDK_DIR="$PROJECT_ROOT/libs/aliyun-oss-cpp-sdk"
 OSS_SDK_LIB="$OSS_SDK_DIR/build/lib/libalibabacloud-oss-cpp-sdk.a"
@@ -559,9 +783,9 @@ else
 fi
 
 # ========================================================================
-# Step 7/8: Setup Python virtual environment
+# Step 7/10: Setup Python virtual environment
 # ========================================================================
-info "Step 7/8: Setting up Python virtual environment..."
+info "Step 7/10: Setting up Python virtual environment..."
 
 VENV_DIR="$PROJECT_ROOT/python_service/.venv"
 PYTHON_EXEC="$VENV_DIR/bin/python"
@@ -574,6 +798,12 @@ PYTHON_EXEC="$VENV_DIR/bin/python"
 # which broke python_service/server and the tests/unit/ DB/schema tests.
 REQUIREMENTS_HTTPSERVER="$PROJECT_ROOT/python_service/httpserver/requirements.txt"
 REQUIREMENTS_SERVER="$PROJECT_ROOT/python_service/requirements.txt"
+
+# graphiti-core (knowledge graph) needs Python 3.10+.
+PYVER_OK="$(python3 -c 'import sys; print(1 if sys.version_info >= (3, 10) else 0)' 2>/dev/null || echo 0)"
+if [ "$PYVER_OK" != "1" ]; then
+    fail "Python >= 3.10 is required (graphiti-core dependency). Found: $(python3 --version 2>&1). Install a newer python3 and re-run setup.sh."
+fi
 
 ensure_venv_pip() {
     if ! "$PYTHON_EXEC" -m pip --version &>/dev/null; then
@@ -662,16 +892,42 @@ ensure_large_python_package "plyvel"             plyvel
 ensure_large_python_package "pillow-heif"        pillow_heif
 ensure_large_python_package "rawpy"              rawpy
 ensure_large_python_package "pydicom"            pydicom
+# CPU model inference engines (versions pinned to match requirements.txt):
+# CTranslate2 runs the Argos en_zh 1.9 OPUS-MT translation model,
+# sherpa-onnx 1.13.8 runs the SenseVoice STT + silero VAD models.
+ensure_large_python_package "ctranslate2==4.8.2"   ctranslate2
+ensure_large_python_package "sentencepiece==0.2.2" sentencepiece
+ensure_large_python_package "sherpa-onnx==1.13.8"  sherpa_onnx
 
-# The read-only Initial Analysis Chinese overlay uses a separate offline
-# translation model. Keep setup usable without network; a missing model only
-# disables translation, never the forensic pipeline or original snapshot.
-if [ "${INSTALL_INITIAL_ANALYSIS_TRANSLATION_MODEL:-0}" != "0" ]; then
-    info "Installing offline Initial Analysis EN-ZH model (if missing)..."
+# ------------------------------------------------------------------------
+# Local CPU models (checksum-pinned installers, tolerant of network failure).
+# Both are optional at runtime — a missing model disables one overlay feature,
+# never the forensic pipeline — but they are what makes the EN→ZH reading aid
+# and audio/video transcription work out of the box, so install by default.
+# ------------------------------------------------------------------------
+# The Initial Analysis Chinese overlay translates the frozen English LLM
+# output on CPU: Argos en_zh 1.9 (OPUS-MT weights in CTranslate2 format,
+# ~67 MB) into build/models/translate-en_zh-1_9.
+INSTALL_TRANSLATION_MODEL="${INSTALL_INITIAL_ANALYSIS_TRANSLATION_MODEL:-$(read_dotenv_value INSTALL_INITIAL_ANALYSIS_TRANSLATION_MODEL)}"
+if [ "${INSTALL_TRANSLATION_MODEL:-1}" != "0" ]; then
+    info "Installing offline EN-ZH translation model (Argos en_zh 1.9, ~67 MB)..."
     if "$PYTHON_EXEC" "$PROJECT_ROOT/scripts/install_initial_analysis_translation_model.py"; then
-        ok "Offline Initial Analysis translation model ready"
+        ok "Offline EN-ZH translation model ready (build/models/translate-en_zh-1_9)"
     else
         warn "Offline EN-ZH model unavailable; Initial Analysis will show its original snapshot until the installer succeeds"
+    fi
+fi
+
+# Audio STT: SenseVoice-small int8 (~239 MB) + silero VAD. The sherpa-onnx
+# wheel is covered by the large-packages block above; this fetches the model
+# files into python_service/models/audio.
+INSTALL_STT_MODEL="${INSTALL_AUDIO_STT_MODEL:-$(read_dotenv_value INSTALL_AUDIO_STT_MODEL)}"
+if [ "${INSTALL_STT_MODEL:-1}" != "0" ]; then
+    info "Installing audio STT models (SenseVoice int8 ~239 MB + silero VAD)..."
+    if "$PYTHON_EXEC" "$PROJECT_ROOT/scripts/install_audio_stt_model.py"; then
+        ok "Audio STT models ready (python_service/models/audio)"
+    else
+        warn "Audio STT models unavailable; audio/video-soundtrack transcription will be skipped until the installer succeeds"
     fi
 fi
 
@@ -708,9 +964,9 @@ else
 fi
 
 # ========================================================================
-# Step 8/8: Build C++ project
+# Step 8/10: Build C++ project
 # ========================================================================
-info "Step 8/8: Building C++ project..."
+info "Step 8/10: Building C++ project..."
 
 # Build vendored Alibaba OSS SDK first (required by forensic_analyzer)
 OSS_BUILD_DIR="$PROJECT_ROOT/libs/aliyun-oss-cpp-sdk/build"
@@ -729,22 +985,38 @@ BUILD_DIR="$PROJECT_ROOT/build"
 prepare_cmake_build_dir "$BUILD_DIR" "$PROJECT_ROOT"
 cd "$BUILD_DIR"
 
+# Resolve libarchive before configuring: no-op when the system -dev package is
+# discoverable, otherwise exports the conda pkg-config path and linker flags.
+if ! configure_libarchive_fallback; then
+    warn "libarchive was not found — CMake configure will fail until libarchive-dev is installed or a conda libarchive is available"
+fi
+
 info "  Running cmake..."
 CMAKE_CONFIG_LOG="$BUILD_DIR/cmake-configure.log"
-if ! cmake .. -DCMAKE_BUILD_TYPE=Release >"$CMAKE_CONFIG_LOG" 2>&1; then
+CMAKE_ARGS=(-DCMAKE_BUILD_TYPE=Release)
+# setup.sh builds the frontend itself in Step 9; keep npm out of the ALL
+# target so a later plain `make build` cannot trigger a full npm install/build.
+CMAKE_ARGS+=(-DBUILD_WEB_FRONTEND=OFF)
+if [ ${#LIBARCHIVE_CMAKE_FLAGS[@]} -gt 0 ]; then
+    CMAKE_ARGS+=("${LIBARCHIVE_CMAKE_FLAGS[@]}")
+fi
+if ! cmake .. "${CMAKE_ARGS[@]}" >"$CMAKE_CONFIG_LOG" 2>&1; then
     tail -100 "$CMAKE_CONFIG_LOG"
     fail "CMake configuration failed. Full log: $CMAKE_CONFIG_LOG"
 fi
 grep -E "(error|warning:|Found|Configuring|SQLCipher)" "$CMAKE_CONFIG_LOG" || true
 
 info "  Building main target ($(nproc) threads)..."
-# Build only the main target; web_frontend is handled separately below
-CPP_BUILD_LOG="$BUILD_DIR/forensic_analyzer-build.log"
-if ! cmake --build . --target forensic_analyzer -j$(nproc) >"$CPP_BUILD_LOG" 2>&1; then
-    tail -100 "$CPP_BUILD_LOG"
-    fail "C++ build failed. Full log: $CPP_BUILD_LOG"
+# Build only the main target: web_frontend is handled in Step 9, and the
+# release branch's test targets are known to fail to link (tests/CMakeLists.txt
+# misses MediaAnalysisProxy.cpp for four LLM test targets) — the main binary
+# and all services are unaffected.
+CMAKE_BUILD_LOG="$BUILD_DIR/forensic_analyzer-build.log"
+if ! cmake --build . --target forensic_analyzer -j$(nproc) >"$CMAKE_BUILD_LOG" 2>&1; then
+    tail -100 "$CMAKE_BUILD_LOG"
+    fail "C++ build failed. Full log: $CMAKE_BUILD_LOG"
 fi
-tail -20 "$CPP_BUILD_LOG"
+tail -20 "$CMAKE_BUILD_LOG"
 
 if [ -x "$BUILD_DIR/forensic_analyzer" ]; then
     if ldd "$BUILD_DIR/forensic_analyzer" 2>/dev/null | grep -q "not found"; then
@@ -757,16 +1029,27 @@ else
 fi
 
 # ========================================================================
-# Build Web Frontend (optional)
+# Step 9/10: Build Web Frontend (required — the C++ server serves the SPA)
 # ========================================================================
+BUILD_DIR="$PROJECT_ROOT/build"
+
 if [ -d "$PROJECT_ROOT/web" ] && [ -f "$PROJECT_ROOT/web/package.json" ]; then
-    info "Building web frontend..."
+    info "Step 9/10: Building web frontend..."
     cd "$PROJECT_ROOT/web"
     if ! command -v node &>/dev/null || ! command -v npm &>/dev/null; then
         fail "Node.js and npm are required to build the web frontend. Install Node.js 22 or fix the NVM installation, then re-run setup.sh."
     fi
+    # (Re)install when node_modules is missing/broken OR when package-lock.json
+    # is newer than the last install — a branch switch can add dependencies
+    # (e.g. docx-preview) that CMake's npm stamp would not pick up.
+    NEEDS_WEB_INSTALL=0
     if [ ! -d "node_modules" ] || [ ! -x "node_modules/.bin/vite" ]; then
-        info "  Installing web dependencies first..."
+        NEEDS_WEB_INSTALL=1
+    elif [ -f "package-lock.json" ] && [ "package-lock.json" -nt "node_modules/.package-lock.json" ]; then
+        NEEDS_WEB_INSTALL=1
+    fi
+    if [ "$NEEDS_WEB_INSTALL" = "1" ]; then
+        info "  Installing web dependencies..."
         WEB_INSTALL_LOG="$BUILD_DIR/web-frontend-install.log"
         if [ -f "package-lock.json" ]; then
             NPM_INSTALL_COMMAND=(npm ci --silent)
@@ -774,8 +1057,12 @@ if [ -d "$PROJECT_ROOT/web" ] && [ -f "$PROJECT_ROOT/web/package.json" ]; then
             NPM_INSTALL_COMMAND=(npm install --silent)
         fi
         if ! "${NPM_INSTALL_COMMAND[@]}" >"$WEB_INSTALL_LOG" 2>&1; then
-            tail -100 "$WEB_INSTALL_LOG"
-            fail "Web dependency installation failed. Full log: $WEB_INSTALL_LOG"
+            warn "  npm ci failed (lockfile out of sync?); falling back to npm install..."
+            NPM_INSTALL_COMMAND=(npm install --silent)
+            if ! "${NPM_INSTALL_COMMAND[@]}" >"$WEB_INSTALL_LOG" 2>&1; then
+                tail -100 "$WEB_INSTALL_LOG"
+                fail "Web dependency installation failed. Full log: $WEB_INSTALL_LOG"
+            fi
         fi
         tail -3 "$WEB_INSTALL_LOG"
     fi
@@ -785,28 +1072,98 @@ if [ -d "$PROJECT_ROOT/web" ] && [ -f "$PROJECT_ROOT/web/package.json" ]; then
         fail "Web frontend build failed. Full log: $WEB_BUILD_LOG"
     fi
     tail -3 "$WEB_BUILD_LOG"
-    ok "Web frontend built"
+    # The C++ server serves the SPA from <cwd>/web/dist, and the start scripts
+    # run it with cwd=build/. Mirror the CMake web_frontend target: wipe the
+    # destination first so stale hashed chunks cannot accumulate
+    # (copy_directory merges into what is already there otherwise).
+    rm -rf "$BUILD_DIR/web/dist"
+    mkdir -p "$BUILD_DIR/web/dist"
+    cp -r "$PROJECT_ROOT/web/dist/." "$BUILD_DIR/web/dist/"
+    ok "Web frontend built and synced to $BUILD_DIR/web/dist"
+else
+    warn "web/ frontend sources not found — the C++ server will have no SPA to serve"
 fi
 
 cd "$PROJECT_ROOT"
+
+# ========================================================================
+# Step 10/10: Verify the installation is ready to use
+# ========================================================================
+info "Step 10/10: Verifying the installation..."
+
+CPP_PORT="$(read_dotenv_value HTTP_SERVER_PORT)"; CPP_PORT="${CPP_PORT:-8080}"
+PY_PORT="$(read_dotenv_value PYTHON_HTTP_PORT)"; PY_PORT="${PY_PORT:-8090}"
+CS_PORT="$(read_dotenv_value CS_PORT)"; CS_PORT="${CS_PORT:-8091}"
+
+if [ ! -x "$BUILD_DIR/forensic_analyzer" ]; then
+    fail "C++ binary missing: $BUILD_DIR/forensic_analyzer"
+fi
+ok "C++ binary: $BUILD_DIR/forensic_analyzer"
+
+if [ ! -f "$BUILD_DIR/web/dist/index.html" ]; then
+    fail "Web frontend missing: $BUILD_DIR/web/dist/index.html (the C++ server would have no SPA to serve)"
+fi
+ok "Web frontend: $BUILD_DIR/web/dist"
+
+if ! "$PYTHON_EXEC" -c "import fastapi, pydantic" 2>/dev/null; then
+    fail "Python venv unusable (fastapi/pydantic missing): $VENV_DIR"
+fi
+ok "Python venv: $VENV_DIR"
+
+if [ -f "$PROJECT_ROOT/build/models/translate-en_zh-1_9/model/model.bin" ]; then
+    ok "EN-ZH translation model: build/models/translate-en_zh-1_9"
+else
+    warn "EN-ZH translation model missing — Initial Analysis will show the original English snapshot (re-run setup, or set INSTALL_INITIAL_ANALYSIS_TRANSLATION_MODEL=0 to silence)"
+fi
+
+if [ -f "$PROJECT_ROOT/python_service/models/audio/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/model.int8.onnx" ] \
+    && [ -f "$PROJECT_ROOT/python_service/models/audio/silero_vad.onnx" ]; then
+    ok "Audio STT models: python_service/models/audio"
+else
+    warn "Audio STT models missing — audio/video-soundtrack transcription will be skipped (re-run setup, or set INSTALL_AUDIO_STT_MODEL=0 to silence)"
+fi
+
+if command -v redis-cli >/dev/null 2>&1 && redis-cli ping >/dev/null 2>&1; then
+    ok "Redis: running (127.0.0.1:6379)"
+else
+    warn "Redis: not responding — start it (sudo systemctl start redis-server); ingestion jobs will use in-memory storage"
+fi
+
+if curl -fsS --max-time 3 -o /dev/null http://localhost:7474 2>/dev/null; then
+    ok "Neo4j: running (http://localhost:7474)"
+else
+    warn "Neo4j: not responding on 7474 — start it (sudo systemctl start neo4j); knowledge-graph features need it"
+fi
+
+if command -v pg_isready >/dev/null 2>&1 && pg_isready -h 127.0.0.1 -q 2>/dev/null; then
+    ok "PostgreSQL: running (127.0.0.1:5432)"
+else
+    warn "PostgreSQL: not responding — the distributed C/S server (:${CS_PORT}) needs it"
+fi
 
 # ========================================================================
 # Summary
 # ========================================================================
 echo ""
 echo -e "${GREEN}${BOLD}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}${BOLD}║              SETUP COMPLETE SUCCESSFULLY                    ║${NC}"
+echo -e "${GREEN}${BOLD}║              SETUP COMPLETE — READY TO START                ║${NC}"
 echo -e "${GREEN}${BOLD}╚════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "${BOLD}Next steps:${NC}"
-echo -e "  ${CYAN}./scripts/start_all_services.sh${NC}  Start all services"
-echo -e "  ${CYAN}make start${NC}           Same as above (via Makefile)"
-echo -e "  ${CYAN}make cpp${NC}             Start C++ server only"
-echo -e "  ${CYAN}make python${NC}          Start Python service only"
+echo -e "  ${CYAN}./scripts/start_all_services.sh${NC}  Start all services (foreground; Ctrl+C stops them)"
+echo -e "  ${CYAN}./run.sh --no-build${NC}              Same stack with rotated logs (daily entry point)"
+echo -e "  ${CYAN}make start${NC}                       Alias of start_all_services.sh"
+echo -e "  ${CYAN}./setup.sh --start${NC}               (next time) setup and start in one step"
 echo ""
-echo -e "${BOLD}Service endpoints:${NC}"
-echo -e "  C++ HTTP Server:    ${BLUE}http://localhost:8080${NC}"
-echo -e "  Python FastAPI:     ${BLUE}http://localhost:8090${NC}"
-echo -e "  Web Frontend:       ${BLUE}http://localhost:8080/${NC}"
-echo -e "  Neo4j Browser:      ${BLUE}http://localhost:7474${NC}"
+echo -e "${BOLD}Service endpoints (from .env):${NC}"
+echo -e "  Web UI (SPA + /python gateway): ${BLUE}http://localhost:${CPP_PORT}/${NC}"
+echo -e "  C++ API docs:                   ${BLUE}http://localhost:${CPP_PORT}/api/docs${NC}"
+echo -e "  Python service:                 ${BLUE}http://localhost:${PY_PORT}/docs${NC}"
+echo -e "  Distributed C/S (PostgreSQL):   ${BLUE}http://localhost:${CS_PORT}/docs${NC}"
+echo -e "  Neo4j Browser:                  ${BLUE}http://localhost:7474${NC}"
 echo ""
+
+if [ "$START_SERVICES" = "1" ]; then
+    info "Starting all services (--start)..."
+    exec "$PROJECT_ROOT/scripts/start_all_services.sh"
+fi
