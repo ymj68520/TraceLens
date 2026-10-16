@@ -1,0 +1,87 @@
+{
+  "artifact_version": "RCA2A10FinalDecisionReportV1",
+  "evaluation_axes": {
+    "contract_reliability_result": "Control 0/8 vs Treatment 0/8",
+    "cost_result": "Treatment prompt tokens: 0, output tokens: 0",
+    "evidence_integrity_result": "EVIDENCE_INTEGRITY_VERIFIED",
+    "semantic_adequacy_result": "Control 0/8 vs Treatment 0/8"
+  },
+  "experiment_id": "rca2a10-cross-case-vocabulary-comparison",
+  "mandatory_stop": true,
+  "overall_disposition": "EXPERIMENT_BLOCKED",
+  "production_candidate_recommendation": "INSUFFICIENT_EVIDENCE",
+  "scenario_summary": {
+    "t2-identity-trap": {
+      "both_invalid": 0,
+      "both_semantically_adequate": 0,
+      "both_valid": 0,
+      "contract_outcomes": [
+        "INCOMPLETE_PAIR",
+        "INCOMPLETE_PAIR"
+      ],
+      "control_contract_wins": 0,
+      "control_semantic_wins": 0,
+      "pairs_count": 2,
+      "semantic_outcomes": [
+        "SEMANTIC_COMPARISON_UNAVAILABLE",
+        "SEMANTIC_COMPARISON_UNAVAILABLE"
+      ],
+      "treatment_contract_wins": 0,
+      "treatment_semantic_wins": 0
+    },
+    "t2-no-evidence": {
+      "both_invalid": 0,
+      "both_semantically_adequate": 0,
+      "both_valid": 0,
+      "contract_outcomes": [
+        "INCOMPLETE_PAIR",
+        "INCOMPLETE_PAIR"
+      ],
+      "control_contract_wins": 0,
+      "control_semantic_wins": 0,
+      "pairs_count": 2,
+      "semantic_outcomes": [
+        "SEMANTIC_COMPARISON_UNAVAILABLE",
+        "SEMANTIC_COMPARISON_UNAVAILABLE"
+      ],
+      "treatment_contract_wins": 0,
+      "treatment_semantic_wins": 0
+    },
+    "t2-report-citation": {
+      "both_invalid": 0,
+      "both_semantically_adequate": 0,
+      "both_valid": 0,
+      "contract_outcomes": [
+        "INCOMPLETE_PAIR",
+        "INCOMPLETE_PAIR"
+      ],
+      "control_contract_wins": 0,
+      "control_semantic_wins": 0,
+      "pairs_count": 2,
+      "semantic_outcomes": [
+        "SEMANTIC_COMPARISON_UNAVAILABLE",
+        "SEMANTIC_COMPARISON_UNAVAILABLE"
+      ],
+      "treatment_contract_wins": 0,
+      "treatment_semantic_wins": 0
+    },
+    "t2-temporal-trap": {
+      "both_invalid": 0,
+      "both_semantically_adequate": 0,
+      "both_valid": 0,
+      "contract_outcomes": [
+        "INCOMPLETE_PAIR",
+        "INCOMPLETE_PAIR"
+      ],
+      "control_contract_wins": 0,
+      "control_semantic_wins": 0,
+      "pairs_count": 2,
+      "semantic_outcomes": [
+        "SEMANTIC_COMPARISON_UNAVAILABLE",
+        "SEMANTIC_COMPARISON_UNAVAILABLE"
+      ],
+      "treatment_contract_wins": 0,
+      "treatment_semantic_wins": 0
+    }
+  }
+}

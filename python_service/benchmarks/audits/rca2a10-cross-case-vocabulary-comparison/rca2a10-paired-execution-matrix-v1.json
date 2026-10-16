@@ -1,0 +1,1242 @@
+{
+  "artifact_version": "RCA2A10PairedExecutionMatrixV1",
+  "experiment_id": "rca2a10-cross-case-vocabulary-comparison",
+  "logical_model_generations_total": 0,
+  "model": "step-3.7-flash",
+  "observation_tag": "PREFLIGHT_BLOCKED_ZERO_INVOCATIONS",
+  "paired_metrics": {
+    "contract_summary": {
+      "both_invalid": 0,
+      "both_valid": 0,
+      "control_win": 0,
+      "incomplete_pair": 8,
+      "treatment_win": 0
+    },
+    "pairs": {
+      "t2-identity-trap_A": {
+        "contract_outcome": "INCOMPLETE_PAIR",
+        "control_canonical_valid": null,
+        "control_information_value": "UNOBSERVABLE",
+        "control_seat": 5,
+        "control_semantic_adequacy": "UNOBSERVABLE",
+        "pair_label": "A",
+        "scenario_id": "t2-identity-trap",
+        "semantic_outcome": "SEMANTIC_COMPARISON_UNAVAILABLE",
+        "treatment_canonical_valid": null,
+        "treatment_information_value": "UNOBSERVABLE",
+        "treatment_seat": 6,
+        "treatment_semantic_adequacy": "UNOBSERVABLE"
+      },
+      "t2-identity-trap_B": {
+        "contract_outcome": "INCOMPLETE_PAIR",
+        "control_canonical_valid": null,
+        "control_information_value": "UNOBSERVABLE",
+        "control_seat": 14,
+        "control_semantic_adequacy": "UNOBSERVABLE",
+        "pair_label": "B",
+        "scenario_id": "t2-identity-trap",
+        "semantic_outcome": "SEMANTIC_COMPARISON_UNAVAILABLE",
+        "treatment_canonical_valid": null,
+        "treatment_information_value": "UNOBSERVABLE",
+        "treatment_seat": 13,
+        "treatment_semantic_adequacy": "UNOBSERVABLE"
+      },
+      "t2-no-evidence_A": {
+        "contract_outcome": "INCOMPLETE_PAIR",
+        "control_canonical_valid": null,
+        "control_information_value": "UNOBSERVABLE",
+        "control_seat": 1,
+        "control_semantic_adequacy": "UNOBSERVABLE",
+        "pair_label": "A",
+        "scenario_id": "t2-no-evidence",
+        "semantic_outcome": "SEMANTIC_COMPARISON_UNAVAILABLE",
+        "treatment_canonical_valid": null,
+        "treatment_information_value": "UNOBSERVABLE",
+        "treatment_seat": 2,
+        "treatment_semantic_adequacy": "UNOBSERVABLE"
+      },
+      "t2-no-evidence_B": {
+        "contract_outcome": "INCOMPLETE_PAIR",
+        "control_canonical_valid": null,
+        "control_information_value": "UNOBSERVABLE",
+        "control_seat": 10,
+        "control_semantic_adequacy": "UNOBSERVABLE",
+        "pair_label": "B",
+        "scenario_id": "t2-no-evidence",
+        "semantic_outcome": "SEMANTIC_COMPARISON_UNAVAILABLE",
+        "treatment_canonical_valid": null,
+        "treatment_information_value": "UNOBSERVABLE",
+        "treatment_seat": 9,
+        "treatment_semantic_adequacy": "UNOBSERVABLE"
+      },
+      "t2-report-citation_A": {
+        "contract_outcome": "INCOMPLETE_PAIR",
+        "control_canonical_valid": null,
+        "control_information_value": "UNOBSERVABLE",
+        "control_seat": 7,
+        "control_semantic_adequacy": "UNOBSERVABLE",
+        "pair_label": "A",
+        "scenario_id": "t2-report-citation",
+        "semantic_outcome": "SEMANTIC_COMPARISON_UNAVAILABLE",
+        "treatment_canonical_valid": null,
+        "treatment_information_value": "UNOBSERVABLE",
+        "treatment_seat": 8,
+        "treatment_semantic_adequacy": "UNOBSERVABLE"
+      },
+      "t2-report-citation_B": {
+        "contract_outcome": "INCOMPLETE_PAIR",
+        "control_canonical_valid": null,
+        "control_information_value": "UNOBSERVABLE",
+        "control_seat": 16,
+        "control_semantic_adequacy": "UNOBSERVABLE",
+        "pair_label": "B",
+        "scenario_id": "t2-report-citation",
+        "semantic_outcome": "SEMANTIC_COMPARISON_UNAVAILABLE",
+        "treatment_canonical_valid": null,
+        "treatment_information_value": "UNOBSERVABLE",
+        "treatment_seat": 15,
+        "treatment_semantic_adequacy": "UNOBSERVABLE"
+      },
+      "t2-temporal-trap_A": {
+        "contract_outcome": "INCOMPLETE_PAIR",
+        "control_canonical_valid": null,
+        "control_information_value": "UNOBSERVABLE",
+        "control_seat": 3,
+        "control_semantic_adequacy": "UNOBSERVABLE",
+        "pair_label": "A",
+        "scenario_id": "t2-temporal-trap",
+        "semantic_outcome": "SEMANTIC_COMPARISON_UNAVAILABLE",
+        "treatment_canonical_valid": null,
+        "treatment_information_value": "UNOBSERVABLE",
+        "treatment_seat": 4,
+        "treatment_semantic_adequacy": "UNOBSERVABLE"
+      },
+      "t2-temporal-trap_B": {
+        "contract_outcome": "INCOMPLETE_PAIR",
+        "control_canonical_valid": null,
+        "control_information_value": "UNOBSERVABLE",
+        "control_seat": 12,
+        "control_semantic_adequacy": "UNOBSERVABLE",
+        "pair_label": "B",
+        "scenario_id": "t2-temporal-trap",
+        "semantic_outcome": "SEMANTIC_COMPARISON_UNAVAILABLE",
+        "treatment_canonical_valid": null,
+        "treatment_information_value": "UNOBSERVABLE",
+        "treatment_seat": 11,
+        "treatment_semantic_adequacy": "UNOBSERVABLE"
+      }
+    },
+    "scenario_stratified": {
+      "t2-identity-trap": {
+        "both_invalid": 0,
+        "both_semantically_adequate": 0,
+        "both_valid": 0,
+        "contract_outcomes": [
+          "INCOMPLETE_PAIR",
+          "INCOMPLETE_PAIR"
+        ],
+        "control_contract_wins": 0,
+        "control_semantic_wins": 0,
+        "pairs_count": 2,
+        "semantic_outcomes": [
+          "SEMANTIC_COMPARISON_UNAVAILABLE",
+          "SEMANTIC_COMPARISON_UNAVAILABLE"
+        ],
+        "treatment_contract_wins": 0,
+        "treatment_semantic_wins": 0
+      },
+      "t2-no-evidence": {
+        "both_invalid": 0,
+        "both_semantically_adequate": 0,
+        "both_valid": 0,
+        "contract_outcomes": [
+          "INCOMPLETE_PAIR",
+          "INCOMPLETE_PAIR"
+        ],
+        "control_contract_wins": 0,
+        "control_semantic_wins": 0,
+        "pairs_count": 2,
+        "semantic_outcomes": [
+          "SEMANTIC_COMPARISON_UNAVAILABLE",
+          "SEMANTIC_COMPARISON_UNAVAILABLE"
+        ],
+        "treatment_contract_wins": 0,
+        "treatment_semantic_wins": 0
+      },
+      "t2-report-citation": {
+        "both_invalid": 0,
+        "both_semantically_adequate": 0,
+        "both_valid": 0,
+        "contract_outcomes": [
+          "INCOMPLETE_PAIR",
+          "INCOMPLETE_PAIR"
+        ],
+        "control_contract_wins": 0,
+        "control_semantic_wins": 0,
+        "pairs_count": 2,
+        "semantic_outcomes": [
+          "SEMANTIC_COMPARISON_UNAVAILABLE",
+          "SEMANTIC_COMPARISON_UNAVAILABLE"
+        ],
+        "treatment_contract_wins": 0,
+        "treatment_semantic_wins": 0
+      },
+      "t2-temporal-trap": {
+        "both_invalid": 0,
+        "both_semantically_adequate": 0,
+        "both_valid": 0,
+        "contract_outcomes": [
+          "INCOMPLETE_PAIR",
+          "INCOMPLETE_PAIR"
+        ],
+        "control_contract_wins": 0,
+        "control_semantic_wins": 0,
+        "pairs_count": 2,
+        "semantic_outcomes": [
+          "SEMANTIC_COMPARISON_UNAVAILABLE",
+          "SEMANTIC_COMPARISON_UNAVAILABLE"
+        ],
+        "treatment_contract_wins": 0,
+        "treatment_semantic_wins": 0
+      }
+    },
+    "semantic_summary": {
+      "both_semantically_adequate": 0,
+      "both_semantically_inadequate": 0,
+      "control_semantic_win": 0,
+      "semantic_comparison_unavailable": 8,
+      "treatment_semantic_win": 0
+    },
+    "total_pairs": 8
+  },
+  "provider": "stepfun",
+  "seats": [
+    {
+      "arm": "control",
+      "durable_claim": null,
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "violations": []
+      },
+      "field_scan_totals": {},
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": null,
+      "global_seat": 1,
+      "http_attempt_upper_bound": 0,
+      "http_attempts": 0,
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": null,
+      "logical_model_generations": 0,
+      "model_identity_records": [],
+      "pair_id": 1,
+      "pair_label": "A",
+      "phase": "NOT_STARTED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_latency_ms": null,
+      "retry_self_correction": false,
+      "returned_identity_exact": null,
+      "scenario_id": "t2-no-evidence",
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [
+          "Preflight blocked due to provider quota; seat not executed."
+        ],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "stage_latency_ms": null,
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_BLOCKED",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED",
+      "stop_reason": "PROVIDER_CAPACITY_BLOCKED",
+      "token_usage": {
+        "output_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    {
+      "arm": "treatment",
+      "durable_claim": null,
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "violations": []
+      },
+      "field_scan_totals": {},
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": null,
+      "global_seat": 2,
+      "http_attempt_upper_bound": 0,
+      "http_attempts": 0,
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": null,
+      "logical_model_generations": 0,
+      "model_identity_records": [],
+      "pair_id": 1,
+      "pair_label": "A",
+      "phase": "NOT_STARTED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_latency_ms": null,
+      "retry_self_correction": false,
+      "returned_identity_exact": null,
+      "scenario_id": "t2-no-evidence",
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [
+          "Preflight blocked due to provider quota; seat not executed."
+        ],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "stage_latency_ms": null,
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_BLOCKED",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED",
+      "stop_reason": "PROVIDER_CAPACITY_BLOCKED",
+      "token_usage": {
+        "output_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    {
+      "arm": "control",
+      "durable_claim": null,
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "violations": []
+      },
+      "field_scan_totals": {},
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": null,
+      "global_seat": 3,
+      "http_attempt_upper_bound": 0,
+      "http_attempts": 0,
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": null,
+      "logical_model_generations": 0,
+      "model_identity_records": [],
+      "pair_id": 1,
+      "pair_label": "A",
+      "phase": "NOT_STARTED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_latency_ms": null,
+      "retry_self_correction": false,
+      "returned_identity_exact": null,
+      "scenario_id": "t2-temporal-trap",
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [
+          "Preflight blocked due to provider quota; seat not executed."
+        ],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "stage_latency_ms": null,
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_BLOCKED",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED",
+      "stop_reason": "PROVIDER_CAPACITY_BLOCKED",
+      "token_usage": {
+        "output_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    {
+      "arm": "treatment",
+      "durable_claim": null,
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "violations": []
+      },
+      "field_scan_totals": {},
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": null,
+      "global_seat": 4,
+      "http_attempt_upper_bound": 0,
+      "http_attempts": 0,
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": null,
+      "logical_model_generations": 0,
+      "model_identity_records": [],
+      "pair_id": 1,
+      "pair_label": "A",
+      "phase": "NOT_STARTED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_latency_ms": null,
+      "retry_self_correction": false,
+      "returned_identity_exact": null,
+      "scenario_id": "t2-temporal-trap",
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [
+          "Preflight blocked due to provider quota; seat not executed."
+        ],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "stage_latency_ms": null,
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_BLOCKED",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED",
+      "stop_reason": "PROVIDER_CAPACITY_BLOCKED",
+      "token_usage": {
+        "output_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    {
+      "arm": "control",
+      "durable_claim": null,
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "violations": []
+      },
+      "field_scan_totals": {},
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": null,
+      "global_seat": 5,
+      "http_attempt_upper_bound": 0,
+      "http_attempts": 0,
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": null,
+      "logical_model_generations": 0,
+      "model_identity_records": [],
+      "pair_id": 1,
+      "pair_label": "A",
+      "phase": "NOT_STARTED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_latency_ms": null,
+      "retry_self_correction": false,
+      "returned_identity_exact": null,
+      "scenario_id": "t2-identity-trap",
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [
+          "Preflight blocked due to provider quota; seat not executed."
+        ],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "stage_latency_ms": null,
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_BLOCKED",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED",
+      "stop_reason": "PROVIDER_CAPACITY_BLOCKED",
+      "token_usage": {
+        "output_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    {
+      "arm": "treatment",
+      "durable_claim": null,
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "violations": []
+      },
+      "field_scan_totals": {},
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": null,
+      "global_seat": 6,
+      "http_attempt_upper_bound": 0,
+      "http_attempts": 0,
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": null,
+      "logical_model_generations": 0,
+      "model_identity_records": [],
+      "pair_id": 1,
+      "pair_label": "A",
+      "phase": "NOT_STARTED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_latency_ms": null,
+      "retry_self_correction": false,
+      "returned_identity_exact": null,
+      "scenario_id": "t2-identity-trap",
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [
+          "Preflight blocked due to provider quota; seat not executed."
+        ],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "stage_latency_ms": null,
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_BLOCKED",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED",
+      "stop_reason": "PROVIDER_CAPACITY_BLOCKED",
+      "token_usage": {
+        "output_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    {
+      "arm": "control",
+      "durable_claim": null,
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "violations": []
+      },
+      "field_scan_totals": {},
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": null,
+      "global_seat": 7,
+      "http_attempt_upper_bound": 0,
+      "http_attempts": 0,
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": null,
+      "logical_model_generations": 0,
+      "model_identity_records": [],
+      "pair_id": 1,
+      "pair_label": "A",
+      "phase": "NOT_STARTED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_latency_ms": null,
+      "retry_self_correction": false,
+      "returned_identity_exact": null,
+      "scenario_id": "t2-report-citation",
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [
+          "Preflight blocked due to provider quota; seat not executed."
+        ],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "stage_latency_ms": null,
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_BLOCKED",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED",
+      "stop_reason": "PROVIDER_CAPACITY_BLOCKED",
+      "token_usage": {
+        "output_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    {
+      "arm": "treatment",
+      "durable_claim": null,
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "violations": []
+      },
+      "field_scan_totals": {},
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": null,
+      "global_seat": 8,
+      "http_attempt_upper_bound": 0,
+      "http_attempts": 0,
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": null,
+      "logical_model_generations": 0,
+      "model_identity_records": [],
+      "pair_id": 1,
+      "pair_label": "A",
+      "phase": "NOT_STARTED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_latency_ms": null,
+      "retry_self_correction": false,
+      "returned_identity_exact": null,
+      "scenario_id": "t2-report-citation",
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [
+          "Preflight blocked due to provider quota; seat not executed."
+        ],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "stage_latency_ms": null,
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_BLOCKED",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED",
+      "stop_reason": "PROVIDER_CAPACITY_BLOCKED",
+      "token_usage": {
+        "output_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    {
+      "arm": "treatment",
+      "durable_claim": null,
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "violations": []
+      },
+      "field_scan_totals": {},
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": null,
+      "global_seat": 9,
+      "http_attempt_upper_bound": 0,
+      "http_attempts": 0,
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": null,
+      "logical_model_generations": 0,
+      "model_identity_records": [],
+      "pair_id": 2,
+      "pair_label": "B",
+      "phase": "NOT_STARTED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_latency_ms": null,
+      "retry_self_correction": false,
+      "returned_identity_exact": null,
+      "scenario_id": "t2-no-evidence",
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [
+          "Preflight blocked due to provider quota; seat not executed."
+        ],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "stage_latency_ms": null,
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_BLOCKED",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED",
+      "stop_reason": "PROVIDER_CAPACITY_BLOCKED",
+      "token_usage": {
+        "output_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    {
+      "arm": "control",
+      "durable_claim": null,
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "violations": []
+      },
+      "field_scan_totals": {},
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": null,
+      "global_seat": 10,
+      "http_attempt_upper_bound": 0,
+      "http_attempts": 0,
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": null,
+      "logical_model_generations": 0,
+      "model_identity_records": [],
+      "pair_id": 2,
+      "pair_label": "B",
+      "phase": "NOT_STARTED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_latency_ms": null,
+      "retry_self_correction": false,
+      "returned_identity_exact": null,
+      "scenario_id": "t2-no-evidence",
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [
+          "Preflight blocked due to provider quota; seat not executed."
+        ],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "stage_latency_ms": null,
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_BLOCKED",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED",
+      "stop_reason": "PROVIDER_CAPACITY_BLOCKED",
+      "token_usage": {
+        "output_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    {
+      "arm": "treatment",
+      "durable_claim": null,
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "violations": []
+      },
+      "field_scan_totals": {},
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": null,
+      "global_seat": 11,
+      "http_attempt_upper_bound": 0,
+      "http_attempts": 0,
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": null,
+      "logical_model_generations": 0,
+      "model_identity_records": [],
+      "pair_id": 2,
+      "pair_label": "B",
+      "phase": "NOT_STARTED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_latency_ms": null,
+      "retry_self_correction": false,
+      "returned_identity_exact": null,
+      "scenario_id": "t2-temporal-trap",
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [
+          "Preflight blocked due to provider quota; seat not executed."
+        ],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "stage_latency_ms": null,
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_BLOCKED",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED",
+      "stop_reason": "PROVIDER_CAPACITY_BLOCKED",
+      "token_usage": {
+        "output_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    {
+      "arm": "control",
+      "durable_claim": null,
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "violations": []
+      },
+      "field_scan_totals": {},
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": null,
+      "global_seat": 12,
+      "http_attempt_upper_bound": 0,
+      "http_attempts": 0,
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": null,
+      "logical_model_generations": 0,
+      "model_identity_records": [],
+      "pair_id": 2,
+      "pair_label": "B",
+      "phase": "NOT_STARTED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_latency_ms": null,
+      "retry_self_correction": false,
+      "returned_identity_exact": null,
+      "scenario_id": "t2-temporal-trap",
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [
+          "Preflight blocked due to provider quota; seat not executed."
+        ],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "stage_latency_ms": null,
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_BLOCKED",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED",
+      "stop_reason": "PROVIDER_CAPACITY_BLOCKED",
+      "token_usage": {
+        "output_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    {
+      "arm": "treatment",
+      "durable_claim": null,
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "violations": []
+      },
+      "field_scan_totals": {},
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": null,
+      "global_seat": 13,
+      "http_attempt_upper_bound": 0,
+      "http_attempts": 0,
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": null,
+      "logical_model_generations": 0,
+      "model_identity_records": [],
+      "pair_id": 2,
+      "pair_label": "B",
+      "phase": "NOT_STARTED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_latency_ms": null,
+      "retry_self_correction": false,
+      "returned_identity_exact": null,
+      "scenario_id": "t2-identity-trap",
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [
+          "Preflight blocked due to provider quota; seat not executed."
+        ],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "stage_latency_ms": null,
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_BLOCKED",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED",
+      "stop_reason": "PROVIDER_CAPACITY_BLOCKED",
+      "token_usage": {
+        "output_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    {
+      "arm": "control",
+      "durable_claim": null,
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "violations": []
+      },
+      "field_scan_totals": {},
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": null,
+      "global_seat": 14,
+      "http_attempt_upper_bound": 0,
+      "http_attempts": 0,
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": null,
+      "logical_model_generations": 0,
+      "model_identity_records": [],
+      "pair_id": 2,
+      "pair_label": "B",
+      "phase": "NOT_STARTED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_latency_ms": null,
+      "retry_self_correction": false,
+      "returned_identity_exact": null,
+      "scenario_id": "t2-identity-trap",
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [
+          "Preflight blocked due to provider quota; seat not executed."
+        ],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "stage_latency_ms": null,
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_BLOCKED",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED",
+      "stop_reason": "PROVIDER_CAPACITY_BLOCKED",
+      "token_usage": {
+        "output_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    {
+      "arm": "treatment",
+      "durable_claim": null,
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "violations": []
+      },
+      "field_scan_totals": {},
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": null,
+      "global_seat": 15,
+      "http_attempt_upper_bound": 0,
+      "http_attempts": 0,
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": null,
+      "logical_model_generations": 0,
+      "model_identity_records": [],
+      "pair_id": 2,
+      "pair_label": "B",
+      "phase": "NOT_STARTED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_latency_ms": null,
+      "retry_self_correction": false,
+      "returned_identity_exact": null,
+      "scenario_id": "t2-report-citation",
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [
+          "Preflight blocked due to provider quota; seat not executed."
+        ],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "stage_latency_ms": null,
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_BLOCKED",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED",
+      "stop_reason": "PROVIDER_CAPACITY_BLOCKED",
+      "token_usage": {
+        "output_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0
+      }
+    },
+    {
+      "arm": "control",
+      "durable_claim": null,
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "violations": []
+      },
+      "field_scan_totals": {},
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": null,
+      "global_seat": 16,
+      "http_attempt_upper_bound": 0,
+      "http_attempts": 0,
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": null,
+      "logical_model_generations": 0,
+      "model_identity_records": [],
+      "pair_id": 2,
+      "pair_label": "B",
+      "phase": "NOT_STARTED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_latency_ms": null,
+      "retry_self_correction": false,
+      "returned_identity_exact": null,
+      "scenario_id": "t2-report-citation",
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [
+          "Preflight blocked due to provider quota; seat not executed."
+        ],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "stage_latency_ms": null,
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_BLOCKED",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED",
+      "stop_reason": "PROVIDER_CAPACITY_BLOCKED",
+      "token_usage": {
+        "output_tokens": 0,
+        "prompt_tokens": 0,
+        "total_tokens": 0
+      }
+    }
+  ],
+  "stage_invocations_executed": 0,
+  "stage_invocations_scheduled": 16,
+  "stop_reason": "PROVIDER_CAPACITY_BLOCKED"
+}

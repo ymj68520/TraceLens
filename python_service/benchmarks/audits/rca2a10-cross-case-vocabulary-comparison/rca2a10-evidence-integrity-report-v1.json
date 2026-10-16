@@ -1,0 +1,17 @@
+{
+  "all_scenarios_evidence_integrity_verified": true,
+  "analyst_acceptance_status": "NOT_EXERCISED",
+  "artifact_version": "RCA2A10EvidenceIntegrityReportV1",
+  "experiment_id": "rca2a10-cross-case-vocabulary-comparison",
+  "f4_architectural_boundary_respected": true,
+  "negative_gates_findings_count": 0,
+  "report_admission_status": "NOT_EXERCISED",
+  "report_publication_status": "NOT_EXERCISED",
+  "scenarios_evaluated": [
+    "t2-no-evidence",
+    "t2-temporal-trap",
+    "t2-identity-trap",
+    "t2-report-citation"
+  ],
+  "verdict": "EVIDENCE_INTEGRITY_VERIFIED"
+}

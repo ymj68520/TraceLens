@@ -1,0 +1,102 @@
+{
+  "arm_comparisons": {
+    "control": {
+      "canonical_valid_count": 0,
+      "executed_seats": 0,
+      "pydantic_pass_count": 0,
+      "scheduled_seats": 8,
+      "semantically_adequate_count": 0,
+      "to_status_completed_count": 0
+    },
+    "treatment": {
+      "canonical_valid_count": 0,
+      "executed_seats": 0,
+      "pydantic_pass_count": 0,
+      "scheduled_seats": 8,
+      "semantically_adequate_count": 0,
+      "to_status_completed_count": 0
+    }
+  },
+  "artifact_version": "RCA2A10VocabularyEffectReportV1",
+  "contract_summary": {
+    "both_invalid": 0,
+    "both_valid": 0,
+    "control_win": 0,
+    "incomplete_pair": 8,
+    "treatment_win": 0
+  },
+  "experiment_id": "rca2a10-cross-case-vocabulary-comparison",
+  "interpretation_decision": "EXPERIMENT_BLOCKED",
+  "mandatory_questions": {
+    "10_token_cost_delta": {
+      "control_input_tokens": 0,
+      "control_output_tokens": 0,
+      "treatment_input_tokens": 0,
+      "treatment_output_tokens": 0
+    },
+    "11_unobservable_semantic_results": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16
+    ],
+    "12_supports_production_candidate": false,
+    "13_rca2b_schema_experiment_still_necessary": true,
+    "14_f4_stage_limited_results": {
+      "both_invalid": 0,
+      "both_semantically_adequate": 0,
+      "both_valid": 0,
+      "contract_outcomes": [
+        "INCOMPLETE_PAIR",
+        "INCOMPLETE_PAIR"
+      ],
+      "control_contract_wins": 0,
+      "control_semantic_wins": 0,
+      "pairs_count": 2,
+      "semantic_outcomes": [
+        "SEMANTIC_COMPARISON_UNAVAILABLE",
+        "SEMANTIC_COMPARISON_UNAVAILABLE"
+      ],
+      "treatment_contract_wins": 0,
+      "treatment_semantic_wins": 0
+    },
+    "1_guidance_improves_pydantic_pass": false,
+    "2_guidance_improves_canonical_integration": false,
+    "3_guidance_improves_semantic_adequacy": false,
+    "4_produces_real_investigative_information": false,
+    "5_valid_but_information_neutral_observed": false,
+    "6_increases_evidence_integrity_risk": false,
+    "7_leads_to_false_question_closure": false,
+    "8_benefits_only_no_evidence": false,
+    "9_retry_self_correction_by_scenario": {
+      "t2-identity-trap": 0,
+      "t2-no-evidence": 0,
+      "t2-report-citation": 0,
+      "t2-temporal-trap": 0
+    }
+  },
+  "sample_size": {
+    "pairs": 8,
+    "scenarios": 4,
+    "total_seats": 16
+  },
+  "semantic_summary": {
+    "both_semantically_adequate": 0,
+    "both_semantically_inadequate": 0,
+    "control_semantic_win": 0,
+    "semantic_comparison_unavailable": 8,
+    "treatment_semantic_win": 0
+  }
+}

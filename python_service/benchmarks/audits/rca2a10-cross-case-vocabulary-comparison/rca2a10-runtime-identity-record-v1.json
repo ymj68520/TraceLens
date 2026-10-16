@@ -1,0 +1,21 @@
+{
+  "artifact_version": "RCA2A10RuntimeIdentityRecordV1",
+  "baseline_commit": "23f088babb28fa449801b28c3fc21eb09511780d",
+  "code_hashes": {
+    "base_oracle_hash": "52e3a57d5116c3fb290158d26eaaff1a69f95fa92efd6e06434a72c454f91a55",
+    "combined_oracle_contract_hash": "739b6683707d1b4c7339cf20eaf861514c902e9ac4b8ac8b3969fa02aef9a782",
+    "extension_oracle_hash": "922db5e943ca2c980e8227743555a845d4452b0a6f9c0d9e7d0154fdc4b28348",
+    "guidance_sha256": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+    "output_schema_hash": "a214ec4f5e81fcbb",
+    "runner_source_hash": "211353a937cffe8a9ca3f0999210a257e4b34514bb7ed803efd48bd374e3b283"
+  },
+  "experiment_id": "rca2a10-cross-case-vocabulary-comparison",
+  "interpretation_decision": "EXPERIMENT_BLOCKED",
+  "model": "step-3.7-flash",
+  "observation_mode": "LIVE_STEPFUN_STEP_3.7_FLASH",
+  "preflight_logical_requests": 1,
+  "provider": "stepfun",
+  "real_model_requests": 0,
+  "runtime_commit": "15d91e2b4680fd24cf89c5ca5fef13fa45c24ef6",
+  "stop_reason": "PROVIDER_CAPACITY_BLOCKED"
+}

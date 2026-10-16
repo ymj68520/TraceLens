@@ -1,0 +1,20 @@
+{
+  "artifact_version": "RCA2A10PreflightGateReportV1",
+  "attempts": [
+    {
+      "attempt": 1,
+      "classification": "PROVIDER_QUOTA_BLOCKED",
+      "error_class": "RateLimitError",
+      "error_message": "Error code: 429 - {'error': {'message': 'you have no left credit for step plan', 'type': 'rate_limited'}}",
+      "latency_ms": 2308.0,
+      "status": "FAILED",
+      "status_code": 429
+    }
+  ],
+  "attempts_executed": 1,
+  "endpoint": "https://api.stepfun.com/step_plan/v1",
+  "experiment_id": "rca2a10-cross-case-vocabulary-comparison",
+  "preflight_verdict": "PREFLIGHT_FAIL",
+  "requested_model": "step-3.7-flash",
+  "stop_reason": "PROVIDER_CAPACITY_BLOCKED"
+}

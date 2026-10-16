@@ -1,0 +1,389 @@
+{
+  "artifact_version": "RCA2A10ExperimentManifestV1",
+  "authorization_status": "LIVE_MODEL_EXECUTION_AUTHORIZED",
+  "baseline_commit": "23f088babb28fa449801b28c3fc21eb09511780d",
+  "experiment_id": "rca2a10-cross-case-vocabulary-comparison",
+  "fixture_arm_records": [
+    {
+      "arm": "control",
+      "binding_table_hash": "3c818d32c1799d1948076700a05f645c4122772bcac5ccc253a7c8e2a71116a6",
+      "context_hash": "8f94f16a1cd16d10c85b504c73d70780d5b4ff97a5303bfe0fb9b5355ed6cebe",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10-cross-case-vocabulary-comparison/scratch/t2-identity-trap_pair_a/t2-identity-trap-p01-control",
+      "investigation_id": "inv-t2-identity-trap-001",
+      "pair_id": 1,
+      "pair_label": "A",
+      "run_id": "run_fd7b255bc69b439a9493869b8ff71641",
+      "scenario_id": "t2-identity-trap",
+      "task_id": "t2-identity-trap",
+      "working_state_hash": "b9f33a07d996b0181af461090fae445e06fe7d7e430e9feeaa62878583896dbc"
+    },
+    {
+      "arm": "treatment",
+      "binding_table_hash": "3c818d32c1799d1948076700a05f645c4122772bcac5ccc253a7c8e2a71116a6",
+      "context_hash": "8f94f16a1cd16d10c85b504c73d70780d5b4ff97a5303bfe0fb9b5355ed6cebe",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10-cross-case-vocabulary-comparison/scratch/t2-identity-trap_pair_a/t2-identity-trap-p01-treatment",
+      "investigation_id": "inv-t2-identity-trap-001",
+      "pair_id": 1,
+      "pair_label": "A",
+      "run_id": "run_fd7b255bc69b439a9493869b8ff71641",
+      "scenario_id": "t2-identity-trap",
+      "task_id": "t2-identity-trap",
+      "working_state_hash": "b9f33a07d996b0181af461090fae445e06fe7d7e430e9feeaa62878583896dbc"
+    },
+    {
+      "arm": "control",
+      "binding_table_hash": "da1c01e85f811bba0d4da16beda43797a6d97203273fe3de83e6d3890a78098b",
+      "context_hash": "02a34ef2fe45dc8f9d53eb6081f36f36fc98b457c9581212b3887e94cbfbbe40",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10-cross-case-vocabulary-comparison/scratch/t2-identity-trap_pair_b/t2-identity-trap-p02-control",
+      "investigation_id": "inv-t2-identity-trap-001",
+      "pair_id": 2,
+      "pair_label": "B",
+      "run_id": "run_fd89c1f9761a4e2abd52b1d69b03718b",
+      "scenario_id": "t2-identity-trap",
+      "task_id": "t2-identity-trap",
+      "working_state_hash": "b9f33a07d996b0181af461090fae445e06fe7d7e430e9feeaa62878583896dbc"
+    },
+    {
+      "arm": "treatment",
+      "binding_table_hash": "da1c01e85f811bba0d4da16beda43797a6d97203273fe3de83e6d3890a78098b",
+      "context_hash": "02a34ef2fe45dc8f9d53eb6081f36f36fc98b457c9581212b3887e94cbfbbe40",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10-cross-case-vocabulary-comparison/scratch/t2-identity-trap_pair_b/t2-identity-trap-p02-treatment",
+      "investigation_id": "inv-t2-identity-trap-001",
+      "pair_id": 2,
+      "pair_label": "B",
+      "run_id": "run_fd89c1f9761a4e2abd52b1d69b03718b",
+      "scenario_id": "t2-identity-trap",
+      "task_id": "t2-identity-trap",
+      "working_state_hash": "b9f33a07d996b0181af461090fae445e06fe7d7e430e9feeaa62878583896dbc"
+    },
+    {
+      "arm": "control",
+      "binding_table_hash": "4115cb06bd15d88902cba1f67ee82ca46050e3b6e3f57160cfae04490a42fe61",
+      "context_hash": "f170f01bd5deae613d6b61f32dfa7b01fc08a8c4971a423a26c513ce02dc2a43",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10-cross-case-vocabulary-comparison/scratch/t2-no-evidence_pair_a/t2-no-evidence-p01-control",
+      "investigation_id": "inv-t2-no-evidence-001",
+      "pair_id": 1,
+      "pair_label": "A",
+      "run_id": "run_cd04a4542a5b494ca5cffd2289d55303",
+      "scenario_id": "t2-no-evidence",
+      "task_id": "t2-no-evidence",
+      "working_state_hash": "d974d5c790573448ed75b8d0e14e0eb77088342da455b6762f7f2b81da578bd8"
+    },
+    {
+      "arm": "treatment",
+      "binding_table_hash": "4115cb06bd15d88902cba1f67ee82ca46050e3b6e3f57160cfae04490a42fe61",
+      "context_hash": "f170f01bd5deae613d6b61f32dfa7b01fc08a8c4971a423a26c513ce02dc2a43",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10-cross-case-vocabulary-comparison/scratch/t2-no-evidence_pair_a/t2-no-evidence-p01-treatment",
+      "investigation_id": "inv-t2-no-evidence-001",
+      "pair_id": 1,
+      "pair_label": "A",
+      "run_id": "run_cd04a4542a5b494ca5cffd2289d55303",
+      "scenario_id": "t2-no-evidence",
+      "task_id": "t2-no-evidence",
+      "working_state_hash": "d974d5c790573448ed75b8d0e14e0eb77088342da455b6762f7f2b81da578bd8"
+    },
+    {
+      "arm": "control",
+      "binding_table_hash": "56cbd8841d146c8ce6eb557f57c384646bf5c1c31eb847f82b972a2b926153ff",
+      "context_hash": "23414529038fa53860b0218f2a4d18c3bb1f00bec39c3e4d543f3c2f32846698",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10-cross-case-vocabulary-comparison/scratch/t2-no-evidence_pair_b/t2-no-evidence-p02-control",
+      "investigation_id": "inv-t2-no-evidence-001",
+      "pair_id": 2,
+      "pair_label": "B",
+      "run_id": "run_4de08beaa2b54a4886e3d2fd81a6095e",
+      "scenario_id": "t2-no-evidence",
+      "task_id": "t2-no-evidence",
+      "working_state_hash": "d974d5c790573448ed75b8d0e14e0eb77088342da455b6762f7f2b81da578bd8"
+    },
+    {
+      "arm": "treatment",
+      "binding_table_hash": "56cbd8841d146c8ce6eb557f57c384646bf5c1c31eb847f82b972a2b926153ff",
+      "context_hash": "23414529038fa53860b0218f2a4d18c3bb1f00bec39c3e4d543f3c2f32846698",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10-cross-case-vocabulary-comparison/scratch/t2-no-evidence_pair_b/t2-no-evidence-p02-treatment",
+      "investigation_id": "inv-t2-no-evidence-001",
+      "pair_id": 2,
+      "pair_label": "B",
+      "run_id": "run_4de08beaa2b54a4886e3d2fd81a6095e",
+      "scenario_id": "t2-no-evidence",
+      "task_id": "t2-no-evidence",
+      "working_state_hash": "d974d5c790573448ed75b8d0e14e0eb77088342da455b6762f7f2b81da578bd8"
+    },
+    {
+      "arm": "control",
+      "binding_table_hash": "bfafc995e51f2e5287677d72aa74d6e1e6c294731420fee24cacb33105f35c21",
+      "context_hash": "8efee23367b338f961e79e6d582f6bf51e0545e0353b75eabde5c3d1e7466916",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10-cross-case-vocabulary-comparison/scratch/t2-report-citation_pair_a/t2-report-citation-p01-control",
+      "investigation_id": "inv-t2-report-citation-001",
+      "pair_id": 1,
+      "pair_label": "A",
+      "run_id": "run_372f044b42654ca3a75f041bd37e5267",
+      "scenario_id": "t2-report-citation",
+      "task_id": "t2-report-citation",
+      "working_state_hash": "04adf3220fc3bc69402647ebaf19a89d56ffd395af8ebdbadd6010fb8e4c264f"
+    },
+    {
+      "arm": "treatment",
+      "binding_table_hash": "bfafc995e51f2e5287677d72aa74d6e1e6c294731420fee24cacb33105f35c21",
+      "context_hash": "8efee23367b338f961e79e6d582f6bf51e0545e0353b75eabde5c3d1e7466916",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10-cross-case-vocabulary-comparison/scratch/t2-report-citation_pair_a/t2-report-citation-p01-treatment",
+      "investigation_id": "inv-t2-report-citation-001",
+      "pair_id": 1,
+      "pair_label": "A",
+      "run_id": "run_372f044b42654ca3a75f041bd37e5267",
+      "scenario_id": "t2-report-citation",
+      "task_id": "t2-report-citation",
+      "working_state_hash": "04adf3220fc3bc69402647ebaf19a89d56ffd395af8ebdbadd6010fb8e4c264f"
+    },
+    {
+      "arm": "control",
+      "binding_table_hash": "8b9183297704c415c6fce3c566beca4b9969a1f2e128983c63782b6bb401dc90",
+      "context_hash": "59a087541d6fdbc45d36d6b033edff3a32400e4110bd334ef1f8f8dda9d7089f",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10-cross-case-vocabulary-comparison/scratch/t2-report-citation_pair_b/t2-report-citation-p02-control",
+      "investigation_id": "inv-t2-report-citation-001",
+      "pair_id": 2,
+      "pair_label": "B",
+      "run_id": "run_114ffed0102c487d8397b48f113189cd",
+      "scenario_id": "t2-report-citation",
+      "task_id": "t2-report-citation",
+      "working_state_hash": "04adf3220fc3bc69402647ebaf19a89d56ffd395af8ebdbadd6010fb8e4c264f"
+    },
+    {
+      "arm": "treatment",
+      "binding_table_hash": "8b9183297704c415c6fce3c566beca4b9969a1f2e128983c63782b6bb401dc90",
+      "context_hash": "59a087541d6fdbc45d36d6b033edff3a32400e4110bd334ef1f8f8dda9d7089f",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10-cross-case-vocabulary-comparison/scratch/t2-report-citation_pair_b/t2-report-citation-p02-treatment",
+      "investigation_id": "inv-t2-report-citation-001",
+      "pair_id": 2,
+      "pair_label": "B",
+      "run_id": "run_114ffed0102c487d8397b48f113189cd",
+      "scenario_id": "t2-report-citation",
+      "task_id": "t2-report-citation",
+      "working_state_hash": "04adf3220fc3bc69402647ebaf19a89d56ffd395af8ebdbadd6010fb8e4c264f"
+    },
+    {
+      "arm": "control",
+      "binding_table_hash": "455bf153698596c71775df8421f72a00da4b4f36ed7265c7ca90b2ab6f51529e",
+      "context_hash": "e5613d1c51039ba201a52e94c1dc346511a594af4843f9fbaf0de18ef1aeb20f",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10-cross-case-vocabulary-comparison/scratch/t2-temporal-trap_pair_a/t2-temporal-trap-p01-control",
+      "investigation_id": "inv-t2-temporal-trap-001",
+      "pair_id": 1,
+      "pair_label": "A",
+      "run_id": "run_133aea4164c442fb90bd9f6c7c8279db",
+      "scenario_id": "t2-temporal-trap",
+      "task_id": "t2-temporal-trap",
+      "working_state_hash": "e395a1cd8bad99dcaea1d261affc1c39bc56a4b81d4a6d17f053eb7a0e6c0f1f"
+    },
+    {
+      "arm": "treatment",
+      "binding_table_hash": "455bf153698596c71775df8421f72a00da4b4f36ed7265c7ca90b2ab6f51529e",
+      "context_hash": "e5613d1c51039ba201a52e94c1dc346511a594af4843f9fbaf0de18ef1aeb20f",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10-cross-case-vocabulary-comparison/scratch/t2-temporal-trap_pair_a/t2-temporal-trap-p01-treatment",
+      "investigation_id": "inv-t2-temporal-trap-001",
+      "pair_id": 1,
+      "pair_label": "A",
+      "run_id": "run_133aea4164c442fb90bd9f6c7c8279db",
+      "scenario_id": "t2-temporal-trap",
+      "task_id": "t2-temporal-trap",
+      "working_state_hash": "e395a1cd8bad99dcaea1d261affc1c39bc56a4b81d4a6d17f053eb7a0e6c0f1f"
+    },
+    {
+      "arm": "control",
+      "binding_table_hash": "17c0a9bba156acac2549f25787d6e824e44251fc02f2c4837f8ec9ebb3d3dd52",
+      "context_hash": "00c8bbb32dbd5fc98d8f531ebbe572ef53d73b0da56d8f824994f45223906455",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10-cross-case-vocabulary-comparison/scratch/t2-temporal-trap_pair_b/t2-temporal-trap-p02-control",
+      "investigation_id": "inv-t2-temporal-trap-001",
+      "pair_id": 2,
+      "pair_label": "B",
+      "run_id": "run_187f729e2a6d4d9089e5163dd1ba8846",
+      "scenario_id": "t2-temporal-trap",
+      "task_id": "t2-temporal-trap",
+      "working_state_hash": "e395a1cd8bad99dcaea1d261affc1c39bc56a4b81d4a6d17f053eb7a0e6c0f1f"
+    },
+    {
+      "arm": "treatment",
+      "binding_table_hash": "17c0a9bba156acac2549f25787d6e824e44251fc02f2c4837f8ec9ebb3d3dd52",
+      "context_hash": "00c8bbb32dbd5fc98d8f531ebbe572ef53d73b0da56d8f824994f45223906455",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10-cross-case-vocabulary-comparison/scratch/t2-temporal-trap_pair_b/t2-temporal-trap-p02-treatment",
+      "investigation_id": "inv-t2-temporal-trap-001",
+      "pair_id": 2,
+      "pair_label": "B",
+      "run_id": "run_187f729e2a6d4d9089e5163dd1ba8846",
+      "scenario_id": "t2-temporal-trap",
+      "task_id": "t2-temporal-trap",
+      "working_state_hash": "e395a1cd8bad99dcaea1d261affc1c39bc56a4b81d4a6d17f053eb7a0e6c0f1f"
+    }
+  ],
+  "frozen_timestamp": 1792114705.7400708,
+  "model_identity": {
+    "endpoint": "https://api.stepfun.com/step_plan",
+    "provider": "stepfun",
+    "requested_model": "step-3.7-flash"
+  },
+  "request_budget": {
+    "diagnostic_http_attempts_max": 96,
+    "max_logical_model_generations": 32,
+    "output_retry_budget_per_invocation": 1,
+    "preflight_http_attempts_max": 9,
+    "preflight_logical_requests": 3,
+    "sdk_max_retries": 2,
+    "stage_invocations": 16,
+    "total_max_http_attempts": 105
+  },
+  "runtime_commit": "15d91e2b4680fd24cf89c5ca5fef13fa45c24ef6",
+  "runtime_source_hashes": {
+    "base_oracle": "52e3a57d5116c3fb290158d26eaaff1a69f95fa92efd6e06434a72c454f91a55",
+    "combined_oracle_contract": "739b6683707d1b4c7339cf20eaf861514c902e9ac4b8ac8b3969fa02aef9a782",
+    "diagnostic_sink": "76c4b23f1fb5226f7f12c946577a820ba720033d5f4941a7d6472566f2069b7e",
+    "extension_oracle": "922db5e943ca2c980e8227743555a845d4452b0a6f9c0d9e7d0154fdc4b28348",
+    "guidance_factory": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+    "model_adapter": "9d4f6482ef35eafd5761d7a5f8b08acbbab984f898558845c944b448908bbc1f",
+    "output_schema": "a214ec4f5e81fcbb",
+    "protocol_v2": "981af932f621b10ba26e1c93ef1cf18832301ef7c7b47bc619b6035308bebc03",
+    "runner": "211353a937cffe8a9ca3f0999210a257e4b34514bb7ed803efd48bd374e3b283",
+    "stage_harness": "80359cbb6a442b2fa34a94d1852d5d22c30d3b608bcd422fcabb05d5470192aa"
+  },
+  "scenario_order": [
+    "t2-no-evidence",
+    "t2-temporal-trap",
+    "t2-identity-trap",
+    "t2-report-citation"
+  ],
+  "seat_order": [
+    {
+      "arm": "control",
+      "global_seat": 1,
+      "pair_id": 1,
+      "pair_label": "A",
+      "scenario_id": "t2-no-evidence"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 2,
+      "pair_id": 1,
+      "pair_label": "A",
+      "scenario_id": "t2-no-evidence"
+    },
+    {
+      "arm": "control",
+      "global_seat": 3,
+      "pair_id": 1,
+      "pair_label": "A",
+      "scenario_id": "t2-temporal-trap"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 4,
+      "pair_id": 1,
+      "pair_label": "A",
+      "scenario_id": "t2-temporal-trap"
+    },
+    {
+      "arm": "control",
+      "global_seat": 5,
+      "pair_id": 1,
+      "pair_label": "A",
+      "scenario_id": "t2-identity-trap"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 6,
+      "pair_id": 1,
+      "pair_label": "A",
+      "scenario_id": "t2-identity-trap"
+    },
+    {
+      "arm": "control",
+      "global_seat": 7,
+      "pair_id": 1,
+      "pair_label": "A",
+      "scenario_id": "t2-report-citation"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 8,
+      "pair_id": 1,
+      "pair_label": "A",
+      "scenario_id": "t2-report-citation"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 9,
+      "pair_id": 2,
+      "pair_label": "B",
+      "scenario_id": "t2-no-evidence"
+    },
+    {
+      "arm": "control",
+      "global_seat": 10,
+      "pair_id": 2,
+      "pair_label": "B",
+      "scenario_id": "t2-no-evidence"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 11,
+      "pair_id": 2,
+      "pair_label": "B",
+      "scenario_id": "t2-temporal-trap"
+    },
+    {
+      "arm": "control",
+      "global_seat": 12,
+      "pair_id": 2,
+      "pair_label": "B",
+      "scenario_id": "t2-temporal-trap"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 13,
+      "pair_id": 2,
+      "pair_label": "B",
+      "scenario_id": "t2-identity-trap"
+    },
+    {
+      "arm": "control",
+      "global_seat": 14,
+      "pair_id": 2,
+      "pair_label": "B",
+      "scenario_id": "t2-identity-trap"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 15,
+      "pair_id": 2,
+      "pair_label": "B",
+      "scenario_id": "t2-report-citation"
+    },
+    {
+      "arm": "control",
+      "global_seat": 16,
+      "pair_id": 2,
+      "pair_label": "B",
+      "scenario_id": "t2-report-citation"
+    }
+  ],
+  "stepfun_configuration": {
+    "llm_endpoint": "/v1/chat/completions",
+    "llm_text_base_url": "https://api.stepfun.com/step_plan",
+    "llm_text_max_tokens": 16384,
+    "llm_text_temperature": 0.7,
+    "llm_thinking_mode": "disabled",
+    "llm_timeout_seconds": 120,
+    "output_retry_budget": 1,
+    "provider": "stepfun",
+    "requested_model": "step-3.7-flash",
+    "sdk_retry_policy": "openai SDK client default (OpenAIProvider(base_url, api_key) unchanged construction)"
+  },
+  "stop_conditions": [
+    "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE",
+    "MODEL_IDENTITY_MISMATCH",
+    "EXPERIMENT_IDENTITY_DRIFT",
+    "DIAGNOSTIC_SINK_FAILURE",
+    "SEAT_CLAIM_INCONSISTENCY",
+    "DUPLICATE_SEAT_EXECUTION_PROHIBITED",
+    "SEAT_ALREADY_CLAIMED_OR_OUTCOME_UNKNOWN",
+    "TOTAL_HTTP_ATTEMPTS_EXCEEDED",
+    "DIAGNOSTIC_HTTP_ATTEMPTS_EXCEEDED",
+    "UNEXPECTED_RUNNER_EXCEPTION"
+  ]
+}

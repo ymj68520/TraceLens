@@ -1,0 +1,38 @@
+{
+  "artifact_version": "RCA2A10CostAndAccountingReportV1",
+  "budget_compliance": {
+    "budget_ceiling_logical_requests": 35,
+    "diagnostic_http_attempts_max": 96,
+    "http_budget_exceeded": false,
+    "logical_budget_exceeded": false,
+    "logical_model_generations_diagnostic": 0,
+    "logical_model_generations_preflight": 1,
+    "logical_model_generations_total": 1,
+    "preflight_http_attempts_max": 9,
+    "stage_invocations_executed": 0,
+    "stage_invocations_scheduled": 16,
+    "total_http_attempts_upper_bound": 3,
+    "total_http_budget_ceiling": 105
+  },
+  "experiment_id": "rca2a10-cross-case-vocabulary-comparison",
+  "latency_statistics_ms": {
+    "causal_attribution": "CAUSAL_COMPONENT_ATTRIBUTION_NOT_ESTABLISHED",
+    "control_mean_stage_latency_ms": 0,
+    "historical_rca2a8_control_mean_s": 19.64,
+    "historical_rca2a8_treatment_mean_s": 26.55,
+    "treatment_mean_stage_latency_ms": 0
+  },
+  "provider_billing": "PROVIDER_BILLING_UNOBSERVABLE",
+  "token_usage": {
+    "control": {
+      "output_tokens": 0,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    },
+    "treatment": {
+      "output_tokens": 0,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    }
+  }
+}
