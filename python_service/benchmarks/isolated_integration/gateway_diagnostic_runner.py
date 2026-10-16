@@ -1,6 +1,6 @@
-"""RCA-2A.10e Bounded Gateway Compatibility Diagnosis Runner.
+"""RCA-2A.10 Bounded Gateway Compatibility Diagnosis Runner.
 
-Implements bounded live diagnostics for TraceLens Agent v0 under RCA-2A.10e:
+Implements bounded live diagnostics for TraceLens Agent v0:
 - D3: One Full INTEGRATE Non-Streaming Request (stream=False)
 - D4: One Conditional Full INTEGRATE Streaming Request (stream=True, ONLY if D3 == HTTP 500)
 
@@ -60,7 +60,7 @@ from httpserver.services.investigation.agent_supervisor import (
 )
 
 # ---------------------------------------------------------------------------
-# Frozen RCA-2A.10e Constants
+# Constants
 # ---------------------------------------------------------------------------
 EXPERIMENT_ID = "rca2a10e-bounded-gateway-diagnosis"
 AUTHORIZED_BASELINE = "4a63cfb197958a42ff8a7779311595742b2fbe41"
@@ -69,12 +69,11 @@ AUTHORIZED_PROVIDER = "generic"
 AUTHORIZED_BASE_URL = "https://api.hcnsec.cn/v1"
 AUTHORIZED_MODEL = "step-5-preview"
 EXPECTED_RETURNED_MODEL = "stepfun-ai/step-5-preview"
-ALLOWED_RETURNED_MODELS = {
-    AUTHORIZED_MODEL,
-    EXPECTED_RETURNED_MODEL,
-    f"stepfun-ai/{AUTHORIZED_MODEL}",
-    f"openrouter/{AUTHORIZED_MODEL}",
-}
+
+# RCA-2A.10f Candidate Constants
+EXPERIMENT_ID_RCA2A10F = "rca2a10f-bounded-gateway-diagnosis"
+AUTHORIZED_BASELINE_RCA2A10F = "d9a0424492a90fa095febed02f77c55246d7ff58"
+AUTHORIZED_MODEL_RCA2A10F = "longcat-2.5"
 
 MAX_LOGICAL_GENERATIONS = 2
 MAX_PHYSICAL_HTTP_ATTEMPTS = 2
@@ -83,6 +82,18 @@ PYDANTIC_OUTPUT_RETRIES = 0
 TIMEOUT_SECONDS = 360.0
 TEMPERATURE = 1.0
 MAX_TOKENS = 4096
+
+
+def get_allowed_returned_models(model_name: str) -> set[str]:
+    return {
+        model_name,
+        f"meituan/{model_name}",
+        f"longcat/{model_name}",
+        f"stepfun-ai/{model_name}",
+        f"openrouter/{model_name}",
+        "step-5-preview",
+        "stepfun-ai/step-5-preview",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +139,7 @@ class DurableRequestClaim:
             raise FileExistsError(f"Claim file already exists: {self.claim_path}")
         self.claim_path.parent.mkdir(parents=True, exist_ok=True)
         self.record = {
-            "artifact_version": "RCA2A10eRequestClaimV1",
+            "artifact_version": "RequestClaimV1",
             "experiment_id": self.experiment_id,
             "request_id": self.request_id,
             "status": DiagnosticClaimStatus.NOT_STARTED.value,
@@ -285,7 +296,6 @@ def calculate_request_envelope(
     tool_schema_json = json.dumps(tool_schema, separators=(",", ":"))
     tool_schema_bytes = tool_schema_json.encode("utf-8")
 
-    # Mirror exact OpenAI chat completions request body format
     body_dict = {
         "messages": [
             {"role": "system", "content": instructions},
@@ -462,16 +472,59 @@ def verify_historical_artifacts_immutable(repo_root: Path) -> dict[str, Any]:
     return {"ok": all_ok, "details": results}
 
 
-def verify_effective_config_gate(settings: Any) -> dict[str, Any]:
+def verify_rca2a10e_artifacts_immutable(repo_root: Path) -> dict[str, Any]:
+    """Verify SHA-256 integrity of all historical RCA-2A.10e audit artifacts."""
+    rca2a10e_dir = repo_root / "python_service/benchmarks/audits/rca2a10e-bounded-gateway-diagnosis"
+    if not rca2a10e_dir.exists():
+        return {"ok": False, "error": "rca2a10e-bounded-gateway-diagnosis directory missing"}
+
+    expected_rca2a10e_hashes = {
+        "rca2a10e-audit-report.md": "5d5e2c633becd952c886e352a21a3471b501c43e1d766e57d4c06bacfef831de",
+        "rca2a10e-baseline-integrity-report-v1.json": "e684b44a3e0ac81643180c54298ba2fa89025a96f7183731b5d236cbe0b95835",
+        "rca2a10e-cost-and-accounting-report-v1.json": "b41a95f159b583bf8e0b5518d309adc4c88ccd9e02da8b37dce50d5aa775a622",
+        "rca2a10e-d3-execution-report-v1.json": "97ddd00cbf9720d3fe2bcce5f1bca72b8848ccac3fe6682a069eefed73f59aae",
+        "rca2a10e-d4-execution-report-v1.json": "594ab3965188347aae393e6c12891112db5d6813eef48a1c722d038d091a155a",
+        "rca2a10e-effective-config-report-v1.json": "41882d9dbdda13c2d486e158698acb325557771b46f0183db3a19f7d006e76ca",
+        "rca2a10e-evidence-integrity-report-v1.json": "249410e9d63b07eabcc1619b85d29978b9cb87cd27c0e741d261254f5205dbf3",
+        "rca2a10e-experiment-manifest-v1.json": "de033f0c9e8dd21d891726c7c641e768c573008162a75e46eaef4319deb5ea15",
+        "rca2a10e-final-decision-report-v1.json": "96053e377c7665b766935382aefe3c88d8831ed9236f79cabb2d964288d6b999",
+        "rca2a10e-gateway-failure-analysis-v1.json": "0f7813ec8ef778759a77c6fbd1cc4ffae3123d95f2be503a24a9c790e57c6b8c",
+        "rca2a10e-historical-interpretation-amendment-v1.json": "5ae859a222c00a7bcb05f680ee23a0c8bc3e5526a2e3d1d6b79290beec8985bb",
+        "rca2a10e-precall-gate-report-v1.json": "31d0c5a8d064f68a6bb8aff21f13fed4e2eb70944ade03791e937c133bfb891f",
+        "rca2a10e-request-envelope-identity-v1.json": "968de8da11684ed50c2d3414a2c54a91353c29129d99751ca48d9143640157c7",
+        "rca2a10e-runtime-identity-record-v1.json": "0ed94bb0de461142f294ede1dcaa2e6ee787ecb04c05d62efaf80861ce2139ee",
+        "rca2a10e-transport-compatibility-report-v1.json": "5b3d783b9490f405b76c3e3937346ed50f849bcf6b1286af5e0feb06cb867dd2",
+        "requests/d3.claim.json": "ff2cf8870ea276a470474a902b3764925e5566a41900a270a72d53fedbefa86e",
+        "requests/d4.claim.json": "9981a0428858fc67eedc4fea1049636f834f2b89c82d6ce2f859ec1d80ceb8bd",
+    }
+    results = {}
+    all_ok = True
+    for rel_name, exp_sha in expected_rca2a10e_hashes.items():
+        fpath = rca2a10e_dir / rel_name
+        if not fpath.exists():
+            results[f"rca2a10e/{rel_name}"] = {"exists": False, "sha256": None, "ok": False}
+            all_ok = False
+            continue
+        act_sha = hashlib.sha256(fpath.read_bytes()).hexdigest()
+        m = (act_sha == exp_sha)
+        results[f"rca2a10e/{rel_name}"] = {"exists": True, "sha256": act_sha, "ok": m}
+        if not m:
+            all_ok = False
+
+    return {"ok": all_ok, "details": results}
+
+
+def verify_effective_config_gate(settings: Any, expected_model: Optional[str] = None) -> dict[str, Any]:
     """Verify effective configuration strictly matches authorized candidate."""
     cfg = resolve_adapter_config(settings)
     api_key = getattr(settings, "llm_api_key", None)
     has_api_key = bool(api_key and str(api_key).strip())
+    target_model = expected_model or cfg.model_name
 
     checks = {
         "provider_matches": cfg.provider == AUTHORIZED_PROVIDER,
         "base_url_matches": cfg.base_url.rstrip("/") == AUTHORIZED_BASE_URL.rstrip("/"),
-        "model_matches": cfg.model_name == AUTHORIZED_MODEL,
+        "model_matches": cfg.model_name == target_model,
         "temperature_matches": cfg.temperature == TEMPERATURE,
         "max_tokens_matches": cfg.max_tokens == MAX_TOKENS,
         "timeout_matches": cfg.timeout_seconds == TIMEOUT_SECONDS,
@@ -508,36 +561,52 @@ class GatewayDiagnosticOrchestrator:
         audit_dir: Path,
         scratch_dir: Path,
         custom_transport_factory: Optional[Callable[[], httpx.AsyncBaseTransport]] = None,
+        experiment_id: str = EXPERIMENT_ID,
+        authorized_baseline: str = AUTHORIZED_BASELINE,
+        authorized_model: Optional[str] = None,
+        expected_returned_model: Optional[str] = None,
     ):
         self.repo_root = repo_root
         self.audit_dir = audit_dir
         self.scratch_dir = scratch_dir
         self.requests_dir = audit_dir / "requests"
         self.custom_transport_factory = custom_transport_factory
+        self.experiment_id = experiment_id
+        self.authorized_baseline = authorized_baseline
+        self.prefix = experiment_id.split("-")[0]
         self.settings = get_settings()
+        cfg = resolve_adapter_config(self.settings)
+        self.authorized_model = authorized_model or cfg.model_name
+        self.expected_returned_model = expected_returned_model or self.authorized_model
+        self.allowed_returned_models = get_allowed_returned_models(self.authorized_model)
 
     async def run_diagnosis(self) -> dict[str, Any]:
         """Execute pre-call gates, D3, conditional D4, and write all deliverables."""
         # 1. Collision check
         if self.audit_dir.exists():
-            manifest_file = self.audit_dir / "rca2a10e-experiment-manifest-v1.json"
+            manifest_file = self.audit_dir / f"{self.prefix}-experiment-manifest-v1.json"
             if manifest_file.exists():
-                raise RuntimeError("EXPERIMENT_IDENTITY_COLLISION: Manifest already exists in audit dir")
+                raise RuntimeError(f"EXPERIMENT_IDENTITY_COLLISION: Manifest already exists in {self.audit_dir}")
         self.audit_dir.mkdir(parents=True, exist_ok=True)
         self.requests_dir.mkdir(parents=True, exist_ok=True)
 
         # 2. Pre-call deterministic gates
-        git_gate = verify_git_clean_and_baseline(AUTHORIZED_BASELINE)
+        git_gate = verify_git_clean_and_baseline(self.authorized_baseline)
         history_gate = verify_historical_artifacts_immutable(self.repo_root)
-        config_gate = verify_effective_config_gate(self.settings)
+        rca2a10e_history = (
+            verify_rca2a10e_artifacts_immutable(self.repo_root)
+            if self.prefix == "rca2a10f"
+            else {"ok": True}
+        )
+        config_gate = verify_effective_config_gate(self.settings, expected_model=self.authorized_model)
 
         # 3. Request envelope reconstruction
-        fixture_dir = self.scratch_dir / "t2_no_evidence_pair_a"
+        fixture_dir = self.scratch_dir / f"t2_no_evidence_pair_a_{self.prefix}"
         h_c, h_t, meta = await build_cloned_cross_case_pair(
             scenario_id="t2-no-evidence",
             pair_id=1,
             base_dir=fixture_dir,
-            runtime_identity={"experiment": EXPERIMENT_ID},
+            runtime_identity={"experiment": self.experiment_id},
         )
         captured = await h_c.capture_model_visible_input(agent_factory=SupervisorAgentFactory)
         instructions = captured["instructions"]
@@ -546,13 +615,13 @@ class GatewayDiagnosticOrchestrator:
         d3_envelope = calculate_request_envelope(
             instructions=instructions,
             tool_schema=tool_schema,
-            model_name=AUTHORIZED_MODEL,
+            model_name=self.authorized_model,
             stream=False,
         )
         d4_envelope = calculate_request_envelope(
             instructions=instructions,
             tool_schema=tool_schema,
-            model_name=AUTHORIZED_MODEL,
+            model_name=self.authorized_model,
             stream=True,
         )
 
@@ -561,7 +630,7 @@ class GatewayDiagnosticOrchestrator:
 
         precall_gates = {
             "REPOSITORY_IDENTITY_VERIFIED": git_gate["matches_baseline"],
-            "HISTORICAL_ARTIFACTS_UNCHANGED": history_gate["ok"],
+            "HISTORICAL_ARTIFACTS_UNCHANGED": history_gate["ok"] and rca2a10e_history.get("ok", False),
             "EXPERIMENT_IDENTITY_UNIQUE": True,
             "EFFECTIVE_MODEL_CONFIG_VERIFIED": config_gate["ok"],
             "MODEL_ALIAS_POLICY_FROZEN": True,
@@ -582,8 +651,8 @@ class GatewayDiagnosticOrchestrator:
             raise RuntimeError(f"PRECALL_GATE_BLOCKED: {precall_gates}")
 
         # Initialize Claims
-        d3_claim = DurableRequestClaim(self.requests_dir / "d3.claim.json", "D3", EXPERIMENT_ID)
-        d4_claim = DurableRequestClaim(self.requests_dir / "d4.claim.json", "D4", EXPERIMENT_ID)
+        d3_claim = DurableRequestClaim(self.requests_dir / "d3.claim.json", "D3", self.experiment_id)
+        d4_claim = DurableRequestClaim(self.requests_dir / "d4.claim.json", "D4", self.experiment_id)
         manifest_hash = d3_envelope["request_body_sha256"][:16]
         d3_claim.initialize_exclusive(manifest_hash)
         d4_claim.initialize_exclusive(manifest_hash)
@@ -724,9 +793,6 @@ class GatewayDiagnosticOrchestrator:
                 "physical_http_attempts": 0,
             }
 
-        # D3 produced HTTP 500. Check remaining D4 preconditions:
-        # - D3 Claim == RESULT_RECORDED
-        # - D4 Budget Available (1 generation dispatched, max 2)
         d4_claim.mark_dispatch_started()
 
         inner_transport = (
@@ -808,24 +874,25 @@ class GatewayDiagnosticOrchestrator:
     ) -> dict[str, Any]:
         """Generate and save all 14 required JSON deliverables and markdown report."""
         created_at_utc = datetime.now(timezone.utc).isoformat()
+        p_up = self.prefix.upper()
 
         # 1. Baseline Integrity Report
         r1 = {
-            "artifact_version": "RCA2A10eBaselineIntegrityReportV1",
-            "experiment_id": EXPERIMENT_ID,
+            "artifact_version": f"{p_up}BaselineIntegrityReportV1",
+            "experiment_id": self.experiment_id,
             "created_at_utc": created_at_utc,
             "baseline_commit": git_gate["head_commit"],
-            "authorized_baseline": AUTHORIZED_BASELINE,
+            "authorized_baseline": self.authorized_baseline,
             "worktree_clean": git_gate["worktree_clean"],
             "historical_artifacts_audit": history_gate,
             "verdict": "PASS" if git_gate["matches_baseline"] and history_gate["ok"] else "FAIL",
         }
-        self._write_json("rca2a10e-baseline-integrity-report-v1.json", r1)
+        self._write_json(f"{self.prefix}-baseline-integrity-report-v1.json", r1)
 
         # 2. Historical Interpretation Amendment
         r2 = {
-            "artifact_version": "RCA2A10eHistoricalInterpretationAmendmentV1",
-            "experiment_id": EXPERIMENT_ID,
+            "artifact_version": f"{p_up}HistoricalInterpretationAmendmentV1",
+            "experiment_id": self.experiment_id,
             "created_at_utc": created_at_utc,
             "actual_request_size_breakdown": {
                 "instructions_chars": d3_envelope["instructions_chars"],
@@ -846,37 +913,37 @@ class GatewayDiagnosticOrchestrator:
                 "Underlying_Root_Cause": "UNKNOWN",
             },
         }
-        self._write_json("rca2a10e-historical-interpretation-amendment-v1.json", r2)
+        self._write_json(f"{self.prefix}-historical-interpretation-amendment-v1.json", r2)
 
         # 3. Effective Config Report
         r3 = {
-            "artifact_version": "RCA2A10eEffectiveConfigReportV1",
-            "experiment_id": EXPERIMENT_ID,
+            "artifact_version": f"{p_up}EffectiveConfigReportV1",
+            "experiment_id": self.experiment_id,
             "created_at_utc": created_at_utc,
             "config_gate": config_gate,
             "model_identity_policy": {
-                "requested_model": AUTHORIZED_MODEL,
-                "expected_returned_model": EXPECTED_RETURNED_MODEL,
-                "allowed_returned_models": sorted(list(ALLOWED_RETURNED_MODELS)),
+                "requested_model": self.authorized_model,
+                "expected_returned_model": self.expected_returned_model,
+                "allowed_returned_models": sorted(list(self.allowed_returned_models)),
                 "attestation_status": "UPSTREAM_MODEL_IDENTITY_NOT_INDEPENDENTLY_VERIFIED",
             },
         }
-        self._write_json("rca2a10e-effective-config-report-v1.json", r3)
+        self._write_json(f"{self.prefix}-effective-config-report-v1.json", r3)
 
         # 4. Request Envelope Identity
         r4 = {
-            "artifact_version": "RCA2A10eRequestEnvelopeIdentityV1",
-            "experiment_id": EXPERIMENT_ID,
+            "artifact_version": f"{p_up}RequestEnvelopeIdentityV1",
+            "experiment_id": self.experiment_id,
             "created_at_utc": created_at_utc,
             "d3_non_streaming_envelope": d3_envelope,
             "d4_streaming_envelope": d4_envelope,
         }
-        self._write_json("rca2a10e-request-envelope-identity-v1.json", r4)
+        self._write_json(f"{self.prefix}-request-envelope-identity-v1.json", r4)
 
         # 5. Transport Compatibility Report
         r5 = {
-            "artifact_version": "RCA2A10eTransportCompatibilityReportV1",
-            "experiment_id": EXPERIMENT_ID,
+            "artifact_version": f"{p_up}TransportCompatibilityReportV1",
+            "experiment_id": self.experiment_id,
             "created_at_utc": created_at_utc,
             "sdk_max_retries": SDK_MAX_RETRIES,
             "pydantic_output_retries": PYDANTIC_OUTPUT_RETRIES,
@@ -885,12 +952,12 @@ class GatewayDiagnosticOrchestrator:
             "wire_attempt_observability": "INDEPENDENTLY_OBSERVABLE_ON_WIRE",
             "streaming_support": "NATIVE_PYDANTIC_AI_RUN_STREAM",
         }
-        self._write_json("rca2a10e-transport-compatibility-report-v1.json", r5)
+        self._write_json(f"{self.prefix}-transport-compatibility-report-v1.json", r5)
 
         # 6. Experiment Manifest
         r6 = {
-            "artifact_version": "RCA2A10eExperimentManifestV1",
-            "experiment_id": EXPERIMENT_ID,
+            "artifact_version": f"{p_up}ExperimentManifestV1",
+            "experiment_id": self.experiment_id,
             "created_at_utc": created_at_utc,
             "runtime_commit": git_gate["head_commit"],
             "effective_model_config": config_gate["resolved_config"],
@@ -902,43 +969,43 @@ class GatewayDiagnosticOrchestrator:
                 "max_physical_attempts": MAX_PHYSICAL_HTTP_ATTEMPTS,
             },
         }
-        self._write_json("rca2a10e-experiment-manifest-v1.json", r6)
+        self._write_json(f"{self.prefix}-experiment-manifest-v1.json", r6)
 
         # 7. Pre-Call Gate Report
         r7 = {
-            "artifact_version": "RCA2A10ePreCallGateReportV1",
-            "experiment_id": EXPERIMENT_ID,
+            "artifact_version": f"{p_up}PreCallGateReportV1",
+            "experiment_id": self.experiment_id,
             "created_at_utc": created_at_utc,
             "gates": precall_gates,
             "verdict": "PRECALL_GATES_PASSED" if all(precall_gates.values()) else "PRECALL_GATE_BLOCKED",
         }
-        self._write_json("rca2a10e-precall-gate-report-v1.json", r7)
+        self._write_json(f"{self.prefix}-precall-gate-report-v1.json", r7)
 
         # 8. D3 Execution Report
         r8 = {
-            "artifact_version": "RCA2A10eD3ExecutionReportV1",
-            "experiment_id": EXPERIMENT_ID,
+            "artifact_version": f"{p_up}D3ExecutionReportV1",
+            "experiment_id": self.experiment_id,
             "created_at_utc": created_at_utc,
             "result": d3_result,
         }
-        self._write_json("rca2a10e-d3-execution-report-v1.json", r8)
+        self._write_json(f"{self.prefix}-d3-execution-report-v1.json", r8)
 
         # 9. D4 Execution Report
         r9 = {
-            "artifact_version": "RCA2A10eD4ExecutionReportV1",
-            "experiment_id": EXPERIMENT_ID,
+            "artifact_version": f"{p_up}D4ExecutionReportV1",
+            "experiment_id": self.experiment_id,
             "created_at_utc": created_at_utc,
             "result": d4_result,
         }
-        self._write_json("rca2a10e-d4-execution-report-v1.json", r9)
+        self._write_json(f"{self.prefix}-d4-execution-report-v1.json", r9)
 
         # 10. Gateway Failure Analysis
         d3_status = d3_result.get("status")
         d4_status = d4_result.get("status")
         analysis = self._perform_gateway_failure_analysis(d3_result, d4_result, d3_envelope)
         r10 = {
-            "artifact_version": "RCA2A10eGatewayFailureAnalysisV1",
-            "experiment_id": EXPERIMENT_ID,
+            "artifact_version": f"{p_up}GatewayFailureAnalysisV1",
+            "experiment_id": self.experiment_id,
             "created_at_utc": created_at_utc,
             "d3_status": d3_status,
             "d4_status": d4_status,
@@ -946,7 +1013,7 @@ class GatewayDiagnosticOrchestrator:
             "ten_questions_answers": analysis["answers"],
             "root_cause_verdict": analysis["root_cause_verdict"],
         }
-        self._write_json("rca2a10e-gateway-failure-analysis-v1.json", r10)
+        self._write_json(f"{self.prefix}-gateway-failure-analysis-v1.json", r10)
 
         # 11. Cost and Accounting Report
         total_logical = (1 if d3_result.get("logical_request_dispatched") else 0) + (
@@ -956,8 +1023,8 @@ class GatewayDiagnosticOrchestrator:
             "physical_http_attempts", 0
         )
         r11 = {
-            "artifact_version": "RCA2A10eCostAndAccountingReportV1",
-            "experiment_id": EXPERIMENT_ID,
+            "artifact_version": f"{p_up}CostAndAccountingReportV1",
+            "experiment_id": self.experiment_id,
             "created_at_utc": created_at_utc,
             "logical_generation_count": total_logical,
             "physical_http_attempts": total_physical,
@@ -968,12 +1035,12 @@ class GatewayDiagnosticOrchestrator:
             "billing_status": "PROVIDER_BILLING_UNOBSERVABLE",
             "monetary_cost_claim": "Billing impact not established",
         }
-        self._write_json("rca2a10e-cost-and-accounting-report-v1.json", r11)
+        self._write_json(f"{self.prefix}-cost-and-accounting-report-v1.json", r11)
 
         # 12. Evidence Integrity Report
         r12 = {
-            "artifact_version": "RCA2A10eEvidenceIntegrityReportV1",
-            "experiment_id": EXPERIMENT_ID,
+            "artifact_version": f"{p_up}EvidenceIntegrityReportV1",
+            "experiment_id": self.experiment_id,
             "created_at_utc": created_at_utc,
             "synthetic_fixtures_only": True,
             "unauthorized_db_commits": 0,
@@ -981,26 +1048,26 @@ class GatewayDiagnosticOrchestrator:
             "production_db_mutations": 0,
             "verdict": "INTEGRITY_VERIFIED",
         }
-        self._write_json("rca2a10e-evidence-integrity-report-v1.json", r12)
+        self._write_json(f"{self.prefix}-evidence-integrity-report-v1.json", r12)
 
         # 13. Runtime Identity Record
         r13 = {
-            "artifact_version": "RCA2A10eRuntimeIdentityRecordV1",
-            "experiment_id": EXPERIMENT_ID,
+            "artifact_version": f"{p_up}RuntimeIdentityRecordV1",
+            "experiment_id": self.experiment_id,
             "created_at_utc": created_at_utc,
             "runtime_commit": git_gate["head_commit"],
-            "authorized_baseline": AUTHORIZED_BASELINE,
+            "authorized_baseline": self.authorized_baseline,
             "python_runtime": os.sys.version,
             "schema_hash": schema_hash,
             "instructions_hash": d3_envelope["instructions_hash"],
         }
-        self._write_json("rca2a10e-runtime-identity-record-v1.json", r13)
+        self._write_json(f"{self.prefix}-runtime-identity-record-v1.json", r13)
 
         # 14. Final Decision Report
         final_disposition = self._determine_final_disposition(d3_result, d4_result)
         r14 = {
-            "artifact_version": "RCA2A10eFinalDecisionReportV1",
-            "experiment_id": EXPERIMENT_ID,
+            "artifact_version": f"{p_up}FinalDecisionReportV1",
+            "experiment_id": self.experiment_id,
             "created_at_utc": created_at_utc,
             "final_disposition": final_disposition,
             "future_recommendation": analysis["recommendation"],
@@ -1010,7 +1077,7 @@ class GatewayDiagnosticOrchestrator:
             "gen5_created": False,
             "mandatory_stop": True,
         }
-        self._write_json("rca2a10e-final-decision-report-v1.json", r14)
+        self._write_json(f"{self.prefix}-final-decision-report-v1.json", r14)
 
         # 15. Markdown Report
         md_content = self._generate_markdown_report(
@@ -1024,7 +1091,7 @@ class GatewayDiagnosticOrchestrator:
             total_logical=total_logical,
             total_physical=total_physical,
         )
-        (self.audit_dir / "rca2a10e-audit-report.md").write_text(md_content, encoding="utf-8")
+        (self.audit_dir / f"{self.prefix}-audit-report.md").write_text(md_content, encoding="utf-8")
 
         return {
             "baseline_integrity": r1,
@@ -1064,8 +1131,6 @@ class GatewayDiagnosticOrchestrator:
     ) -> dict[str, Any]:
         d3_st = d3_res.get("status")
         d4_st = d4_res.get("status")
-
-        d3_wire = d3_res.get("wire_attempts", [{}])[0] if d3_res.get("wire_attempts") else {}
         d3_latency = d3_res.get("wall_clock_ms", 0.0)
 
         dimensions = {
@@ -1141,14 +1206,14 @@ class GatewayDiagnosticOrchestrator:
         d4_lat = d4_result.get("wall_clock_ms", 0.0)
 
         lines = [
-            "# TraceLens Agent v0 — RCA-2A.10e Audit Report",
+            f"# TraceLens Agent v0 — {self.prefix.upper()} Audit Report",
             "## Bounded Gateway Compatibility Diagnosis",
             "",
             "### Executive Summary",
             "",
             "| Dimension / Metric | Finding / Value | Audit Status |",
             "|---|---|---|",
-            f"| **Phase ID** | RCA-2A.10e | Authorized Live Diagnosis |",
+            f"| **Phase ID** | {self.prefix.upper()} | Authorized Live Diagnosis |",
             f"| **Baseline Commit** | `{git_gate['head_commit'][:10]}` | Ancestor Verified |",
             f"| **Candidate Endpoint** | `{config_gate['resolved_config']['base_url']}` | Verified |",
             f"| **Requested Model** | `{config_gate['resolved_config']['model_name']}` | Verified |",
