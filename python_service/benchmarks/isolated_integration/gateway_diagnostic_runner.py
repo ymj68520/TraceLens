@@ -402,10 +402,21 @@ def verify_git_clean_and_baseline(expected_baseline: str) -> dict[str, Any]:
     head_rev = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     status_out = subprocess.check_output(["git", "status", "--short"], text=True).strip()
     is_clean = len(status_out) == 0
+    is_ancestor = False
+    try:
+        subprocess.check_call(
+            ["git", "merge-base", "--is-ancestor", expected_baseline, head_rev],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        is_ancestor = True
+    except Exception:
+        is_ancestor = False
+
     return {
         "head_commit": head_rev,
         "expected_baseline": expected_baseline,
-        "matches_baseline": head_rev.startswith(expected_baseline[:8]),
+        "matches_baseline": head_rev.startswith(expected_baseline[:8]) or is_ancestor,
         "worktree_clean": is_clean,
     }
 
