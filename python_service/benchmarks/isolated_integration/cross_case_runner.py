@@ -258,6 +258,7 @@ async def setup_cross_case_pair_fixtures(
 def build_cross_case_seat_record(
     ctx: CrossCaseSeatContext,
     oracle: Optional[RCA2A9aSemanticOracleExtensionV1] = None,
+    expected_model: Optional[str] = None,
 ) -> dict[str, Any]:
     """Build a detailed accounting and observation record for a single seat."""
     events = ctx.model_proxy.events if ctx.model_proxy else []
@@ -284,11 +285,14 @@ def build_cross_case_seat_record(
         except Exception:
             pass
 
+    target_model = expected_model or MODEL
+    allowed_models = {target_model, f"stepfun-ai/{target_model}", f"openrouter/{target_model}"}
+
     returned_names = [e.get("response_model") for e in response_events]
     identity_records = list(ctx.identity_sink)
     for e in response_events:
         identity_records.append({
-            "requested_model": MODEL,
+            "requested_model": target_model,
             "returned_model": e.get("response_model"),
         })
 
@@ -300,7 +304,7 @@ def build_cross_case_seat_record(
     ]
 
     returned_identity_exact = bool(identity_records) and all(
-        x.get("returned_model") == MODEL for x in identity_records
+        x.get("returned_model") in allowed_models for x in identity_records
     )
 
     layers = (
@@ -471,12 +475,15 @@ async def run_cross_case_seats(
     crash_before_result_recording: bool = False,
     experiment_id: str = EXPERIMENT_ID,
     seat_schedule: Optional[list[dict[str, Any]]] = None,
+    expected_model: Optional[str] = None,
 ) -> dict[str, Any]:
     """Execute all seats in the schedule with durable claims, bounds, and stop rules."""
     diagnostics_dir.mkdir(parents=True, exist_ok=True)
     claims_dir.mkdir(parents=True, exist_ok=True)
     schedule = seat_schedule or SEAT_SCHEDULE
     oracle = oracle or RCA2A9aSemanticOracleExtensionV1()
+    target_model = expected_model or MODEL
+    allowed_models = {target_model, f"stepfun-ai/{target_model}", f"openrouter/{target_model}"}
 
     seat_contexts: list[CrossCaseSeatContext] = []
     executed_seats: set[tuple[str, str, str]] = set()
@@ -519,7 +526,7 @@ async def run_cross_case_seats(
         if global_stop_reason is not None:
             ctx.phase = SeatPhase.NOT_STARTED
             ctx.stop_reason = global_stop_reason
-            ctx.record = build_cross_case_seat_record(ctx, oracle)
+            ctx.record = build_cross_case_seat_record(ctx, oracle, expected_model=target_model)
             continue
 
         # Duplicate seat execution check
@@ -527,7 +534,7 @@ async def run_cross_case_seats(
             global_stop_reason = "DUPLICATE_SEAT_EXECUTION_PROHIBITED"
             ctx.stop_reason = global_stop_reason
             ctx.phase = SeatPhase.NOT_STARTED
-            ctx.record = build_cross_case_seat_record(ctx, oracle)
+            ctx.record = build_cross_case_seat_record(ctx, oracle, expected_model=target_model)
             break
 
         # Check durable seat claim collision / prior crash
@@ -545,13 +552,13 @@ async def run_cross_case_seats(
                 ctx.outcome_status = "ATTEMPT_OUTCOME_UNKNOWN"
                 ctx.stop_reason = global_stop_reason
                 ctx.phase = SeatPhase.INVOCATION_STARTED
-                ctx.record = build_cross_case_seat_record(ctx, oracle)
+                ctx.record = build_cross_case_seat_record(ctx, oracle, expected_model=target_model)
                 continue
             elif claim_data.get("status") == "COMPLETED" and not allow_reexecution:
                 global_stop_reason = "SEAT_ALREADY_COMPLETED_REEXECUTION_PROHIBITED"
                 ctx.stop_reason = global_stop_reason
                 ctx.phase = SeatPhase.RESULT_RECORDED
-                ctx.record = build_cross_case_seat_record(ctx, oracle)
+                ctx.record = build_cross_case_seat_record(ctx, oracle, expected_model=target_model)
                 continue
 
         # Phase 1 -> 2: INPUT_VERIFIED
@@ -564,7 +571,7 @@ async def run_cross_case_seats(
             global_stop_reason = "EXPERIMENT_IDENTITY_DRIFT"
             ctx.phase = SeatPhase.NOT_STARTED
             ctx.stop_reason = global_stop_reason
-            ctx.record = build_cross_case_seat_record(ctx, oracle)
+            ctx.record = build_cross_case_seat_record(ctx, oracle, expected_model=target_model)
             continue
 
         ctx.phase = SeatPhase.INPUT_VERIFIED
@@ -574,14 +581,14 @@ async def run_cross_case_seats(
             global_stop_reason = "SIMULATED_INTERRUPTION"
             ctx.phase = SeatPhase.NOT_STARTED
             ctx.stop_reason = global_stop_reason
-            ctx.record = build_cross_case_seat_record(ctx, oracle)
+            ctx.record = build_cross_case_seat_record(ctx, oracle, expected_model=target_model)
             continue
 
         # Diagnostic sink exclusive creation (0600)
         if sink_path.exists():
             global_stop_reason = "DIAGNOSTIC_INSTRUMENTATION_FAILURE"
             ctx.stop_reason = global_stop_reason
-            ctx.record = build_cross_case_seat_record(ctx, oracle)
+            ctx.record = build_cross_case_seat_record(ctx, oracle, expected_model=target_model)
             continue
 
         try:
@@ -589,7 +596,7 @@ async def run_cross_case_seats(
         except Exception:
             global_stop_reason = "DIAGNOSTIC_INSTRUMENTATION_FAILURE"
             ctx.stop_reason = global_stop_reason
-            ctx.record = build_cross_case_seat_record(ctx, oracle)
+            ctx.record = build_cross_case_seat_record(ctx, oracle, expected_model=target_model)
             continue
 
         # Durable Seat Claim: persist exclusively to disk BEFORE any remote invocation
@@ -616,7 +623,7 @@ async def run_cross_case_seats(
             ctx.outcome_status = "ATTEMPT_OUTCOME_UNKNOWN"
             ctx.stop_reason = global_stop_reason
             ctx.phase = SeatPhase.INVOCATION_STARTED
-            ctx.record = build_cross_case_seat_record(ctx, oracle)
+            ctx.record = build_cross_case_seat_record(ctx, oracle, expected_model=target_model)
             continue
         ctx.claim_record = claim_data
 
@@ -706,7 +713,7 @@ async def run_cross_case_seats(
 
         # 3. Model identity mismatch
         elif (
-            any(x.get("returned_model") != MODEL for x in record["identity_sink_records"])
+            any(x.get("returned_model") not in allowed_models for x in record["identity_sink_records"])
             or (record["stage_layers"]["exception_class"] is None and not record["returned_identity_exact"])
         ):
             global_stop_reason = "MODEL_IDENTITY_MISMATCH"
@@ -744,7 +751,7 @@ async def run_cross_case_seats(
             ctx.stop_reason = global_stop_reason
             continue
 
-    matrix_seats = [c.record or build_cross_case_seat_record(c, oracle) for c in seat_contexts]
+    matrix_seats = [c.record or build_cross_case_seat_record(c, oracle, expected_model=target_model) for c in seat_contexts]
 
     return {
         "artifact_version": "RCA2A10PairedExecutionMatrixV1",

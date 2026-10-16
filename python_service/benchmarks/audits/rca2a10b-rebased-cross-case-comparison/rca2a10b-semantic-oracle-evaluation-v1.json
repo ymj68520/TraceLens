@@ -2,152 +2,560 @@
   "artifact_version": "RCA2A10bSemanticOracleEvaluationV1",
   "evaluation_state": "UNOBSERVABLE",
   "experiment_id": "rca2a10b-rebased-cross-case-vocabulary-comparison",
-  "note": "No live model outputs were generated because execution was blocked at pre-call gate (CONFIGURATION_BLOCKED).",
   "oracle_version": "RCA2A9aSemanticOracleExtensionV1",
   "per_seat_verdicts": [
     {
       "arm": "control",
       "global_seat": 1,
-      "information_value": "UNOBSERVABLE",
-      "oracle_verdict": "UNOBSERVABLE",
       "pair_label": "A",
       "scenario_id": "t2-no-evidence",
-      "semantic_adequacy": "UNOBSERVABLE"
+      "semantic_oracle_evaluation": {
+        "adequacy": "SEMANTICALLY_INADEQUATE",
+        "evaluation_notes": [
+          "L1: Invalid decision type: <class 'NoneType'>"
+        ],
+        "information_value": "DEGRADED",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "SEMANTICALLY_INADEQUATE",
+          "L5_INFORMATION_VALUE": "DEGRADED"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "FAIL"
+      },
+      "semantic_oracle_verdict": "UNOBSERVABLE",
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "ModelHTTPError",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "EXECUTED"
     },
     {
       "arm": "treatment",
       "global_seat": 2,
-      "information_value": "UNOBSERVABLE",
-      "oracle_verdict": "UNOBSERVABLE",
       "pair_label": "A",
       "scenario_id": "t2-no-evidence",
-      "semantic_adequacy": "UNOBSERVABLE"
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "semantic_oracle_verdict": "UNOBSERVABLE",
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED"
     },
     {
       "arm": "control",
       "global_seat": 3,
-      "information_value": "UNOBSERVABLE",
-      "oracle_verdict": "UNOBSERVABLE",
       "pair_label": "A",
       "scenario_id": "t2-temporal-trap",
-      "semantic_adequacy": "UNOBSERVABLE"
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "semantic_oracle_verdict": "UNOBSERVABLE",
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED"
     },
     {
       "arm": "treatment",
       "global_seat": 4,
-      "information_value": "UNOBSERVABLE",
-      "oracle_verdict": "UNOBSERVABLE",
       "pair_label": "A",
       "scenario_id": "t2-temporal-trap",
-      "semantic_adequacy": "UNOBSERVABLE"
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "semantic_oracle_verdict": "UNOBSERVABLE",
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED"
     },
     {
       "arm": "control",
       "global_seat": 5,
-      "information_value": "UNOBSERVABLE",
-      "oracle_verdict": "UNOBSERVABLE",
       "pair_label": "A",
       "scenario_id": "t2-identity-trap",
-      "semantic_adequacy": "UNOBSERVABLE"
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "semantic_oracle_verdict": "UNOBSERVABLE",
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED"
     },
     {
       "arm": "treatment",
       "global_seat": 6,
-      "information_value": "UNOBSERVABLE",
-      "oracle_verdict": "UNOBSERVABLE",
       "pair_label": "A",
       "scenario_id": "t2-identity-trap",
-      "semantic_adequacy": "UNOBSERVABLE"
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "semantic_oracle_verdict": "UNOBSERVABLE",
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED"
     },
     {
       "arm": "control",
       "global_seat": 7,
-      "information_value": "UNOBSERVABLE",
-      "oracle_verdict": "UNOBSERVABLE",
       "pair_label": "A",
       "scenario_id": "t2-report-citation",
-      "semantic_adequacy": "UNOBSERVABLE"
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "semantic_oracle_verdict": "UNOBSERVABLE",
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED"
     },
     {
       "arm": "treatment",
       "global_seat": 8,
-      "information_value": "UNOBSERVABLE",
-      "oracle_verdict": "UNOBSERVABLE",
       "pair_label": "A",
       "scenario_id": "t2-report-citation",
-      "semantic_adequacy": "UNOBSERVABLE"
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "semantic_oracle_verdict": "UNOBSERVABLE",
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED"
     },
     {
       "arm": "treatment",
       "global_seat": 9,
-      "information_value": "UNOBSERVABLE",
-      "oracle_verdict": "UNOBSERVABLE",
       "pair_label": "B",
       "scenario_id": "t2-no-evidence",
-      "semantic_adequacy": "UNOBSERVABLE"
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "semantic_oracle_verdict": "UNOBSERVABLE",
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED"
     },
     {
       "arm": "control",
       "global_seat": 10,
-      "information_value": "UNOBSERVABLE",
-      "oracle_verdict": "UNOBSERVABLE",
       "pair_label": "B",
       "scenario_id": "t2-no-evidence",
-      "semantic_adequacy": "UNOBSERVABLE"
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "semantic_oracle_verdict": "UNOBSERVABLE",
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED"
     },
     {
       "arm": "treatment",
       "global_seat": 11,
-      "information_value": "UNOBSERVABLE",
-      "oracle_verdict": "UNOBSERVABLE",
       "pair_label": "B",
       "scenario_id": "t2-temporal-trap",
-      "semantic_adequacy": "UNOBSERVABLE"
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "semantic_oracle_verdict": "UNOBSERVABLE",
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED"
     },
     {
       "arm": "control",
       "global_seat": 12,
-      "information_value": "UNOBSERVABLE",
-      "oracle_verdict": "UNOBSERVABLE",
       "pair_label": "B",
       "scenario_id": "t2-temporal-trap",
-      "semantic_adequacy": "UNOBSERVABLE"
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "semantic_oracle_verdict": "UNOBSERVABLE",
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED"
     },
     {
       "arm": "treatment",
       "global_seat": 13,
-      "information_value": "UNOBSERVABLE",
-      "oracle_verdict": "UNOBSERVABLE",
       "pair_label": "B",
       "scenario_id": "t2-identity-trap",
-      "semantic_adequacy": "UNOBSERVABLE"
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "semantic_oracle_verdict": "UNOBSERVABLE",
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED"
     },
     {
       "arm": "control",
       "global_seat": 14,
-      "information_value": "UNOBSERVABLE",
-      "oracle_verdict": "UNOBSERVABLE",
       "pair_label": "B",
       "scenario_id": "t2-identity-trap",
-      "semantic_adequacy": "UNOBSERVABLE"
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "semantic_oracle_verdict": "UNOBSERVABLE",
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED"
     },
     {
       "arm": "treatment",
       "global_seat": 15,
-      "information_value": "UNOBSERVABLE",
-      "oracle_verdict": "UNOBSERVABLE",
       "pair_label": "B",
       "scenario_id": "t2-report-citation",
-      "semantic_adequacy": "UNOBSERVABLE"
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "semantic_oracle_verdict": "UNOBSERVABLE",
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED"
     },
     {
       "arm": "control",
       "global_seat": 16,
-      "information_value": "UNOBSERVABLE",
-      "oracle_verdict": "UNOBSERVABLE",
       "pair_label": "B",
       "scenario_id": "t2-report-citation",
-      "semantic_adequacy": "UNOBSERVABLE"
+      "semantic_oracle_evaluation": {
+        "adequacy": "UNOBSERVABLE",
+        "evaluation_notes": [],
+        "information_value": "UNOBSERVABLE",
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        },
+        "triggered_negative_gates": [],
+        "verdict": "UNOBSERVABLE"
+      },
+      "semantic_oracle_verdict": "UNOBSERVABLE",
+      "stage_layers": {
+        "canonical_integration_valid": false,
+        "canonical_resolution_success": false,
+        "exception_class": "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE",
+        "integration_decision_validator_success": false,
+        "output_tool_received": false,
+        "pydantic_parse_success": false,
+        "resolution_violations": [],
+        "scratch_commit_success": false,
+        "stage_invocation_success": false,
+        "transition_validation_success": false
+      },
+      "status": "NOT_STARTED"
     }
-  ]
+  ],
+  "summary": {
+    "both_semantically_adequate": 0,
+    "both_semantically_inadequate": 0,
+    "control_semantic_win": 0,
+    "semantic_comparison_unavailable": 8,
+    "treatment_semantic_win": 0
+  }
 }
