@@ -1,0 +1,7 @@
+{
+  "artifact_version": "RCA2A10dRuntimeIdentityRecordV1",
+  "audit_id": "rca2a10d-provenance-transport-audit",
+  "baseline_commit": "bbf2244608eead2f254a54d13c3856c7f41a79a0",
+  "final_decision": "PROVENANCE_AUDITED_WITH_IMMUTABILITY_VIOLATION",
+  "runtime_commit": "e86808427b8a50ca27ca695318527399b442f9b9"
+}

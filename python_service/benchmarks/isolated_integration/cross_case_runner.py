@@ -342,25 +342,33 @@ def build_cross_case_seat_record(
         context = ctx.harness._context
         expected_rev = ctx.harness._state_revision
 
-        oracle_eval = oracle.evaluate_extended(
-            scenario_id=ctx.scenario_id,
-            decision_raw=decision_raw,
-            table=table,
-            context=context,
-            state=state_before,
-            expected_revision=expected_rev,
-            arm=ctx.arm,
-        )
+        if decision_raw is not None:
+            oracle_eval = oracle.evaluate_extended(
+                scenario_id=ctx.scenario_id,
+                decision_raw=decision_raw,
+                table=table,
+                context=context,
+                state=state_before,
+                expected_revision=expected_rev,
+                arm=ctx.arm,
+            )
+        else:
+            oracle_eval = None
         ctx.oracle_result = oracle_eval
 
+    is_provider_exc = bool(layers.get("exception_class"))
     oracle_record = {
-        "verdict": oracle_eval.verdict if oracle_eval else "UNOBSERVABLE",
+        "verdict": oracle_eval.verdict if oracle_eval else ("NOT_EVALUATED" if is_provider_exc else "UNOBSERVABLE"),
         "adequacy": oracle_eval.l4_semantic_adequacy.value if oracle_eval else "UNOBSERVABLE",
         "information_value": oracle_eval.l5_information_value.value if oracle_eval else "UNOBSERVABLE",
         "triggered_negative_gates": (
             [g.value for g in oracle_eval.triggered_negative_gates] if oracle_eval else []
         ),
-        "evaluation_notes": oracle_eval.violations if oracle_eval else [],
+        "evaluation_notes": (
+            oracle_eval.violations
+            if oracle_eval
+            else (["PROVIDER_ERROR_NO_MODEL_DECISION"] if is_provider_exc else [])
+        ),
         "layers": {
             "L1_SCHEMA_VALIDITY": layers["pydantic_parse_success"],
             "L2_CANONICAL_RESOLUTION": layers["canonical_resolution_success"],
@@ -370,12 +378,12 @@ def build_cross_case_seat_record(
             "L4_SEMANTIC_ADEQUACY": (
                 oracle_eval.l4_semantic_adequacy.value
                 if oracle_eval
-                else ("UNOBSERVABLE" if not layers["pydantic_parse_success"] else "UNKNOWN")
+                else "UNOBSERVABLE"
             ),
             "L5_INFORMATION_VALUE": (
                 oracle_eval.l5_information_value.value
                 if oracle_eval
-                else ("UNOBSERVABLE" if not layers["pydantic_parse_success"] else "NEUTRAL")
+                else "UNOBSERVABLE"
             ),
         },
     }
@@ -442,7 +450,7 @@ def build_cross_case_seat_record(
             "input_tokens": sum((e.get("usage") or {}).get("input_tokens", 0) for e in events),
             "output_tokens": sum((e.get("usage") or {}).get("output_tokens", 0) for e in events),
         },
-        "latency_ms": [e["latency_ms"] for e in response_events if e.get("latency_ms") is not None],
+        "latency_ms": [e["latency_ms"] for e in events if e.get("latency_ms") is not None],
         "fixture_identity": {
             "scenario_id": ctx.scenario_id,
             "pair_label": ctx.pair_label,

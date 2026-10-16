@@ -1,0 +1,10 @@
+{
+  "artifact_version": "RCA2A10dModelIdentityAuditV1",
+  "audit_id": "rca2a10d-provenance-transport-audit",
+  "gateway_endpoint_identity": "https://api.hcnsec.cn/v1",
+  "interpretation_boundary": "TraceLens verified that the gateway returns responses tagged stepfun-ai/step-5-preview and that tool calling behaves as an advanced reasoning model, but has no cryptographic or out-of-band attestation that the underlying weights are identical to official StepFun Step-5.",
+  "provider_mapping_evidence": "Gateway prepends upstream provider prefix 'stepfun-ai/' to requested model names.",
+  "requested_model_id": "step-5-preview",
+  "returned_model_id": "stepfun-ai/step-5-preview",
+  "upstream_verification_status": "UPSTREAM_MODEL_IDENTITY_NOT_INDEPENDENTLY_VERIFIED"
+}

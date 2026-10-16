@@ -1,0 +1,174 @@
+{
+  "artifact_inventory": [
+    {
+      "artifact_path": "python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/rca2a10b-audit-report.md",
+      "change_type": "MODIFIED",
+      "historical_content_available": true,
+      "new_commit_blob_id": "62375695d01363ce08331566f102f13d701e85a9",
+      "new_sha256": "d8b118802ce7d4e9a5f0fd8566b0d991c2eeadf8bfb1ec898f31b6c52fb7b9b8",
+      "old_commit_blob_id": "69d91c982c232a075a2684d182a59a1e522309fe",
+      "old_sha256": "737e85cd15171ff28d382090da5add51d46d3c87e41ba1e24dc48ddfeee3a29c"
+    },
+    {
+      "artifact_path": "python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/rca2a10b-cost-and-accounting-report-v1.json",
+      "change_type": "MODIFIED",
+      "historical_content_available": true,
+      "new_commit_blob_id": "86c02a91b9ac03741d3bec6c00b87d70ae4ffa78",
+      "new_sha256": "d776e259d03f64cc691459cc9226820b8538bb78e6b0d042410954f1e2cc266e",
+      "old_commit_blob_id": "d7e59f08545a23c853aa16f5415f019042968313",
+      "old_sha256": "36474387fcb0fe11de60239826997929eff302847a395bba0baaa3058927e7cb"
+    },
+    {
+      "artifact_path": "python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/rca2a10b-effective-model-config-v1.json",
+      "change_type": "MODIFIED",
+      "historical_content_available": true,
+      "new_commit_blob_id": "c99d43626779b9af9c82336dc2bf3863e5644cc1",
+      "new_sha256": "180a0d27113c1aa564fa5a5b488c52ae178e95e33b95011e01b190a173b6e087",
+      "old_commit_blob_id": "4c5468bb4efbff6143a2743bb6b66bfab9d13427",
+      "old_sha256": "22d86e4567b8e660583e9ce0be0e25876275f65e72f80634642d2444a6f2dece"
+    },
+    {
+      "artifact_path": "python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/rca2a10b-evidence-integrity-report-v1.json",
+      "change_type": "UNCHANGED",
+      "historical_content_available": true,
+      "new_commit_blob_id": "cc584fa5f52eff29891eebda8406e5b45e034650",
+      "new_sha256": "0a4bea33d950b54351ea578fc7a894a8052aa115c1e8686bc7b0d918695852ee",
+      "old_commit_blob_id": "cc584fa5f52eff29891eebda8406e5b45e034650",
+      "old_sha256": "0a4bea33d950b54351ea578fc7a894a8052aa115c1e8686bc7b0d918695852ee"
+    },
+    {
+      "artifact_path": "python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/rca2a10b-experiment-manifest-v1.json",
+      "change_type": "MODIFIED",
+      "historical_content_available": true,
+      "new_commit_blob_id": "dd462bc3e9f3d59001e9978a9b1a3d4c7b9830fd",
+      "new_sha256": "f9b64133213283263ae9a52c9de2f6703c0c6ba926157b87cd50fb8c2adbed69",
+      "old_commit_blob_id": "899cec4d803cc93eb733dbbf83ce458b1104bb97",
+      "old_sha256": "aeec1dcf429d366239f49d73af5e5492f4f0a0d16e6a1d8bdfd7646f5ab9cc32"
+    },
+    {
+      "artifact_path": "python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/rca2a10b-final-decision-report-v1.json",
+      "change_type": "MODIFIED",
+      "historical_content_available": true,
+      "new_commit_blob_id": "50e24394415127e674e928f808055dd04f3587ea",
+      "new_sha256": "a727bf75e0cf08aac7c04952068b9e94b4443e0001a19084d6148d1b972de8e6",
+      "old_commit_blob_id": "17a217aacee7ff89329171d3b3b99c530be865f0",
+      "old_sha256": "abafd65e1e850a49107df98f55b5b6b31f239d454ee9b11350b1446392a8ba51"
+    },
+    {
+      "artifact_path": "python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/rca2a10b-historical-identity-reconciliation-v1.json",
+      "change_type": "UNCHANGED",
+      "historical_content_available": true,
+      "new_commit_blob_id": "c274f0fe7a71ca2497326cc15d181da84627ec44",
+      "new_sha256": "2a740a1fccc2f9177cbae4a391ee77710215f9139b040ffa2c8ce129d3253f19",
+      "old_commit_blob_id": "c274f0fe7a71ca2497326cc15d181da84627ec44",
+      "old_sha256": "2a740a1fccc2f9177cbae4a391ee77710215f9139b040ffa2c8ce129d3253f19"
+    },
+    {
+      "artifact_path": "python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/rca2a10b-model-compatibility-report-v1.json",
+      "change_type": "UNCHANGED",
+      "historical_content_available": true,
+      "new_commit_blob_id": "e1330eb4d37f5e912a7e42fd5270b72b7d73f601",
+      "new_sha256": "198845cada59eb592b338c55af6b09272bbe73393442f44b6edd446f7136d292",
+      "old_commit_blob_id": "e1330eb4d37f5e912a7e42fd5270b72b7d73f601",
+      "old_sha256": "198845cada59eb592b338c55af6b09272bbe73393442f44b6edd446f7136d292"
+    },
+    {
+      "artifact_path": "python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/rca2a10b-paired-execution-matrix-v1.json",
+      "change_type": "MODIFIED",
+      "historical_content_available": true,
+      "new_commit_blob_id": "f606ef95a44e148f8d18a14003ea7c1695819d84",
+      "new_sha256": "59568a6076a2c6b8dd02c0ed5e32176e47c321bf252e0dc929afb19fb52bca56",
+      "old_commit_blob_id": "9ddfad55f55f97f4ded22d5e2f6c25c14ad79fe4",
+      "old_sha256": "ee73f03ce7e764ba38d4860a912476e3a70a6e2c1297a5e11c26f6ad545a9ad5"
+    },
+    {
+      "artifact_path": "python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/rca2a10b-preflight-gate-report-v1.json",
+      "change_type": "MODIFIED",
+      "historical_content_available": true,
+      "new_commit_blob_id": "634e86b177d9d88d90e5f67ddc4bb565d22cfa4d",
+      "new_sha256": "3cad2fd1871b9a84ea47b700517619e96607a090f4cbd46e47fd7b83e4723298",
+      "old_commit_blob_id": "feec21f8bd80b2ad75cfc19acd2e28c071fe36bb",
+      "old_sha256": "6248eff175c3ce5cf1d2d44344392d3a9b2c3a795354cc94d7a408f1dad2fc33"
+    },
+    {
+      "artifact_path": "python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/rca2a10b-runtime-identity-record-v1.json",
+      "change_type": "MODIFIED",
+      "historical_content_available": true,
+      "new_commit_blob_id": "57bda5d0c8166522490685168503668e71dc68a6",
+      "new_sha256": "88e349f9edc1a843f038a6db728584173cfb006b197cafeaf1eac45c17028f18",
+      "old_commit_blob_id": "3a58c75d105da1e902f0bfafbe2a92a1851cc6d9",
+      "old_sha256": "acdc1e5c8d96e91f8d75ed03c914ef0da531f0f6b981f2c16bb2442adf07f25f"
+    },
+    {
+      "artifact_path": "python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/rca2a10b-scenario-stratified-analysis-v1.json",
+      "change_type": "UNCHANGED",
+      "historical_content_available": true,
+      "new_commit_blob_id": "ffdfc1e5d7afbca6df1ab11446188143e75fdc89",
+      "new_sha256": "f4b287cb3203be7023bf9b484b82f68c9a6960a4ef802eb3b7e1a520f139db46",
+      "old_commit_blob_id": "ffdfc1e5d7afbca6df1ab11446188143e75fdc89",
+      "old_sha256": "f4b287cb3203be7023bf9b484b82f68c9a6960a4ef802eb3b7e1a520f139db46"
+    },
+    {
+      "artifact_path": "python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/rca2a10b-semantic-oracle-evaluation-v1.json",
+      "change_type": "MODIFIED",
+      "historical_content_available": true,
+      "new_commit_blob_id": "529d57a3bc3dc4e4e85c16b33367e50940b1026d",
+      "new_sha256": "3e5df039107ab3a5b19396a24b0b8cfe4e955dafabcac9462c87bcd545af3e0e",
+      "old_commit_blob_id": "2f06023da4e47d13971b63708daddc0822f90d9f",
+      "old_sha256": "4aac230583ac62c36d63dade0c2eaa467fb74e75cd28d25cb7ccce4e8bcb73e9"
+    },
+    {
+      "artifact_path": "python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/rca2a10b-vocabulary-effect-report-v1.json",
+      "change_type": "MODIFIED",
+      "historical_content_available": true,
+      "new_commit_blob_id": "9fea6bb3287115f2db5fff7a928d41e26266b7c8",
+      "new_sha256": "4fa31c4090a321a0283137726129a95cdcb71b6321a651156d7e99e808378eed",
+      "old_commit_blob_id": "7b637f5f506a94e799f3e9f7a848d4e3f5243dc1",
+      "old_sha256": "bdedb45f23b29c210ca51d6460b74b60d940a8b519b477e68e7af4a17151979f"
+    },
+    {
+      "artifact_path": "python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/run_rca2a10b_cross_case_comparison.py",
+      "change_type": "MODIFIED",
+      "historical_content_available": true,
+      "new_commit_blob_id": "c326035cd710b88525498370d981664140085ae0",
+      "new_sha256": "6fcb9804eaa6ccec7c2efb0bc75ffff6fae061ae57d9c109ed7c767899d1bbc3",
+      "old_commit_blob_id": "a2df9eb77589a6e7d35f12cf43b06d13131d3060",
+      "old_sha256": "86124117c02a1b7565e941614065920494622773bcec6005fb2151bc6b9c9b62"
+    },
+    {
+      "artifact_path": "python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/claims/seat-01.claim.json",
+      "change_type": "NEW_FILE",
+      "historical_content_available": false,
+      "new_commit_blob_id": "0d20d5c0b117b88df0bf17b0185966348827f739",
+      "new_sha256": "4b92b67812ec56163351912445aa5d207ec3c306be55b410ea91054dbfc6cbf3",
+      "old_commit_blob_id": null,
+      "old_sha256": null
+    },
+    {
+      "artifact_path": "python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/diagnostics/seat-01-t2-no-evidence-A-control.jsonl",
+      "change_type": "NEW_FILE",
+      "historical_content_available": false,
+      "new_commit_blob_id": "099a19c72c35bb5f7ad861a4b88939634e2c2bf3",
+      "new_sha256": "5bb829774659b85c357fbb0a7df8a67d0a68d06eb4e0e5fe4786fc4b22c34cb3",
+      "old_commit_blob_id": null,
+      "old_sha256": null
+    }
+  ],
+  "artifact_version": "RCA2A10dHistoricalArtifactIntegrityReportV1",
+  "audit_id": "rca2a10d-provenance-transport-audit",
+  "git_verification": {
+    "ancestor_relation_verified": true,
+    "epoch_a_commit": "bbf2244608eead2f254a54d13c3856c7f41a79a0",
+    "epoch_b_commit": "e86808427b8a50ca27ca695318527399b442f9b9",
+    "head_commit": "e86808427b8a50ca27ca695318527399b442f9b9",
+    "worktree_clean": true
+  },
+  "historical_recovery": {
+    "permissions_set": "0444 (read-only)",
+    "recovered_file_count": 15,
+    "recovery_destination": "python_service/benchmarks/audits/rca2a10d-provenance-transport-audit/historical_epoch_a_artifacts/",
+    "recovery_method": "git cat-file -p from commit bbf2244608eead2f254a54d13c3856c7f41a79a0"
+  },
+  "rationale": "Commit e8680842 overwrote 11 audit JSON/MD files and scratch database files from commit bbf2244608 in place within python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/ without namespacing epochs. Historical content was recovered directly from Git object store blobs and preserved read-only.",
+  "verdict": "HISTORICAL_ARTIFACTS_OVERWRITTEN"
+}

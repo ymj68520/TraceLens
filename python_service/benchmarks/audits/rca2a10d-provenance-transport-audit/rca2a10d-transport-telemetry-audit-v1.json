@@ -1,0 +1,31 @@
+{
+  "artifact_version": "RCA2A10dTransportTelemetryAuditV1",
+  "audit_id": "rca2a10d-provenance-transport-audit",
+  "latency_reconciliation": {
+    "claim_monotonic_delta_ms": 17971.2,
+    "claim_wall_clock_seconds": 17.97,
+    "earlier_narrative_204s_attribution": "The 204s duration cited in narrative belonged to an earlier interactive streaming curl probe on full INTEGRATE instructions, not the runner execution of Seat 1.",
+    "reconciled_stage_latency_ms": 17971.2,
+    "reconciled_stage_latency_seconds": 17.97,
+    "stage_matrix_bug_root_cause": "build_cross_case_seat_record filtered latency_ms only from response_events (events with response_metadata=True). On an exception, response_metadata was not set, resulting in an empty latency list [].",
+    "stage_matrix_reported_latency_ms": 0.0
+  },
+  "logical_vs_physical_separation": {
+    "accounting_clarification": "The figure '5 total HTTP attempts' previously reported was derived from 2 observed preflight HTTP requests + 3 upper-bound permitted attempts (len(events) * (1 + SDK_MAX_RETRIES)) from SDK configuration. No per-attempt httpx wire logging was active. The physical HTTP attempts on Seat 1 cannot be distinguished between 1 and 3.",
+    "logical_model_generations": 1,
+    "physical_http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+    "preflight_logical_requests": 2,
+    "preflight_physical_http_attempts": 2,
+    "sdk_max_retries_configured": 2,
+    "sdk_retries_observed": "UNOBSERVABLE",
+    "stage_invocations": 1
+  },
+  "telemetry_fields": {
+    "evidence_provider_processed_body": "INCONCLUSIVE (HTTP 500 returned after 17.97s)",
+    "rate_limit_headers": "UNOBSERVABLE",
+    "request_id_or_trace_id": "UNOBSERVABLE",
+    "request_started_at": "2026-10-16T03:35:33Z (approx derived from monotonic claim delta)",
+    "response_received_at": "2026-10-16T03:35:51Z",
+    "retry_after_headers": "UNOBSERVABLE"
+  }
+}

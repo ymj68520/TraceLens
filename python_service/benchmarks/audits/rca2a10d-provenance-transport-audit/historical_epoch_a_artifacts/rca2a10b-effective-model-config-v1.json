@@ -1,0 +1,30 @@
+{
+  "artifact_version": "RCA2A10bEffectiveModelConfigV1",
+  "block_reason": "Resolved configuration points to confirmed credit-exhausted StepFun endpoint (https://api.stepfun.com/v1, step-3.7-flash), and no alternative configuration redirecting away from StepFun is active in environment variables or runtime configuration.",
+  "credential_fingerprint": "fb81357ee8ff9e149a98f44e40ab59d46e365a92018811557def9bf61b0f2f6c",
+  "credential_source": ".env (LLM_API_KEY)",
+  "effective_config_hash": "2841c2b7e69b714098213df7215adc09ca6c0954750c9e1854f7ecc5c8695925",
+  "endpoint_fingerprint": "40df8f6f1ea34351ddd6dee92bff1acbf2fd7e66b4dfb59839c54572935da99f",
+  "environment_variables_inspected": {
+    "LLM_BASE_URL": "https://api.stepfun.com",
+    "LLM_PROVIDER": null,
+    "LLM_TEXT_BASE_URL": "https://api.stepfun.com",
+    "LLM_TEXT_MODEL": "step-3.7-flash",
+    "OPENROUTER_API_KEY": "PRESENT"
+  },
+  "experiment_id": "rca2a10b-rebased-cross-case-vocabulary-comparison",
+  "investigation_details": {
+    "dot_env_exists": true,
+    "dot_env_file": "/home/ymj68520/projects/TraceLens/.env",
+    "unconfigured_history_probe_note": "bash history contained uncommitted curl test to https://api.hcnsec.cn/v1; probed /v1/models (returned list) but /v1/chat/completions timed out (no upstream channel). Not configured in .env or environment.",
+    "unconfigured_history_probed": true
+  },
+  "max_tokens": 16384,
+  "reasoning_effort_mapping": "none",
+  "resolved_endpoint": "https://api.stepfun.com/v1",
+  "resolved_model_name": "step-3.7-flash",
+  "resolved_provider": "generic",
+  "status": "CONFIGURATION_BLOCKED",
+  "temperature": 0.7,
+  "timeout_seconds": 120.0
+}

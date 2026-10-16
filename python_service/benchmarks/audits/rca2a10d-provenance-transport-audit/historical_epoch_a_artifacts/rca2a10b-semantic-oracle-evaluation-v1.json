@@ -1,0 +1,153 @@
+{
+  "artifact_version": "RCA2A10bSemanticOracleEvaluationV1",
+  "evaluation_state": "UNOBSERVABLE",
+  "experiment_id": "rca2a10b-rebased-cross-case-vocabulary-comparison",
+  "note": "No live model outputs were generated because execution was blocked at pre-call gate (CONFIGURATION_BLOCKED).",
+  "oracle_version": "RCA2A9aSemanticOracleExtensionV1",
+  "per_seat_verdicts": [
+    {
+      "arm": "control",
+      "global_seat": 1,
+      "information_value": "UNOBSERVABLE",
+      "oracle_verdict": "UNOBSERVABLE",
+      "pair_label": "A",
+      "scenario_id": "t2-no-evidence",
+      "semantic_adequacy": "UNOBSERVABLE"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 2,
+      "information_value": "UNOBSERVABLE",
+      "oracle_verdict": "UNOBSERVABLE",
+      "pair_label": "A",
+      "scenario_id": "t2-no-evidence",
+      "semantic_adequacy": "UNOBSERVABLE"
+    },
+    {
+      "arm": "control",
+      "global_seat": 3,
+      "information_value": "UNOBSERVABLE",
+      "oracle_verdict": "UNOBSERVABLE",
+      "pair_label": "A",
+      "scenario_id": "t2-temporal-trap",
+      "semantic_adequacy": "UNOBSERVABLE"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 4,
+      "information_value": "UNOBSERVABLE",
+      "oracle_verdict": "UNOBSERVABLE",
+      "pair_label": "A",
+      "scenario_id": "t2-temporal-trap",
+      "semantic_adequacy": "UNOBSERVABLE"
+    },
+    {
+      "arm": "control",
+      "global_seat": 5,
+      "information_value": "UNOBSERVABLE",
+      "oracle_verdict": "UNOBSERVABLE",
+      "pair_label": "A",
+      "scenario_id": "t2-identity-trap",
+      "semantic_adequacy": "UNOBSERVABLE"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 6,
+      "information_value": "UNOBSERVABLE",
+      "oracle_verdict": "UNOBSERVABLE",
+      "pair_label": "A",
+      "scenario_id": "t2-identity-trap",
+      "semantic_adequacy": "UNOBSERVABLE"
+    },
+    {
+      "arm": "control",
+      "global_seat": 7,
+      "information_value": "UNOBSERVABLE",
+      "oracle_verdict": "UNOBSERVABLE",
+      "pair_label": "A",
+      "scenario_id": "t2-report-citation",
+      "semantic_adequacy": "UNOBSERVABLE"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 8,
+      "information_value": "UNOBSERVABLE",
+      "oracle_verdict": "UNOBSERVABLE",
+      "pair_label": "A",
+      "scenario_id": "t2-report-citation",
+      "semantic_adequacy": "UNOBSERVABLE"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 9,
+      "information_value": "UNOBSERVABLE",
+      "oracle_verdict": "UNOBSERVABLE",
+      "pair_label": "B",
+      "scenario_id": "t2-no-evidence",
+      "semantic_adequacy": "UNOBSERVABLE"
+    },
+    {
+      "arm": "control",
+      "global_seat": 10,
+      "information_value": "UNOBSERVABLE",
+      "oracle_verdict": "UNOBSERVABLE",
+      "pair_label": "B",
+      "scenario_id": "t2-no-evidence",
+      "semantic_adequacy": "UNOBSERVABLE"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 11,
+      "information_value": "UNOBSERVABLE",
+      "oracle_verdict": "UNOBSERVABLE",
+      "pair_label": "B",
+      "scenario_id": "t2-temporal-trap",
+      "semantic_adequacy": "UNOBSERVABLE"
+    },
+    {
+      "arm": "control",
+      "global_seat": 12,
+      "information_value": "UNOBSERVABLE",
+      "oracle_verdict": "UNOBSERVABLE",
+      "pair_label": "B",
+      "scenario_id": "t2-temporal-trap",
+      "semantic_adequacy": "UNOBSERVABLE"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 13,
+      "information_value": "UNOBSERVABLE",
+      "oracle_verdict": "UNOBSERVABLE",
+      "pair_label": "B",
+      "scenario_id": "t2-identity-trap",
+      "semantic_adequacy": "UNOBSERVABLE"
+    },
+    {
+      "arm": "control",
+      "global_seat": 14,
+      "information_value": "UNOBSERVABLE",
+      "oracle_verdict": "UNOBSERVABLE",
+      "pair_label": "B",
+      "scenario_id": "t2-identity-trap",
+      "semantic_adequacy": "UNOBSERVABLE"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 15,
+      "information_value": "UNOBSERVABLE",
+      "oracle_verdict": "UNOBSERVABLE",
+      "pair_label": "B",
+      "scenario_id": "t2-report-citation",
+      "semantic_adequacy": "UNOBSERVABLE"
+    },
+    {
+      "arm": "control",
+      "global_seat": 16,
+      "information_value": "UNOBSERVABLE",
+      "oracle_verdict": "UNOBSERVABLE",
+      "pair_label": "B",
+      "scenario_id": "t2-report-citation",
+      "semantic_adequacy": "UNOBSERVABLE"
+    }
+  ]
+}
