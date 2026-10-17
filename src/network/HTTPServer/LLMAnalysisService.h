@@ -168,6 +168,9 @@ private:
                           const std::string& modelUsed);
     std::vector<std::string> getFilesFromDatabase(const std::string& dbPath,
                                                    const AnalysisOptions& options);
+    // True when the file's first bytes are a PE image or a zip container.
+    // Suffix rules cannot see a dll renamed to .old; this can.
+    static bool hasBinaryContainerHeader(const std::string& path);
     std::string buildFileListSummary(const std::vector<std::string>& files);
     std::vector<std::string> parseImportantFiles(const std::string& llmResponse,
                                                   const std::vector<std::string>& allFiles);

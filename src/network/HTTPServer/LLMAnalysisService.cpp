@@ -13,6 +13,8 @@
 #include <cctype>
 #include <ctime>
 #include <cstring>
+#include <fstream>
+#include <numeric>
 
 namespace fs = std::filesystem;
 
@@ -595,6 +597,9 @@ int LLMAnalysisService::forensicPathPriority(const std::string& path) {
             return 5;
         }
         if (ext == ".old" && stem == "log") return 5;
+        // Registry hive transaction logs (SOFTWARE.LOG1, SAM.LOG2). They carry
+        // no readable text and the text pipeline only reports them as empty.
+        if (ext == ".log1" || ext == ".log2") return 5;
     }
     static const std::vector<std::string> chromeComponentDirs = {
         "certificaterevocation", "certificatetransparency", "crashpad",
@@ -750,15 +755,66 @@ int LLMAnalysisService::forensicPathPriority(const std::string& path) {
     return 10;
 }
 
+bool LLMAnalysisService::hasBinaryContainerHeader(const std::string& path) {
+    // A renamed binary keeps whatever score its directory earns. Only files the
+    // path rules already consider worth analysing are checked, and only the
+    // first bytes: MZ is a PE image (exe/dll saved as .old), PK is a zip-family
+    // container. Anything unreadable is left to the path score — a missing file
+    // is not evidence of anything.
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        return false;
+    }
+    unsigned char magic[4] = {0, 0, 0, 0};
+    in.read(reinterpret_cast<char*>(magic), sizeof(magic));
+    if (in.gcount() < 2) {
+        return false;
+    }
+    if (magic[0] == 'M' && magic[1] == 'Z') {
+        return true;
+    }
+    return in.gcount() >= 4 && magic[0] == 'P' && magic[1] == 'K' &&
+           magic[2] == 0x03 && magic[3] == 0x04;
+}
+
 std::vector<std::string> LLMAnalysisService::selectByHeuristic(std::vector<std::string> files,
                                                                size_t maxFiles) {
-    std::stable_sort(files.begin(), files.end(), [](const std::string& a, const std::string& b) {
-        return forensicPathPriority(a) > forensicPathPriority(b);
-    });
-    if (files.size() > maxFiles) {
-        files.resize(maxFiles);
+    // Score once, up front. The comparator of a sort may re-read a path many
+    // times, and the header check opens the file each call.
+    std::vector<int> scores;
+    scores.reserve(files.size());
+    for (const auto& path : files) {
+        int priority = forensicPathPriority(path);
+        if (priority > 5 && hasBinaryContainerHeader(path)) {
+            priority = 5;
+        }
+        scores.push_back(priority);
     }
-    return files;
+
+    std::vector<size_t> order(files.size());
+    std::iota(order.begin(), order.end(), 0);
+    std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+        return scores[a] > scores[b];
+    });
+
+    // Priority 5 is the noise bucket (temp dirs, registry transaction logs, and
+    // binaries the header check pulled down). A budget larger than the evidence
+    // must stay unfilled rather than be padded with it. The floor sits below
+    // every evidence band, so a sparse image still keeps its real files. The
+    // filter uses the scores above: recomputing the path priority here would
+    // undo the header demotion.
+    const int kMinSelectablePriority = 10;
+    std::vector<std::string> ranked;
+    for (size_t index : order) {
+        if (static_cast<int>(ranked.size()) >= static_cast<int>(maxFiles)) {
+            break;
+        }
+        if (scores[index] < kMinSelectablePriority) {
+            break;
+        }
+        ranked.push_back(std::move(files[index]));
+    }
+    return ranked;
 }
 
 std::string LLMAnalysisService::buildFileListSummary(const std::vector<std::string>& files) {

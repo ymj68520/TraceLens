@@ -11,6 +11,8 @@
 #include <cstdio>
 #include <algorithm>
 #include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <string>
 
 class SceneClassifierTest : public ::testing::Test {
@@ -316,6 +318,9 @@ struct LLMSelectionHeuristicTestAccess {
     static std::vector<std::string> select(std::vector<std::string> files, size_t maxFiles) {
         return LLMAnalysisService::selectByHeuristic(std::move(files), maxFiles);
     }
+    static bool binaryHeader(const std::string& path) {
+        return LLMAnalysisService::hasBinaryContainerHeader(path);
+    }
 };
 }
 
@@ -554,6 +559,65 @@ TEST_F(SceneClassifierTest, HeuristicSelectionMixedRealWorld) {
     EXPECT_EQ(picked[7], "/var/log/cron");
     EXPECT_EQ(picked[8], "/var/log/journal/long/system.journal");
     EXPECT_EQ(picked[9], "/etc/nginx/nginx.conf");
+}
+
+// A budget larger than the evidence must stay unfilled rather than be padded
+// with noise. Real images filter down to a few thousand files, so the 1000-file
+// smart budget used to swallow the whole priority-5 tail — including a PE
+// binary renamed to .old, which the text model then hung on.
+TEST_F(SceneClassifierTest, HeuristicSelectionDoesNotPadBudgetWithJunk) {
+    using A = forensics::LLMSelectionHeuristicTestAccess;
+
+    std::vector<std::string> files = {
+        "/etc/passwd",
+        "/home/alice/contract.pdf",
+        "/var/log/secure",
+        "/Users/Administrator/AppData/Local/Temp/freeime/freeime.old",
+        "/Users/Administrator/AppData/Local/Temp/chrome_installer.log",
+        "C:/Windows/System32/config/SOFTWARE.LOG2",
+        "/Users/Administrator/AppData/Local/Google/Chrome/User Data/Default/Thumbnails/LOG.old",
+        "/Users/Administrator/AppData/Local/Google/Chrome/User Data/Default/Thumbnails/000003.log",
+    };
+    auto picked = A::select(files, 1000);
+    ASSERT_EQ(picked.size(), 3u);
+    EXPECT_EQ(picked[0], "/etc/passwd");
+    EXPECT_EQ(picked[1], "/home/alice/contract.pdf");
+    EXPECT_EQ(picked[2], "/var/log/secure");
+}
+
+// Suffix rules cannot see a binary whose extension was changed. A PE image
+// sitting in a user directory earns the user-area score (90) and would take a
+// smart-selection slot ahead of real evidence; its header must pull it back
+// into the noise bucket. A text file with the same extension stays.
+TEST_F(SceneClassifierTest, HeuristicSelectionDropsRenamedBinaryByHeader) {
+    using A = forensics::LLMSelectionHeuristicTestAccess;
+
+    // The test binary runs from the build tree, so a relative path would not be
+    // the file this test just wrote.
+    const std::string dir =
+        (std::filesystem::temp_directory_path() / "heuristic_header_fixture").string();
+    std::filesystem::create_directory(dir);
+    const std::string binary = dir + "/payload.old";
+    const std::string text = dir + "/notes.old";
+    {
+        std::ofstream out(binary, std::ios::binary);
+        const unsigned char header[] = {'M', 'Z', 0x90, 0x00};
+        out.write(reinterpret_cast<const char*>(header), sizeof(header));
+    }
+    {
+        std::ofstream out(text);
+        out << "investigation notes";
+    }
+
+    std::vector<std::string> files = {"/etc/passwd", binary, text};
+    auto picked = A::select(files, 1000);
+
+    std::filesystem::remove_all(dir);
+
+    ASSERT_EQ(picked.size(), 2u);
+    // The credential file outranks a plain text note; the renamed PE is gone.
+    EXPECT_EQ(picked[0], "/etc/passwd");
+    EXPECT_EQ(picked[1], text);
 }
 
 // Explicit boundaries: real artefacts sharing substrings with junk rules — or
