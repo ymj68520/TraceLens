@@ -53,6 +53,19 @@ from benchmarks.contracts.experimental.integration_vocabulary_guidance_v1 import
     GuidanceIntegrationAgentFactory,
     guidance_sha256,
 )
+from benchmarks.isolated_integration.stop_taxonomy import (
+    CanonicalPromotionStatus,
+    DecoupledSeatAssessment,
+    ExecutionClassification,
+    ModelFailureSeverity,
+    PersistenceScope,
+    ProposalSemanticStatus,
+    SemanticOracleStatus,
+    StopDecision,
+    SystemSafetyOutcome,
+    ValidationDisposition,
+    classify_seat_execution,
+)
 from benchmarks.isolated_integration.cross_case_fixtures import (
     SCENARIO_SPECS,
     build_cloned_cross_case_pair,
@@ -176,6 +189,7 @@ class CrossCaseSeatContext:
     outcome_status: Optional[str] = None
     claim_record: Optional[dict[str, Any]] = None
     record: Optional[dict[str, Any]] = None
+    decoupled_assessment: Optional[DecoupledSeatAssessment] = None
 
 
 async def setup_cross_case_pair_fixtures(
@@ -474,6 +488,7 @@ def build_cross_case_seat_record(
             "report_publication_status": "NOT_EXERCISED",
             "analyst_acceptance_status": "NOT_EXERCISED",
         },
+        "decoupled_assessment": ctx.decoupled_assessment.to_dict() if ctx.decoupled_assessment else None,
     }
 
 
@@ -490,6 +505,7 @@ async def run_cross_case_seats(
     experiment_id: str = EXPERIMENT_ID,
     seat_schedule: Optional[list[dict[str, Any]]] = None,
     expected_model: Optional[str] = None,
+    stop_policy: str = "v1",
 ) -> dict[str, Any]:
     """Execute all seats in the schedule with durable claims, bounds, and stop rules."""
     diagnostics_dir.mkdir(parents=True, exist_ok=True)
@@ -712,6 +728,20 @@ async def run_cross_case_seats(
         record = build_cross_case_seat_record(ctx, oracle, expected_model=target_model)
         ctx.record = record
 
+        # Stop Taxonomy classification
+        is_v2 = stop_policy in ("v2", "RCA2A12StopPolicyV2")
+        assessment = classify_seat_execution(
+            stage_layers=record["stage_layers"],
+            oracle_result=ctx.oracle_result,
+            canonical_mutation_occurred=False,
+            future_stop_policy=is_v2,
+            stop_policy=stop_policy,
+            persistence_outcome_known=True,
+            field_scans=record["field_scan_totals"],
+        )
+        ctx.decoupled_assessment = assessment
+        record["decoupled_assessment"] = assessment.to_dict()
+
         # Stop conditions evaluation
         exc_class = record["stage_layers"]["exception_class"]
         provider_errs = record.get("provider_error_classes", [])
@@ -720,52 +750,94 @@ async def run_cross_case_seats(
             or any(is_provider_error_class(c) for c in provider_errs)
         )
 
-        # 1. Unexpected runner exception
-        if (
-            exc_class not in (None, "UnexpectedModelBehavior")
-            and not has_provider_failure
-        ):
-            global_stop_reason = f"UNEXPECTED_EXCEPTION:{exc_class}"
+        if is_v2:
+            # RCA2A12StopPolicyV2 logic:
+            # 1. Unexpected runner exception
+            if (
+                exc_class not in (None, "UnexpectedModelBehavior")
+                and not has_provider_failure
+            ):
+                global_stop_reason = f"UNEXPECTED_EXCEPTION:{exc_class}"
 
-        # 2. Provider failure
-        elif has_provider_failure:
-            global_stop_reason = "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE"
+            # 2. Provider failure
+            elif has_provider_failure:
+                global_stop_reason = "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE"
 
-        # 3. Model identity mismatch
-        elif (
-            any(x.get("returned_model") not in allowed_models for x in record["identity_sink_records"])
-            or (record["stage_layers"]["exception_class"] is None and not record["returned_identity_exact"])
-        ):
-            global_stop_reason = "MODEL_IDENTITY_MISMATCH"
+            # 3. Model identity mismatch
+            elif (
+                any(x.get("returned_model") not in allowed_models for x in record["identity_sink_records"])
+                or (record["stage_layers"]["exception_class"] is None and not record["returned_identity_exact"])
+            ):
+                global_stop_reason = "MODEL_IDENTITY_MISMATCH"
 
-        # 4. Fabricated evidence or basis handle
-        elif record["field_scan_totals"].get("fabricated_evidence_like_identifier", 0) > 0:
-            global_stop_reason = "FABRICATED_EVIDENCE_OR_BASIS_HANDLE"
+            # 4. Request budget exceeded
+            elif total_logical_generations > REQUEST_BUDGET["max_logical_model_generations"]:
+                global_stop_reason = "REQUEST_BUDGET_EXCEEDED"
 
-        # 5. Mandatory Negative Gate violations
-        elif ctx.oracle_result and ctx.oracle_result.triggered_negative_gates:
-            gates = [g.value for g in ctx.oracle_result.triggered_negative_gates]
-            # If an unauthorized commit occurred into state
-            if NegativeGateCode.UNAUTHORIZED_COMMIT in ctx.oracle_result.triggered_negative_gates:
-                global_stop_reason = f"MANDATORY_NEGATIVE_GATE_VIOLATION:{','.join(gates)}"
-            elif record["stage_layers"].get("scratch_commit_success"):
-                global_stop_reason = f"MANDATORY_NEGATIVE_GATE_VIOLATION_COMMITTED:{','.join(gates)}"
+            # 5. Assessment safety breach or undetermined safety outcome
+            elif assessment.global_halt_recommended:
+                global_stop_reason = assessment.halt_reason or f"SAFETY_BREACH:{assessment.execution_classification.value}"
 
-        # 6. Budget exceeded
-        elif total_logical_generations > REQUEST_BUDGET["max_logical_model_generations"]:
-            global_stop_reason = "REQUEST_BUDGET_EXCEEDED"
+            # 6. Diagnostic data quality verification
+            if not global_stop_reason and sink_path.exists():
+                try:
+                    read_and_validate_sink_entries(
+                        sink_path,
+                        expected_stage="SUPERVISOR_INTEGRATE",
+                        require_validation_details=False,
+                        allow_empty=True,
+                    )
+                except DiagnosticDataQualityError:
+                    global_stop_reason = "DIAGNOSTIC_INSTRUMENTATION_FAILURE"
 
-        # 7. Diagnostic data quality verification
-        if not global_stop_reason and sink_path.exists():
-            try:
-                read_and_validate_sink_entries(
-                    sink_path,
-                    expected_stage="SUPERVISOR_INTEGRATE",
-                    require_validation_details=False,
-                    allow_empty=True,
-                )
-            except DiagnosticDataQualityError:
-                global_stop_reason = "DIAGNOSTIC_INSTRUMENTATION_FAILURE"
+        else:
+            # Historical v1 stop policy
+            # 1. Unexpected runner exception
+            if (
+                exc_class not in (None, "UnexpectedModelBehavior")
+                and not has_provider_failure
+            ):
+                global_stop_reason = f"UNEXPECTED_EXCEPTION:{exc_class}"
+
+            # 2. Provider failure
+            elif has_provider_failure:
+                global_stop_reason = "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE"
+
+            # 3. Model identity mismatch
+            elif (
+                any(x.get("returned_model") not in allowed_models for x in record["identity_sink_records"])
+                or (record["stage_layers"]["exception_class"] is None and not record["returned_identity_exact"])
+            ):
+                global_stop_reason = "MODEL_IDENTITY_MISMATCH"
+
+            # 4. Fabricated evidence or basis handle
+            elif record["field_scan_totals"].get("fabricated_evidence_like_identifier", 0) > 0:
+                global_stop_reason = "FABRICATED_EVIDENCE_OR_BASIS_HANDLE"
+
+            # 5. Mandatory Negative Gate violations
+            elif ctx.oracle_result and ctx.oracle_result.triggered_negative_gates:
+                gates = [g.value for g in ctx.oracle_result.triggered_negative_gates]
+                # If an unauthorized commit occurred into state
+                if NegativeGateCode.UNAUTHORIZED_COMMIT in ctx.oracle_result.triggered_negative_gates:
+                    global_stop_reason = f"MANDATORY_NEGATIVE_GATE_VIOLATION:{','.join(gates)}"
+                elif record["stage_layers"].get("scratch_commit_success"):
+                    global_stop_reason = f"MANDATORY_NEGATIVE_GATE_VIOLATION_COMMITTED:{','.join(gates)}"
+
+            # 6. Budget exceeded
+            elif total_logical_generations > REQUEST_BUDGET["max_logical_model_generations"]:
+                global_stop_reason = "REQUEST_BUDGET_EXCEEDED"
+
+            # 7. Diagnostic data quality verification
+            if not global_stop_reason and sink_path.exists():
+                try:
+                    read_and_validate_sink_entries(
+                        sink_path,
+                        expected_stage="SUPERVISOR_INTEGRATE",
+                        require_validation_details=False,
+                        allow_empty=True,
+                    )
+                except DiagnosticDataQualityError:
+                    global_stop_reason = "DIAGNOSTIC_INSTRUMENTATION_FAILURE"
 
         if global_stop_reason:
             ctx.stop_reason = global_stop_reason
@@ -776,6 +848,7 @@ async def run_cross_case_seats(
     return {
         "artifact_version": "RCA2A10PairedExecutionMatrixV1",
         "experiment_id": experiment_id,
+        "stop_policy": stop_policy,
         "run_order": [dict(s) for s in schedule],
         "stage_invocations_scheduled": len(schedule),
         "stage_invocations_started": total_invocations_started,
