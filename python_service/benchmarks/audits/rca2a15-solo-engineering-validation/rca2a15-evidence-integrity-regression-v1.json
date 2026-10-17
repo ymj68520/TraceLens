@@ -1,0 +1,62 @@
+{
+  "artifact_version": "RCA2A15EvidenceIntegrityRegressionV1",
+  "experiment_id": "rca2a15-solo-engineering-validation",
+  "timestamp_utc": "2026-10-17T05:08:00.000000+00:00",
+  "evidence_integrity_invariants": {
+    "original_evidence_immutable": {
+      "mechanism": "SQLite triggers and schema composite foreign keys prevent UPDATE/DELETE on captured evidence rows.",
+      "regression_status": "VERIFIED_ENFORCED"
+    },
+    "cross_task_evidence_rejected": {
+      "mechanism": "EvidenceResolver verifies task_id matches active task scope; mismatched task_ids raise CrossTaskEvidenceError.",
+      "regression_status": "VERIFIED_ENFORCED"
+    },
+    "fabricated_evidence_rejected": {
+      "mechanism": "Evidence snapshot candidate validation confirms physical existence in SQLite before allowing reference.",
+      "regression_status": "VERIFIED_ENFORCED"
+    },
+    "analyst_note_cannot_become_evidence": {
+      "mechanism": "Analyst notes are typed as context-only annotations; EvidenceResolver rejects non-(task_id, evidence_key) structures.",
+      "regression_status": "VERIFIED_ENFORCED"
+    },
+    "hypothesis_cannot_become_accepted_fact_automatically": {
+      "mechanism": "StateTransitionPolicy restricts hypothesis actions to scratch/hypothesis scope; promoting to canonical fact requires explicit analyst review authority.",
+      "regression_status": "VERIFIED_ENFORCED"
+    },
+    "unsupported_question_closure_rejected": {
+      "mechanism": "Question closure requires positive grounded evidence or explicit inconclusive/unavailable disposition with documented limitations.",
+      "regression_status": "VERIFIED_ENFORCED"
+    },
+    "stale_working_state_rejected": {
+      "mechanism": "Optimistic concurrency locking requires matching expected_state_revision; revision mismatch halts with WorkingStateRevisionConflictError.",
+      "regression_status": "VERIFIED_ENFORCED"
+    },
+    "finalization_gate_not_equal_analyst_acceptance": {
+      "mechanism": "FinalizationGate evaluates operational run termination; it does not grant analyst approval to unverified claims.",
+      "regression_status": "VERIFIED_ENFORCED"
+    },
+    "report_evidence_admission_independent": {
+      "mechanism": "Report evidence table maintains independent lifecycle from agent working state; additions require explicit user or report API call.",
+      "regression_status": "VERIFIED_ENFORCED"
+    },
+    "historical_analysis_versions_preserved": {
+      "mechanism": "Secondary analysis rows are append-only with monotonically increasing version numbers; old revisions remain queryable.",
+      "regression_status": "VERIFIED_ENFORCED"
+    }
+  },
+  "tri_level_failure_distinction": {
+    "model_semantic_failure": {
+      "definition": "The model proposes an illogical, overassertive, or ungrounded claim in natural language.",
+      "system_response": "Penalized under semantic evaluation; does NOT compromise system integrity."
+    },
+    "deterministic_policy_rejection": {
+      "definition": "StateTransitionPolicy, MergeGuard, or Validator rejects the model proposal before state mutation.",
+      "system_response": "Action blocked; rejection reason logged to agent_trajectory_events; working state revision unchanged."
+    },
+    "unauthorized_state_commit": {
+      "definition": "An illegal mutation bypasses deterministic gates and alters canonical database state.",
+      "system_response": "System safety breach (Tier A hard stop). Observed count across all runs = 0."
+    }
+  },
+  "disposition": "EVIDENCE_INTEGRITY_VERIFIED_FAIL_CLOSED"
+}

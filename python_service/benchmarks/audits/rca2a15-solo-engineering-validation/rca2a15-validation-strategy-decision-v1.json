@@ -1,0 +1,40 @@
+{
+  "artifact_version": "RCA2A15ValidationStrategyDecisionV1",
+  "experiment_id": "rca2a15-solo-engineering-validation",
+  "timestamp_utc": "2026-10-17T05:06:00.000000+00:00",
+  "decision_summary": {
+    "title": "Retirement of External Custody Blocker from Engineering Development",
+    "disposition": "SOLO_ENGINEERING_VALIDATION_ACTIVATED",
+    "rationale": "Independent third-party custody protocols (RCA-2A.14a/b) are valuable for high-assurance certification, but in a solo-developer codebase they create an artificial roadblock against practical Agent v0 implementation. Engineering validation is unblocked while keeping formal qualification protocols safely deferred."
+  },
+  "three_tier_evaluation_framework": {
+    "tier_1_development_regression": {
+      "level": "DEVELOPMENT_REGRESSION",
+      "scope": "Deterministic unit tests, safety invariants, regression suites, historical fix verification.",
+      "dataset_type": "Exposed development fixtures (e.g. F1-F4), synthetic unit mocks, deterministic replay.",
+      "independence_requirement": "None (fully automated within developer CI/local test runners).",
+      "authority": "Guarantees code safety, schema integrity, and non-regression of past bugs."
+    },
+    "tier_2_solo_engineering_validation": {
+      "level": "SOLO_ENGINEERING_VALIDATION",
+      "scope": "Developer-authored novel cases, exploratory A/B model comparisons, heuristic & manual semantic reviews, architectural benchmarking.",
+      "dataset_type": "Synthetic evidence cases across Q1-Q6 families, developer-controlled test scenarios.",
+      "independence_requirement": "Non-independent. Must explicitly disclose that developer and evaluator share the same identity; cannot claim double-blindness.",
+      "authority": "Provides empirical directional evidence to guide prompt design, error handling, and orchestration architecture."
+    },
+    "tier_3_independent_qualification": {
+      "level": "INDEPENDENT_QUALIFICATION",
+      "scope": "Formal release qualification with independent custody, novel sealed holdout cases, and blinded third-party adjudicators.",
+      "dataset_type": "Cryptographically sealed, unexposed holdout batteries managed by external custodians.",
+      "independence_requirement": "Strict 5-role custody matrix and independent storage boundary.",
+      "current_status": "DEFERRED",
+      "authority": "Authorizes default production deployment in zero-trust environments. DOES NOT block Tier 1 or Tier 2 progress."
+    }
+  },
+  "blocking_policy_resolution": {
+    "tier_3_blocks_tier_2": false,
+    "tier_3_blocks_tier_1": false,
+    "holdout_custody_blocker_status": "RETIRED_FROM_ENGINEERING_VALIDATION",
+    "historical_artifacts_treatment": "STRICTLY_PRESERVED_IMMUTABLE"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "artifact_version": "RCA2A15GuidanceIntegrationOptionsV1",
+  "experiment_id": "rca2a15-solo-engineering-validation",
+  "timestamp_utc": "2026-10-17T05:09:00.000000+00:00",
+  "options_evaluation": {
+    "option_a_keep_original_v2": {
+      "strategy": "Retain Original Supervisor V2 exclusively in production; keep Vocabulary Guidance V1 purely within offline benchmark suites.",
+      "pros": "Zero production risk; zero changes to prompt registry or runtime configuration.",
+      "cons": "Forfeits the observed +37.5pp canonical validity gain for developers opting into structured integration testing."
+    },
+    "option_b_prepare_experimental_opt_in": {
+      "strategy": "Prepare an explicit, non-default configuration toggle (agent_enable_vocabulary_guidance=False by default) allowing developers to opt-in to Guidance V1.",
+      "pros": "Safely bridges benchmark discoveries to developer workflows without risking production default safety; enforces audit logging of prompt versions and guidance hashes.",
+      "cons": "Requires adding a settings flag and documenting experimental boundaries."
+    },
+    "option_c_research_guidance_v2": {
+      "strategy": "Iterate prompt engineering to formulate Guidance V2 specifically addressing cross-system identity overreach (F3 failure mode).",
+      "pros": "Directly targets the remaining semantic defect identified in RCA-2A.12/13.",
+      "cons": "Risks ad-hoc prompt overfitting on development fixtures if pursued prior to real orchestrator integration."
+    }
+  },
+  "selected_decision": "PREPARE_EXPERIMENTAL_OPT_IN",
+  "decision_rationale": "Vocabulary Guidance V1 showed a +37.5pp canonical validity advantage in RCA-2A.12, but suffered cross-system identity overreach in F3. It cannot be made production default. However, locking it away completely in benchmarks prevents developers from benefiting from improved integration formatting. Preparing an explicit opt-in toggle (defaulting to False) represents the soundest engineering compromise.",
+  "production_boundary_enforcement": {
+    "current_production_default": "Original Supervisor V2 (UNCHANGED)",
+    "production_prompt_modified_in_phase_15": false,
+    "production_schema_modified_in_phase_15": false
+  }
+}
