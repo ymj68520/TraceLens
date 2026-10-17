@@ -1,0 +1,82 @@
+{
+  "deliverable": "RCA2A24aLocalSecurityVerificationV1",
+  "schema_version": "rca2a24a-local-security-verification:v1",
+  "verified_at": "2026-10-17T14:22:00Z",
+  "verdict": "LOCAL_MUTATION_SECURITY_PASS",
+  "security_policy": {
+    "model": "SINGLE_USER_LOCAL_DEVELOPMENT",
+    "reviewer_identity_classification": "CALLER_DECLARED",
+    "authenticated_analyst_guaranteed": false,
+    "trusted_local_hosts": [
+      "127.0.0.1",
+      "::1",
+      "localhost",
+      "testclient",
+      "testserver"
+    ]
+  },
+  "verified_boundaries": {
+    "host_header_validation": {
+      "status": "ENFORCED",
+      "test_coverage": "T40",
+      "behavior": "Host headers not matching _TRUSTED_LOCAL_HOSTS are rejected with 403 Forbidden to prevent DNS rebinding attacks."
+    },
+    "origin_header_validation": {
+      "status": "ENFORCED",
+      "test_coverage": "T10, T37, T38",
+      "behavior": "Cross-origin requests from untrusted origins are rejected with 403 Forbidden."
+    },
+    "null_origin_rejection": {
+      "status": "ENFORCED",
+      "test_coverage": "T11, T41",
+      "behavior": "Requests presenting Origin: null (such as sandboxed iframes or file: URI) are rejected with 403 Forbidden."
+    },
+    "missing_origin_handling": {
+      "status": "ENFORCED_LOCAL_ONLY",
+      "test_coverage": "T45, T08",
+      "behavior": "Missing Origin is allowed only when direct TCP client.host and Host/Forwarded headers resolve to trusted local addresses (safe CLI / local automation boundary; browsers cannot omit Origin on cross-site mutations)."
+    },
+    "x_forwarded_host_validation": {
+      "status": "ENFORCED",
+      "test_coverage": "T42",
+      "behavior": "X-Forwarded-Host headers matching untrusted external domains are rejected with 403 Forbidden."
+    },
+    "x_forwarded_for_validation": {
+      "status": "ENFORCED",
+      "test_coverage": "T43, T44, T45",
+      "behavior": "Any external IP address present in X-Forwarded-For (single or multi-hop) is rejected with 403 Forbidden. Local loopback proxy hops are permitted."
+    },
+    "remote_client_ip_rejection": {
+      "status": "ENFORCED",
+      "test_coverage": "T09, T35, T38",
+      "behavior": "Non-local direct socket callers (client.host not in _TRUSTED_LOCAL_HOSTS) are rejected with 403 Forbidden."
+    },
+    "feature_gate_enforcement": {
+      "status": "ENFORCED",
+      "test_coverage": "T05, T45, test_mvp_feature_gates.py",
+      "behavior": "Agent cycle mutation is rejected with 403 Forbidden when agent_execution_enabled is False (default configuration)."
+    },
+    "task_id_mismatch_protection": {
+      "status": "ENFORCED",
+      "test_coverage": "T13, T36, T39",
+      "behavior": "Requests where URL query task_id differs from body payload task_id are rejected with 409 Conflict."
+    }
+  },
+  "protected_endpoints": [
+    "POST /api/investigation/agent/cycle",
+    "POST /api/investigation/agent/review"
+  ],
+  "unit_regression_tests": [
+    "test_t35_untrusted_remote_client_denied",
+    "test_t36_query_task_id_mismatch_rejected",
+    "test_t37_untrusted_origin_rejected_review",
+    "test_t38_untrusted_client_or_origin_rejected_cycle",
+    "test_t39_cycle_query_task_id_mismatch_rejected",
+    "test_t40_unexpected_host_header_rejected",
+    "test_t41_null_origin_header_rejected",
+    "test_t42_unexpected_x_forwarded_host_rejected",
+    "test_t43_untrusted_x_forwarded_for_rejected",
+    "test_t44_multi_hop_x_forwarded_for_rejected",
+    "test_t45_valid_local_forwarded_headers_accepted"
+  ]
+}

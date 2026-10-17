@@ -1,0 +1,45 @@
+{
+  "deliverable": "RCA2A24aFullUnitRegressionReportV1",
+  "schema_version": "rca2a24a-full-unit-regression:v1",
+  "verified_at": "2026-10-17T14:22:00Z",
+  "verdict": "FULL_UNIT_PASS",
+  "python_environment": {
+    "python_executable": "/home/ymj68520/projects/TraceLens/python_service/.venv/bin/python",
+    "python_version": "3.12.3",
+    "pytest_version": "9.1.1",
+    "venv_location": "python_service/.venv",
+    "setup_contract_reference": "setup.sh Step 7/8 (VENV_DIR=$PROJECT_ROOT/python_service/.venv)"
+  },
+  "collection_investigation": {
+    "affected_module": "python_service/tests/unit/test_ingestion_gate.py",
+    "dependency_name": "graphiti_core",
+    "dependency_status": "INSTALLED_IN_PROJECT_VENV",
+    "dependency_type": "Optional Neo4j knowledge graph dependency formally declared in setup.sh",
+    "root_cause_analysis": "Invocation path mismatch. Pytest was invoked with system/miniconda3 Python 3.14 (where graphiti_core was uninstalled and WindowsPath mocks collided with Python 3.14 alpha internal changes) rather than the project's official declared virtualenv at python_service/.venv (Python 3.12.3). In the official virtualenv, graphiti_core is installed and all 3,128 unit tests collect cleanly with 0 errors.",
+    "regression_fix": "Updated python_service/tests/unit/test_mvp_feature_gates.py to include agent_execution_enabled=False in expected defaults matching system routes."
+  },
+  "execution_metrics": {
+    "test_scope": "python_service/tests/unit",
+    "collected": 3132,
+    "passed": 3131,
+    "failed": 0,
+    "skipped": 1,
+    "errors": 0,
+    "duration_seconds": 441.2,
+    "skipped_tests": [
+      {
+        "test": "python_service/tests/unit/investigation/test_agent_provider_smoke.py::test_agent_provider_smoke_requires_explicit_provider",
+        "reason": "Real provider tests disabled in offline verification (REAL_PROVIDER_REQUESTS_ZERO = True)"
+      }
+    ]
+  },
+  "frontend_regression_metrics": {
+    "vitest_suites_collected": 52,
+    "vitest_suites_passed": 52,
+    "vitest_tests_collected": 264,
+    "vitest_tests_passed": 264,
+    "vitest_duration_seconds": 9.72,
+    "production_build": "SUCCESS",
+    "production_build_duration_seconds": 15.64
+  }
+}
