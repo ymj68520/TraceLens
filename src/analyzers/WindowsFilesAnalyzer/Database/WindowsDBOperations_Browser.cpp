@@ -83,14 +83,17 @@ bool WindowsAnalysisDatabase::insertBrowserHistory(const BrowserHistoryEntry& en
 bool WindowsAnalysisDatabase::insertBrowserHistories(const std::vector<BrowserHistoryEntry>& entries) {
     if (entries.empty()) return true;
 
-    beginTransaction();
+    // No transaction of its own: the only caller (WindowsBrowserAnalyzer)
+    // already holds one around all five batches. A nested BEGIN fails with
+    // "cannot start a transaction within a transaction" and its ROLLBACK takes
+    // the caller's transaction with it, so every batch after the first was
+    // silently dropped.
     for (const auto& entry : entries) {
         if (!insertBrowserHistory(entry)) {
-            rollbackTransaction();
             return false;
         }
     }
-    return commitTransaction();
+    return true;
 }
 
 std::vector<BrowserHistoryEntry> WindowsAnalysisDatabase::queryBrowserHistory(const std::string& whereClause) {
@@ -125,14 +128,12 @@ bool WindowsAnalysisDatabase::insertBrowserDownload(const BrowserDownloadEntry& 
 bool WindowsAnalysisDatabase::insertBrowserDownloads(const std::vector<BrowserDownloadEntry>& entries) {
     if (entries.empty()) return true;
 
-    beginTransaction();
     for (const auto& entry : entries) {
         if (!insertBrowserDownload(entry)) {
-            rollbackTransaction();
             return false;
         }
     }
-    return commitTransaction();
+    return true;
 }
 
 std::vector<BrowserDownloadEntry> WindowsAnalysisDatabase::queryBrowserDownloads(const std::string& whereClause) {
@@ -161,14 +162,12 @@ bool WindowsAnalysisDatabase::insertBrowserBookmark(const BrowserBookmarkEntry& 
 bool WindowsAnalysisDatabase::insertBrowserBookmarks(const std::vector<BrowserBookmarkEntry>& entries) {
     if (entries.empty()) return true;
 
-    beginTransaction();
     for (const auto& entry : entries) {
         if (!insertBrowserBookmark(entry)) {
-            rollbackTransaction();
             return false;
         }
     }
-    return commitTransaction();
+    return true;
 }
 
 std::vector<BrowserBookmarkEntry> WindowsAnalysisDatabase::queryBrowserBookmarks(const std::string& whereClause) {
@@ -202,14 +201,12 @@ bool WindowsAnalysisDatabase::insertBrowserCookie(const BrowserCookieEntry& entr
 bool WindowsAnalysisDatabase::insertBrowserCookies(const std::vector<BrowserCookieEntry>& entries) {
     if (entries.empty()) return true;
 
-    beginTransaction();
     for (const auto& entry : entries) {
         if (!insertBrowserCookie(entry)) {
-            rollbackTransaction();
             return false;
         }
     }
-    return commitTransaction();
+    return true;
 }
 
 std::vector<BrowserCookieEntry> WindowsAnalysisDatabase::queryBrowserCookies(const std::string& whereClause) {
@@ -241,14 +238,12 @@ bool WindowsAnalysisDatabase::insertBrowserLogin(const BrowserLoginEntry& entry)
 bool WindowsAnalysisDatabase::insertBrowserLogins(const std::vector<BrowserLoginEntry>& entries) {
     if (entries.empty()) return true;
 
-    beginTransaction();
     for (const auto& entry : entries) {
         if (!insertBrowserLogin(entry)) {
-            rollbackTransaction();
             return false;
         }
     }
-    return commitTransaction();
+    return true;
 }
 
 std::vector<BrowserLoginEntry> WindowsAnalysisDatabase::queryBrowserLogins(const std::string& whereClause) {
