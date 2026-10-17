@@ -131,3 +131,28 @@ async def test_worker_non_full_mode_does_not_fire_tail(monkeypatch):
     })
     await asyncio.sleep(0.05)
     assert rec.tasks == []
+
+
+@pytest.mark.asyncio
+async def test_worker_pipeline_analyzed_only_fires_tail(monkeypatch):
+    """The pipeline triggers ANALYZED_ONLY since the ANALYZED_ONLY switch —
+    that job must still fire the report tail, but only when it carries the
+    pipeline trigger_source marker."""
+    manager = _make_manager(monkeypatch)
+    rec = _Rec()
+    manager.on_ingestion_completed = rec
+
+    async def _force(job_id):
+        return False
+
+    async def _analyzed_only(job_id, task_id):
+        return None
+
+    monkeypatch.setattr(manager, "_job_force_flag", _force)
+    monkeypatch.setattr(manager, "_process_analyzed_only", _analyzed_only)
+    await manager._process_job({
+        "job_id": "job-6", "task_id": "task-F", "mode": "analyzed_only",
+        "trigger_source": "pipeline",
+    })
+    await asyncio.sleep(0.05)
+    assert rec.tasks == ["task-F"]

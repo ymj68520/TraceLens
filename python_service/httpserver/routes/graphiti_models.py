@@ -39,6 +39,14 @@ class IngestRequest(BaseModel):
     batch_size: int = Field(default=50, ge=1, le=500, description="Batch size for processing")
     max_episodes: int = Field(default=100, ge=0, le=10000, description="Maximum episodes to process (0 = unlimited)")
     force: bool = Field(default=False, description="Bypass the foreground gate (SPEC A escape hatch)")
+    trigger_source: Optional[str] = Field(
+        default=None,
+        description=(
+            '"pipeline" when the C++ analysis flow triggers the ingestion; '
+            "only such jobs fire the auto report tail on completion. Manual "
+            "UI re-ingests leave this unset."
+        ),
+    )
 
 
 class FileIngestRequest(BaseModel):

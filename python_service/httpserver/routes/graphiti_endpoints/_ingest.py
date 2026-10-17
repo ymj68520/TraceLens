@@ -62,6 +62,7 @@ async def ingest_data(
                 task_id=request.task_id,
                 mode=request.mode,
                 force=request.force,
+                trigger_source=request.trigger_source,
             )
             return IngestionResponse(
                 job_id=job_id,

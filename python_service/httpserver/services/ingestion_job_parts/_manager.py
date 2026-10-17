@@ -375,6 +375,7 @@ class IngestionJobManagerMixin:
         task_id: str,
         mode: IngestionMode = IngestionMode.FULL,
         force: bool = False,
+        trigger_source: Optional[str] = None,
     ) -> str:
         """
         Queue a background ingestion job for a task.
@@ -383,6 +384,8 @@ class IngestionJobManagerMixin:
             task_id: Task ID to ingest.
             mode: Ingestion mode.
             force: Bypass the foreground gate (SPEC A3 escape hatch).
+            trigger_source: '"pipeline"' when the initial analysis flow
+                triggered this job — only such jobs fire the report tail.
 
         Returns:
             Job ID for tracking.
@@ -405,6 +408,7 @@ class IngestionJobManagerMixin:
                 "task_id": task_id,
                 "mode": mode.value,
                 "force": bool(force),
+                "trigger_source": trigger_source,
             }))
 
         logger.info(f"Queued ingestion job {job_id} for task {task_id} (mode: {mode.value})")

@@ -264,14 +264,25 @@ class IngestionJobWorkerMixin:
                 )
             else:
                 await self._update_job_status(job_id, JobStatus.COMPLETED, progress=100)
+                # Initial-analysis-flow tail: the pipeline's ingestion is the
+                # last stage — fire the report-tail callback independently of
+                # the job result. The pipeline now triggers ANALYZED_ONLY
+                # (LLM_MAX_FILES caps what was described) and marks itself via
+                # trigger_source so manual UI re-ingests skip the tail.
+                is_pipeline_trigger = (
+                    queue_data.get("trigger_source") == "pipeline"
+                )
                 if (
-                    mode == IngestionMode.FULL
-                    and task_id
+                    task_id
                     and self.on_ingestion_completed is not None
+                    and (
+                        mode == IngestionMode.FULL
+                        or (
+                            mode == IngestionMode.ANALYZED_ONLY
+                            and is_pipeline_trigger
+                        )
+                    )
                 ):
-                    # Initial-analysis-flow tail: a finished FULL ingestion
-                    # is the pipeline's last stage — fire the report-tail
-                    # callback independently of the job result.
                     asyncio.create_task(self._notify_report_tail(task_id))
 
         except Exception as e:

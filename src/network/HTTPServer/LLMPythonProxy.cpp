@@ -117,7 +117,11 @@ std::string LLMPythonProxy::async_ingest(
 
         nlohmann::json body = {
             {"task_id", task_id},
-            {"mode", to_string(mode)}
+            {"mode", to_string(mode)},
+            // Marks the initial analysis pipeline as the trigger so the
+            // Python worker fires the report tail for ANALYZED_ONLY jobs;
+            // manual UI re-ingests leave it unset and skip the tail.
+            {"trigger_source", "pipeline"}
         };
 
         auto res = cli.Post("/api/graphiti/ingest", body.dump(), "application/json");
