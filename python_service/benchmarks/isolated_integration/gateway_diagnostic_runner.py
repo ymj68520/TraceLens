@@ -75,6 +75,12 @@ EXPERIMENT_ID_RCA2A10F = "rca2a10f-bounded-gateway-diagnosis"
 AUTHORIZED_BASELINE_RCA2A10F = "d9a0424492a90fa095febed02f77c55246d7ff58"
 AUTHORIZED_MODEL_RCA2A10F = "longcat-2.5"
 
+# RCA-2A.10g Candidate Constants
+EXPERIMENT_ID_RCA2A10G = "rca2a10g-bounded-gateway-diagnosis"
+AUTHORIZED_BASELINE_RCA2A10G = "7de76cf1afa867c97f2ae66b1e482895372e39c3"
+AUTHORIZED_BASE_URL_RCA2A10G = "https://chat.cordapp.org/v1"
+AUTHORIZED_MODEL_RCA2A10G = "deepseek-flash"
+
 MAX_LOGICAL_GENERATIONS = 2
 MAX_PHYSICAL_HTTP_ATTEMPTS = 2
 SDK_MAX_RETRIES = 0
@@ -87,12 +93,17 @@ MAX_TOKENS = 4096
 def get_allowed_returned_models(model_name: str) -> set[str]:
     return {
         model_name,
+        f"deepseek-ai/{model_name}",
+        f"deepseek/{model_name}",
         f"meituan/{model_name}",
         f"longcat/{model_name}",
         f"stepfun-ai/{model_name}",
         f"openrouter/{model_name}",
         "step-5-preview",
         "stepfun-ai/step-5-preview",
+        "longcat-2.5",
+        "longcat-2.5-preview-free",
+        "deepseek-flash",
     }
 
 
@@ -514,16 +525,63 @@ def verify_rca2a10e_artifacts_immutable(repo_root: Path) -> dict[str, Any]:
     return {"ok": all_ok, "details": results}
 
 
-def verify_effective_config_gate(settings: Any, expected_model: Optional[str] = None) -> dict[str, Any]:
+def verify_rca2a10f_artifacts_immutable(repo_root: Path) -> dict[str, Any]:
+    """Verify SHA-256 integrity of all historical RCA-2A.10f audit artifacts."""
+    rca2a10f_dir = repo_root / "python_service/benchmarks/audits/rca2a10f-bounded-gateway-diagnosis"
+    if not rca2a10f_dir.exists():
+        return {"ok": False, "error": "rca2a10f-bounded-gateway-diagnosis directory missing"}
+
+    expected_rca2a10f_hashes = {
+        "rca2a10f-audit-report.md": "0abdb8eb5718df99d0e0fb640dc4ae81b4588330635cc8f0ced2b189a055606f",
+        "rca2a10f-baseline-integrity-report-v1.json": "3d8c76acd990281f7561e4bb54a4f68716eb518e8ecf983af024679feafd8458",
+        "rca2a10f-cost-and-accounting-report-v1.json": "8578813989faccea56c00432f18522236a501516ac9c87d7f3649c0d64d478b2",
+        "rca2a10f-d3-execution-report-v1.json": "d346baa761067876b37cc757e4fd6c676f43a60e2bdbcf81b50c88782138536b",
+        "rca2a10f-d4-execution-report-v1.json": "5039cae7ad04f058eb46a4fbd5e03c45db1402352734403321b8627bca0681b4",
+        "rca2a10f-effective-config-report-v1.json": "4ea6cf76e54a327cf1ae1118508daddf6d901e33323e670870212a2ef8d5db56",
+        "rca2a10f-evidence-integrity-report-v1.json": "2455553fd4765bbfa3f26c9ab5988c94a9ad92e7acd291f2253c2db8a84b1076",
+        "rca2a10f-experiment-manifest-v1.json": "4c55f8837bae6020ff43c0bb18b25c71deb0af92fef8a4362e2680f3d7a1611d",
+        "rca2a10f-final-decision-report-v1.json": "0adfc3d4145c1e3079e468d1da2c861272bf591c7ea3a4e076acfb97f423699e",
+        "rca2a10f-gateway-failure-analysis-v1.json": "11b433015e0a9ce44a76cdaa83d322edf1223322a85bb7a4d6e7039a765f5de0",
+        "rca2a10f-historical-interpretation-amendment-v1.json": "c41a80beddc6c1a377380b9969c96904cb2a2cbad526c7749b5772c806e0a6a9",
+        "rca2a10f-precall-gate-report-v1.json": "85df12cd4a54f368a3130a903b168994eeb42c9ae4b0dbdc96a4e6b6fd323153",
+        "rca2a10f-request-envelope-identity-v1.json": "4b4116b99db1f21602effb0f6070f646a369c8aadcc2eacc586bb59758211e5f",
+        "rca2a10f-runtime-identity-record-v1.json": "fd5fa820c33deee2aa43a2cb4b96f803c4cb583ddc7800d094fc472c6c631521",
+        "rca2a10f-transport-compatibility-report-v1.json": "0acaf818595747d08b38577996bee41b05e8f52591e615bbb41e0bdf94620d31",
+        "requests/d3.claim.json": "2fe0f9bc8b29ced2c55c3ca2d3d55edba2a9d8678945b8904515053479f2fcae",
+        "requests/d4.claim.json": "7aeaa135c13797f0cc085aba941404e96127f2375dd7aeb6b7a87ada4637ce37",
+    }
+    results = {}
+    all_ok = True
+    for rel_name, exp_sha in expected_rca2a10f_hashes.items():
+        fpath = rca2a10f_dir / rel_name
+        if not fpath.exists():
+            results[f"rca2a10f/{rel_name}"] = {"exists": False, "sha256": None, "ok": False}
+            all_ok = False
+            continue
+        act_sha = hashlib.sha256(fpath.read_bytes()).hexdigest()
+        m = (act_sha == exp_sha)
+        results[f"rca2a10f/{rel_name}"] = {"exists": True, "sha256": act_sha, "ok": m}
+        if not m:
+            all_ok = False
+
+    return {"ok": all_ok, "details": results}
+
+
+def verify_effective_config_gate(
+    settings: Any,
+    expected_model: Optional[str] = None,
+    expected_base_url: Optional[str] = None,
+) -> dict[str, Any]:
     """Verify effective configuration strictly matches authorized candidate."""
     cfg = resolve_adapter_config(settings)
     api_key = getattr(settings, "llm_api_key", None)
     has_api_key = bool(api_key and str(api_key).strip())
     target_model = expected_model or cfg.model_name
+    target_base_url = expected_base_url or cfg.base_url
 
     checks = {
         "provider_matches": cfg.provider == AUTHORIZED_PROVIDER,
-        "base_url_matches": cfg.base_url.rstrip("/") == AUTHORIZED_BASE_URL.rstrip("/"),
+        "base_url_matches": cfg.base_url.rstrip("/") == target_base_url.rstrip("/"),
         "model_matches": cfg.model_name == target_model,
         "temperature_matches": cfg.temperature == TEMPERATURE,
         "max_tokens_matches": cfg.max_tokens == MAX_TOKENS,
@@ -565,6 +623,8 @@ class GatewayDiagnosticOrchestrator:
         authorized_baseline: str = AUTHORIZED_BASELINE,
         authorized_model: Optional[str] = None,
         expected_returned_model: Optional[str] = None,
+        authorized_base_url: Optional[str] = None,
+        settings: Optional[Any] = None,
     ):
         self.repo_root = repo_root
         self.audit_dir = audit_dir
@@ -574,10 +634,11 @@ class GatewayDiagnosticOrchestrator:
         self.experiment_id = experiment_id
         self.authorized_baseline = authorized_baseline
         self.prefix = experiment_id.split("-")[0]
-        self.settings = get_settings()
+        self.settings = settings or get_settings()
         cfg = resolve_adapter_config(self.settings)
         self.authorized_model = authorized_model or cfg.model_name
         self.expected_returned_model = expected_returned_model or self.authorized_model
+        self.authorized_base_url = authorized_base_url or cfg.base_url
         self.allowed_returned_models = get_allowed_returned_models(self.authorized_model)
 
     async def run_diagnosis(self) -> dict[str, Any]:
@@ -595,10 +656,19 @@ class GatewayDiagnosticOrchestrator:
         history_gate = verify_historical_artifacts_immutable(self.repo_root)
         rca2a10e_history = (
             verify_rca2a10e_artifacts_immutable(self.repo_root)
-            if self.prefix == "rca2a10f"
+            if self.prefix in ("rca2a10f", "rca2a10g")
             else {"ok": True}
         )
-        config_gate = verify_effective_config_gate(self.settings, expected_model=self.authorized_model)
+        rca2a10f_history = (
+            verify_rca2a10f_artifacts_immutable(self.repo_root)
+            if self.prefix == "rca2a10g"
+            else {"ok": True}
+        )
+        config_gate = verify_effective_config_gate(
+            self.settings,
+            expected_model=self.authorized_model,
+            expected_base_url=self.authorized_base_url,
+        )
 
         # 3. Request envelope reconstruction
         fixture_dir = self.scratch_dir / f"t2_no_evidence_pair_a_{self.prefix}"
@@ -630,7 +700,11 @@ class GatewayDiagnosticOrchestrator:
 
         precall_gates = {
             "REPOSITORY_IDENTITY_VERIFIED": git_gate["matches_baseline"],
-            "HISTORICAL_ARTIFACTS_UNCHANGED": history_gate["ok"] and rca2a10e_history.get("ok", False),
+            "HISTORICAL_ARTIFACTS_UNCHANGED": (
+                history_gate["ok"]
+                and rca2a10e_history.get("ok", False)
+                and rca2a10f_history.get("ok", False)
+            ),
             "EXPERIMENT_IDENTITY_UNIQUE": True,
             "EFFECTIVE_MODEL_CONFIG_VERIFIED": config_gate["ok"],
             "MODEL_ALIAS_POLICY_FROZEN": True,

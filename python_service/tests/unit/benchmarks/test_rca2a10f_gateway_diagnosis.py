@@ -70,6 +70,17 @@ def mock_v2_payload() -> dict[str, Any]:
     }
 
 
+@pytest.fixture
+def rca2a10f_settings():
+    from copy import deepcopy
+    from httpserver.config import get_settings
+    s = deepcopy(get_settings())
+    s.llm_text_model = "longcat-2.5"
+    s.llm_text_base_url = "https://api.hcnsec.cn"
+    s.llm_base_url = "https://api.hcnsec.cn"
+    return s
+
+
 # G1: Experiment ID collision rejection
 def test_g01_experiment_id_collision_rejection():
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -202,7 +213,7 @@ def test_g07_no_pydantic_output_retries():
 
 
 # G8: HTTP 500 D3 allows conditional D4
-def test_g08_http_500_d3_allows_conditional_d4(mock_v2_payload):
+def test_g08_http_500_d3_allows_conditional_d4(mock_v2_payload, rca2a10f_settings):
     with tempfile.TemporaryDirectory() as tmpdir:
         audit_dir = Path(tmpdir) / "audit"
         scratch_dir = Path(tmpdir) / "scratch"
@@ -227,6 +238,7 @@ def test_g08_http_500_d3_allows_conditional_d4(mock_v2_payload):
             authorized_baseline=AUTHORIZED_BASELINE_RCA2A10F,
             authorized_model=AUTHORIZED_MODEL_RCA2A10F,
             expected_returned_model="longcat-2.5",
+            settings=rca2a10f_settings,
         )
         res = asyncio.run(orch.run_diagnosis())
         assert res["d3_execution"]["result"]["status"] == D3OutcomeStatus.D3_PROVIDER_INFRA_FAILURE.value
@@ -235,7 +247,7 @@ def test_g08_http_500_d3_allows_conditional_d4(mock_v2_payload):
 
 
 # G9: D3 success prevents D4
-def test_g09_d3_success_prevents_d4(mock_v2_payload):
+def test_g09_d3_success_prevents_d4(mock_v2_payload, rca2a10f_settings):
     with tempfile.TemporaryDirectory() as tmpdir:
         audit_dir = Path(tmpdir) / "audit"
         scratch_dir = Path(tmpdir) / "scratch"
@@ -275,6 +287,7 @@ def test_g09_d3_success_prevents_d4(mock_v2_payload):
             authorized_baseline=AUTHORIZED_BASELINE_RCA2A10F,
             authorized_model=AUTHORIZED_MODEL_RCA2A10F,
             expected_returned_model="longcat-2.5",
+            settings=rca2a10f_settings,
         )
         res = asyncio.run(orch.run_diagnosis())
         assert res["d3_execution"]["result"]["status"] == D3OutcomeStatus.D3_FULL_REQUEST_PASS.value
@@ -283,7 +296,7 @@ def test_g09_d3_success_prevents_d4(mock_v2_payload):
 
 
 # G10: Auth/credit failure prevents D4
-def test_g10_auth_credit_failure_prevents_d4():
+def test_g10_auth_credit_failure_prevents_d4(rca2a10f_settings):
     with tempfile.TemporaryDirectory() as tmpdir:
         audit_dir = Path(tmpdir) / "audit"
         scratch_dir = Path(tmpdir) / "scratch"
@@ -300,6 +313,7 @@ def test_g10_auth_credit_failure_prevents_d4():
             authorized_baseline=AUTHORIZED_BASELINE_RCA2A10F,
             authorized_model=AUTHORIZED_MODEL_RCA2A10F,
             expected_returned_model="longcat-2.5",
+            settings=rca2a10f_settings,
         )
         res = asyncio.run(orch.run_diagnosis())
         assert res["d3_execution"]["result"]["status"] == D3OutcomeStatus.D3_HARD_PROVIDER_BLOCK.value
@@ -307,7 +321,7 @@ def test_g10_auth_credit_failure_prevents_d4():
 
 
 # G11: Unknown D3 outcome prevents D4
-def test_g11_unknown_d3_outcome_prevents_d4():
+def test_g11_unknown_d3_outcome_prevents_d4(rca2a10f_settings):
     with tempfile.TemporaryDirectory() as tmpdir:
         audit_dir = Path(tmpdir) / "audit"
         scratch_dir = Path(tmpdir) / "scratch"
@@ -324,6 +338,7 @@ def test_g11_unknown_d3_outcome_prevents_d4():
             authorized_baseline=AUTHORIZED_BASELINE_RCA2A10F,
             authorized_model=AUTHORIZED_MODEL_RCA2A10F,
             expected_returned_model="longcat-2.5",
+            settings=rca2a10f_settings,
         )
         res = asyncio.run(orch.run_diagnosis())
         assert res["d3_execution"]["result"]["status"] == D3OutcomeStatus.D3_OUTCOME_UNKNOWN.value
