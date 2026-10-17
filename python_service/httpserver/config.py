@@ -276,6 +276,16 @@ class Settings(BaseSettings):
     event_llm_analysis_enabled: bool = Field(default=False, alias="EVENT_LLM_ANALYSIS_ENABLED")
     combined_case_enabled: bool = Field(default=True, alias="COMBINED_CASE_ENABLED")
     workbench_llm_enabled: bool = Field(default=False, alias="WORKBENCH_LLM_ENABLED")
+    # Secondary analysis is split from the workbench bundle so it can be
+    # verified without also restoring event re-summary or the graph tab.
+    # Unset follows WORKBENCH_LLM_ENABLED.
+    secondary_analysis_enabled: Optional[bool] = Field(default=None, alias="SECONDARY_ANALYSIS_ENABLED")
+
+    @property
+    def secondary_analysis_active(self) -> bool:
+        if self.secondary_analysis_enabled is None:
+            return self.workbench_llm_enabled
+        return self.secondary_analysis_enabled
     # SPEC §4.6/§4.7 (2026-09-18 second trim): memory forensics and OSS
     # analysis are cut from the phase-1 acceptance scope entirely.
     memory_forensics_enabled: bool = Field(default=False, alias="MEMORY_FORENSICS_ENABLED")

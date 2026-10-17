@@ -206,7 +206,7 @@ export const pollAnalysisJob = async (taskId, jobId, onProgress, interval = 1500
         const response = await getAnalysisJob(taskId, jobId);
         const job = response.job;
         onProgress?.(job);
-        if (job.status === 'completed') return job;
+        if (['review_pending', 'accepted', 'rejected', 'completed'].includes(job.status)) return job;
         if (['failed', 'invalid'].includes(job.status)) throw new Error(job.error || '二次分析失败');
         await new Promise((resolve) => setTimeout(resolve, interval));
         return poll();

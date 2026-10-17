@@ -16,7 +16,10 @@ vi.mock('./components/LocalKnowledgeGraph', () => ({
 
 // MVP (mvp-phase1-acceptance §4.4): workbench_llm_enabled drives the graph
 // tab trim. These tests exercise the full layout, so default it on.
-const featuresState = vi.hoisted(() => ({ workbench_llm_enabled: true }));
+const featuresState = vi.hoisted(() => ({
+  workbench_llm_enabled: true,
+  secondary_analysis_enabled: true,
+}));
 vi.mock('../../hooks/useFeatures', () => ({
   useFeatures: () => featuresState,
 }));
@@ -252,7 +255,7 @@ test('renders Chinese reading overlay and keeps immutable English source collaps
 });
 
 test('shows an existing secondary analysis even when new LLM actions are disabled', async () => {
-  featuresState.workbench_llm_enabled = false;
+  featuresState.secondary_analysis_enabled = false;
   service.getAnalysisVersions.mockResolvedValue({ versions: [{
     id: 'analysis-1', version: 2, status: 'accepted',
     description: '已有二次分析结论', claims: [],
@@ -263,7 +266,7 @@ test('shows an existing secondary analysis even when new LLM actions are disable
     expect(screen.getByText('历史分析')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '执行二次分析' })).not.toBeInTheDocument();
   } finally {
-    featuresState.workbench_llm_enabled = true;
+    featuresState.secondary_analysis_enabled = true;
   }
 });
 

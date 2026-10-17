@@ -98,7 +98,7 @@ export default function EvidenceAnalysisPanel({ taskId, eventId, evidenceKey, on
   const { detail, versions, graph, loading, error, refresh } = useEvidenceAnalysis(taskId, evidenceKey);
   // MVP (mvp-phase1-acceptance §4.4): the secondary-analysis action is trimmed;
   // metadata/notes/report-evidence/history stay.
-  const { workbench_llm_enabled: workbenchLlmEnabled } = useFeatures();
+  const { secondary_analysis_enabled: secondaryAnalysisEnabled } = useFeatures();
   const [selectedVersionId, setSelectedVersionId] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [job, setJob] = useState(null);
@@ -227,10 +227,10 @@ export default function EvidenceAnalysisPanel({ taskId, eventId, evidenceKey, on
       </Section>
 
       <Section title="4. 二次分析">
-        {workbenchLlmEnabled && <Button icon={BrainCircuit} loading={analyzing} disabled={readOnly || analyzing} onClick={analyze}>执行二次分析</Button>}
-        {workbenchLlmEnabled && job && <span className="ml-3 text-xs text-slate-500">{job.status} · {job.progress || 0}%</span>}
+        {secondaryAnalysisEnabled && <Button icon={BrainCircuit} loading={analyzing} disabled={readOnly || analyzing} onClick={analyze}>执行二次分析</Button>}
+        {secondaryAnalysisEnabled && job && <span className="ml-3 text-xs text-slate-500">{job.status} · {job.progress || 0}%</span>}
         {!version && <p className="text-xs text-slate-500">暂无分析记录</p>}
-        {!workbenchLlmEnabled && version && <Badge variant="gray" size="sm" title="已保存的二次分析版本">历史分析</Badge>}
+        {!secondaryAnalysisEnabled && version && <Badge variant="gray" size="sm" title="已保存的二次分析版本">历史分析</Badge>}
         {actionError && <p className="mt-3 text-sm text-rose-600">操作失败：{actionError?.data?.detail || actionError.message}</p>}
         {version && <div className="mt-4 rounded-xl bg-slate-50 dark:bg-slate-900/40 p-4">
           <div className="flex items-center gap-2"><strong>v{version.version}</strong><Badge variant={status.variant}>{status.label}</Badge>{version.grounding_status && <Badge variant={version.grounding_status === 'valid' ? 'green' : 'yellow'} title="Grounded 仅表示 Evidence ID 真实存在，不代表事实已被充分证明。">{version.grounding_status}</Badge>}</div>

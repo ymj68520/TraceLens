@@ -36,6 +36,7 @@ def _mvp_defaults(monkeypatch):
     monkeypatch.setattr(settings, "event_llm_analysis_enabled", False, raising=False)
     monkeypatch.setattr(settings, "combined_case_enabled", True, raising=False)
     monkeypatch.setattr(settings, "workbench_llm_enabled", False, raising=False)
+    monkeypatch.setattr(settings, "secondary_analysis_enabled", None, raising=False)
     monkeypatch.setattr(settings, "memory_forensics_enabled", False, raising=False)
     monkeypatch.setattr(settings, "oss_analysis_enabled", False, raising=False)
 
@@ -166,6 +167,43 @@ def test_workbench_secondary_analysis_returns_503():
         )
         assert resp.status_code == 503
         assert "MVP" in resp.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_secondary_analysis_flag_opens_only_that_route(monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "secondary_analysis_enabled", True, raising=False)
+    app = FastAPI()
+    app.include_router(workbench_router, prefix="/api/investigation/workbench")
+    app.include_router(system_router, prefix="/api/system")
+
+    class _Analysis:
+        analysis_id = "a1"
+        version = 1
+
+    class _Executor:
+        async def submit(self, *args, **kwargs):
+            return _Analysis()
+
+    app.dependency_overrides[_manager] = lambda: type(
+        "Manager", (), {"secondary_analysis_executor": _Executor()}
+    )()
+    try:
+        client = TestClient(app)
+        opened = client.post(
+            "/api/investigation/workbench/t1/evidence/analyze",
+            json={"evidence_key": "file:/a.txt"},
+        )
+        assert opened.status_code == 200
+        assert opened.json()["analysis_id"] == "a1"
+        still_closed = client.post(
+            "/api/investigation/workbench/t1/events/e1/refresh", json={}
+        )
+        assert still_closed.status_code == 503
+        flags = client.get("/api/system/features").json()
+        assert flags["secondary_analysis_enabled"] is True
+        assert flags["workbench_llm_enabled"] is False
     finally:
         app.dependency_overrides.clear()
 
@@ -325,6 +363,7 @@ def test_system_features_endpoint_reports_defaults():
         "event_llm_analysis_enabled": False,
         "combined_case_enabled": True,
         "workbench_llm_enabled": False,
+        "secondary_analysis_enabled": False,
         "memory_forensics_enabled": False,
         "oss_analysis_enabled": False,
     }

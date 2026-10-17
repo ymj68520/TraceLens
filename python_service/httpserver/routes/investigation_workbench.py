@@ -190,7 +190,7 @@ def _analysis_view(analysis: Any) -> dict[str, Any]:
     value = _dump(analysis)
     value["id"] = analysis.analysis_id
     value["job_id"] = analysis.analysis_id
-    value["progress"] = 100 if analysis.status.value in {"accepted", "rejected", "invalid", "failed"} else 0
+    value["progress"] = 100 if analysis.status.value in {"review_pending", "accepted", "rejected", "invalid", "failed"} else 0
     value["error"] = analysis.error_message
     return value
 
@@ -473,8 +473,9 @@ async def workbench_start_analysis(
     manager=Depends(_manager),
     settings=Depends(get_settings),
 ):
-    """LLM secondary analysis — disabled in the MVP (SPEC §4.4)."""
-    if not settings.workbench_llm_enabled:
+    """LLM secondary analysis — disabled unless SECONDARY_ANALYSIS_ENABLED
+    (falls back to WORKBENCH_LLM_ENABLED; SPEC §4.4)."""
+    if not settings.secondary_analysis_active:
         raise HTTPException(
             status_code=503,
             detail="Workbench LLM analysis is disabled in this build (MVP)",
