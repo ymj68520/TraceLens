@@ -1060,3 +1060,60 @@ def test_t34_immutable_historical_agent_decisions_unchanged(env):
         revs_after_list = [(r["revision"], r["state_hash"]) for r in revs_after]
 
     assert revs_before_list == revs_after_list
+
+
+# ---------------------------------------------------------------------------
+# T35: Untrusted remote caller rejected with 403 Forbidden (RCA-2A.22)
+# ---------------------------------------------------------------------------
+def test_t35_untrusted_remote_client_denied(env):
+    """T35: POST /api/investigation/agent/review rejects untrusted non-local client."""
+    candidate_resp = env.client.get(
+        f"/api/investigation/agent/review-candidates/{env.fixture.seed_finding_id}?task_id={env.fixture.task_id}"
+    )
+    candidate = candidate_resp.json()
+
+    req = {
+        "task_id": env.fixture.task_id,
+        "investigation_id": env.fixture.investigation_id,
+        "review_target_id": env.fixture.seed_finding_id,
+        "expected_source_revision": candidate["source_revision"],
+        "expected_candidate_hash": candidate["candidate_hash"],
+        "decision": "accepted",
+        "reviewer": "remote-attacker",
+        "request_id": "req-remote-untrusted-01",
+        "note": "untrusted caller mutation attempt",
+    }
+
+    # Simulate non-local caller (e.g. client host 192.168.1.100)
+    remote_client = TestClient(env.client.app, client=("192.168.1.100", 54321))
+    resp = remote_client.post("/api/investigation/agent/review", json=req)
+    assert resp.status_code == 403
+    assert "untrusted client" in resp.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# T36: Query task_id mismatch rejected with 409 Conflict (RCA-2A.22)
+# ---------------------------------------------------------------------------
+def test_t36_query_task_id_mismatch_rejected(env):
+    """T36: POST /api/investigation/agent/review rejects query task_id != body task_id."""
+    candidate_resp = env.client.get(
+        f"/api/investigation/agent/review-candidates/{env.fixture.seed_finding_id}?task_id={env.fixture.task_id}"
+    )
+    candidate = candidate_resp.json()
+
+    req = {
+        "task_id": env.fixture.task_id,
+        "investigation_id": env.fixture.investigation_id,
+        "review_target_id": env.fixture.seed_finding_id,
+        "expected_source_revision": candidate["source_revision"],
+        "expected_candidate_hash": candidate["candidate_hash"],
+        "decision": "accepted",
+        "reviewer": "analyst-1",
+        "request_id": "req-query-mismatch-01",
+        "note": "mismatched task query",
+    }
+
+    resp = env.client.post("/api/investigation/agent/review?task_id=different-task-id", json=req)
+    assert resp.status_code == 409
+    assert "task_id mismatch" in resp.json()["detail"]
+

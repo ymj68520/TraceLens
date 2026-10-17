@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..config import get_settings
 from ..services import get_service_manager
 from ..services.evidence import (
     EvidenceNotFoundError,
@@ -1046,24 +1047,52 @@ async def get_agent_review_history(
         raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
 
 
+_TRUSTED_LOCAL_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", "testclient"})
+
+
+def verify_trusted_review_caller(http_request: Request) -> None:
+    """Enforce trusted caller boundary for single-user review mutations."""
+    settings = get_settings()
+    if not getattr(settings, "agent_review_local_only", True):
+        return
+
+    client_host = http_request.client.host if http_request.client else "testclient"
+    if client_host not in _TRUSTED_LOCAL_HOSTS:
+        raise HTTPException(
+            status_code=403,
+            detail=f"untrusted client host {client_host!r}: review mutations are restricted to trusted local development callers",
+        )
+
+
 @router.post(
     "/agent/review",
     response_model=ReviewDecisionOutcome,
     status_code=200,
 )
 async def submit_agent_review(
+    http_request: Request,
     request: ReviewDecisionRequest,
+    task_id: Optional[str] = Query(None),
     service: AgentAnalystReviewService = Depends(get_agent_analyst_review_service),
 ) -> ReviewDecisionOutcome:
     """Submit an explicit human analyst review decision for an agent candidate.
 
     Guarantees:
       - 200 on success or exact idempotent replay.
+      - 403 on untrusted non-local client mutation in local-only mode.
       - 404 on task or candidate not found.
-      - 409 on stale candidate hash, revision mismatch, concurrent claim, or conflicting replay.
+      - 409 on query task_id mismatch, stale candidate hash, revision mismatch, concurrent claim, or conflicting replay.
       - 422 on evidence provenance failure or unauthorized fact promotion.
       - 503 on store unavailable.
     """
+    verify_trusted_review_caller(http_request)
+
+    if task_id and task_id != request.task_id:
+        raise HTTPException(
+            status_code=409,
+            detail=f"task_id mismatch: query task_id {task_id!r} != body task_id {request.task_id!r}",
+        )
+
     try:
         return await service.submit_review(request.task_id, request)
     except EvidenceNotFoundError as exc:

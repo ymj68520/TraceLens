@@ -71,7 +71,7 @@ const TaskSelector = () => {
                 <option value="">Select task...</option>
                 {tasks.map((task) => (
                     <option key={task.id} value={task.id}>
-                        {task.image_path.split('/').pop()} ({task.id.substring(0, 8)}) - {task.status}
+                        {((task.image_path || task.name || task.id || '').split('/').pop())} ({(task.id || '').substring(0, 8)}) - {task.status}
                     </option>
                 ))}
             </select>

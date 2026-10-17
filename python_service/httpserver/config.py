@@ -263,6 +263,14 @@ class Settings(BaseSettings):
         default=False, alias="AGENT_EXPERIMENTAL_GUIDANCE_ENABLED"
     )
 
+    # RCA-2A.22: Local development review mutation security gate.
+    # When True (default), POST /agent/review is restricted to trusted local
+    # callers (127.0.0.1, ::1, localhost, testclient) preventing unauthorized
+    # remote network callers from mutating review decisions in single-user mode.
+    agent_review_local_only: bool = Field(
+        default=True, alias="AGENT_REVIEW_LOCAL_ONLY"
+    )
+
 
     # RCA-1.3: optional structured failure diagnostics. DEFAULT OFF — when
     # disabled every agent failure path is byte-identical to pre-RCA-1

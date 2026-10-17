@@ -352,6 +352,7 @@ export default function AgentReviewPanel({
     <div
       className={`flex flex-col border-t border-slate-200/60 dark:border-slate-700/60 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm ${className}`}
       data-testid="agent-review-panel"
+      data-task-id={taskId || ''}
     >
       {/* Header Bar */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200/40 dark:border-slate-800/40 shrink-0">
@@ -446,6 +447,7 @@ export default function AgentReviewPanel({
                     type="button"
                     onClick={() => setSelectedCandidateId(c.candidate_id)}
                     data-testid={`candidate-item-${c.candidate_id}`}
+                    data-candidate-id={c.candidate_id}
                     className={`w-full text-left p-3 transition-colors flex flex-col gap-1.5 ${
                       isSelected
                         ? 'bg-primary-50/70 dark:bg-primary-950/30 border-l-2 border-primary-500'
