@@ -1,0 +1,23 @@
+{
+  "deliverable": "RCA2A23EvidenceIntegrityReportV1",
+  "schema_version": "rca2a23-evidence-integrity-report:v1",
+  "verified_at": "2026-10-17T11:09:56Z",
+  "preflight_hashes": {
+    "raw_db_sha256": "ff045d74d615909ea5f8cebfcfde222bf29244383450c52d231946d5197eb6da",
+    "files_db_sha256": "eab2f656f0b2983c8c52f8c2b2c9aa83ea1e4295562a005f5e0e7ead24dde483",
+    "events_db_sha256": "3dfe716cf977bd296392179d28983102df9fb03dbedbc8b7e137ea6324ae7383",
+    "investigation_db_sha256": "8d58ac9ec77f629fb53ef62ce4bb5cbca80a81f603d5541b1dac04baf0cd23da",
+    "task_id": "synthetic-rca2a23-workbench-001",
+    "investigation_id": "inv-rca2a23-agent"
+  },
+  "postflight_hashes": {
+    "raw_db_sha256": "ff045d74d615909ea5f8cebfcfde222bf29244383450c52d231946d5197eb6da",
+    "files_db_sha256": "eab2f656f0b2983c8c52f8c2b2c9aa83ea1e4295562a005f5e0e7ead24dde483",
+    "events_db_sha256": "3dfe716cf977bd296392179d28983102df9fb03dbedbc8b7e137ea6324ae7383"
+  },
+  "raw_db_byte_identical": true,
+  "files_db_byte_identical": true,
+  "events_db_byte_identical": true,
+  "verdict": "BYTE_IDENTICAL_EVIDENCE_DATABASES_CONFIRMED",
+  "status": "PASS"
+}

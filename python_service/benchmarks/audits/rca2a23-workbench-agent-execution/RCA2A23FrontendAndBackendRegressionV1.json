@@ -1,0 +1,23 @@
+{
+  "deliverable": "RCA2A23FrontendAndBackendRegressionV1",
+  "schema_version": "rca2a23-frontend-and-backend-regression:v1",
+  "verified_at": "2026-10-17T11:09:56Z",
+  "frontend_vitest": {
+    "test_files": 52,
+    "tests_passed": 264,
+    "tests_failed": 0,
+    "status": "PASS"
+  },
+  "frontend_build": {
+    "command": "npm run build",
+    "exit_code": 0,
+    "status": "PASS"
+  },
+  "backend_pytest": {
+    "test_file": "test_agent_analyst_review_integration.py",
+    "tests_passed": 39,
+    "tests_failed": 0,
+    "status": "PASS"
+  },
+  "status": "PASS"
+}

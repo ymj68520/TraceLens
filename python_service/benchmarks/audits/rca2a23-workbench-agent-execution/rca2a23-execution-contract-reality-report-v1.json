@@ -1,0 +1,27 @@
+{
+  "deliverable": "RCA2A23ExecutionContractRealityReportV1",
+  "schema_version": "rca2a23-execution-contract-reality-report:v1",
+  "verified_at": "2026-10-17T11:09:56Z",
+  "endpoints": {
+    "cycle_execution": {
+      "route": "POST /api/investigation/agent/cycle",
+      "request_model": "AgentCycleRequest",
+      "response_model": "AgentCycleResponse",
+      "security_gate": "verify_trusted_review_caller",
+      "query_validation": "task_id matching body.task_id"
+    },
+    "state_query": {
+      "route": "GET /api/investigation/agent/state",
+      "response_model": "AgentStateResponse",
+      "read_only": true,
+      "llm_requests": 0
+    },
+    "features_query": {
+      "route": "GET /api/system/features",
+      "surfaces_agent_execution_enabled": true
+    }
+  },
+  "concurrency_protection": "task-scoped asyncio.Lock + SQLite active claim lock",
+  "idempotency_key": "request_id",
+  "status": "PASS"
+}
