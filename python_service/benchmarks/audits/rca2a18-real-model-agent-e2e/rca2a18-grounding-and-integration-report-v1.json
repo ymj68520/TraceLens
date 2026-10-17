@@ -1,0 +1,16 @@
+{
+  "artifact_version": "RCA2A18GroundingAndIntegrationReportV1",
+  "experiment_id": "rca2a18-real-model-agent-e2e",
+  "timestamp_utc": "2026-10-17T07:22:23Z",
+  "grounding_evaluation": {
+    "l1_schema_validity": "PASS (Pydantic SupervisorIntegrationDecisionV2 structured output valid)",
+    "l2_evidence_resolution": "PASS (All referenced evidence verified against EvidenceResolver)",
+    "l3_state_transition_validity": "PASS (StateTransitionPolicy accepted legal transitions)",
+    "l4_semantic_adequacy": "SEMANTICALLY_ADEQUATE (Preserved unverified causal relations as hypotheses without fake grounding)",
+    "l5_investigative_information_value": "VALID_HYPOTHESIS_FORMULATION"
+  },
+  "delegation_path_status": "DELEGATION_PATH_NOT_EXERCISED",
+  "hypotheses_promoted_to_fact": false,
+  "findings_auto_admitted": false,
+  "verdict": "GROUNDING_AND_INTEGRATION_VALID"
+}

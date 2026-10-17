@@ -1,0 +1,38 @@
+{
+  "artifact_version": "RCA2A18OperationalTelemetryReportV1",
+  "experiment_id": "rca2a18-real-model-agent-e2e",
+  "timestamp_utc": "2026-10-17T07:22:23Z",
+  "telemetry_records": [
+    {
+      "request_sequence": 1,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 3426.14,
+      "input_tokens": 1290,
+      "output_tokens": 297,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    },
+    {
+      "request_sequence": 2,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 3733.2,
+      "input_tokens": 1290,
+      "output_tokens": 321,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    }
+  ],
+  "performance_summary": {
+    "cycle_a_http_latency_ms": 3724.83,
+    "cycle_b_http_latency_ms": 3892.43,
+    "total_logical_generations": 2,
+    "total_physical_attempts": 2
+  },
+  "verdict": "TELEMETRY_LOGGED_ACCURATELY"
+}

@@ -1,0 +1,30 @@
+{
+  "artifact_version": "RCA2A18EvidenceIntegrityReportV1",
+  "experiment_id": "rca2a18-real-model-agent-e2e",
+  "timestamp_utc": "2026-10-17T07:22:23Z",
+  "database_hash_verification": {
+    "raw_db": {
+      "pre": "2e57cb6285821dc4b70000d14105e48ab96c1b5e17bd956f8ceffae36a175833",
+      "post": "2e57cb6285821dc4b70000d14105e48ab96c1b5e17bd956f8ceffae36a175833",
+      "mutated": false
+    },
+    "events_db": {
+      "pre": "e42d6211a494cc12e0ad17e275d2b7e2a9e216f619a61055bea611cb97d636df",
+      "post": "e42d6211a494cc12e0ad17e275d2b7e2a9e216f619a61055bea611cb97d636df",
+      "mutated": false
+    },
+    "files_db": {
+      "pre": "fa5744a987b34cc6277cde570a790da1677bde254e5d6d6aab8b492412de4018",
+      "post": "fa5744a987b34cc6277cde570a790da1677bde254e5d6d6aab8b492412de4018",
+      "mutated": false
+    }
+  },
+  "evidence_invariants": {
+    "raw_evidence_untouched": true,
+    "analyst_notes_as_evidence": false,
+    "cross_task_evidence_introduced": false,
+    "report_evidence_admissions": 0,
+    "finalization_gate_triggered": false
+  },
+  "verdict": "EVIDENCE_INTEGRITY_STRICTLY_MAINTAINED"
+}

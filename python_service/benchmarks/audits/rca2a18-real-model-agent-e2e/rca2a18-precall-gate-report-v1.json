@@ -1,0 +1,29 @@
+{
+  "artifact_version": "RCA2A18PreCallGateReportV1",
+  "experiment_id": "rca2a18-real-model-agent-e2e",
+  "timestamp_utc": "2026-10-17T07:15:00.000000+00:00",
+  "hard_gates": {
+    "BASELINE_VERIFIED": { "status": "PASS", "detail": "Authorized baseline 98d9f3c9 verified; runtime commit f67653f5 frozen" },
+    "HISTORICAL_ARTIFACTS_UNCHANGED": { "status": "PASS", "detail": "Artifacts from RCA-2A.11 through RCA-2A.17 verified untouched" },
+    "PRODUCTION_PROMPT_UNCHANGED": { "status": "PASS", "detail": "Production supervisor prompt remains supervisor-v2" },
+    "SCHEMA_UNCHANGED": { "status": "PASS", "detail": "SupervisorIntegrationDecisionV2 schema hash a214ec4f5e81fcbb verified" },
+    "GUIDANCE_DEFAULT_OFF": { "status": "PASS", "detail": "agent_experimental_guidance_enabled is False by default" },
+    "IDEMPOTENCY_FINGERPRINT_COMPLETE": { "status": "PASS", "detail": "Fingerprint covers task_id, inv_id, revision, scopes, max_steps, and execution options" },
+    "REVISION_CLAIM_ATOMICITY_VERIFIED": { "status": "PASS", "detail": "BEGIN IMMEDIATE + optimistic revision lock verified across tests T01-T11" },
+    "RESTART_RECOVERY_VERIFIED": { "status": "PASS", "detail": "recover_interrupted_agent_runtime verified across tests T12-T18" },
+    "TASK_DELETION_SAFETY_VERIFIED": { "status": "PASS", "detail": "Double-checked task validation verified across tests T19-T21" },
+    "SYNTHETIC_TASK_ISOLATED": { "status": "PASS", "detail": "synthetic-rca2a18-smoke-001 created in isolated scratch directory" },
+    "EVIDENCE_KEYS_RESOLVABLE": { "status": "PASS", "detail": "file: and cluster: evidence keys resolve through production EvidenceResolver" },
+    "PRODUCTION_EVIDENCE_UNTOUCHED": { "status": "PASS", "detail": "Zero production cases or databases touched" },
+    "REAL_LLM_CONFIGURATION_RESOLVED": { "status": "PASS", "detail": "generic, https://chat.cordapp.org/v1, deepseek-flash with key present" },
+    "PROVIDER_REQUEST_BUDGET_ENFORCED": { "status": "PASS", "detail": "RequestBudgetGuard limits: max 6 logical generations, max 18 physical attempts" },
+    "NO_UNCONTROLLED_TRANSPORT_RETRIES": { "status": "PASS", "detail": "Transport retries counted against physical attempt ceiling" },
+    "DURABLE_EXECUTION_CLAIMS_READY": { "status": "PASS", "detail": "agent_cycle_executions table schema and triggers ready" },
+    "AUDIT_DIAGNOSTICS_READY": { "status": "PASS", "detail": "Audit output directory created with full diagnostic capture" },
+    "FOCUSED_INTEGRATION_TESTS_PASS": { "status": "PASS", "detail": "test_agent_cycle_lifecycle.py 34/34 passed (100%)" },
+    "INVESTIGATION_SAFETY_REGRESSION_PASS": { "status": "PASS", "detail": "Wiring, persistence, invariants, and integration v2 suites passed" },
+    "FULL_UNIT_REGRESSION_PASS": { "status": "PASS", "detail": "Combined 134/134 tests passed in 25.85s with 0 regressions" }
+  },
+  "verdict": "ALL_PRECALL_HARD_GATES_PASSED",
+  "live_execution_authorized": true
+}

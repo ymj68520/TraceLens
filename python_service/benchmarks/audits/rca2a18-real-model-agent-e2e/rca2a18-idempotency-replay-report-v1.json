@@ -1,0 +1,23 @@
+{
+  "artifact_version": "RCA2A18IdempotencyReplayReportV1",
+  "experiment_id": "rca2a18-real-model-agent-e2e",
+  "timestamp_utc": "2026-10-17T07:22:23Z",
+  "replay_tests": {
+    "exact_replay": {
+      "request_id": "req-rca2a18-cycle-a",
+      "http_status": 200,
+      "cached_outcome_matched": true,
+      "new_model_calls_incurred": 0,
+      "status": "PASS"
+    },
+    "conflicting_replay": {
+      "request_id": "req-rca2a18-cycle-a",
+      "changed_parameter": "max_steps: 1 -> 3",
+      "http_status": 409,
+      "expected_http_status": 409,
+      "new_model_calls_incurred": 0,
+      "status": "PASS"
+    }
+  },
+  "verdict": "PERSISTENT_IDEMPOTENCY_VERIFIED"
+}

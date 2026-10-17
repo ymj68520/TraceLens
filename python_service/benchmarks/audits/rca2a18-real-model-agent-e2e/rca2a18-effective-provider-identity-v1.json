@@ -1,0 +1,25 @@
+{
+  "artifact_version": "RCA2A18EffectiveProviderIdentityV1",
+  "experiment_id": "rca2a18-real-model-agent-e2e",
+  "timestamp_utc": "2026-10-17T07:14:00.000000+00:00",
+  "provider_configuration": {
+    "provider": "generic",
+    "endpoint": "https://chat.cordapp.org/v1",
+    "requested_model": "deepseek-flash",
+    "credential_available": true,
+    "credential_source": "SETTINGS_LLM_API_KEY",
+    "credential_safety": "CREDENTIALS_REDACTED",
+    "temperature": 0.0,
+    "max_tokens": 4096,
+    "timeout_seconds": 180.0,
+    "upstream_model_identity_status": "UPSTREAM_MODEL_IDENTITY_NOT_INDEPENDENTLY_VERIFIED"
+  },
+  "execution_budget_limits": {
+    "max_agent_http_cycles": 2,
+    "max_agent_steps_per_cycle": 3,
+    "max_logical_llm_generations": 6,
+    "max_physical_http_attempts": 18,
+    "budget_enforcement": "RequestBudgetGuard (fail-stop on limit exceed)"
+  },
+  "status": "PROVIDER_CONFIGURED_AND_BOUNDED"
+}

@@ -1,0 +1,64 @@
+{
+  "artifact_version": "RCA2A18RuntimeReadinessReportV1",
+  "experiment_id": "rca2a18-real-model-agent-e2e",
+  "timestamp_utc": "2026-10-17T07:11:00.000000+00:00",
+  "runtime_architecture_inspection": {
+    "point_1_execution_path": {
+      "entry_point": "POST /api/investigation/agent/cycle",
+      "flow": [
+        "execute_agent_cycle validates task via cpp_backend.get_task",
+        "Computes SHA-256 canonical input fingerprint over all execution parameters",
+        "Atomically claims cycle execution in SQLite agent_cycle_executions table",
+        "Invokes AgentOrchestrator.execute_cycle()",
+        "Orchestrator prepares context, admits run, invokes InvestigationSupervisor",
+        "Dispatches admitted delegations to SpecialistDelegationExecutor",
+        "Supervisor integrates delegation results into working state proposals",
+        "StateTransitionPolicy and GroundingValidator accept or reject proposals",
+        "Atomically commits new state revision and appends trajectory event",
+        "Re-verifies task existence and caches completed cycle outcome JSON",
+        "Returns AgentCycleResponse to client"
+      ]
+    },
+    "point_2_llm_invocation_steps": [
+      "InvestigationSupervisor.plan_v2 (supervisor planning)",
+      "SpecialistDelegationExecutor._execute_envelope (specialist execution)",
+      "InvestigationSupervisor.integrate_v2 (supervisor integration)",
+      "FinalSemanticReviewRunner (finalization review, only if finalization requested)"
+    ],
+    "point_3_specialist_independent_llm": {
+      "status": "CONFIRMED",
+      "mechanism": "When supervisor proposes delegations, each admitted delegation triggers an independent specialist PydanticAI run with tool definitions"
+    },
+    "point_4_retry_configuration": {
+      "specialist_retries": "Controlled by SpecialistExecutionPolicy.max_provider_retries",
+      "sdk_retries": "Controlled by OpenAI client transport configuration",
+      "budget_guard": "RequestBudgetGuard wraps client to strictly enforce max 18 physical attempts"
+    },
+    "point_5_idempotency_fingerprint_fields": [
+      "task_id",
+      "investigation_id",
+      "expected_working_state_revision",
+      "source_scope_ids",
+      "max_steps",
+      "effective_execution_options (enable_experimental_guidance, supervisor_prompt_version)"
+    ],
+    "point_6_revision_transaction_boundary": {
+      "mechanism": "SQLite BEGIN IMMEDIATE transaction in commit_working_state",
+      "guards": "Strict optimistic revision check (latest == expected) and DB triggers enforcing monotonicity and hash-chaining"
+    },
+    "point_7_task_deletion_coordination": {
+      "mechanism": "Double-checked task validation via cpp_backend.get_task(task_id)",
+      "pre_check": "Before cycle claim",
+      "post_check": "Immediately after orchestrator execution before outcome commit",
+      "behavior": "Returns HTTP 404, marks execution failed, prevents zombie writes"
+    },
+    "point_8_tool_registry_write_capabilities": {
+      "registry": "build_read_only_registry(services)",
+      "raw_db_write": false,
+      "events_db_write": false,
+      "files_db_write": false,
+      "investigation_db_write": "Append-only tool observation logs into agent_tool_observations table"
+    }
+  },
+  "readiness_verdict": "RUNTIME_ARCHITECTURE_CONFIRMED_READY"
+}
