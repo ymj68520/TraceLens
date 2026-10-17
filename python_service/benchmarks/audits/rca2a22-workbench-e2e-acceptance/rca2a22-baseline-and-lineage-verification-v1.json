@@ -1,0 +1,20 @@
+{
+  "report_version": "rca2a22:v1",
+  "task_id": "TASK-INVESTIGATION-WORKBENCH-REVIEW-E2E-ACCEPTANCE",
+  "baseline": "RCA-2A.21",
+  "baseline_audit_commit": "3d9e2a8183fe7ad475c4eb54dd2604bb84d2847c",
+  "baseline_implementation_commit": "9a50332b781da2fe6d2c4bc80735b54687d60541",
+  "git_lineage": {
+    "rca2a21_audit_commit": "3d9e2a8183fe7ad475c4eb54dd2604bb84d2847c",
+    "rca2a21_impl_commit": "9a50332b781da2fe6d2c4bc80735b54687d60541",
+    "rca2a20_audit_commit": "058886b72049f57ebbf794aebe6d8fbf95782782",
+    "rca2a20_impl_commit": "624953bb895693ffbeba7289b90c13bb3ae2db0e",
+    "rca2a19_commit": "b33084c2810a9f5d134d119ff3d85834e56598eb",
+    "rca2a18_commit": "f67653f50753941929621d12d209c7359e202de8"
+  },
+  "production_supervisor": "supervisor-v2",
+  "guidance_v1": "EXPERIMENTAL_ONLY",
+  "rca2b_status": "NOT_AUTHORIZED",
+  "gen5_status": "NOT_CREATED",
+  "verification_status": "VERIFIED_VALID"
+}

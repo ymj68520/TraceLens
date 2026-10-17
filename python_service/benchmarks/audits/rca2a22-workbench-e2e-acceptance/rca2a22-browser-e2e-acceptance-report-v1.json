@@ -1,0 +1,162 @@
+{
+  "report_version": "rca2a22:v1",
+  "task_id": "TASK-INVESTIGATION-WORKBENCH-REVIEW-E2E-ACCEPTANCE",
+  "browser_engine": "Chromium 1234 Headless",
+  "total_browser_tests": 18,
+  "passed_browser_tests": 18,
+  "failed_browser_tests": 0,
+  "workflows": {
+    "workflow_a_candidate_accept": "PASS (Candidate A INFERENCE accepted with confirmation modal)",
+    "workflow_b_candidate_reject": "PASS (Candidate B HYPOTHESIS rejected with confirmation modal)",
+    "workflow_c_reload_persistence": "PASS (Page reload preserves accepted and rejected states)",
+    "workflow_d_task_context_switch": "PASS (Task switch clears review queue with zero stale leakage)"
+  },
+  "tests": [
+    {
+      "test_id": "T01",
+      "name": "Real browser loads Investigation Workbench",
+      "passed": true,
+      "details": {
+        "url": "http://127.0.0.1:3100/investigation?taskId=synthetic-rca2a22-workbench-001"
+      }
+    },
+    {
+      "test_id": "T02",
+      "name": "Three-column layout preserved with Review Panel docked in Column 3",
+      "passed": true,
+      "details": {
+        "col1": true,
+        "col2": true,
+        "col3": true,
+        "reviewPanel": true
+      }
+    },
+    {
+      "test_id": "T03",
+      "name": "Task context correctly propagated",
+      "passed": true,
+      "details": {
+        "expected": "synthetic-rca2a22-workbench-001",
+        "actual": "synthetic-rca2a22-workbench-001"
+      }
+    },
+    {
+      "test_id": "T04",
+      "name": "Review queue fetched from real API",
+      "passed": true,
+      "details": {
+        "candidateIds": [
+          "finding:disp_rca2a22_cand_a",
+          "hyp_rca2a22_cand_b"
+        ]
+      }
+    },
+    {
+      "test_id": "T05",
+      "name": "Candidate detail fetched from real API",
+      "passed": true,
+      "details": {
+        "contentPreview": "Security Account Manager registry hive accessed via suspicio"
+      }
+    },
+    {
+      "test_id": "T06",
+      "name": "Evidence reference navigates correctly",
+      "passed": true,
+      "details": {
+        "ref": "file:C/Windows/System32/config/SAM"
+      }
+    },
+    {
+      "test_id": "T07",
+      "name": "Assertion class and grounding badges correctly displayed",
+      "passed": true,
+      "details": {}
+    },
+    {
+      "test_id": "T08",
+      "name": "Accept requires explicit user confirmation",
+      "passed": true,
+      "details": {
+        "modalTitle": "确认显式审核决策：接受候选"
+      }
+    },
+    {
+      "test_id": "T09",
+      "name": "Accept creates durable review decision",
+      "passed": true,
+      "details": {
+        "status": 200,
+        "decision": "accepted",
+        "review_id": "freview:c39257759004c6366d53",
+        "reviewer": "analyst"
+      }
+    },
+    {
+      "test_id": "T10",
+      "name": "Browser refresh preserves accepted status",
+      "passed": true,
+      "details": {}
+    },
+    {
+      "test_id": "T11",
+      "name": "Reject creates durable review decision",
+      "passed": true,
+      "details": {
+        "status": 200,
+        "decision": "rejected",
+        "review_id": "freview:3427ce6d6ad0e830c10d",
+        "epistemic_warning": true
+      }
+    },
+    {
+      "test_id": "T12",
+      "name": "Browser refresh preserves rejected status",
+      "passed": true,
+      "details": {}
+    },
+    {
+      "test_id": "T13",
+      "name": "Review history originates from SQLite",
+      "passed": true,
+      "details": {
+        "textSample": "Authoritative Review History"
+      }
+    },
+    {
+      "test_id": "T14",
+      "name": "Task switch prevents stale response rendering",
+      "passed": true,
+      "details": {
+        "renderedCandidates": 0
+      }
+    },
+    {
+      "test_id": "T21",
+      "name": "Reviewer identity is caller-declared, limitation disclosed",
+      "passed": true,
+      "details": {
+        "noticeText": "Reviewer: analyst[REVIEWER_AUTHENTICATION_LIMITATION: caller-declared identity in local mode]"
+      }
+    },
+    {
+      "test_id": "T28",
+      "name": "Existing Event Analysis remains usable",
+      "passed": true,
+      "details": {}
+    },
+    {
+      "test_id": "T29",
+      "name": "Existing Evidence Analysis remains usable",
+      "passed": true,
+      "details": {}
+    },
+    {
+      "test_id": "T30",
+      "name": "Review Panel remains within Analysis Workspace Column 3",
+      "passed": true,
+      "details": {}
+    }
+  ],
+  "disposition": "BROWSER_ACCEPTANCE_PASS"
+}

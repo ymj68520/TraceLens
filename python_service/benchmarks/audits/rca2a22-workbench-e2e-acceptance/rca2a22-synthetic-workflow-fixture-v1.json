@@ -1,0 +1,53 @@
+{
+  "report_version": "rca2a22:v1",
+  "task_id": "synthetic-rca2a22-workbench-001",
+  "investigation_id": "inv-rca2a22-bench",
+  "databases": {
+    "raw_db": {
+      "path": "fixtures/synthetic-rca2a22-workbench-001/raw.db",
+      "sha256": "ff3b24666ea8351c35fbf519a8b59fe537ed9d1209af8be9a0e6e076bcee70f2"
+    },
+    "files_db": {
+      "path": "fixtures/synthetic-rca2a22-workbench-001/files.db",
+      "sha256": "f6ee9ed15cd3a27beafdf8f1e99544cc93262fffff30dba41ae6abcd0105ffe9",
+      "files": [
+        "C/Windows/System32/config/SAM",
+        "C/Users/Public/malware.exe"
+      ]
+    },
+    "events_db": {
+      "path": "fixtures/synthetic-rca2a22-workbench-001/events.db",
+      "sha256": "52b259f4f2879716873b40e14ce7b6918c8d564202366735a44a2b4c0745b818",
+      "events": [
+        "logon_4624 (id=1)",
+        "process_creation (id=2)"
+      ]
+    },
+    "investigation_db": {
+      "path": "fixtures/synthetic-rca2a22-workbench-001/investigation.db",
+      "sha256_initial": "be9a325b54ebc62a0e30727766e4965c7df1980036a40d3da1181bf1362a0fba",
+      "sha256_final": "028b2b20f422a4e4469b08aedc320f2a8d456c6dc5d306ce264b14165c9d7cc2"
+    }
+  },
+  "candidates": {
+    "candidate_a": {
+      "id": "finding:disp_rca2a22_cand_a",
+      "assertion_class": "INFERENCE",
+      "initial_status": "review_pending",
+      "final_status": "accepted",
+      "evidence_refs": [
+        "cluster:v1:28166667:logon_4624",
+        "file:C/Windows/System32/config/SAM"
+      ]
+    },
+    "candidate_b": {
+      "id": "hyp_rca2a22_cand_b",
+      "assertion_class": "HYPOTHESIS",
+      "initial_status": "review_pending",
+      "final_status": "rejected",
+      "evidence_refs": [
+        "file:C/Users/Public/malware.exe"
+      ]
+    }
+  }
+}

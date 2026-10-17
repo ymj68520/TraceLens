@@ -1,0 +1,71 @@
+{
+  "report_version": "rca2a22:v1",
+  "task_id": "TASK-INVESTIGATION-WORKBENCH-REVIEW-E2E-ACCEPTANCE",
+  "total_tests": 6,
+  "passed_tests": 6,
+  "tests": [
+    {
+      "test_id": "T15",
+      "name": "Stale candidate hash returns HTTP 409 Conflict",
+      "passed": true,
+      "details": {
+        "status": 409,
+        "detail": "stale candidate: hash mismatch (expected stale_hash_value_ffffffff, got eb20241cfd3acc7068fbf3ea62425df2d9cee6f2af91c00986e3c4e3b2a71c81)"
+      }
+    },
+    {
+      "test_id": "T16",
+      "name": "Concurrent review returns correct conflict (HTTP 409)",
+      "passed": true,
+      "details": {
+        "status": 409,
+        "detail": "finding 'finding:disp_rca2a22_cand_a' is not review_pending (current: 'accepted')"
+      }
+    },
+    {
+      "test_id": "T17",
+      "name": "Timeout retry preserves request_id",
+      "passed": true,
+      "details": {
+        "request_id": "req_rev_finding:disp_rca2a22_cand_a_1792232794725_7xkae",
+        "status": 200
+      }
+    },
+    {
+      "test_id": "T18",
+      "name": "Duplicate review does not double-commit",
+      "passed": true,
+      "details": {
+        "status": 200,
+        "review_id": "freview:c39257759004c6366d53"
+      }
+    },
+    {
+      "test_id": "T19",
+      "name": "Changed payload with same request_id conflicts (HTTP 409)",
+      "passed": true,
+      "details": {
+        "status": 409,
+        "detail": "request_id 'req_rev_finding:disp_rca2a22_cand_a_1792232794725_7xkae' already used with different parameters"
+      }
+    },
+    {
+      "test_id": "T20",
+      "name": "Unsupported FACT promotion rejected with 422 Unprocessable Entity",
+      "passed": true,
+      "details": {
+        "status": 422,
+        "detail": "cannot promote HYPOTHESIS or INFERENCE to FACT: epistemic types are immutable"
+      }
+    }
+  ],
+  "verifications": {
+    "stale_candidate_hash": "HTTP 409 Conflict",
+    "concurrent_review_conflict": "HTTP 409 Conflict",
+    "idempotent_retry_replay": "HTTP 200 OK (same review_id)",
+    "no_double_commit": "Verified 1 review row per candidate in SQLite",
+    "payload_mismatch_conflict": "HTTP 409 Conflict",
+    "fact_promotion_barrier": "HTTP 422 Unprocessable Entity"
+  },
+  "disposition": "CONCURRENCY_AND_RETRY_PASS"
+}

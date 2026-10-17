@@ -1,0 +1,30 @@
+{
+  "report_version": "rca2a22:v1",
+  "task_id": "TASK-INVESTIGATION-WORKBENCH-REVIEW-E2E-ACCEPTANCE",
+  "reviewer_authentication": "CALLER_DECLARED_LOCAL_MODE",
+  "reviewer_authentication_limitation": "REVIEWER_AUTHENTICATION_LIMITATION: caller-declared identity in local mode",
+  "limitation_notice_visible_in_browser": true,
+  "local_boundary_enforcement": {
+    "config_setting": "agent_review_local_only=True",
+    "trusted_hosts": [
+      "127.0.0.1",
+      "::1",
+      "localhost",
+      "testclient"
+    ],
+    "untrusted_remote_response": "HTTP 403 Forbidden",
+    "verified_by_test": "T22"
+  },
+  "query_task_id_mismatch_check": {
+    "enforced": true,
+    "response": "HTTP 409 Conflict",
+    "verified_by_test": "T36"
+  },
+  "epistemic_type_preservation": {
+    "enforced": true,
+    "hypothesis_promoted_to_fact": false,
+    "inference_promoted_to_fact": false,
+    "response_on_fact_promotion": "HTTP 422 Unprocessable Entity",
+    "verified_by_test": "T20"
+  }
+}

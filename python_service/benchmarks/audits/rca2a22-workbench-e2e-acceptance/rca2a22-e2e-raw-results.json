@@ -1,0 +1,344 @@
+{
+  "task_id": "synthetic-rca2a22-workbench-001",
+  "investigation_id": "inv-rca2a22-bench",
+  "initial_hashes": {
+    "raw_db_sha256": "ff3b24666ea8351c35fbf519a8b59fe537ed9d1209af8be9a0e6e076bcee70f2",
+    "files_db_sha256": "f6ee9ed15cd3a27beafdf8f1e99544cc93262fffff30dba41ae6abcd0105ffe9",
+    "events_db_sha256": "52b259f4f2879716873b40e14ce7b6918c8d564202366735a44a2b4c0745b818",
+    "investigation_db_sha256": "be9a325b54ebc62a0e30727766e4965c7df1980036a40d3da1181bf1362a0fba",
+    "task_id": "synthetic-rca2a22-workbench-001",
+    "investigation_id": "inv-rca2a22-bench",
+    "candidate_a_id": "finding:disp_rca2a22_cand_a",
+    "candidate_b_id": "hyp_rca2a22_cand_b"
+  },
+  "final_evidence_hashes": {
+    "raw_db_sha256": "ff3b24666ea8351c35fbf519a8b59fe537ed9d1209af8be9a0e6e076bcee70f2",
+    "files_db_sha256": "f6ee9ed15cd3a27beafdf8f1e99544cc93262fffff30dba41ae6abcd0105ffe9",
+    "events_db_sha256": "52b259f4f2879716873b40e14ce7b6918c8d564202366735a44a2b4c0745b818",
+    "investigation_db_sha256": "028b2b20f422a4e4469b08aedc320f2a8d456c6dc5d306ce264b14165c9d7cc2"
+  },
+  "test_matrix": [
+    {
+      "test_id": "T01",
+      "name": "Real browser loads Investigation Workbench",
+      "passed": true,
+      "details": {
+        "url": "http://127.0.0.1:3100/investigation?taskId=synthetic-rca2a22-workbench-001"
+      }
+    },
+    {
+      "test_id": "T02",
+      "name": "Three-column layout preserved with Review Panel docked in Column 3",
+      "passed": true,
+      "details": {
+        "col1": true,
+        "col2": true,
+        "col3": true,
+        "reviewPanel": true
+      }
+    },
+    {
+      "test_id": "T03",
+      "name": "Task context correctly propagated",
+      "passed": true,
+      "details": {
+        "expected": "synthetic-rca2a22-workbench-001",
+        "actual": "synthetic-rca2a22-workbench-001"
+      }
+    },
+    {
+      "test_id": "T04",
+      "name": "Review queue fetched from real API",
+      "passed": true,
+      "details": {
+        "candidateIds": [
+          "finding:disp_rca2a22_cand_a",
+          "hyp_rca2a22_cand_b"
+        ]
+      }
+    },
+    {
+      "test_id": "T05",
+      "name": "Candidate detail fetched from real API",
+      "passed": true,
+      "details": {
+        "contentPreview": "Security Account Manager registry hive accessed via suspicio"
+      }
+    },
+    {
+      "test_id": "T06",
+      "name": "Evidence reference navigates correctly",
+      "passed": true,
+      "details": {
+        "ref": "file:C/Windows/System32/config/SAM"
+      }
+    },
+    {
+      "test_id": "T07",
+      "name": "Assertion class and grounding badges correctly displayed",
+      "passed": true,
+      "details": {}
+    },
+    {
+      "test_id": "T08",
+      "name": "Accept requires explicit user confirmation",
+      "passed": true,
+      "details": {
+        "modalTitle": "确认显式审核决策：接受候选"
+      }
+    },
+    {
+      "test_id": "T09",
+      "name": "Accept creates durable review decision",
+      "passed": true,
+      "details": {
+        "status": 200,
+        "decision": "accepted",
+        "review_id": "freview:c39257759004c6366d53",
+        "reviewer": "analyst"
+      }
+    },
+    {
+      "test_id": "T10",
+      "name": "Browser refresh preserves accepted status",
+      "passed": true,
+      "details": {}
+    },
+    {
+      "test_id": "T11",
+      "name": "Reject creates durable review decision",
+      "passed": true,
+      "details": {
+        "status": 200,
+        "decision": "rejected",
+        "review_id": "freview:3427ce6d6ad0e830c10d",
+        "epistemic_warning": true
+      }
+    },
+    {
+      "test_id": "T12",
+      "name": "Browser refresh preserves rejected status",
+      "passed": true,
+      "details": {}
+    },
+    {
+      "test_id": "T13",
+      "name": "Review history originates from SQLite",
+      "passed": true,
+      "details": {
+        "textSample": "Authoritative Review History"
+      }
+    },
+    {
+      "test_id": "T14",
+      "name": "Task switch prevents stale response rendering",
+      "passed": true,
+      "details": {
+        "renderedCandidates": 0
+      }
+    },
+    {
+      "test_id": "T21",
+      "name": "Reviewer identity is caller-declared, limitation disclosed",
+      "passed": true,
+      "details": {
+        "noticeText": "Reviewer: analyst[REVIEWER_AUTHENTICATION_LIMITATION: caller-declared identity in local mode]"
+      }
+    },
+    {
+      "test_id": "T28",
+      "name": "Existing Event Analysis remains usable",
+      "passed": true,
+      "details": {}
+    },
+    {
+      "test_id": "T29",
+      "name": "Existing Evidence Analysis remains usable",
+      "passed": true,
+      "details": {}
+    },
+    {
+      "test_id": "T30",
+      "name": "Review Panel remains within Analysis Workspace Column 3",
+      "passed": true,
+      "details": {}
+    },
+    {
+      "test_id": "T15",
+      "name": "Stale candidate hash returns HTTP 409 Conflict",
+      "passed": true,
+      "details": {
+        "status": 409,
+        "detail": "stale candidate: hash mismatch (expected stale_hash_value_ffffffff, got eb20241cfd3acc7068fbf3ea62425df2d9cee6f2af91c00986e3c4e3b2a71c81)"
+      }
+    },
+    {
+      "test_id": "T16",
+      "name": "Concurrent review returns correct conflict (HTTP 409)",
+      "passed": true,
+      "details": {
+        "status": 409,
+        "detail": "finding 'finding:disp_rca2a22_cand_a' is not review_pending (current: 'accepted')"
+      }
+    },
+    {
+      "test_id": "T17",
+      "name": "Timeout retry preserves request_id",
+      "passed": true,
+      "details": {
+        "request_id": "req_rev_finding:disp_rca2a22_cand_a_1792232794725_7xkae",
+        "status": 200
+      }
+    },
+    {
+      "test_id": "T18",
+      "name": "Duplicate review does not double-commit",
+      "passed": true,
+      "details": {
+        "status": 200,
+        "review_id": "freview:c39257759004c6366d53"
+      }
+    },
+    {
+      "test_id": "T19",
+      "name": "Changed payload with same request_id conflicts (HTTP 409)",
+      "passed": true,
+      "details": {
+        "status": 409,
+        "detail": "request_id 'req_rev_finding:disp_rca2a22_cand_a_1792232794725_7xkae' already used with different parameters"
+      }
+    },
+    {
+      "test_id": "T20",
+      "name": "Unsupported FACT promotion rejected with 422 Unprocessable Entity",
+      "passed": true,
+      "details": {
+        "status": 422,
+        "detail": "cannot promote HYPOTHESIS or INFERENCE to FACT: epistemic types are immutable"
+      }
+    },
+    {
+      "test_id": "T22",
+      "name": "Untrusted review mutation denied with 403 Forbidden",
+      "passed": true,
+      "details": {
+        "simulated_host": "192.168.1.100",
+        "denied": true
+      }
+    },
+    {
+      "test_id": "T23",
+      "name": "GET endpoints do not mutate state",
+      "passed": true,
+      "details": {
+        "hash_before": "028b2b20f422a4e4469b08aedc320f2a8d456c6dc5d306ce264b14165c9d7cc2",
+        "hash_after": "028b2b20f422a4e4469b08aedc320f2a8d456c6dc5d306ce264b14165c9d7cc2"
+      }
+    },
+    {
+      "test_id": "T24",
+      "name": "No implicit Finalization (Finalization Count: 0)",
+      "passed": true,
+      "details": {
+        "finalization_count": 0
+      }
+    },
+    {
+      "test_id": "T25",
+      "name": "No automatic Report Admission (Report Evidence Count: 0)",
+      "passed": true,
+      "details": {
+        "report_evidence_count": 0
+      }
+    },
+    {
+      "test_id": "T26",
+      "name": "No Evidence DB mutation (raw.db, events.db, files.db byte-identical)",
+      "passed": true,
+      "details": {
+        "raw_match": true,
+        "files_match": true,
+        "events_match": true
+      }
+    },
+    {
+      "test_id": "T27",
+      "name": "No real Provider calls (Strictly Offline / Fake Model)",
+      "passed": true,
+      "details": {
+        "real_provider_requests": 0,
+        "llm_requests": 0
+      }
+    }
+  ],
+  "persisted_reviews": [
+    {
+      "review_row_id": 1,
+      "review_id": "freview:c39257759004c6366d53",
+      "task_id": "synthetic-rca2a22-workbench-001",
+      "investigation_id": "inv-rca2a22-bench",
+      "finding_id": "finding:disp_rca2a22_cand_a",
+      "decision": "accepted",
+      "reviewer": "analyst",
+      "note": "Analyst verified SAM hive access via event 1.",
+      "created_at": "2026-10-17T10:26:34.977849+00:00"
+    },
+    {
+      "review_row_id": 2,
+      "review_id": "freview:3427ce6d6ad0e830c10d",
+      "task_id": "synthetic-rca2a22-workbench-001",
+      "investigation_id": "inv-rca2a22-bench",
+      "finding_id": "finding:hyp_hyp_rca2a22_cand_b",
+      "decision": "rejected",
+      "reviewer": "analyst",
+      "note": "Alternative hypothesis rejected after analysis.",
+      "created_at": "2026-10-17T10:26:37.083901+00:00"
+    }
+  ],
+  "persisted_findings": [
+    {
+      "finding_row_id": 1,
+      "finding_id": "finding:disp_rca2a22_cand_a",
+      "task_id": "synthetic-rca2a22-workbench-001",
+      "investigation_id": "inv-rca2a22-bench",
+      "proposal_id": "prop_rca2a22_01",
+      "disposition_id": "disp_rca2a22_01",
+      "text": "Security Account Manager registry hive accessed via suspicious handle indicating credential extraction",
+      "assertion_class": "INFERENCE",
+      "evidence_refs_json": "{\"refs\":[\"cluster:v1:28166667:logon_4624\",\"file:C/Windows/System32/config/SAM\"]}",
+      "relationship_refs_json": "{\"refs\":[]}",
+      "temporal_scope_json": null,
+      "grounding_id": "grnd_rca2a22_01",
+      "semantic_verification_id": null,
+      "limitations_json": "{\"limitations\":[]}",
+      "status": "accepted",
+      "created_at": "2026-10-17T12:00:00Z",
+      "reviewed_at": "2026-10-17T10:26:34.977849+00:00",
+      "reviewer": "analyst",
+      "review_note": "Analyst verified SAM hive access via event 1.",
+      "review_id": "freview:c39257759004c6366d53"
+    },
+    {
+      "finding_row_id": 2,
+      "finding_id": "finding:hyp_hyp_rca2a22_cand_b",
+      "task_id": "synthetic-rca2a22-workbench-001",
+      "investigation_id": "inv-rca2a22-bench",
+      "proposal_id": "prop_hyp_rca2a22_cand_b",
+      "disposition_id": "disp_hyp_rca2a22_cand_b",
+      "text": "Alternative: malware.exe was executed by legitimate administrative deployment script",
+      "assertion_class": "HYPOTHESIS",
+      "evidence_refs_json": "{\"refs\":[\"file:C/Users/Public/malware.exe\"]}",
+      "relationship_refs_json": "{\"refs\":[]}",
+      "temporal_scope_json": null,
+      "grounding_id": "grnd_hyp_rca2a22_cand_b",
+      "semantic_verification_id": null,
+      "limitations_json": "{\"limitations\":[]}",
+      "status": "rejected",
+      "created_at": "2026-10-17T10:26:37.083901+00:00",
+      "reviewed_at": "2026-10-17T10:26:37.083901+00:00",
+      "reviewer": "analyst",
+      "review_note": "Alternative hypothesis rejected after analysis.",
+      "review_id": "freview:3427ce6d6ad0e830c10d"
+    }
+  ]
+}
