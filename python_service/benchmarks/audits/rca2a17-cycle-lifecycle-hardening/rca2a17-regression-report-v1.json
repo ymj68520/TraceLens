@@ -1,0 +1,52 @@
+{
+  "artifact_version": "RCA2A17RegressionReportV1",
+  "experiment_id": "rca2a17-cycle-lifecycle-hardening",
+  "timestamp_utc": "2026-10-17T06:44:00.000000+00:00",
+  "regression_suite_summary": {
+    "total_suites": 5,
+    "total_tests_run": 132,
+    "total_passed": 132,
+    "total_failed": 0,
+    "total_skipped": 0,
+    "execution_time_seconds": 24.40,
+    "regression_detected": false
+  },
+  "evaluated_suites": [
+    {
+      "suite": "python_service/tests/unit/investigation/test_agent_cycle_lifecycle.py",
+      "purpose": "RCA-2A.17 lifecycle, durable idempotency, restart recovery & safety",
+      "tests_run": 32,
+      "passed": 32,
+      "failed": 0
+    },
+    {
+      "suite": "python_service/tests/unit/investigation/test_agent_orchestrator_wiring.py",
+      "purpose": "RCA-2A.16 HTTP route, wiring, delegation & dispatch integration",
+      "tests_run": 30,
+      "passed": 30,
+      "failed": 0
+    },
+    {
+      "suite": "python_service/tests/unit/investigation/test_agent_runtime_persistence.py",
+      "purpose": "Phase 1 agent runtime lifecycle, triggers, revision chains & restart recovery",
+      "tests_run": 32,
+      "passed": 32,
+      "failed": 0
+    },
+    {
+      "suite": "python_service/tests/unit/investigation/test_integrate_persistence_invariants.py",
+      "purpose": "Containment chain, SQLite fail-loud, missing store skip invariants",
+      "tests_run": 4,
+      "passed": 4,
+      "failed": 0
+    },
+    {
+      "suite": "python_service/tests/unit/investigation/test_agent_integration_v2.py",
+      "purpose": "V2 integration schema, handle resolution, attention hash & gates",
+      "tests_run": 34,
+      "passed": 34,
+      "failed": 0
+    }
+  ],
+  "verdict": "FULL_REGRESSION_PASSED_ZERO_DEFECTS"
+}

@@ -669,7 +669,11 @@ async def execute_agent_cycle(
             detail="agent execution is disabled by configuration",
         )
 
-    from ..services.investigation.agent_runtime import AgentRuntimeRepository
+    from ..services.investigation.agent_runtime import (
+        AgentRuntimeConflictError,
+        AgentRuntimeRepository,
+        WorkingStateRevisionConflictError,
+    )
     from ..services.investigation.paths import investigation_db_path_for_task
 
     try:
@@ -708,15 +712,22 @@ async def execute_agent_cycle(
             detail=f"agent cycle is already running for task {request.task_id}",
         )
 
+    import hashlib
+    import json
+    import uuid
+
+    request_id = request.request_id or f"req_{uuid.uuid4().hex[:16]}"
+
     async with lock:
         _agent_task_running.add(request.task_id)
+        execution_id = None
+        runtime = None
         try:
             from ..services.investigation.repository import InvestigationRepository
 
             repo = InvestigationRepository(db_path, request.task_id)
             runtime = AgentRuntimeRepository(repo)
             orchestrator = _get_agent_orchestrator()
-
 
             # Resolve or create investigation
             investigation_id = request.investigation_id
@@ -725,7 +736,6 @@ async def execute_agent_cycle(
                 if existing_invs:
                     investigation_id = existing_invs[0].investigation_id
                 else:
-                    import uuid
                     from ..services.investigation.agent_working_state import (
                         AgentWorkingStateV1,
                     )
@@ -742,18 +752,43 @@ async def execute_agent_cycle(
                     )
                     investigation_id = inv.investigation_id
 
+            # Canonical input fingerprint for durable idempotency
+            fingerprint_data = {
+                "task_id": request.task_id,
+                "investigation_id": investigation_id,
+                "expected_working_state_revision": request.expected_working_state_revision,
+                "source_scope_ids": sorted(request.source_scope_ids or []),
+            }
+            input_fingerprint = hashlib.sha256(
+                json.dumps(fingerprint_data, sort_keys=True).encode("utf-8")
+            ).hexdigest()
 
-            # Optimistic lock on expected working state revision
-            latest_state = runtime.get_latest_working_state(investigation_id)
-            if latest_state is not None and request.expected_working_state_revision is not None:
-                if latest_state.revision != request.expected_working_state_revision:
-                    raise HTTPException(
-                        status_code=409,
-                        detail=(
-                            f"working state revision conflict: expected "
-                            f"{request.expected_working_state_revision}, current is {latest_state.revision}"
-                        ),
-                    )
+            # Atomic claim in SQLite
+            try:
+                execution, is_replayed = runtime.claim_cycle_execution(
+                    investigation_id=investigation_id,
+                    request_id=request_id,
+                    input_fingerprint=input_fingerprint,
+                    expected_revision=request.expected_working_state_revision,
+                )
+            except (AgentRuntimeConflictError, WorkingStateRevisionConflictError) as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+            # If replayed and already completed, return cached response directly
+            if is_replayed and execution.cycle_outcome_json:
+                return AgentCycleResponse.model_validate_json(execution.cycle_outcome_json)
+
+            execution_id = execution.execution_id
+            runtime.mark_cycle_execution_running(execution_id)
+
+            # Re-verify task before running cycle (Task deletion safety)
+            task_check = await manager.cpp_backend.get_task(request.task_id)
+            if not isinstance(task_check, dict) or task_check.get("id") != request.task_id:
+                runtime.fail_cycle_execution(execution_id, "task was deleted before execution", status="failed")
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"task not found or investigation db unavailable for {request.task_id}",
+                )
 
             outcome = await orchestrator.execute_cycle(
                 request.task_id,
@@ -761,7 +796,16 @@ async def execute_agent_cycle(
                 source_scope_ids=request.source_scope_ids,
             )
 
-            return AgentCycleResponse(
+            # Re-verify task before marking completed (Task deletion safety)
+            task_post_check = await manager.cpp_backend.get_task(request.task_id)
+            if not isinstance(task_post_check, dict) or task_post_check.get("id") != request.task_id:
+                runtime.fail_cycle_execution(execution_id, "task was deleted during execution", status="failed")
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"task not found or investigation db unavailable for {request.task_id}",
+                )
+
+            response = AgentCycleResponse(
                 cycle_id=outcome.cycle_id,
                 task_id=request.task_id,
                 investigation_id=outcome.investigation_id,
@@ -775,9 +819,22 @@ async def execute_agent_cycle(
                 warnings=list(outcome.warnings),
                 limitations=list(outcome.limitations),
             )
+
+            # Persist completed cycle outcome for durable idempotency
+            runtime.complete_cycle_execution(
+                execution_id,
+                response.model_dump_json(),
+            )
+
+            return response
         except HTTPException:
             raise
         except Exception as exc:
+            if runtime is not None and execution_id is not None:
+                try:
+                    runtime.fail_cycle_execution(execution_id, str(exc), status="failed")
+                except Exception:
+                    pass
             raise HTTPException(
                 status_code=500,
                 detail=f"agent cycle execution failed: {type(exc).__name__}: {exc}"[:300],

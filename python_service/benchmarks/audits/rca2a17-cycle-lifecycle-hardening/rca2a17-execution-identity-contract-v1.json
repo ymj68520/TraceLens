@@ -1,0 +1,43 @@
+{
+  "artifact_version": "RCA2A17ExecutionIdentityContractV1",
+  "experiment_id": "rca2a17-cycle-lifecycle-hardening",
+  "timestamp_utc": "2026-10-17T06:37:00.000000+00:00",
+  "identity_specification": {
+    "request_id_source": "Explicit payload request_id, or HTTP header X-Request-ID, or auto-generated UUID hex",
+    "canonical_input_fingerprint": {
+      "algorithm": "SHA-256",
+      "fields_included": [
+        "task_id",
+        "investigation_id",
+        "expected_working_state_revision",
+        "source_scope_ids (sorted)"
+      ],
+      "serialization": "canonical JSON (RFC 8785 style sorting, no whitespace)"
+    },
+    "storage_schema": {
+      "table_name": "agent_cycle_executions",
+      "primary_key": "execution_id",
+      "unique_key": ["task_id", "request_id"],
+      "columns": {
+        "execution_id": "TEXT PRIMARY KEY",
+        "task_id": "TEXT NOT NULL",
+        "investigation_id": "TEXT NOT NULL",
+        "request_id": "TEXT NOT NULL",
+        "input_fingerprint": "TEXT NOT NULL",
+        "expected_revision": "INTEGER",
+        "status": "TEXT NOT NULL CHECK(status IN ('claimed','running','completed','failed','interrupted'))",
+        "cycle_outcome_json": "TEXT",
+        "error_message": "TEXT",
+        "created_at": "TEXT NOT NULL",
+        "updated_at": "TEXT NOT NULL"
+      }
+    },
+    "replay_and_conflict_rules": {
+      "identical_request_and_completed": "Returns cached AgentCycleResponse with status 200 OK (idempotent replay, zero side effects).",
+      "identical_request_different_payload": "Returns HTTP 409 Conflict ('request_id previously used with different parameters').",
+      "active_concurrent_claim": "Returns HTTP 409 Conflict ('Agent cycle execution is already running or claimed for request_id').",
+      "stale_expected_revision": "Returns HTTP 409 Conflict ('State revision conflict: expected X, current Y')."
+    }
+  },
+  "verdict": "EXECUTION_IDENTITY_CONTRACT_FROZEN"
+}

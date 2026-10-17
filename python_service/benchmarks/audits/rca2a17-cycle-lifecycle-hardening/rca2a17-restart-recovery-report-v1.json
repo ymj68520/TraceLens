@@ -1,0 +1,47 @@
+{
+  "artifact_version": "RCA2A17RestartRecoveryReportV1",
+  "experiment_id": "rca2a17-cycle-lifecycle-hardening",
+  "timestamp_utc": "2026-10-17T06:39:00.000000+00:00",
+  "recovery_protocol": {
+    "entry_point": "AgentRuntimeRepository.recover_interrupted_agent_runtime()",
+    "trigger": "ServiceManager initialization / application startup / explicit maintenance sweep",
+    "atomic_sweep_actions": [
+      {
+        "target": "agent_cycle_executions",
+        "predicate": "task_id = ? AND status IN ('claimed', 'running')",
+        "transition": "status = 'interrupted', error_message = 'agent cycle interrupted by service restart'"
+      },
+      {
+        "target": "agent_runs",
+        "predicate": "task_id = ? AND status IN ('running', 'queued')",
+        "transition": "status = 'failed', stop_reason = 'runtime_restart', error_code = 'runtime_restart'"
+      },
+      {
+        "target": "agent_delegations",
+        "predicate": "task_id = ? AND status IN ('running', 'admitted')",
+        "transition": "status = 'failed', failure_code = 'runtime_restart'"
+      },
+      {
+        "target": "agent_investigations",
+        "predicate": "task_id = ? AND status IN ('active', 'ready')",
+        "transition": "status = 'paused', pause_reason = 'runtime_restart'"
+      },
+      {
+        "target": "agent_trajectory",
+        "action": "Append runtime_recovered event with sweep summary"
+      }
+    ],
+    "idempotency": "Subsequent calls on a clean or recovered store return 0 across all failure/pause counters",
+    "backwards_compatibility": "Returns AgentRuntimeRecoverySummary mapping (exact 4-key dict contract preserved; cycle_executions_interrupted exposed via key and property lookup)"
+  },
+  "verified_test_cases": [
+    "T12_crash_before_claim_leaves_no_false_execution",
+    "T13_crash_after_claim_is_recoverable",
+    "T14_crash_during_supervisor_execution_handled",
+    "T15_crash_after_state_commit_does_not_reapply",
+    "T16_restart_recovery_preserves_audit_history",
+    "T17_completed_but_unintegrated_delegation_retained",
+    "T18_failed_specialist_does_not_corrupt_state"
+  ],
+  "verdict": "RESTART_RECOVERY_DETERMINISTIC_AND_AUDITABLE"
+}

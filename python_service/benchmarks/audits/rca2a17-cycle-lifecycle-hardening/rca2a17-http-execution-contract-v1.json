@@ -1,0 +1,52 @@
+{
+  "artifact_version": "RCA2A17HttpExecutionContractV1",
+  "experiment_id": "rca2a17-cycle-lifecycle-hardening",
+  "timestamp_utc": "2026-10-17T06:42:00.000000+00:00",
+  "endpoint_specification": {
+    "path": "/api/investigation/agent/cycle",
+    "method": "POST",
+    "request_schema": {
+      "task_id": "string (required)",
+      "request_id": "string (optional, defaults to UUID hex)",
+      "expected_working_state_revision": "integer (optional)",
+      "max_delegations": "integer (optional)",
+      "enable_experimental_guidance": "boolean (optional, default: false)",
+      "source_scope_ids": "array of string (optional)"
+    },
+    "response_schema": {
+      "cycle_id": "string",
+      "task_id": "string",
+      "investigation_id": "string",
+      "run_id": "string",
+      "starting_revision": "integer",
+      "ending_revision": "integer",
+      "integration_status": "string",
+      "delegation_ids": "array of string",
+      "warnings": "array of string",
+      "limitations": "array of string"
+    },
+    "status_codes": {
+      "200_ok": "Cycle completed successfully, or idempotent cached outcome replayed",
+      "400_bad_request": "Invalid JSON payload or missing mandatory fields",
+      "404_not_found": "Task does not exist, or was deleted before/during cycle",
+      "409_conflict": "Optimistic revision mismatch, conflicting request_id payload, or concurrent cycle in flight",
+      "500_internal_error": "Internal orchestrator execution error with error logged"
+    }
+  },
+  "read_endpoint_specification": {
+    "path": "/api/investigation/agent/state",
+    "method": "GET",
+    "parameters": {
+      "task_id": "string (query, required)"
+    },
+    "status_codes": {
+      "200_ok": "Returns latest working state",
+      "404_not_found": "Task or investigation store does not exist"
+    }
+  },
+  "backwards_compatibility": "100% compatible with RCA-2A.16 client payload shapes and response schemas",
+  "verified_test_cases": [
+    "T32_existing_rca2a16_route_contracts_remain_compatible"
+  ],
+  "verdict": "HTTP_EXECUTION_CONTRACT_FROZEN"
+}

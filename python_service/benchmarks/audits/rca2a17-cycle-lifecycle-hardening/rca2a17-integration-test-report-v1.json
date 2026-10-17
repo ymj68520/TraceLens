@@ -1,0 +1,86 @@
+{
+  "artifact_version": "RCA2A17IntegrationTestReportV1",
+  "experiment_id": "rca2a17-cycle-lifecycle-hardening",
+  "timestamp_utc": "2026-10-17T06:43:00.000000+00:00",
+  "test_suite": "python_service/tests/unit/investigation/test_agent_cycle_lifecycle.py",
+  "execution_metrics": {
+    "total_tests": 32,
+    "passed": 32,
+    "failed": 0,
+    "skipped": 0,
+    "duration_seconds": 12.28,
+    "pass_rate_pct": 100.0,
+    "real_model_requests_count": 0
+  },
+  "test_matrix_breakdown": {
+    "idempotency_and_caching": {
+      "tests": [
+        "test_t01_durable_claim_persisted",
+        "test_t02_identical_request_returns_cached_response",
+        "test_t03_concurrent_identical_requests_serialized",
+        "test_t04_conflicting_payload_same_request_id_rejected",
+        "test_t05_cycle_execution_failure_persists_error",
+        "test_t06_running_status_transition_atomic",
+        "test_t07_outcome_caching_idempotent"
+      ],
+      "count": 7,
+      "passed": 7
+    },
+    "concurrency_and_atomicity": {
+      "tests": [
+        "test_t08_multi_process_claim_collision_handled",
+        "test_t09_cross_servicemanager_concurrency_controlled",
+        "test_t10_separate_task_executions_remain_independent",
+        "test_t11_stale_expected_revision_rejected"
+      ],
+      "count": 4,
+      "passed": 4
+    },
+    "restart_recovery": {
+      "tests": [
+        "test_t12_crash_before_claim_leaves_no_false_execution",
+        "test_t13_crash_after_claim_is_recoverable",
+        "test_t14_crash_during_supervisor_execution_handled",
+        "test_t15_crash_after_state_commit_does_not_reapply",
+        "test_t16_restart_recovery_preserves_audit_history",
+        "test_t17_completed_but_unintegrated_delegation_retained",
+        "test_t18_failed_specialist_does_not_corrupt_state"
+      ],
+      "count": 7,
+      "passed": 7
+    },
+    "task_lifecycle_safety": {
+      "tests": [
+        "test_t19_deleted_task_before_execution_rejected",
+        "test_t20_deleted_task_during_execution_cannot_commit",
+        "test_t21_invalid_task_path_rejected",
+        "test_t22_get_state_is_read_only",
+        "test_t23_get_state_causes_zero_llm_calls"
+      ],
+      "count": 5,
+      "passed": 5
+    },
+    "hypothesis_and_grounding": {
+      "tests": [
+        "test_t24_invalid_evidence_handle_rejected",
+        "test_t25_legitimate_unverified_hypothesis_handled_correctly",
+        "test_t26_unsupported_fact_cannot_be_accepted",
+        "test_t27_analyst_note_cannot_become_evidence"
+      ],
+      "count": 4,
+      "passed": 4
+    },
+    "boundary_and_compatibility": {
+      "tests": [
+        "test_t28_finalization_not_triggered_implicitly",
+        "test_t29_report_admission_not_triggered",
+        "test_t30_no_production_evidence_mutation",
+        "test_t31_no_real_provider_requests",
+        "test_t32_existing_rca2a16_route_contracts_remain_compatible"
+      ],
+      "count": 5,
+      "passed": 5
+    }
+  },
+  "verdict": "ALL_32_LIFECYCLE_TESTS_PASSED"
+}

@@ -1,0 +1,33 @@
+{
+  "artifact_version": "RCA2A17HypothesisGroundingBoundaryReportV1",
+  "experiment_id": "rca2a17-cycle-lifecycle-hardening",
+  "timestamp_utc": "2026-10-17T06:41:00.000000+00:00",
+  "boundary_invariants": {
+    "evidence_handle_resolution": {
+      "validator": "EvidenceResolver & GroundingValidator",
+      "policy": "Handles must map to admitted canonical keys (file: or cluster:) in the task store. Unknown or malformed handles fail closed with EVIDENCE_REF_INVALID."
+    },
+    "hypothesis_semantics": {
+      "unverified_hypotheses": "Allowed in working state as hypotheses with appropriate open/in_progress status; never promoted to confirmed fact without admissible evidence basis.",
+      "unsupported_facts": "Transition proposals attempting to declare facts or answer questions without basis_refs are rejected by StateTransitionPolicy with QUESTION_CLOSURE_BASIS_REQUIRED."
+    },
+    "analyst_notes_separation": {
+      "rule": "Analyst notes and user directives are strictly contextual inputs; they cannot be accepted as evidence handles or bypass GroundingValidator."
+    },
+    "finalization_and_report_evidence": {
+      "finalization_gate": "Explicit only. Cycle execution does not evaluate FinalizationGate unless explicitly invoked.",
+      "report_admission": "Zero admissions to report_evidence table during agent cycle.",
+      "production_snapshots": "0 mutations to canonical evidence_snapshots table."
+    }
+  },
+  "verified_test_cases": [
+    "T24_invalid_evidence_handle_rejected",
+    "T25_legitimate_unverified_hypothesis_handled_correctly",
+    "T26_unsupported_fact_cannot_be_accepted",
+    "T27_analyst_note_cannot_become_evidence",
+    "T28_finalization_not_triggered_implicitly",
+    "T29_report_admission_not_triggered",
+    "T30_no_production_evidence_mutation"
+  ],
+  "verdict": "EVIDENCE_HYPOTHESIS_BOUNDARIES_INTACT"
+}

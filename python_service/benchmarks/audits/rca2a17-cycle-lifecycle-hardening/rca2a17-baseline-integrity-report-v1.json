@@ -1,0 +1,30 @@
+{
+  "artifact_version": "RCA2A17BaselineIntegrityReportV1",
+  "experiment_id": "rca2a17-cycle-lifecycle-hardening",
+  "timestamp_utc": "2026-10-17T06:35:00.000000+00:00",
+  "baseline_commit": "7ac1e25e4f5dd46cd21c1faf6a8ce006ebdab612",
+  "historical_lineage": {
+    "rca2a12_runtime": "0c2e9b9cac244ebaaf457156ce0ff8dcc264b7b3",
+    "rca2a12_artifact": "0419e111520e1460ff65bac7fb540f9b07745ec0",
+    "rca2a13": "82227677a4ce4f68bde393c3e22c677bb411fb66",
+    "rca2a14a": "ce5649e37f5791d250dc87e23910aec2c75464e6",
+    "rca2a14b": "167093e70d2639e692ce52cb0aa7fa6ee5425fa7",
+    "rca2a15": "c143895bbcaf1a9f8c291f325941822b06d14b67",
+    "rca2a16": "7ac1e25e4f5dd46cd21c1faf6a8ce006ebdab612"
+  },
+  "candidate_verification": {
+    "candidate_id": "supervisor-v2-vocabulary-guidance-v1",
+    "guidance_sha256": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+    "schema_hash": "a214ec4f5e81fcbb",
+    "output_schema": "SupervisorIntegrationDecisionV2",
+    "status": "HASHES_MATCH_EXACT"
+  },
+  "production_invariants": {
+    "production_supervisor_prompt": "UNCHANGED",
+    "production_schema": "UNCHANGED",
+    "vocabulary_guidance_v1": "FROZEN_EXPERIMENTAL_ONLY",
+    "real_provider_requests_count": 0,
+    "production_db_modified": false
+  },
+  "verification_status": "BASELINE_VERIFIED_CLEAN"
+}

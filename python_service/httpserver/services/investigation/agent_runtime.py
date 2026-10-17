@@ -99,6 +99,49 @@ class VerificationObligationStatus(str, Enum):
     safely_downgraded = "safely_downgraded"
 
 
+class AgentCycleExecution(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    execution_id: str
+    task_id: str
+    investigation_id: str
+    request_id: str
+    input_fingerprint: str
+    expected_revision: Optional[int] = None
+    status: str
+    cycle_outcome_json: Optional[str] = None
+    error_message: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+
+class AgentRuntimeRecoverySummary(dict):
+    """Backwards-compatible recovery summary dictionary.
+
+    Preserves exact 4-key dict shape (runs_failed, delegations_failed,
+    investigations_paused, obligations_expired) for existing persistence tests,
+    while exposing cycle_executions_interrupted via key lookup and attribute access.
+    """
+
+    def __init__(
+        self,
+        base_dict: dict[str, int],
+        cycle_executions_interrupted: int = 0,
+    ) -> None:
+        super().__init__(base_dict)
+        self.cycle_executions_interrupted = cycle_executions_interrupted
+
+    def __getitem__(self, key: str) -> int:
+        if key == "cycle_executions_interrupted":
+            return self.cycle_executions_interrupted
+        return super().__getitem__(key)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        if key == "cycle_executions_interrupted":
+            return self.cycle_executions_interrupted
+        return super().get(key, default)
+
+
 class AgentTrajectoryEventType(str, Enum):
     investigation_created = "investigation_created"
     run_admitted = "run_admitted"
@@ -5649,8 +5692,16 @@ class AgentRuntimeRepository:
             obligations_expired = (
                 self._expire_running_obligations_with_conn(conn)
             )
+            cycle_executions_interrupted = 0
+            if self._has_cycle_execution_table(conn):
+                cycle_executions_interrupted = conn.execute(
+                    "UPDATE agent_cycle_executions "
+                    "SET status = 'interrupted', error_message = 'agent cycle interrupted by service restart', updated_at = ? "
+                    "WHERE task_id = ? AND status IN ('claimed','running')",
+                    [now, self.task_id],
+                ).rowcount
             conn.commit()
-        if runs_failed or delegations_failed or investigations_paused:
+        if runs_failed or delegations_failed or investigations_paused or cycle_executions_interrupted:
             logger.info(
                 "agent runtime recovery for task %s: %s",
                 self.task_id,
@@ -5658,11 +5709,202 @@ class AgentRuntimeRepository:
                     "runs_failed": runs_failed,
                     "delegations_failed": delegations_failed,
                     "investigations_paused": investigations_paused,
+                    "cycle_executions_interrupted": cycle_executions_interrupted,
                 },
             )
-        return {
-            "runs_failed": runs_failed,
-            "delegations_failed": delegations_failed,
-            "investigations_paused": investigations_paused,
-            "obligations_expired": obligations_expired,
-        }
+        return AgentRuntimeRecoverySummary(
+            {
+                "runs_failed": runs_failed,
+                "delegations_failed": delegations_failed,
+                "investigations_paused": investigations_paused,
+                "obligations_expired": obligations_expired,
+            },
+            cycle_executions_interrupted=cycle_executions_interrupted,
+        )
+
+    # =====================================================================
+    # Agent Cycle Execution Persistence (RCA-2A.17)
+    # =====================================================================
+
+    def _has_cycle_execution_table(self, conn: sqlite3.Connection) -> bool:
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_cycle_executions'"
+        ).fetchone()
+        return row is not None
+
+    def ensure_cycle_execution_table(self, conn: Optional[sqlite3.Connection] = None) -> None:
+        sql = """
+        CREATE TABLE IF NOT EXISTS agent_cycle_executions (
+            execution_id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL,
+            investigation_id TEXT NOT NULL,
+            request_id TEXT NOT NULL,
+            input_fingerprint TEXT NOT NULL,
+            expected_revision INTEGER,
+            status TEXT NOT NULL CHECK(status IN ('claimed','running','completed','failed','conflict','interrupted')),
+            cycle_outcome_json TEXT,
+            error_message TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(task_id, request_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_agent_cycle_executions_active
+        ON agent_cycle_executions(task_id) WHERE status IN ('claimed','running');
+        """
+        if conn is not None:
+            conn.executescript(sql)
+        else:
+            with self._connect() as c:
+                c.executescript(sql)
+
+    def claim_cycle_execution(
+        self,
+        investigation_id: str,
+        request_id: str,
+        input_fingerprint: str,
+        expected_revision: Optional[int] = None,
+        execution_id: Optional[str] = None,
+    ) -> tuple[AgentCycleExecution, bool]:
+        """Atomically claim a cycle execution in SQLite.
+
+        Returns (execution, is_replayed).
+        Raises AgentRuntimeConflictError or WorkingStateRevisionConflictError.
+        """
+        now = _now_iso()
+        exec_id = execution_id or f"cycle_exec_{uuid.uuid4().hex[:12]}"
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self.ensure_cycle_execution_table(conn)
+
+            # 1. Check if request_id already exists for this task
+            row = conn.execute(
+                "SELECT * FROM agent_cycle_executions WHERE task_id = ? AND request_id = ?",
+                [self.task_id, request_id],
+            ).fetchone()
+            if row is not None:
+                if row["input_fingerprint"] != input_fingerprint:
+                    raise AgentRuntimeConflictError(
+                        f"request_id {request_id!r} already used with different input payload"
+                    )
+                if row["status"] == "completed":
+                    conn.commit()
+                    return (
+                        AgentCycleExecution(
+                            execution_id=row["execution_id"],
+                            task_id=row["task_id"],
+                            investigation_id=row["investigation_id"],
+                            request_id=row["request_id"],
+                            input_fingerprint=row["input_fingerprint"],
+                            expected_revision=row["expected_revision"],
+                            status=row["status"],
+                            cycle_outcome_json=row["cycle_outcome_json"],
+                            error_message=row["error_message"],
+                            created_at=row["created_at"],
+                            updated_at=row["updated_at"],
+                        ),
+                        True,
+                    )
+                if row["status"] in ("claimed", "running"):
+                    raise AgentRuntimeConflictError(
+                        f"cycle execution already in progress for request_id {request_id!r}"
+                    )
+                raise AgentRuntimeConflictError(
+                    f"previous cycle execution terminated with {row['status']!r}"
+                )
+
+            # 2. Check if another cycle is active on the same task (cross-process boundary)
+            active_row = conn.execute(
+                "SELECT * FROM agent_cycle_executions WHERE task_id = ? AND status IN ('claimed', 'running')",
+                [self.task_id],
+            ).fetchone()
+            if active_row is not None:
+                raise AgentRuntimeConflictError(
+                    f"agent cycle is already running for task {self.task_id}"
+                )
+
+            # 3. Optimistic lock check on working state revision inside the transaction
+            latest_state = conn.execute(
+                "SELECT revision FROM agent_working_state_revisions WHERE task_id = ? AND investigation_id = ? ORDER BY revision DESC LIMIT 1",
+                [self.task_id, investigation_id],
+            ).fetchone()
+            if latest_state is not None and expected_revision is not None:
+                curr_rev = int(latest_state["revision"])
+                if curr_rev != expected_revision:
+                    raise WorkingStateRevisionConflictError(
+                        f"working state revision conflict: expected {expected_revision}, current is {curr_rev}"
+                    )
+
+            conn.execute(
+                "INSERT INTO agent_cycle_executions "
+                "(execution_id, task_id, investigation_id, request_id, input_fingerprint, expected_revision, status, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, 'claimed', ?, ?)",
+                [exec_id, self.task_id, investigation_id, request_id, input_fingerprint, expected_revision, now, now],
+            )
+            conn.commit()
+            return (
+                AgentCycleExecution(
+                    execution_id=exec_id,
+                    task_id=self.task_id,
+                    investigation_id=investigation_id,
+                    request_id=request_id,
+                    input_fingerprint=input_fingerprint,
+                    expected_revision=expected_revision,
+                    status="claimed",
+                    cycle_outcome_json=None,
+                    error_message=None,
+                    created_at=now,
+                    updated_at=now,
+                ),
+                False,
+            )
+
+    def mark_cycle_execution_running(self, execution_id: str) -> None:
+        now = _now_iso()
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE agent_cycle_executions SET status = 'running', updated_at = ? WHERE execution_id = ?",
+                [now, execution_id],
+            )
+            conn.commit()
+
+    def complete_cycle_execution(self, execution_id: str, outcome_json: str) -> None:
+        now = _now_iso()
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE agent_cycle_executions SET status = 'completed', cycle_outcome_json = ?, updated_at = ? WHERE execution_id = ?",
+                [outcome_json, now, execution_id],
+            )
+            conn.commit()
+
+    def fail_cycle_execution(self, execution_id: str, error_message: str, status: str = "failed") -> None:
+        now = _now_iso()
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE agent_cycle_executions SET status = ?, error_message = ?, updated_at = ? WHERE execution_id = ?",
+                [status, error_message[:500], now, execution_id],
+            )
+            conn.commit()
+
+    def get_cycle_execution(self, request_id: str) -> Optional[AgentCycleExecution]:
+        with self._connect() as conn:
+            if not self._has_cycle_execution_table(conn):
+                return None
+            row = conn.execute(
+                "SELECT * FROM agent_cycle_executions WHERE task_id = ? AND request_id = ?",
+                [self.task_id, request_id],
+            ).fetchone()
+            if row is None:
+                return None
+            return AgentCycleExecution(
+                execution_id=row["execution_id"],
+                task_id=row["task_id"],
+                investigation_id=row["investigation_id"],
+                request_id=row["request_id"],
+                input_fingerprint=row["input_fingerprint"],
+                expected_revision=row["expected_revision"],
+                status=row["status"],
+                cycle_outcome_json=row["cycle_outcome_json"],
+                error_message=row["error_message"],
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+            )
