@@ -1029,6 +1029,12 @@ class ServiceManager:
             self._cpp_backend,
             supervisor=supervisor,
             delegation_dispatcher=_delegation_dispatcher,
+            source_scope_provider=lambda task_id: (
+                "windows",
+                "linux",
+                "android",
+                "src_event_logs",
+            ),
             final_review_runner=_final_review_runner,
             supervisor_contract_version=(
                 self.settings.agent_supervisor_contract_version
