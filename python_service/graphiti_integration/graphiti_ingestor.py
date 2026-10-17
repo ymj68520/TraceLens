@@ -3,6 +3,7 @@ Graphiti ingestor module for batch ingestion into the knowledge graph.
 """
 
 import asyncio
+import inspect
 import json
 import logging
 from dataclasses import dataclass
@@ -471,9 +472,14 @@ class GraphitiIngestor:
                 })
                 logger.error(f"Unexpected error ingesting {episode.name}: {e}")
             
-            # Progress callback
+            # Progress callback. Callers register either a plain function or a
+            # coroutine (the job manager's _ep_progress is async); calling the
+            # async form without awaiting it only builds a coroutine that is
+            # never scheduled, so the reported percentage never moved.
             if progress_callback:
-                progress_callback(i + 1, len(episodes))
+                outcome = progress_callback(i + 1, len(episodes))
+                if inspect.isawaitable(outcome):
+                    await outcome
         
         logger.info(
             f"Batch ingestion complete: {result.successful}/{result.total_episodes} "
