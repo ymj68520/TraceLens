@@ -1,0 +1,46 @@
+{
+  "artifact_version": "RCA2A11aOutcomeAccountingAmendmentV1",
+  "audit_id": "rca2a11a-negative-gate-causality-audit",
+  "created_at_utc": "2026-10-17T02:14:17Z",
+  "seat_accounting": {
+    "planned_seats_total": 16,
+    "executed_seats_total": 5,
+    "unstarted_seats_total": 11,
+    "control_seats_attempted": 3,
+    "treatment_seats_attempted": 2,
+    "control_schedule_coverage": "3 / 8 (37.5%)",
+    "treatment_schedule_coverage": "2 / 8 (25.0%)"
+  },
+  "pydantic_validity_rates": {
+    "control_executed_initial_pass_rate": "3 / 3 (100.0%)",
+    "treatment_executed_initial_pass_rate": "2 / 2 (100.0%)",
+    "overall_executed_initial_pass_rate": "5 / 5 (100.0%)",
+    "pydantic_output_retries_total": 0,
+    "clarification": "The 3/8 and 2/8 figures represent planned schedule execution coverage, NOT model parse failure rates. DeepSeek-Flash exhibited 100% schema validity across all attempted dispatches."
+  },
+  "paired_accounting": {
+    "planned_pairs": 8,
+    "completed_pairs": 2,
+    "incomplete_pairs": 6,
+    "unpaired_executed_seats": 1,
+    "pair_results": {
+      "pair_1_f1_t2-no-evidence": "BOTH_INVALID",
+      "pair_2_f2_t2-temporal-trap": "TREATMENT_WIN",
+      "pair_3_f3_t2-identity-trap": "INCOMPLETE_PAIR (Seat 5 executed, Seat 6 not started)",
+      "pair_4_f4_t2-report-citation": "INCOMPLETE_PAIR (Not started)",
+      "pair_5_f1_t2-no-evidence": "INCOMPLETE_PAIR (Not started)",
+      "pair_6_f2_t2-temporal-trap": "INCOMPLETE_PAIR (Not started)",
+      "pair_7_f3_t2-identity-trap": "INCOMPLETE_PAIR (Not started)",
+      "pair_8_f4_t2-report-citation": "INCOMPLETE_PAIR (Not started)"
+    }
+  },
+  "overall_guidance_effect_claim": "INSUFFICIENT_EVIDENCE (Early halt on Seat 5 prevents statistical generalization across scenarios).",
+  "token_usage_accounting": {
+    "static_frozen_guidance_prompt_delta": "+312 input tokens",
+    "wire_observed_input_token_deltas": {
+      "pair_1_f1": "3,659 (Treatment) - 3,347 (Control) = +312 input tokens",
+      "pair_2_f2": "3,746 (Treatment) - 3,434 (Control) = +312 input tokens"
+    },
+    "token_accounting_reconciliation": "Static prompt calculation matches wire telemetry exactly."
+  }
+}

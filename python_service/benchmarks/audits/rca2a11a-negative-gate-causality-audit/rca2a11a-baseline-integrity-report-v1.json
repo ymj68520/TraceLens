@@ -1,0 +1,60 @@
+{
+  "artifact_version": "RCA2A11aBaselineIntegrityReportV1",
+  "audit_id": "rca2a11a-negative-gate-causality-audit",
+  "created_at_utc": "2026-10-17T02:14:17Z",
+  "git_provenance": {
+    "authorized_baseline_commit": "dbdda63fdf4ba4d7f4d412291cdc162da47e895c",
+    "runtime_commit": "afbeb55bf76388d98a58cbbbb44bc4c8e1db10c0",
+    "artifact_commit": "7707279c353be6aff41b26b165f278792613d9c0",
+    "current_head": "7707279c353be6aff41b26b165f278792613d9c0",
+    "baseline_is_ancestor": true,
+    "runtime_is_ancestor": true
+  },
+  "rca2a11_artifact_integrity": {
+    "file_count": 26,
+    "deliverables_sha256": {
+      "rca2a11-audit-report.md": "b04289132f0a1fd14994a5ec3d9c0fe12cbc470ec29cf460d3779229d7346083",
+      "rca2a11-baseline-integrity-report-v1.json": "122443d6562a0c0540d6f1c79e8692a9f1fe96fb42f077c8317d780b1c011d15",
+      "rca2a11-cost-and-reliability-report-v1.json": "1a4891ea8b6528c255ecee6a84136e78f9170e657450e2a301448fd1c1348404",
+      "rca2a11-effective-model-identity-v1.json": "a9acb1427a064e4b048a15a7034792060dd6000e238b0c9176e276a4a92d7f6c",
+      "rca2a11-evidence-integrity-report-v1.json": "cb9f903105e7b30de4e4af72ddd1c9f4a83f4cc1cafd0964a88d1a881561de9b",
+      "rca2a11-experiment-manifest-v1.json": "2ea9d103a02ce981999c4898cbb5a8f9e810cf6b10d5e31f47fd3e2ea16a0fbe",
+      "rca2a11-final-decision-report-v1.json": "fa11bdb6e611e8bf585f4d0e8ab4eaf992ea06dcf72414f198e409764c504bba",
+      "rca2a11-historical-interpretation-amendment-v1.json": "752b5b5a94484adc007402ec5c152c0758c9dd26e799447fd7f13d1d52630554",
+      "rca2a11-pairwise-comparison-v1.json": "7118018b6ce9112e78d573082d96635941c0a404c76aa675d4f220a77cd70f87",
+      "rca2a11-precall-gate-report-v1.json": "9819f922d174aa5b082d3d8effa3b70a4c217ca245cf51a73bfc2c43c76a157c",
+      "rca2a11-preflight-report-v1.json": "62eb5ac21478d93e7e5947ff18cefb0e31432b74755e83e8456f86e3ecc6c6e5",
+      "rca2a11-runner-readiness-report-v1.json": "17d86fdb1e7ff743bef3c37ff8b886d0966b6f4ed7da855b1f1a840884e0a7ca",
+      "rca2a11-runtime-identity-record-v1.json": "1e3a49ede002fac34982c4e73b512ad3bca2d8aa2d574a79d3595f30f426444a",
+      "rca2a11-scenario-stratified-analysis-v1.json": "358b7f3c4704ad13392bd41f80ee819a9265b73a94da8159bec18afb34bce305",
+      "rca2a11-seat-execution-matrix-v1.json": "1dacd580280df28d1e12e85d43ce1b7322b8c794ff71efa1d551a6fa65be6dcf",
+      "rca2a11-semantic-oracle-evaluation-v1.json": "501f9054d1a3ff6947f4bc11b50027f2e50aebcf091b5ef693d99d2fca7f1cfc"
+    },
+    "claims_sha256": {
+      "claims/seat-01.claim.json": "2b391620f548b1aca1ecbbc22a2c866ff4eb4a0742a560e6eec84623e475907f",
+      "claims/seat-02.claim.json": "1f108fabb2fc6ca96c334c962702f0d37f731f40b9ae3311f2bbaf47fcfa1092",
+      "claims/seat-03.claim.json": "28dacbd5f8eb56c4a612caa8edbe6c6deb3692526be3775d14223d490fd049f3",
+      "claims/seat-04.claim.json": "eeb287242e32d79e962472aa94ee0dbcfa6514e615317b7a6811d0184cd4ecf8",
+      "claims/seat-05.claim.json": "0054f912a50cbbc39302e0a7a38b1eb5fb765a3c339d7b3186c219944c67601a"
+    },
+    "diagnostics_sha256": {
+      "diagnostics/seat-01-t2-no-evidence-A-control.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "diagnostics/seat-02-t2-no-evidence-A-treatment.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "diagnostics/seat-03-t2-temporal-trap-A-control.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "diagnostics/seat-04-t2-temporal-trap-A-treatment.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "diagnostics/seat-05-t2-identity-trap-A-control.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "historical_artifacts_immutable": true
+  },
+  "core_production_components_sha256": {
+    "python_service/httpserver/services/investigation/agent_supervisor.py": "8621316a59b9c016c6eacbe9742eb439532af26b401f09d0eef3c263acd8cd25",
+    "python_service/httpserver/services/investigation/agent_integration_v2.py": "9be8946460d63993192c2abb58391bc6aa5af2617412ee27377f3275846439a0",
+    "python_service/httpserver/services/investigation/agent_transitions.py": "77300b8d079fb21891ac59dd14732a5f1b611c719e2c5bfc924637166f250e54",
+    "python_service/httpserver/services/investigation/agent_runtime.py": "8d0448e7f69ff03a1f1545d6fd23b1ae888e589093f07f9f362f51ab93c2fb00",
+    "python_service/benchmarks/contracts/experimental/integration_vocabulary_guidance_v1.py": "55160ec25b60b06f5a60dfe122c39a999dba427f239ce3dd3217190a3ee581a0",
+    "python_service/benchmarks/isolated_integration/semantic_oracle.py": "52e3a57d5116c3fb290158d26eaaff1a69f95fa92efd6e06434a72c454f91a55",
+    "python_service/benchmarks/isolated_integration/semantic_oracle_extension.py": "922db5e943ca2c980e8227743555a845d4452b0a6f9c0d9e7d0154fdc4b28348"
+  },
+  "scratch_directory_status": "HISTORICAL_SCRATCH_PURGED_ON_PACKAGING",
+  "audit_status": "BASELINE_VERIFIED"
+}

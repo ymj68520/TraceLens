@@ -1,0 +1,36 @@
+{
+  "artifact_version": "RCA2A11aFinalAuditDecisionV1",
+  "audit_id": "rca2a11a-negative-gate-causality-audit",
+  "created_at_utc": "2026-10-17T02:14:17Z",
+  "final_dispositions": [
+    "SEMANTIC_FAILURE_WITH_EFFECTIVE_CONTAINMENT",
+    "BENCHMARK_ACCOUNTING_DEFECT_CONFIRMED",
+    "SEMANTIC_REVIEW_BOUNDARY_IDENTIFIED"
+  ],
+  "exit_gate_answers": {
+    "Q1_COMMITTED_MEANING": "Refers strictly to the isolated scratch clone SQLite database transaction (scratch_commit_success == True), NOT to production or canonical findings.",
+    "Q2_SQLITE_COMMIT_OCCURRED": "YES, in the isolated scratch database instance (rca2a11_scratch). ZERO SQLite commits occurred in production.",
+    "Q3_TABLES_AND_FIELDS_WRITTEN": "Written to scratch: agent_working_state_revisions (revision=1 with state_json containing hypothesis), agent_trajectories (integration audit payload), agent_delegations (integrated_at). NOT written: findings, questions, coverage, entity_relations.",
+    "Q4_ASSERTION_CLASS_WRITTEN": "HYPOTHESIS (AgentWorkingStateV1.hypotheses). Neither FACT nor canonical accepted FINDING was written.",
+    "Q5_UNSUPPORTED_FACT_PROMOTION_EXISTENCE": "YES in natural language semantics within the hypothesis description ('same person'); NO in database authority / contract status.",
+    "Q6_DEFECT_CLASSIFICATION": "Combination of Model Semantic Failure (R1) under baseline prompt, Benchmark Accounting Defect (R2) in runner stop string, and Semantic Review Boundary (R5).",
+    "Q7_F1_CONTROL_FALSE_CLOSURE_STOPPED": "YES. StateTransitionPolicy rejected proposal before commit (QUESTION_CLOSURE_BASIS_REQUIRED, QUESTION_CLOSURE_VERIFICATION_REQUIRED).",
+    "Q8_F1_TREATMENT_INVALID_REASON": "Rejected before commit by StateTransitionPolicy due to QUESTION_CLOSURE_BASIS_REQUIRED.",
+    "Q9_F2_TREATMENT_POSITIVE_DISCOVERY_SUPPORTED": "YES. Treatment passed L1-L5, properly distinguishing temporal order from causality with valid evidence basis.",
+    "Q10_F2_CONTROL_CAUSAL_OVERCLAIM_VALID": "YES. Control attempted unverified causal question closure, correctly rejected by policy.",
+    "Q11_STATISTICAL_DENOMINATOR_CORRECTNESS": "Initial Pydantic pass rate is 3/3 (Control) and 2/2 (Treatment), total 5/5 (100%). The 3/8 and 2/8 figures represent schedule coverage.",
+    "Q12_PRODUCTION_SAFETY_BOUNDARY_MODIFICATION": "NO. Existing production multi-layer containment held completely. Deterministic guard gap does not exist.",
+    "Q13_UNSUPPORTED_FACT_BLOCKING_ASSURANCE": "YES. FinalizationGate, Report Admission, and Analyst Review prevent unadmitted hypotheses from entering final canonical findings.",
+    "Q14_FUTURE_VOCABULARY_GUIDANCE_COMPARISON_SUITABILITY": "YES, under a fresh experiment ID with refined stop reason taxonomy and updated protocol."
+  },
+  "architectural_freeze_verification": {
+    "production_supervisor_prompt": "UNCHANGED",
+    "production_supervisor_schema": "UNCHANGED",
+    "production_state_transition_policy": "UNCHANGED",
+    "evidence_resolver_and_grounding": "UNCHANGED",
+    "finalization_gate_and_admission": "UNCHANGED",
+    "rca2b_authorized": false,
+    "gen5_created": false,
+    "status": "HARD_STOP"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "artifact_version": "RCA2A11aCommitBoundaryAssessmentV1",
+  "audit_id": "rca2a11a-negative-gate-causality-audit",
+  "created_at_utc": "2026-10-17T02:14:17Z",
+  "defense_in_depth_layers": {
+    "L1_Pydantic": "Validates schema types, field names, and action unions. (Passed for Seat 5)",
+    "L2_Canonical_Resolution": "Resolves binding table handles to canonical URIs. (Passed for Seat 5)",
+    "L3_StateTransitionPolicy": "Validates state transitions, status prerequisites, basis ref syntax, and task-membership. (Accepted for Seat 5 CreateHypothesis)",
+    "L4_Working_State_Isolation": "Separates hypotheses (exploratory theories) from findings (verified facts) and questions (charter goals).",
+    "L5_FinalizationGate_Report_Admission": "Blocks unadmitted findings from entering final reports or analyst publication."
+  },
+  "case_classification": "Case B — Semantic Sufficiency Gap",
+  "gap_analysis": {
+    "deterministic_guard_gap_confirmed": false,
+    "semantic_sufficiency_not_established": true,
+    "rationale": "StateTransitionPolicy deliberately permits CreateHypothesis to record investigative theories without requiring prior definitive proof, provided evidence refs are syntactically valid and belong to the task. Hypotheses cannot promote themselves into accepted findings or close charter questions without passing subsequent verification checks."
+  },
+  "production_safety_conclusion": "DEFENSE_WORKING_AS_DESIGNED. The production architecture maintains full containment: exploratory hypotheses in working state do not corrupt canonical accepted findings."
+}

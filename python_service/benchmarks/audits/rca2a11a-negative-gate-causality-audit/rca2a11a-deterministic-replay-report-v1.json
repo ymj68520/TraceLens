@@ -1,0 +1,33 @@
+{
+  "artifact_version": "RCA2A11aDeterministicReplayReportV1",
+  "audit_id": "rca2a11a-negative-gate-causality-audit",
+  "created_at_utc": "2026-10-17T02:14:17Z",
+  "replay_methodology": {
+    "replay_mode": "DETERMINISTIC_OFFLINE_FIXTURE_REPLAY",
+    "external_network_calls": 0,
+    "isolation_mechanism": "Ephemeral in-memory / clone SQLite databases"
+  },
+  "replayed_verifications": [
+    {
+      "target": "Seat 5 Identity Trap Policy Evaluation",
+      "result": "CreateHypothesisActionV2 with valid handles is ACCEPTED by StateTransitionPolicy.",
+      "status": "VERIFIED"
+    },
+    {
+      "target": "Seat 5 Identity Trap Semantic Oracle Evaluation",
+      "result": "CreateHypothesisActionV2 containing 'same person' triggers UNSUPPORTED_FACT_PROMOTION.",
+      "status": "VERIFIED"
+    },
+    {
+      "target": "Seat 1 No Evidence Policy Evaluation",
+      "result": "UpdateQuestionActionV2 to answered without basis is REJECTED with QUESTION_CLOSURE_BASIS_REQUIRED.",
+      "status": "VERIFIED"
+    },
+    {
+      "target": "Seat 4 Temporal Trap Evaluation",
+      "result": "CreateHypothesisActionV2 without causal claims passes L1-L5 with POSITIVE_DISCOVERY.",
+      "status": "VERIFIED"
+    }
+  ],
+  "replay_consistency": "OFFLINE_BEHAVIOR_IDENTICAL_TO_HISTORICAL_RUNNER_LOGIC"
+}
