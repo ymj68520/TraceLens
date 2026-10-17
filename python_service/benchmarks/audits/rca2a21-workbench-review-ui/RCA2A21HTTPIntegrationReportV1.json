@@ -1,0 +1,43 @@
+{
+  "report_version": "rca2a21:v1",
+  "task_id": "TASK-INVESTIGATION-WORKBENCH-REVIEW-PANEL",
+  "audit_phase": "RCA-2A.21",
+  "endpoints_integrated": {
+    "list_candidates": {
+      "method": "GET",
+      "path": "/api/investigation/agent/review-candidates",
+      "status_codes": [200, 404, 503],
+      "model_calls": 0,
+      "db_writes": 0
+    },
+    "get_candidate": {
+      "method": "GET",
+      "path": "/api/investigation/agent/review-candidates/{candidate_id}",
+      "status_codes": [200, 404, 503],
+      "model_calls": 0,
+      "db_writes": 0
+    },
+    "get_history": {
+      "method": "GET",
+      "path": "/api/investigation/agent/reviews/history",
+      "status_codes": [200, 404, 503],
+      "model_calls": 0,
+      "db_writes": 0
+    },
+    "submit_review": {
+      "method": "POST",
+      "path": "/api/investigation/agent/review",
+      "status_codes": [200, 404, 409, 422, 503],
+      "model_calls": 0,
+      "db_writes": 1
+    }
+  },
+  "backend_integration_test_results": {
+    "test_suite": "python_service/tests/unit/investigation/test_agent_analyst_review_integration.py",
+    "total_tests": 34,
+    "passed": 34,
+    "failed": 0,
+    "duration_seconds": 7.89
+  },
+  "status": "HTTP_INTEGRATION_VERIFIED"
+}

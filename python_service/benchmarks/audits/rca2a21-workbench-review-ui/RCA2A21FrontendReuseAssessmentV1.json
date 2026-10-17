@@ -1,0 +1,35 @@
+{
+  "report_version": "rca2a21:v1",
+  "task_id": "TASK-INVESTIGATION-WORKBENCH-REVIEW-PANEL",
+  "audit_phase": "RCA-2A.21",
+  "reused_patterns": {
+    "badge_component": {
+      "source": "web/src/components/common/Badge.jsx",
+      "reuse_rationale": "Directly supports semantic color variants (green, yellow, purple, blue, red, gray) aligning with existing ClaimList epistemic badges."
+    },
+    "button_component": {
+      "source": "web/src/components/common/Button.jsx",
+      "reuse_rationale": "Supports success, danger, ghost variants, loading spinners, and disabled states without custom button CSS."
+    },
+    "toast_notification": {
+      "source": "web/src/components/common/useToast.js",
+      "reuse_rationale": "Consistent toast notification system with fallback for isolated test environments."
+    },
+    "api_client": {
+      "source": "web/src/services/api.js",
+      "reuse_rationale": "Reuses existing pythonApi Axios client with baseUrl, timeout, and response error formatting."
+    },
+    "evidence_navigation": {
+      "source": "web/src/pages/Investigation/Investigation.jsx",
+      "reuse_rationale": "Reuses onTraceEvidence callback to navigate Workbench directly to selected evidence in EvidenceAnalysisPanel."
+    }
+  },
+  "dependency_discipline": {
+    "no_new_state_libraries": true,
+    "no_new_css_frameworks": true,
+    "zero_external_fetch_implementations": true,
+    "tailwind_tokens_preserved": true,
+    "dark_mode_supported": true
+  },
+  "disposition": "MAXIMAL_REUSE_CONFIRMED"
+}

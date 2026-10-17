@@ -1,0 +1,65 @@
+{
+  "report_version": "rca2a21:v1",
+  "task_id": "TASK-INVESTIGATION-WORKBENCH-REVIEW-PANEL",
+  "audit_phase": "RCA-2A.21",
+  "ui_contract": {
+    "queue_fields": [
+      "candidate_id",
+      "claim_type",
+      "review_status",
+      "grounding_status",
+      "source_revision",
+      "content_summary",
+      "created_at"
+    ],
+    "detail_fields": [
+      "candidate_id",
+      "claim_type",
+      "target_type",
+      "content_full",
+      "evidence_refs",
+      "grounding_status",
+      "candidate_hash",
+      "source_revision",
+      "reviewer_limitation",
+      "history"
+    ],
+    "explicit_actions": {
+      "accept": {
+        "confirmation_required": true,
+        "note_optional": true,
+        "payload_fields": [
+          "task_id",
+          "investigation_id",
+          "review_target_id",
+          "expected_source_revision",
+          "expected_candidate_hash",
+          "decision",
+          "reviewer",
+          "request_id",
+          "note",
+          "requested_assertion_class"
+        ]
+      },
+      "reject": {
+        "confirmation_required": true,
+        "note_optional": true,
+        "payload_fields": [
+          "task_id",
+          "investigation_id",
+          "review_target_id",
+          "expected_source_revision",
+          "expected_candidate_hash",
+          "decision",
+          "reviewer",
+          "request_id",
+          "note"
+        ]
+      }
+    },
+    "optimistic_updates_allowed": false,
+    "idempotent_request_id_reuse_on_retry": true,
+    "untrusted_content_safely_escaped": true
+  },
+  "compliance_status": "CONTRACT_VERIFIED"
+}

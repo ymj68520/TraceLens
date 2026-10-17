@@ -1,0 +1,51 @@
+{
+  "report_version": "rca2a21:v1",
+  "task_id": "TASK-INVESTIGATION-WORKBENCH-REVIEW-PANEL",
+  "audit_phase": "RCA-2A.21",
+  "regression_suites": {
+    "frontend_vitest": {
+      "command": "npm test -- --run",
+      "test_files_passed": 51,
+      "tests_passed": 258,
+      "failed": 0
+    },
+    "frontend_build": {
+      "command": "npm run build",
+      "status": "PASS",
+      "duration_seconds": 15.20
+    },
+    "backend_analyst_review_suite": {
+      "path": "python_service/tests/unit/investigation/test_agent_analyst_review_integration.py",
+      "passed": 34,
+      "failed": 0
+    },
+    "backend_cycle_lifecycle_suite": {
+      "path": "python_service/tests/unit/investigation/test_agent_cycle_lifecycle.py",
+      "passed": 34,
+      "failed": 0
+    },
+    "backend_orchestrator_wiring_suite": {
+      "path": "python_service/tests/unit/investigation/test_agent_orchestrator_wiring.py",
+      "passed": 30,
+      "failed": 0
+    },
+    "backend_delegation_integration_suite": {
+      "path": "python_service/tests/unit/investigation/test_agent_delegation_integration_e2e.py",
+      "passed": 24,
+      "failed": 0
+    }
+  },
+  "safety_invariants": {
+    "zero_real_provider_requests": true,
+    "no_auto_fact_promotion": true,
+    "no_auto_finalization": true,
+    "no_auto_report_admission": true,
+    "no_evidence_mutation": true,
+    "production_supervisor_prompt_unchanged": true,
+    "production_schema_unchanged": true,
+    "guidance_v1_status": "EXPERIMENTAL_ONLY",
+    "rca2b_status": "NOT_AUTHORIZED",
+    "gen5_status": "NOT_CREATED"
+  },
+  "disposition": "REGRESSION_PASS"
+}
