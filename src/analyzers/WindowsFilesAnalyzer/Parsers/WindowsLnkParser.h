@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <fstream>
 #include <ctime>
+#include <sstream>
 
 // LNK file signature
 constexpr uint32_t LNK_SIGNATURE = 0x0000004C;  // 'L' (0x4C) + 3 null bytes
@@ -151,6 +152,9 @@ std::string showCommandToString(uint32_t showCommand);
 class LnkParser {
 public:
     explicit LnkParser(const std::string& filepath);
+    // Parse an LNK held in memory. Jump List streams are embedded LNK blobs,
+    // not standalone files, and must go through the same path extraction.
+    LnkParser(std::vector<uint8_t> data, const std::string& label);
     ~LnkParser() = default;
 
     // Parse the LNK file
@@ -203,10 +207,15 @@ private:
     bool seekToOffset(uint32_t offset);
     bool readData(char* buffer, size_t size);
     std::string readNullTerminatedString(uint32_t maxLength);
+    std::string readNullTerminatedUtf16(uint32_t maxWchars);
+    std::string readIdListPath(uint16_t idListSize);
     std::string readLengthPrefixedString(uint16_t isUnicode);
 
-    // File data
+    // File data. Everything is parsed from data_ so a buffer and a file take
+    // the same path; file_ only exists to fill data_ for the file constructor.
     std::string filepath_;
+    std::vector<uint8_t> data_;
+    size_t pos_;
     std::ifstream file_;
     bool valid_;
     std::string lastError_;

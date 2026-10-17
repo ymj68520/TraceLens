@@ -297,37 +297,24 @@ bool JumpListParser::parseLnkStream(libolecf_item_t* stream, const std::string& 
         return false;  // Not a valid LNK file
     }
 
-    // Create JumpListEntry from LNK data
+    // Each AutomaticDestinations stream is a complete LNK. Reuse the shortcut
+    // parser so the target path comes from the same LinkInfo extraction instead
+    // of the stream name, which carries no path at all.
+    LnkParser parser(data, filepath_ + "#" + streamName);
+    if (!parser.parse()) {
+        return false;
+    }
+
     JumpListEntry entry;
     entry.appId = appId_;
     entry.entryName = streamName;
     entry.isPinned = false;  // AutomaticDestinations are not pinned
-
-    // Extract timestamps from LNK header
-    // Creation time at offset 28, Access time at offset 36
-    if (data.size() >= 52) {
-        uint64_t creationTime = WindowsHelpers::readUInt64LE(data.data() + 28);
-        uint64_t accessTime = WindowsHelpers::readUInt64LE(data.data() + 36);
-        
-        entry.creationTime = WindowsHelpers::filetimeToUnixTime(creationTime);
-        entry.accessTime = WindowsHelpers::filetimeToUnixTime(accessTime);
+    entry.creationTime = parser.getCreationTime();
+    entry.accessTime = parser.getAccessTime();
+    entry.entryPath = parser.getTargetPath();
+    if (entry.entryPath.empty()) {
+        entry.entryPath = parser.getRelativePath();
     }
-
-    // Try to extract target path from LNK data
-    // This requires more complex parsing - for now use stream name
-    entry.entryPath = "Stream: " + streamName;
-
-    // Check link flags at offset 20 to determine available data
-    if (data.size() >= 24) {
-        uint32_t linkFlags = WindowsHelpers::readUInt32LE(data.data() + 20);
-        
-        // If HasLinkInfo flag is set (bit 1), we might be able to get path
-        if (linkFlags & 0x02) {
-            // LinkInfo structure follows after LinkTargetIDList
-            // This is complex to parse inline, so we just note the flag
-        }
-    }
-
     entry.accessCount = 1;  // Default access count
 
     entries_.push_back(entry);

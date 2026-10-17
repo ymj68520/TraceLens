@@ -113,6 +113,25 @@ std::string showCommandToString(uint32_t showCommand) {
 
 LnkParser::LnkParser(const std::string& filepath)
     : filepath_(filepath),
+      pos_(0),
+      valid_(false),
+      linkFlags_(0),
+      creationTime_(0),
+      accessTime_(0),
+      writeTime_(0),
+      fileSize_(0),
+      fileAttributes_(0),
+      showCommand_(0),
+      hotKey_(0),
+      linkTargetIDListOffset_(0),
+      linkInfoOffset_(0),
+      stringDataOffset_(0) {
+}
+
+LnkParser::LnkParser(std::vector<uint8_t> data, const std::string& label)
+    : filepath_(label),
+      data_(std::move(data)),
+      pos_(0),
       valid_(false),
       linkFlags_(0),
       creationTime_(0),
@@ -130,16 +149,33 @@ LnkParser::LnkParser(const std::string& filepath)
 bool LnkParser::parse() {
     valid_ = false;
     lastError_.clear();
+    pos_ = 0;
 
-    // Open file
-    file_.open(filepath_, std::ios::binary);
-    if (!file_) {
-        lastError_ = "Cannot open file: " + filepath_;
-        return false;
+    // A buffer constructor already supplied the bytes; the file constructor
+    // reads them in here so both paths parse identically.
+    if (data_.empty()) {
+        file_.open(filepath_, std::ios::binary);
+        if (!file_) {
+            lastError_ = "Cannot open file: " + filepath_;
+            return false;
+        }
+        file_.seekg(0, std::ios::end);
+        auto length = file_.tellg();
+        file_.seekg(0, std::ios::beg);
+        if (length <= 0) {
+            lastError_ = "Empty LNK file: " + filepath_;
+            return false;
+        }
+        data_.resize(static_cast<size_t>(length));
+        file_.read(reinterpret_cast<char*>(data_.data()), length);
+        if (file_.gcount() != length) {
+            lastError_ = "Failed to read LNK file: " + filepath_;
+            return false;
+        }
     }
 
-    // Validate file
-    if (!LnkHelpers::isValidLnkFile(filepath_)) {
+    if (data_.size() < LNK_HEADER_SIZE ||
+        LnkHelpers::readUInt32LE(reinterpret_cast<const char*>(data_.data())) != LNK_SIGNATURE) {
         lastError_ = "Invalid LNK file signature";
         return false;
     }
@@ -240,9 +276,14 @@ bool LnkParser::parseLinkTargetIDList() {
     }
     uint16_t idListSize = LnkHelpers::readUInt16LE(sizeData);
 
-    // Skip IDList (we don't parse it fully in this implementation)
-    if (idListSize > 2) {
-        file_.seekg(idListSize - 2, std::ios::cur);
+    // The item list is the only place many shortcuts record their target: the
+    // LinkInfo that follows is empty on the Windows 7 images examined. Each
+    // file item ends with a run of zero padding and then the name as UTF-16.
+    if (idListSize > 2 && targetPath_.empty()) {
+        targetPath_ = readIdListPath(idListSize);
+    }
+    if (idListSize > 2 && pos_ < linkTargetIDListOffset_ + idListSize) {
+        pos_ = linkTargetIDListOffset_ + idListSize;
     }
 
     linkInfoOffset_ = linkTargetIDListOffset_ + idListSize;
@@ -287,6 +328,25 @@ bool LnkParser::parseLinkInfo() {
         std::string localPath = readNullTerminatedString(260);
         if (!localPath.empty() && targetPath_.empty()) {
             targetPath_ = localPath;
+        }
+    }
+
+    // Unicode LocalBasePath. Vista and later write the path as UTF-16 and the
+    // offset lives at byte 28 of a LinkInfo header that grew to 0x24. The ANSI
+    // path above is then only a best effort, and on the shortcuts seen in real
+    // images it is absent, which left target_path empty.
+    if (linkInfoHeaderSize >= 0x24 && (flags & 0x01) && targetPath_.empty()) {
+        char offsetBytes[4];
+        uint32_t unicodeLocalBasePathOffset = 0;
+        if (seekToOffset(linkInfoOffset_ + 28) && readData(offsetBytes, 4)) {
+            unicodeLocalBasePathOffset = LnkHelpers::readUInt32LE(offsetBytes);
+        }
+        if (unicodeLocalBasePathOffset != 0 &&
+            seekToOffset(linkInfoOffset_ + unicodeLocalBasePathOffset)) {
+            std::string wide = readNullTerminatedUtf16(1024);
+            if (!wide.empty()) {
+                targetPath_ = wide;
+            }
         }
     }
 
@@ -506,40 +566,151 @@ bool LnkParser::parseStringsWithCount() {
 }
 
 bool LnkParser::seekToOffset(uint32_t offset) {
-    file_.seekg(offset, std::ios::beg);
-    if (!file_) {
+    if (offset > data_.size()) {
         lastError_ = "Failed to seek to offset " + std::to_string(offset);
         return false;
     }
+    pos_ = offset;
     return true;
 }
 
 bool LnkParser::readData(char* buffer, size_t size) {
-    file_.read(buffer, size);
-    if (file_.gcount() != static_cast<std::streamsize>(size)) {
+    if (pos_ + size > data_.size()) {
         lastError_ = "Failed to read " + std::to_string(size) + " bytes";
         return false;
     }
+    std::memcpy(buffer, data_.data() + pos_, size);
+    pos_ += size;
     return true;
 }
 
 std::string LnkParser::readNullTerminatedString(uint32_t maxLength) {
-    std::vector<char> buffer(maxLength);
-    file_.read(buffer.data(), maxLength);
+    size_t available = data_.size() > pos_ ? data_.size() - pos_ : 0;
+    size_t limit = std::min(static_cast<size_t>(maxLength), available);
 
     size_t length = 0;
-    for (size_t i = 0; i < maxLength && i < static_cast<size_t>(file_.gcount()); i++) {
-        if (buffer[i] == 0) {
-            length = i;
+    while (length < limit && data_[pos_ + length] != 0) {
+        length++;
+    }
+
+    std::string result(reinterpret_cast<const char*>(data_.data() + pos_), length);
+    pos_ += length < limit ? length + 1 : length;
+    return result;
+}
+
+std::string LnkParser::readIdListPath(uint16_t idListSize) {
+    const size_t listEnd = linkTargetIDListOffset_ + idListSize;
+    std::string path;
+    while (pos_ + 2 <= listEnd) {
+        char sizeBytes[2];
+        if (!readData(sizeBytes, 2)) {
             break;
+        }
+        const uint16_t itemSize = LnkHelpers::readUInt16LE(sizeBytes);
+        if (itemSize < 4 || pos_ + itemSize - 2 > listEnd) {
+            break;
+        }
+        std::vector<unsigned char> item(itemSize - 2);
+        if (!readData(reinterpret_cast<char*>(item.data()), item.size())) {
+            break;
+        }
+
+        const unsigned char type = item[0];
+        if (type == 0x2f && item.size() > 2) {
+            // Drive root, stored as a plain ASCII string such as "D:\".
+            size_t end = 1;
+            while (end < item.size() && item[end] != 0) {
+                end++;
+            }
+            path += std::string(reinterpret_cast<const char*>(item.data() + 1), end - 1);
+            continue;
+        }
+        if ((type & 0x70) != 0x30) {
+            continue;
+        }
+
+        // The long name is the UTF-16 text after the last run of zero padding.
+        size_t zeros = 0;
+        size_t nameAt = 0;
+        for (size_t i = 0; i < item.size(); i++) {
+            if (item[i] == 0) {
+                zeros++;
+                if (zeros >= 4) {
+                    nameAt = i + 1;
+                }
+            } else {
+                zeros = 0;
+            }
+        }
+        if (nameAt == 0 || nameAt + 1 >= item.size()) {
+            continue;
+        }
+        std::string segment;
+        for (size_t o = nameAt; o + 1 < item.size(); o += 2) {
+            const char16_t ch = static_cast<char16_t>(item[o]) |
+                                (static_cast<char16_t>(item[o + 1]) << 8);
+            if (ch == 0) {
+                break;
+            }
+            if (ch < 0x20) {
+                segment.clear();
+                break;
+            }
+            if (ch < 0x80) {
+                segment.push_back(static_cast<char>(ch));
+            } else if (ch < 0x800) {
+                segment.push_back(static_cast<char>(0xC0 | (ch >> 6)));
+                segment.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
+            } else {
+                segment.push_back(static_cast<char>(0xE0 | (ch >> 12)));
+                segment.push_back(static_cast<char>(0x80 | ((ch >> 6) & 0x3F)));
+                segment.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
+            }
+        }
+        if (!segment.empty()) {
+            if (!path.empty() && path.back() != '\\') {
+                path.push_back('\\');
+            }
+            path += segment;
+        }
+    }
+    return path;
+}
+
+std::string LnkParser::readNullTerminatedUtf16(uint32_t maxWchars) {
+    size_t available = data_.size() > pos_ ? (data_.size() - pos_) / 2 : 0;
+    size_t limit = std::min(static_cast<size_t>(maxWchars), available);
+
+    std::u16string wide;
+    wide.reserve(limit);
+    for (size_t i = 0; i < limit; i++) {
+        char16_t ch = static_cast<char16_t>(data_[pos_ + 2 * i]) |
+                      (static_cast<char16_t>(data_[pos_ + 2 * i + 1]) << 8);
+        if (ch == 0) {
+            pos_ += 2 * (i + 1);
+            break;
+        }
+        wide.push_back(ch);
+        if (i + 1 == limit) {
+            pos_ += 2 * limit;
         }
     }
 
-    if (length == 0 && file_.gcount() > 0) {
-        length = static_cast<size_t>(file_.gcount());
+    std::string utf8;
+    utf8.reserve(wide.size());
+    for (char16_t ch : wide) {
+        if (ch < 0x80) {
+            utf8.push_back(static_cast<char>(ch));
+        } else if (ch < 0x800) {
+            utf8.push_back(static_cast<char>(0xC0 | (ch >> 6)));
+            utf8.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
+        } else {
+            utf8.push_back(static_cast<char>(0xE0 | (ch >> 12)));
+            utf8.push_back(static_cast<char>(0x80 | ((ch >> 6) & 0x3F)));
+            utf8.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
+        }
     }
-
-    return std::string(buffer.data(), length);
+    return utf8;
 }
 
 std::string LnkParser::readLengthPrefixedString(uint16_t isUnicode) {
