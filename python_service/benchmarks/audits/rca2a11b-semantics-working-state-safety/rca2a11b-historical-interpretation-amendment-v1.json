@@ -1,0 +1,27 @@
+{
+  "artifact_version": "RCA2A11bHistoricalInterpretationAmendmentV1",
+  "audit_id": "rca2a11b-semantics-working-state-safety",
+  "created_at_utc": "2026-10-17T02:40:00Z",
+  "amendments": [
+    {
+      "topic": "Commit Terminology Disambiguation",
+      "historical_issue": "Previous audit reports used 'COMMITTED' generically, creating confusion between scratch working-state transactions and canonical finding promotions.",
+      "amendment": "Term 'COMMITTED' is now split into five distinct categories: (1) Scratch Working State Commit, (2) Canonical Investigation State Commit, (3) Accepted Finding Promotion, (4) Report Admission, and (5) Report Publication."
+    },
+    {
+      "topic": "FinalizationGate Decoupling",
+      "historical_issue": "Some sections conflated FinalizationGate passing with analyst review completion or report publication.",
+      "amendment": "FinalizationGate strictly evaluates investigation execution closure (no unintegrated delegations, store ok). It does not perform analyst finding review or publish final reports."
+    },
+    {
+      "topic": "SQLite Table Naming Clarification",
+      "historical_issue": "RCA-2A.11a text referred to 'agent_trajectories'.",
+      "amendment": "The actual physical SQLite table name is 'agent_trajectory_events'. Historical references to 'agent_trajectories' were logical shorthands."
+    },
+    {
+      "topic": "Test Regression Scope Disambiguation",
+      "historical_issue": "RCA-2A.11a reported '336 passed' without clarifying test scope.",
+      "amendment": "336 tests passed represents the Benchmark Focused Regression (python_service/tests/unit/benchmarks/), not the entire Python unit suite (which contains 2,858 tests)."
+    }
+  ]
+}

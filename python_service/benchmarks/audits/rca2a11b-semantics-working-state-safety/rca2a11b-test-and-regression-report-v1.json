@@ -1,0 +1,13 @@
+{
+  "artifact_version": "RCA2A11bTestAndRegressionReportV1",
+  "audit_id": "rca2a11b-semantics-working-state-safety",
+  "created_at_utc": "2026-10-17T02:40:00Z",
+  "test_suites": {
+    "rca2a11b_deterministic_tests": "23 tests in test_rca2a11b_audit.py (T01-T23) - 100% PASS",
+    "rca2a11a_causality_audit_tests": "19 tests in test_rca2a11a_audit.py (T01-T19) - 100% PASS",
+    "benchmark_focused_regression": "336 tests in tests/unit/benchmarks/ - 100% PASS",
+    "full_python_unit_suite_landscape": "2,858 tests collected"
+  },
+  "real_provider_requests": 0,
+  "offline_gate_status": "OFFLINE_VERIFIED"
+}

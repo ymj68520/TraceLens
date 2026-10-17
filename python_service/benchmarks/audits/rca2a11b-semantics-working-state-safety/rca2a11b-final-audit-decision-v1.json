@@ -1,0 +1,25 @@
+{
+  "artifact_version": "RCA2A11bFinalAuditDecisionV1",
+  "audit_id": "rca2a11b-semantics-working-state-safety",
+  "created_at_utc": "2026-10-17T02:40:00Z",
+  "final_dispositions": [
+    "BENCHMARK_HARDENED",
+    "WORKING_STATE_SAFETY_VERIFIED"
+  ],
+  "exit_gate_disposition": "ALL_16_GATES_SATISFIED",
+  "future_experiment_recommendation": {
+    "phase": "RCA-2A.12 \u2014 Rebased DeepSeek-Flash Cross-Case Comparison",
+    "status": "PROPOSED_NOT_AUTHORIZED",
+    "prerequisites_satisfied": true,
+    "authorization_required": "Must be authorized by user under new experiment identity"
+  },
+  "architectural_boundaries": {
+    "production_supervisor_prompt": "UNCHANGED",
+    "production_supervisor_schema": "UNCHANGED",
+    "production_statetransitionpolicy": "UNCHANGED",
+    "production_finalizationgate": "UNCHANGED",
+    "gen_5_created": false,
+    "rca_2b_authorized": false,
+    "execution_status": "HARD_STOP"
+  }
+}

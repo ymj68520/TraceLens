@@ -1,0 +1,13 @@
+{
+  "artifact_version": "RCA2A11bRuntimeIdentityRecordV1",
+  "audit_id": "rca2a11b-semantics-working-state-safety",
+  "created_at_utc": "2026-10-17T02:40:00Z",
+  "git_commit": "b4330951be00ee64b98f13044cdcb4dd565dc2ba",
+  "adapter_config": {
+    "adapter": "generic",
+    "endpoint": "https://chat.cordapp.org/v1",
+    "model": "deepseek-flash"
+  },
+  "real_requests_during_audit": 0,
+  "audit_mode": "OFFLINE_ONLY"
+}

@@ -1,0 +1,31 @@
+{
+  "artifact_version": "RCA2A11bHypothesisPropagationAuditV1",
+  "audit_id": "rca2a11b-semantics-working-state-safety",
+  "created_at_utc": "2026-10-17T02:40:00Z",
+  "data_flow_analysis": {
+    "stage_1_proposal": "CreateHypothesisActionV2 emitted by model with text and supporting_handles.",
+    "stage_2_policy": "StateTransitionPolicy._apply_create_hypothesis verifies handles exist in task scope and evidence table.",
+    "stage_3_commit": "commit_agent_integration() writes AgentWorkingStateV1 to agent_working_state_revisions with hypothesis in hypotheses tuple.",
+    "stage_4_context_assembly": "render_integration_context_v2 & render_plan_context_v2 project hypotheses into context under 'hypotheses' array with handles H1, H2...",
+    "stage_5_supervisor_reasoning": "Subsequent supervisor cycles observe hypotheses as investigative theories, NOT as raw evidence or accepted findings.",
+    "stage_6_verification": "Claim proposal verification and review requires independent evidence verification before finding acceptance.",
+    "stage_7_analyst_acceptance": "investigation_findings triggers require review_id and analyst decision before canonical acceptance."
+  },
+  "persisted_hypothesis_forensics": {
+    "seat_5_hypothesis_type": "HYPOTHESIS (never FACT or INFERENCE)",
+    "evidence_refs": "file:windows/auth (valid task-internal evidence)",
+    "containment_table": "agent_working_state_revisions (revision 1)",
+    "finding_table_mutation": "None (0 rows in investigation_findings)",
+    "charter_question_status": "in_progress (unmodified)"
+  },
+  "context_assembly_safety_audit": {
+    "rehydration_structure": "Rehydrated strictly in 'hypotheses' list; never placed in 'evidence_working_set' or 'findings'.",
+    "type_preservation": "Data structures enforce strict separation between Hypothesis, WorkingQuestion, CoverageDimension, and ReferenceBinding.",
+    "handle_typing": "Hypothesis handles use prefix 'H'; Evidence handles use prefix 'E'. Schema validator forbids 'H' handles in basis_handles.",
+    "semantic_propagation_risk": "Natural language text within a hypothesis can carry assertive phrasing. While data typing prevents direct state promotion, summarizers or downstream LLM prompts must not misinterpret hypotheses as established evidence sources."
+  },
+  "invariants_status": {
+    "invariant_1_hypothesis_is_not_verified_fact": "PROVEN_AND_ENFORCED",
+    "invariant_2_working_state_summary_is_not_evidence_source": "PROVEN_AND_ENFORCED"
+  }
+}
