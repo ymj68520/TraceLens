@@ -1,0 +1,44 @@
+{
+  "artifact_version": "RCA2A14aTestAndRegressionReportV1",
+  "experiment_id": "rca2a14a-independent-holdout-readiness",
+  "timestamp_utc": "2026-10-17T03:59:39.159147+00:00",
+  "regression_tiers": {
+    "focused_regression": {
+      "test_files": [
+        "tests/unit/benchmarks/test_rca2a14a_holdout_readiness.py",
+        "tests/unit/benchmarks/test_rca2a13_qualification_readiness.py",
+        "tests/unit/benchmarks/test_rca2a12_runner_simulation.py",
+        "tests/unit/benchmarks/test_rca2a11b_audit.py",
+        "tests/unit/benchmarks/test_rca2a9a_contract_closure.py"
+      ],
+      "total_tests": 118,
+      "passed": 118,
+      "failed": 0,
+      "pass_rate": 1.0
+    },
+    "benchmark_regression": {
+      "test_directory": "tests/unit/benchmarks/",
+      "total_tests": 436,
+      "passed": 436,
+      "failed": 0,
+      "pass_rate": 1.0
+    },
+    "investigation_safety_regression": {
+      "test_directory": "tests/unit/investigation/",
+      "total_tests": 1068,
+      "passed": 1067,
+      "skipped": 1,
+      "failed": 0,
+      "pass_rate": 1.0
+    },
+    "full_python_unit_landscape": {
+      "total_collected": 2930,
+      "audit_note": "Focused and benchmark domains fully verified (100% pass). All tests run strictly offline with mock transports."
+    }
+  },
+  "network_audit": {
+    "real_provider_requests": 0,
+    "api_preflight_requests": 0,
+    "offline_gate_status": "OFFLINE_VERIFIED"
+  }
+}

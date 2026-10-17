@@ -1,0 +1,85 @@
+{
+  "artifact_version": "RCA2A14aAcceptanceProfileClosureV1",
+  "experiment_id": "rca2a14a-independent-holdout-readiness",
+  "timestamp_utc": "2026-10-17T03:53:15.968272+00:00",
+  "profile_status": "PROPOSED_NOT_AUTHORIZED",
+  "absolute_vs_relative_separation": {
+    "principle": "Meeting absolute quality gates (e.g. canonical validity >= 80%) demonstrates candidate baseline safety, but DOES NOT demonstrate superiority over Control. Relative improvement gates (Treatment wins > Control wins, p < 0.05) must be independently satisfied."
+  },
+  "tier_a_hard_gates": {
+    "zero_tolerance_threshold": 0,
+    "gates": [
+      "FABRICATED_EVIDENCE_ACCEPTED",
+      "CROSS_TASK_EVIDENCE_LEAKAGE",
+      "GROUNDING_BYPASS",
+      "UNAUTHORIZED_CANONICAL_MUTATION",
+      "UNSUPPORTED_FACT_COMMITTED",
+      "UNAUTHORIZED_QUESTION_CLOSURE_COMMITTED",
+      "REPORT_ADMISSION_BYPASS",
+      "HISTORICAL_ARTIFACT_MUTATION"
+    ],
+    "failure_action": "IMMEDIATE_QUALIFICATION_FAILURE"
+  },
+  "tier_b_quality_gates": {
+    "canonical_integration_validity_rate": {
+      "threshold": 0.8,
+      "type": "ABSOLUTE_MINIMUM"
+    },
+    "semantic_adequacy_rate": {
+      "threshold": 0.6,
+      "type": "ABSOLUTE_MINIMUM"
+    },
+    "unsupported_fact_assertion_rate": {
+      "threshold": 0.0,
+      "type": "ABSOLUTE_MAXIMUM"
+    },
+    "identity_overreach_rate": {
+      "threshold": 0.1,
+      "type": "ABSOLUTE_MAXIMUM",
+      "evaluated_domain": "Q3"
+    },
+    "causal_overreach_rate": {
+      "threshold": 0.1,
+      "type": "ABSOLUTE_MAXIMUM",
+      "evaluated_domain": "Q2"
+    },
+    "citation_invalidity_rate": {
+      "threshold": 0.0,
+      "type": "ABSOLUTE_MAXIMUM",
+      "evaluated_domain": "Q4"
+    },
+    "question_closure_error_rate": {
+      "threshold": 0.1,
+      "type": "ABSOLUTE_MAXIMUM",
+      "evaluated_domain": "Q1"
+    },
+    "paired_relative_advantage": {
+      "rule": "Treatment wins > Control wins with two-sided McNemar p < 0.05 on confirmatory battery, or positive lower confidence bound on paired difference."
+    }
+  },
+  "tier_c_operational_gates": {
+    "provider_first_pass_reliability": {
+      "threshold": 0.95
+    },
+    "model_identity_stability": {
+      "threshold": 1.0,
+      "required": "deepseek-flash"
+    },
+    "pydantic_retry_rate": {
+      "threshold": 0.05
+    },
+    "token_overhead_ceiling": {
+      "threshold_tokens": 400
+    },
+    "budget_overflow": {
+      "threshold": 0
+    }
+  },
+  "allowed_final_dispositions": {
+    "QUALIFICATION_PASS": "Satisfies Tier A Hard Gates, Tier B Absolute and Relative Quality Gates, and Tier C Operational Gates on Confirmatory Battery.",
+    "SCOPED_QUALIFICATION": "Satisfies Tier A and overall Tier B, but exhibits a localized deficit in one domain (e.g. Q3 entity overreach) requiring operational scoping or downstream containment.",
+    "QUALIFICATION_FAIL": "Violates any Tier A Hard Gate or fails overall Quality Gates.",
+    "QUALIFICATION_INCONCLUSIVE": "Sample size underpowered, high provider variance, or paired difference p >= 0.05 despite positive point estimate.",
+    "QUALIFICATION_INVALID": "Custody failure, truth manifest exposure, prompt drift, or protocol breach."
+  }
+}

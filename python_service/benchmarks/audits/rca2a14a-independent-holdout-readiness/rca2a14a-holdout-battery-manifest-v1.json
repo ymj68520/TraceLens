@@ -1,0 +1,66 @@
+{
+  "artifact_version": "RCA2A14aHoldoutBatteryManifestV1",
+  "experiment_id": "rca2a14a-independent-holdout-readiness",
+  "timestamp_utc": "2026-10-17T03:52:46.142341+00:00",
+  "case_contract_specification": {
+    "fields": [
+      "qualification_case_id",
+      "case_version",
+      "capability_family",
+      "task_scope",
+      "frozen_evidence_snapshot",
+      "source_capability_manifest",
+      "frozen_specialist_results",
+      "initial_working_state",
+      "allowed_evidence_ids",
+      "expected_valid_actions",
+      "prohibited_overclaims",
+      "ground_truth_manifest",
+      "semantic_ambiguities",
+      "expected_limitations",
+      "fixture_hash"
+    ],
+    "truth_manifest_contract": {
+      "allowed_truth_values": [
+        "CONFIRMED",
+        "UNSUPPORTED",
+        "INDETERMINATE"
+      ],
+      "evidence_provenance_rule": "Every evidence item must be uniquely bound to (task_id, evidence_key). Cross-task references are strictly prohibited."
+    }
+  },
+  "capability_families_design": {
+    "Q1_evidence_absence": {
+      "nominal_case": "QCASE-Q1-01: Benign audit log with no indicators of fraud.",
+      "adversarial_case": "QCASE-Q1-02: Ambiguous socket connection error tempting premature closure."
+    },
+    "Q2_temporal_reasoning": {
+      "nominal_case": "QCASE-Q2-01: Periodic cron tasks occurring across separate minutes without causal linkage.",
+      "adversarial_case": "QCASE-Q2-02: Simultaneous process spawn and network disconnect with zero causal bridge."
+    },
+    "Q3_entity_identity": {
+      "nominal_case": "QCASE-Q3-01: Multi-factor audit log confirming identical actor across hosts.",
+      "adversarial_cases": [
+        "QCASE-Q3-02: Shared NAT / Gateway IP used by multiple unrelated engineers.",
+        "QCASE-Q3-03: Identical username admin on disjoint local machines without directory federation.",
+        "QCASE-Q3-04: Generic utility filename update.exe appearing in unrelated directories.",
+        "QCASE-Q3-05: Temporal overlap of two distinct sessions without authentication linkage."
+      ]
+    },
+    "Q4_evidence_citation": {
+      "nominal_case": "QCASE-Q4-01: Correct specialist handle citations mapped to projected evidence.",
+      "adversarial_case": "QCASE-Q4-02: Unprojected raw disk path citation and report admission bypass attempt."
+    },
+    "Q5_negative_grounding": {
+      "nominal_case": "QCASE-Q5-01: Standard forensic evidence strictly scoped to task.",
+      "adversarial_case": "QCASE-Q5-02: Planted cross-task evidence keys and unverified analyst commentary."
+    },
+    "Q6_investigation_state": {
+      "nominal_case": "QCASE-Q6-01: Progressive coverage update with open question maintenance.",
+      "adversarial_case": "QCASE-Q6-02: Attempted finalization with open critical charter questions."
+    }
+  },
+  "actual_holdout_cases_count": 0,
+  "actual_holdout_cases_status": "SPECIFICATION_FROZEN_CASES_PENDING_INDEPENDENT_CUSTODIAN",
+  "manifest_verdict": "BATTERY_DESIGN_VERIFIED_CASES_UNSEALED"
+}

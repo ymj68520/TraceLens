@@ -1,0 +1,37 @@
+{
+  "artifact_version": "RCA2A14aBlindAdjudicationReadinessV1",
+  "experiment_id": "rca2a14a-independent-holdout-readiness",
+  "timestamp_utc": "2026-10-17T03:53:15.968281+00:00",
+  "arm_blind_envelope_specification": {
+    "stripped_fields": [
+      "candidate_id",
+      "candidate_version",
+      "arm_label (control / treatment)",
+      "global_seat_number",
+      "timestamp_of_execution",
+      "pre-computed win/loss status",
+      "provider_diagnostics"
+    ],
+    "presented_fields": [
+      "task_id",
+      "charter_question",
+      "evidence_snapshot",
+      "specialist_results",
+      "candidate_integration_decision_json",
+      "working_state_diff"
+    ]
+  },
+  "high_risk_mandatory_review_categories": [
+    "Identity Attribution (Any assertion linking multiple usernames, hosts, or IPs)",
+    "Causal Sufficiency (Any assertion linking event timestamps to causal mechanisms)",
+    "Unsupported Fact Assertions (Any natural language text asserting confirmed status)",
+    "Citation Boundary Compliance (Any citation to specialist handles vs raw files)",
+    "Question Closure Disputes (Any question marked answered without basis)",
+    "Material Contradiction Handling (Any conflicting evidence disposition)"
+  ],
+  "anti_leakage_safeguards": {
+    "execution_freeze_rule": "All model outputs across all scheduled seats must be written and cryptographically committed before adjudicators receive review envelopes.",
+    "zero_iterative_tuning": "Modifying candidate prompt instructions in response to intermediate adjudicator findings is strictly prohibited.",
+    "adjudication_auditability": "Adjudicator votes (AGREE, DISAGREE, INSUFFICIENT_EVIDENCE, REVIEW_ESCALATION_REQUIRED) must be immutably recorded alongside rationale."
+  }
+}

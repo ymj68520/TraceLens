@@ -1,0 +1,34 @@
+{
+  "artifact_version": "RCA2A14aQualificationHarnessReadinessV1",
+  "experiment_id": "rca2a14a-independent-holdout-readiness",
+  "timestamp_utc": "2026-10-17T03:53:24.959304+00:00",
+  "runner_infrastructure": {
+    "reused_runner": "benchmarks.isolated_integration.cross_case_runner",
+    "stop_policy_contract": "RCA2A12StopPolicyV2",
+    "semantic_oracle": "RCA2A9aSemanticOracleExtensionV1",
+    "scratch_database_isolation": "ENABLED",
+    "durable_claim_enforcement": "ENABLED",
+    "append_only_diagnostics": "ENABLED"
+  },
+  "fail_closed_failure_paths": {
+    "P01_missing_custodian": "BLOCKED (Fails closed if custodian attestation missing)",
+    "P02_unsealed_truth": "BLOCKED (Fails closed if truth manifest uncommitted)",
+    "P03_case_manifest_drift": "BLOCKED (Fails closed on case hash mismatch)",
+    "P04_truth_manifest_drift": "BLOCKED (Fails closed on truth hash mismatch)",
+    "P05_holdout_previously_exposed": "BLOCKED (Fails closed if fixture is EXPOSED_FOR_DEVELOPMENT)",
+    "P06_candidate_prompt_drift": "BLOCKED (Fails closed if guidance hash != e00c1549...)",
+    "P07_runner_runtime_drift": "BLOCKED (Fails closed if schema != a214ec4f5e81fcbb)",
+    "P08_duplicate_case_identity": "BLOCKED (Fails closed if case ID re-used)",
+    "P09_previously_consumed_seat": "BLOCKED (Fails closed on existing completed seat claim)",
+    "P10_unauthorized_truth_access": "BLOCKED (Fails closed if model accesses ground truth)",
+    "P11_arm_label_leakage": "BLOCKED (Fails closed if adjudicator receives arm label)",
+    "P12_provider_result_missing": "BLOCKED (Fails closed if provider response drops)",
+    "P13_partial_qualification_execution": "BLOCKED (Fails closed; requires balanced pairs)",
+    "P14_audit_persistence_failure": "BLOCKED (Fails closed if diagnostic sink write fails)"
+  },
+  "mock_control_assessment": {
+    "mock_logic_status": "OFFLINE_VERIFIED",
+    "caveat": "Mock tests prove harness control logic; they do NOT prove independent custody. Custody remains blocked pending external author/custodian."
+  },
+  "harness_verdict": "HARNESS_CONTROL_READY_CUSTODY_BLOCKED"
+}
