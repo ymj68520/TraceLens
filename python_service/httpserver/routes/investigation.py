@@ -592,6 +592,8 @@ class AgentCycleRequest(BaseModel):
     expected_working_state_revision: Optional[int] = None
     request_id: Optional[str] = None
     source_scope_ids: list[str] = Field(default_factory=list)
+    max_steps: Optional[int] = Field(default=None, ge=1)
+    enable_experimental_guidance: Optional[bool] = None
 
 
 class AgentCycleResponse(BaseModel):
@@ -753,11 +755,26 @@ async def execute_agent_cycle(
                     investigation_id = inv.investigation_id
 
             # Canonical input fingerprint for durable idempotency
+            effective_guidance = (
+                request.enable_experimental_guidance
+                if request.enable_experimental_guidance is not None
+                else getattr(settings, "agent_experimental_guidance_enabled", False)
+            )
+            supervisor_prompt_version = (
+                "supervisor-v2-vocabulary-guidance-v1"
+                if effective_guidance
+                else "supervisor-v2"
+            )
             fingerprint_data = {
                 "task_id": request.task_id,
                 "investigation_id": investigation_id,
                 "expected_working_state_revision": request.expected_working_state_revision,
                 "source_scope_ids": sorted(request.source_scope_ids or []),
+                "max_steps": request.max_steps,
+                "effective_execution_options": {
+                    "enable_experimental_guidance": bool(effective_guidance),
+                    "supervisor_prompt_version": supervisor_prompt_version,
+                },
             }
             input_fingerprint = hashlib.sha256(
                 json.dumps(fingerprint_data, sort_keys=True).encode("utf-8")

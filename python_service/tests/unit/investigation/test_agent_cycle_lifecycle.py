@@ -367,6 +367,85 @@ def test_t07_duplicate_request_after_completed_returns_prior_result(env, monkeyp
     assert r1.json() == r2.json()
 
 
+def test_t07b_same_request_id_with_different_max_steps_triggers_409(env, monkeypatch):
+    """T07b: Same request_id with different max_steps triggers 409 Conflict."""
+    mock_outcome = CycleOutcome(
+        cycle_id="cycle_t07b",
+        investigation_id=env.investigation_id,
+        run_id="run_t07b",
+        starting_revision=1,
+        ending_revision=1,
+        integration_status="skipped",
+        delegation_ids=(),
+        warnings=(),
+        limitations=(),
+    )
+    monkeypatch.setattr(
+        AgentOrchestrator, "execute_cycle", AsyncMock(return_value=mock_outcome)
+    )
+
+    r1 = env.client.post(
+        "/api/investigation/agent/cycle",
+        json={
+            "task_id": env.task_id,
+            "request_id": "req-steps-1",
+            "max_steps": 1,
+        },
+    )
+    assert r1.status_code == 200
+
+    r2 = env.client.post(
+        "/api/investigation/agent/cycle",
+        json={
+            "task_id": env.task_id,
+            "request_id": "req-steps-1",
+            "max_steps": 3,
+        },
+    )
+    assert r2.status_code == 409
+    assert "different input payload" in r2.json()["detail"]
+
+
+def test_t07c_same_request_id_with_same_max_steps_returns_cached_no_model_call(env, monkeypatch):
+    """T07c: Same request_id with identical payload and max_steps returns cached outcome with zero new model calls."""
+    mock_outcome = CycleOutcome(
+        cycle_id="cycle_t07c",
+        investigation_id=env.investigation_id,
+        run_id="run_t07c",
+        starting_revision=1,
+        ending_revision=1,
+        integration_status="skipped",
+        delegation_ids=(),
+        warnings=(),
+        limitations=(),
+    )
+    exec_mock = AsyncMock(return_value=mock_outcome)
+    monkeypatch.setattr(AgentOrchestrator, "execute_cycle", exec_mock)
+
+    r1 = env.client.post(
+        "/api/investigation/agent/cycle",
+        json={
+            "task_id": env.task_id,
+            "request_id": "req-steps-cached",
+            "max_steps": 2,
+        },
+    )
+    assert r1.status_code == 200
+    assert exec_mock.call_count == 1
+
+    r2 = env.client.post(
+        "/api/investigation/agent/cycle",
+        json={
+            "task_id": env.task_id,
+            "request_id": "req-steps-cached",
+            "max_steps": 2,
+        },
+    )
+    assert r2.status_code == 200
+    assert exec_mock.call_count == 1
+    assert r2.json()["cycle_id"] == "cycle_t07c"
+
+
 def test_t08_duplicate_concurrent_post_is_serialized_or_rejected(env):
     """T08: Concurrent POST on the same task is rejected with 409."""
     from httpserver.routes import investigation as inv_route
