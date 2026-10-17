@@ -1232,11 +1232,12 @@ class GatewayDiagnosticOrchestrator:
             ),
         }
 
+        any_pass = any("PASS" in str(s) for s in (d3_st, d4_st))
         answers = [
-            f"1. 同一 Gateway 能否完成完整 INTEGRATE？{'YES' if 'PASS' in (d3_st, d4_st) else 'NO'}",
+            f"1. 同一 Gateway 能否完成完整 INTEGRATE？{'YES' if any_pass else 'NO'}",
             f"2. 完整请求序列化字节数：{d3_env['serialized_http_body_bytes']} bytes",
             f"3. HTTP 500 是否再次出现？{'YES' if d3_st == D3OutcomeStatus.D3_PROVIDER_INFRA_FAILURE.value else 'NO'}",
-            f"4. 真实失败耗时：{d3_latency:.2f} ms",
+            f"4. 真实请求耗时：{d3_latency:.2f} ms",
             f"5. Non-Streaming 是否可用？{'YES' if d3_st == D3OutcomeStatus.D3_FULL_REQUEST_PASS.value else 'NO'}",
             f"6. Streaming 是否可用？{'YES' if d4_st == D4OutcomeStatus.D4_STREAMING_PASS.value else ('NOT_REQUIRED' if d4_st == D4OutcomeStatus.D4_NOT_REQUIRED.value else 'NO')}",
             f"7. 模型别名变化：观察到返回 {((d3_res.get('identity_records') or [{}])[0]).get('returned_model', 'N/A')}",

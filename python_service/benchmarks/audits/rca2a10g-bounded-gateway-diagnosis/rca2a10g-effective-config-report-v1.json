@@ -1,0 +1,47 @@
+{
+  "artifact_version": "RCA2A10GEffectiveConfigReportV1",
+  "experiment_id": "rca2a10g-bounded-gateway-diagnosis",
+  "created_at_utc": "2026-10-17T01:20:26.746708+00:00",
+  "config_gate": {
+    "ok": true,
+    "checks": {
+      "provider_matches": true,
+      "base_url_matches": true,
+      "model_matches": true,
+      "temperature_matches": true,
+      "max_tokens_matches": true,
+      "timeout_matches": true,
+      "reasoning_effort_omitted": true,
+      "credential_available": true
+    },
+    "resolved_config": {
+      "provider": "generic",
+      "base_url": "https://chat.cordapp.org/v1",
+      "model_name": "deepseek-flash",
+      "temperature": 1.0,
+      "max_tokens": 4096,
+      "timeout_seconds": 360.0,
+      "reasoning_effort": null,
+      "credential_source_id": "LLM_API_KEY_ENV",
+      "credential_available": true
+    }
+  },
+  "model_identity_policy": {
+    "requested_model": "deepseek-flash",
+    "expected_returned_model": "deepseek-flash",
+    "allowed_returned_models": [
+      "deepseek-ai/deepseek-flash",
+      "deepseek-flash",
+      "deepseek/deepseek-flash",
+      "longcat-2.5",
+      "longcat-2.5-preview-free",
+      "longcat/deepseek-flash",
+      "meituan/deepseek-flash",
+      "openrouter/deepseek-flash",
+      "step-5-preview",
+      "stepfun-ai/deepseek-flash",
+      "stepfun-ai/step-5-preview"
+    ],
+    "attestation_status": "UPSTREAM_MODEL_IDENTITY_NOT_INDEPENDENTLY_VERIFIED"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "artifact_version": "RequestClaimV1",
+  "experiment_id": "rca2a10g-bounded-gateway-diagnosis",
+  "request_id": "D4",
+  "status": "BLOCKED",
+  "manifest_hash": "136316d6bd17138f",
+  "created_at_utc": "2026-10-17T01:20:18.454086+00:00",
+  "created_at_monotonic": 2966158.743637075,
+  "blocked_reason": "D4_NOT_REQUIRED: D3 did not produce HTTP 500 provider failure",
+  "finalized_at_monotonic": 2966167.034858683,
+  "finalized_at_utc": "2026-10-17T01:20:26.745319+00:00"
+}

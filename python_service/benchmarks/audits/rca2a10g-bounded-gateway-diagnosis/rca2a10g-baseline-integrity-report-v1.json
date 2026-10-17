@@ -1,0 +1,89 @@
+{
+  "artifact_version": "RCA2A10GBaselineIntegrityReportV1",
+  "experiment_id": "rca2a10g-bounded-gateway-diagnosis",
+  "created_at_utc": "2026-10-17T01:20:26.746708+00:00",
+  "baseline_commit": "f6cd937fbff4adc188aeec64bd677642bb3b3477",
+  "authorized_baseline": "7de76cf1afa867c97f2ae66b1e482895372e39c3",
+  "worktree_clean": true,
+  "historical_artifacts_audit": {
+    "ok": true,
+    "details": {
+      "rca2a10b-audit-report.md": {
+        "exists": true,
+        "sha256": "737e85cd15171ff28d382090da5add51d46d3c87e41ba1e24dc48ddfeee3a29c",
+        "ok": true
+      },
+      "rca2a10b-cost-and-accounting-report-v1.json": {
+        "exists": true,
+        "sha256": "36474387fcb0fe11de60239826997929eff302847a395bba0baaa3058927e7cb",
+        "ok": true
+      },
+      "rca2a10b-effective-model-config-v1.json": {
+        "exists": true,
+        "sha256": "22d86e4567b8e660583e9ce0be0e25876275f65e72f80634642d2444a6f2dece",
+        "ok": true
+      },
+      "rca2a10b-evidence-integrity-report-v1.json": {
+        "exists": true,
+        "sha256": "0a4bea33d950b54351ea578fc7a894a8052aa115c1e8686bc7b0d918695852ee",
+        "ok": true
+      },
+      "rca2a10b-experiment-manifest-v1.json": {
+        "exists": true,
+        "sha256": "aeec1dcf429d366239f49d73af5e5492f4f0a0d16e6a1d8bdfd7646f5ab9cc32",
+        "ok": true
+      },
+      "rca2a10b-final-decision-report-v1.json": {
+        "exists": true,
+        "sha256": "abafd65e1e850a49107df98f55b5b6b31f239d454ee9b11350b1446392a8ba51",
+        "ok": true
+      },
+      "rca2a10b-historical-identity-reconciliation-v1.json": {
+        "exists": true,
+        "sha256": "2a740a1fccc2f9177cbae4a391ee77710215f9139b040ffa2c8ce129d3253f19",
+        "ok": true
+      },
+      "rca2a10b-model-compatibility-report-v1.json": {
+        "exists": true,
+        "sha256": "198845cada59eb592b338c55af6b09272bbe73393442f44b6edd446f7136d292",
+        "ok": true
+      },
+      "rca2a10b-paired-execution-matrix-v1.json": {
+        "exists": true,
+        "sha256": "ee73f03ce7e764ba38d4860a912476e3a70a6e2c1297a5e11c26f6ad545a9ad5",
+        "ok": true
+      },
+      "rca2a10b-preflight-gate-report-v1.json": {
+        "exists": true,
+        "sha256": "6248eff175c3ce5cf1d2d44344392d3a9b2c3a795354cc94d7a408f1dad2fc33",
+        "ok": true
+      },
+      "rca2a10b-runtime-identity-record-v1.json": {
+        "exists": true,
+        "sha256": "acdc1e5c8d96e91f8d75ed03c914ef0da531f0f6b981f2c16bb2442adf07f25f",
+        "ok": true
+      },
+      "rca2a10b-scenario-stratified-analysis-v1.json": {
+        "exists": true,
+        "sha256": "f4b287cb3203be7023bf9b484b82f68c9a6960a4ef802eb3b7e1a520f139db46",
+        "ok": true
+      },
+      "rca2a10b-semantic-oracle-evaluation-v1.json": {
+        "exists": true,
+        "sha256": "4aac230583ac62c36d63dade0c2eaa467fb74e75cd28d25cb7ccce4e8bcb73e9",
+        "ok": true
+      },
+      "rca2a10b-vocabulary-effect-report-v1.json": {
+        "exists": true,
+        "sha256": "bdedb45f23b29c210ca51d6460b74b60d940a8b519b477e68e7af4a17151979f",
+        "ok": true
+      },
+      "run_rca2a10b_cross_case_comparison.py": {
+        "exists": true,
+        "sha256": "86124117c02a1b7565e941614065920494622773bcec6005fb2151bc6b9c9b62",
+        "ok": true
+      }
+    }
+  },
+  "verdict": "PASS"
+}

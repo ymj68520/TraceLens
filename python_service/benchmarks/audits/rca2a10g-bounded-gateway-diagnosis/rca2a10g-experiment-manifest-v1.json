@@ -1,0 +1,24 @@
+{
+  "artifact_version": "RCA2A10GExperimentManifestV1",
+  "experiment_id": "rca2a10g-bounded-gateway-diagnosis",
+  "created_at_utc": "2026-10-17T01:20:26.746708+00:00",
+  "runtime_commit": "f6cd937fbff4adc188aeec64bd677642bb3b3477",
+  "effective_model_config": {
+    "provider": "generic",
+    "base_url": "https://chat.cordapp.org/v1",
+    "model_name": "deepseek-flash",
+    "temperature": 1.0,
+    "max_tokens": 4096,
+    "timeout_seconds": 360.0,
+    "reasoning_effort": null,
+    "credential_source_id": "LLM_API_KEY_ENV",
+    "credential_available": true
+  },
+  "schema_hash": "a214ec4f5e81fcbb",
+  "d3_envelope_hash": "136316d6bd17138ffcb2c65d57c0aa03b4f3f89a2c04a4146f8ec77febd7b505",
+  "d4_envelope_hash": "bc6dff386265bf2a4eed3b93096869e231741758c88a0223dfe65cfd79e52310",
+  "budget": {
+    "max_logical_generations": 2,
+    "max_physical_attempts": 2
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "artifact_version": "RequestClaimV1",
+  "experiment_id": "rca2a10g-bounded-gateway-diagnosis",
+  "request_id": "D3",
+  "status": "RESULT_RECORDED",
+  "manifest_hash": "136316d6bd17138f",
+  "created_at_utc": "2026-10-17T01:20:18.450307+00:00",
+  "created_at_monotonic": 2966158.739864069,
+  "dispatched_at_monotonic": 2966158.745115423,
+  "dispatched_at_utc": "2026-10-17T01:20:18.455576+00:00",
+  "finalized_at_monotonic": 2966167.033068435,
+  "finalized_at_utc": "2026-10-17T01:20:26.743529+00:00",
+  "outcome": {
+    "transport_mode": "non_streaming",
+    "logical_request_dispatched": true,
+    "logical_started_at_monotonic": 2966159.377894623,
+    "logical_finished_at_monotonic": 2966167.033051195,
+    "wall_clock_ms": 7655.156571883708,
+    "status": "D3_FULL_REQUEST_PASS",
+    "decision_version": "supervisor-integration-decision:v3",
+    "actions_count": 1,
+    "wire_attempts": [
+      {
+        "attempt_number": 1,
+        "url": "https://chat.cordapp.org/v1/chat/completions",
+        "method": "POST",
+        "request_headers": {
+          "host": "chat.cordapp.org",
+          "accept-encoding": "gzip, deflate, zstd",
+          "connection": "keep-alive",
+          "accept": "application/json",
+          "content-type": "application/json",
+          "user-agent": "pydantic-ai/2.30.0",
+          "x-stainless-lang": "python",
+          "x-stainless-package-version": "2.46.0",
+          "x-stainless-os": "Linux",
+          "x-stainless-arch": "x64",
+          "x-stainless-runtime": "CPython",
+          "x-stainless-runtime-version": "3.12.3",
+          "x-stainless-async": "async:asyncio",
+          "x-stainless-retry-count": "0",
+          "x-stainless-read-timeout": "360.0",
+          "content-length": "10939"
+        },
+        "request_body_bytes": 10939,
+        "started_at_monotonic": 2966159.392231065,
+        "started_at_utc": "2026-10-17T01:20:19.102692+00:00",
+        "status_code": 200,
+        "response_headers": {
+          "date": "Sat, 17 Oct 2026 01:20:26 GMT",
+          "content-type": "application/json; charset=utf-8",
+          "server": "cloudflare",
+          "x-request-id": "295ce08d-04f5-455c-9e53-31e6b64cc573, 70d82b65490abb2b07229659e5944537"
+        },
+        "finished_at_monotonic": 2966167.00518502,
+        "latency_ms": 7612.953955307603
+      }
+    ],
+    "physical_http_attempts": 1,
+    "identity_records": [
+      {
+        "requested_model": "deepseek-flash",
+        "returned_model": "deepseek-flash",
+        "upstream_provider": null
+      }
+    ]
+  }
+}
