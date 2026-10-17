@@ -50,6 +50,7 @@ class ServiceManager:
         self._investigation_service = None
         self._investigation_seed_service = None
         self._investigation_review_service = None
+        self._agent_analyst_review_service = None
         self._investigation_event_service = None
         self._investigation_graph_service = None
         self._investigation_read_service = None
@@ -427,6 +428,7 @@ class ServiceManager:
         self._investigation_service = None
         self._investigation_seed_service = None
         self._investigation_review_service = None
+        self._agent_analyst_review_service = None
         self._investigation_event_service = None
         self._investigation_graph_service = None
         self._investigation_read_service = None
@@ -545,6 +547,21 @@ class ServiceManager:
         if self._investigation_review_service is None:
             self._investigation_review_service = self._create_investigation_review_service()
         return self._investigation_review_service
+
+    def _create_agent_analyst_review_service(self):
+        from .investigation.agent_analyst_review import AgentAnalystReviewService
+
+        if not self._cpp_backend_ready or self._cpp_backend is None:
+            raise RuntimeError("C++ backend is not initialized")
+        return AgentAnalystReviewService(self._cpp_backend, settings=self.settings)
+
+    @property
+    def agent_analyst_review_service(self):
+        """Get the agent analyst review service bound to the ready backend."""
+        self._require_service_access()
+        if self._agent_analyst_review_service is None:
+            self._agent_analyst_review_service = self._create_agent_analyst_review_service()
+        return self._agent_analyst_review_service
 
     def _create_investigation_event_service(self):
         from .investigation.event import InvestigationEventService

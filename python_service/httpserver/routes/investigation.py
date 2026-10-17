@@ -38,6 +38,14 @@ from ..services.investigation import (
     SecondaryAnalysisExecutor,
     SecondaryAnalysisStatus,
     AnalysisReviewDecision,
+    AgentAnalystReviewService,
+    EvidenceProvenanceError,
+    FactPromotionBlockedError,
+    ReviewCandidateProjection,
+    ReviewConflictError,
+    ReviewDecisionOutcome,
+    ReviewDecisionRequest,
+    ReviewHistoryItem,
 )
 
 router = APIRouter()
@@ -962,5 +970,112 @@ async def get_agent_state(
         active_delegations_count=len(active_dels),
         latest_trajectory_ref=latest_traj_ref,
     )
+
+
+# ---------------------------------------------------------------------------
+# Agent Analyst Review routes (RCA-2A.20)
+# ---------------------------------------------------------------------------
+
+def get_agent_analyst_review_service() -> AgentAnalystReviewService:
+    """Resolve the ready AgentAnalystReviewService through ServiceManager."""
+    try:
+        return get_service_manager().agent_analyst_review_service
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="agent analyst review service is unavailable",
+        ) from exc
+
+
+@router.get(
+    "/agent/review-candidates",
+    response_model=list[ReviewCandidateProjection],
+    status_code=200,
+)
+async def list_agent_review_candidates(
+    task_id: str = Query(..., min_length=1),
+    investigation_id: Optional[str] = Query(None),
+    service: AgentAnalystReviewService = Depends(get_agent_analyst_review_service),
+) -> list[ReviewCandidateProjection]:
+    """Read-only query of all review candidates for a task. 0 LLM calls, 0 writes."""
+    try:
+        return await service.list_candidates(task_id, investigation_id=investigation_id)
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except EvidenceStoreError as exc:
+        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+
+
+@router.get(
+    "/agent/review-candidates/{candidate_id:path}",
+    response_model=ReviewCandidateProjection,
+    status_code=200,
+)
+async def get_agent_review_candidate(
+    candidate_id: str,
+    task_id: str = Query(..., min_length=1),
+    investigation_id: Optional[str] = Query(None),
+    service: AgentAnalystReviewService = Depends(get_agent_analyst_review_service),
+) -> ReviewCandidateProjection:
+    """Read-only query of a specific review candidate by id. 0 LLM calls, 0 writes."""
+    try:
+        return await service.get_candidate(task_id, candidate_id, investigation_id=investigation_id)
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except EvidenceStoreError as exc:
+        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+
+
+@router.get(
+    "/agent/reviews/history",
+    response_model=list[ReviewHistoryItem],
+    status_code=200,
+)
+async def get_agent_review_history(
+    task_id: str = Query(..., min_length=1),
+    candidate_id: Optional[str] = Query(None),
+    investigation_id: Optional[str] = Query(None),
+    service: AgentAnalystReviewService = Depends(get_agent_analyst_review_service),
+) -> list[ReviewHistoryItem]:
+    """Read-only query of append-only review history."""
+    try:
+        return await service.get_history(task_id, candidate_id=candidate_id, investigation_id=investigation_id)
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except EvidenceStoreError as exc:
+        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+
+
+@router.post(
+    "/agent/review",
+    response_model=ReviewDecisionOutcome,
+    status_code=200,
+)
+async def submit_agent_review(
+    request: ReviewDecisionRequest,
+    service: AgentAnalystReviewService = Depends(get_agent_analyst_review_service),
+) -> ReviewDecisionOutcome:
+    """Submit an explicit human analyst review decision for an agent candidate.
+
+    Guarantees:
+      - 200 on success or exact idempotent replay.
+      - 404 on task or candidate not found.
+      - 409 on stale candidate hash, revision mismatch, concurrent claim, or conflicting replay.
+      - 422 on evidence provenance failure or unauthorized fact promotion.
+      - 503 on store unavailable.
+    """
+    try:
+        return await service.submit_review(request.task_id, request)
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ReviewConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (EvidenceProvenanceError, FactPromotionBlockedError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except EvidenceStoreError as exc:
+        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"review submission failed: {exc}") from exc
+
 
 

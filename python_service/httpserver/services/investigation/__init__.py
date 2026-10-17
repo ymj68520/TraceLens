@@ -100,6 +100,18 @@ from .agent_runtime import (
     canonical_state_json,
     state_hash_of,
 )
+from .agent_analyst_review import (
+    AgentAnalystReviewService,
+    EvidenceProvenanceError,
+    FactPromotionBlockedError,
+    ReviewCandidateProjection,
+    ReviewConflictError,
+    ReviewDecision,
+    ReviewDecisionOutcome,
+    ReviewDecisionRequest,
+    ReviewHistoryItem,
+    compute_candidate_hash,
+)
 from .prompts import (
     CURRENT_PROMPT_VERSION,
     ENVELOPE_PROMPT_COMPAT,
@@ -227,4 +239,14 @@ __all__ = [
     "canonical_state_json",
     "state_hash_of",
     "FinalizationRecord",
+    "AgentAnalystReviewService",
+    "EvidenceProvenanceError",
+    "FactPromotionBlockedError",
+    "ReviewCandidateProjection",
+    "ReviewConflictError",
+    "ReviewDecision",
+    "ReviewDecisionOutcome",
+    "ReviewDecisionRequest",
+    "ReviewHistoryItem",
+    "compute_candidate_hash",
 ]
