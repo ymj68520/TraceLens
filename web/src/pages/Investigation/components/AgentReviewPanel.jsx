@@ -55,6 +55,7 @@ export default function AgentReviewPanel({
   eventId = null,
   onTraceEvidence,
   className = '',
+  refreshSignal = 0,
 }) {
   // Safe toast access with fallback
   let rawToast;
@@ -147,6 +148,13 @@ export default function AgentReviewPanel({
       fetchCandidates(taskId);
     }
   }, [taskId, fetchCandidates]);
+
+  // External refresh signal handler (e.g. agent cycle completed)
+  useEffect(() => {
+    if (taskId && refreshSignal > 0) {
+      fetchCandidates(taskId);
+    }
+  }, [taskId, refreshSignal, fetchCandidates]);
 
   // Load selected candidate detail & history
   useEffect(() => {

@@ -668,9 +668,19 @@ def _get_agent_orchestrator():
     status_code=200,
 )
 async def execute_agent_cycle(
+    http_request: Request,
     request: AgentCycleRequest,
+    task_id: Optional[str] = Query(None),
 ) -> AgentCycleResponse:
     """Trigger one bounded Agent v0 PLAN->EXECUTE->INTEGRATE->EVALUATE cycle."""
+    verify_trusted_review_caller(http_request)
+
+    if task_id and task_id != request.task_id:
+        raise HTTPException(
+            status_code=409,
+            detail=f"task_id mismatch: query task_id {task_id!r} != body task_id {request.task_id!r}",
+        )
+
     manager = get_service_manager()
     settings = manager.settings
 
@@ -1051,17 +1061,35 @@ _TRUSTED_LOCAL_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", "testclient"}
 
 
 def verify_trusted_review_caller(http_request: Request) -> None:
-    """Enforce trusted caller boundary for single-user review mutations."""
+    """Enforce trusted caller and origin boundary for single-user review & agent mutations."""
     settings = get_settings()
     if not getattr(settings, "agent_review_local_only", True):
         return
 
-    client_host = http_request.client.host if http_request.client else "testclient"
+    client_host = (
+        http_request.client.host
+        if (http_request.client and hasattr(http_request.client, "host"))
+        else "testclient"
+    )
     if client_host not in _TRUSTED_LOCAL_HOSTS:
         raise HTTPException(
             status_code=403,
             detail=f"untrusted client host {client_host!r}: review mutations are restricted to trusted local development callers",
         )
+
+    headers = getattr(http_request, "headers", None)
+    if headers:
+        origin = headers.get("origin")
+        if origin:
+            from urllib.parse import urlparse
+
+            parsed = urlparse(origin)
+            origin_host = parsed.hostname
+            if not origin_host or origin_host not in _TRUSTED_LOCAL_HOSTS:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"untrusted request origin {origin!r}: local mutations are restricted to trusted development origins",
+                )
 
 
 @router.post(

@@ -254,6 +254,27 @@ export const submitAgentReviewDecision = async (payload) => {
     return await pythonApi.post('/api/investigation/agent/review', payload);
 };
 
+/**
+ * 触发一次有界 Agent 调查循环 (PLAN -> EXECUTE -> INTEGRATE -> EVALUATE)
+ */
+export const executeAgentCycle = async (payload, taskIdQuery = null) => {
+    return await pythonApi.post('/api/investigation/agent/cycle', payload, {
+        params: taskIdQuery ? { task_id: taskIdQuery } : undefined,
+    });
+};
+
+/**
+ * 查询 Agent 当前工作状态（Revision、Status、Objective、Questions 等）
+ */
+export const getAgentState = async (taskId, investigationId = null) => {
+    return await pythonApi.get('/api/investigation/agent/state', {
+        params: {
+            task_id: taskId,
+            ...(investigationId ? { investigation_id: investigationId } : {}),
+        },
+    });
+};
+
 export default {
     getInvestigationGraph,
     getInvestigationSnapshot,
@@ -304,4 +325,6 @@ export default {
     getAgentReviewCandidate,
     getAgentReviewHistory,
     submitAgentReviewDecision,
+    executeAgentCycle,
+    getAgentState,
 };

@@ -1,6 +1,8 @@
+import { useCallback, useState } from 'react';
 import EvidenceAnalysisPanel from './EvidenceAnalysisPanel';
 import EventAnalysisPanel from './EventAnalysisPanel';
 import AgentReviewPanel from './AgentReviewPanel';
+import AgentExecutionControl from './AgentExecutionControl';
 
 /**
  * 右栏工作台路由：
@@ -9,7 +11,7 @@ import AgentReviewPanel from './AgentReviewPanel';
  *   与左栏"关联证据"入口共用同一个 EvidenceAnalysisPanel；
  * - 用户显式点选事件（佐证事件/关联事件/claim 追溯/深链）→ 事件面板；
  * - 事件面板内点选证据 → 证据分析面板（证据维度，无文件上下文头）；
- * - 底部集成 Agent Analyst Review 面板，保持工作台三栏布局不变。
+ * - 底部集成 Agent 调查执行控制与 Analyst Review 面板，保持工作台三栏布局不变。
  */
 export default function AnalysisWorkspace({
   taskId,
@@ -26,6 +28,12 @@ export default function AnalysisWorkspace({
   onSelectEvent,
   onBackToFile,
 }) {
+  const [reviewRefreshSignal, setReviewRefreshSignal] = useState(0);
+
+  const handleCycleCompleted = useCallback(() => {
+    setReviewRefreshSignal((s) => s + 1);
+  }, []);
+
   const renderPrimaryPanel = () => {
     if (evidenceKey) {
       return (
@@ -74,11 +82,16 @@ export default function AnalysisWorkspace({
         {renderPrimaryPanel()}
       </div>
       <div className="shrink-0 max-h-[50%] flex flex-col min-h-0">
+        <AgentExecutionControl
+          taskId={taskId}
+          onCycleCompleted={handleCycleCompleted}
+        />
         <AgentReviewPanel
           taskId={taskId}
           evidenceKey={resolvedEvidenceKey}
           eventId={eventId}
           onTraceEvidence={onTraceEvidence}
+          refreshSignal={reviewRefreshSignal}
         />
       </div>
     </div>

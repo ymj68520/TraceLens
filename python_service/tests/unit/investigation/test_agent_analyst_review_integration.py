@@ -1117,3 +1117,81 @@ def test_t36_query_task_id_mismatch_rejected(env):
     assert resp.status_code == 409
     assert "task_id mismatch" in resp.json()["detail"]
 
+
+# ---------------------------------------------------------------------------
+# T37: Untrusted Origin header rejected with 403 Forbidden (RCA-2A.23)
+# ---------------------------------------------------------------------------
+def test_t37_untrusted_origin_rejected_review(env):
+    """T37: POST /api/investigation/agent/review rejects untrusted Origin header."""
+    candidate_resp = env.client.get(
+        f"/api/investigation/agent/review-candidates/{env.fixture.seed_finding_id}?task_id={env.fixture.task_id}"
+    )
+    candidate = candidate_resp.json()
+
+    req = {
+        "task_id": env.fixture.task_id,
+        "investigation_id": env.fixture.investigation_id,
+        "review_target_id": env.fixture.seed_finding_id,
+        "expected_source_revision": candidate["source_revision"],
+        "expected_candidate_hash": candidate["candidate_hash"],
+        "decision": "accepted",
+        "reviewer": "analyst-1",
+        "request_id": "req-origin-check-01",
+    }
+
+    # Malicious origin header
+    resp_evil = env.client.post(
+        "/api/investigation/agent/review",
+        json=req,
+        headers={"Origin": "http://evil.com"},
+    )
+    assert resp_evil.status_code == 403
+    assert "untrusted request origin" in resp_evil.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# T38: Untrusted client or origin rejected on cycle route (RCA-2A.23)
+# ---------------------------------------------------------------------------
+def test_t38_untrusted_client_or_origin_rejected_cycle(env):
+    """T38: POST /api/investigation/agent/cycle rejects untrusted client host and origin."""
+    cycle_req = {
+        "task_id": env.fixture.task_id,
+        "investigation_id": env.fixture.investigation_id,
+        "request_id": "req-cycle-security-01",
+    }
+
+    # Untrusted client host
+    remote_client = TestClient(env.client.app, client=("192.168.1.100", 54321))
+    resp_remote = remote_client.post("/api/investigation/agent/cycle", json=cycle_req)
+    assert resp_remote.status_code == 403
+    assert "untrusted client" in resp_remote.json()["detail"]
+
+    # Untrusted origin
+    resp_evil = env.client.post(
+        "/api/investigation/agent/cycle",
+        json=cycle_req,
+        headers={"Origin": "http://malicious-site.org"},
+    )
+    assert resp_evil.status_code == 403
+    assert "untrusted request origin" in resp_evil.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# T39: Cycle query task_id mismatch rejected with 409 Conflict (RCA-2A.23)
+# ---------------------------------------------------------------------------
+def test_t39_cycle_query_task_id_mismatch_rejected(env):
+    """T39: POST /api/investigation/agent/cycle rejects query task_id != body task_id."""
+    cycle_req = {
+        "task_id": env.fixture.task_id,
+        "investigation_id": env.fixture.investigation_id,
+        "request_id": "req-cycle-mismatch-01",
+    }
+
+    resp = env.client.post(
+        "/api/investigation/agent/cycle?task_id=different-task-id",
+        json=cycle_req,
+    )
+    assert resp.status_code == 409
+    assert "task_id mismatch" in resp.json()["detail"]
+
+

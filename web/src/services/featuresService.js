@@ -15,6 +15,7 @@ export const FEATURE_DEFAULTS = Object.freeze({
   workbench_llm_enabled: false,
   memory_forensics_enabled: false,
   oss_analysis_enabled: false,
+  agent_execution_enabled: false,
 });
 
 let cache = null;
