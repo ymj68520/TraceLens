@@ -100,9 +100,18 @@ def _read_episode_source_rows(
                         "is_relevant": row["is_relevant"],
                         "success": True,
                     })
-        except sqlite3.OperationalError:
-            # file_descriptions table may not exist yet for this task
-            error = "file_descriptions table missing"
+        except sqlite3.OperationalError as exc:
+            # file_descriptions is created lazily by the C++ LLM analysis
+            # stage, so llm_analyze=false tasks never have it. A missing
+            # table is the documented legitimate empty state — "nothing
+            # analyzed yet" — not a failure: return no rows and let the
+            # caller emit the standard empty message so the job completes
+            # with its :File-only graph (SPEC §5 gate stays happy). Any
+            # other OperationalError (lock, corruption, …) stays an error.
+            if "no such table" in str(exc):
+                error = None
+            else:
+                error = f"file_descriptions read failed: {exc}"
 
     return file_descs, error
 
