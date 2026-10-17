@@ -286,7 +286,13 @@ def build_cross_case_seat_record(
             pass
 
     target_model = expected_model or MODEL
-    allowed_models = {target_model, f"stepfun-ai/{target_model}", f"openrouter/{target_model}"}
+    allowed_models = {
+        target_model,
+        f"stepfun-ai/{target_model}",
+        f"openrouter/{target_model}",
+        f"deepseek-ai/{target_model}",
+        f"deepseek/{target_model}",
+    }
 
     returned_names = [e.get("response_model") for e in response_events]
     identity_records = list(ctx.identity_sink)
@@ -491,7 +497,13 @@ async def run_cross_case_seats(
     schedule = seat_schedule or SEAT_SCHEDULE
     oracle = oracle or RCA2A9aSemanticOracleExtensionV1()
     target_model = expected_model or MODEL
-    allowed_models = {target_model, f"stepfun-ai/{target_model}", f"openrouter/{target_model}"}
+    allowed_models = {
+        target_model,
+        f"stepfun-ai/{target_model}",
+        f"openrouter/{target_model}",
+        f"deepseek-ai/{target_model}",
+        f"deepseek/{target_model}",
+    }
 
     seat_contexts: list[CrossCaseSeatContext] = []
     executed_seats: set[tuple[str, str, str]] = set()
@@ -669,7 +681,7 @@ async def run_cross_case_seats(
             executed_seats.add(key)
             ctx.stop_reason = f"UNEXPECTED_EXCEPTION:{type(exc).__name__}"
             global_stop_reason = ctx.stop_reason
-            ctx.record = build_cross_case_seat_record(ctx, oracle)
+            ctx.record = build_cross_case_seat_record(ctx, oracle, expected_model=target_model)
             total_logical_generations += len(proxy_model.events)
             continue
 
@@ -681,7 +693,7 @@ async def run_cross_case_seats(
             global_stop_reason = "SIMULATED_CRASH_BEFORE_RESULT_RECORDING"
             ctx.outcome_status = "ATTEMPT_OUTCOME_UNKNOWN"
             ctx.stop_reason = global_stop_reason
-            ctx.record = build_cross_case_seat_record(ctx, oracle)
+            ctx.record = build_cross_case_seat_record(ctx, oracle, expected_model=target_model)
             continue
 
         # Phase 4 -> 5: RESULT_RECORDED
@@ -697,7 +709,7 @@ async def run_cross_case_seats(
         tmp_claim.replace(claim_path)
         ctx.claim_record = claim_data
 
-        record = build_cross_case_seat_record(ctx, oracle)
+        record = build_cross_case_seat_record(ctx, oracle, expected_model=target_model)
         ctx.record = record
 
         # Stop conditions evaluation
