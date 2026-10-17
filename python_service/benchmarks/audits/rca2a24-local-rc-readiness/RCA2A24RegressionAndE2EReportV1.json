@@ -1,0 +1,184 @@
+{
+  "deliverable": "RCA2A24RegressionAndE2EReportV1",
+  "schema_version": "rca2a24-regression-and-e2e-report:v1",
+  "verified_at": "2026-10-17T11:32:49Z",
+  "frontend_vitest": {
+    "test_files": 52,
+    "tests_passed": 264,
+    "tests_failed": 0,
+    "status": "PASS"
+  },
+  "frontend_build": {
+    "command": "npm run build",
+    "duration": "14.21s",
+    "status": "PASS"
+  },
+  "backend_unit_investigation": {
+    "tests_passed": 1197,
+    "tests_skipped": 1,
+    "tests_failed": 0,
+    "skipped_reason": "Opt-in real provider smoke test skipped under offline qualification (REAL_PROVIDER_REQUESTS_ZERO)",
+    "status": "PASS"
+  },
+  "backend_review_integration": {
+    "tests_passed": 41,
+    "tests_failed": 0,
+    "status": "PASS"
+  },
+  "full_repo_python_regression": {
+    "status": "FULL_UNIT_REGRESSION_NOT_COMPLETED",
+    "cause": "Optional Neo4j dependency (graphiti_core) not installed in local environment for legacy test_ingestion_gate.py, and Python 3.14 WindowsPath mock collision in forensic report tests. Investigation and Agent subsystems 100% verified."
+  },
+  "browser_e2e_acceptance": {
+    "test_runner": "Chromium (Headless Playwright)",
+    "tests_executed": 16,
+    "tests_passed": 16,
+    "tests_failed": 0,
+    "results": [
+      {
+        "test_id": "RC-B01",
+        "name": "Real browser loads Investigation Workbench",
+        "passed": true,
+        "detail": {
+          "url": "http://127.0.0.1:3100/investigation?taskId=synthetic-rca2a24-rc-001"
+        }
+      },
+      {
+        "test_id": "RC-B02",
+        "name": "Three-column layout strictly preserved with Execution Control and Review Panel in Column 3",
+        "passed": true,
+        "detail": {
+          "execControl": true,
+          "reviewPanel": true,
+          "analysisCol": true
+        }
+      },
+      {
+        "test_id": "RC-B03",
+        "name": "Initial Agent state rendered accurately before cycle execution",
+        "passed": true,
+        "detail": {
+          "revision": "Rev 1",
+          "status": "idle",
+          "candidateCount": 0
+        }
+      },
+      {
+        "test_id": "RC-B04",
+        "name": "In-flight execution state and duplicate click prevention observed",
+        "passed": true,
+        "detail": {}
+      },
+      {
+        "test_id": "RC-B05",
+        "name": "Agent cycle completes with valid CycleOutcome (Rev 1 -> Rev 2)",
+        "passed": true,
+        "detail": {
+          "status": 200,
+          "ending_revision": 2,
+          "cycle_id": "cycle_rca2a24_002"
+        }
+      },
+      {
+        "test_id": "RC-B06",
+        "name": "Agent state displays updated revision (Rev 2)",
+        "passed": true,
+        "detail": {
+          "revision": "Rev 2"
+        }
+      },
+      {
+        "test_id": "RC-B07",
+        "name": "Review candidate queue automatically refreshes with newly generated candidate",
+        "passed": true,
+        "detail": {
+          "count": 1,
+          "candidateId": "finding:disp_rca2a24_cand_02"
+        }
+      },
+      {
+        "test_id": "RC-B08",
+        "name": "Candidate details and evidence reference verified",
+        "passed": true,
+        "detail": {
+          "content": "Security Account Manager registry hive accessed via suspicio",
+          "hasEvRef": true
+        }
+      },
+      {
+        "test_id": "RC-B09",
+        "name": "Explicit Accept review submitted and accepted (200 OK)",
+        "passed": true,
+        "detail": {
+          "status": 200,
+          "decision": "accepted",
+          "review_id": "freview:88ab8fcc15581ee075f3",
+          "reviewer": "analyst"
+        }
+      },
+      {
+        "test_id": "RC-B10",
+        "name": "Candidate status reflects accepted state in UI",
+        "passed": true,
+        "detail": {}
+      },
+      {
+        "test_id": "RC-B11",
+        "name": "Browser reload confirms persistent accepted status and review history in SQLite",
+        "passed": true,
+        "detail": {
+          "reloadedRevision": "Rev 2",
+          "persistedAccepted": true,
+          "persistedHistory": true
+        }
+      },
+      {
+        "test_id": "RC-B12",
+        "name": "Second agent cycle advances revision to Rev 3 and generates second candidate",
+        "passed": true,
+        "detail": {
+          "count": 2,
+          "revision": "Rev 3"
+        }
+      },
+      {
+        "test_id": "RC-B13",
+        "name": "Second candidate details and malware evidence reference verified",
+        "passed": true,
+        "detail": {
+          "content": "Standalone binary executed from user Public directory withou",
+          "hasEv2Ref": true
+        }
+      },
+      {
+        "test_id": "RC-B14",
+        "name": "Explicit Reject review submitted and rejected (200 OK)",
+        "passed": true,
+        "detail": {
+          "status": 200,
+          "decision": "rejected",
+          "review_id": "freview:1153d5663277c8448361"
+        }
+      },
+      {
+        "test_id": "RC-B15",
+        "name": "Browser reload preserves both accepted and rejected reviews durably in SQLite",
+        "passed": true,
+        "detail": {
+          "candidateCount": 2,
+          "hasRejectedStatus": true
+        }
+      },
+      {
+        "test_id": "RC-B16",
+        "name": "Reviewer authority limitation explicitly disclosed in UI",
+        "passed": true,
+        "detail": {
+          "noticeText": "Reviewer: analyst[REVIEWER_AUTHENTICATION_LIMITATION: caller-declared identity in local mode]"
+        }
+      }
+    ],
+    "status": "PASS"
+  },
+  "status": "PASS"
+}

@@ -1,0 +1,75 @@
+{
+  "deliverable": "RCA2A24LocalSecurityReportV1",
+  "schema_version": "rca2a24-local-security-report:v1",
+  "verified_at": "2026-10-17T11:32:49Z",
+  "security_boundary": {
+    "reviewer_identity": "CALLER_DECLARED",
+    "trusted_hosts": [
+      "127.0.0.1",
+      "::1",
+      "localhost",
+      "testclient",
+      "testserver"
+    ],
+    "host_header_validation": "Enforced: blocks DNS rebinding attacks on /cycle and /review",
+    "origin_header_validation": "Enforced: untrusted and null Origin headers rejected with 403 Forbidden",
+    "client_ip_validation": "Enforced: untrusted remote client IPs rejected with 403 Forbidden",
+    "task_id_mismatch_validation": "Enforced: query task_id mismatch rejected with 409 Conflict",
+    "epistemic_integrity_gate": "Enforced: unsupported FACT promotion strictly rejected with 422 Unprocessable Entity"
+  },
+  "test_results": [
+    {
+      "test_id": "T08",
+      "name": "Unsupported FACT promotion strictly rejected with 422 Unprocessable Entity",
+      "passed": true,
+      "detail": {
+        "status": 422,
+        "detail": "cannot promote HYPOTHESIS or INFERENCE to FACT: epistemic types are immutable"
+      }
+    },
+    {
+      "test_id": "T09",
+      "name": "Untrusted remote IP caller denied with 403 Forbidden",
+      "passed": true,
+      "detail": {
+        "simulated_host": "192.168.1.100",
+        "denied": true
+      }
+    },
+    {
+      "test_id": "T10",
+      "name": "Untrusted Origin header rejected with 403 Forbidden on /cycle and /review",
+      "passed": true,
+      "detail": {
+        "cycle_status": 403,
+        "review_status": 403
+      }
+    },
+    {
+      "test_id": "T11",
+      "name": "Null Origin header rejected with 403 Forbidden on mutation endpoints",
+      "passed": true,
+      "detail": {
+        "status": 403
+      }
+    },
+    {
+      "test_id": "T12",
+      "name": "Unexpected Host header rejected with 403 Forbidden (DNS rebinding protection)",
+      "passed": true,
+      "detail": {
+        "status": 403
+      }
+    },
+    {
+      "test_id": "T13",
+      "name": "Query task_id mismatch rejected with 409 Conflict on /cycle and /review",
+      "passed": true,
+      "detail": {
+        "cycle_status": 409,
+        "review_status": 409
+      }
+    }
+  ],
+  "status": "PASS"
+}

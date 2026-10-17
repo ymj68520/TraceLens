@@ -1,0 +1,108 @@
+{
+  "deliverable": "AgentV0MVPCompletionMatrixV1",
+  "schema_version": "agent-v0-mvp-completion-matrix:v1",
+  "verified_at": "2026-10-17T11:32:49Z",
+  "capabilities": [
+    {
+      "capability": "Task-scoped Investigation",
+      "implemented": true,
+      "integrated": true,
+      "tested": true,
+      "operational_limitation": "Single-task scoped; cross-task correlations deferred to future phases."
+    },
+    {
+      "capability": "Agent Supervisor Planning",
+      "implemented": true,
+      "integrated": true,
+      "tested": true,
+      "operational_limitation": "Bounded to supervisor-v2; Guidance V1 remains EXPERIMENTAL_ONLY."
+    },
+    {
+      "capability": "Specialist Delegation",
+      "implemented": true,
+      "integrated": true,
+      "tested": true,
+      "operational_limitation": "Single-pass delegation fan-out per cycle; budget-exhausted delegations abort cleanly."
+    },
+    {
+      "capability": "Forensic Tool Execution",
+      "implemented": true,
+      "integrated": true,
+      "tested": true,
+      "operational_limitation": "Read-only focused queries against raw.db, files.db, and events.db."
+    },
+    {
+      "capability": "Evidence Resolution / Grounding",
+      "implemented": true,
+      "integrated": true,
+      "tested": true,
+      "operational_limitation": "Strictly grounded in evidence snapshots; LLM claims cannot fabricate evidence keys."
+    },
+    {
+      "capability": "Supervisor Integration",
+      "implemented": true,
+      "integrated": true,
+      "tested": true,
+      "operational_limitation": "Semantic integration requires SupervisorIntegrationDecisionV2 schema compliance."
+    },
+    {
+      "capability": "Durable Working State",
+      "implemented": true,
+      "integrated": true,
+      "tested": true,
+      "operational_limitation": "Persisted in SQLite investigation.db; atomic revision increments (Rev N -> Rev N+1)."
+    },
+    {
+      "capability": "Trajectory / Audit History",
+      "implemented": true,
+      "integrated": true,
+      "tested": true,
+      "operational_limitation": "Append-only agent_trajectories log with monotonic sequence numbers."
+    },
+    {
+      "capability": "Cycle Idempotency",
+      "implemented": true,
+      "integrated": true,
+      "tested": true,
+      "operational_limitation": "SHA-256 fingerprint matching on request_id; duplicate replay returns cached outcome."
+    },
+    {
+      "capability": "Crash / Restart Recovery",
+      "implemented": true,
+      "integrated": true,
+      "tested": true,
+      "operational_limitation": "recover_interrupted_agent_runtime clears stale running claims; working state preserved."
+    },
+    {
+      "capability": "Analyst Review",
+      "implemented": true,
+      "integrated": true,
+      "tested": true,
+      "operational_limitation": "Single-user local development mode; reviewer identity is caller-declared (CALLER_DECLARED)."
+    },
+    {
+      "capability": "Investigation Workbench",
+      "implemented": true,
+      "integrated": true,
+      "tested": true,
+      "operational_limitation": "Three-column layout preserved; execution controls and review panel docked in Column 3."
+    },
+    {
+      "capability": "Explicit Accept / Reject",
+      "implemented": true,
+      "integrated": true,
+      "tested": true,
+      "operational_limitation": "Manual human analyst confirmation required; accepted findings never auto-promote to FACT."
+    }
+  ],
+  "mvp_out_of_scope_exclusions": [
+    "Multi-user Collaboration",
+    "Complex RBAC",
+    "Automatic Report Publication",
+    "Automatic Graphiti Publication",
+    "Agent Gen-5",
+    "RCA-2B",
+    "Independent Third-Party Qualification"
+  ],
+  "verdict": "CORE_AGENT_V0_MVP_COMPLETION_CONFIRMED"
+}
