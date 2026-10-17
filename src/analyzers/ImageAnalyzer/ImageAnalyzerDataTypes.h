@@ -24,6 +24,9 @@ struct NativeFileInfo {
     uint64_t inode;
     std::string name;
     std::string path;
+    // Absolute path on the mounted volume; empty when the walk has no mount
+    // (the stub build). Used only to hash content, never stored.
+    std::string hostPath;
     uint64_t size;
     int64_t atime;
     int64_t mtime;

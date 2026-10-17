@@ -45,7 +45,7 @@
 | 2(1) 视频信息提取 | `test_m2_1c_video_text_extraction` | 分段抽帧视觉分析产出非空描述 | `sample.mp4`（ffmpeg 生成） |
 | 2(1) 事件转化 | `test_m2_1d_event_conversion` | events 库 >0 且时间线端点返回结构化事件 | `raw_basic.img` |
 | 2(2) 重复证据去重 | `test_m2_2_duplicate_evidence_dedup` | duplicates 端点聚出植入重复对（md5 分组≥2） | 同上 |
-| 3(1) 多模态同一事件聚合 | `test_m3_1_multimodal_event_aggregation` | 工作台事件轴播种成功且事件证据可回溯 | `raw_llm.img`（需 LLM：播种源=已分析簇） |
+| 3(1) 多模态同一事件聚合 | `test_m3_1_multimodal_event_aggregation` | 同一事件同时挂着文本文件与图像文件（内部沟通记录.txt 与 转账凭证.png 同分钟） | `raw_llm.img`（需 LLM：播种源=已分析簇） |
 | 3(2) ≥100 事件节点 | `test_m3_2_timeline_supports_100_nodes` | events 库与时间线端点均 ≥100 节点 | `timeline_120.img`（120 个逐小时文件） |
 | 4(1) 报告结构完整 | `test_m4_1a_report_structure` | sections[0]=案件背景章、含行为/证据/推断叙事、引用无悬空 | `raw_llm.img`（llm_analyze） |
 | 4(1) 角色基本一致 | `test_m4_1b_role_consistency` | 报告具名角色 ⊆ {张伟, 李娜, 王五}（夹具植入集） | `raw_llm.img` |
@@ -55,20 +55,19 @@ LLM 依赖用例标注 `@pytest.mark.llm`；`/api/llm/models` 无可用模型时
 跳过（不误报失败）。只跑非 LLM 用例：
 `python_service/.venv/bin/python -m pytest tests/acceptance_metrics -v -m "not llm"`。
 
-## 已知缺口（2026-10-14，release/raid-system-image-20261007 实测）
+## 已知缺口
 
-1. **吞吐 10MB/s 未达标**（2026-10-15 已用真实 E01 复测）：
-   - 夹具 `raw_basic.img`（100MB）：过滤窗口 ~25s ≈ 4MB/s。
-   - **真实 `服务器镜像.E01`（2.90GB 压缩，解压后内容 10.92GB / 121,770 文件）**：
-     过滤窗口（审计 CREATED→RESULT_SET）2528s ≈ 42 分钟，按内容字节
-     **4.32 MB/s**、按镜像字节 **1.15 MB/s**、48 文件/秒，事件 240,764 条。
-   - 两次测量一致表明瓶颈在 C++ 提取阶段（占窗口 ~99%），分类仅 ~10s；
-     其后的 Graphiti 摄入不计入窗口。按内容字节口径需 ~2.5× 提速、按镜像
-     字节口径需 ~9× 才能达标。剔除率与压缩比两项效果指标均达标
-     （夹具实测 71.4% / 12.9%）。
-2. **去重端到端不可用**：`/api/forensics/files/duplicates` 端点与 SQL 正常，
-   但摄入/分类链路不计算内容 MD5（files.db md5 列全空），重复文件无法被聚出。
-   需在提取或分类阶段为文件补内容哈希（建议 ≤N MB 全量计算、大文件跳过或采样）。
+1. **吞吐已在夹具口径达标**（2026-10-17，当前二进制）：`raw_basic.img`
+   （100MB）过滤窗口冷启动 8.2s = 12.2MB/s、热缓存 7.9s = 12.7MB/s，审计口径
+   仍是 CREATED→首次 RESULT_SET。提速来自三处：元数据与事件插入改为批量提交、
+   raw 库建表用 `synchronous=NORMAL`、内容哈希只覆盖过滤保留的小文件。
+   2026-10-15 的真实 E01（121,770 文件，4.32MB/s）是这些改动之前的测量，
+   不再代表本分支，但十万级文件的速率尚未复测。剔除率与压缩比不变
+   （71.4% / 12.9%）。
+2. **去重只覆盖过滤保留的小文件**：TSK 遍历时对不超过 32MB、且落在保留目录
+   （`/home`、`/root`、`/Users`、`/var/log`、`/var/lib`、`/etc` 等）的普通文件
+   流式计算内容 MD5，读不完整则留空。低价值文件不计算哈希——给它们算哈希
+   等于把过滤掉的数据又全读一遍。`test_m2_2` 断言 dup_a.csv / dup_b.csv 聚成一组。
 3. **任务态 LLM 分析可能被未知二进制卡死**：夹具含随机二进制（.bin/.tmp 垃圾）
    时，`llm_analyze` 任务在"重要文件分析"阶段单文件 >20min-1h 无进展
    （2026-10-14 实测，最终手工取消；markitdown 对这些文件是干净 skip，卡点在
@@ -82,7 +81,7 @@ LLM 依赖用例标注 `@pytest.mark.llm`；`/api/llm/models` 无可用模型时
 5. **Android 夹具：`prepare_fixtures.py --only android` 需要宿主有 `sqlite3`
    CLI；无则用例跳过并在现场补夹具。
 
-5. **叙事生成为 LLM 概率性输出**：`citation_invalid`（某节引用了节范围外的
+6. **叙事生成为 LLM 概率性输出**：`citation_invalid`（某节引用了节范围外的
    证据键）等校验失败属间歇性，重跑该用例即可（每次 POST /generate 都是新一次
    生成）；结构/溯源用例在多次运行中均稳定通过。
 

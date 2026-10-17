@@ -237,6 +237,7 @@ bool NativeFilesystemWalker::walkDirectory(const std::string& dirPath, const std
         fileInfo.inode = st.st_ino;
         fileInfo.name = entry->d_name;
         fileInfo.path = relPath;
+        fileInfo.hostPath = fullPath;
         fileInfo.size = st.st_size;
         fileInfo.atime = st.st_atime;
         fileInfo.mtime = st.st_mtime;

@@ -6,13 +6,17 @@
 #include "KeyFileLoader.h"
 #include "AuditLog/AuditLog.h"
 #include "ConfigManager/ConfigManager.h"
+#include <openssl/md5.h>
+#include <fstream>
 #include <iostream>
+#include <limits>
 #include <cstring>
 #include <sstream>
 #include <iomanip>
 #include <filesystem>
 #include <algorithm>
 #include <cctype>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -32,6 +36,46 @@ std::string normalizeMountFilesystemType(std::string fsType) {
 	if (fsType.find("hfs") != std::string::npos) return "hfs";
 	if (fsType.find("iso9660") != std::string::npos) return "iso9660";
 	return "";
+}
+
+// Same cap and failure rule as TskFilesystemWalker::hashFileContent: small
+// regular files only, and no hash at all when the read comes up short.
+std::string hashMountedFile(const std::string& hostPath, int64_t size) {
+	if (hostPath.empty() || size <= 0 || size > kContentHashMaxBytes
+	    || static_cast<uint64_t>(size) > static_cast<uint64_t>(std::numeric_limits<std::streamsize>::max())) {
+		return "";
+	}
+	std::ifstream file(hostPath, std::ios::binary);
+	if (!file.is_open()) {
+		return "";
+	}
+
+	MD5_CTX ctx;
+	if (MD5_Init(&ctx) != 1) {
+		return "";
+	}
+	constexpr size_t kChunk = 64 * 1024;
+	std::vector<char> buffer(kChunk);
+	int64_t remaining = size;
+	while (remaining > 0) {
+		const auto want = static_cast<std::streamsize>(
+			std::min<int64_t>(static_cast<int64_t>(kChunk), remaining));
+		file.read(buffer.data(), want);
+		if (file.gcount() != want) {
+			return "";
+		}
+		MD5_Update(&ctx, buffer.data(), static_cast<size_t>(want));
+		remaining -= want;
+	}
+
+	unsigned char digest[MD5_DIGEST_LENGTH];
+	MD5_Final(digest, &ctx);
+	std::ostringstream hex;
+	hex << std::hex << std::setfill('0');
+	for (unsigned char byte : digest) {
+		hex << std::setw(2) << static_cast<int>(byte);
+	}
+	return hex.str();
 }
 
 } // namespace
@@ -626,11 +670,14 @@ bool ImageAnalyzer::extractDecryptedPartition(const PartitionEntry& part) {
 			uint16_t ft = nf.mode & S_IFMT;
 			r.type = nf.is_directory ? "DIR" :
 			         (ft == S_IFREG ? "REG" : (ft == S_IFLNK ? "LNK" : "OTHER"));
-			r.isDeleted = nf.is_allocated ? 0 : 1;
-			r.isAllocated = nf.is_allocated ? 1 : 0;
-			r.uid = nf.uid;
-			r.gid = nf.gid;
-			r.partitionNum = static_cast<int>(part.num);
+				r.isDeleted = nf.is_allocated ? 0 : 1;
+				r.isAllocated = nf.is_allocated ? 1 : 0;
+				r.uid = nf.uid;
+				r.gid = nf.gid;
+				if (r.type == "REG") {
+					r.md5 = hashMountedFile(nf.hostPath, static_cast<int64_t>(nf.size));
+				}
+				r.partitionNum = static_cast<int>(part.num);
 			if (dbManager_->insertFileRecord(r)) fileCount++;
 			tickFileProgress();
 			return true;
@@ -807,33 +854,37 @@ bool ImageAnalyzer::extractWithNativeMount(const std::string& dbPath) {
 			record.type = "OTHER";
 		}
 
-		record.isDeleted = nativeFile.is_allocated ? 0 : 1;
-		record.isAllocated = nativeFile.is_allocated ? 1 : 0;
-		record.uid = nativeFile.uid;
-		record.gid = nativeFile.gid;
-
-		// Format permissions
-		std::ostringstream perms;
-		perms << std::oct << (nativeFile.mode & 0777);
-		record.permissions = perms.str();
-
-		// Insert into database
-		if (dbManager_->insertFileRecord(record)) {
-			fileCount++;
-			tickFileProgress();
-			int max_log = forensics::ConfigManager::instance().getMaxLogDisplayFiles();
-			if (fileCount <= max_log) {
-			    // For XFS/Native we might be using different struct names, but they both have .name and .size
-			    // In this scope, we'll try to find the record or the source file object
-			    std::cout << "  [" << fileCount << "] " << record.name << " (" << record.size << " bytes)" << std::endl;
-			} else if (fileCount % (max_log * 5) == 0) {
-			    std::cout << "  ... processing: [" << fileCount << "] " << record.name << " ..." << std::endl;
+			record.isDeleted = nativeFile.is_allocated ? 0 : 1;
+			record.isAllocated = nativeFile.is_allocated ? 1 : 0;
+			record.uid = nativeFile.uid;
+			record.gid = nativeFile.gid;
+			if (record.type == "REG") {
+				record.md5 = hashMountedFile(nativeFile.hostPath,
+				                             static_cast<int64_t>(nativeFile.size));
 			}
 
-		}
+			// Format permissions
+			std::ostringstream perms;
+			perms << std::oct << (nativeFile.mode & 0777);
+			record.permissions = perms.str();
 
-		return true;  // Continue walking
-	});
+			// Insert into database
+			if (dbManager_->insertFileRecord(record)) {
+				fileCount++;
+				tickFileProgress();
+				int max_log = forensics::ConfigManager::instance().getMaxLogDisplayFiles();
+				if (fileCount <= max_log) {
+				    // For XFS/Native we might be using different struct names, but they both have .name and .size
+				    // In this scope, we'll try to find the record or the source file object
+				    std::cout << "  [" << fileCount << "] " << record.name << " (" << record.size << " bytes)" << std::endl;
+				} else if (fileCount % (max_log * 5) == 0) {
+				    std::cout << "  ... processing: [" << fileCount << "] " << record.name << " ..." << std::endl;
+				}
+
+			}
+
+			return true;  // Continue walking
+		});
 
 	if (success) {
 		std::cout << "Native mount extraction completed successfully" << std::endl;

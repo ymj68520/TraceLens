@@ -1,3 +1,10 @@
 {
-  "raw_llm.img": "LLM 专用证据镜像（纯小文本，供 M3-1/M4 的 llm_analyze 任务）"
+  "raw_basic.img": "Linux 案情夹具：角色聊天/合同/台账/勒索标记/重复文件对 + 低价值文件集",
+  "dd_basic.dd": "raw_basic.img 的逐字节副本（DD 口径）",
+  "raw_llm.img": "LLM 专用证据镜像（小文本 + 同分钟转账凭证图，供 M3-1/M4）",
+  "timeline_120.img": "120 个逐小时时间戳文件（M3-2 ≥100 事件）",
+  "logs_server.img": "/var/log 与 /etc/passwd 的 Linux 服务器夹具",
+  "_md_in/_text_sample.html": "文本提取输入（MarkItDown 转换样例）",
+  "sample.png": "视觉分析输入（含编号文字的样例图）",
+  "sample.mp4": "视频内容分析输入（ffmpeg 2 秒测试片）"
 }

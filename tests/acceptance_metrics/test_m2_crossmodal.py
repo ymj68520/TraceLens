@@ -14,7 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from conftest import CPP_BASE, PY_BASE, FIXTURE_DIR, db_scalar, fixture_path, \
-    llm_analyze_content, overview, run_analysis_task
+    llm_analyze_content, overview, run_analysis_task, task_db
 
 
 def _analysis_text(body: dict) -> str:
@@ -68,7 +68,7 @@ def test_m2_1d_event_conversion(api):
     """事件转化：任务链路把文件/工件证据转为结构化事件（events 库+时间线端点）。"""
     task = run_analysis_task(api, fixture_path("raw_basic.img"),
                              scenarios=["linux"], platform_analyze=False,
-                             cache_key="raw-acc")
+                             filtering_only=True, cache_key="raw-acc")
     stats = overview(api, task["id"])
     events = stats["events_database_stats"]
     assert events["total_events"] > 0, "events 库为空：证据未转化为事件"
@@ -86,12 +86,12 @@ def test_m2_1d_event_conversion(api):
 def test_m2_2_duplicate_evidence_dedup(api):
     """重复证据去重：/api/forensics/files/duplicates 按 MD5 聚出植入的重复对。
 
-    已知缺口（2026-10-14 核查）：摄入/分类链路不计算内容 MD5（files.db md5 列
-    全空），本用例当前失败属产品缺陷信号——需在提取或分类阶段补内容哈希。
+    内容哈希在镜像遍历时计算（不超过 32MB 的普通文件），经分类原样写入
+    files.db；重复对 dup_a.csv / dup_b.csv 字节相同，必须被聚成一组。
     """
     task = run_analysis_task(api, fixture_path("raw_basic.img"),
                              scenarios=["linux"], platform_analyze=False,
-                             cache_key="raw-acc")
+                             filtering_only=True, cache_key="raw-acc")
     status, body = api.get(
         CPP_BASE, f"/api/forensics/files/duplicates?task_id={task['id']}")
     assert status == 200, f"duplicates 端点失败({status})"

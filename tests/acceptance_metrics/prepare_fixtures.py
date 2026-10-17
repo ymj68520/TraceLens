@@ -206,6 +206,32 @@ def build_raw_basic() -> Path:
     return img
 
 
+def _scene_photo() -> bytes:
+    """PNG carrying the same account number as the text evidence.
+
+    M3-1 requires one event to aggregate text and image. The photo shares
+    its mtime minute with 内部沟通记录.txt, so cluster seeding links both to
+    the same event. A real PNG (not opaque bytes) keeps the task-time vision
+    path from stalling the way unknown binaries do.
+    """
+    from PIL import Image, ImageDraw, ImageFont
+    img = Image.new("RGB", (640, 200), "white")
+    draw = ImageDraw.Draw(img)
+    font = None
+    for cand in ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                 "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"):
+        try:
+            font = ImageFont.truetype(cand, 36)
+            break
+        except OSError:
+            continue
+    draw.text((24, 70), "account 6222 0000 1234 5678", fill="black", font=font)
+    import io
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def build_raw_llm() -> Path:
     """LLM-safe evidence-only image for the llm_analyze tests (M3-1/M4).
 
@@ -228,6 +254,8 @@ def build_raw_llm() -> Path:
         "/home/analyst/docs/通讯录.csv": csv_padded("姓名,电话,备注", "张伟,13800000001,主管", 16 * 1024),
         "/home/analyst/docs/项目计划.txt": csv_padded("项目计划", "节点 2026-03-02 仓库换班", 16 * 1024),
         "/home/analyst/docs/邮件导出.txt": csv_padded("主题,发件人", "对账,李娜", 16 * 1024),
+        # Same minute as 内部沟通记录.txt: cluster seeding attaches both to one event.
+        "/home/analyst/photos/转账凭证.png": _scene_photo(),
         "/etc/passwd": b"root:x:0:0:root:/root:/bin/bash\nanalyst:x:1000:1000::/home/analyst:/bin/bash\n",
         "/var/log/syslog": b"".join(
             f"Mar  2 {h:02d}:00:00 fixture CRON[111]: (root) CMD (fixture)\n".encode()
@@ -236,6 +264,7 @@ def build_raw_llm() -> Path:
     }
     debugfs_inject(img, files, {
         "/home/analyst/内部沟通记录.txt": "20260302101400",
+        "/home/analyst/photos/转账凭证.png": "20260302101430",
         "/home/analyst/readme.txt": "20260303064000",
         "/home/analyst/涉案合同.html": "20260201090000",
         "/home/analyst/台账.csv": "20260303070000",
@@ -383,7 +412,7 @@ def main() -> int:
         manifest["dd_basic.dd"] = "raw_basic.img 的逐字节副本（DD 口径）"
         build_dd()
     if "raw_llm" in wanted:
-        manifest["raw_llm.img"] = "LLM 专用证据镜像（纯小文本，供 M3-1/M4 的 llm_analyze 任务）"
+        manifest["raw_llm.img"] = "LLM 专用证据镜像（小文本 + 同分钟转账凭证图，供 M3-1/M4）"
         build_raw_llm()
     if "timeline" in wanted:
         manifest["timeline_120.img"] = f"{TIMELINE_FILES} 个逐小时时间戳文件（M3-2 ≥100 事件）"

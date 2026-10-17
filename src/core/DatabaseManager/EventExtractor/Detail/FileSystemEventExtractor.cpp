@@ -81,10 +81,61 @@ bool EventExtractor::extractFileSystemEvents() {
 	int changeCount = 0;
 	int deletionCount = 0;
 
-	// Begin transaction for better performance
-	sqlite3_exec(eventDb_, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+		// Begin transaction for better performance
+		sqlite3_exec(eventDb_, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
 
-	while (sqlite3_step(stmt) == SQLITE_ROW) {
+		// One prepared statement per table for the whole scan. Preparing and
+		// finalizing per file re-parses the schema each time, which on the
+		// spinning extraction disk costs more than the inserts themselves.
+		auto prepare = [&](const char* sql) {
+			sqlite3_stmt* prepared = nullptr;
+			sqlite3_prepare_v2(eventDb_, sql, -1, &prepared, nullptr);
+			return prepared;
+		};
+		sqlite3_stmt* creationInsert = prepare(
+			"INSERT INTO creation_events (timestamp, file_path, inode, file_size, file_type) VALUES (?, ?, ?, ?, ?);");
+		sqlite3_stmt* modificationInsert = prepare(
+			"INSERT INTO modification_events (timestamp, file_path, inode, file_size, file_type) VALUES (?, ?, ?, ?, ?);");
+		sqlite3_stmt* accessInsert = prepare(
+			"INSERT INTO access_events (timestamp, file_path, inode, file_size, file_type) VALUES (?, ?, ?, ?, ?);");
+		sqlite3_stmt* changeInsert = prepare(
+			"INSERT INTO change_events (timestamp, file_path, inode, file_size, file_type, description) VALUES (?, ?, ?, ?, ?, ?);");
+		sqlite3_stmt* deletionInsert = prepare(
+			"INSERT INTO deletion_events (timestamp, file_path, inode, file_size, file_type) VALUES (?, ?, ?, ?, ?);");
+		sqlite3_stmt* eventInsert = prepare(EventExtractorSQL::INSERT_EVENT);
+
+		auto bindAndStepEvent = [](sqlite3_stmt* insert, const TimelineEvent& event) {
+			sqlite3_reset(insert);
+			sqlite3_clear_bindings(insert);
+			sqlite3_bind_int64(insert, 1, event.timestamp);
+			sqlite3_bind_text(insert, 2, event.eventType.c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_text(insert, 3, event.filePath.c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_int64(insert, 4, event.inode);
+			sqlite3_bind_text(insert, 5, event.description.c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_int64(insert, 6, event.fileSize);
+			sqlite3_bind_text(insert, 7, event.fileType.c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_text(insert, 8, event.systemContext.c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_text(insert, 9, priorityToString(event.priority).c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_text(insert, 10, severityToString(event.severity).c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_text(insert, 11, sourceToString(event.source).c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_text(insert, 12, categoryToString(event.category).c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_text(insert, 13, event.normalizedType.c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_text(insert, 14, event.sourceId.c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_step(insert);
+		};
+
+		auto bindSubtype = [](sqlite3_stmt* insert, int64_t ts, const std::string& filePath,
+		                      int64_t fileInode, int64_t fileSize, const std::string& fileType) {
+			sqlite3_reset(insert);
+			sqlite3_clear_bindings(insert);
+			sqlite3_bind_int64(insert, 1, ts);
+			sqlite3_bind_text(insert, 2, filePath.c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_int64(insert, 3, fileInode);
+			sqlite3_bind_int64(insert, 4, fileSize);
+			sqlite3_bind_text(insert, 5, fileType.c_str(), -1, SQLITE_TRANSIENT);
+		};
+
+		while (sqlite3_step(stmt) == SQLITE_ROW) {
 		int64_t inode = sqlite3_column_int64(stmt, 0);
 		const char* path_raw = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
 		std::string path = path_raw ? path_raw : "";
@@ -117,125 +168,59 @@ bool EventExtractor::extractFileSystemEvents() {
 			return ev;
 		};
 
-		// Create event for file creation (birth time)
-		if (crtime > 0) {
-			insertEvent(createBaseEvent(crtime, "CREATED", "File created"));
+			// Create event for file creation (birth time)
+			if (crtime > 0) {
+				bindAndStepEvent(eventInsert, createBaseEvent(crtime, "CREATED", "File created"));
+				bindSubtype(creationInsert, crtime, path, inode, size, type);
+				sqlite3_step(creationInsert);
+				eventCount++;
+				creationCount++;
+			}
 
-			// Insert into creation_events table
-			std::string sql = R"(
-                INSERT INTO creation_events (timestamp, file_path, inode, file_size, file_type)
-                VALUES (?, ?, ?, ?, ?);
-            )";
-			sqlite3_stmt* insertStmt;
-			sqlite3_prepare_v2(eventDb_, sql.c_str(), -1, &insertStmt, nullptr);
-			sqlite3_bind_int64(insertStmt, 1, crtime);
-			sqlite3_bind_text(insertStmt, 2, path.c_str(), -1, SQLITE_TRANSIENT);
-			sqlite3_bind_int64(insertStmt, 3, inode);
-			sqlite3_bind_int64(insertStmt, 4, size);
-			sqlite3_bind_text(insertStmt, 5, type.c_str(), -1, SQLITE_TRANSIENT);
-			sqlite3_step(insertStmt);
-			sqlite3_finalize(insertStmt);
+			// Create event for file modification
+			if (mtime > 0 && mtime != crtime) {
+				bindAndStepEvent(eventInsert, createBaseEvent(mtime, "MODIFIED", "File content modified"));
+				bindSubtype(modificationInsert, mtime, path, inode, size, type);
+				sqlite3_step(modificationInsert);
+				eventCount++;
+				modificationCount++;
+			}
 
-			eventCount++;
-			creationCount++;
+			// Create event for file access
+			if (atime > 0 && atime != mtime && atime != crtime) {
+				bindAndStepEvent(eventInsert, createBaseEvent(atime, "ACCESSED", "File accessed/read"));
+				bindSubtype(accessInsert, atime, path, inode, size, type);
+				sqlite3_step(accessInsert);
+				eventCount++;
+				accessCount++;
+			}
+
+			// Create event for metadata change
+			if (ctime > 0 && ctime != mtime && ctime != crtime) {
+				bindAndStepEvent(eventInsert, createBaseEvent(ctime, "CHANGED", "Metadata changed"));
+				bindSubtype(changeInsert, ctime, path, inode, size, type);
+				sqlite3_bind_text(changeInsert, 6, "Metadata changed", -1, SQLITE_TRANSIENT);
+				sqlite3_step(changeInsert);
+				eventCount++;
+				changeCount++;
+			}
+
+			// Create event for deleted files
+			if (isDeleted) {
+				int64_t deletionTime = std::max({ atime, mtime, ctime, crtime });
+				bindAndStepEvent(eventInsert, createBaseEvent(deletionTime, "DELETED", "File deleted (unallocated)"));
+				bindSubtype(deletionInsert, deletionTime, path, inode, size, type);
+				sqlite3_step(deletionInsert);
+				eventCount++;
+				deletionCount++;
+			}
 		}
 
-		// Create event for file modification
-		if (mtime > 0 && mtime != crtime) {
-			insertEvent(createBaseEvent(mtime, "MODIFIED", "File content modified"));
-
-			// Insert into modification_events table
-			std::string sql = R"(
-                INSERT INTO modification_events (timestamp, file_path, inode, file_size, file_type)
-                VALUES (?, ?, ?, ?, ?);
-            )";
-			sqlite3_stmt* insertStmt;
-			sqlite3_prepare_v2(eventDb_, sql.c_str(), -1, &insertStmt, nullptr);
-			sqlite3_bind_int64(insertStmt, 1, mtime);
-			sqlite3_bind_text(insertStmt, 2, path.c_str(), -1, SQLITE_TRANSIENT);
-			sqlite3_bind_int64(insertStmt, 3, inode);
-			sqlite3_bind_int64(insertStmt, 4, size);
-			sqlite3_bind_text(insertStmt, 5, type.c_str(), -1, SQLITE_TRANSIENT);
-			sqlite3_step(insertStmt);
-			sqlite3_finalize(insertStmt);
-
-			eventCount++;
-			modificationCount++;
+		sqlite3_finalize(stmt);
+		for (sqlite3_stmt* prepared : {creationInsert, modificationInsert, accessInsert,
+		                               changeInsert, deletionInsert, eventInsert}) {
+			sqlite3_finalize(prepared);
 		}
-
-		// Create event for file access
-		if (atime > 0 && atime != mtime && atime != crtime) {
-			insertEvent(createBaseEvent(atime, "ACCESSED", "File accessed/read"));
-
-			// Insert into access_events table
-			std::string sql = R"(
-                INSERT INTO access_events (timestamp, file_path, inode, file_size, file_type)
-                VALUES (?, ?, ?, ?, ?);
-            )";
-			sqlite3_stmt* insertStmt;
-			sqlite3_prepare_v2(eventDb_, sql.c_str(), -1, &insertStmt, nullptr);
-			sqlite3_bind_int64(insertStmt, 1, atime);
-			sqlite3_bind_text(insertStmt, 2, path.c_str(), -1, SQLITE_TRANSIENT);
-			sqlite3_bind_int64(insertStmt, 3, inode);
-			sqlite3_bind_int64(insertStmt, 4, size);
-			sqlite3_bind_text(insertStmt, 5, type.c_str(), -1, SQLITE_TRANSIENT);
-			sqlite3_step(insertStmt);
-			sqlite3_finalize(insertStmt);
-
-			eventCount++;
-			accessCount++;
-		}
-
-		// Create event for metadata change
-		if (ctime > 0 && ctime != mtime && ctime != crtime) {
-			insertEvent(createBaseEvent(ctime, "CHANGED", "Metadata changed"));
-
-			// Insert into change_events table
-			std::string sql = R"(
-                INSERT INTO change_events (timestamp, file_path, inode, file_size, file_type, description)
-                VALUES (?, ?, ?, ?, ?, ?);
-            )";
-			sqlite3_stmt* insertStmt;
-			sqlite3_prepare_v2(eventDb_, sql.c_str(), -1, &insertStmt, nullptr);
-			sqlite3_bind_int64(insertStmt, 1, ctime);
-			sqlite3_bind_text(insertStmt, 2, path.c_str(), -1, SQLITE_TRANSIENT);
-			sqlite3_bind_int64(insertStmt, 3, inode);
-			sqlite3_bind_int64(insertStmt, 4, size);
-			sqlite3_bind_text(insertStmt, 5, type.c_str(), -1, SQLITE_TRANSIENT);
-			sqlite3_bind_text(insertStmt, 6, "Metadata changed", -1, SQLITE_TRANSIENT);
-			sqlite3_step(insertStmt);
-			sqlite3_finalize(insertStmt);
-
-			eventCount++;
-			changeCount++;
-		}
-
-		// Create event for deleted files
-		if (isDeleted) {
-			int64_t deletionTime = std::max({ atime, mtime, ctime, crtime });
-			insertEvent(createBaseEvent(deletionTime, "DELETED", "File deleted (unallocated)"));
-
-			// Insert into deletion_events table
-			std::string sql = R"(
-                INSERT INTO deletion_events (timestamp, file_path, inode, file_size, file_type)
-                VALUES (?, ?, ?, ?, ?);
-            )";
-			sqlite3_stmt* insertStmt;
-			sqlite3_prepare_v2(eventDb_, sql.c_str(), -1, &insertStmt, nullptr);
-			sqlite3_bind_int64(insertStmt, 1, deletionTime);
-			sqlite3_bind_text(insertStmt, 2, path.c_str(), -1, SQLITE_TRANSIENT);
-			sqlite3_bind_int64(insertStmt, 3, inode);
-			sqlite3_bind_int64(insertStmt, 4, size);
-			sqlite3_bind_text(insertStmt, 5, type.c_str(), -1, SQLITE_TRANSIENT);
-			sqlite3_step(insertStmt);
-			sqlite3_finalize(insertStmt);
-
-			eventCount++;
-			deletionCount++;
-		}
-	}
-
-	sqlite3_finalize(stmt);
 
 	// Commit transaction
 	sqlite3_exec(eventDb_, "COMMIT;", nullptr, nullptr, nullptr);

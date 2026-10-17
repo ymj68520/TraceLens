@@ -212,12 +212,28 @@ bool FileClassifier::classifyFiles() {
 		return false;
 	}
 
-	std::unordered_map<FileCategory, int> categoryCounts;
+		std::unordered_map<FileCategory, int> categoryCounts;
 
-	// Begin transaction for better performance
-	sqlite3_exec(fileDb_, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
+		// One transaction for the whole classification, and one prepared
+		// statement per target table. Preparing and finalizing two statements
+		// per file costs a schema lookup each, which on the spinning extraction
+		// disk dominated the lightweight-filter window (~10 s for 57 files).
+		sqlite3_exec(fileDb_, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
 
-	while (sqlite3_step(stmt) == SQLITE_ROW) {
+		std::unordered_map<std::string, sqlite3_stmt*> categoryInserts;
+		sqlite3_stmt* filesInsert = nullptr;
+		const char* filesInsertSql =
+			"INSERT INTO files "
+			"(inode, name, path, size, extension, category, type, mtime, ctime, is_deleted, md5, partition_num, scene_type, scene_priority, scene_relevant) "
+			"VALUES (?, ?, ?, ?, ?, ?, 'REG', ?, ?, ?, ?, ?, ?, ?, ?);";
+		if (sqlite3_prepare_v2(fileDb_, filesInsertSql, -1, &filesInsert, nullptr) != SQLITE_OK) {
+			std::cerr << "Failed to prepare files insert: " << sqlite3_errmsg(fileDb_) << std::endl;
+			sqlite3_exec(fileDb_, "ROLLBACK;", nullptr, nullptr, nullptr);
+			sqlite3_finalize(stmt);
+			return false;
+		}
+
+		while (sqlite3_step(stmt) == SQLITE_ROW) {
 		int64_t inode = sqlite3_column_int64(stmt, 0);
 		std::string name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
 		std::string path = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
@@ -243,62 +259,66 @@ bool FileClassifier::classifyFiles() {
 			std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
 		}
 
-		// Insert into appropriate table
-		std::string tableName = getCategoryTableName(category);
-		std::string insertSql = "INSERT INTO " + tableName +
-			" (inode, name, path, size, extension, mtime, ctime, is_deleted, md5, partition_num) "
-			"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+			// Insert into the category table (statement prepared once per table).
+			std::string tableName = getCategoryTableName(category);
+			sqlite3_stmt*& categoryInsert = categoryInserts[tableName];
+			if (!categoryInsert) {
+				std::string insertSql = "INSERT INTO " + tableName +
+					" (inode, name, path, size, extension, mtime, ctime, is_deleted, md5, partition_num) "
+					"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+				if (sqlite3_prepare_v2(fileDb_, insertSql.c_str(), -1, &categoryInsert, nullptr) != SQLITE_OK) {
+					std::cerr << "Failed to prepare category insert: " << sqlite3_errmsg(fileDb_) << std::endl;
+					continue;
+				}
+			} else {
+				sqlite3_reset(categoryInsert);
+				sqlite3_clear_bindings(categoryInsert);
+			}
 
-		sqlite3_stmt* insertStmt;
-		sqlite3_prepare_v2(fileDb_, insertSql.c_str(), -1, &insertStmt, nullptr);
+			sqlite3_bind_int64(categoryInsert, 1, inode);
+			sqlite3_bind_text(categoryInsert, 2, name.c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_text(categoryInsert, 3, path.c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_int64(categoryInsert, 4, size);
+			sqlite3_bind_text(categoryInsert, 5, extension.c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_int64(categoryInsert, 6, mtime);
+			sqlite3_bind_int64(categoryInsert, 7, ctime);
+			sqlite3_bind_int(categoryInsert, 8, isDeleted);
+			sqlite3_bind_text(categoryInsert, 9, md5.c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_int(categoryInsert, 10, partitionNum);
+			sqlite3_step(categoryInsert);
 
-		sqlite3_bind_int64(insertStmt, 1, inode);
-		sqlite3_bind_text(insertStmt, 2, name.c_str(), -1, SQLITE_TRANSIENT);
-		sqlite3_bind_text(insertStmt, 3, path.c_str(), -1, SQLITE_TRANSIENT);
-		sqlite3_bind_int64(insertStmt, 4, size);
-		sqlite3_bind_text(insertStmt, 5, extension.c_str(), -1, SQLITE_TRANSIENT);
-		sqlite3_bind_int64(insertStmt, 6, mtime);
-		sqlite3_bind_int64(insertStmt, 7, ctime);
-		sqlite3_bind_int(insertStmt, 8, isDeleted);
-		sqlite3_bind_text(insertStmt, 9, md5.c_str(), -1, SQLITE_TRANSIENT);
-		sqlite3_bind_int(insertStmt, 10, partitionNum);
+			// Compute scene information
+			std::string sceneTypeStr = (sceneType_ != SceneType::NONE) ? getSceneTypeName(sceneType_) : "";
+			int priority = (sceneType_ != SceneType::NONE) ? calculateScenePriority(path, name, category) : 0;
+			bool relevant = (sceneType_ != SceneType::NONE) ? isSceneRelevant(path, name) : false;
 
-		sqlite3_step(insertStmt);
-		sqlite3_finalize(insertStmt);
+			// Also insert into main files table
+			std::string categoryName = getCategoryName(category);
+			sqlite3_reset(filesInsert);
+			sqlite3_clear_bindings(filesInsert);
 
-		// Compute scene information
-		std::string sceneTypeStr = (sceneType_ != SceneType::NONE) ? getSceneTypeName(sceneType_) : "";
-		int priority = (sceneType_ != SceneType::NONE) ? calculateScenePriority(path, name, category) : 0;
-		bool relevant = (sceneType_ != SceneType::NONE) ? isSceneRelevant(path, name) : false;
+			sqlite3_bind_int64(filesInsert, 1, inode);
+			sqlite3_bind_text(filesInsert, 2, name.c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_text(filesInsert, 3, path.c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_int64(filesInsert, 4, size);
+			sqlite3_bind_text(filesInsert, 5, extension.c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_text(filesInsert, 6, categoryName.c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_int64(filesInsert, 7, mtime);
+			sqlite3_bind_int64(filesInsert, 8, ctime);
+			sqlite3_bind_int(filesInsert, 9, isDeleted);
+			sqlite3_bind_text(filesInsert, 10, md5.c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_int(filesInsert, 11, partitionNum);
+			sqlite3_bind_text(filesInsert, 12, sceneTypeStr.c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_int(filesInsert, 13, priority);
+			sqlite3_bind_int(filesInsert, 14, relevant ? 1 : 0);
+			sqlite3_step(filesInsert);
+		}
 
-		// Also insert into main files table
-		std::string categoryName = getCategoryName(category);
-		std::string filesInsertSql = "INSERT INTO files "
-			"(inode, name, path, size, extension, category, type, mtime, ctime, is_deleted, md5, partition_num, scene_type, scene_priority, scene_relevant) "
-			"VALUES (?, ?, ?, ?, ?, ?, 'REG', ?, ?, ?, ?, ?, ?, ?, ?);";
-
-		sqlite3_prepare_v2(fileDb_, filesInsertSql.c_str(), -1, &insertStmt, nullptr);
-
-		sqlite3_bind_int64(insertStmt, 1, inode);
-		sqlite3_bind_text(insertStmt, 2, name.c_str(), -1, SQLITE_TRANSIENT);
-		sqlite3_bind_text(insertStmt, 3, path.c_str(), -1, SQLITE_TRANSIENT);
-		sqlite3_bind_int64(insertStmt, 4, size);
-		sqlite3_bind_text(insertStmt, 5, extension.c_str(), -1, SQLITE_TRANSIENT);
-		sqlite3_bind_text(insertStmt, 6, categoryName.c_str(), -1, SQLITE_TRANSIENT);
-		sqlite3_bind_int64(insertStmt, 7, mtime);
-		sqlite3_bind_int64(insertStmt, 8, ctime);
-		sqlite3_bind_int(insertStmt, 9, isDeleted);
-		sqlite3_bind_text(insertStmt, 10, md5.c_str(), -1, SQLITE_TRANSIENT);
-		sqlite3_bind_int(insertStmt, 11, partitionNum);
-		sqlite3_bind_text(insertStmt, 12, sceneTypeStr.c_str(), -1, SQLITE_TRANSIENT);
-		sqlite3_bind_int(insertStmt, 13, priority);
-		sqlite3_bind_int(insertStmt, 14, relevant ? 1 : 0);
-
-		sqlite3_step(insertStmt);
-		sqlite3_finalize(insertStmt);
-	}
-
-	sqlite3_finalize(stmt);
+		sqlite3_finalize(stmt);
+		sqlite3_finalize(filesInsert);
+		for (auto& entry : categoryInserts) {
+			sqlite3_finalize(entry.second);
+		}
 
 	// Commit transaction
 	sqlite3_exec(fileDb_, "COMMIT;", nullptr, nullptr, nullptr);

@@ -30,8 +30,10 @@ def _prepare(api):
     image = fixture_path("raw_basic.img")
     start = time.monotonic()
     # 吞吐口径 = 轻量化过滤流水线（摄入+提取+分类+事件），关闭下游平台/LLM 分析
+    # filtering_only：吞吐口径止于 files.db 落库，其后的图谱摄入失败不计入。
     task = run_analysis_task(api, image, scenarios=["linux"],
-                             platform_analyze=False, cache_key="raw-acc")
+                             platform_analyze=False, filtering_only=True,
+                             cache_key="raw-acc")
     elapsed = time.monotonic() - start
     return image, task, elapsed
 

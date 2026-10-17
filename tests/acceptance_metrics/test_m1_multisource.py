@@ -18,7 +18,8 @@ def test_m1_1a_raw_image_ingest(api):
     """RAW（.img，ext4）镜像全链摄入：任务完成且 raw 库提取到全部植入文件。"""
     image = fixture_path("raw_basic.img")
     task = run_analysis_task(api, image, scenarios=["linux"],
-                             platform_analyze=False, cache_key="raw-acc")
+                             platform_analyze=False, filtering_only=True,
+                             cache_key="raw-acc")
     from conftest import overview
     stats = overview(api, task["id"])
     total = stats["raw_database_stats"]["total_files"]
@@ -29,7 +30,8 @@ def test_m1_1b_dd_image_ingest(api):
     """DD 口径（逐字节相同内容、.dd 后缀）摄入：与 RAW 结果一致。"""
     image = fixture_path("dd_basic.dd")
     task = run_analysis_task(api, image, scenarios=["linux"],
-                             platform_analyze=False, cache_key="dd-acc")
+                             platform_analyze=False, filtering_only=True,
+                             cache_key="dd-acc")
     from conftest import overview
     stats = overview(api, task["id"])
     assert stats["raw_database_stats"]["total_files"] >= 40

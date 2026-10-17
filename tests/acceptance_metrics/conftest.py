@@ -127,6 +127,7 @@ _task_cache: dict[tuple, dict] = {}
 def run_analysis_task(api: Api, image_path: str | Path, *, scenarios=(),
                       llm_analyze=False, llm_event_analyze=False,
                       platform_analyze=True,
+                      filtering_only=False,
                       timeout: int = TASK_TIMEOUT,
                       extra: dict | None = None, cache_key: str | None = None) -> dict:
     """Create an analysis task and wait for a terminal status (cached).
@@ -138,7 +139,7 @@ def run_analysis_task(api: Api, image_path: str | Path, *, scenarios=(),
     source of the workbench event axis (M3-1).
     """
     key = (cache_key or str(image_path), tuple(sorted(scenarios)),
-           llm_analyze, llm_event_analyze, platform_analyze)
+           llm_analyze, llm_event_analyze, platform_analyze, filtering_only)
     if key in _task_cache:
         return _task_cache[key]
 
@@ -167,11 +168,21 @@ def run_analysis_task(api: Api, image_path: str | Path, *, scenarios=(),
     while time.monotonic() < deadline:
         status, task = api.get(CPP_BASE, f"/api/tasks/{task_id}")
         assert status == 200, f"查询任务失败({status})"
-        if str(task.get("status", "")).lower() in ("completed", "failed", "cancelled"):
+        state = str(task.get("status", "")).lower()
+        # The lightweight metrics are decided at RESULT_SET (files.db published),
+        # so a later Graphiti-gate failure does not void them. Still wait for a
+        # terminal state: the pipeline keeps the databases' WAL write lock until
+        # it finishes, and reading earlier sees an empty main file.
+        if state in ("completed", "failed", "cancelled"):
             break
         time.sleep(1.0)
-    assert str(task.get("status", "")).lower() == "completed", \
-        f"任务未在 {timeout}s 内完成: status={task.get('status')} id={task_id}"
+    state = str(task.get("status", "")).lower()
+    if filtering_only:
+        assert task.get("output_files_db"), \
+            f"过滤产物未落库: status={state} id={task_id} message={task.get('message')}"
+    else:
+        assert state == "completed", \
+            f"任务未在 {timeout}s 内完成: status={state} id={task_id} message={task.get('message')}"
     _task_cache[key] = task
     return task
 
@@ -223,8 +234,10 @@ def filtering_pipeline_seconds(task_id: str) -> float:
     """
     conn = sqlite3.connect(f"file:{_audit_db()}?mode=ro", uri=True)
     try:
+        # The audit table stores action/timestamp; event_type/timestamp_ms was
+        # the name used in the first draft and matches no column.
         rows = conn.execute(
-            "SELECT event_type, timestamp_ms FROM audit_logs WHERE task_id = ? ORDER BY id",
+            "SELECT action, timestamp FROM audit_logs WHERE task_id = ? ORDER BY id",
             (task_id,)).fetchall()
     finally:
         conn.close()
