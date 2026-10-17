@@ -915,11 +915,35 @@ class ServiceManager:
             repo = InvestigationRepository(db_path, task_id)
             runtime = AgentRuntimeRepository(repo)
 
+            read_svc = None
+            try:
+                read_svc = self.investigation_read_service
+            except Exception:
+                try:
+                    read_svc = self._create_investigation_read_service()
+                except Exception:
+                    pass
+
+            event_svc = None
+            try:
+                event_svc = self.investigation_event_service
+            except Exception:
+                try:
+                    event_svc = self._create_investigation_event_service()
+                except Exception:
+                    pass
+
+            inv_svc = None
+            try:
+                inv_svc = self._get_or_create_investigation_service()
+            except Exception:
+                pass
+
             tool_services = ForensicToolServices(
                 cpp_backend=self._cpp_backend,
-                investigation_service=self._get_or_create_investigation_service(),
-                investigation_read_service=self.investigation_read_service(),
-                investigation_event_service=self.investigation_event_service(),
+                investigation_service=inv_svc,
+                investigation_read_service=read_svc,
+                investigation_event_service=event_svc,
                 secondary_analysis_executor=getattr(self, "_secondary_analysis_executor", None),
             )
             registry = build_read_only_registry(tool_services)
