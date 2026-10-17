@@ -1089,6 +1089,27 @@ def verify_trusted_review_caller(http_request: Request) -> None:
                     detail=f"untrusted host header {host_header!r}: local mutations are restricted to trusted development hosts",
                 )
 
+        # Validate X-Forwarded-Host header against proxy spoofing
+        forwarded_host = headers.get("x-forwarded-host")
+        if forwarded_host:
+            f_host_name = forwarded_host.split(",")[0].split(":")[0].strip().lower()
+            if f_host_name and f_host_name not in _TRUSTED_LOCAL_HOSTS:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"untrusted x-forwarded-host header {forwarded_host!r}: local mutations are restricted to trusted development hosts",
+                )
+
+        # Validate X-Forwarded-For header against proxied external requests
+        forwarded_for = headers.get("x-forwarded-for")
+        if forwarded_for:
+            for ip_raw in forwarded_for.split(","):
+                ip = ip_raw.strip().lower()
+                if ip and ip not in _TRUSTED_LOCAL_HOSTS:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"untrusted x-forwarded-for address {ip_raw.strip()!r}: local mutations cannot be forwarded from external networks",
+                    )
+
         origin = headers.get("origin")
         if origin:
             from urllib.parse import urlparse

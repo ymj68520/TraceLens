@@ -1236,4 +1236,87 @@ def test_t41_null_origin_header_rejected(env):
     assert "untrusted request origin" in resp_null_origin.json()["detail"]
 
 
+# ---------------------------------------------------------------------------
+# T42: Unexpected X-Forwarded-Host rejected with 403 Forbidden (RCA-2A.24a)
+# ---------------------------------------------------------------------------
+def test_t42_unexpected_x_forwarded_host_rejected(env):
+    """T42: X-Forwarded-Host header validation blocks proxy host spoofing."""
+    cycle_req = {
+        "task_id": env.fixture.task_id,
+        "investigation_id": env.fixture.investigation_id,
+        "request_id": "req-cycle-xfwd-host-01",
+    }
 
+    resp = env.client.post(
+        "/api/investigation/agent/cycle",
+        json=cycle_req,
+        headers={"X-Forwarded-Host": "evil-proxy.com"},
+    )
+    assert resp.status_code == 403
+    assert "untrusted x-forwarded-host header" in resp.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# T43: Untrusted X-Forwarded-For rejected with 403 Forbidden (RCA-2A.24a)
+# ---------------------------------------------------------------------------
+def test_t43_untrusted_x_forwarded_for_rejected(env):
+    """T43: External client IP in X-Forwarded-For rejected."""
+    cycle_req = {
+        "task_id": env.fixture.task_id,
+        "investigation_id": env.fixture.investigation_id,
+        "request_id": "req-cycle-xfwd-for-01",
+    }
+
+    resp = env.client.post(
+        "/api/investigation/agent/cycle",
+        json=cycle_req,
+        headers={"X-Forwarded-For": "203.0.113.195"},
+    )
+    assert resp.status_code == 403
+    assert "untrusted x-forwarded-for address" in resp.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# T44: Untrusted multi-hop X-Forwarded-For rejected (RCA-2A.24a)
+# ---------------------------------------------------------------------------
+def test_t44_multi_hop_x_forwarded_for_rejected(env):
+    """T44: Multi-hop X-Forwarded-For containing an external IP rejected."""
+    cycle_req = {
+        "task_id": env.fixture.task_id,
+        "investigation_id": env.fixture.investigation_id,
+        "request_id": "req-cycle-xfwd-multi-01",
+    }
+
+    resp = env.client.post(
+        "/api/investigation/agent/cycle",
+        json=cycle_req,
+        headers={"X-Forwarded-For": "127.0.0.1, 198.51.100.1"},
+    )
+    assert resp.status_code == 403
+    assert "untrusted x-forwarded-for address" in resp.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# T45: Valid local X-Forwarded headers accepted (RCA-2A.24a)
+# ---------------------------------------------------------------------------
+def test_t45_valid_local_forwarded_headers_accepted(env):
+    """T45: Trusted local proxy headers pass verify_trusted_review_caller."""
+    cycle_req = {
+        "task_id": env.fixture.task_id,
+        "investigation_id": env.fixture.investigation_id,
+        "request_id": "req-cycle-xfwd-local-01",
+    }
+
+    resp = env.client.post(
+        "/api/investigation/agent/cycle",
+        json=cycle_req,
+        headers={
+            "Host": "localhost",
+            "X-Forwarded-Host": "127.0.0.1",
+            "X-Forwarded-For": "127.0.0.1, localhost",
+        },
+    )
+    # The security gate passed, so it progresses to the feature gate check
+    assert resp.status_code == 403
+    assert "agent execution is disabled by configuration" in resp.json()["detail"]
+    assert "untrusted" not in resp.json()["detail"]

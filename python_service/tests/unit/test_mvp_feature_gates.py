@@ -327,4 +327,5 @@ def test_system_features_endpoint_reports_defaults():
         "workbench_llm_enabled": False,
         "memory_forensics_enabled": False,
         "oss_analysis_enabled": False,
+        "agent_execution_enabled": False,
     }
