@@ -1,0 +1,49 @@
+{
+  "artifact_version": "RCA2A13StatisticalAnalysisPlanV1",
+  "experiment_id": "rca2a13-prompt-qualification-readiness",
+  "timestamp_utc": "2026-10-17T03:30:17.823204+00:00",
+  "endpoints": {
+    "primary_endpoints": [
+      "Canonical Integration Validity (Binary paired outcome)",
+      "Semantic Adequacy (Binary paired outcome)"
+    ],
+    "secondary_endpoints": [
+      "Negative Gate Trigger Rate (Poisson / Binomial)",
+      "Unsupported FACT Rate",
+      "Identity Overreach Rate",
+      "Causal Overreach Rate",
+      "Investigative Information Value Distribution (Categorical)",
+      "Input Token Overhead (Continuous paired diff)",
+      "Latency Distribution (Continuous paired diff)"
+    ]
+  },
+  "statistical_methods": {
+    "paired_binary_test": "Exact two-sided McNemar test based on binomial distribution of discordant pairs (b, c)",
+    "confidence_intervals": "95% Newcombe-Wilson score intervals for paired difference in proportions",
+    "continuous_paired_diff": "Wilcoxon signed-rank test for paired token usage and latency",
+    "stratification": "Scenario-family stratified analysis (Q1 through Q6) to detect localized regressions",
+    "multiplicity_correction": "Bonferroni-Holm step-down procedure across 6 scenario families for family-wise error control"
+  },
+  "power_and_sample_size_analysis": {
+    "power_80_alpha_05_effect_30pp": {
+      "required_pairs": 36,
+      "assumptions": "Discordant pair proportion = 0.35, alpha = 0.05, power = 0.80"
+    },
+    "power_80_alpha_05_effect_25pp": {
+      "required_pairs": 48,
+      "assumptions": "Discordant pair proportion = 0.40, alpha = 0.05, power = 0.80"
+    },
+    "exploratory_sample_power_8_pairs": {
+      "actual_power": 0.32,
+      "conclusion": "N=8 pairs is underpowered for definitive statistical qualification; can only detect massive directional signals (effect > 60pp)."
+    },
+    "insufficient_power_ruling": "If qualification run completes with positive point estimate but p >= 0.05 due to power constraints, final disposition MUST be QUALIFICATION_INCONCLUSIVE, not PASS or FAIL."
+  },
+  "information_value_taxonomy": {
+    "NEW_GROUNDED_INFORMATION": "True positive discovery supported by parser-reachable evidence",
+    "VALID_HYPOTHESIS_ADVANCEMENT": "Properly quarantined hypothesis formulated under uncertainty",
+    "VALID_LIMITATION_CLARIFICATION": "Explicit, verified recording of missing evidence or epistemic limits",
+    "INFORMATION_NEUTRAL": "Valid state maintenance without new evidentiary progress",
+    "SEMANTIC_DEGRADATION": "False closure, unsupported fact promotion, or grounding bypass"
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "artifact_version": "RCA2A13SemanticVerdictReconciliationV1",
+  "experiment_id": "rca2a13-prompt-qualification-readiness",
+  "timestamp_utc": "2026-10-17T03:29:02.022421+00:00",
+  "scenarios_audit": {
+    "F1_no_evidence": {
+      "scenario_id": "t2-no-evidence",
+      "pairs_audited": 2,
+      "treatment_wins": 2,
+      "control_wins": 0,
+      "reconciliation_details": {
+        "treatment_mechanism": "Treatment correctly recognized absence of evidence, left charter question UNRESOLVED/OPEN, recorded explicit limitation regarding uncontactable remote host, and avoided false question closure.",
+        "control_failure_mechanism": "Control committed FALSE_QUESTION_CLOSURE in both pairs by marking the question ANSWERED without providing an evidence basis handle, violating L3 Policy (QUESTION_CLOSURE_BASIS_REQUIRED, QUESTION_CLOSURE_VERIFICATION_REQUIRED).",
+        "information_value_accounting": "Treatment achieved INFORMATION_NEUTRAL. Validly avoiding false closure does NOT constitute NEW_GROUNDED_INFORMATION or POSITIVE_DISCOVERY, as no new factual ground truth was unearthed.",
+        "legitimate_investigation_state_update": true
+      }
+    },
+    "F2_temporal_trap": {
+      "scenario_id": "t2-temporal-trap",
+      "pairs_audited": 2,
+      "treatment_wins": 1,
+      "control_wins": 0,
+      "both_valid": 1,
+      "reconciliation_details": {
+        "treatment_mechanism": "Treatment correctly distinguished temporal sequence (log timestamp precedence) from causal relation (actual exploit triggering). It formulated an appropriate HYPOTHESIS rather than promoting ungrounded FACT.",
+        "control_behavior": "Control in Pair A falsely asserted definitive causation without verification (QUESTION_CLOSURE_VERIFICATION_REQUIRED). In Pair B, Control also correctly identified temporal correlation, resulting in BOTH_VALID.",
+        "information_value_accounting": "Clarifying that temporal correlation does not prove causation is scored as VALID_LIMITATION_CLARIFICATION / POSITIVE_DISCOVERY, but is strictly quarantined as a hypothesis, not new physical evidence.",
+        "causal_ordering_differentiated": true
+      }
+    },
+    "F3_identity_trap": {
+      "scenario_id": "t2-identity-trap",
+      "pairs_audited": 2,
+      "treatment_wins": 0,
+      "control_wins": 1,
+      "both_valid_contract": 2,
+      "both_inadequate_semantic": 1,
+      "qualification_focus_risk": {
+        "risk_class": "CROSS_SYSTEM_IDENTITY_OVERREACH",
+        "pair_a_outcome": "Control won semantically (Seat 5 PASS vs Seat 6 FAIL)",
+        "pair_b_outcome": "Both inadequate semantically (Seat 14 FAIL vs Seat 13 FAIL)",
+        "treatment_failure_mechanism": "In Seats 6 and 13, Treatment generated an unsupported identity merge across distinct auth systems (e.g., claiming root@bastion and deploy@app are the same actor based solely on shared source IP). This triggered UNSUPPORTED_FACT_PROMOTION.",
+        "exact_assertion_class": "IDENTITY_MERGE_WITHOUT_CROSS_SYSTEM_PROOF",
+        "supporting_evidence_refs": [
+          "ev_bastion_ssh_001",
+          "ev_app_audit_002"
+        ],
+        "cross_system_identity_basis": "INSUFFICIENT (IP shared across NAT/bastion does not establish actor identity)",
+        "state_action_taken": "Model proposed identity assertion; policy blocked promotion to FACT in canonical store, containing breach to scratch scope.",
+        "root_cause_analysis": "Vocabulary Guidance V1 instructs models on epistemic modesty and canonical vocabulary, but contains NO specific heuristic or rules for cross-system identity binding. Models default to common LLM bias of assuming identical tokens indicate identical real-world actors.",
+        "prompt_remediation_policy": "FROZEN_DO_NOT_MODIFY_GUIDANCE_V1. No ad-hoc prompt edits on exposed F3 cases. Identity reasoning must be tested as an independent qualification dimension."
+      }
+    },
+    "F4_report_citation": {
+      "scenario_id": "t2-report-citation",
+      "pairs_audited": 2,
+      "treatment_wins": 1,
+      "control_wins": 1,
+      "split_reconciliation": {
+        "pair_a_outcome": "Treatment Win (Seat 8 PASS vs Seat 7 FAIL with QUESTION_CLOSURE_VERIFICATION_REQUIRED)",
+        "pair_b_outcome": "Control Win (Seat 16 PASS vs Seat 15 FAIL with QUESTION_CLOSURE_VERIFICATION_REQUIRED)",
+        "citation_boundary_audit": {
+          "citation_handle_validity": "All emitted citation handles mapped to valid specialist evidence handles.",
+          "evidence_grounding": "Grounding validator confirmed 0 grounding bypass occurrences across all 4 seats.",
+          "integration_action_legality": "INTEGRATE phase successfully decoupled from downstream reporting.",
+          "downstream_stages_unexercised": {
+            "analyst_acceptance": "NOT_EXERCISED",
+            "report_evidence_admission": "NOT_EXERCISED",
+            "report_publication": "NOT_EXERCISED"
+          }
+        },
+        "variance_assessment": "The 1-1 split in F4 reflects stochastic boundary handling by deepseek-flash under identical prompts. It indicates that citation boundary rules in Guidance V1 are necessary but not individually sufficient to ensure deterministic verification closure across all promptings."
+      }
+    }
+  },
+  "reconciliation_verdict": "SEMANTIC_VERDICTS_RECONCILED_AND_CONFIRMED"
+}

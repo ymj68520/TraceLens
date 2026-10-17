@@ -1,0 +1,54 @@
+{
+  "artifact_version": "RCA2A13HarnessReadinessReportV1",
+  "experiment_id": "rca2a13-prompt-qualification-readiness",
+  "timestamp_utc": "2026-10-17T03:36:53.037302+00:00",
+  "test_suite": "python_service/tests/unit/benchmarks/test_rca2a13_qualification_readiness.py",
+  "offline_simulation_battery": {
+    "total_tests": 22,
+    "tests_passed": 22,
+    "tests_failed": 0,
+    "scenarios": {
+      "Q01_qualification_protocol_identity": "PASS",
+      "Q02_holdout_exposure_rejection": "PASS",
+      "Q03_historical_fixture_reuse_rejection": "PASS",
+      "Q04_arm_blindness": "PASS",
+      "Q05_paired_initial_state_parity": "PASS",
+      "Q06_canonical_validity_accounting": "PASS",
+      "Q07_semantic_defect_accounting": "PASS",
+      "Q08_identity_overreach_detection": "PASS",
+      "Q09_causal_overreach_detection": "PASS",
+      "Q10_citation_boundary_enforcement": "PASS",
+      "Q11_zero_accepted_unsupported_fact": "PASS",
+      "Q12_model_defect_vs_safety_breach": "PASS",
+      "Q13_provider_error_separation": "PASS",
+      "Q14_durable_claim_crash_recovery": "PASS",
+      "Q15_experiment_id_collision_rejection": "PASS",
+      "Q16_no_repeated_consumed_seat": "PASS",
+      "Q17_no_production_db_writes": "PASS",
+      "Q18_exact_metric_denominators": "PASS",
+      "Q19_human_adjudication_disagreement_handling": "PASS",
+      "Q20_historical_artifacts_unchanged": "PASS",
+      "Q21_full_experiment_budget_enforcement": "PASS",
+      "Q22_zero_real_network_requests": "PASS"
+    }
+  },
+  "harness_capabilities_verified": {
+    "fresh_experiment_identity": "VERIFIED",
+    "durable_seat_claims": "VERIFIED",
+    "append_only_diagnostics": "VERIFIED",
+    "frozen_runtime_hash": "VERIFIED",
+    "isolated_scratch_db": "VERIFIED",
+    "arm_blind_oracle": "VERIFIED",
+    "stop_policy_v2": "VERIFIED",
+    "request_budget_enforcement": "VERIFIED",
+    "provider_error_accounting": "VERIFIED",
+    "zero_network_calls_guarantee": "VERIFIED (REAL_PROVIDER_REQUESTS = 0)"
+  },
+  "production_code_modifications": {
+    "production_prompt_modified": false,
+    "production_schema_modified": false,
+    "production_resolver_or_policy_modified": false,
+    "modifications_scope": "BENCHMARK_TESTS_ONLY"
+  },
+  "harness_verdict": "QUALIFICATION_HARNESS_READY"
+}

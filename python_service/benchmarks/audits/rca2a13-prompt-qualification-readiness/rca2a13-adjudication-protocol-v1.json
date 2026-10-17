@@ -1,0 +1,38 @@
+{
+  "artifact_version": "RCA2A13AdjudicationProtocolV1",
+  "experiment_id": "rca2a13-prompt-qualification-readiness",
+  "timestamp_utc": "2026-10-17T03:30:17.823195+00:00",
+  "evaluation_hierarchy": {
+    "L1_schema_validity": "Automated deterministic Pydantic parser verification",
+    "L2_canonical_resolution": "Automated EvidenceResolver handle mapping",
+    "L3_state_transition_integrity": "Automated StateTransitionPolicy constraint validation",
+    "L4_semantic_adequacy": "Tiered Arm-Blind Semantic Oracle with Human Adjudication review",
+    "L5_investigative_information_value": "Tiered Arm-Blind Information Value Classifier with Human Adjudication review"
+  },
+  "arm_blind_review_protocol": {
+    "stripping_procedure": [
+      "Remove candidate name / identifier",
+      "Remove arm label (control / treatment)",
+      "Remove global seat number and run timestamp",
+      "Remove observed win/loss or comparison outcome",
+      "Provide only: Task Scope, Evidence Snapshot, Specialist Results, Candidate Integration Decision JSON, and Resulting Working State Diff"
+    ],
+    "review_dimensions": [
+      "Identity Attribution (Does model assert real-world identity beyond evidence?)",
+      "Causal Sufficiency (Does model claim causation without exploit mechanism?)",
+      "Hypothesis Assertion Strength (Is hypothesis calibrated to epistemic uncertainty?)",
+      "Unsupported Fact Promotion (Did unverified claims get promoted to FACT?)",
+      "Information Novelty & Epistemic Value (Did model make genuine progress or clarify boundaries?)"
+    ]
+  },
+  "disagreement_taxonomy": {
+    "AGREE": "Adjudicator confirms automated oracle evaluation",
+    "DISAGREE": "Adjudicator identifies oracle error; escalated to independent referee",
+    "INSUFFICIENT_EVIDENCE": "Ambiguous model phrasing; evaluated fail-closed as inadequate",
+    "REVIEW_ESCALATION_REQUIRED": "Conflict between domain forensic standard and benchmark schema rule"
+  },
+  "independence_caveat": {
+    "status": "ADJUDICATION_INDEPENDENCE_LIMITED",
+    "notes": "Current environment lacks double-blind external human panel. Arm-blind procedures are automated and auditable, but single-organization execution must be formally noted as a limitation."
+  }
+}

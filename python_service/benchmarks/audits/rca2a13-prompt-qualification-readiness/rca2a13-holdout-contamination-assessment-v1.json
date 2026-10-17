@@ -1,0 +1,66 @@
+{
+  "artifact_version": "RCA2A13HoldoutContaminationAssessmentV1",
+  "experiment_id": "rca2a13-prompt-qualification-readiness",
+  "timestamp_utc": "2026-10-17T03:29:32.982346+00:00",
+  "repository_fixture_inventory": {
+    "total_fixtures_found": 4,
+    "fixtures": {
+      "t2-no-evidence": {
+        "scenario_tier": "F1",
+        "previously_executed": true,
+        "previously_inspected": true,
+        "used_for_prompt_design": true,
+        "used_for_oracle_design": true,
+        "used_for_runner_debugging": true,
+        "publicly_reported": true,
+        "contamination_classification": "EXPOSED_FOR_DEVELOPMENT",
+        "sub_classification": "PROMPT_ADAPTED_TO_CASE"
+      },
+      "t2-temporal-trap": {
+        "scenario_tier": "F2",
+        "previously_executed": true,
+        "previously_inspected": true,
+        "used_for_prompt_design": true,
+        "used_for_oracle_design": true,
+        "used_for_runner_debugging": true,
+        "publicly_reported": true,
+        "contamination_classification": "EXPOSED_FOR_DEVELOPMENT",
+        "sub_classification": "PROMPT_ADAPTED_TO_CASE"
+      },
+      "t2-identity-trap": {
+        "scenario_tier": "F3",
+        "previously_executed": true,
+        "previously_inspected": true,
+        "used_for_prompt_design": false,
+        "used_for_oracle_design": true,
+        "used_for_runner_debugging": true,
+        "publicly_reported": true,
+        "contamination_classification": "EXPOSED_FOR_DEVELOPMENT",
+        "sub_classification": "ORACLE_ADAPTED_TO_CASE"
+      },
+      "t2-report-citation": {
+        "scenario_tier": "F4",
+        "previously_executed": true,
+        "previously_inspected": true,
+        "used_for_prompt_design": false,
+        "used_for_oracle_design": true,
+        "used_for_runner_debugging": true,
+        "publicly_reported": true,
+        "contamination_classification": "EXPOSED_FOR_DEVELOPMENT",
+        "sub_classification": "ORACLE_ADAPTED_TO_CASE"
+      }
+    }
+  },
+  "clean_candidates_in_repo": 0,
+  "assessment_conclusion": {
+    "status": "ALL_CURRENT_FIXTURES_EXPOSED",
+    "contamination_risk": "HIGH_IF_REUSED_FOR_QUALIFICATION",
+    "mandatory_policy": "NO_QUALIFICATION_ON_EXPOSED_FIXTURES",
+    "qualification_requirement": "A dedicated, sealed holdout battery (Q1-Q6) must be authored with novel scenarios, unobserved entities, fresh log traces, and sealed ground truth manifests."
+  },
+  "holdout_governance_rules": {
+    "author_isolation": "Fixture Author != Prompt Candidate Developer",
+    "truth_manifest_isolation": "Truth Manifest != Model Input (Truth manifest visible only to automated oracle and blind adjudicators)",
+    "sealing_mechanism": "Cryptographic sealing: Holdout fixtures frozen with SHA-256 hashes prior to candidate dispatch; truth manifests encrypted or access-restricted until evaluation phase."
+  }
+}

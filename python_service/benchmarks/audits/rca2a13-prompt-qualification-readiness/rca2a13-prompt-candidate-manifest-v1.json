@@ -1,0 +1,43 @@
+{
+  "artifact_version": "RCA2A13PromptCandidateManifestV1",
+  "experiment_id": "rca2a13-prompt-qualification-readiness",
+  "timestamp_utc": "2026-10-17T03:29:32.982304+00:00",
+  "candidate": {
+    "candidate_id": "supervisor-v2-vocabulary-guidance-v1",
+    "candidate_status": "QUALIFICATION_PENDING",
+    "candidate_type": "PROMPT_ONLY",
+    "production_default": "original-supervisor-v2",
+    "output_schema": {
+      "schema_class": "SupervisorIntegrationDecisionV2",
+      "schema_hash": "a214ec4f5e81fcbb",
+      "pydantic_ai_contract": "SUPERVISOR_INTEGRATION_DECISION_V2"
+    },
+    "guidance_component": {
+      "component_name": "Vocabulary Guidance V1",
+      "source_file": "benchmarks/contracts/experimental/integration_vocabulary_guidance_v1.py",
+      "sha256": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+      "static_token_overhead": 312,
+      "guidance_text_verbatim": "Vocabulary guidance (clarifies the EXISTING contract; introduces no new values and changes no rule):\n1. A fresh D* result shown with \"status\": \"completed\" means the specialist DELEGATION finished executing. It says nothing about the state of the Question it investigated. Delegation lifecycle status and Question status are DIFFERENT state machines.\n2. A question's to_status must be one of the frozen QuestionStatus values: 'open', 'in_progress', 'answered', 'unresolved', 'blocked', 'deferred', 'superseded'. \"completed\" is NOT a Question status and will be rejected.\n3. to_status (where the question stands) and disposition (what the investigation concluded) are DIFFERENT semantic fields; one never substitutes for the other.\n4. \"not_supported\" is a QuestionDisposition value ('supported', 'not_supported', 'inconclusive', 'unavailable', 'not_applicable'), not a QuestionStatus; never emit it as a to_status.\n5. Absence of evidence does NOT by itself make a question closable: \"answered\" and \"unresolved\" remain subject to the existing closure policy (basis refs, limitations/summary, and for required questions a passed closure verification). Never fabricate evidence, never invent basis handles, and never imply verification results that do not exist.\n6. Every existing validation, binding and StateTransitionPolicy rule is unchanged by this note; this guidance only explains vocabulary that already exists in the schema."
+    },
+    "base_prompt": {
+      "component_name": "Supervisor V2 Instructions",
+      "status": "UNCHANGED_PRODUCTION_BASE"
+    },
+    "model_visible_input_parity": {
+      "instructions_diff": "EXACT_SUFFIX_GUIDANCE_V1",
+      "projection_contract": "IDENTICAL",
+      "output_tool_schemas": "IDENTICAL",
+      "model_settings": "IDENTICAL"
+    }
+  },
+  "f3_improvement_decision": {
+    "decision": "FREEZE_GUIDANCE_V1_WITHOUT_F3_ADAPTATION",
+    "rationale": "Ad-hoc modification of Guidance V1 to specifically prevent F3 identity overreach on known development samples would constitute prompt overfitting to exposed fixtures. Entity Identity reasoning must be evaluated as an independent qualification dimension on clean, unseen holdouts.",
+    "future_specialist_guidance_rule": "If entity identity guidance is created in the future, it must be versioned as a distinct candidate (e.g. guidance-v2-entity-binding), tested against independent development data, assigned a fresh SHA-256, and evaluated separately."
+  },
+  "production_safety_status": {
+    "production_prompt_mutated": false,
+    "production_schema_mutated": false,
+    "qualification_disposition": "QUALIFICATION_PENDING_INDEPENDENT_HOLDOUT"
+  }
+}

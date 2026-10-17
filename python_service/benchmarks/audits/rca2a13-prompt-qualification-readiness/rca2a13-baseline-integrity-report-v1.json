@@ -1,0 +1,83 @@
+{
+  "artifact_version": "RCA2A13BaselineIntegrityReportV1",
+  "experiment_id": "rca2a13-prompt-qualification-readiness",
+  "timestamp_utc": "2026-10-17T03:28:10.661317+00:00",
+  "provenance": {
+    "repository_head": "0419e111520e1460ff65bac7fb540f9b07745ec0",
+    "rca2a12_runtime_commit": "0c2e9b9cac244ebaaf457156ce0ff8dcc264b7b3",
+    "rca2a12_artifact_commit": "0419e111520e1460ff65bac7fb540f9b07745ec0",
+    "rca2a11b_baseline_commit": "622b2327e93706f24c1a3049aa1bc10af971f58c",
+    "ancestor_chain_verified": true
+  },
+  "historical_artifacts_audit": {
+    "rca2a12_files_count": 16,
+    "rca2a12_file_hashes": {
+      "rca2a12-baseline-integrity-report-v1.json": "a0f8af497a616d2753e18f313258ba2fcb04a7c7abed31b08c811c339a1f8b88",
+      "rca2a12-cost-reliability-report-v1.json": "305cdc01c460fe1aa6ba1333eaf6f4ceca8664fb786aca74881c59b8f04fab16",
+      "rca2a12-effective-model-identity-v1.json": "ee5124c3f67d1d85c51ad3832c1aacd0e33b775f12dfba3faaf300b91e96d812",
+      "rca2a12-evidence-integrity-report-v1.json": "aa0a4acf94f5061af91ac9eef3394a7881ebab2ff81e2d1da0a944973a48922b",
+      "rca2a12-experiment-manifest-v1.json": "240c602307638aea528c7c0b435da457bff33662d30126ebe7cbf532845a3e0b",
+      "rca2a12-final-decision-report-v1.json": "1ec456c0fa01e50db8ddc975be048f7af545a794ce7f1771373d30d74775b503",
+      "rca2a12-information-value-analysis-v1.json": "832fbd711fb0448f007a620d8b6a217f02b30cb0160ac7fa5466181a48c2d9c1",
+      "rca2a12-pairwise-comparison-v1.json": "87351e87f1933fad5fb66c03b89d9a2367a69f23aa890a8e02a0ce63b138592d",
+      "rca2a12-precall-gate-report-v1.json": "ee78d3beb8062174491847eb403dd0381cbc3598f5027da0b8ac186efba27d8d",
+      "rca2a12-runner-readiness-report-v1.json": "7377e019d6afda2dc816b05fbbd8ccef72ff196d91dcee265b8ad9a63a4a1835",
+      "rca2a12-runtime-identity-record-v1.json": "0f07a7370d878b616df8c3cc12f9f904e6bcd135e62c04b3b1fd666ffeb647e4",
+      "rca2a12-scenario-stratified-analysis-v1.json": "4f462c01964ffb05b8a6f3edb588d842339e40fde0d89df5175e193e5c98ec64",
+      "rca2a12-seat-execution-matrix-v1.json": "c9f0e3b78645958a121d73f46a3b1764c0b8e1d34bd85dc19a7f1744032946f2",
+      "rca2a12-semantic-oracle-evaluation-v1.json": "af4403242a661510552dc32603c196448f697e91c5d3a899fee96d5830a179ca",
+      "rca2a12-stop-policy-contract-v2.json": "ece9652b6bfcaa78beb6be703d333ad833eeeac6d00cf95a965972a28c56c654",
+      "rca2a12-stop-taxonomy-audit-v1.json": "e131c543ea38c7bf42477bb36201b5a84f33f6d1ffdd198f9bd91051d2ea1c26"
+    },
+    "all_files_present": true,
+    "historical_artifacts_immutable": true
+  },
+  "reusable_components_evaluation": {
+    "cross_case_runner": {
+      "source": "benchmarks.isolated_integration.cross_case_runner",
+      "status": "REUSABLE",
+      "notes": "Fully encapsulates balanced seat scheduling, token usage capture, and Pydantic pass tracking."
+    },
+    "stop_policy_v2": {
+      "source": "benchmarks.isolated_integration.stop_taxonomy.STOP_POLICY_CONTRACT_V2",
+      "status": "REUSABLE",
+      "notes": "Decoupled model defect from infrastructure safety breach; certified containment in RCA-2A.12."
+    },
+    "stop_taxonomy": {
+      "source": "benchmarks.isolated_integration.stop_taxonomy",
+      "status": "REUSABLE",
+      "notes": "Rigorous failure categorization across execution, model severity, semantic, and canonical status."
+    },
+    "frozen_fixture_builder": {
+      "source": "benchmarks.isolated_integration.cross_case_fixtures",
+      "status": "REUSABLE_WITH_HOLDOUT_ISOLATION_CAVEAT",
+      "notes": "Fixture builders are robust, but F1-F4 fixtures are EXPOSED_FOR_DEVELOPMENT and cannot serve as qualification holdouts."
+    },
+    "scratch_cloner": {
+      "source": "benchmarks.isolated_integration.cross_case_fixtures.build_cloned_cross_case_pair",
+      "status": "REUSABLE",
+      "notes": "Guarantees complete database isolation for each seat run."
+    },
+    "semantic_oracle_l1_l5": {
+      "source": "benchmarks.isolated_integration.semantic_oracle",
+      "status": "REUSABLE",
+      "notes": "5-layer tiered oracle successfully validated across 16 seats."
+    },
+    "runtime_identity_guard": {
+      "source": "benchmarks.isolated_integration.gateway_diagnostic_runner",
+      "status": "REUSABLE",
+      "notes": "Prevents model/provider drift before logical calls."
+    },
+    "durable_claims": {
+      "source": "benchmarks.isolated_integration.cross_case_runner.CrossCaseSeatContext",
+      "status": "REUSABLE",
+      "notes": "Monotonic timestamps, crash recovery, and single-execution guarantees."
+    },
+    "diagnostic_sink": {
+      "source": "benchmarks.isolated_integration.cross_case_runner",
+      "status": "REUSABLE",
+      "notes": "Append-only per-seat logging."
+    }
+  },
+  "integrity_verdict": "BASELINE_VERIFIED_AND_INTACT"
+}
