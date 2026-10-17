@@ -1,0 +1,29 @@
+{
+  "artifact_version": "RCA2A11PreCallGateReportV1",
+  "experiment_id": "rca2a11-deepseek-flash-vocabulary-comparison",
+  "created_at_utc": "2026-10-17T01:45:39.872846+00:00",
+  "precall_gates": {
+    "REPOSITORY_BASELINE_VERIFIED": true,
+    "RCA2A10G_IDENTITY_RECONCILED": true,
+    "HISTORICAL_ARTIFACTS_PRESERVED": true,
+    "EXPERIMENT_IDENTITY_UNIQUE": true,
+    "EFFECTIVE_PROVIDER_RESOLVED": true,
+    "EFFECTIVE_MODEL_RESOLVED": true,
+    "MODEL_ALIAS_POLICY_FROZEN": true,
+    "PRODUCTION_SCHEMA_UNCHANGED": true,
+    "PROMPT_DIFF_EXACT": true,
+    "ORACLE_IDENTITY_FROZEN": true,
+    "ORACLE_ARM_BLIND": true,
+    "PRODUCTION_STAGE_PARITY_PASS": true,
+    "CROSS_ARM_PARITY_PASS": true,
+    "FIXTURE_INTEGRITY_PASS": true,
+    "EVIDENCE_RESOLVER_PASS": true,
+    "STALE_INPUT_REJECTION_PASS": true,
+    "DURABLE_SEAT_CLAIM_READY": true,
+    "DIAGNOSTIC_SINK_READY": true,
+    "REQUEST_BUDGET_VALID": true,
+    "FULL_OFFLINE_SIMULATION_PASS": true,
+    "NO_PRODUCTION_MUTATION": true
+  },
+  "all_gates_pass": true
+}

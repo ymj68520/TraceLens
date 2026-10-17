@@ -1,0 +1,26 @@
+{
+  "artifact_version": "RCA2A11RunnerReadinessReportV1",
+  "experiment_id": "rca2a11-deepseek-flash-vocabulary-comparison",
+  "created_at_utc": "2026-10-17T01:45:39.872846+00:00",
+  "offline_simulation_battery": "ALL_16_SIMULATION_TESTS_PASS",
+  "simulations_covered": [
+    "A. 16-seat normal execution",
+    "B. Provider failure on seat 1",
+    "C. Provider failure after a completed pair",
+    "D. Output Retry self-correction",
+    "E. Output Retry exhaustion",
+    "F. Canonical resolution rejection",
+    "G. Semantic Oracle negative gate",
+    "H. Stale revision rejection",
+    "I. Stale source hash rejection",
+    "J. Cross-arm DB isolation",
+    "K. Experiment ID collision",
+    "L. Crash after durable claim",
+    "M. Unknown outcome cannot rerun",
+    "N. Runtime identity drift",
+    "O. Report Admission not exercised",
+    "P. Diagnostic sink write failure"
+  ],
+  "harness_integrity": "ISOLATED_INTEGRATE_HARNESS_VERIFIED",
+  "real_model_calls_in_tests": 0
+}
