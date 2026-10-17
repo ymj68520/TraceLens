@@ -310,7 +310,7 @@ bool TaskManager::wait_for_graphiti_ingestion(const std::string& task_id, const 
         if (active_job.empty()) {
             update_progress(task_id, TaskPhase::FINALIZING, 50,
                             "Triggering knowledge graph ingestion (attempt " + std::to_string(attempt) + ")...");
-            active_job = proxy.async_ingest(task_id, forensics::IngestionMode::FULL);
+            active_job = proxy.async_ingest(task_id, forensics::IngestionMode::ANALYZED_ONLY);
             if (!active_job.empty()) {
                 std::lock_guard<std::mutex> lock(mtx_);
                 if (tasks_.count(task_id)) tasks_[task_id].graphiti_job_id = active_job;
@@ -1043,7 +1043,10 @@ void TaskManager::start_analysis(const std::string& task_id) {
             if (!noOptionalIntelligence) {
                 try {
                     auto& proxy = forensics::LLMPythonProxy::instance();
-                    graphiti_job_id = proxy.async_ingest(task_id, forensics::IngestionMode::FULL);
+                    // LLM_MAX_FILES caps which files were described. The tail must
+                    // not ingest the whole files table: analyzed_only builds
+                    // entities and episodes only for files that have a description.
+                    graphiti_job_id = proxy.async_ingest(task_id, forensics::IngestionMode::ANALYZED_ONLY);
                 } catch (const std::exception& e) {
                     std::cerr << "Warning: Exception triggering Graphiti ingestion: " << e.what() << std::endl;
                     add_audit_log(task_id, "WARNING", "Graphiti ingestion failed: " + std::string(e.what()));

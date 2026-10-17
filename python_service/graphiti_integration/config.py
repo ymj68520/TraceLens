@@ -17,6 +17,15 @@ except ImportError:
 PINNED_GRAPHITI_MODEL = "microsoft/phi-4"
 
 
+def _bounded_concurrency(raw: Optional[str], default: int = 1, ceiling: int = 64) -> int:
+    """Parse a concurrency env value. Missing or invalid falls back to 1."""
+    try:
+        value = int(raw) if raw not in (None, "") else default
+    except (TypeError, ValueError):
+        value = default
+    return min(ceiling, max(1, value))
+
+
 @dataclass
 class GraphitiConfig:
     """Configuration for Graphiti integration pipeline."""
@@ -42,6 +51,8 @@ class GraphitiConfig:
     
     # Batch processing
     batch_size: int = 10  # Reduced from 50 to prevent token overflow
+    # In-flight add_episode calls inside one batch. 1 keeps extraction serial.
+    max_concurrency: int = 1
     max_retries: int = 3
     retry_delay: float = 1.0  # seconds
     max_episodes: int = 0  # Maximum episodes to process (0 = unlimited)
@@ -122,6 +133,7 @@ class GraphitiConfig:
             embedder_dim=int(os.getenv("EMBEDDING_DIM", "768")),
             db_path=os.getenv("GRAPHITI_DB_PATH"),
             batch_size=int(os.getenv("GRAPHITI_BATCH_SIZE", "10")),  # Reduced from 50
+            max_concurrency=_bounded_concurrency(os.getenv("GRAPHITI_MAX_CONCURRENCY", "1")),
             max_retries=int(os.getenv("GRAPHITI_MAX_RETRIES", "3")),
             group_id=os.getenv("GRAPHITI_GROUP_ID", "forensics_files"),
             use_local_llm=os.getenv("GRAPHITI_USE_LOCAL_LLM", "true").lower() == "true",
@@ -161,6 +173,9 @@ class GraphitiConfig:
         
         if self.batch_size < 1:
             errors.append("Batch size must be at least 1")
+
+        if self.max_concurrency < 1:
+            errors.append("Max concurrency must be at least 1")
         
         return errors
 

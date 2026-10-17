@@ -15,6 +15,9 @@
 #include <cstring>
 #include <fstream>
 #include <numeric>
+#include <atomic>
+#include <mutex>
+#include <thread>
 
 namespace fs = std::filesystem;
 
@@ -74,6 +77,7 @@ std::string LLMAnalysisService::resolveFileForAnalysis(const std::string& filePa
     try {
         // Reuse one extractor across files: opening the image + every partition
         // + the SQLite DB per file dominates analysis time on large images.
+        std::lock_guard<std::mutex> extractLock(imageExtractorMutex_);
         if (!imageExtractor_) {
             auto extractor = std::make_unique<FileExtractor>(imagePath_, rawDbPath_);
             if (!extractor->initialize()) {
@@ -142,42 +146,111 @@ int LLMAnalysisService::analyzeAllFiles(const std::string& filesDbPath,
         files.resize(options.maxFiles);
     }
 
-    int analyzed = 0;
-    int total = files.size();
+    return runFileAnalyses(filesDbPath, options, files, progressCallback, "full-mode");
+}
 
-    for (size_t i = 0; i < files.size(); ++i) {
-        const auto& filePath = files[i];
+int LLMAnalysisService::llmConcurrency() const {
+    auto& configManager = ConfigManager::instance();
+    if (!configManager.isLoaded()) {
+        configManager.load();
+    }
+    int workers = configManager.getLLMMaxConcurrency();
+    return workers < 1 ? 1 : workers;
+}
 
-        if (progressCallback) {
-            if (!progressCallback(i + 1, total, filePath)) {
-                std::cout << "LLM full-mode analysis stopped by callback after "
-                          << i << "/" << total << " files" << std::endl;
-                break;  // task cancelled
-            }
-        }
-
-        try {
-            // Resolve the file to a host-filesystem path (extract from image if needed)
-            std::string localPath = resolveFileForAnalysis(filePath);
-            if (localPath.empty()) {
-                continue;  // extraction failed, warning already logged
-            }
-
-            auto result = fileAnalyzer_->analyzeFile(localPath, options.maxContentLength);
-
-            if (result.success) {
-                // Store directly to _files.db in the files table
-                storeDescription(filesDbPath, filePath,
-                                result.description, result.summary, result.keywords,
-                                result.modelUsed);
-                analyzed++;
-            }
-        } catch (const std::exception& e) {
-            std::cerr << "Failed to analyze file " << filePath << ": " << e.what() << std::endl;
-        }
+int LLMAnalysisService::runFileAnalyses(const std::string& filesDbPath,
+                                        const AnalysisOptions& options,
+                                        const std::vector<std::string>& files,
+                                        ProgressCallback progressCallback,
+                                        const char* modeLabel) {
+    const int total = static_cast<int>(files.size());
+    if (total == 0) {
+        return 0;
     }
 
-    return analyzed;
+    // One shared LLMClient serialises every chat() on its httplib handle, so
+    // each worker gets its own router and FileAnalyzer. Workers is 1 unless
+    // LLM_MAX_CONCURRENCY says otherwise, which keeps the old single-flight path.
+    int workers = llmConcurrency();
+    if (workers > total) {
+        workers = total;
+    }
+
+    std::atomic<int> next{0};
+    std::atomic<int> analyzed{0};
+    std::atomic<bool> stop{false};
+    std::mutex progressMutex;
+
+    auto worker = [&]() {
+        auto router = std::make_shared<llm::ModelRouter>();
+        auto& configManager = ConfigManager::instance();
+        router->addModel("default", configManager.getTextModelConfig(), llm::ModelInfo{
+            "default",
+            "text",
+            {llm::ModelCapability::TextGeneration, llm::ModelCapability::Analysis}
+        });
+        llm::FileAnalyzer analyzer(router);
+
+        while (!stop.load()) {
+            const int index = next.fetch_add(1);
+            if (index >= total) {
+                return;
+            }
+            const std::string& filePath = files[static_cast<size_t>(index)];
+
+            if (progressCallback) {
+                std::lock_guard<std::mutex> lock(progressMutex);
+                if (!stop.load() && !progressCallback(index + 1, total, filePath)) {
+                    std::cout << "LLM " << modeLabel << " analysis stopped by callback after "
+                              << index << "/" << total << " files" << std::endl;
+                    stop.store(true);
+                    return;
+                }
+            }
+            if (stop.load()) {
+                return;
+            }
+
+            try {
+                // Resolve the file to a host-filesystem path (extract from image if needed).
+                // Image extraction itself is serialised inside resolveFileForAnalysis.
+                std::string localPath = resolveFileForAnalysis(filePath);
+                if (localPath.empty()) {
+                    continue;  // extraction failed, warning already logged
+                }
+
+                auto result = analyzer.analyzeFile(localPath, options.maxContentLength);
+                if (result.success) {
+                    if (storeDescription(filesDbPath, filePath,
+                                         result.description, result.summary, result.keywords,
+                                         result.modelUsed)) {
+                        analyzed.fetch_add(1);
+                    }
+                } else if (result.errorMessage.size() > 0) {
+                    std::cerr << "Warning: LLM analysis failed for " << filePath
+                              << ": " << result.errorMessage << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "Failed to analyze file " << filePath << ": " << e.what() << std::endl;
+            }
+        }
+    };
+
+    if (workers == 1) {
+        worker();
+    } else {
+        std::cout << "LLM " << modeLabel << " analysis running with concurrency "
+                  << workers << " (" << total << " files)" << std::endl;
+        std::vector<std::thread> pool;
+        pool.reserve(static_cast<size_t>(workers));
+        for (int i = 0; i < workers; ++i) {
+            pool.emplace_back(worker);
+        }
+        for (auto& thread : pool) {
+            thread.join();
+        }
+    }
+    return analyzed.load();
 }
 
 int LLMAnalysisService::analyzeSmartFiles(const std::string& filesDbPath,
@@ -196,47 +269,7 @@ int LLMAnalysisService::analyzeSmartFiles(const std::string& filesDbPath,
         return 0;
     }
 
-    int analyzed = 0;
-    int total = importantFiles.size();
-
-    for (size_t i = 0; i < importantFiles.size(); ++i) {
-        const auto& filePath = importantFiles[i];
-
-        if (progressCallback) {
-            if (!progressCallback(i + 1, total, filePath)) {
-                std::cout << "LLM smart-mode analysis stopped by callback after "
-                          << i << "/" << total << " files" << std::endl;
-                break;  // task cancelled
-            }
-        }
-
-        try {
-            // Resolve the file to a host-filesystem path (extract from image if needed)
-            std::string localPath = resolveFileForAnalysis(filePath);
-            if (localPath.empty()) {
-                continue;  // extraction failed, warning already logged
-            }
-
-            auto result = fileAnalyzer_->analyzeFile(localPath, options.maxContentLength);
-
-            if (result.success) {
-                // Store directly to _files.db in the files table
-                storeDescription(filesDbPath, filePath,
-                                result.description, result.summary, result.keywords,
-                                result.modelUsed);
-                analyzed++;
-            } else {
-                // Failed LLM analyses were previously silent — the task summary
-                // under-reported with no way to see why.
-                std::cerr << "Warning: LLM analysis failed for " << filePath
-                          << ": " << result.errorMessage << std::endl;
-            }
-        } catch (const std::exception& e) {
-            std::cerr << "Failed to analyze file " << filePath << ": " << e.what() << std::endl;
-        }
-    }
-
-    return analyzed;
+    return runFileAnalyses(filesDbPath, options, importantFiles, progressCallback, "smart-mode");
 }
 
 std::vector<std::string> LLMAnalysisService::selectImportantFiles(const std::string& filesDbPath,

@@ -4,6 +4,7 @@
 #include <vector>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include "LLMIntegration/LLMDataTypes.h"
 #include "LLMIntegration/FileAnalyzer.h"
 #include "LLMIntegration/ModelRouter.h"
@@ -157,7 +158,18 @@ private:
 
     // Lazily-created shared extractor for image-backed file resolution.
     // Opening the image + partitions + DB per file is far too slow.
+    // TSK handles inside it are not safe to use from several threads, so every
+    // extraction takes imageExtractorMutex_ even when analysis itself is concurrent.
     std::unique_ptr<::FileExtractor> imageExtractor_;
+    std::mutex imageExtractorMutex_;
+
+    // LLM_MAX_CONCURRENCY workers. 1 keeps the historical one-file-at-a-time loop.
+    int llmConcurrency() const;
+    int runFileAnalyses(const std::string& filesDbPath,
+                        const AnalysisOptions& options,
+                        const std::vector<std::string>& files,
+                        ProgressCallback progressCallback,
+                        const char* modeLabel);
 
     // Internal helpers
     bool storeDescription(const std::string& dbPath,

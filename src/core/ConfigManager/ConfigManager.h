@@ -49,6 +49,8 @@ public:
     int getLLMArtifactBatchSize() const;
     int getLLMArtifactBatchRetries() const;
     bool getLLMSkipBinary() const;
+    // LLM_MAX_CONCURRENCY：文件分析与事件簇分析同时在飞的 LLM 调用数。1 = 串行。
+    int getLLMMaxConcurrency() const;
     // MVP 裁剪（mvp-phase1-acceptance §4.8）：Windows/Linux 工件 LLM 分析管线
     // 逃生舱开关，默认关闭；置 true 恢复。Android 分析不受影响。
     bool getWinLinuxArtifactLlmEnabled() const;

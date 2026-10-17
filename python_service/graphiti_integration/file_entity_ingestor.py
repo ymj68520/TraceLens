@@ -480,31 +480,25 @@ class FileEntityIngestor:
         Returns:
             Number of duplicate groups found.
         """
-        # Find all MD5s with multiple files in this task
+        # Chain each duplicate group instead of linking every pair. A group of
+        # a few hundred identical files would otherwise be tens of thousands of
+        # edges and as many round trips; a chain keeps the SAME_CONTENT_AS
+        # relation and the write count linear in the number of files.
         query = """
             MATCH (t:Task {id: $task_id})-[:CONTAINS_FILE]->(f:File)
             WHERE f.md5 IS NOT NULL AND f.md5 <> ''
-            WITH f.md5 AS md5, collect(f) AS files
+            WITH f.md5 AS md5, f ORDER BY id(f)
+            WITH md5, collect(f) AS files
             WHERE size(files) > 1
-            RETURN md5, files
+            UNWIND range(0, size(files) - 2) AS i
+            WITH md5, files[i] AS a, files[i + 1] AS b
+            MERGE (a)-[:SAME_CONTENT_AS {confidence: 1.0}]->(b)
+            MERGE (b)-[:SAME_CONTENT_AS {confidence: 1.0}]->(a)
+            RETURN count(DISTINCT md5) AS groups
         """
 
         results = await self._run_query(query, {"task_id": task_id})
-        groups_found = len(results)
-
-        for group in results:
-            md5 = group["md5"]
-            files = group["files"]
-
-            # Create bidirectional SAME_CONTENT_AS edges
-            for i, f1 in enumerate(files):
-                for f2 in files[i+1:]:
-                    await self._run_query("""
-                        MATCH (f1:File {id: $id1})
-                        MATCH (f2:File {id: $id2})
-                        MERGE (f1)-[:SAME_CONTENT_AS {confidence: 1.0}]->(f2)
-                        MERGE (f2)-[:SAME_CONTENT_AS {confidence: 1.0}]->(f1)
-                    """, {"id1": f1["id"], "id2": f2["id"]})
+        groups_found = results[0]["groups"] if results else 0
 
         if groups_found > 0:
             logger.info(f"Found {groups_found} duplicate MD5 groups in task {task_id}")

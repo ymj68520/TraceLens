@@ -219,3 +219,93 @@ async def test_batch_ingest_without_hook_processes_all():
     assert result.successful == 3  # the fake ingest_episode never raises
     assert ingestor.done == 3
     assert result.failed == 0
+
+
+class _Config:
+    max_concurrency = 1
+
+
+class _ConcurrentIngestor(GraphitiIngestor):
+    """Counts how many add_episode calls overlap."""
+
+    def __init__(self, concurrency: int):
+        self.config = _Config()
+        self.config.max_concurrency = concurrency
+        self._initialized = True
+        self.peak = 0
+        self._inflight = 0
+        self.done = 0
+
+    async def ingest_episode(self, episode, group_id=None):
+        self._inflight += 1
+        self.peak = max(self.peak, self._inflight)
+        await asyncio.sleep(0.05)
+        self._inflight -= 1
+        self.done += 1
+
+
+@pytest.mark.asyncio
+async def test_batch_ingest_concurrency_bounds_inflight_episodes():
+    ingestor = _ConcurrentIngestor(concurrency=2)
+    episodes = [_Episode(f"ep{i}") for i in range(5)]
+    result = await ingestor.batch_ingest(episodes, group_id="g")
+    assert result.successful == 5
+    assert result.failed == 0
+    assert ingestor.done == 5
+    assert ingestor.peak == 2
+
+
+@pytest.mark.asyncio
+async def test_batch_ingest_concurrency_still_aborts_the_tail():
+    ingestor = _ConcurrentIngestor(concurrency=3)
+    episodes = [_Episode(f"ep{i}") for i in range(6)]
+
+    async def hook(meta):
+        if meta["index"] == 4:
+            raise episode_gate.GateAborted("stop")
+
+    episode_gate.set_before_episode_hook(hook)
+    try:
+        result = await ingestor.batch_ingest(episodes, group_id="g")
+    finally:
+        episode_gate.set_before_episode_hook(None)
+
+    # The gate admits at most `concurrency` episodes before the abort, and
+    # the two never-started episodes are reported as failed.
+    assert ingestor.done == 4
+    assert result.successful == 4
+    assert result.failed == 2
+    assert any("aborted by episode gate" in e["error"] for e in result.errors)
+
+
+@pytest.mark.asyncio
+async def test_concurrent_episodes_use_distinct_graphiti_clients(monkeypatch):
+    """add_episode mutates its client's driver, so each slot needs its own."""
+    built = []
+
+    class _Client:
+        def __init__(self, name):
+            self.name = name
+
+        async def build_indices_and_constraints(self):
+            return None
+
+    primary = _Client("primary")
+
+    async def fake_worker(self):
+        client = _Client(f"worker-{len(built)}")
+        built.append(client)
+        return client
+
+    monkeypatch.setattr(GraphitiIngestor, "_make_worker_client", fake_worker)
+    ingestor = GraphitiIngestor.__new__(GraphitiIngestor)
+    ingestor._client = primary
+    ingestor._worker_clients = []
+    ingestor.config = _Config()
+    ingestor.config.use_local_llm = True
+
+    clients = await ingestor._clients_for_concurrency(3)
+    assert len(clients) == 3
+    assert len({id(c) for c in clients}) == 3
+    assert clients[0] is primary
+    assert built == clients[1:]

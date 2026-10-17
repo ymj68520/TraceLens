@@ -120,6 +120,11 @@ class GraphitiIngestor:
         self._owned_llm_client = None
         self._owned_embedder = None
         self._initialized = False
+        # add_episode replaces self.driver whenever the group id differs from
+        # the driver's database name, and Neo4jDriver.clone is a no-op. One
+        # shared client therefore cannot run two episodes at once. Slots above
+        # the first each own a Graphiti instance; they are closed with this one.
+        self._worker_clients: list = []
     
     def _create_llm_client(self) -> OpenAIGenericClient:
         """Create LLM client configured for local or OpenAI."""
@@ -290,7 +295,58 @@ class GraphitiIngestor:
         await self._client.build_indices_and_constraints()
         self._initialized = True
         logger.info("Graphiti initialized successfully")
-    
+
+    async def _make_worker_client(self):
+        """A Graphiti instance that does not share our driver.
+
+        The primary client is the one ``initialize`` built. Every extra slot
+        gets its own driver so concurrent ``add_episode`` calls cannot swap
+        each other's database out from under them. LLM and embedder clients
+        are stateless HTTP pools and are shared.
+        """
+        if self._client is None or not self.config.use_local_llm:
+            return None
+        llm_config = LLMConfig(
+            api_key=self.config.llm_api_key,
+            model=self.config.llm_model,
+            base_url=self.config.llm_base_url,
+        )
+        client = Graphiti(
+            uri=self.config.neo4j_uri,
+            user=self.config.neo4j_user,
+            password=self.config.neo4j_password,
+            llm_client=self._owned_llm_client,
+            embedder=self._owned_embedder,
+            cross_encoder=OpenAIRerankerClient(
+                client=self._owned_llm_client,
+                config=llm_config,
+            ),
+        )
+        await client.build_indices_and_constraints()
+        return client
+
+    async def _clients_for_concurrency(self, concurrency: int) -> list:
+        """One Graphiti client per in-flight episode, the primary first.
+
+        A real client grows extra drivers up to ``concurrency``. A stand-in
+        that cannot build drivers (tests, or a caller-supplied client) is
+        repeated so the batch still runs; that caller owns its own safety.
+        """
+        primary = getattr(self, "_client", None)
+        if primary is None:
+            return [None] * concurrency
+        if not hasattr(self, "_worker_clients"):
+            self._worker_clients = []
+        while len(self._worker_clients) < concurrency - 1:
+            worker = await self._make_worker_client()
+            if worker is None:
+                break
+            self._worker_clients.append(worker)
+        clients = [primary, *self._worker_clients]
+        if len(clients) < concurrency:
+            clients = [primary] * concurrency
+        return clients[:concurrency]
+
     async def close(self) -> None:
         """Close owned HTTP pools and the Graphiti/Neo4j driver (D4b).
 
@@ -300,6 +356,13 @@ class GraphitiIngestor:
         failure must not prevent the other resources from being released.
         """
         errors = []
+        for worker in self._worker_clients:
+            try:
+                await worker.close()
+            except Exception as exc:
+                errors.append(exc)
+                logger.warning("Failed to close Graphiti worker client: %s", type(exc).__name__)
+        self._worker_clients = []
         for resource in (self._owned_llm_client, self._owned_embedder):
             if resource is None:
                 continue
@@ -333,6 +396,7 @@ class GraphitiIngestor:
         self,
         episode: EpisodeData,
         group_id: Optional[str] = None,
+        client=None,
     ) -> bool:
         """
         Ingest a single episode into Graphiti.
@@ -378,7 +442,7 @@ class GraphitiIngestor:
                 # ingest as text, while still passing custom_extraction_instructions
                 # so the LLM keeps forensically-relevant tokens (usernames, IPs,
                 # paths, hashes) that the default prompts discard.
-                await self._client.add_episode(
+                await (client or self._client).add_episode(
                     name=episode.name,
                     episode_body=rendered_body,
                     source_description=episode.source_description,
@@ -401,7 +465,88 @@ class GraphitiIngestor:
         raise IngestionError(
             f"Failed to ingest episode {episode.name} after {self.config.max_retries} attempts: {last_error}"
         )
-    
+
+    async def _extract_episode(self, episode: EpisodeData, group_id: Optional[str], client=None):
+        """Run one add_episode. Returns None on success, otherwise the error."""
+        try:
+            # Only a real per-slot client is passed through. Test stand-ins
+            # override ingest_episode without the parameter, and the serial
+            # path has no slot client at all.
+            if client is not None and client is not getattr(self, "_client", None):
+                await self.ingest_episode(episode, group_id, client=client)
+            else:
+                await self.ingest_episode(episode, group_id)
+            logger.debug(f"Ingested episode: {episode.name}")
+            return None
+        except Exception as e:
+            if isinstance(e, IngestionError):
+                logger.error(f"Failed to ingest episode {episode.name}: {e}")
+            else:
+                logger.error(f"Unexpected error ingesting {episode.name}: {e}")
+            return e
+
+    def _record_outcome(self, episode: EpisodeData, error: Optional[BaseException], result: IngestionResult) -> None:
+        if error is None:
+            result.successful += 1
+            return
+        result.failed += 1
+        result.errors.append({
+            "episode": episode.name,
+            "file_path": episode.file_path,
+            "error": str(error),
+        })
+
+    async def _ingest_one(
+        self,
+        episode: EpisodeData,
+        index: int,
+        total: int,
+        group_id: Optional[str],
+        result: IngestionResult,
+        *,
+        run_gate: bool = True,
+    ) -> bool:
+        """Ingest one episode into ``result``.
+
+        Returns False when the before-episode gate aborts the batch. The
+        aborting episode and every episode after it are counted as failed.
+        """
+        if run_gate:
+            try:
+                await episode_gate.run_before_episode({
+                    "index": index,
+                    "total": total,
+                    "group_id": group_id,
+                    "episode": episode.name,
+                })
+            except episode_gate.GateAborted as e:
+                remaining = total - index
+                result.failed += remaining
+                result.errors.append({
+                    "episode": episode.name,
+                    "file_path": episode.file_path,
+                    "error": f"aborted by episode gate after {index} episode(s): {e}; "
+                             f"{remaining} episode(s) not attempted",
+                })
+                logger.warning(
+                    f"Batch ingestion aborted at episode {index + 1}/{total}: {e}"
+                )
+                return False
+
+        self._record_outcome(episode, await self._extract_episode(episode, group_id), result)
+        return True
+
+    async def _report_progress(self, progress_callback, current: int, total: int) -> None:
+        # Callers register either a plain function or a coroutine (the job
+        # manager's _ep_progress is async); calling the async form without
+        # awaiting it only builds a coroutine that is never scheduled, so the
+        # reported percentage never moved.
+        if not progress_callback:
+            return
+        outcome = progress_callback(current, total)
+        if inspect.isawaitable(outcome):
+            await outcome
+
     async def batch_ingest(
         self,
         episodes: list[EpisodeData],
@@ -423,64 +568,102 @@ class GraphitiIngestor:
             await self.initialize()
 
         result = IngestionResult(total_episodes=len(episodes))
+        # _ingest_one mutates the shared result. The serial path never overlaps;
+        # the concurrent path does, so every mutation takes this lock.
+        result_lock = asyncio.Lock()
+        # Test stand-ins and older callers construct an ingestor without a
+        # GraphitiConfig; missing config keeps the historical serial loop.
+        config = getattr(self, "config", None)
+        try:
+            concurrency = int(getattr(config, "max_concurrency", 1) or 1)
+        except (TypeError, ValueError):
+            concurrency = 1
+        concurrency = max(1, concurrency)
 
-        for i, episode in enumerate(episodes):
-            # Before-episode gate (llm-throughput-hardening SPEC A): the upper
-            # layer may pause between episodes (foreground LLM busy) or abort
-            # (job timeout). Aborted episodes are reported, never skipped.
-            try:
-                await episode_gate.run_before_episode({
-                    "index": i,
-                    "total": len(episodes),
-                    "group_id": group_id,
-                    "episode": episode.name,
-                })
-            except episode_gate.GateAborted as e:
-                remaining = len(episodes) - i
-                result.failed += remaining
+        # GRAPHITI_MAX_CONCURRENCY=1 keeps the historical single-flight loop:
+        # the before-episode gate runs between episodes, and an abort stops
+        # the batch before any later episode starts.
+        if concurrency == 1:
+            for i, episode in enumerate(episodes):
+                if not await self._ingest_one(episode, i, len(episodes), group_id, result):
+                    break
+                await self._report_progress(progress_callback, result.successful + result.failed, len(episodes))
+        else:
+            # The gate still runs before an episode may start, and it runs
+            # one episode at a time so a GateAborted stops later episodes
+            # from starting. Episodes already past the gate finish together,
+            # bounded by the semaphore. Graphiti's in-group dedup assumes
+            # sequential add_episode; raising this races that dedup.
+            logger.info(
+                "Graphiti extraction concurrency=%d for %d episode(s); "
+                "in-group dedup is not serialised within this batch",
+                concurrency, len(episodes),
+            )
+            # Acquired before the gate so at most `concurrency` episodes are
+            # admitted, and released only after that episode's extraction
+            # finishes. Holding it across the gate is what keeps a pause or
+            # abort from racing ahead of the worker cap.
+            abort_reason: Optional[BaseException] = None
+            started = 0
+            # One driver per in-flight episode. add_episode writes the group id
+            # onto its client's driver, so a client may run one episode at a
+            # time and the next episode for that client waits until it returns.
+            clients = await self._clients_for_concurrency(concurrency)
+            free_clients: asyncio.Queue = asyncio.Queue()
+            for worker_client in clients:
+                free_clients.put_nowait(worker_client)
+
+            async def _run(index: int, episode: EpisodeData, worker_client) -> None:
+                try:
+                    # The gate already ran before this task was created, so the
+                    # LLM call itself stays outside result_lock.
+                    outcome = await self._extract_episode(episode, group_id, client=worker_client)
+                    async with result_lock:
+                        self._record_outcome(episode, outcome, result)
+                        completed = result.successful + result.failed
+                    await self._report_progress(progress_callback, completed, len(episodes))
+                finally:
+                    free_clients.put_nowait(worker_client)
+
+            pending: set[asyncio.Task] = set()
+            for i, episode in enumerate(episodes):
+                worker_client = await free_clients.get()
+                try:
+                    await episode_gate.run_before_episode({
+                        "index": i,
+                        "total": len(episodes),
+                        "group_id": group_id,
+                        "episode": episode.name,
+                    })
+                except episode_gate.GateAborted as e:
+                    free_clients.put_nowait(worker_client)
+                    abort_reason = e
+                    break
+                except Exception:
+                    free_clients.put_nowait(worker_client)
+                    raise
+                started = i + 1
+                pending.add(asyncio.create_task(_run(i, episode, worker_client)))
+
+            if pending:
+                done, _ = await asyncio.wait(pending)
+                for task in done:
+                    task.result()
+
+            if abort_reason is not None:
+                remaining = len(episodes) - started
+                async with result_lock:
+                    result.failed += remaining
                 result.errors.append({
-                    "episode": episode.name,
-                    "file_path": episode.file_path,
-                    "error": f"aborted by episode gate after {i} episode(s): {e}; "
+                    "episode": episodes[started].name,
+                    "file_path": episodes[started].file_path,
+                    "error": f"aborted by episode gate after {started} episode(s): {abort_reason}; "
                              f"{remaining} episode(s) not attempted",
                 })
                 logger.warning(
-                    f"Batch ingestion aborted at episode {i + 1}/{len(episodes)}: {e}"
+                    f"Batch ingestion aborted at episode {started + 1}/{len(episodes)}: {abort_reason}"
                 )
-                break
 
-            try:
-                await self.ingest_episode(episode, group_id)
-                result.successful += 1
-                logger.debug(f"Ingested episode: {episode.name}")
-
-            except IngestionError as e:
-                result.failed += 1
-                result.errors.append({
-                    "episode": episode.name,
-                    "file_path": episode.file_path,
-                    "error": str(e),
-                })
-                logger.error(f"Failed to ingest episode {episode.name}: {e}")
-            
-            except Exception as e:
-                result.failed += 1
-                result.errors.append({
-                    "episode": episode.name,
-                    "file_path": episode.file_path,
-                    "error": str(e),
-                })
-                logger.error(f"Unexpected error ingesting {episode.name}: {e}")
-            
-            # Progress callback. Callers register either a plain function or a
-            # coroutine (the job manager's _ep_progress is async); calling the
-            # async form without awaiting it only builds a coroutine that is
-            # never scheduled, so the reported percentage never moved.
-            if progress_callback:
-                outcome = progress_callback(i + 1, len(episodes))
-                if inspect.isawaitable(outcome):
-                    await outcome
-        
         logger.info(
             f"Batch ingestion complete: {result.successful}/{result.total_episodes} "
             f"successful ({result.success_rate:.1f}%)"

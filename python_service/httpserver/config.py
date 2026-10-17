@@ -212,7 +212,9 @@ class Settings(BaseSettings):
     llm_max_retries: int = Field(default=3, alias="LLM_MAX_RETRIES")
     llm_context_length: int = Field(default=4096, alias="LLM_CONTEXT_LENGTH")
     # Concurrent LLM calls per analysis pipeline (event clusters, files, artifacts).
-    llm_max_concurrency: int = Field(default=3, ge=1, le=64, alias="LLM_MAX_CONCURRENCY")
+    # Default 1 matches the C++ pipeline and .env: raise it only when the LLM
+    # server can take more than one in-flight chat completion.
+    llm_max_concurrency: int = Field(default=1, ge=1, le=64, alias="LLM_MAX_CONCURRENCY")
 
     # Video content analysis (2026-09-19): the video is covered end-to-end by
     # sampling frames at a fixed density (LLM_VIDEO_FPS) and describing each
@@ -247,6 +249,10 @@ class Settings(BaseSettings):
     
     graphiti_use_local_llm: bool = Field(default=True, alias="GRAPHITI_USE_LOCAL_LLM")
     graphiti_batch_size: int = Field(default=50, alias="GRAPHITI_BATCH_SIZE")
+    # Episodes extracted at once inside one batch. GRAPHITI_BATCH_SIZE only
+    # slices the SQLite read; this is the LLM-call fan-out. Default 1 keeps
+    # add_episode sequential, which Graphiti's in-group dedup assumes.
+    graphiti_max_concurrency: int = Field(default=1, ge=1, le=64, alias="GRAPHITI_MAX_CONCURRENCY")
     graphiti_max_retries: int = Field(default=3, alias="GRAPHITI_MAX_RETRIES")
     graphiti_group_id: str = Field(default="forensics_files", alias="GRAPHITI_GROUP_ID")
     # Whether to include the full llm_description in each episode body. More text

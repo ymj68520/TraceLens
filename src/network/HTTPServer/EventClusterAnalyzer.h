@@ -4,8 +4,10 @@
 
 #include <string>
 #include <vector>
+#include <tuple>
 #include <functional>
 #include <memory>
+#include <mutex>
 
 namespace forensics {
 namespace llm {
@@ -27,6 +29,14 @@ public:
     bool analyzeEventCluster(const std::string& eventsDbPath, 
                            int64_t timeWindow, 
                            const std::string& eventType, 
+                           const std::string& parentDirectory);
+
+    // 同上，但使用调用方自己的 router。并发分析时每个工作线程持有独立的
+    // LLMClient，不能共用成员 router_（其 chat() 被同一把锁串行化）。
+    bool analyzeEventCluster(const std::shared_ptr<llm::ModelRouter>& router,
+                           const std::string& eventsDbPath,
+                           int64_t timeWindow,
+                           const std::string& eventType,
                            const std::string& parentDirectory);
 
     // 批量分析事件簇
@@ -62,6 +72,8 @@ public:
 private:
     bool initialized_ = false;
     std::shared_ptr<llm::ModelRouter> router_;
+    // LLM_MAX_CONCURRENCY. 1 keeps the historical one-cluster-at-a-time loop.
+    int llmConcurrency() const;
 
     // 获取事件簇的事件列表
     std::vector<std::tuple<int64_t, std::string, std::string, int64_t, std::string>> getClusterEvents(

@@ -16,7 +16,8 @@ enum class IngestionMode {
     FULL,           // Ingest files, events, and all platform data with File entities
     FILES_ONLY,     // Update file entities only (skip events)
     EVENTS_ONLY,    // Sync events to existing files
-    SINGLE_FILE     // Single file update
+    SINGLE_FILE,    // Single file update
+    ANALYZED_ONLY   // Only files the LLM actually described, plus their events
 };
 
 /**
@@ -28,6 +29,7 @@ inline std::string to_string(IngestionMode mode) {
         case IngestionMode::FILES_ONLY: return "files_only";
         case IngestionMode::EVENTS_ONLY: return "events_only";
         case IngestionMode::SINGLE_FILE: return "single_file";
+        case IngestionMode::ANALYZED_ONLY: return "analyzed_only";
         default: return "full";
     }
 }

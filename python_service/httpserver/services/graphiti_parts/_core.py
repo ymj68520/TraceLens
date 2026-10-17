@@ -143,6 +143,7 @@ class GraphitiCoreMixin:
             embedder_api_key=os.getenv("EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY"),
             embedder_dim=int(os.getenv("EMBEDDING_DIM", "768")),
             batch_size=self.settings.graphiti_batch_size,
+            max_concurrency=max(1, getattr(self.settings, "graphiti_max_concurrency", 1)),
             max_retries=self.settings.graphiti_max_retries,
             group_id=group_id,
             use_local_llm=self.settings.graphiti_use_local_llm,

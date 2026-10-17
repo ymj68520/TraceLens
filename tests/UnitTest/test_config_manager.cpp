@@ -2,6 +2,7 @@
 #include <gmock/gmock.h>
 #include <filesystem>
 #include <fstream>
+#include <cstdlib>
 #include "ConfigManager/ConfigManager.h"
 
 namespace fs = std::filesystem;
@@ -103,6 +104,33 @@ TEST_F(ConfigManagerTest, EventClusterLimitIsConfigurable) {
     ASSERT_TRUE(config.load(".env"));
     EXPECT_EQ(config.getLLMMaxEventClusters(), 37);
 
+    fs::current_path(currentPath);
+}
+
+TEST_F(ConfigManagerTest, LlmConcurrencyDefaultsToOneAndIsConfigurable) {
+    // dotenv does not overwrite a variable already in the process environment,
+    // and the developer shell may export LLM_MAX_CONCURRENCY. Clear it first
+    // so the assertions see the .env file written below.
+    unsetenv("LLM_MAX_CONCURRENCY");
+
+    createEnvFile("LLM_TIMEOUT_SECONDS=30\n");
+    auto currentPath = fs::current_path();
+    fs::current_path(testDir_);
+
+    auto& config = forensics::ConfigManager::instance();
+    ASSERT_TRUE(config.load(".env"));
+    EXPECT_EQ(config.getLLMMaxConcurrency(), 1);
+
+    createEnvFile("LLM_MAX_CONCURRENCY=4\n");
+    ASSERT_TRUE(config.load(".env"));
+    EXPECT_EQ(config.getLLMMaxConcurrency(), 4);
+
+    unsetenv("LLM_MAX_CONCURRENCY");
+    createEnvFile("LLM_MAX_CONCURRENCY=0\n");
+    ASSERT_TRUE(config.load(".env"));
+    EXPECT_EQ(config.getLLMMaxConcurrency(), 1);
+
+    unsetenv("LLM_MAX_CONCURRENCY");
     fs::current_path(currentPath);
 }
 

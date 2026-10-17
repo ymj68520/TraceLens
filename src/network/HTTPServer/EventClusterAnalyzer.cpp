@@ -9,6 +9,9 @@
 #include <sstream>
 #include <algorithm>
 #include <ctime>
+#include <atomic>
+#include <mutex>
+#include <thread>
 
 namespace forensics {
 
@@ -39,7 +42,24 @@ bool EventClusterAnalyzer::initialize() {
     }
 }
 
+int EventClusterAnalyzer::llmConcurrency() const {
+    auto& configManager = ConfigManager::instance();
+    if (!configManager.isLoaded()) {
+        configManager.load();
+    }
+    int workers = configManager.getLLMMaxConcurrency();
+    return workers < 1 ? 1 : workers;
+}
+
 bool EventClusterAnalyzer::analyzeEventCluster(const std::string& eventsDbPath, 
+                                           int64_t timeWindow, 
+                                           const std::string& eventType, 
+                                           const std::string& parentDirectory) {
+    return analyzeEventCluster(router_, eventsDbPath, timeWindow, eventType, parentDirectory);
+}
+
+bool EventClusterAnalyzer::analyzeEventCluster(const std::shared_ptr<llm::ModelRouter>& router,
+                                           const std::string& eventsDbPath, 
                                            int64_t timeWindow, 
                                            const std::string& eventType, 
                                            const std::string& parentDirectory) {
@@ -80,8 +100,9 @@ Format your response as JSON with the following fields:
 
 Do not include any other text outside of the JSON object.)";
 
-        // 调用LLM进行分析
-        auto response = router_->chat(prompt);
+        // 调用LLM进行分析。并发时每个工作线程传入自己的 router，避免共享
+        // LLMClient 把 chat() 锁成串行。
+        auto response = router->chat(prompt);
         if (!response.success) {
             std::cerr << "LLM request failed: " << response.errorMessage << std::endl;
             return false;
@@ -111,7 +132,7 @@ Do not include any other text outside of the JSON object.)";
 
         // 存储分析结果
         return storeClusterDescription(eventsDbPath, timeWindow, eventType, parentDirectory, 
-                                     summary, description, keywords, router_->getLastUsedModel(), isRelevant);
+                                     summary, description, keywords, router->getLastUsedModel(), isRelevant);
     } catch (const std::exception& e) {
         std::cerr << "Failed to analyze event cluster: " << e.what() << std::endl;
         return false;
@@ -127,26 +148,72 @@ int EventClusterAnalyzer::analyzeEventClusters(const std::string& eventsDbPath,
         }
     }
 
-    int analyzed = 0;
-    int total = clusters.size();
-
-    for (size_t i = 0; i < clusters.size(); ++i) {
-        auto [timeWindow, eventType, parentDirectory] = clusters[i];
-
-        if (progressCallback) {
-            if (!progressCallback(i + 1, total, eventType)) {
-                std::cout << "Event cluster analysis stopped by callback after "
-                          << i << "/" << total << " clusters" << std::endl;
-                break;  // task cancelled
-            }
-        }
-
-        if (analyzeEventCluster(eventsDbPath, timeWindow, eventType, parentDirectory)) {
-            analyzed++;
-        }
+    const int total = static_cast<int>(clusters.size());
+    if (total == 0) {
+        return 0;
     }
 
-    return analyzed;
+    // Same knob as file analysis. Each worker builds its own router because
+    // one LLMClient serialises every chat() on a single httplib handle.
+    int workers = llmConcurrency();
+    if (workers > total) {
+        workers = total;
+    }
+
+    std::atomic<int> next{0};
+    std::atomic<int> analyzed{0};
+    std::atomic<bool> stop{false};
+    std::mutex progressMutex;
+
+    auto worker = [&]() {
+        auto router = std::make_shared<llm::ModelRouter>();
+        router->addModel("default", ConfigManager::instance().getTextModelConfig(), llm::ModelInfo{
+            "default",
+            "text",
+            {llm::ModelCapability::TextGeneration, llm::ModelCapability::Analysis}
+        });
+
+        while (!stop.load()) {
+            const int index = next.fetch_add(1);
+            if (index >= total) {
+                return;
+            }
+            auto [timeWindow, eventType, parentDirectory] = clusters[static_cast<size_t>(index)];
+
+            if (progressCallback) {
+                std::lock_guard<std::mutex> lock(progressMutex);
+                if (!stop.load() && !progressCallback(index + 1, total, eventType)) {
+                    std::cout << "Event cluster analysis stopped by callback after "
+                              << index << "/" << total << " clusters" << std::endl;
+                    stop.store(true);
+                    return;
+                }
+            }
+            if (stop.load()) {
+                return;
+            }
+
+            if (analyzeEventCluster(router, eventsDbPath, timeWindow, eventType, parentDirectory)) {
+                analyzed.fetch_add(1);
+            }
+        }
+    };
+
+    if (workers == 1) {
+        worker();
+    } else {
+        std::cout << "Event cluster analysis running with concurrency "
+                  << workers << " (" << total << " clusters)" << std::endl;
+        std::vector<std::thread> pool;
+        pool.reserve(static_cast<size_t>(workers));
+        for (int i = 0; i < workers; ++i) {
+            pool.emplace_back(worker);
+        }
+        for (auto& thread : pool) {
+            thread.join();
+        }
+    }
+    return analyzed.load();
 }
 
 int EventClusterAnalyzer::analyzeSmartEventClusters(const std::string& eventsDbPath,

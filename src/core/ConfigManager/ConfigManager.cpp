@@ -132,6 +132,16 @@ std::string ConfigManager::getLLMImageDetail() const {
 int ConfigManager::getLLMArtifactBatchSize() const { return bounded_limit(*this, "LLM_ARTIFACT_BATCH_SIZE", 1, 64); }
 int ConfigManager::getLLMArtifactBatchRetries() const { return bounded_limit(*this, "LLM_ARTIFACT_BATCH_RETRIES", 1, 5); }
 bool ConfigManager::getLLMSkipBinary() const { return getBool("LLM_SKIP_BINARY", true); }
+// Default 1 keeps the historical single-flight behaviour. The shared LLMClient
+// serialises every chat() on one httplib handle, so callers that honour this
+// knob give each worker its own client. Unlike the analysis-count limits,
+// 0 is not an "unlimited" opt-in here: a worker pool cannot be unbounded.
+int ConfigManager::getLLMMaxConcurrency() const {
+    int workers = getInt("LLM_MAX_CONCURRENCY", 1);
+    if (workers < 1) return 1;
+    if (workers > 64) return 64;
+    return workers;
+}
 // MVP trim (mvp-phase1-acceptance §4.8): the post-extraction Windows/Linux
 // artifact LLM pipeline is cut from the acceptance scope; structured
 // extraction is unaffected and Android keeps its own analysis.
