@@ -891,6 +891,7 @@ class ServiceManager:
                 DelegationExecutionSummary,
             )
             from .investigation.agent_specialist_executor import (
+                AgentRunPolicy,
                 SpecialistDelegationExecutor,
                 build_execution_envelope,
                 model_config_digest_from_adapter_config,
@@ -952,6 +953,7 @@ class ServiceManager:
                 cpp_backend=self._cpp_backend,
                 settings=self.settings,
                 tool_services=tool_services,
+                policy=AgentRunPolicy(max_model_requests=5),
                 registry_builder=lambda r, observation_sink=None: build_read_only_registry(
                     tool_services, observation_sink=observation_sink
                 ),
@@ -985,9 +987,15 @@ class ServiceManager:
 
             for delegation, action in zip(admitted, delegate_actions):
                 try:
-                    q_text = (
+                    raw_intent = (
                         getattr(action, "investigation_intent", "")
                         or f"Investigate question {action.question_id}"
+                    )
+                    q_text = (
+                        f"{raw_intent}\n"
+                        "Tool query budget: Execute up to 2-3 focused tool queries "
+                        "(e.g., search_files and search_timeline), then immediately "
+                        "synthesize your findings and return the structured specialist result proposal."
                     )
                     pack = assembler.build(
                         task=task_dict,
