@@ -1,0 +1,11 @@
+{
+  "artifact_version": "RCA2A12RunnerReadinessReportV1",
+  "experiment_id": "rca2a12-deepseek-flash-vocabulary-cross-case",
+  "timestamp_utc": "2026-10-17T03:10:05.126340+00:00",
+  "simulation_battery_passed": 27,
+  "simulation_battery_total": 27,
+  "benchmark_suite_passed": 386,
+  "benchmark_suite_total": 386,
+  "full_unit_suite_collected": 2881,
+  "runner_readiness": "CERTIFIED_READY"
+}

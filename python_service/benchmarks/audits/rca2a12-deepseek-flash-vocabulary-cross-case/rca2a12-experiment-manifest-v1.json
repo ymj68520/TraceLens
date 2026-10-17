@@ -1,0 +1,296 @@
+{
+  "artifact_version": "RCA2A12ExperimentManifestV1",
+  "experiment_id": "rca2a12-deepseek-flash-vocabulary-cross-case",
+  "created_at_utc": "2026-10-17T03:10:05.126340+00:00",
+  "runtime_commit": "0c2e9b9cac244ebaaf457156ce0ff8dcc264b7b3",
+  "provider": "generic",
+  "endpoint": "https://chat.cordapp.org/v1",
+  "requested_model": "deepseek-flash",
+  "returned_model_policy": [
+    "deepseek-flash",
+    "deepseek-ai/deepseek-flash",
+    "deepseek/deepseek-flash"
+  ],
+  "stop_policy": "RCA2A12StopPolicyV2",
+  "schema_hash": "a214ec4f5e81fcbb",
+  "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+  "oracle_contract_hash": "b97baaa49f1a4c266abd88c748c1367b23cc96a851a75a65591d9f7760f01a0f",
+  "seat_schedule": [
+    {
+      "global_seat": 1,
+      "scenario_id": "t2-no-evidence",
+      "pair_label": "A",
+      "arm": "control",
+      "pair_id": 1
+    },
+    {
+      "global_seat": 2,
+      "scenario_id": "t2-no-evidence",
+      "pair_label": "A",
+      "arm": "treatment",
+      "pair_id": 1
+    },
+    {
+      "global_seat": 3,
+      "scenario_id": "t2-temporal-trap",
+      "pair_label": "A",
+      "arm": "control",
+      "pair_id": 1
+    },
+    {
+      "global_seat": 4,
+      "scenario_id": "t2-temporal-trap",
+      "pair_label": "A",
+      "arm": "treatment",
+      "pair_id": 1
+    },
+    {
+      "global_seat": 5,
+      "scenario_id": "t2-identity-trap",
+      "pair_label": "A",
+      "arm": "control",
+      "pair_id": 1
+    },
+    {
+      "global_seat": 6,
+      "scenario_id": "t2-identity-trap",
+      "pair_label": "A",
+      "arm": "treatment",
+      "pair_id": 1
+    },
+    {
+      "global_seat": 7,
+      "scenario_id": "t2-report-citation",
+      "pair_label": "A",
+      "arm": "control",
+      "pair_id": 1
+    },
+    {
+      "global_seat": 8,
+      "scenario_id": "t2-report-citation",
+      "pair_label": "A",
+      "arm": "treatment",
+      "pair_id": 1
+    },
+    {
+      "global_seat": 9,
+      "scenario_id": "t2-no-evidence",
+      "pair_label": "B",
+      "arm": "treatment",
+      "pair_id": 2
+    },
+    {
+      "global_seat": 10,
+      "scenario_id": "t2-no-evidence",
+      "pair_label": "B",
+      "arm": "control",
+      "pair_id": 2
+    },
+    {
+      "global_seat": 11,
+      "scenario_id": "t2-temporal-trap",
+      "pair_label": "B",
+      "arm": "treatment",
+      "pair_id": 2
+    },
+    {
+      "global_seat": 12,
+      "scenario_id": "t2-temporal-trap",
+      "pair_label": "B",
+      "arm": "control",
+      "pair_id": 2
+    },
+    {
+      "global_seat": 13,
+      "scenario_id": "t2-identity-trap",
+      "pair_label": "B",
+      "arm": "treatment",
+      "pair_id": 2
+    },
+    {
+      "global_seat": 14,
+      "scenario_id": "t2-identity-trap",
+      "pair_label": "B",
+      "arm": "control",
+      "pair_id": 2
+    },
+    {
+      "global_seat": 15,
+      "scenario_id": "t2-report-citation",
+      "pair_label": "B",
+      "arm": "treatment",
+      "pair_id": 2
+    },
+    {
+      "global_seat": 16,
+      "scenario_id": "t2-report-citation",
+      "pair_label": "B",
+      "arm": "control",
+      "pair_id": 2
+    }
+  ],
+  "request_budget": {
+    "stage_invocations": 16,
+    "output_retry_budget_per_invocation": 1,
+    "max_logical_model_generations": 32,
+    "preflight_logical_requests": 3,
+    "sdk_max_retries": 2,
+    "diagnostic_http_attempts_max": 96,
+    "preflight_http_attempts_max": 9,
+    "total_max_http_attempts": 105
+  },
+  "pair_audits": [
+    {
+      "scenario_id": "t2-no-evidence",
+      "pair_label": "A",
+      "pair_id": 1,
+      "parity": {
+        "scenario_id": "t2-no-evidence",
+        "parity_pass": true,
+        "verdict": "CROSS_ARM_PARITY_PASS",
+        "canonical_control_hash": "abf06ec9514d5933d88f2388afee804280f7cf0c4882c7362977eb754fd15ff6",
+        "canonical_treatment_hash": "abf06ec9514d5933d88f2388afee804280f7cf0c4882c7362977eb754fd15ff6",
+        "instructions_exact_suffix": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "model_settings_equal": true,
+        "input_contract_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29"
+      }
+    },
+    {
+      "scenario_id": "t2-no-evidence",
+      "pair_label": "B",
+      "pair_id": 2,
+      "parity": {
+        "scenario_id": "t2-no-evidence",
+        "parity_pass": true,
+        "verdict": "CROSS_ARM_PARITY_PASS",
+        "canonical_control_hash": "44c9ac0221518a4362a71d146a626c4792f24d834cd93b158969cac2de97da6b",
+        "canonical_treatment_hash": "44c9ac0221518a4362a71d146a626c4792f24d834cd93b158969cac2de97da6b",
+        "instructions_exact_suffix": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "model_settings_equal": true,
+        "input_contract_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29"
+      }
+    },
+    {
+      "scenario_id": "t2-temporal-trap",
+      "pair_label": "A",
+      "pair_id": 1,
+      "parity": {
+        "scenario_id": "t2-temporal-trap",
+        "parity_pass": true,
+        "verdict": "CROSS_ARM_PARITY_PASS",
+        "canonical_control_hash": "2122b970773e9f05a154e59795479d6f280d4708e0fe964b7fda14010662059b",
+        "canonical_treatment_hash": "2122b970773e9f05a154e59795479d6f280d4708e0fe964b7fda14010662059b",
+        "instructions_exact_suffix": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "model_settings_equal": true,
+        "input_contract_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29"
+      }
+    },
+    {
+      "scenario_id": "t2-temporal-trap",
+      "pair_label": "B",
+      "pair_id": 2,
+      "parity": {
+        "scenario_id": "t2-temporal-trap",
+        "parity_pass": true,
+        "verdict": "CROSS_ARM_PARITY_PASS",
+        "canonical_control_hash": "bb80a6a64762b84d0dfe7961b0a8d1c38600ccc6fcc900473de350a225414f56",
+        "canonical_treatment_hash": "bb80a6a64762b84d0dfe7961b0a8d1c38600ccc6fcc900473de350a225414f56",
+        "instructions_exact_suffix": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "model_settings_equal": true,
+        "input_contract_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29"
+      }
+    },
+    {
+      "scenario_id": "t2-identity-trap",
+      "pair_label": "A",
+      "pair_id": 1,
+      "parity": {
+        "scenario_id": "t2-identity-trap",
+        "parity_pass": true,
+        "verdict": "CROSS_ARM_PARITY_PASS",
+        "canonical_control_hash": "be3df4cda58798028648b43b848afc1ce9460183eea3c8dc40afe571a80dc2f6",
+        "canonical_treatment_hash": "be3df4cda58798028648b43b848afc1ce9460183eea3c8dc40afe571a80dc2f6",
+        "instructions_exact_suffix": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "model_settings_equal": true,
+        "input_contract_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29"
+      }
+    },
+    {
+      "scenario_id": "t2-identity-trap",
+      "pair_label": "B",
+      "pair_id": 2,
+      "parity": {
+        "scenario_id": "t2-identity-trap",
+        "parity_pass": true,
+        "verdict": "CROSS_ARM_PARITY_PASS",
+        "canonical_control_hash": "c5431923ce5f140dce98df48ed8f686615ea876cef0f62f5d39a32721cc537f4",
+        "canonical_treatment_hash": "c5431923ce5f140dce98df48ed8f686615ea876cef0f62f5d39a32721cc537f4",
+        "instructions_exact_suffix": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "model_settings_equal": true,
+        "input_contract_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29"
+      }
+    },
+    {
+      "scenario_id": "t2-report-citation",
+      "pair_label": "A",
+      "pair_id": 1,
+      "parity": {
+        "scenario_id": "t2-report-citation",
+        "parity_pass": true,
+        "verdict": "CROSS_ARM_PARITY_PASS",
+        "canonical_control_hash": "f7dbdfd416661f0bc392215b55983087d90594e41e36e0b317c3a11f9bafbc8c",
+        "canonical_treatment_hash": "f7dbdfd416661f0bc392215b55983087d90594e41e36e0b317c3a11f9bafbc8c",
+        "instructions_exact_suffix": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "model_settings_equal": true,
+        "input_contract_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29"
+      }
+    },
+    {
+      "scenario_id": "t2-report-citation",
+      "pair_label": "B",
+      "pair_id": 2,
+      "parity": {
+        "scenario_id": "t2-report-citation",
+        "parity_pass": true,
+        "verdict": "CROSS_ARM_PARITY_PASS",
+        "canonical_control_hash": "e8e550f83ec221be9ca895e1d18bb14d912b81c3447989967c2c791de6d5c0d2",
+        "canonical_treatment_hash": "e8e550f83ec221be9ca895e1d18bb14d912b81c3447989967c2c791de6d5c0d2",
+        "instructions_exact_suffix": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "model_settings_equal": true,
+        "input_contract_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29"
+      }
+    }
+  ]
+}

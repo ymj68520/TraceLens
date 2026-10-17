@@ -1,0 +1,10 @@
+{
+  "artifact_version": "RCA2A12FinalDecisionReportV1",
+  "experiment_id": "rca2a12-deepseek-flash-vocabulary-cross-case",
+  "timestamp_utc": "2026-10-17T03:10:05.126340+00:00",
+  "final_disposition": "CROSS_CASE_COMPARISON_COMPLETED",
+  "executed_seats": 16,
+  "total_pairs_completed": 8,
+  "recommendation": "PREPARE_PROMPT_QUALIFICATION",
+  "next_phase_authorization": "HARD_STOP_AWAITING_USER_DIRECTIVE"
+}

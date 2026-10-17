@@ -1,0 +1,13 @@
+{
+  "artifact_version": "RCA2A12CostReliabilityReportV1",
+  "experiment_id": "rca2a12-deepseek-flash-vocabulary-cross-case",
+  "timestamp_utc": "2026-10-17T03:10:05.126340+00:00",
+  "stage_invocations_scheduled": 16,
+  "stage_invocations_executed": 16,
+  "logical_model_generations": 16,
+  "total_input_tokens": 56958,
+  "total_output_tokens": 8561,
+  "average_latency_ms": 5486.44,
+  "cost_status": "PROVIDER_BILLING_UNOBSERVABLE",
+  "reliability_status": "HIGH_AVAILABILITY"
+}

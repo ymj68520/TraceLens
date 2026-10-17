@@ -1,0 +1,79 @@
+{
+  "artifact_version": "RCA2A12ScenarioStratifiedAnalysisV1",
+  "experiment_id": "rca2a12-deepseek-flash-vocabulary-cross-case",
+  "timestamp_utc": "2026-10-17T03:10:05.126340+00:00",
+  "stratified": {
+    "t2-no-evidence": {
+      "pairs_count": 2,
+      "contract_outcomes": [
+        "TREATMENT_WIN",
+        "TREATMENT_WIN"
+      ],
+      "semantic_outcomes": [
+        "TREATMENT_SEMANTIC_WIN",
+        "TREATMENT_SEMANTIC_WIN"
+      ],
+      "treatment_contract_wins": 2,
+      "control_contract_wins": 0,
+      "both_valid": 0,
+      "both_invalid": 0,
+      "treatment_semantic_wins": 2,
+      "control_semantic_wins": 0,
+      "both_semantically_adequate": 0
+    },
+    "t2-temporal-trap": {
+      "pairs_count": 2,
+      "contract_outcomes": [
+        "TREATMENT_WIN",
+        "BOTH_VALID"
+      ],
+      "semantic_outcomes": [
+        "TREATMENT_SEMANTIC_WIN",
+        "BOTH_SEMANTICALLY_ADEQUATE"
+      ],
+      "treatment_contract_wins": 1,
+      "control_contract_wins": 0,
+      "both_valid": 1,
+      "both_invalid": 0,
+      "treatment_semantic_wins": 1,
+      "control_semantic_wins": 0,
+      "both_semantically_adequate": 1
+    },
+    "t2-identity-trap": {
+      "pairs_count": 2,
+      "contract_outcomes": [
+        "BOTH_VALID",
+        "BOTH_VALID"
+      ],
+      "semantic_outcomes": [
+        "CONTROL_SEMANTIC_WIN",
+        "BOTH_SEMANTICALLY_INADEQUATE"
+      ],
+      "treatment_contract_wins": 0,
+      "control_contract_wins": 0,
+      "both_valid": 2,
+      "both_invalid": 0,
+      "treatment_semantic_wins": 0,
+      "control_semantic_wins": 1,
+      "both_semantically_adequate": 0
+    },
+    "t2-report-citation": {
+      "pairs_count": 2,
+      "contract_outcomes": [
+        "TREATMENT_WIN",
+        "CONTROL_WIN"
+      ],
+      "semantic_outcomes": [
+        "TREATMENT_SEMANTIC_WIN",
+        "CONTROL_SEMANTIC_WIN"
+      ],
+      "treatment_contract_wins": 1,
+      "control_contract_wins": 1,
+      "both_valid": 0,
+      "both_invalid": 0,
+      "treatment_semantic_wins": 1,
+      "control_semantic_wins": 1,
+      "both_semantically_adequate": 0
+    }
+  }
+}
