@@ -1,0 +1,45 @@
+{
+  "artifact_version": "RCA2A14bDatasetStatisticalBindingV1",
+  "experiment_id": "rca2a14b-external-holdout-custody",
+  "timestamp_utc": "2026-10-17T04:16:00.000000+00:00",
+  "statistical_pre_registration": {
+    "primary_endpoint": "canonical_integration_validity_paired_difference",
+    "secondary_endpoint": "semantic_adequacy_paired_difference",
+    "target_effect": "+0.30 (Tier 1 Confirmatory) / +0.25 (Tier 2 Confirmatory)",
+    "expected_discordance_rate": 0.40,
+    "target_power": 0.80,
+    "significance_level_alpha": 0.05,
+    "multiplicity_policy": "Bonferroni-Holm step-down across primary and secondary endpoints",
+    "scenario_stratification": "Balanced allocation across Q1-Q6 (>= 6 pairs per family in 40-pair battery)",
+    "maximum_model_budget_seats": 80
+  },
+  "battery_tier_definitions": {
+    "compact_screening": {
+      "pair_count": 12,
+      "seat_count": 24,
+      "purpose": "Exploratory signal verification; cannot confer production qualification pass.",
+      "estimated_power_30pp": 0.38
+    },
+    "extended_screening": {
+      "pair_count": 24,
+      "seat_count": 48,
+      "purpose": "High-confidence directional screening; underpowered for confirmatory standard.",
+      "estimated_power_30pp": 0.62
+    },
+    "confirmatory_qualification": {
+      "pair_count_target": 40,
+      "seat_count_target": 80,
+      "pair_count_min_30pp": 38,
+      "pair_count_min_25pp": 52,
+      "purpose": "Formal qualification decision; achieves >= 80% power at alpha = 0.05.",
+      "estimated_power_30pp": 0.82
+    }
+  },
+  "dataset_binding_assessment": {
+    "actual_holdout_pairs_available": 0,
+    "actual_holdout_seats_available": 0,
+    "statistical_power_achieved": 0.0,
+    "disposition": "QUALIFICATION_SAMPLE_SIZE_INSUFFICIENT"
+  },
+  "binding_rule_enforcement": "Underpowered screening runs (N < 38 pairs) yielding p >= 0.05 with positive directional effect must be declared QUALIFICATION_INCONCLUSIVE, never QUALIFICATION_PASS."
+}

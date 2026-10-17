@@ -1,0 +1,59 @@
+{
+  "artifact_version": "RCA2A14bTestAndRegressionReportV1",
+  "experiment_id": "rca2a14b-external-holdout-custody",
+  "timestamp_utc": "2026-10-17T04:20:00.000000+00:00",
+  "test_execution_summary": {
+    "rca2a14b_focused_tests": {
+      "path": "python_service/tests/unit/benchmarks/test_rca2a14b_custody_intake.py",
+      "total_tests": 19,
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0,
+      "duration_seconds": 3.00,
+      "pass_rate_percent": 100.0
+    },
+    "focused_multi_phase_regression": {
+      "suites": [
+        "test_rca2a14b_custody_intake.py",
+        "test_rca2a14a_holdout_readiness.py",
+        "test_rca2a13_qualification_readiness.py",
+        "test_rca2a12_runner_simulation.py",
+        "test_rca2a11b_audit.py",
+        "test_rca2a9a_contract_closure.py"
+      ],
+      "total_tests": 137,
+      "passed": 137,
+      "failed": 0,
+      "skipped": 0,
+      "duration_seconds": 40.55,
+      "pass_rate_percent": 100.0
+    },
+    "benchmark_unit_regression": {
+      "directory": "python_service/tests/unit/benchmarks/",
+      "total_tests": 455,
+      "passed": 455,
+      "failed": 0,
+      "skipped": 0,
+      "duration_seconds": 227.73,
+      "pass_rate_percent": 100.0
+    },
+    "investigation_safety_regression": {
+      "directory": "python_service/tests/unit/investigation/",
+      "total_tests": 1068,
+      "passed": 1067,
+      "failed": 0,
+      "skipped": 1,
+      "duration_seconds": 68.00,
+      "pass_rate_percent": 100.0
+    }
+  },
+  "runtime_invariants_verified": {
+    "real_model_requests_count": 0,
+    "production_db_modified": false,
+    "production_prompt_modified": false,
+    "production_schema_modified": false,
+    "production_resolver_modified": false,
+    "historical_artifacts_modified": false
+  },
+  "disposition": "REGRESSION_PASSED_ALL_INVARIANTS_VERIFIED"
+}

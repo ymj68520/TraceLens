@@ -1,0 +1,39 @@
+{
+  "artifact_version": "RCA2A14bSealingAndAccessVerificationV1",
+  "experiment_id": "rca2a14b-external-holdout-custody",
+  "timestamp_utc": "2026-10-17T04:15:00.000000+00:00",
+  "cryptographic_distinction_contract": {
+    "hash_commitment": "Provides non-repudiation and content integrity verification via SHA-256; does NOT provide confidentiality or access control.",
+    "encryption": "Provides payload confidentiality in transit and at rest; requires independent key management outside the agent runtime workspace.",
+    "access_control": "Provides authorization and physical/logical isolation boundaries; ensures candidate owner and executor cannot read sealed truth prior to adjudication."
+  },
+  "required_sealing_controls": {
+    "independent_storage": {
+      "requirement": "Case Input and Sealed Truth must reside on physically or cryptographically separated storage boundaries.",
+      "actual_status": "NOT_ESTABLISHED"
+    },
+    "hash_commitments": {
+      "requirement": "Record SHA256(CaseInput || Nonce) and SHA256(TruthManifest || Nonce) prior to execution authorization.",
+      "actual_status": "PROTOCOL_FROZEN_AWAITING_EXTERNAL_DATA"
+    },
+    "nonce_and_key_custody": {
+      "requirement": "Nonce and encryption keys must be held exclusively by the independent Custodian and never checked into repository.",
+      "actual_status": "NOT_PROVISIONED"
+    },
+    "zero_leakage_to_agent": {
+      "requirement": "The Coding Agent and Prompt Candidate Owner must receive zero plaintext truth or decryption keys.",
+      "actual_status": "COMPLIANT_ZERO_TRUTH_RECEIVED"
+    },
+    "post_freeze_disclosure": {
+      "requirement": "Truth is only disclosed to the Independent Adjudicator after all execution records are cryptographically frozen.",
+      "actual_status": "PROTOCOL_FROZEN_AWAITING_EXECUTION"
+    }
+  },
+  "actual_sealing_accounting": {
+    "actual_sealed_case_count": 0,
+    "actual_truth_seal_status": "HOLDOUT_NOT_SEALED",
+    "access_isolation_status": "UNVERIFIED",
+    "key_custody_status": "NOT_PROVISIONED"
+  },
+  "disposition": "HOLDOUT_NOT_SEALED"
+}

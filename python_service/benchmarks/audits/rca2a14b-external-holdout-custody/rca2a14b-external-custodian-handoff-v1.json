@@ -1,0 +1,148 @@
+{
+  "artifact_version": "RCA2A14bExternalCustodianHandoffV1",
+  "experiment_id": "rca2a14b-external-holdout-custody",
+  "timestamp_utc": "2026-10-17T04:13:00.000000+00:00",
+  "custody_assessment": {
+    "status": "EXTERNAL_CUSTODY_NOT_AVAILABLE",
+    "role_defined": true,
+    "role_actually_assigned": false,
+    "evidence_audit": {
+      "custodian_identity": "NOT_ASSIGNED",
+      "custodian_acceptance": "NOT_ACCEPTED",
+      "independent_storage_boundary": "NOT_ESTABLISHED",
+      "truth_access_permissions": "INSUFFICIENT_ISOLATION",
+      "key_custody": "NOT_PROVISIONED",
+      "access_audit_capability": "NOT_PROVISIONED",
+      "handoff_channel": "SPECIFIED_NOT_CONNECTED"
+    },
+    "rationale": "Execution environment operates as a single coding agent session with full repository and filesystem access. An authentic independent custody boundary does not exist internally. The coding agent must not fabricate or self-certify custody."
+  },
+  "handoff_specification": {
+    "holdout_author_instructions_v1": {
+      "target_capabilities": [
+        "Q1_EVIDENCE_ABSENCE",
+        "Q2_TEMPORAL_REASONING",
+        "Q3_CROSS_SYSTEM_ENTITY_IDENTITY",
+        "Q4_EVIDENCE_CITATION",
+        "Q5_NEGATIVE_GROUNDING",
+        "Q6_INVESTIGATION_STATE"
+      ],
+      "authoring_rules": [
+        "Create novel investigation topologies and scenarios strictly independent from development fixtures F1-F4.",
+        "Synthesize evidence strictly conforming to (task_id, evidence_key) tuple format.",
+        "Provide explicit Ground Truth Manifest with three-valued truth states: CONFIRMED, UNSUPPORTED, INDETERMINATE.",
+        "Specify acceptable inferences and explicitly prohibited overclaims for each case.",
+        "Define expected question dispositions and expected coverage boundaries.",
+        "Document known ambiguities and explicit list of unavailable evidence items."
+      ],
+      "prohibitions": [
+        "Do NOT copy, disguise, or minimally re-parameterize F1-F4 fixtures.",
+        "Do NOT reveal case scenarios, entities, or ground truths to candidate developers."
+      ]
+    },
+    "custodian_operations_guide_v1": {
+      "core_responsibilities": [
+        "Verify that author is organizationally and operationally independent from candidate development.",
+        "Verify that case scenarios have never been exposed to candidate developers or public repositories.",
+        "Validate evidence and ground truth consistency against CasePackageSchemaV1 and TruthManifestSchemaV1.",
+        "Freeze ModelVisibleCaseInput and SealedGroundTruth with cryptographic SHA-256 commitments.",
+        "Store SealedGroundTruth in an external, private storage boundary inaccessible to candidate developers or the execution agent.",
+        "Maintain tamper-evident audit logs of all access requests and release authorizations.",
+        "Release ModelVisibleCaseInput to Executor upon authorized qualification launch; release SealedGroundTruth only to Independent Adjudicator after execution freeze."
+      ]
+    },
+    "case_package_schema_v1": {
+      "type": "object",
+      "required": [
+        "qualification_case_id",
+        "case_version",
+        "capability_family",
+        "task_scope",
+        "synthetic_evidence_manifest",
+        "source_capability_manifest",
+        "initial_working_state",
+        "frozen_specialist_results",
+        "allowed_evidence_ids",
+        "case_input_hash"
+      ],
+      "properties": {
+        "qualification_case_id": {"type": "string", "pattern": "^Q[1-6]_[a-z0-9_]+$"},
+        "case_version": {"type": "string"},
+        "capability_family": {"type": "string", "enum": ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6"]},
+        "task_scope": {"type": "string"},
+        "synthetic_evidence_manifest": {"type": "array", "items": {"type": "object"}},
+        "source_capability_manifest": {"type": "array", "items": {"type": "string"}},
+        "initial_working_state": {"type": "object"},
+        "frozen_specialist_results": {"type": "array"},
+        "allowed_evidence_ids": {"type": "array", "items": {"type": "string"}},
+        "case_input_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "truth_manifest_schema_v1": {
+      "type": "object",
+      "required": [
+        "qualification_case_id",
+        "ground_truth_manifest",
+        "acceptable_inferences",
+        "prohibited_overclaims",
+        "expected_question_dispositions",
+        "expected_coverage_dispositions",
+        "known_ambiguities",
+        "unavailable_evidence",
+        "truth_manifest_hash"
+      ],
+      "properties": {
+        "qualification_case_id": {"type": "string"},
+        "ground_truth_manifest": {"type": "object"},
+        "acceptable_inferences": {"type": "array", "items": {"type": "string"}},
+        "prohibited_overclaims": {"type": "array", "items": {"type": "string"}},
+        "expected_question_dispositions": {"type": "object"},
+        "expected_coverage_dispositions": {"type": "object"},
+        "known_ambiguities": {"type": "array", "items": {"type": "string"}},
+        "unavailable_evidence": {"type": "array", "items": {"type": "string"}},
+        "truth_manifest_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "custody_attestation_template_v1": {
+      "fields_required": [
+        "custodian_identity",
+        "custodian_role",
+        "custodian_organization",
+        "custody_establishment_timestamp",
+        "storage_boundary_type",
+        "storage_location_urn",
+        "access_control_verification_method",
+        "case_count_received",
+        "case_input_manifest_hash",
+        "sealed_truth_manifest_hash",
+        "conflict_of_interest_statement",
+        "attestation_signature"
+      ]
+    },
+    "sealing_verification_guide_v1": {
+      "commitment_algorithm": "SHA-256 over canonical UTF-8 JSON serialization",
+      "salt_nonce_policy": "Cryptographically secure 256-bit random nonce generated by Custodian, stored privately with key",
+      "verification_procedure": [
+        "1. Compute canonical JSON representation of Case Input and calculate SHA256(CaseInput || Nonce).",
+        "2. Custodian publishes public Case Commitment Hash prior to execution.",
+        "3. Executor receives Case Input and independently validates input hash.",
+        "4. Post-execution, Custodian reveals Nonce and Truth Manifest for adjudication verification.",
+        "5. Any discrepancy between pre-registered commitment and revealed payload fails closed."
+      ]
+    },
+    "qualification_data_release_protocol_v1": {
+      "release_phases": {
+        "phase_1_input_release": "Upon verified qualification authorization, Custodian provides ModelVisibleCaseInput to Executor. Truth remains sealed.",
+        "phase_2_execution_freeze": "Executor executes all seats, records complete responses, hashes execution claims, and freezes execution database.",
+        "phase_3_truth_release": "Custodian verifies execution claim hashes, then releases SealedGroundTruth directly to Independent Adjudicator.",
+        "phase_4_adjudication": "Independent Adjudicator evaluates blind execution records against SealedGroundTruth."
+      }
+    }
+  },
+  "output_separation_policy": {
+    "public_protocol": "Stored in repository: guidelines, schemas, runner scripts, acceptance profile.",
+    "model_visible_case_input": "Released by Custodian during execution into ephemeral executor storage.",
+    "sealed_ground_truth": "Stored strictly external to candidate development workspace and agent filesystem.",
+    "custody_attestation": "Signed by Custodian and submitted as non-repudiable audit artifact."
+  }
+}

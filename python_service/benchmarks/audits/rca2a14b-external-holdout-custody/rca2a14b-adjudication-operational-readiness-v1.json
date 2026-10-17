@@ -1,0 +1,58 @@
+{
+  "artifact_version": "RCA2A14bAdjudicationOperationalReadinessV1",
+  "experiment_id": "rca2a14b-external-holdout-custody",
+  "timestamp_utc": "2026-10-17T04:18:00.000000+00:00",
+  "operational_adjudication_model": {
+    "distinction_definition": "AUTOMATED_ORACLE_RESULT provides deterministic syntactic and heuristic checks; INDEPENDENT_HUMAN_ADJUDICATION provides authoritative double-blind expert review for high-risk ambiguous inferences.",
+    "agent_self_adjudication_prohibition": "A secondary LLM call or self-reflection executed by the same coding agent MUST NOT be counted or represented as independent human adjudication."
+  },
+  "high_risk_semantic_scope": [
+    {
+      "domain": "IDENTITY_ATTRIBUTION",
+      "risk": "Falsely merging disparate users across distinct security domains (e.g., local root vs LDAP admin without authorization).",
+      "mandatory_human_review": true
+    },
+    {
+      "domain": "CAUSAL_SUFFICIENCY",
+      "risk": "Inferring compromise causation solely from temporal concurrency without causal mechanism.",
+      "mandatory_human_review": true
+    },
+    {
+      "domain": "UNSUPPORTED_FACT",
+      "risk": "Natural language overassertion of unproven compromise facts inside hypothesis narrative.",
+      "mandatory_human_review": true
+    },
+    {
+      "domain": "CITATION_SUFFICIENCY",
+      "risk": "Fabricating evidence keys or cross-task references not present in synthetic evidence manifest.",
+      "mandatory_human_review": false
+    },
+    {
+      "domain": "QUESTION_CLOSURE",
+      "risk": "Prematurely closing critical investigative questions despite unresolved ambiguities.",
+      "mandatory_human_review": true
+    }
+  ],
+  "blind_review_package_specification": {
+    "payload_fields_exposed": [
+      "anonymous_review_id",
+      "case_evidence_summary",
+      "frozen_model_decision",
+      "evaluation_criteria_rubric"
+    ],
+    "payload_fields_stripped": [
+      "arm_label (Control vs Treatment)",
+      "candidate_id (supervisor-v2-vocabulary-guidance-v1)",
+      "model_identity (deepseek-flash)",
+      "seat_number (Seat 1-80)",
+      "previous_run_outcomes",
+      "expected_qualification_result"
+    ]
+  },
+  "actual_adjudicator_accounting": {
+    "adjudicator_status": "ADJUDICATOR_NOT_ASSIGNED",
+    "adjudication_panel_count": 0,
+    "blind_review_schema_status": "FROZEN_READY",
+    "disposition": "ADJUDICATOR_NOT_ASSIGNED"
+  }
+}

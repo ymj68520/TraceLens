@@ -1,0 +1,63 @@
+{
+  "artifact_version": "RCA2A14bControlledIntakeReportV1",
+  "experiment_id": "rca2a14b-external-holdout-custody",
+  "timestamp_utc": "2026-10-17T04:17:00.000000+00:00",
+  "intake_architecture": {
+    "role_separation_flow": "Custodian -> (ModelVisibleCaseInput only) -> QualificationExecutor; Custodian -> (SealedGroundTruth) -> IndependentAdjudicator",
+    "runtime_modifications": "NONE (zero production runtime or agent changes; benchmark intake isolated)",
+    "real_model_requests_count": 0
+  },
+  "mandatory_negative_gate_specifications": {
+    "UNAUTHORIZED_TRUTH_READ": {
+      "trigger": "Executor attempts to read files matching *truth* or containing ground_truth_manifest.",
+      "enforcement": "File access denied; execution halts with AUDIT_HALT_SECURITY_VIOLATION.",
+      "simulation_test": "test_t06_truth_unavailable_to_executor"
+    },
+    "MISSING_CUSTODIAN": {
+      "trigger": "Execution launch requested without verified external custodian identity and cryptographic signature.",
+      "enforcement": "Execution blocked immediately with AUDIT_HALT_CUSTODIAN_MISSING.",
+      "simulation_test": "test_t01_custodian_missing_blocks"
+    },
+    "INVALID_SEAL": {
+      "trigger": "Package commitment hash does not match SHA256(payload || nonce).",
+      "enforcement": "Package rejected with AUDIT_HALT_SEAL_VERIFICATION_FAILED.",
+      "simulation_test": "test_t07_sealing_hash_verified"
+    },
+    "CASE_HASH_DRIFT": {
+      "trigger": "Delivered case input content differs from pre-registered manifest hash.",
+      "enforcement": "Execution blocked with AUDIT_HALT_CASE_HASH_DRIFT.",
+      "simulation_test": "test_t08_tampered_package_rejected"
+    },
+    "TRUTH_HASH_DRIFT": {
+      "trigger": "Disclosed truth manifest differs from pre-registered truth commitment hash.",
+      "enforcement": "Adjudication halted with AUDIT_HALT_TRUTH_HASH_DRIFT.",
+      "simulation_test": "test_t08_tampered_package_rejected"
+    },
+    "DUPLICATE_CASE_ID": {
+      "trigger": "Multiple case bundles share an identical qualification_case_id.",
+      "enforcement": "Intake rejected with AUDIT_HALT_DUPLICATE_CASE_ID.",
+      "simulation_test": "test_t03_case_package_schema_validated"
+    },
+    "EXPOSED_DEVELOPMENT_FIXTURE": {
+      "trigger": "Case bundle references scenarios or entities from F1-F4 development fixtures.",
+      "enforcement": "Intake rejected with AUDIT_HALT_EXPOSED_FIXTURE_CONTAMINATION.",
+      "simulation_test": "test_t10_previously_exposed_fixtures_rejected"
+    },
+    "CANDIDATE_HASH_DRIFT": {
+      "trigger": "Prompt candidate hash differs from e00c1549... or schema hash differs from a214ec4f....",
+      "enforcement": "Execution blocked with AUDIT_HALT_CANDIDATE_HASH_DRIFT.",
+      "simulation_test": "test_t09_candidate_identity_drift_rejected"
+    },
+    "UNSEALED_ANSWER_LEAKAGE": {
+      "trigger": "Truth answers or expected dispositions found embedded in ModelVisibleCaseInput.",
+      "enforcement": "Package flagged as contaminated; execution halted.",
+      "simulation_test": "test_t06_truth_unavailable_to_executor"
+    },
+    "MISSING_ATTESTATION": {
+      "trigger": "External package lacks signed CustodyAttestation.",
+      "enforcement": "Intake rejected with AUDIT_HALT_ATTESTATION_MISSING.",
+      "simulation_test": "test_t02_real_custody_attestation_required"
+    }
+  },
+  "disposition": "INTAKE_ARCHITECTURE_VERIFIED_AWAITING_EXTERNAL_CUSTODIAN"
+}
