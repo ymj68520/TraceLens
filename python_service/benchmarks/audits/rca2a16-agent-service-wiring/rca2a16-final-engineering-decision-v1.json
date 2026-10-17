@@ -1,0 +1,68 @@
+{
+  "schema_version": "RCA2A16FinalEngineeringDecisionV1",
+  "audit_phase": "RCA-2A.16",
+  "task": "TASK-AGENT-V0-SERVICE-WIRING",
+  "baseline_commit": "c143895bbcaf1a9f8c291f325941822b06d14b67",
+  "final_disposition": "AGENT_SERVICE_WIRING_COMPLETED",
+  "historical_metrics_reconciliation": {
+    "status": "RECONCILED_AND_AMENDED",
+    "canonical_integration_validity": {
+      "control": "4/8 (50.0%)",
+      "treatment": "7/8 (87.5%)",
+      "delta": "+37.5 pp"
+    },
+    "semantic_adequacy": {
+      "control": "3/8 (37.5%)",
+      "treatment": "5/8 (62.5%)",
+      "delta": "+25.0 pp",
+      "rca2a15_correction": "Corrected RCA-2A.15 base shift from 5/8->7/8 back to raw 3/8->5/8"
+    },
+    "investigative_information_value": {
+      "control_positive_discovery": "3/8 (37.5%)",
+      "treatment_positive_discovery": "3/8 (37.5%)",
+      "treatment_non_degraded": "5/8 (62.5%)",
+      "pairwise_treatment_wins": "4/8 (50.0%)",
+      "pairwise_control_wins": "2/8 (25.0%)",
+      "pairwise_ties": "2/8 (25.0%)"
+    },
+    "f3_identity_trap_seat_correction": {
+      "erroneously_reported_seat": "Seat 10",
+      "actual_overreach_seat": "Seat 6",
+      "scenario": "t2-identity-trap_A",
+      "arm": "treatment",
+      "model_decision": "Attributed attacker identity directly to specific user account without corroborating auth evidence"
+    }
+  },
+  "service_wiring_summary": {
+    "supervisor_wiring": "InvestigationSupervisor wired into ServiceManager._create_agent_orchestrator()",
+    "dispatcher_wiring": "SpecialistDelegationDispatcher wired into ServiceManager._create_agent_orchestrator()",
+    "http_endpoints": [
+      "POST /api/investigation/agent/cycle",
+      "GET /api/investigation/agent/state"
+    ],
+    "concurrency_control": "Task-scoped lock + revision conflict detection (HTTP 409)",
+    "feature_flags": {
+      "agent_execution_enabled": false,
+      "agent_experimental_guidance_enabled": false
+    }
+  },
+  "safety_and_integrity_audit": {
+    "production_supervisor_prompt_modified": false,
+    "production_schema_modified": false,
+    "vocabulary_guidance_v1_status": "FROZEN_EXPERIMENTAL_ONLY",
+    "vocabulary_guidance_v1_sha256": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+    "analyst_review_boundary_intact": true,
+    "report_admission_boundary_intact": true,
+    "report_publication_boundary_intact": true,
+    "real_provider_requests_executed": 0,
+    "rca_2b_status": "NOT_AUTHORIZED",
+    "gen_5_status": "NOT_CREATED"
+  },
+  "verification_summary": {
+    "integration_tests_passed": 30,
+    "integration_tests_failed": 0,
+    "regression_tests_passed": 1297,
+    "regression_tests_failed": 0,
+    "regression_status": "CLEAN"
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "schema_version": "RCA2A16RegressionReportV1",
+  "audit_phase": "RCA-2A.16",
+  "task": "TASK-AGENT-V0-SERVICE-WIRING",
+  "status": "REGRESSION_SUITE_PASSED_CLEAN",
+  "summary": {
+    "total_tests_executed": 1298,
+    "total_passed": 1297,
+    "total_skipped": 1,
+    "total_failed": 0,
+    "regression_detected": false
+  },
+  "test_suites": [
+    {
+      "name": "RCA-2A.16 Integration Tests",
+      "path": "python_service/tests/unit/investigation/test_agent_orchestrator_wiring.py",
+      "passed": 30,
+      "failed": 0
+    },
+    {
+      "name": "RCA-2A.15 Engineering Validation",
+      "path": "python_service/tests/unit/benchmarks/test_rca2a15_engineering_validation.py",
+      "passed": 21,
+      "failed": 0
+    },
+    {
+      "name": "RCA-2A.8 Semantic Validity & Prompt Safety",
+      "path": "python_service/tests/unit/benchmarks/test_rca2a8_semantic_validity.py",
+      "passed": 12,
+      "failed": 0
+    },
+    {
+      "name": "Historical Benchmark Regressions (RCA-2A.9a to RCA-2A.14b)",
+      "paths": [
+        "python_service/tests/unit/benchmarks/test_rca2a14b_custody_intake.py",
+        "python_service/tests/unit/benchmarks/test_rca2a14a_holdout_readiness.py",
+        "python_service/tests/unit/benchmarks/test_rca2a13_qualification_readiness.py",
+        "python_service/tests/unit/benchmarks/test_rca2a12_runner_simulation.py",
+        "python_service/tests/unit/benchmarks/test_rca2a11b_audit.py",
+        "python_service/tests/unit/benchmarks/test_rca2a9a_contract_closure.py"
+      ],
+      "passed": 137,
+      "failed": 0
+    },
+    {
+      "name": "Investigation Control Plane Unit Regression",
+      "path": "python_service/tests/unit/investigation/",
+      "passed": 1097,
+      "skipped": 1,
+      "failed": 0
+    }
+  ]
+}

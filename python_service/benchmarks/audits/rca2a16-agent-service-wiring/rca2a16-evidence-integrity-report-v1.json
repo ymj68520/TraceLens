@@ -1,0 +1,46 @@
+{
+  "schema_version": "RCA2A16EvidenceIntegrityReportV1",
+  "audit_phase": "RCA-2A.16",
+  "task": "TASK-AGENT-V0-SERVICE-WIRING",
+  "status": "EVIDENCE_INTEGRITY_VERIFIED_INTACT",
+  "evidence_isolation": {
+    "task_scoping": {
+      "enforced_by": "EvidenceResolver / EvidenceStore",
+      "cross_task_leakage_prevention": "Rejects keys pointing outside task database directory fail closed",
+      "verified_by_test": "test_t08_cross_task_evidence_rejected"
+    },
+    "path_derivation": {
+      "authority": "Server-side cpp_backend.get_task(task_id)",
+      "client_path_forbidden": true,
+      "untrusted_paths_ignored": true
+    }
+  },
+  "grounding_and_safety_policies": {
+    "question_closure_grounding": {
+      "policy": "StateTransitionPolicy._validate_question_closure",
+      "rule": "Question transition to answered requires disposition and basis_refs; without basis refs, rejected with QUESTION_CLOSURE_BASIS_REQUIRED",
+      "verified_by_test": "test_t20_unsupported_question_closure_rejected"
+    },
+    "epistemic_boundary": {
+      "rule": "Hypotheses remain hypotheses; they do not promote to findings without verified evidence backing",
+      "verified_by_test": "test_t21_hypothesis_remains_unverified"
+    }
+  },
+  "human_governance_boundaries": {
+    "analyst_acceptance": {
+      "status": "UNTOUCHED_BY_AGENT",
+      "rule": "Agent cycle execution never marks secondary analyses as accepted",
+      "verified_by_test": "test_t24_no_analyst_acceptance_automatically_performed"
+    },
+    "report_admission": {
+      "status": "UNTOUCHED_BY_AGENT",
+      "rule": "Agent cycle execution never admits findings into report_evidence",
+      "verified_by_test": "test_t25_no_report_admission_performed"
+    },
+    "report_publication": {
+      "status": "UNTOUCHED_BY_AGENT",
+      "rule": "Agent cycle execution never creates or publishes forensic_reports",
+      "verified_by_test": "test_t26_no_finalization_automatically_published"
+    }
+  }
+}

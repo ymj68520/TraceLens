@@ -111,15 +111,16 @@ def test_v05_agent_integration_readiness_audit():
 
 
 def test_v06_service_manager_orchestrator_wiring_state():
-    """V06: Verify service_manager.py leaves supervisor and dispatcher unwired."""
+    """V06: Verify service_manager.py wires supervisor and dispatcher (RCA-2A.16)."""
     from httpserver.services.service_manager import ServiceManager
     import inspect
 
     src = inspect.getsource(ServiceManager._create_agent_orchestrator)
-    # The source code should show AgentOrchestrator called without supervisor= or delegation_dispatcher=
-    assert "supervisor=" not in src
-    assert "delegation_dispatcher=" not in src
+    # RCA-2A.16 wired supervisor and delegation_dispatcher
+    assert "supervisor=" in src
+    assert "delegation_dispatcher=" in src
     assert "final_review_runner=" in src
+
 
 
 def test_v07_evidence_immutability_invariant():

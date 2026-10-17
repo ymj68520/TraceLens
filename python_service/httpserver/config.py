@@ -136,6 +136,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        populate_by_name=True,
     )
     
     # Server Settings
@@ -248,6 +249,20 @@ class Settings(BaseSettings):
                 f"got {value!r}"
             )
         return version
+
+    # RCA-2A.16: explicit feature gate for executing Agent v0 cycles via HTTP.
+    # Default False (disabled) — execution requires explicit opt-in configuration.
+    agent_execution_enabled: bool = Field(
+        default=False, alias="AGENT_EXECUTION_ENABLED"
+    )
+
+    # RCA-2A.16: explicit developer-only opt-in for experimental Vocabulary
+    # Guidance V1 in Supervisor instructions. Default False (disabled) —
+    # production prompt is strictly unmodified when False.
+    agent_experimental_guidance_enabled: bool = Field(
+        default=False, alias="AGENT_EXPERIMENTAL_GUIDANCE_ENABLED"
+    )
+
 
     # RCA-1.3: optional structured failure diagnostics. DEFAULT OFF — when
     # disabled every agent failure path is byte-identical to pre-RCA-1

@@ -830,9 +830,192 @@ class ServiceManager:
         from .investigation.agent_failure_diagnostics import (
             failure_diagnostics_sink as failure_diagnostics_sink_from_settings,
         )
+        from .investigation.agent_supervisor import InvestigationSupervisor
+
+        if getattr(self.settings, "agent_experimental_guidance_enabled", False):
+            from benchmarks.contracts.experimental.integration_vocabulary_guidance_v1 import (
+                GuidanceIntegrationAgentFactory,
+                guidance_sha256 as _get_guidance_sha256,
+            )
+
+            class ExperimentalGuidanceSupervisor(InvestigationSupervisor):
+                @property
+                def vocabulary_guidance_enabled(self) -> bool:
+                    return True
+
+                @property
+                def guidance_sha256(self) -> str:
+                    return _get_guidance_sha256()
+
+                @property
+                def prompt_version(self) -> str:
+                    return "supervisor-v2-vocabulary-guidance-v1"
+
+                async def integrate_v2(self, context, table, state):
+                    from .investigation.agent_integration_v2 import (
+                        render_integration_context_v2,
+                    )
+
+                    projection = render_integration_context_v2(context, state, table)
+                    agent = GuidanceIntegrationAgentFactory(
+                        model=self._model
+                    ).build_integration_agent_v2(projection)
+                    result = await agent.run("integrate")
+                    return result.output
+
+            supervisor = ExperimentalGuidanceSupervisor(settings=self.settings)
+        else:
+            class ProductionSupervisor(InvestigationSupervisor):
+                @property
+                def vocabulary_guidance_enabled(self) -> bool:
+                    return False
+
+                @property
+                def guidance_sha256(self) -> Optional[str]:
+                    return None
+
+                @property
+                def prompt_version(self) -> str:
+                    return "supervisor-v2"
+
+            supervisor = ProductionSupervisor(settings=self.settings)
+
+        async def _delegation_dispatcher(planning_context, decision, admitted):
+            from .investigation.agent_capabilities import ArtifactFamilyRegistry
+            from .investigation.agent_context import ContextAssembler
+            from .investigation.agent_model_adapter import resolve_adapter_config
+            from .investigation.agent_profiles import default_profiles
+            from .investigation.agent_runtime import AgentRuntimeRepository
+            from .investigation.agent_skills import SkillRegistry
+            from .investigation.agent_specialist_executor import (
+                DelegationExecutionSummary,
+                SpecialistDelegationExecutor,
+                build_execution_envelope,
+                model_config_digest_from_adapter_config,
+            )
+            from .investigation.agent_specialist_result import SpecialistResultV1
+            from .investigation.agent_tools.adapters import build_read_only_registry
+            from .investigation.agent_tools.adapters.services import (
+                ForensicToolServices,
+            )
+            from .investigation.paths import investigation_db_path_for_task
+            from .investigation.repository import InvestigationRepository
+
+            task_id = planning_context.task_id
+            db_path = investigation_db_path_for_task(task_id)
+            repo = InvestigationRepository(db_path, task_id)
+            runtime = AgentRuntimeRepository(repo)
+
+
+            tool_services = ForensicToolServices(
+                cpp_backend=self._cpp_backend,
+                db_path=db_path,
+                task_id=task_id,
+            )
+            registry = build_read_only_registry(tool_services)
+
+            executor = SpecialistDelegationExecutor(
+                cpp_backend=self._cpp_backend,
+                settings=self.settings,
+                tool_services=tool_services,
+                registry_builder=lambda r, observation_sink=None: registry,
+                investigation_db_path_for_task=lambda t: db_path,
+                failure_diagnostics_sink=failure_diagnostics_sink_from_settings(
+                    self.settings
+                ),
+            )
+
+            profiles = default_profiles()
+            skills = SkillRegistry.with_defaults()
+            families = ArtifactFamilyRegistry.with_defaults()
+            assembler = ContextAssembler(
+                skills=skills,
+                families=families,
+                profiles=profiles,
+                tool_schema_hash=registry.schema_hash(),
+            )
+
+            adapter_config = resolve_adapter_config(self.settings)
+            model_digest = model_config_digest_from_adapter_config(adapter_config)
+            task_dict = {
+                "id": task_id,
+                "scenarios": ["windows", "linux", "android"],
+                "scenario_databases": {},
+            }
+
+            summaries: list[DelegationExecutionSummary] = []
+            delegate_actions = list(decision.delegate_actions())
+
+            for delegation, action in zip(admitted, delegate_actions):
+                try:
+                    q_text = (
+                        getattr(action, "investigation_intent", "")
+                        or f"Investigate question {action.question_id}"
+                    )
+                    pack = assembler.build(
+                        task=task_dict,
+                        run_identity={
+                            "task_id": task_id,
+                            "investigation_id": delegation.investigation_id,
+                            "run_id": delegation.run_id,
+                        },
+                        question=q_text,
+                        question_id=action.question_id,
+                        source_scope_id=action.source_scope_id,
+                    )
+                    pack = pack.model_copy(
+                        update={
+                            "task_id": task_id,
+                            "investigation_id": delegation.investigation_id,
+                            "run_id": delegation.run_id,
+                            "delegation_id": delegation.delegation_id,
+                        }
+                    )
+                    envelope = build_execution_envelope(
+                        pack,
+                        registry,
+                        question_text=q_text,
+                        model_config_digest=model_digest,
+                    )
+                    outcome = await executor.dispatch_delegation(envelope)
+                    stored = runtime.get_delegation_result(
+                        delegation.delegation_id
+                    )
+                    summaries.append(
+                        DelegationExecutionSummary(
+                            delegation_id=delegation.delegation_id,
+                            question_id=action.question_id,
+                            source_scope_id=action.source_scope_id,
+                            status=outcome.status.value,
+                            result=(
+                                SpecialistResultV1.model_validate(stored.result)
+                                if stored is not None
+                                and stored.result is not None
+                                else None
+                            ),
+                            result_hash=outcome.result_hash,
+                            context_hash=envelope.context_hash,
+                            failure_code=outcome.failure_code,
+                            failure_summary=outcome.failure_message,
+                        )
+                    )
+                except Exception as exc:
+                    summaries.append(
+                        DelegationExecutionSummary(
+                            delegation_id=delegation.delegation_id,
+                            question_id=action.question_id,
+                            source_scope_id=action.source_scope_id,
+                            status="failed",
+                            failure_code="agent_internal_failure",
+                            failure_summary=f"{type(exc).__name__}: {exc}"[:200],
+                        )
+                    )
+            return summaries
 
         return AgentOrchestrator(
             self._cpp_backend,
+            supervisor=supervisor,
+            delegation_dispatcher=_delegation_dispatcher,
             final_review_runner=_final_review_runner,
             supervisor_contract_version=(
                 self.settings.agent_supervisor_contract_version
@@ -842,6 +1025,7 @@ class ServiceManager:
                 failure_diagnostics_sink_from_settings(self.settings)
             ),
         )
+
 
     @property
     def agent_orchestrator(self):

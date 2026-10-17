@@ -1,0 +1,72 @@
+{
+  "schema_version": "RCA2A16ServiceWiringImplementationReportV1",
+  "audit_phase": "RCA-2A.16",
+  "task": "TASK-AGENT-V0-SERVICE-WIRING",
+  "baseline_commit": "c143895bbcaf1a9f8c291f325941822b06d14b67",
+  "status": "SERVICE_WIRING_COMPLETED",
+  "wired_components": {
+    "service_manager": {
+      "path": "python_service/httpserver/services/service_manager.py",
+      "method": "_create_agent_orchestrator",
+      "supervisor_wired": true,
+      "supervisor_type": "ProductionSupervisor / ExperimentalGuidanceSupervisor",
+      "delegation_dispatcher_wired": true,
+      "dispatcher_type": "_delegation_dispatcher",
+      "reused_infrastructure": [
+        "SpecialistDelegationExecutor",
+        "ContextAssembler",
+        "ArtifactFamilyRegistry",
+        "SkillRegistry",
+        "ForensicToolServices",
+        "ForensicToolRegistry",
+        "AgentRuntimeRepository",
+        "InvestigationRepository"
+      ]
+    },
+    "configuration": {
+      "path": "python_service/httpserver/config.py",
+      "settings_class": "Settings",
+      "added_flags": {
+        "agent_execution_enabled": {
+          "type": "bool",
+          "default": false,
+          "purpose": "Explicit feature gate for executing Agent v0 cycles via HTTP"
+        },
+        "agent_experimental_guidance_enabled": {
+          "type": "bool",
+          "default": false,
+          "purpose": "Developer-only opt-in for frozen Vocabulary Guidance V1; default OFF"
+        }
+      }
+    },
+    "http_routes": {
+      "path": "python_service/httpserver/routes/investigation.py",
+      "endpoints": [
+        {
+          "method": "POST",
+          "path": "/api/investigation/agent/cycle",
+          "status_code": 200,
+          "request_model": "AgentCycleRequest",
+          "response_model": "AgentCycleResponse",
+          "concurrency_control": "asyncio.Lock per task_id + in-memory execution guard",
+          "gate": "Requires agent_execution_enabled=True, else 403 Forbidden"
+        },
+        {
+          "method": "GET",
+          "path": "/api/investigation/agent/state",
+          "status_code": 200,
+          "response_model": "AgentStateResponse",
+          "concurrency_control": "Read-only query to SQLite authority",
+          "model_calls": 0
+        }
+      ]
+    }
+  },
+  "safety_invariants": {
+    "production_supervisor_prompt_modified": false,
+    "production_schema_modified": false,
+    "vocabulary_guidance_frozen": true,
+    "vocabulary_guidance_sha256": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+    "real_provider_requests_executed": 0
+  }
+}
