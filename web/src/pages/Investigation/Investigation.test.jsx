@@ -49,6 +49,10 @@ vi.mock('../../services/investigationService', () => ({
   removeReportEvidence: vi.fn(),
   addReportEvidence: vi.fn().mockResolvedValue({}),
   updateReportEvidenceStatus: vi.fn().mockResolvedValue({}),
+  listAgentReviewCandidates: vi.fn().mockResolvedValue({ candidates: [] }),
+  getAgentReviewCandidate: vi.fn().mockResolvedValue(null),
+  getAgentReviewHistory: vi.fn().mockResolvedValue([]),
+  submitAgentReviewDecision: vi.fn().mockResolvedValue({}),
 }));
 
 // 时间线 = 已分析文件节点；事件经文件关联展示在左栏并驱动右栏工作台。

@@ -207,6 +207,53 @@ export const pollAnalysisJob = async (taskId, jobId, onProgress, interval = 1500
     return poll();
 };
 
+/**
+ * 列出指定任务下的 Agent 审核候选（只读，零 LLM 调用）
+ */
+export const listAgentReviewCandidates = async (taskId, investigationId) => {
+    return await pythonApi.get('/api/investigation/agent/review-candidates', {
+        params: {
+            task_id: taskId,
+            ...(investigationId ? { investigation_id: investigationId } : {}),
+        },
+    });
+};
+
+/**
+ * 查询指定候选的详细投影（含 evidence_refs、candidate_hash、revision 等）
+ */
+export const getAgentReviewCandidate = async (taskId, candidateId, investigationId) => {
+    return await pythonApi.get(
+        `/api/investigation/agent/review-candidates/${encodeURIComponent(candidateId)}`,
+        {
+            params: {
+                task_id: taskId,
+                ...(investigationId ? { investigation_id: investigationId } : {}),
+            },
+        },
+    );
+};
+
+/**
+ * 查询追加写审核历史日志
+ */
+export const getAgentReviewHistory = async (taskId, candidateId, investigationId) => {
+    return await pythonApi.get('/api/investigation/agent/reviews/history', {
+        params: {
+            task_id: taskId,
+            ...(candidateId ? { candidate_id: candidateId } : {}),
+            ...(investigationId ? { investigation_id: investigationId } : {}),
+        },
+    });
+};
+
+/**
+ * 提交显式人工审核决策（接受或拒绝）
+ */
+export const submitAgentReviewDecision = async (payload) => {
+    return await pythonApi.post('/api/investigation/agent/review', payload);
+};
+
 export default {
     getInvestigationGraph,
     getInvestigationSnapshot,
@@ -253,4 +300,8 @@ export default {
     publishFinalReport,
     getClaimProvenance,
     pollAnalysisJob,
+    listAgentReviewCandidates,
+    getAgentReviewCandidate,
+    getAgentReviewHistory,
+    submitAgentReviewDecision,
 };
