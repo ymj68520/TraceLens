@@ -1,0 +1,27 @@
+{
+  "artifact_version": "RCA2A19FinalEngineeringDecisionV1",
+  "experiment_id": "rca2a19-real-delegation-integration-e2e",
+  "timestamp_utc": "2026-10-17T08:30:11Z",
+  "final_disposition": "REAL_MODEL_AGENT_E2E_PASS",
+  "evaluation_summary": {
+    "all_precall_hard_gates_passed": true,
+    "logical_generations": 10,
+    "physical_http_attempts": 10,
+    "provider": "generic",
+    "endpoint": "https://chat.cordapp.org/v1",
+    "model": "deepseek-flash",
+    "production_prompt_version": "supervisor-v2",
+    "real_delegation_created": true,
+    "specialist_executed": true,
+    "forensic_tool_invoked": true,
+    "evidence_backed_result_integrated": true,
+    "working_state_persisted": true,
+    "trajectory_persisted": true,
+    "zero_new_calls_on_replay": true,
+    "conflict_rejected_on_changed_params": true,
+    "evidence_untouched": true,
+    "findings_unpromoted": true,
+    "report_unadmitted": true
+  },
+  "mandatory_hard_stop": true
+}

@@ -1,0 +1,17 @@
+{
+  "artifact_version": "RCA2A19TestAndRegressionReportV1",
+  "experiment_id": "rca2a19-real-delegation-integration-e2e",
+  "timestamp_utc": "2026-10-17T08:30:11Z",
+  "regression_results": {
+    "precall_unit_regression_tests": 3086,
+    "precall_unit_regression_passed": 3086,
+    "precall_unit_regression_failed": 0,
+    "precall_deterministic_e2e_tests": 24,
+    "precall_deterministic_e2e_passed": 24,
+    "postcall_e2e_smoke_cycles": 2,
+    "postcall_idempotency_checks": 2,
+    "postcall_evidence_checks": 3,
+    "regressions_detected": false
+  },
+  "verdict": "FULL_REGRESSION_PASSED_ZERO_DEFECTS"
+}

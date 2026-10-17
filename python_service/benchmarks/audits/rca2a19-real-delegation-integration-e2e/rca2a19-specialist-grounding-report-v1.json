@@ -1,0 +1,46 @@
+{
+  "artifact_version": "RCA2A19SpecialistGroundingReportV1",
+  "experiment_id": "rca2a19-real-delegation-integration-e2e",
+  "timestamp_utc": "2026-10-17T08:09:09.000000+00:00",
+  "grounding_architecture": {
+    "evidence_resolver": {
+      "component": "httpserver.services.evidence.resolver.EvidenceResolver",
+      "resolution_targets": [
+        "file:<canonical_path>",
+        "cluster:<version>:<cluster_id>:<cluster_type>"
+      ],
+      "validation_rules": [
+        "Target file must exist in task files.db",
+        "Target cluster must exist in task events.db",
+        "Cross-task references are strictly rejected fail-closed"
+      ]
+    },
+    "grounding_validator": {
+      "component": "httpserver.services.investigation.agent_integration.GroundingValidator",
+      "validation_rules": [
+        "Every hypothesis basis must map to resolved evidence handles",
+        "Ungrounded hypotheses or findings are rejected",
+        "Unknown handle references cause immediate plan/integration rejection"
+      ]
+    },
+    "state_transition_policy": {
+      "component": "httpserver.services.investigation.agent_integration.StateTransitionPolicy",
+      "validation_rules": [
+        "Zero unauthorized promotion of hypotheses to findings without analyst review",
+        "Zero modification of raw evidence tables",
+        "State revisions must increment monotonically without skipping"
+      ]
+    }
+  },
+  "deterministic_verification": {
+    "test_file": "python_service/tests/unit/investigation/test_agent_delegation_integration_e2e.py",
+    "relevant_tests": [
+      "test_t07_specialist_result_refs_canonically_resolved",
+      "test_t08_invalid_refs_rejected",
+      "test_t10_real_integration_policy_applied",
+      "test_t22_original_evidence_unchanged"
+    ],
+    "status": "ALL_TESTS_PASSING"
+  },
+  "verdict": "SPECIALIST_GROUNDING_STRICTLY_ENFORCED"
+}

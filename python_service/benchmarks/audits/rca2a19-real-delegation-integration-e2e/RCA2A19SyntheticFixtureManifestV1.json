@@ -1,0 +1,35 @@
+{
+  "artifact_version": "RCA2A19SyntheticFixtureManifestV1",
+  "experiment_id": "rca2a19-real-delegation-integration-e2e",
+  "timestamp_utc": "2026-10-17T08:09:16.000000+00:00",
+  "synthetic_task": {
+    "task_id": "synthetic-rca2a19-smoke-001",
+    "directory": "python_service/benchmarks/audits/rca2a19-real-delegation-integration-e2e/synthetic_task",
+    "investigation_id": "inv_synthetic_001",
+    "starting_working_state_revision": 1,
+    "scenario_description": "Investigation into unverified financial records access and user login events on Windows host.",
+    "expected_safe_outcome": "Supervisor plans delegation for question Q1/Q2; Specialist executes forensic tools; Tool returns evidence refs; Supervisor integrates evidence-backed result; Working state revision increments safely."
+  },
+  "initial_database_hashes": {
+    "files_db_sha256": "aab0cfd4f5c8eaf0e75a43fe3bf7cc70d3d51d27980cda09d9f86ca5846acf93",
+    "events_db_sha256": "73e938bed46400ebc0abc657dc1efc8f6c45e26e48a9d1bc4fdded1bdba4dc52",
+    "raw_db_sha256": "b6ad1b86e7c88c2bcdb65ea1ed4edc3ff51fe40d0570768d6c4f0cff4c2d3350"
+  },
+  "resolvable_evidence_keys": [
+    "file:C/Users/admin/Downloads/financial_records_2026.xlsx",
+    "cluster:v1:28333333:user_logon"
+  ],
+  "charter_questions": [
+    {
+      "question_id": "Q1",
+      "text": "Identify file access to financial_records_2026.xlsx and logon events in the timeline using search_files and search_timeline, then return the structured specialist result with the evidence references.",
+      "priority": "required",
+      "status": "open"
+    }
+  ],
+  "source_scopes": [
+    "windows",
+    "src_event_logs"
+  ],
+  "isolation_status": "ISOLATED_TEST_FIXTURE_ESTABLISHED"
+}

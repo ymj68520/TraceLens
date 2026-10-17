@@ -1,0 +1,33 @@
+{
+  "artifact_version": "RCA2A19BaselineIntegrityReportV1",
+  "experiment_id": "rca2a19-real-delegation-integration-e2e",
+  "timestamp_utc": "2026-10-17T08:08:40.000000+00:00",
+  "historical_baseline": {
+    "rca2a18_artifact_commit": "52e7818a12f630e08089543066802aeab41f26fe",
+    "rca2a18_runtime_commit": "f67653f50753941929621d12d209c7359e202de8",
+    "rca2a18_disposition": "REAL_MODEL_AGENT_E2E_PASS"
+  },
+  "runtime_implementation": {
+    "current_runtime_commit": "ebf2d3e05fab7e5559d5232a038b56adb85c4020",
+    "intermediate_wiring_commit": "a46649ffb7ea13410f9e2b1cb160cf2bb9b88a87",
+    "modified_files": [
+      "python_service/httpserver/services/service_manager.py",
+      "python_service/httpserver/services/investigation/paths.py",
+      "python_service/httpserver/services/investigation/agent_tools/adapters/services.py",
+      "python_service/tests/unit/investigation/test_investigation_paths.py",
+      "python_service/tests/unit/investigation/test_agent_delegation_integration_e2e.py"
+    ],
+    "verification_status": "COMMITTED_AND_FROZEN"
+  },
+  "contract_invariants": {
+    "production_supervisor_prompt": "supervisor-v2 (UNCHANGED)",
+    "production_schema_plan": "SupervisorPlanDecisionV2 (UNCHANGED)",
+    "production_schema_integration": "SupervisorIntegrationDecisionV2 (UNCHANGED)",
+    "vocabulary_guidance": "DISABLED_BY_DEFAULT",
+    "raw_evidence_mutation": "FORBIDDEN",
+    "unauthorized_fact_promotion": "BLOCKED",
+    "unauthorized_finalization": "BLOCKED",
+    "unauthorized_report_admission": "BLOCKED"
+  },
+  "verdict": "BASELINE_VERIFIED_AND_FROZEN"
+}

@@ -1,0 +1,44 @@
+{
+  "artifact_version": "RCA2A19PreCallGateReportV1",
+  "experiment_id": "rca2a19-real-delegation-integration-e2e",
+  "timestamp_utc": "2026-10-17T08:09:28.000000+00:00",
+  "precall_hard_gates": {
+    "gate_01_baseline_verification": {
+      "criterion": "RCA-2A.18 baseline commit 52e7818a12f630e08089543066802aeab41f26fe and runtime 3f708a823c881c4a985d76b38f00ae93ede5401a verified",
+      "status": "PASS"
+    },
+    "gate_02_prompt_and_schema_immutability": {
+      "criterion": "Zero changes to production supervisor prompt supervisor-v2 and schema SupervisorIntegrationDecisionV2 / SupervisorPlanDecisionV2",
+      "status": "PASS"
+    },
+    "gate_03_guidance_disabled": {
+      "criterion": "agent_experimental_guidance_enabled is False by default",
+      "status": "PASS"
+    },
+    "gate_04_evidence_immutability_baseline": {
+      "criterion": "Initial SHA-256 digests computed and recorded for raw.db, events.db, files.db",
+      "status": "PASS"
+    },
+    "gate_05_offline_regression_suite": {
+      "criterion": "Full unit test regression executed with zero failures",
+      "details": "3086 passed, 1 skipped in 415.39s",
+      "status": "PASS"
+    },
+    "gate_06_deterministic_e2e_suite": {
+      "criterion": "24 deterministic full-path delegation/integration tests passed",
+      "details": "24 passed in 7.52s in test_agent_delegation_integration_e2e.py",
+      "status": "PASS"
+    },
+    "gate_07_provider_preflight_prohibited": {
+      "criterion": "Zero provider preflight requests authorized before smoke test",
+      "preflights_executed": 0,
+      "status": "PASS"
+    },
+    "gate_08_budget_guard_installed": {
+      "criterion": "RequestBudgetGuard installed with max_logical=10, max_physical=30",
+      "status": "PASS"
+    }
+  },
+  "overall_gate_status": "ALL_PRECALL_GATES_PASSED",
+  "authorization_decision": "LIVE_BOUNDED_E2E_SMOKE_AUTHORIZED"
+}

@@ -1,0 +1,234 @@
+{
+  "artifact_version": "RCA2A19RealExecutionTraceAndStateDiffV1",
+  "experiment_id": "rca2a19-real-delegation-integration-e2e",
+  "timestamp_utc": "2026-10-17T08:30:11Z",
+  "state_evolution": {
+    "initial_revision": 1,
+    "cycle_a_ending_revision": 2,
+    "cycle_b_ending_revision": 2,
+    "revisions_count": 2,
+    "revisions_summary": [
+      {
+        "revision": 1,
+        "state_hash": "6e979c4d965d39d1"
+      },
+      {
+        "revision": 2,
+        "state_hash": "5a49e2f033dacf9f"
+      }
+    ]
+  },
+  "delegations_executed": [
+    {
+      "delegation_id": "del_1daa582e766542708e081925122b2ad7",
+      "run_id": "run_aaa1149d261d4f9fa827057b9386fe10",
+      "question_ref": "Q1",
+      "status": "completed",
+      "tool_observations_count": 3,
+      "evidence_refs": [
+        "file:C/Users/admin/Downloads/financial_records_2026.xlsx",
+        "cluster:v1:28333333:user_logon",
+        "cluster:v1:28333334:file_access"
+      ],
+      "result_hash": "ebda10826376884a6d327d0cdbb9e922b6e56329f463ad45ed7714ea88f5a6c1"
+    },
+    {
+      "delegation_id": "del_f16414ca05a2439c8e8b5c8f642cbe70",
+      "run_id": "run_aaa1149d261d4f9fa827057b9386fe10",
+      "question_ref": "Q1",
+      "status": "completed",
+      "tool_observations_count": 3,
+      "evidence_refs": [
+        "file:C/Users/admin/Downloads/financial_records_2026.xlsx",
+        "cluster:v1:28333333:user_logon",
+        "cluster:v1:28333334:file_access"
+      ],
+      "result_hash": "f91fa80f1e48f01218a424c2bc2ab4f50b43af3eafa7e471fe5c905ce162b89b"
+    },
+    {
+      "delegation_id": "del_25ff5b4be345401488703f92ba6d7ee7",
+      "run_id": "run_aaa1149d261d4f9fa827057b9386fe10",
+      "question_ref": "q-215c8700",
+      "status": "failed",
+      "tool_observations_count": 0,
+      "evidence_refs": [],
+      "result_hash": null
+    },
+    {
+      "delegation_id": "del_6fa25a246fc548659d58ac464d905ccc",
+      "run_id": "run_aaa1149d261d4f9fa827057b9386fe10",
+      "question_ref": "q-648dbe2d",
+      "status": "failed",
+      "tool_observations_count": 0,
+      "evidence_refs": [],
+      "result_hash": null
+    },
+    {
+      "delegation_id": "del_09201db1315c4a19a41fc36c2aa08e57",
+      "run_id": "run_aaa1149d261d4f9fa827057b9386fe10",
+      "question_ref": "q-9449fd2f",
+      "status": "failed",
+      "tool_observations_count": 0,
+      "evidence_refs": [],
+      "result_hash": null
+    }
+  ],
+  "trajectory_events_summary": [
+    {
+      "event_id": "trj_a6955c1560f047e99c1cce5ee4d529b8",
+      "event_type": "investigation_created",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_1db17cb3969d4492b3bec81393f06fd7",
+      "event_type": "attention_compiled",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_0863cf42bf2041ad95394c6249da918f",
+      "event_type": "run_admitted",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_615d516a9c254a2e96f1daf4e2a9dbf6",
+      "event_type": "run_started",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_f5edc2257c3541f386963da66a528501",
+      "event_type": "supervisor_plan_decided",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_421c46dad2b742ad989f40107353a751",
+      "event_type": "delegation_admitted",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_e2344a9ec1f24cddb8325ff2b78376ec",
+      "event_type": "delegation_started",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_9be5550b49054bb88b7832c96a17e97d",
+      "event_type": "tool_observation_recorded",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_6e47f5af63d244e2a3afdb40bdbfef5b",
+      "event_type": "tool_observation_recorded",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_b948839957624531b224d22f31961d1e",
+      "event_type": "tool_observation_recorded",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_e475fd8f81fb48738f9f347703b85111",
+      "event_type": "delegation_completed",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_747847cf05e14934a34e724e4167dc3d",
+      "event_type": "supervisor_integration_committed",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_b35e52de3824408d83adc456c61281e6",
+      "event_type": "attention_compiled",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_bfef1b5d66934b2092a543d7893ae40b",
+      "event_type": "supervisor_plan_decided",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_b2f7ffa063b7425eafc07aca9a0f0e8a",
+      "event_type": "delegation_admitted",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_6b530747e0bb4be493b7aa3c8c270292",
+      "event_type": "delegation_admitted",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_999b3c0867664c788589dcc3f776d366",
+      "event_type": "delegation_admitted",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_8983d4c46891423da4ebf454cf759ff0",
+      "event_type": "delegation_admitted",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_edfe36dcf8dc47af90bc48a78a737366",
+      "event_type": "delegation_started",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_22bceae9e5ca47bf9548d131d658c1aa",
+      "event_type": "tool_observation_recorded",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_72e6a7b1b50d4a8a8385aaee19d729cb",
+      "event_type": "tool_observation_recorded",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_ec881f8f462b4cd58293e2a373b3af09",
+      "event_type": "tool_observation_recorded",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_722d7e6b4db845f4a034784ef082c89c",
+      "event_type": "delegation_completed",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_b2fa3bb2ead14da6b004fb40ad22533b",
+      "event_type": "delegation_started",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_bd5f35fe66ea4bf7887c5db81acbf566",
+      "event_type": "delegation_failed",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_6b6d79fbcb394260ab535a7378f9131b",
+      "event_type": "delegation_started",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_a4f67a25894343989d1904001b9b73a4",
+      "event_type": "delegation_failed",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_dc1ef329745e4d5fa13005889324591c",
+      "event_type": "delegation_started",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_4ce1a12cb3e3446e9c65f774171b70c7",
+      "event_type": "delegation_failed",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_466b2ccaa0ff41efb8799955ca47f759",
+      "event_type": "transition_decision_rejected",
+      "step_name": null
+    },
+    {
+      "event_id": "trj_e80eeef6addd4403adddb6715d564353",
+      "event_type": "run_failed",
+      "step_name": null
+    }
+  ],
+  "verdict": "TRACE_AND_STATE_DIFF_RECORDED"
+}
