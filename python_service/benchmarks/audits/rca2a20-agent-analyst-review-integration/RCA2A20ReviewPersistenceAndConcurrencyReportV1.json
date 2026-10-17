@@ -1,0 +1,15 @@
+{
+  "report_version": "rca2a20-review-persistence-concurrency:v1",
+  "persistence_mechanisms": {
+    "finding_storage": "investigation_findings table with trg_investigation_finding_legal_transition",
+    "history_storage": "investigation_finding_reviews append-only table with no-update and no-delete triggers",
+    "idempotency_storage": "agent_review_executions table with UNIQUE(task_id, request_id)"
+  },
+  "concurrency_protection": {
+    "locking": "BEGIN IMMEDIATE atomic SQLite transaction",
+    "idempotent_replay": "Identical request_id and fingerprint returns 200 with cached outcome",
+    "conflict_rejection": "Reused request_id with different payload returns 409 Conflict",
+    "race_condition": "Second concurrent reviewer on same finding is rejected with 409 Conflict"
+  },
+  "status": "PASS"
+}

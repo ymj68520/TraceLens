@@ -1,0 +1,17 @@
+{
+  "report_version": "rca2a20-baseline-integrity:v1",
+  "task_id": "TASK-AGENT-V0-ANALYST-REVIEW-INTEGRATION",
+  "baseline_commit": "0962dd877ff26fc31d5f66156ee2607b04574bae",
+  "runtime_baseline_commit": "b33084c2810a9f5d134d119ff3d85834e56598eb",
+  "branch": "mvp/agent-v0-runtime-v3-requalification",
+  "production_supervisor": "supervisor-v2",
+  "production_schema": "SupervisorIntegrationDecisionV2",
+  "vocabulary_guidance_v1": "EXPERIMENTAL_ONLY",
+  "rca2a14_status": "DEFERRED",
+  "rca2b_authorized": false,
+  "gen5_created": false,
+  "offline_boundary_enforced": true,
+  "verification_timestamp": "2026-10-17T17:10:00Z",
+  "status": "PASS",
+  "implementation_commit": "624953bb895693ffbeba7289b90c13bb3ae2db0e"
+}

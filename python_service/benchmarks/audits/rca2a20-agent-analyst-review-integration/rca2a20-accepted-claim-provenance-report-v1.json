@@ -1,0 +1,11 @@
+{
+  "report_version": "rca2a20-accepted-claim-provenance:v1",
+  "provenance_chain": "Investigation Event -> Agent Proposal -> Grounding Result -> Claim Disposition -> Finding -> Analyst Review -> Forensic Evidence",
+  "task_scoping": "EvidenceResolver strictly checks task output_files_db and output_events_db; cross-task references are rejected with 422.",
+  "epistemic_invariants": {
+    "HYPOTHESIS_preservation": "Candidates with claim_type HYPOTHESIS remain HYPOTHESIS upon acceptance (assertion_class=HYPOTHESIS).",
+    "unsupported_FACT_blocked": "Candidates with claim_type FACT lacking valid evidence references are blocked from acceptance with 422.",
+    "analyst_note_exclusion": "References with prefixes analyst_note: or summary: are strictly blocked from evidence resolution."
+  },
+  "status": "PASS"
+}

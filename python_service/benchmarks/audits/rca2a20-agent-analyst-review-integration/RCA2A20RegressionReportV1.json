@@ -1,0 +1,60 @@
+{
+  "regression_report_version": "rca2a20-regression:v1",
+  "suites_executed": [
+    {
+      "suite": "test_agent_analyst_review_integration.py",
+      "count": 34,
+      "status": "PASS"
+    },
+    {
+      "suite": "test_agent_delegation_integration_e2e.py",
+      "count": 24,
+      "status": "PASS"
+    },
+    {
+      "suite": "test_agent_cycle_lifecycle.py",
+      "count": 32,
+      "status": "PASS"
+    },
+    {
+      "suite": "test_agent_orchestrator_wiring.py",
+      "count": 30,
+      "status": "PASS"
+    },
+    {
+      "suite": "test_agent_findings.py",
+      "count": 12,
+      "status": "PASS"
+    },
+    {
+      "suite": "test_agent_grounding.py",
+      "count": 18,
+      "status": "PASS"
+    },
+    {
+      "suite": "test_agent_investigation_loop.py",
+      "count": 14,
+      "status": "PASS"
+    },
+    {
+      "suite": "test_agent_integration_v2.py",
+      "count": 16,
+      "status": "PASS"
+    },
+    {
+      "suite": "test_investigation_report_evidence.py",
+      "count": 23,
+      "status": "PASS"
+    },
+    {
+      "suite": "test_investigation_review.py",
+      "count": 29,
+      "status": "PASS"
+    }
+  ],
+  "total_passed": 232,
+  "total_failed": 0,
+  "regressions_detected": 0,
+  "duration_seconds": 32.45,
+  "status": "PASS"
+}

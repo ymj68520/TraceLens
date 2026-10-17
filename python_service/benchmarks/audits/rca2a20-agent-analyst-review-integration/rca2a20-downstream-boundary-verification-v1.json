@@ -1,0 +1,11 @@
+{
+  "report_version": "rca2a20-downstream-boundary:v1",
+  "boundaries": {
+    "report_evidence": "0 rows automatically admitted to report_evidence on review acceptance (verified by test T26).",
+    "investigation_reports": "0 reports created or published on review acceptance (verified by test T27).",
+    "investigation_status": "Investigation status remains ready/active; no auto-finalization triggered (verified by test T25).",
+    "investigation_events": "Event titles and summaries remain unchanged by review actions (verified by test T28).",
+    "underlying_databases": "Zero bytes modified in raw.db, events.db, files.db (verified by test T24)."
+  },
+  "status": "PASS"
+}

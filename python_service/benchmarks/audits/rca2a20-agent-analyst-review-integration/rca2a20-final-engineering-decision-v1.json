@@ -1,0 +1,8 @@
+{
+  "decision_version": "rca2a20-final-decision:v1",
+  "disposition": "AGENT_ANALYST_REVIEW_INTEGRATED",
+  "summary": "Agent v0 investigation claims successfully wired to human Analyst Review boundary with durable SQLite persistence, atomic concurrency control, epistemic type preservation, task-scoped evidence resolution, and full regression pass.",
+  "ui_boundary": "HTTP_REVIEW_INTEGRATED (Frontend review panel adapter deferred to subsequent UI phase)",
+  "offline_gate": "PASSED (0 real model calls executed)",
+  "hard_stop": true
+}
