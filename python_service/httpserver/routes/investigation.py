@@ -1057,11 +1057,11 @@ async def get_agent_review_history(
         raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
 
 
-_TRUSTED_LOCAL_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", "testclient"})
+_TRUSTED_LOCAL_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", "testclient", "testserver"})
 
 
 def verify_trusted_review_caller(http_request: Request) -> None:
-    """Enforce trusted caller and origin boundary for single-user review & agent mutations."""
+    """Enforce trusted caller, host, and origin boundary for single-user review & agent mutations."""
     settings = get_settings()
     if not getattr(settings, "agent_review_local_only", True):
         return
@@ -1079,6 +1079,16 @@ def verify_trusted_review_caller(http_request: Request) -> None:
 
     headers = getattr(http_request, "headers", None)
     if headers:
+        # Validate Host header against DNS rebinding attacks
+        host_header = headers.get("host")
+        if host_header:
+            host_name = host_header.split(":")[0].strip().lower()
+            if host_name and host_name not in _TRUSTED_LOCAL_HOSTS:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"untrusted host header {host_header!r}: local mutations are restricted to trusted development hosts",
+                )
+
         origin = headers.get("origin")
         if origin:
             from urllib.parse import urlparse

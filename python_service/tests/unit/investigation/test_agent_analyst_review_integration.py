@@ -1195,3 +1195,45 @@ def test_t39_cycle_query_task_id_mismatch_rejected(env):
     assert "task_id mismatch" in resp.json()["detail"]
 
 
+# ---------------------------------------------------------------------------
+# T40: Unexpected Host header rejected with 403 Forbidden (RCA-2A.24)
+# ---------------------------------------------------------------------------
+def test_t40_unexpected_host_header_rejected(env):
+    """T40: Host header validation blocks DNS rebinding on mutation endpoints."""
+    cycle_req = {
+        "task_id": env.fixture.task_id,
+        "investigation_id": env.fixture.investigation_id,
+        "request_id": "req-cycle-rebind-01",
+    }
+
+    # Malicious host header (e.g. DNS rebinding target)
+    resp_rebind = env.client.post(
+        "/api/investigation/agent/cycle",
+        json=cycle_req,
+        headers={"Host": "rebind.attacker.com"},
+    )
+    assert resp_rebind.status_code == 403
+    assert "untrusted host header" in resp_rebind.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# T41: Null Origin header rejected with 403 Forbidden (RCA-2A.24)
+# ---------------------------------------------------------------------------
+def test_t41_null_origin_header_rejected(env):
+    """T41: Null Origin header (e.g. sandboxed iframe or file:) rejected."""
+    cycle_req = {
+        "task_id": env.fixture.task_id,
+        "investigation_id": env.fixture.investigation_id,
+        "request_id": "req-cycle-null-origin-01",
+    }
+
+    resp_null_origin = env.client.post(
+        "/api/investigation/agent/cycle",
+        json=cycle_req,
+        headers={"Origin": "null"},
+    )
+    assert resp_null_origin.status_code == 403
+    assert "untrusted request origin" in resp_null_origin.json()["detail"]
+
+
+
