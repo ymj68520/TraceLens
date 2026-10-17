@@ -237,7 +237,8 @@ if [ "$RUN_PYTHON" = "1" ]; then
         "$PY_EXEC" -m httpserver.main > "$LOG_DIR/python_service.log" 2>&1 &
     PYTHON_PID=$!
     echo -e "  ${GREEN}✓ PID ${PYTHON_PID}${NC}  日志: $LOG_DIR/python_service.log"
-    check_service "http://localhost:${PYTHON_PORT}/health" "Python 服务" 30 || \
+    # Cold start on /mnt/d (WSL 9p) takes 45s+; 30s misreports a healthy start.
+    check_service "http://localhost:${PYTHON_PORT}/health" "Python 服务" 90 || \
         echo -e "${YELLOW}⚠ Python 健康检查失败，查看日志: $LOG_DIR/python_service.log${NC}"
 
     # 分布式 C/S server (8091) —— 与 httpserver 并行，失败不阻断
@@ -248,7 +249,7 @@ if [ "$RUN_PYTHON" = "1" ]; then
         exec "$PY_EXEC" -m server.main ) > "$LOG_DIR/cs_server.log" 2>&1 &
     CS_PID=$!
     echo -e "  ${GREEN}✓ PID ${CS_PID}${NC}  日志: $LOG_DIR/cs_server.log"
-    check_service "http://localhost:${CS_PORT}/health" "C/S 服务" 30 || \
+    check_service "http://localhost:${CS_PORT}/health" "C/S 服务" 90 || \
         echo -e "${YELLOW}⚠ C/S 健康检查失败（不影响 C++/httpserver）${NC}"
     echo
 fi
