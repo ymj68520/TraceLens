@@ -887,8 +887,10 @@ class ServiceManager:
             from .investigation.agent_profiles import default_profiles
             from .investigation.agent_runtime import AgentRuntimeRepository
             from .investigation.agent_skills import SkillRegistry
-            from .investigation.agent_specialist_executor import (
+            from .investigation.agent_orchestrator import (
                 DelegationExecutionSummary,
+            )
+            from .investigation.agent_specialist_executor import (
                 SpecialistDelegationExecutor,
                 build_execution_envelope,
                 model_config_digest_from_adapter_config,
@@ -898,19 +900,27 @@ class ServiceManager:
             from .investigation.agent_tools.adapters.services import (
                 ForensicToolServices,
             )
+            from .investigation.agent_tools.observations import (
+                AgentObservationSink,
+            )
             from .investigation.paths import investigation_db_path_for_task
             from .investigation.repository import InvestigationRepository
 
             task_id = planning_context.task_id
-            db_path = investigation_db_path_for_task(task_id)
+            task = await self._cpp_backend.get_task(task_id)
+            if not task:
+                logger.warning("Delegation dispatcher could not find task %s", task_id)
+                return []
+            db_path = investigation_db_path_for_task(task)
             repo = InvestigationRepository(db_path, task_id)
             runtime = AgentRuntimeRepository(repo)
 
-
             tool_services = ForensicToolServices(
                 cpp_backend=self._cpp_backend,
-                db_path=db_path,
-                task_id=task_id,
+                investigation_service=self._get_or_create_investigation_service(),
+                investigation_read_service=self.investigation_read_service(),
+                investigation_event_service=self.investigation_event_service(),
+                secondary_analysis_executor=getattr(self, "_secondary_analysis_executor", None),
             )
             registry = build_read_only_registry(tool_services)
 
@@ -918,30 +928,33 @@ class ServiceManager:
                 cpp_backend=self._cpp_backend,
                 settings=self.settings,
                 tool_services=tool_services,
-                registry_builder=lambda r, observation_sink=None: registry,
+                registry_builder=lambda r, observation_sink=None: build_read_only_registry(
+                    tool_services, observation_sink=observation_sink
+                ),
                 investigation_db_path_for_task=lambda t: db_path,
                 failure_diagnostics_sink=failure_diagnostics_sink_from_settings(
                     self.settings
                 ),
+                observation_sink_factory=lambda rt: AgentObservationSink(rt),
             )
 
             profiles = default_profiles()
             skills = SkillRegistry.with_defaults()
             families = ArtifactFamilyRegistry.with_defaults()
             assembler = ContextAssembler(
-                skills=skills,
-                families=families,
+                skill_registry=skills,
+                family_registry=families,
                 profiles=profiles,
                 tool_schema_hash=registry.schema_hash(),
             )
 
             adapter_config = resolve_adapter_config(self.settings)
             model_digest = model_config_digest_from_adapter_config(adapter_config)
-            task_dict = {
-                "id": task_id,
-                "scenarios": ["windows", "linux", "android"],
-                "scenario_databases": {},
-            }
+            task_dict = dict(task)
+            if "scenarios" not in task_dict:
+                task_dict["scenarios"] = ["windows", "linux", "android"]
+            if "scenario_databases" not in task_dict:
+                task_dict["scenario_databases"] = {}
 
             summaries: list[DelegationExecutionSummary] = []
             delegate_actions = list(decision.delegate_actions())

@@ -53,3 +53,11 @@ def test_dot_slash_syntax_normalized(tmp_path):
         "output_events_db": str(d / "." / "events.db"),
     })
     assert p == (d / "investigation.db").resolve(strict=False)
+
+
+def test_non_dict_raises():
+    with pytest.raises(EvidenceStoreError, match="expected task dict"):
+        investigation_db_path_for_task("task-123")
+    with pytest.raises(EvidenceStoreError, match="expected task dict"):
+        investigation_db_path_for_task(None)
+

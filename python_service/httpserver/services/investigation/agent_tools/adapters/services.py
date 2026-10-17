@@ -14,11 +14,11 @@ class ForensicToolServices(BaseModel):
 
     model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 
-    cpp_backend: Any  # get_task / get_task_files_paginated / get_task_events
-    investigation_service: Any  # resolve_evidence / effective_event_claims
-    investigation_read_service: Any  # list_evidence
-    investigation_event_service: Any  # list_events (optional reads)
-    secondary_analysis_executor: Any  # list_analyses / list_all_analyses
+    cpp_backend: Any = None  # get_task / get_task_files_paginated / get_task_events
+    investigation_service: Any = None  # resolve_evidence / effective_event_claims
+    investigation_read_service: Any = None  # list_evidence
+    investigation_event_service: Any = None  # list_events (optional reads)
+    secondary_analysis_executor: Any = None  # list_analyses / list_all_analyses
 
 
 def optional_service(bundle: ForensicToolServices, name: str) -> Optional[Any]:
