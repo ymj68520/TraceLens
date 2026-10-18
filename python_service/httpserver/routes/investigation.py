@@ -722,6 +722,11 @@ async def execute_agent_cycle(
                 status_code=404,
                 detail=f"task not found or investigation db unavailable for {request.task_id}",
             )
+        if task.get("read_only"):
+            raise HTTPException(
+                status_code=403,
+                detail=f"task {request.task_id} is read-only: mutations are forbidden",
+            )
         db_path = investigation_db_path_for_task(task)
     except HTTPException:
         raise

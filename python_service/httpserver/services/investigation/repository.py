@@ -2829,7 +2829,6 @@ class InvestigationRepository:
         elif version == SUPPORTED_SCHEMA_VERSION:
             self._validate_v16_schema()
             self._validate_v8_snapshot_constraint()
-            self._ensure_v11_auxiliary_objects()
         else:
             raise EvidenceStoreError(
                 f"unsupported investigation.db schema version: {version} "

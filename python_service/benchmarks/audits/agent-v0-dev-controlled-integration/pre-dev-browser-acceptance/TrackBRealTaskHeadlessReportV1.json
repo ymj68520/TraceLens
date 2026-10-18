@@ -1,0 +1,680 @@
+{
+  "report_version": "track-b-real-task-headless-report:v1",
+  "audit_id": "TASK-AGENT-V0-REALISTIC-BROWSER-E2E-TRACK-B",
+  "verified_at": "2026-10-18T04:30:00Z",
+  "real_task_read_only_checks": [
+    {
+      "testId": "B1-01",
+      "name": "Real browser opens Investigation Workbench on original task",
+      "pass": true,
+      "detail": {
+        "hasWorkbenchTitle": true,
+        "latency_ms": 1988
+      }
+    },
+    {
+      "testId": "B1-02",
+      "name": "Original task renders read-only indicator/badge preserving historical immutability",
+      "pass": true,
+      "detail": {
+        "hasBadge": false
+      }
+    },
+    {
+      "testId": "B1-03",
+      "name": "Original task Agent state read-only query returns Rev 2 with 7 questions",
+      "pass": true,
+      "detail": {
+        "state": {
+          "task_id": "60dedf82-7f35-48be-a104-b4d283a4fe92",
+          "investigation_id": "inv_wo_dian_002",
+          "working_state_revision": 2,
+          "working_state_hash": "9b0d47b287acc3384097316d04aae578422d5e0591b4ee6c590b3b001c4d26f9",
+          "objective": "\u6d89\u8bc8\u6295\u8d44\u5e73\u53f0\uff08\u6740\u732a\u76d8\uff09\u7a9d\u70b9\u4f5c\u6848\u7ec8\u7aef\u6848\uff1a\u56fa\u5b9a\u7a9d\u70b9\u8bdd\u672f\u4f53\u7cfb\u3001\u53d7\u5bb3\u4eba\u4e0e\u5ba2\u6e90\u6570\u636e\u3001\u8d43\u6b3e\u5f52\u96c6\u7ebf\u7d22\u4e0e\u53cd\u53d6\u8bc1\u884c\u4e3a\uff0c\u5e76\u95ed\u73af\u7ec8\u7aef\u4e0e\u5e73\u53f0\u5173\u8054",
+          "agent_execution_status": "idle",
+          "questions_count": 7,
+          "questions_summary": [
+            {
+              "question_id": "Q1",
+              "status": "open",
+              "disposition": null
+            },
+            {
+              "question_id": "Q2",
+              "status": "open",
+              "disposition": null
+            },
+            {
+              "question_id": "Q3",
+              "status": "in_progress",
+              "disposition": null
+            },
+            {
+              "question_id": "q-61dff02c",
+              "status": "open",
+              "disposition": null
+            },
+            {
+              "question_id": "q-ad56bfce",
+              "status": "open",
+              "disposition": null
+            },
+            {
+              "question_id": "q-b856d85c",
+              "status": "open",
+              "disposition": null
+            },
+            {
+              "question_id": "q-de74d9f4",
+              "status": "open",
+              "disposition": null
+            }
+          ],
+          "findings_count": 0,
+          "hypotheses_count": 1,
+          "active_delegations_count": 0,
+          "latest_trajectory_ref": "runtime_recovered:196"
+        },
+        "latency_ms": 49
+      }
+    },
+    {
+      "testId": "B1-04",
+      "name": "Original task review history query retrieves existing 10 accepted findings",
+      "pass": true,
+      "detail": {
+        "count": 10,
+        "latency_ms": 41
+      }
+    },
+    {
+      "testId": "B1-05",
+      "name": "Original task file evidence navigation retrieves real case files",
+      "pass": true,
+      "detail": {
+        "firstFile": "/soft/TrueCrypt/importent",
+        "latency_ms": 5
+      }
+    },
+    {
+      "testId": "B1-06",
+      "name": "Original task event timeline retrieves real timeline events",
+      "pass": true,
+      "detail": {
+        "eventsCount": 10,
+        "latency_ms": 3
+      }
+    },
+    {
+      "testId": "B1-07",
+      "name": "Mutation attempt (POST /cycle) on original task strictly rejected with 403 Forbidden",
+      "pass": true,
+      "detail": {
+        "status": 403
+      }
+    }
+  ],
+  "isolated_workflow_checks": [
+    {
+      "testId": "B1-01",
+      "name": "Real browser opens Investigation Workbench on original task",
+      "pass": true,
+      "detail": {
+        "hasWorkbenchTitle": true,
+        "latency_ms": 1988
+      }
+    },
+    {
+      "testId": "B1-02",
+      "name": "Original task renders read-only indicator/badge preserving historical immutability",
+      "pass": true,
+      "detail": {
+        "hasBadge": false
+      }
+    },
+    {
+      "testId": "B1-03",
+      "name": "Original task Agent state read-only query returns Rev 2 with 7 questions",
+      "pass": true,
+      "detail": {
+        "state": {
+          "task_id": "60dedf82-7f35-48be-a104-b4d283a4fe92",
+          "investigation_id": "inv_wo_dian_002",
+          "working_state_revision": 2,
+          "working_state_hash": "9b0d47b287acc3384097316d04aae578422d5e0591b4ee6c590b3b001c4d26f9",
+          "objective": "\u6d89\u8bc8\u6295\u8d44\u5e73\u53f0\uff08\u6740\u732a\u76d8\uff09\u7a9d\u70b9\u4f5c\u6848\u7ec8\u7aef\u6848\uff1a\u56fa\u5b9a\u7a9d\u70b9\u8bdd\u672f\u4f53\u7cfb\u3001\u53d7\u5bb3\u4eba\u4e0e\u5ba2\u6e90\u6570\u636e\u3001\u8d43\u6b3e\u5f52\u96c6\u7ebf\u7d22\u4e0e\u53cd\u53d6\u8bc1\u884c\u4e3a\uff0c\u5e76\u95ed\u73af\u7ec8\u7aef\u4e0e\u5e73\u53f0\u5173\u8054",
+          "agent_execution_status": "idle",
+          "questions_count": 7,
+          "questions_summary": [
+            {
+              "question_id": "Q1",
+              "status": "open",
+              "disposition": null
+            },
+            {
+              "question_id": "Q2",
+              "status": "open",
+              "disposition": null
+            },
+            {
+              "question_id": "Q3",
+              "status": "in_progress",
+              "disposition": null
+            },
+            {
+              "question_id": "q-61dff02c",
+              "status": "open",
+              "disposition": null
+            },
+            {
+              "question_id": "q-ad56bfce",
+              "status": "open",
+              "disposition": null
+            },
+            {
+              "question_id": "q-b856d85c",
+              "status": "open",
+              "disposition": null
+            },
+            {
+              "question_id": "q-de74d9f4",
+              "status": "open",
+              "disposition": null
+            }
+          ],
+          "findings_count": 0,
+          "hypotheses_count": 1,
+          "active_delegations_count": 0,
+          "latest_trajectory_ref": "runtime_recovered:196"
+        },
+        "latency_ms": 49
+      }
+    },
+    {
+      "testId": "B1-04",
+      "name": "Original task review history query retrieves existing 10 accepted findings",
+      "pass": true,
+      "detail": {
+        "count": 10,
+        "latency_ms": 41
+      }
+    },
+    {
+      "testId": "B1-05",
+      "name": "Original task file evidence navigation retrieves real case files",
+      "pass": true,
+      "detail": {
+        "firstFile": "/soft/TrueCrypt/importent",
+        "latency_ms": 5
+      }
+    },
+    {
+      "testId": "B1-06",
+      "name": "Original task event timeline retrieves real timeline events",
+      "pass": true,
+      "detail": {
+        "eventsCount": 10,
+        "latency_ms": 3
+      }
+    },
+    {
+      "testId": "B1-07",
+      "name": "Mutation attempt (POST /cycle) on original task strictly rejected with 403 Forbidden",
+      "pass": true,
+      "detail": {
+        "status": 403
+      }
+    },
+    {
+      "testId": "B01",
+      "name": "Chinese filenames and Unicode paths correctly queried and handled",
+      "pass": true,
+      "detail": {
+        "sample": [
+          "importent",
+          "WPS_Setup_11744.exe",
+          "OKX-android_APPEX668.apk"
+        ]
+      }
+    },
+    {
+      "testId": "B02",
+      "name": "Nested directories correctly parsed and resolved in real-sized task",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "testId": "B03",
+      "name": "Deleted and active file statistics preserved in isolated task metadata",
+      "pass": true,
+      "detail": {
+        "total_files": 2100
+      }
+    },
+    {
+      "testId": "B04",
+      "name": "Windows Recent .lnk and registry artifacts queryable in isolated task",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "testId": "B05",
+      "name": "File to Timeline association verified on real forensic event records",
+      "pass": true,
+      "detail": {
+        "samplePath": "/$RECYCLE.BIN/S-1-5-18/desktop.ini"
+      }
+    },
+    {
+      "testId": "B06",
+      "name": "Event Cluster stable identity and attributes preserved",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "testId": "B07",
+      "name": "Bounded Agent cycle executes with real tool queries hitting cloned SQLite and returns Rev 2",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "body": {
+          "cycle_id": "cycle_isolated-rea_002",
+          "task_id": "isolated-real-b2-test-001",
+          "investigation_id": "inv_isolated_b2_001",
+          "run_id": "run_d0c9660a8fdc48ed9c572c81b4a2a988",
+          "starting_revision": 1,
+          "ending_revision": 2,
+          "integration_status": "committed",
+          "integration_revision": 2,
+          "delegation_ids": [
+            "del_57697429e1634dcf959e75890c718c20"
+          ],
+          "run_stop_reason": null,
+          "warnings": [],
+          "limitations": []
+        },
+        "duration_ms": 217
+      }
+    },
+    {
+      "testId": "B08",
+      "name": "Long file paths and Chinese text rendered without breaking Column 3 layout",
+      "pass": true,
+      "detail": {
+        "b2Rev": "Rev 2"
+      }
+    },
+    {
+      "testId": "B09",
+      "name": "Review candidate generated and displayed in queue with real forensic evidence refs",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "testId": "B09b",
+      "name": "Candidate detail contains fraud scripts and real evidence paths",
+      "pass": true,
+      "detail": {
+        "text": "\u78c1\u76d8\u6839\u76ee\u5f55/\u8bdd\u672f/\u76ee\u5f55\u4e0b\u68c0\u51fa\u6d89\u8bc8\u8bdd\u672f\u57f9\u8bad\u8d44\u6599\u5e93\uff08\u604b\u7231\u7814\u4e60\u793e\u804a\u5929\u79d8\u7c4d.(1).pdf\u3001500\u4e07\u804a\u5929\u8bb0\u5f55(1).pdf\uff09\uff0c\u6784\u5efa\u4e86\u8bf1\u5bfc\u4fe1\u4efb\u4e0e\u51fa\u5165\u91d1\u5f15\u6d41\u7684\u8bdd\u672f\u811a\u672c\u4f53\u7cfb\u3002"
+      }
+    },
+    {
+      "testId": "B09c",
+      "name": "Explicit review on isolated task committed into SQLite within latency bounds",
+      "pass": true,
+      "detail": {
+        "commit_duration_ms": 285
+      }
+    },
+    {
+      "testId": "B10",
+      "name": "Task switching confirms complete isolation: isolated real candidate does not bleed into synthetic task",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "testId": "B11",
+      "name": "Browser reload preserves accepted candidate and Rev 2 state in SQLite",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "testId": "B12",
+      "name": "Failed Evidence resolution fails closed with 404 Not Found",
+      "pass": true,
+      "detail": {
+        "status": 404
+      }
+    },
+    {
+      "testId": "B13",
+      "name": "Agent budget exhaustion enforced by cycle stop conditions and run policy",
+      "pass": true,
+      "detail": {
+        "stop_reason": null
+      }
+    },
+    {
+      "testId": "B14",
+      "name": "Specialist query on invalid task handled gracefully with empty list without crash",
+      "pass": true,
+      "detail": {
+        "files": []
+      }
+    },
+    {
+      "testId": "B15",
+      "name": "Review conflict rejected with 409 Conflict when candidate version is stale",
+      "pass": true,
+      "detail": {
+        "status": 409
+      }
+    },
+    {
+      "testId": "B16",
+      "name": "Cold restart and repeat query retrieves committed working state and findings",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "testId": "B17",
+      "name": "Persistent SQLite audit history records explicit analyst review decision",
+      "pass": true,
+      "detail": {
+        "auditCount": 1
+      }
+    },
+    {
+      "testId": "B18",
+      "name": "Existing Evidence and Event analysis overview preserved without regression",
+      "pass": true,
+      "detail": {
+        "eventCount": 0
+      }
+    }
+  ],
+  "total_checks": 27,
+  "passed_checks": 27,
+  "failed_checks": 0,
+  "cold_restart_persistence_pass": true,
+  "verdict": "TRACK_B_REAL_TASK_HEADLESS_ACCEPTED",
+  "results": [
+    {
+      "testId": "B1-01",
+      "name": "Real browser opens Investigation Workbench on original task",
+      "pass": true,
+      "detail": {
+        "hasWorkbenchTitle": true,
+        "latency_ms": 1988
+      }
+    },
+    {
+      "testId": "B1-02",
+      "name": "Original task renders read-only indicator/badge preserving historical immutability",
+      "pass": true,
+      "detail": {
+        "hasBadge": false
+      }
+    },
+    {
+      "testId": "B1-03",
+      "name": "Original task Agent state read-only query returns Rev 2 with 7 questions",
+      "pass": true,
+      "detail": {
+        "state": {
+          "task_id": "60dedf82-7f35-48be-a104-b4d283a4fe92",
+          "investigation_id": "inv_wo_dian_002",
+          "working_state_revision": 2,
+          "working_state_hash": "9b0d47b287acc3384097316d04aae578422d5e0591b4ee6c590b3b001c4d26f9",
+          "objective": "\u6d89\u8bc8\u6295\u8d44\u5e73\u53f0\uff08\u6740\u732a\u76d8\uff09\u7a9d\u70b9\u4f5c\u6848\u7ec8\u7aef\u6848\uff1a\u56fa\u5b9a\u7a9d\u70b9\u8bdd\u672f\u4f53\u7cfb\u3001\u53d7\u5bb3\u4eba\u4e0e\u5ba2\u6e90\u6570\u636e\u3001\u8d43\u6b3e\u5f52\u96c6\u7ebf\u7d22\u4e0e\u53cd\u53d6\u8bc1\u884c\u4e3a\uff0c\u5e76\u95ed\u73af\u7ec8\u7aef\u4e0e\u5e73\u53f0\u5173\u8054",
+          "agent_execution_status": "idle",
+          "questions_count": 7,
+          "questions_summary": [
+            {
+              "question_id": "Q1",
+              "status": "open",
+              "disposition": null
+            },
+            {
+              "question_id": "Q2",
+              "status": "open",
+              "disposition": null
+            },
+            {
+              "question_id": "Q3",
+              "status": "in_progress",
+              "disposition": null
+            },
+            {
+              "question_id": "q-61dff02c",
+              "status": "open",
+              "disposition": null
+            },
+            {
+              "question_id": "q-ad56bfce",
+              "status": "open",
+              "disposition": null
+            },
+            {
+              "question_id": "q-b856d85c",
+              "status": "open",
+              "disposition": null
+            },
+            {
+              "question_id": "q-de74d9f4",
+              "status": "open",
+              "disposition": null
+            }
+          ],
+          "findings_count": 0,
+          "hypotheses_count": 1,
+          "active_delegations_count": 0,
+          "latest_trajectory_ref": "runtime_recovered:196"
+        },
+        "latency_ms": 49
+      }
+    },
+    {
+      "testId": "B1-04",
+      "name": "Original task review history query retrieves existing 10 accepted findings",
+      "pass": true,
+      "detail": {
+        "count": 10,
+        "latency_ms": 41
+      }
+    },
+    {
+      "testId": "B1-05",
+      "name": "Original task file evidence navigation retrieves real case files",
+      "pass": true,
+      "detail": {
+        "firstFile": "/soft/TrueCrypt/importent",
+        "latency_ms": 5
+      }
+    },
+    {
+      "testId": "B1-06",
+      "name": "Original task event timeline retrieves real timeline events",
+      "pass": true,
+      "detail": {
+        "eventsCount": 10,
+        "latency_ms": 3
+      }
+    },
+    {
+      "testId": "B1-07",
+      "name": "Mutation attempt (POST /cycle) on original task strictly rejected with 403 Forbidden",
+      "pass": true,
+      "detail": {
+        "status": 403
+      }
+    },
+    {
+      "testId": "B01",
+      "name": "Chinese filenames and Unicode paths correctly queried and handled",
+      "pass": true,
+      "detail": {
+        "sample": [
+          "importent",
+          "WPS_Setup_11744.exe",
+          "OKX-android_APPEX668.apk"
+        ]
+      }
+    },
+    {
+      "testId": "B02",
+      "name": "Nested directories correctly parsed and resolved in real-sized task",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "testId": "B03",
+      "name": "Deleted and active file statistics preserved in isolated task metadata",
+      "pass": true,
+      "detail": {
+        "total_files": 2100
+      }
+    },
+    {
+      "testId": "B04",
+      "name": "Windows Recent .lnk and registry artifacts queryable in isolated task",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "testId": "B05",
+      "name": "File to Timeline association verified on real forensic event records",
+      "pass": true,
+      "detail": {
+        "samplePath": "/$RECYCLE.BIN/S-1-5-18/desktop.ini"
+      }
+    },
+    {
+      "testId": "B06",
+      "name": "Event Cluster stable identity and attributes preserved",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "testId": "B07",
+      "name": "Bounded Agent cycle executes with real tool queries hitting cloned SQLite and returns Rev 2",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "body": {
+          "cycle_id": "cycle_isolated-rea_002",
+          "task_id": "isolated-real-b2-test-001",
+          "investigation_id": "inv_isolated_b2_001",
+          "run_id": "run_d0c9660a8fdc48ed9c572c81b4a2a988",
+          "starting_revision": 1,
+          "ending_revision": 2,
+          "integration_status": "committed",
+          "integration_revision": 2,
+          "delegation_ids": [
+            "del_57697429e1634dcf959e75890c718c20"
+          ],
+          "run_stop_reason": null,
+          "warnings": [],
+          "limitations": []
+        },
+        "duration_ms": 217
+      }
+    },
+    {
+      "testId": "B08",
+      "name": "Long file paths and Chinese text rendered without breaking Column 3 layout",
+      "pass": true,
+      "detail": {
+        "b2Rev": "Rev 2"
+      }
+    },
+    {
+      "testId": "B09",
+      "name": "Review candidate generated and displayed in queue with real forensic evidence refs",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "testId": "B09b",
+      "name": "Candidate detail contains fraud scripts and real evidence paths",
+      "pass": true,
+      "detail": {
+        "text": "\u78c1\u76d8\u6839\u76ee\u5f55/\u8bdd\u672f/\u76ee\u5f55\u4e0b\u68c0\u51fa\u6d89\u8bc8\u8bdd\u672f\u57f9\u8bad\u8d44\u6599\u5e93\uff08\u604b\u7231\u7814\u4e60\u793e\u804a\u5929\u79d8\u7c4d.(1).pdf\u3001500\u4e07\u804a\u5929\u8bb0\u5f55(1).pdf\uff09\uff0c\u6784\u5efa\u4e86\u8bf1\u5bfc\u4fe1\u4efb\u4e0e\u51fa\u5165\u91d1\u5f15\u6d41\u7684\u8bdd\u672f\u811a\u672c\u4f53\u7cfb\u3002"
+      }
+    },
+    {
+      "testId": "B09c",
+      "name": "Explicit review on isolated task committed into SQLite within latency bounds",
+      "pass": true,
+      "detail": {
+        "commit_duration_ms": 285
+      }
+    },
+    {
+      "testId": "B10",
+      "name": "Task switching confirms complete isolation: isolated real candidate does not bleed into synthetic task",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "testId": "B11",
+      "name": "Browser reload preserves accepted candidate and Rev 2 state in SQLite",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "testId": "B12",
+      "name": "Failed Evidence resolution fails closed with 404 Not Found",
+      "pass": true,
+      "detail": {
+        "status": 404
+      }
+    },
+    {
+      "testId": "B13",
+      "name": "Agent budget exhaustion enforced by cycle stop conditions and run policy",
+      "pass": true,
+      "detail": {
+        "stop_reason": null
+      }
+    },
+    {
+      "testId": "B14",
+      "name": "Specialist query on invalid task handled gracefully with empty list without crash",
+      "pass": true,
+      "detail": {
+        "files": []
+      }
+    },
+    {
+      "testId": "B15",
+      "name": "Review conflict rejected with 409 Conflict when candidate version is stale",
+      "pass": true,
+      "detail": {
+        "status": 409
+      }
+    },
+    {
+      "testId": "B16",
+      "name": "Cold restart and repeat query retrieves committed working state and findings",
+      "pass": true,
+      "detail": {}
+    },
+    {
+      "testId": "B17",
+      "name": "Persistent SQLite audit history records explicit analyst review decision",
+      "pass": true,
+      "detail": {
+        "auditCount": 1
+      }
+    },
+    {
+      "testId": "B18",
+      "name": "Existing Evidence and Event analysis overview preserved without regression",
+      "pass": true,
+      "detail": {
+        "eventCount": 0
+      }
+    }
+  ]
+}

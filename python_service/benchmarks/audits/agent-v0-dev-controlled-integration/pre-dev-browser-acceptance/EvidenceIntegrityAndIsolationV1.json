@@ -1,0 +1,92 @@
+{
+  "report_version": "evidence-integrity-and-isolation:v1",
+  "audit_id": "TASK-AGENT-V0-REALISTIC-BROWSER-E2E-INTEGRITY",
+  "verified_at": "2026-10-18T04:30:00Z",
+  "real_task_id": "60dedf82-7f35-48be-a104-b4d283a4fe92",
+  "evidence_image": {
+    "path": "/home/ymj68520/projects/testimgs/\u7a9d\u70b9\u5acc\u7591\u4eba\u8ba1\u7b97\u673a\u955c\u50cf.E01",
+    "size_bytes": 7556437602,
+    "mode": "READ_ONLY",
+    "write_access": false
+  },
+  "pre_test_hashes": {
+    "raw.db": {
+      "exists": true,
+      "sha256": "fab13a57da91d77e0992bcdf151e3f81e3d3a771f280821131ab3922af3f10ad",
+      "size": 36130816
+    },
+    "raw.db.filtered": {
+      "exists": true,
+      "sha256": "12af51d6bd77defde3e4e6a570e1944b1e2c5341b36ca20fc382c0b29b2ee6b7",
+      "size": 1073152
+    },
+    "files.db": {
+      "exists": true,
+      "sha256": "df8bb8e42bed9b769d451845c3cadba8369329f5a3b37dadfc0224f8d7008eb1",
+      "size": 7409664
+    },
+    "events.db": {
+      "exists": true,
+      "sha256": "90049693bb34d06bdb507282f771bdddd7afcf4e223b25fccc655f3778090ddf",
+      "size": 3137536
+    },
+    "windows.db": {
+      "exists": true,
+      "sha256": "66622e2eae3cfa48cd8d1c4f5361caa93c9fc8ed97bcf46e41c691bd53ba4685",
+      "size": 114536448
+    },
+    "investigation.db": {
+      "exists": true,
+      "sha256": "bc9a0aab51d8a98357f5216a7f670f8630eb8e06ebc6b3001446e2ef6f80dc1f",
+      "size": 3543040
+    }
+  },
+  "post_test_hashes": {
+    "raw.db": {
+      "exists": true,
+      "sha256": "fab13a57da91d77e0992bcdf151e3f81e3d3a771f280821131ab3922af3f10ad",
+      "size": 36130816
+    },
+    "raw.db.filtered": {
+      "exists": true,
+      "sha256": "12af51d6bd77defde3e4e6a570e1944b1e2c5341b36ca20fc382c0b29b2ee6b7",
+      "size": 1073152
+    },
+    "files.db": {
+      "exists": true,
+      "sha256": "df8bb8e42bed9b769d451845c3cadba8369329f5a3b37dadfc0224f8d7008eb1",
+      "size": 7409664
+    },
+    "events.db": {
+      "exists": true,
+      "sha256": "90049693bb34d06bdb507282f771bdddd7afcf4e223b25fccc655f3778090ddf",
+      "size": 3137536
+    },
+    "windows.db": {
+      "exists": true,
+      "sha256": "66622e2eae3cfa48cd8d1c4f5361caa93c9fc8ed97bcf46e41c691bd53ba4685",
+      "size": 114536448
+    },
+    "investigation.db": {
+      "exists": true,
+      "sha256": "bc9a0aab51d8a98357f5216a7f670f8630eb8e06ebc6b3001446e2ef6f80dc1f",
+      "size": 3543040
+    }
+  },
+  "evidence_identical": true,
+  "semantic_axioms_enforced": {
+    "llm_is_not_evidence_source": true,
+    "tool_observation_is_not_canonical_evidence": true,
+    "analyst_note_is_not_evidence": true,
+    "grounded_ref_is_not_semantic_proof": true,
+    "accepted_hypothesis_is_not_fact": true,
+    "review_acceptance_is_not_report_admission": true,
+    "review_acceptance_is_not_finalization": true
+  },
+  "secrecy_and_leak_isolation": {
+    "sensitive_evidence_files_committed": false,
+    "credential_leaks_found": 0,
+    "unredacted_case_artifacts_committed": false
+  },
+  "verdict": "EVIDENCE_IMMUTABILITY_PASS"
+}

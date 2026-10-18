@@ -1,0 +1,19 @@
+{
+  "report_version": "browser-acceptance-baseline:v1",
+  "audit_id": "TASK-AGENT-V0-REALISTIC-BROWSER-E2E",
+  "verified_at": "2026-10-18T04:30:00Z",
+  "authoritative_dev_head": "bca324b28d9122a8ba35897cb608fdbd35f2612d",
+  "actual_integration_head": "d311012e33e0671999431a1cc1324ef3dff47216",
+  "integration_merge_sha": "a04e1ab48af0816df57f98c2419b714c41b6a37c",
+  "integration_worktree_status": "CLEAN",
+  "test_baseline_sha": "d311012e33e0671999431a1cc1324ef3dff47216",
+  "browser_engine": "Chromium 1234 (Headless Playwright)",
+  "backend_url": "http://127.0.0.1:8098",
+  "frontend_url": "http://127.0.0.1:3100",
+  "tasks_scope": {
+    "synthetic_a": "synthetic-rca2a24-rc-001",
+    "synthetic_b": "synthetic-task-b",
+    "real_original_readonly": "60dedf82-7f35-48be-a104-b4d283a4fe92",
+    "real_isolated_clone": "isolated-real-b2-test-001"
+  }
+}

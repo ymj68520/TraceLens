@@ -1,0 +1,287 @@
+[
+  {
+    "testId": "RC-B01",
+    "name": "Real browser loads Investigation Workbench",
+    "pass": true,
+    "detail": {
+      "url": "http://127.0.0.1:3100/investigation?taskId=synthetic-rca2a24-rc-001"
+    }
+  },
+  {
+    "testId": "RC-B02",
+    "name": "Three-column layout strictly preserved with Execution Control and Review Panel in Column 3",
+    "pass": true,
+    "detail": {}
+  },
+  {
+    "testId": "RC-B03",
+    "name": "Initial Agent state rendered accurately before cycle execution",
+    "pass": true,
+    "detail": {
+      "revision": "Rev 1"
+    }
+  },
+  {
+    "testId": "RC-B04",
+    "name": "In-flight execution state and duplicate click prevention observed",
+    "pass": true,
+    "detail": {}
+  },
+  {
+    "testId": "RC-B05",
+    "name": "Agent cycle completes with valid CycleOutcome (Rev 1 -> Rev 2)",
+    "pass": true,
+    "detail": {
+      "status": 200,
+      "body": {
+        "cycle_id": "cycle_synthetic-rc_002",
+        "task_id": "synthetic-rca2a24-rc-001",
+        "investigation_id": "inv-rca2a24-agent",
+        "run_id": "run_3b083de5ea5749e6b9433ad35f3b7fcd",
+        "starting_revision": 1,
+        "ending_revision": 2,
+        "integration_status": "committed",
+        "integration_revision": 2,
+        "delegation_ids": [
+          "del_d1d5fac81514419086f6c9b719450031"
+        ],
+        "run_stop_reason": null,
+        "warnings": [],
+        "limitations": []
+      }
+    }
+  },
+  {
+    "testId": "RC-B06",
+    "name": "Agent state displays updated revision (Rev 2)",
+    "pass": true,
+    "detail": {}
+  },
+  {
+    "testId": "RC-B07",
+    "name": "Review candidate queue automatically refreshes with newly generated candidate",
+    "pass": true,
+    "detail": {}
+  },
+  {
+    "testId": "RC-B08",
+    "name": "Candidate details and evidence reference verified",
+    "pass": true,
+    "detail": {
+      "content": "Security Account Manager registry hive accessed via suspicious handle indicating"
+    }
+  },
+  {
+    "testId": "RC-B09",
+    "name": "Explicit Accept review submitted and accepted (200 OK)",
+    "pass": true,
+    "detail": {
+      "status": 200,
+      "review_id": "freview:59c5dd745a02ff033a56"
+    }
+  },
+  {
+    "testId": "RC-B10",
+    "name": "Candidate status reflects accepted state in UI",
+    "pass": true,
+    "detail": {}
+  },
+  {
+    "testId": "RC-B11",
+    "name": "Browser reload confirms persistent accepted status and review history in SQLite",
+    "pass": true,
+    "detail": {
+      "reloadRev": "Rev 2"
+    }
+  },
+  {
+    "testId": "RC-B12",
+    "name": "Second agent cycle advances revision to Rev 3 and generates second candidate",
+    "pass": true,
+    "detail": {}
+  },
+  {
+    "testId": "RC-B13",
+    "name": "Second candidate details and malware evidence reference verified",
+    "pass": true,
+    "detail": {}
+  },
+  {
+    "testId": "RC-B14",
+    "name": "Explicit Reject review submitted and rejected (200 OK)",
+    "pass": true,
+    "detail": {}
+  },
+  {
+    "testId": "RC-B15",
+    "name": "Browser reload preserves both accepted and rejected reviews durably in SQLite",
+    "pass": true,
+    "detail": {
+      "candidateCount": 2,
+      "hasRejectedStatus": true
+    }
+  },
+  {
+    "testId": "RC-B16",
+    "name": "Reviewer authority limitation explicitly disclosed in UI",
+    "pass": true,
+    "detail": {
+      "limitationNotice": "Reviewer: analyst[REVIEWER_AUTHENTICATION_LIMITATION: caller-declared identity in local mode]"
+    }
+  },
+  {
+    "testId": "A01",
+    "name": "Task switch during Agent execution preserves complete task isolation without state bleed",
+    "pass": true,
+    "detail": {
+      "taskBRev": "Rev 1",
+      "leakedCandidates": 0
+    }
+  },
+  {
+    "testId": "A02",
+    "name": "Delayed API response after task switch ignored by client and correct state recovered",
+    "pass": true,
+    "detail": {
+      "taskARevAfter": "Rev 4"
+    }
+  },
+  {
+    "testId": "A03",
+    "name": "Browser reload during running cycle recovers safely without client crash",
+    "pass": true,
+    "detail": {
+      "a03Rev": "Rev 4"
+    }
+  },
+  {
+    "testId": "A04",
+    "name": "HTTP timeout after possible SQLite commit recovers cleanly on next state poll",
+    "pass": true,
+    "detail": {
+      "state": {
+        "task_id": "synthetic-rca2a24-rc-001",
+        "investigation_id": "inv-rca2a24-agent",
+        "working_state_revision": 5,
+        "working_state_hash": "b13ed35aab2de49487b5222f44f86013f68518046dac721aa138a571750aff72",
+        "objective": "Investigate suspicious credential extraction and unauthorized process spawning on host",
+        "agent_execution_status": "running",
+        "questions_count": 2,
+        "questions_summary": [
+          {
+            "question_id": "Q1",
+            "status": "answered",
+            "disposition": "supported"
+          },
+          {
+            "question_id": "Q2",
+            "status": "answered",
+            "disposition": "supported"
+          }
+        ],
+        "findings_count": 4,
+        "hypotheses_count": 0,
+        "active_delegations_count": 0,
+        "latest_trajectory_ref": "delegation_completed:21"
+      }
+    }
+  },
+  {
+    "testId": "A05",
+    "name": "Same request_id replay returns cached outcome without duplicate execution",
+    "pass": true,
+    "detail": {
+      "cycle1": "cycle_synthetic-rc_006",
+      "cycle2": "cycle_synthetic-rc_006"
+    }
+  },
+  {
+    "testId": "A06",
+    "name": "Different payload with same request_id rejected with 409 Conflict",
+    "pass": true,
+    "detail": {
+      "status": 409
+    }
+  },
+  {
+    "testId": "A07",
+    "name": "Concurrent Agent cycle submission serialized or rejected with 409 Conflict",
+    "pass": true,
+    "detail": {
+      "c1_status": 200,
+      "c2_status": 409
+    }
+  },
+  {
+    "testId": "A08",
+    "name": "State repository recovers cleanly and retains committed working state after interruption",
+    "pass": true,
+    "detail": {
+      "revision": 7
+    }
+  },
+  {
+    "testId": "A09",
+    "name": "Specialist tool failure handled gracefully with 500 error without corrupting server",
+    "pass": true,
+    "detail": {
+      "detail": "agent cycle execution failed: RuntimeError: SPECIALIST_TOOL_EXECUTION_FAILURE: simulated tool crash in worker"
+    }
+  },
+  {
+    "testId": "A10",
+    "name": "No reviewable candidates scenario renders clean empty queue without error",
+    "pass": true,
+    "detail": {
+      "candidatesCount": 0
+    }
+  },
+  {
+    "testId": "A11",
+    "name": "Review 409 conflict rejected when expected revision or candidate hash mismatches",
+    "pass": true,
+    "detail": {
+      "status": 409
+    }
+  },
+  {
+    "testId": "A12",
+    "name": "Review 422 epistemic violation strictly rejected when promoting to unsupported FACT",
+    "pass": true,
+    "detail": {
+      "status": 422
+    }
+  },
+  {
+    "testId": "A13",
+    "name": "Feature gate disabled strictly returns 403 Forbidden on POST /cycle",
+    "pass": true,
+    "detail": {
+      "status": 403
+    }
+  },
+  {
+    "testId": "A14",
+    "name": "Untrusted Origin header strictly rejected with 403 Forbidden",
+    "pass": true,
+    "detail": {
+      "status": 403
+    }
+  },
+  {
+    "testId": "A15",
+    "name": "Repeated browser reload and navigation preserves identical state consistently",
+    "pass": true,
+    "detail": {
+      "iterations": 5
+    }
+  },
+  {
+    "testId": "A16",
+    "name": "Existing Files, Timeline, and KnowledgeGraph workspace functionality preserved",
+    "pass": true,
+    "detail": {
+      "hasWorkbenchTitle": true
+    }
+  }
+]
