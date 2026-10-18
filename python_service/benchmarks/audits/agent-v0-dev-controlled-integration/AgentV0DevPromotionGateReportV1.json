@@ -1,0 +1,105 @@
+{
+  "report_version": "agent-v0-dev-promotion-gate-report:v1",
+  "audit_name": "TASK-AGENT-V0-DEV-PROMOTION-GATE",
+  "verified_at": "2026-10-18T04:00:00Z",
+  "final_promotion_verdict": "DEV_PROMOTION_GATE_PASS_WITH_LIMITATIONS",
+  "git_ancestry_and_identity": {
+    "target_dev_baseline": "bca324b28d9122a8ba35897cb608fdbd35f2612d",
+    "actual_dev_head": "bca324b28d9122a8ba35897cb608fdbd35f2612d",
+    "agent_v0_source_commit": "0dedec35fd16fe80356d7e4ae46e56af431bf714",
+    "integration_merge_commit": "a04e1ab48af0816df57f98c2419b714c41b6a37c",
+    "integration_verification_head": "cd919160a143c848c31056bc7b2cac7ca0d5fd30",
+    "integration_branch": "integration/agent-v0-dev-20261018",
+    "integration_worktree": "/home/ymj68520/projects/TraceLens-agent-v0-integration",
+    "merge_parent_verification": {
+      "parent_1_dev": "bca324b28d9122a8ba35897cb608fdbd35f2612d",
+      "parent_2_agent_v0": "0dedec35fd16fe80356d7e4ae46e56af431bf714",
+      "ancestry_verified": true,
+      "dev_head_diverged": false
+    }
+  },
+  "gate_evaluations": {
+    "git_promotion_readiness": {
+      "status": "PASS",
+      "details": "Integration HEAD is a strict descendant of Dev baseline and Agent v0 source baseline. No fast-forward blockers exist."
+    },
+    "python_baseline_failure_attribution": {
+      "status": "PASS_WITH_LIMITATIONS",
+      "baseline_failures_identical": true,
+      "new_integration_regressions": 0,
+      "passed_tests": 3283,
+      "preexisting_baseline_failures": 12,
+      "details": "All 12 failing/erring tests are 100% identical to the pre-existing Dev baseline (AOSP toolchain missing, Graphiti client attribute, and worker error assertion). Zero new regressions."
+    },
+    "sqlite_v16_migration_gate": {
+      "status": "PASS",
+      "supported_schema_version": 16,
+      "foreign_key_violations": 0,
+      "fail_closed_v7_enforced": true,
+      "details": "Full migration matrix passed across fresh v16, v7, v8, v9-v15, and RCA-2A.4 frozen database. Immutability triggers and constraints validated."
+    },
+    "cpp_engine_regression": {
+      "status": "PASS",
+      "engine_code_diff": "ZERO_DIFF",
+      "test_task_scenarios_passed": "19/19",
+      "ctest_passed": "60/60",
+      "details": "All critical C++ engine contracts (task lifecycle, database access, C++/Python IPC) fully preserved."
+    },
+    "chromium_workbench_e2e": {
+      "status": "PASS",
+      "browser_steps_passed": "16/16",
+      "cold_restart_persistence": true,
+      "evidence_immutability": true,
+      "real_provider_requests": 0,
+      "details": "Investigation Workbench Column 3 execution and review loop fully verified end-to-end under real Chromium browser."
+    },
+    "evidence_and_audit_artifact_isolation": {
+      "status": "PASS_WITH_LIMITATIONS",
+      "task_databases_sha256_match": true,
+      "real_task_id": "60dedf82-7f35-48be-a104-b4d283a4fe92",
+      "unauthorized_evidence_files_committed": false,
+      "credential_and_secret_leaks": 0,
+      "main_worktree_tracked_clean": true,
+      "details": "Forensic database SHA-256 digests 100% match audit baseline. Zero leaks of E01, credentials, or task databases in git diff."
+    }
+  },
+  "remaining_limitations": [
+    {
+      "limitation_id": "LIM-DEV-01",
+      "area": "Android Toolchain Prebuilts",
+      "description": "8 legacy Android container unit tests fail due to missing local .deps/aosp-android10-r36 directory. Pre-existing on Dev baseline; does not affect Agent v0.",
+      "resolution_plan": "Populate AOSP prebuilt binaries in CI/environment before Android container release."
+    },
+    {
+      "limitation_id": "LIM-DEV-02",
+      "area": "Graphiti Cleanup Interface",
+      "description": "3 Graphiti cleanup unit tests fail with AttributeError ('_worker_clients') due to Dev baseline Ingestor interface evolution.",
+      "resolution_plan": "Update unit tests in Dev to match current GraphitiIngestor public interface."
+    },
+    {
+      "limitation_id": "LIM-DEV-03",
+      "area": "Worker Episode Description Assertion",
+      "description": "1 worker episode unit test fails on assertion message mismatch. Pre-existing on Dev baseline.",
+      "resolution_plan": "Align worker unit test assertion with exception return value in Dev."
+    },
+    {
+      "limitation_id": "LIM-AGENT-01",
+      "area": "Local Single-User Reviewer Authentication",
+      "description": "In local mode, reviewer identity is declared by the local caller without cryptographic token validation. Disclosed in UI notice.",
+      "resolution_plan": "Enterprise multi-user RBAC and cryptographic session validation deferred to future enterprise roadmap."
+    },
+    {
+      "limitation_id": "LIM-EVIDENCE-01",
+      "area": "E01 Historical Image Digest",
+      "description": "The raw E01 image file (~7.55 GB) has no pre-test historical SHA-256 hash recorded in git repository benchmarks; integrity is enforced via OS-level read-only mount, byte size verification (7,556,437,602 bytes), and strict read-only access flags.",
+      "resolution_plan": "Generate and anchor immutable SHA-256 manifest for large binary evidence test fixtures in future dataset packaging."
+    }
+  ],
+  "mandatory_stop_enforcement": {
+    "git_checkout_dev_performed": false,
+    "git_merge_performed": false,
+    "git_push_performed": false,
+    "authoritative_dev_touched": false,
+    "hard_stop_enforced": true
+  }
+}

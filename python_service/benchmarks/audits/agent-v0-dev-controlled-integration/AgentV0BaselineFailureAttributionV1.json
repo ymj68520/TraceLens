@@ -1,0 +1,150 @@
+{
+  "report_version": "agent-v0-baseline-failure-attribution:v1",
+  "audit_name": "TASK-AGENT-V0-DEV-PROMOTION-GATE-SECTION-2",
+  "verified_at": "2026-10-18T03:55:00Z",
+  "baseline_commit_dev": "bca324b28d9122a8ba35897cb608fdbd35f2612d",
+  "integration_head": "cd919160a143c848c31056bc7b2cac7ca0d5fd30",
+  "environment": {
+    "python_version": "3.12.3",
+    "python_binary": "/home/ymj68520/projects/TraceLens-agent-v0-integration/python_service/.venv/bin/python",
+    "pytest_version": "8.4.1"
+  },
+  "verdict": {
+    "BASELINE_FAILURES_IDENTICAL": true,
+    "NEW_INTEGRATION_REGRESSIONS": 0,
+    "IS_NEW_FAILURE_NODE_INTRODUCED": false,
+    "IS_BASELINE_FAILURE_AGGRAVATED": false,
+    "IS_OTHER_STABLE_MODULE_ALTERED": false,
+    "IS_SQLITE_OR_HTTP_RELATED": false,
+    "IS_DEV_BASELINE_FAILURE_ERRONEOUSLY_SKIPPED": false
+  },
+  "test_suite_summary": {
+    "total_collected": 3296,
+    "passed": 3283,
+    "skipped": 1,
+    "failed": 6,
+    "errors": 6
+  },
+  "attributed_baseline_failures": [
+    {
+      "node_id": "tests/test_6c_lp_frozen_tool_pin.py::test_tools_pinned_and_frozen",
+      "failure_type": "FAILED",
+      "exception_type": "FileNotFoundError",
+      "error_message": "[Errno 2] No such file or directory: '/home/ymj68520/projects/TraceLens/python_service/.deps/aosp-android10-r36'",
+      "failure_location": "python_service/tests/test_6c_lp_frozen_tool_pin.py:48",
+      "attribution": "DEV_BASELINE_PREEXISTING",
+      "root_cause": "Prebuilt AOSP Android 10 toolchain directory .deps/aosp-android10-r36 is not present in local checkout",
+      "related_to_agent_changes": false
+    },
+    {
+      "node_id": "tests/test_android_container_pipeline.py::test_simg2img_version_gate",
+      "failure_type": "FAILED",
+      "exception_type": "RuntimeError",
+      "error_message": "AOSP_SIMG2IMG_VERSION_MISMATCH",
+      "failure_location": "python_service/tests/test_android_container_pipeline.py:112",
+      "attribution": "DEV_BASELINE_PREEXISTING",
+      "root_cause": "System simg2img binary version mismatch against pinned AOSP expectations",
+      "related_to_agent_changes": false
+    },
+    {
+      "node_id": "tests/test_android_container_pipeline.py::test_extract_sparse_images",
+      "failure_type": "ERROR",
+      "exception_type": "FileNotFoundError",
+      "error_message": "FileNotFoundError: .deps/aosp-android10-r36/bin/lpmake",
+      "failure_location": "python_service/tests/test_android_container_pipeline.py:35 (fixture setup)",
+      "attribution": "DEV_BASELINE_PREEXISTING",
+      "root_cause": "Missing lpmake prebuilt tool in unpopulated .deps directory",
+      "related_to_agent_changes": false
+    },
+    {
+      "node_id": "tests/test_android_container_pipeline.py::test_container_unpack_flow",
+      "failure_type": "ERROR",
+      "exception_type": "FileNotFoundError",
+      "error_message": "FileNotFoundError: .deps/aosp-android10-r36/bin/lpmake",
+      "failure_location": "python_service/tests/test_android_container_pipeline.py:35 (fixture setup)",
+      "attribution": "DEV_BASELINE_PREEXISTING",
+      "root_cause": "Missing lpmake prebuilt tool in unpopulated .deps directory",
+      "related_to_agent_changes": false
+    },
+    {
+      "node_id": "tests/test_android_container_pipeline.py::test_container_pipeline_e2e",
+      "failure_type": "ERROR",
+      "exception_type": "FileNotFoundError",
+      "error_message": "FileNotFoundError: .deps/aosp-android10-r36/bin/lpmake",
+      "failure_location": "python_service/tests/test_android_container_pipeline.py:35 (fixture setup)",
+      "attribution": "DEV_BASELINE_PREEXISTING",
+      "root_cause": "Missing lpmake prebuilt tool in unpopulated .deps directory",
+      "related_to_agent_changes": false
+    },
+    {
+      "node_id": "tests/test_android_container_pipeline.py::test_super_partition_unpack",
+      "failure_type": "ERROR",
+      "exception_type": "FileNotFoundError",
+      "error_message": "FileNotFoundError: .deps/aosp-android10-r36/bin/lpmake",
+      "failure_location": "python_service/tests/test_android_container_pipeline.py:35 (fixture setup)",
+      "attribution": "DEV_BASELINE_PREEXISTING",
+      "root_cause": "Missing lpmake prebuilt tool in unpopulated .deps directory",
+      "related_to_agent_changes": false
+    },
+    {
+      "node_id": "tests/test_android_container_pipeline.py::test_container_metadata_parsing",
+      "failure_type": "ERROR",
+      "exception_type": "FileNotFoundError",
+      "error_message": "FileNotFoundError: .deps/aosp-android10-r36/bin/lpmake",
+      "failure_location": "python_service/tests/test_android_container_pipeline.py:35 (fixture setup)",
+      "attribution": "DEV_BASELINE_PREEXISTING",
+      "root_cause": "Missing lpmake prebuilt tool in unpopulated .deps directory",
+      "related_to_agent_changes": false
+    },
+    {
+      "node_id": "tests/test_android_container_pipeline.py::test_container_verification",
+      "failure_type": "ERROR",
+      "exception_type": "FileNotFoundError",
+      "error_message": "FileNotFoundError: .deps/aosp-android10-r36/bin/lpmake",
+      "failure_location": "python_service/tests/test_android_container_pipeline.py:35 (fixture setup)",
+      "attribution": "DEV_BASELINE_PREEXISTING",
+      "root_cause": "Missing lpmake prebuilt tool in unpopulated .deps directory",
+      "related_to_agent_changes": false
+    },
+    {
+      "node_id": "tests/test_d4b_graphiti_cleanup.py::test_worker_cleanup_deletes_cache_when_offloop_active",
+      "failure_type": "FAILED",
+      "exception_type": "AttributeError",
+      "error_message": "AttributeError: 'GraphitiIngestor' object has no attribute '_worker_clients'",
+      "failure_location": "python_service/tests/test_d4b_graphiti_cleanup.py:58",
+      "attribution": "DEV_BASELINE_PREEXISTING",
+      "root_cause": "GraphitiIngestor interface refactor in Dev baseline left internal attribute access outdated in cleanup unit test",
+      "related_to_agent_changes": false
+    },
+    {
+      "node_id": "tests/test_d4b_graphiti_cleanup.py::test_app_lifespan_cleans_up_graphiti",
+      "failure_type": "FAILED",
+      "exception_type": "AttributeError",
+      "error_message": "AttributeError: 'GraphitiIngestor' object has no attribute '_worker_clients'",
+      "failure_location": "python_service/tests/test_d4b_graphiti_cleanup.py:84",
+      "attribution": "DEV_BASELINE_PREEXISTING",
+      "root_cause": "GraphitiIngestor interface refactor in Dev baseline left internal attribute access outdated in cleanup unit test",
+      "related_to_agent_changes": false
+    },
+    {
+      "node_id": "tests/test_d4b_graphiti_cleanup.py::test_cleanup_during_shutdown_logs_warning_on_exception",
+      "failure_type": "FAILED",
+      "exception_type": "AttributeError",
+      "error_message": "AttributeError: 'GraphitiIngestor' object has no attribute '_worker_clients'",
+      "failure_location": "python_service/tests/test_d4b_graphiti_cleanup.py:110",
+      "attribution": "DEV_BASELINE_PREEXISTING",
+      "root_cause": "GraphitiIngestor interface refactor in Dev baseline left internal attribute access outdated in cleanup unit test",
+      "related_to_agent_changes": false
+    },
+    {
+      "node_id": "tests/test_worker_episode_rows_offloop.py::test_worker_returns_empty_when_no_descriptions_table",
+      "failure_type": "FAILED",
+      "exception_type": "AssertionError",
+      "error_message": "AssertionError: assert None == 'file_descriptions table missing'",
+      "failure_location": "python_service/tests/test_worker_episode_rows_offloop.py:42",
+      "attribution": "DEV_BASELINE_PREEXISTING",
+      "root_cause": "Worker error string expectation mismatch against Dev baseline exception handling return value",
+      "related_to_agent_changes": false
+    }
+  ]
+}

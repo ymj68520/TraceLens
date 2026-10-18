@@ -1,0 +1,82 @@
+{
+  "report_version": "agent-v0-browser-and-cpp-regression:v1",
+  "audit_name": "TASK-AGENT-V0-DEV-PROMOTION-GATE-SECTIONS-4-5",
+  "verified_at": "2026-10-18T03:57:34Z",
+  "cpp_engine_regression": {
+    "engine_source_diff_vs_dev": {
+      "cpp_modified": 0,
+      "headers_modified": 0,
+      "cmakelists_modified": 0,
+      "diff_status": "CLEAN_ZERO_DIFF"
+    },
+    "test_task_scenarios": {
+      "binary": "build/tests/test_task_scenarios",
+      "total_scenarios": 19,
+      "passed": 19,
+      "failed": 0,
+      "critical_contracts_verified": [
+        "Task Management lifecycle",
+        "Evidence database access",
+        "C++ to Python service integration",
+        "File and timeline index access",
+        "Task deletion and cleanup"
+      ]
+    },
+    "ctest_suite": {
+      "compiled_tests": 60,
+      "passed": 60,
+      "failed": 0,
+      "uncompiled_tests_not_run": 3
+    },
+    "verdict": "CPP_ENGINE_CONTRACTS_FULLY_VERIFIED"
+  },
+  "chromium_workbench_e2e": {
+    "harness": "playwright_workbench_rc_readiness_e2e.cjs + run_full_rca2a24_rc_suite.py",
+    "target_ui_url": "http://127.0.0.1:3100/investigation?taskId=synthetic-rca2a24-rc-001",
+    "backend_url": "http://127.0.0.1:8098",
+    "environment": {
+      "browser": "Chromium headless via Playwright",
+      "fastapi_server": "Live Uvicorn daemon",
+      "vite_server": "Live Vite dev server",
+      "llm_backend": "Offline Fake Model (0 real provider requests)"
+    },
+    "browser_acceptance_steps": [
+      {"test_id": "RC-B01", "name": "Real browser loads Investigation Workbench", "pass": true},
+      {"test_id": "RC-B02", "name": "Three-column layout strictly preserved with Execution Control and Review Panel in Column 3", "pass": true},
+      {"test_id": "RC-B03", "name": "Initial Agent state rendered accurately before cycle execution", "pass": true},
+      {"test_id": "RC-B04", "name": "In-flight execution state and duplicate click prevention observed", "pass": true},
+      {"test_id": "RC-B05", "name": "Agent cycle completes with valid CycleOutcome (Rev 1 -> Rev 2)", "pass": true},
+      {"test_id": "RC-B06", "name": "Agent state displays updated revision (Rev 2)", "pass": true},
+      {"test_id": "RC-B07", "name": "Review candidate queue automatically refreshes with newly generated candidate", "pass": true},
+      {"test_id": "RC-B08", "name": "Candidate details and evidence reference verified", "pass": true},
+      {"test_id": "RC-B09", "name": "Explicit Accept review submitted and accepted (200 OK)", "pass": true},
+      {"test_id": "RC-B10", "name": "Candidate status reflects accepted state in UI", "pass": true},
+      {"test_id": "RC-B11", "name": "Browser reload confirms persistent accepted status and review history in SQLite", "pass": true},
+      {"test_id": "RC-B12", "name": "Second agent cycle advances revision to Rev 3 and generates second candidate", "pass": true},
+      {"test_id": "RC-B13", "name": "Second candidate details and malware evidence reference verified", "pass": true},
+      {"test_id": "RC-B14", "name": "Explicit Reject review submitted and rejected (200 OK)", "pass": true},
+      {"test_id": "RC-B15", "name": "Browser reload preserves both accepted and rejected reviews durably in SQLite", "pass": true},
+      {"test_id": "RC-B16", "name": "Reviewer authority limitation explicitly disclosed in UI", "pass": true}
+    ],
+    "total_browser_steps_passed": 16,
+    "total_browser_steps_failed": 0,
+    "additional_validations": {
+      "cold_backend_restart_persistence": {
+        "test_id": "T16",
+        "description": "Cold backend restart preserves Agent working state (Rev 3) and dual review history in SQLite",
+        "pass": true
+      },
+      "evidence_database_byte_immutability": {
+        "test_id": "T17",
+        "description": "Evidence databases (raw.db, files.db, events.db) remain 100% byte-identical",
+        "pass": true
+      },
+      "zero_real_provider_requests": {
+        "test_id": "T18",
+        "description": "Zero real provider requests throughout entire execution",
+        "pass": true
+      }
+    },
+    "verdict": "CHROMIUM_WORKBENCH_E2E_ACCEPTED"
+  }
+}

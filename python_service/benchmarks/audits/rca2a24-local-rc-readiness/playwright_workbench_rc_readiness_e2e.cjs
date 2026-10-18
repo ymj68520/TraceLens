@@ -66,7 +66,7 @@ async function runBrowserE2E() {
     console.log(`[E2E] Navigating to ${targetUrl}`);
     await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 30000 });
 
-    await page.waitForSelector('text=Investigation / 二次调查分析', { timeout: 15000 });
+    await page.waitForSelector('text=调查分析工作台', { timeout: 15000 });
     record('RC-B01', 'Real browser loads Investigation Workbench', true, { url: page.url() });
 
     // -----------------------------------------------------------------------
