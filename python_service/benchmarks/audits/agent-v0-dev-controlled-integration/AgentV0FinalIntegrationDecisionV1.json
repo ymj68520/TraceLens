@@ -1,0 +1,56 @@
+{
+  "decision_version": "AgentV0FinalIntegrationDecisionV1",
+  "generated_at": "2026-10-18T11:38:40+08:00",
+  "integration_verdict": "AGENT_V0_DEV_INTEGRATION_PASS_WITH_LIMITATIONS",
+  "isolated_worktree": "/home/ymj68520/projects/TraceLens-agent-v0-integration",
+  "integration_branch": "integration/agent-v0-dev-20261018",
+  "source_branch": "mvp/agent-v0-runtime-v3-requalification",
+  "source_commit": "0dedec35fd16fe80356d7e4ae46e56af431bf714",
+  "target_branch": "Dev",
+  "target_commit": "bca324b28d9122a8ba35897cb608fdbd35f2612d",
+  "merge_commit": "a04e1ab49b9909249ca0684f5cf9e9a11a84f3eb",
+  "real_provider_requests": 0,
+  "evidence_integrity": {
+    "status": "VERIFIED_BITWISE_IMMUTABLE",
+    "e01_image": "/home/ymj68520/projects/testimgs/窝点嫌疑人计算机镜像.E01",
+    "e01_bytes": 7556437602,
+    "e01_readonly": true,
+    "task_id": "60dedf82-7f35-48be-a104-b4d283a4fe92",
+    "database_digests": {
+      "events_db": "90049693bb34d06bdb507282f771bdddd7afcf4e223b25fccc655f3778090ddf",
+      "files_db": "df8bb8e42bed9b769d451845c3cadba8369329f5a3b37dadfc0224f8d7008eb1",
+      "raw_db": "fab13a57da91d77e0992bcdf151e3f81e3d3a771f280821131ab3922af3f10ad",
+      "windows_db": "66622e2eae3cfa48cd8d1c4f5361caa93c9fc8ed97bcf46e41c691bd53ba4685"
+    }
+  },
+  "schema_version": {
+    "current_supported": 16,
+    "forward_backward_compatibility": "PASS",
+    "migrations_verified": ["v7_to_v8_controlled", "v8_to_v16_smooth", "v7_fails_closed_without_flag"],
+    "immutable_review_triggers": "ENFORCED"
+  },
+  "frontend_verification": {
+    "vitest_passed": "75/75 files (371/371 tests)",
+    "production_build": "PASS (16.01s)"
+  },
+  "python_verification": {
+    "investigation_tests": "1215 passed, 1 skipped, 0 failed",
+    "total_unit_tests": "3283 passed, 1 skipped",
+    "new_regressions": 0,
+    "preexisting_dev_failures": 6,
+    "preexisting_dev_errors": 6
+  },
+  "security_posture": {
+    "agent_execution_enabled_default": false,
+    "agent_review_local_only_default": true,
+    "host_origin_guards": "ENFORCED_403",
+    "immutable_review_triggers": "ENFORCED",
+    "prompt_and_schema_freeze": "PRESERVED"
+  },
+  "limitations": [
+    "Agent execution is disabled by default via agent_execution_enabled=False; must be explicitly enabled in local environment for single-user execution.",
+    "Provider requests remain 0 (Fake Model only in offline integration test suites); live model qualification remains governed by frozen offline benchmarks.",
+    "Six pre-existing Dev unit test failures and six errors (.deps/aosp-android10-r36 container pipeline, Graphiti ingestor client attribute, episode rows offloop) remain untouched on Dev baseline.",
+    "Authoritative Dev branch and remote repository remain untouched; no git push or direct branch modification is performed."
+  ]
+}

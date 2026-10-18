@@ -1,0 +1,36 @@
+{
+  "report_version": "agent-v0-evidence-integrity-report:v1",
+  "audit_name": "TASK-AGENT-V0-CONTROLLED-DEV-INTEGRATION-PHASE-6",
+  "created_at": "2026-10-18T03:11:30Z",
+  "target_image": {
+    "path": "/home/ymj68520/projects/testimgs/窝点嫌疑人计算机镜像.E01",
+    "size_bytes": 7556437602,
+    "mode": "STRICTLY_READ_ONLY",
+    "write_access": false
+  },
+  "verified_task_id": "60dedf82-7f35-48be-a104-b4d283a4fe92",
+  "database_hashes": {
+    "events.db": {
+      "path": "/home/ymj68520/projects/TraceLens/build/data/tasks/60dedf82-7f35-48be-a104-b4d283a4fe92/events.db",
+      "sha256": "90049693bb34d06bdb507282f771bdddd7afcf4e223b25fccc655f3778090ddf",
+      "status": "UNTOUCHED_INVARIANT"
+    },
+    "files.db": {
+      "path": "/home/ymj68520/projects/TraceLens/build/data/tasks/60dedf82-7f35-48be-a104-b4d283a4fe92/files.db",
+      "sha256": "df8bb8e42bed9b769d451845c3cadba8369329f5a3b37dadfc0224f8d7008eb1",
+      "status": "UNTOUCHED_INVARIANT"
+    },
+    "raw.db": {
+      "path": "/home/ymj68520/projects/TraceLens/build/data/tasks/60dedf82-7f35-48be-a104-b4d283a4fe92/raw.db",
+      "sha256": "fab13a57da91d77e0992bcdf151e3f81e3d3a771f280821131ab3922af3f10ad",
+      "status": "UNTOUCHED_INVARIANT"
+    },
+    "windows.db": {
+      "path": "/home/ymj68520/projects/TraceLens/build/data/tasks/60dedf82-7f35-48be-a104-b4d283a4fe92/windows.db",
+      "sha256": "66622e2eae3cfa48cd8d1c4f5361caa93c9fc8ed97bcf46e41c691bd53ba4685",
+      "status": "UNTOUCHED_INVARIANT"
+    }
+  },
+  "initial_analysis_integrity": "PRESERVED",
+  "evidence_isolation": "PASS"
+}

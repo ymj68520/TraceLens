@@ -1,0 +1,125 @@
+{
+  "matrix_version": "agent-v0-dev-compatibility-matrix:v1",
+  "audit_name": "TASK-AGENT-V0-CONTROLLED-DEV-INTEGRATION-PHASE-2",
+  "created_at": "2026-10-18T02:49:00Z",
+  "categories": {
+    "backend_services": [
+      {
+        "component": "ServiceManager",
+        "status": "REQUIRES_MINIMAL_FIX",
+        "details": "Dev added field_policy/readonly guards; Source added AgentOrchestrator and AgentAnalystReviewService. Non-conflicting additive integration required."
+      },
+      {
+        "component": "CppBackendService",
+        "status": "COMPATIBLE",
+        "details": "Task resolution and project root path resolving are compatible; no breaking signature changes."
+      },
+      {
+        "component": "LLMService",
+        "status": "COMPATIBLE",
+        "details": "Both branches reuse existing LLMService provider configurations without collision."
+      },
+      {
+        "component": "AgentOrchestrator",
+        "status": "COMPATIBLE",
+        "details": "Present only in Source; zero duplicate orchestrators in Dev."
+      },
+      {
+        "component": "AgentRuntimePersistence",
+        "status": "COMPATIBLE",
+        "details": "Scoped strictly to task-level investigation.db; zero mutation to raw evidence databases."
+      },
+      {
+        "component": "AgentAnalystReviewService",
+        "status": "COMPATIBLE",
+        "details": "Present only in Source; zero duplicate review services in Dev."
+      },
+      {
+        "component": "HTTPRoutes",
+        "status": "REQUIRES_MINIMAL_FIX",
+        "details": "Dev added audit_actor and _store_http_error in routes/investigation.py; Source added /agent/ endpoints. Clean additive union required."
+      },
+      {
+        "component": "FeatureFlags",
+        "status": "COMPATIBLE",
+        "details": "agent_execution_enabled=False and agent_review_local_only=True preserved by default in config.py."
+      }
+    ],
+    "sqlite_schema_and_migration": [
+      {
+        "component": "investigation.db_user_version",
+        "status": "CONFLICT",
+        "impact": "Dev bumped user_version to 8 for android_artifact snapshot support; Source independently used versions 8..16 for Agent v0 tables.",
+        "resolution": "Unify SUPPORTED_SCHEMA_VERSION to 16. Incorporate android_artifact constraint in evidence_snapshots, allow migration from Dev v8 (or v7) through v16, and retain all Agent table schemas and triggers."
+      },
+      {
+        "component": "evidence_snapshots",
+        "status": "REQUIRES_MINIMAL_FIX",
+        "details": "Adopt Dev's CHECK constraint supporting 'file', 'cluster', and 'android_artifact' across all schema initializations."
+      },
+      {
+        "component": "investigation_findings",
+        "status": "COMPATIBLE",
+        "details": "Present only in Source; triggers trg_investigation_findings_status, trg_investigation_findings_no_identity_update, trg_investigation_findings_review_provenance_required preserved."
+      },
+      {
+        "component": "investigation_finding_reviews",
+        "status": "COMPATIBLE",
+        "details": "Authoritative immutable review history table present only in Source; trg_investigation_finding_reviews_no_update and trg_investigation_finding_reviews_no_delete preserved."
+      }
+    ],
+    "evidence_integrity": [
+      {
+        "component": "evidence_identity",
+        "status": "COMPATIBLE",
+        "details": "Strict (task_id, evidence_key) identity preserved. Read-only original evidence databases unchanged."
+      },
+      {
+        "component": "evidence_resolvers",
+        "status": "COMPATIBLE",
+        "details": "file:<path> and cluster:v1:<unix_minute>:<event_type> key semantics preserved across all services."
+      }
+    ],
+    "frontend": [
+      {
+        "component": "AnalysisWorkspace.jsx",
+        "status": "REQUIRES_MINIMAL_FIX",
+        "details": "Dev made minor layout/test ID updates; Source added AgentReviewPanel tab in Column 3. Clean integration required."
+      },
+      {
+        "component": "Investigation.test.jsx",
+        "status": "REQUIRES_MINIMAL_FIX",
+        "details": "Merge Dev's secondary analysis test cases with Source's Agent review tab assertions."
+      },
+      {
+        "component": "investigationService.js",
+        "status": "REQUIRES_MINIMAL_FIX",
+        "details": "Dev added read endpoints; Source added agent cycle, working state, and review endpoints. Additive union required."
+      },
+      {
+        "component": "layout_compliance",
+        "status": "COMPATIBLE",
+        "details": "Agent controls and review panel remain strictly inside Column 3 (Analysis Workspace). No fourth column."
+      }
+    ],
+    "security_and_safety": [
+      {
+        "component": "agent_execution_enabled",
+        "status": "COMPATIBLE",
+        "details": "Defaults to False in config.py and featuresService.js."
+      },
+      {
+        "component": "agent_review_local_only",
+        "status": "COMPATIBLE",
+        "details": "Defaults to True; local mutation guard _check_local_review_mutation_allowed active on all review write routes."
+      },
+      {
+        "component": "reviewer_identity",
+        "status": "COMPATIBLE",
+        "details": "Strictly marked as CALLER_DECLARED; no false claims of external authenticated identity."
+      }
+    ]
+  },
+  "overall_compatibility": "COMPATIBLE_WITH_MINIMAL_ADAPTERS",
+  "blockers": []
+}

@@ -2841,7 +2841,10 @@ class InvestigationRepository:
             ddl = conn.execute(
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name='evidence_snapshots'"
             ).fetchone()
-            if ddl is None or "evidence_type = 'android_artifact'" not in ddl[0]:
+            if ddl is None:
+                raise EvidenceStoreError("v8 snapshot identity constraint is missing")
+            sql = ddl[0] or ""
+            if "evidence_type = 'android_artifact'" not in sql and "evidence_type IN ('file', 'cluster')" not in sql:
                 raise EvidenceStoreError("v8 snapshot identity constraint is missing")
 
     def _build_all_secondary_objects(self, conn: sqlite3.Connection) -> None:

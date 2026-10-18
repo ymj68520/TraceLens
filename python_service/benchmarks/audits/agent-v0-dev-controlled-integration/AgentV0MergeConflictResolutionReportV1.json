@@ -1,0 +1,83 @@
+{
+  "report_version": "agent-v0-merge-conflict-resolution-report:v1",
+  "audit_name": "TASK-AGENT-V0-CONTROLLED-DEV-INTEGRATION-PHASE-4",
+  "created_at": "2026-10-18T03:10:00Z",
+  "merge_commit": "a04e1ab4",
+  "source_commit": "0dedec35fd16fe80356d7e4ae46e56af431bf714",
+  "target_dev_commit": "bca324b28d9122a8ba35897cb608fdbd35f2612d",
+  "conflicts_count": 13,
+  "resolutions": [
+    {
+      "file": ".gitignore",
+      "nature": "Concurrent additions of runtime ignore patterns and benchmark mini image patterns",
+      "resolution": "Union of both sets of patterns. Retained /data/, /reports/, /testimg/, /web/.audit-pages*.cjs, python_service/investigation.db, python_service/.deps_installed, and python_service/benchmarks/images/*.img."
+    },
+    {
+      "file": "web/src/components/common/TaskSelector.jsx",
+      "nature": "Dev added task.metadata.source_label formatting; Source added null-safe path splitting",
+      "resolution": "Unified label format: {task.metadata?.source_label || (task.image_path || task.name || task.id || '').split('/').pop()} ({String(task.id || '').substring(0, 8)}) - {task.status}. Verified with TaskSelector.test.jsx (5/5 passed)."
+    },
+    {
+      "file": "web/src/pages/Investigation/components/AnalysisWorkspace.jsx",
+      "nature": "Dev added readOnly prop and persistent component keys; Source integrated AgentExecutionControl and AgentReviewPanel",
+      "resolution": "Integrated both: renderPrimaryPanel passes readOnly and key to EvidenceAnalysisPanel while embedding AgentExecutionControl and AgentReviewPanel inside AnalysisWorkspace Column 3. Verified with Investigation.test.jsx (29/29 passed)."
+    },
+    {
+      "file": "python_service/tests/unit/investigation/conftest.py",
+      "nature": "Dev asserted SUPPORTED_SCHEMA_VERSION == 8; Source asserted SUPPORTED_SCHEMA_VERSION == 16",
+      "resolution": "Set assertion to SUPPORTED_SCHEMA_VERSION == 16."
+    },
+    {
+      "file": "python_service/tests/unit/investigation/test_investigation_completion.py",
+      "nature": "Dev hardcoded version == 8; Source asserted SUPPORTED_SCHEMA_VERSION",
+      "resolution": "Adopted SUPPORTED_SCHEMA_VERSION."
+    },
+    {
+      "file": "python_service/tests/unit/investigation/test_investigation_event.py",
+      "nature": "Dev hardcoded version 8 in test_new_db_is_v8; Source used test_new_db_is_current_schema_version",
+      "resolution": "Adopted test_new_db_is_current_schema_version and SUPPORTED_SCHEMA_VERSION."
+    },
+    {
+      "file": "python_service/tests/unit/investigation/test_investigation_grounding.py",
+      "nature": "Dev asserted version == 8; Source asserted SUPPORTED_SCHEMA_VERSION",
+      "resolution": "Adopted SUPPORTED_SCHEMA_VERSION."
+    },
+    {
+      "file": "python_service/tests/unit/investigation/test_investigation_refresh.py",
+      "nature": "Dev asserted version == 8; Source asserted SUPPORTED_SCHEMA_VERSION",
+      "resolution": "Adopted SUPPORTED_SCHEMA_VERSION."
+    },
+    {
+      "file": "python_service/tests/unit/investigation/test_investigation_report_evidence.py",
+      "nature": "Dev asserted version == 8; Source asserted SUPPORTED_SCHEMA_VERSION == 16",
+      "resolution": "Adopted SUPPORTED_SCHEMA_VERSION == 16."
+    },
+    {
+      "file": "python_service/tests/unit/investigation/test_investigation_secondary.py",
+      "nature": "Dev asserted version == 8; Source asserted SUPPORTED_SCHEMA_VERSION == 16",
+      "resolution": "Adopted SUPPORTED_SCHEMA_VERSION == 16."
+    },
+    {
+      "file": "python_service/httpserver/routes/investigation.py",
+      "nature": "Dev added audit_actor import from field_security; Source had no conflict in routes",
+      "resolution": "Preserved audit_actor import and usages across snapshot and event route handlers."
+    },
+    {
+      "file": "python_service/httpserver/services/investigation_service.py",
+      "nature": "Dev enforced InvestigationMigrationRequiredError on historical stores; Source permitted additive migration up to 16",
+      "resolution": "Preserved InvestigationMigrationRequiredError on read-only protection guard and allowed controlled migration when allow_v7_upgrade=True. Imported both SUPPORTED_SCHEMA_VERSION and InvestigationMigrationRequiredError."
+    },
+    {
+      "file": "python_service/httpserver/services/investigation/repository.py",
+      "nature": "Dev added android_artifact snapshot constraint with user_version=8 and allow_v7_upgrade guard; Source added Agent v0 tables with user_version=16",
+      "resolution": "Set SUPPORTED_SCHEMA_VERSION=16. Incorporated android_artifact in default fresh snapshot DDL (_CREATE_EVIDENCE_SNAPSHOTS_SQL). Retained _CREATE_EVIDENCE_SNAPSHOTS_V7_SQL for historical test fixtures. Reconciled _migrate_v7_to_v8 to rebuild evidence_snapshots and build agent v8 objects. Handled Dev v8 stores in _ensure_schema by checking agent_investigations presence before proceeding with v8..v16 migrations. In open_existing and fresh init, run both _validate_v16_schema and _validate_v8_snapshot_constraint. Removed duplicate _migrate_v7_to_v8."
+    }
+  ],
+  "verification": {
+    "git_merge_status": "MERGE_COMMITTED_CLEANLY",
+    "unmerged_paths": 0,
+    "investigation_tests_passed": 1215,
+    "investigation_tests_skipped": 1,
+    "investigation_tests_failed": 0
+  }
+}

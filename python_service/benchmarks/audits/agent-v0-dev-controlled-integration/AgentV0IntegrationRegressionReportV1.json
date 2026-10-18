@@ -1,0 +1,84 @@
+{
+  "report_version": "AgentV0IntegrationRegressionReportV1",
+  "generated_at": "2026-10-18T11:38:30+08:00",
+  "worktree_path": "/home/ymj68520/projects/TraceLens-agent-v0-integration",
+  "branch": "integration/agent-v0-dev-20261018",
+  "merge_commit": "a04e1ab4",
+  "regression_status": "PASSED_WITH_PREEXISTING_DEV_LIMITATIONS",
+  "frontend_suite": {
+    "framework": "Vitest",
+    "test_files_total": 75,
+    "test_files_passed": 75,
+    "test_files_failed": 0,
+    "tests_total": 371,
+    "tests_passed": 371,
+    "tests_failed": 0,
+    "production_build": {
+      "status": "PASS",
+      "command": "npm run build",
+      "build_time_seconds": 16.01,
+      "exit_code": 0
+    }
+  },
+  "investigation_suite": {
+    "path": "python_service/tests/unit/investigation",
+    "tests_total": 1216,
+    "tests_passed": 1215,
+    "tests_skipped": 1,
+    "tests_failed": 0,
+    "tests_errors": 0
+  },
+  "full_unit_regression_suite": {
+    "path": "python_service/tests/unit",
+    "tests_passed": 3283,
+    "tests_skipped": 1,
+    "tests_failed": 6,
+    "tests_errors": 6,
+    "reconciliation": {
+      "pre_existing_dev_failures": [
+        {
+          "test": "python_service/tests/unit/test_6c_lp_frozen_tool_pin.py::test_frozen_lp_bundle_needs_no_git_but_rejects_source_and_binary_tampering",
+          "reason": "Missing local dependency tree: .deps/aosp-android10-r36"
+        },
+        {
+          "test": "python_service/tests/unit/test_android_container_pipeline.py::test_sparse_refuses_insufficient_workspace_before_conversion",
+          "reason": "AOSP simg2img version mismatch in test container environment"
+        },
+        {
+          "test": "python_service/tests/unit/test_android_container_pipeline.py::test_lp_multi_device_requires_companion_input",
+          "reason": "Missing local dependency: .deps/aosp-android10-r36/bin/lpmake"
+        },
+        {
+          "test": "python_service/tests/unit/test_d4b_graphiti_cleanup.py::test_ingestor_close_closes_owned_clients_even_when_driver_fails",
+          "reason": "GraphitiIngestor missing _worker_clients attribute"
+        },
+        {
+          "test": "python_service/tests/unit/test_d4b_graphiti_cleanup.py::test_ingestor_close_is_safe_for_injected_client",
+          "reason": "GraphitiIngestor missing _worker_clients attribute"
+        },
+        {
+          "test": "python_service/tests/unit/test_worker_episode_rows_offloop.py::TestReadEpisodeSourceRows::test_missing_descriptions_table_is_nonfatal",
+          "reason": "Assertion failure on missing descriptions table non-fatal error message"
+        }
+      ],
+      "pre_existing_dev_errors": [
+        "python_service/tests/unit/test_android_container_pipeline.py::test_lp_metadata_inventory_and_slot (missing lpmake)",
+        "python_service/tests/unit/test_android_container_pipeline.py::test_lp_invalid_geometry_fails_closed (missing lpmake)",
+        "python_service/tests/unit/test_android_container_pipeline.py::test_lp_broken_metadata_checksum_fails_closed (missing lpmake)",
+        "python_service/tests/unit/test_android_container_pipeline.py::test_lp_extent_past_image_end_fails_closed (missing lpmake)",
+        "python_service/tests/unit/test_android_container_pipeline.py::test_lp_invalid_extent_source_fails_closed (missing lpmake)",
+        "python_service/tests/unit/test_android_container_pipeline.py::test_lp_unsupported_metadata_version_fails_closed (missing lpmake)"
+      ],
+      "new_regression_failures": 0,
+      "agent_v0_regression_status": "CLEAN"
+    }
+  },
+  "security_and_feature_gates": {
+    "agent_execution_enabled_default": false,
+    "agent_review_local_only_default": true,
+    "host_origin_guards_403_enforced": true,
+    "x_forwarded_spoofing_guards_enforced": true,
+    "immutable_review_history_triggers_enforced": true,
+    "e01_forensic_evidence_unmodified": true
+  }
+}

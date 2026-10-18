@@ -119,7 +119,7 @@ class EvidenceResolver:
 
         # R1/R2/R3: task must exist; DB paths come ONLY from get_task.
         task = await self._cpp_backend.get_task(task_id)
-        if not isinstance(task, dict) or task.get("id") != task_id:
+        if not isinstance(task, dict) or not task or (task.get("id") is not None and task.get("id") != task_id):
             raise EvidenceNotFoundError(f"task not found: {task_id}")
 
         if parsed.evidence_type == "android_artifact":
