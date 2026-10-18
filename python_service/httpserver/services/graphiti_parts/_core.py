@@ -133,14 +133,23 @@ class GraphitiCoreMixin:
             neo4j_password=self.settings.neo4j_password,
             llm_base_url=llm_base_url,
             llm_model=llm_model,
-            llm_api_key=self.settings.llm_api_key or "local",
+            llm_api_key=(
+                (getattr(self.settings, "graphiti_llm_api_key", "") or "").strip()
+                or self.settings.llm_api_key_for("text")
+                or "local"
+            ),
             # Embedder 配置必须显式透传：Settings 没有 embedder 字段，缺省时
             # _create_embedder 会回退到 llm_base_url，把嵌入请求发去云 chat
             # 服务商（如 DeepSeek 无 /embeddings 端点 → 404）。与
             # GraphitiConfig.from_env 的语义保持一致。
             embedder_base_url=os.getenv("EMBEDDING_BASE_URL"),
             embedder_model=os.getenv("EMBEDDING_MODEL", "text-embedding-nomic-embed-text-v1.5"),
-            embedder_api_key=os.getenv("EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY"),
+            embedder_api_key=(
+                (getattr(self.settings, "embedding_api_key", "") or "").strip()
+                or (getattr(self.settings, "graphiti_llm_api_key", "") or "").strip()
+                or self.settings.llm_api_key_for("text")
+                or os.getenv("OPENAI_API_KEY")
+            ),
             embedder_dim=int(os.getenv("EMBEDDING_DIM", "768")),
             batch_size=self.settings.graphiti_batch_size,
             max_concurrency=max(1, getattr(self.settings, "graphiti_max_concurrency", 1)),

@@ -30,11 +30,13 @@
 |---|---|---|---|
 | `LLM_BASE_URL` | `http://192.168.31.170:1234` / 同 | C++ ConfigManager.cpp:86；Py config.py:159 | |
 | `LLM_ENDPOINT` | `/v1/chat/completions` / 同 | C++ :87；Py :160 + 校验器 :163-170 | Py 校验器把"裸模型名"等旧值规范回 `/v1/chat/completions` |
-| `LLM_API_KEY` | 空 / 空 | C++ :88；Py :161；Graphiti graphiti_integration/config.py:94（缺省 `"local"`） | |
+| `LLM_API_KEY` | 空 / 空 | C++ ConfigManager.cpp `getLLMApiKey`；Py `llm_api_key`；Graphiti 回落 | 文本/视觉未单独配 key 时的共享回落 |
+| `LLM_TEXT_API_KEY` | 空=回落 `LLM_API_KEY` | C++ `getTextApiKey`；Py `llm_api_key_for("text")`；Graphiti `from_env` 与 `_build_graphiti_config` | 空串与纯空白都回落，.env 里留空占位行不影响 |
 | `LLM_TEXT_BASE_URL` | 回退 `LLM_BASE_URL` / `http://192.168.31.170:1234` | C++ :100；Py :172；Graphiti config.py:83（自动补 `/v1`） | |
 | `LLM_TEXT_MODEL` | C++ `gpt-oss`；Py `openai/gpt-oss-20b`；Graphiti `openai/gpt-oss-20b` | C++ :101；Py :173；Graphiti :93 | **C++ 缺省与 Python 不同**，建议显式设置 |
 | `LLM_TEXT_MAX_TOKENS` | C++ `2048`；Py `4096` | C++ :102；Py :174 | **两侧缺省不一致**；.env.example 给 4096 |
 | `LLM_TEXT_TEMPERATURE` | `0.7` / `0.7` | C++ :103；Py :175 | |
+| `LLM_VISION_API_KEY` | 空=回落 `LLM_API_KEY` | C++ `getVisionApiKey`；Py `llm_api_key_for("vision")` | 视觉请求与 `/v1/models` 探活用；语义同文本 key |
 | `LLM_VISION_BASE_URL` | 回退 `LLM_BASE_URL` / `http://192.168.31.170:1234` | C++ :119；Py :177 | |
 | `LLM_VISION_MODEL` | C++ `qwen3-vl`；Py `qwen/qwen3-vl-4b` | C++ :120；Py :178 | 两侧缺省不同 |
 | `LLM_VISION_MAX_TOKENS` | `4096` / `4096` | C++ :121；Py :179 | |
@@ -79,13 +81,14 @@ httpserver 的 `Settings` 与 `GraphitiConfig.from_env` 都会读这些变量，
 | `NEO4J_URI` | `neo4j://127.0.0.1:7687` | 同 | Py config.py:196；graphiti config.py:89 |
 | `NEO4J_USER` | `neo4j` | 同 | Py :197；graphiti :90 |
 | `NEO4J_PASSWORD` | 空 | 空 | Py :198；graphiti :91（.env.example 示例 `change-me`） |
+| `GRAPHITI_LLM_API_KEY` | 空=回落文本 key，再回落 `LLM_API_KEY` | 同 | Py `graphiti_llm_api_key`；graphiti `from_env`。空白与空串都回落 |
 | `GRAPHITI_USE_LOCAL_LLM` | `true` | `true` | Py :200；graphiti :107 |
 | `GRAPHITI_BATCH_SIZE` | **`50`** | **`10`** | Py :201；graphiti :104。**两处缺省不一致（50 vs 10）**；.env.example 又给 `25`。实际生效值取决于哪条代码路径读的：管线 CLI 用 GraphitiConfig=10，httpserver 任务用 Settings=50 |
 | `GRAPHITI_MAX_RETRIES` | `3` | `3` | Py :202；graphiti :105 |
 | `GRAPHITI_GROUP_ID` | `forensics_files` | 同 | Py :203；graphiti :106 |
 | `GRAPHITI_INCLUDE_FULL_DESC` | **`true`** | **`false`** | Py :207；graphiti :109。**两处缺省相反** |
 | `GRAPHITI_MAX_EPISODE_TOKENS` | `3000` | `3000` | Py :208；graphiti :108 | |
-| `EMBEDDING_BASE_URL` / `EMBEDDING_MODEL` / `EMBEDDING_API_KEY` / `EMBEDDING_DIM` | — / `text-embedding-nomic-embed-text-v1.5` / 回退 `OPENAI_API_KEY` / `768` | graphiti config.py:99-102 | 不在 .env.example |
+| `EMBEDDING_BASE_URL` / `EMBEDDING_MODEL` / `EMBEDDING_API_KEY` / `EMBEDDING_DIM` | — / `text-embedding-nomic-embed-text-v1.5` / 空=回落图谱 key→文本 key→`LLM_API_KEY`→`OPENAI_API_KEY` / `768` | graphiti `from_env`；Py `embedding_api_key` | |
 | `GRAPHITI_DB_PATH` | 空 | graphiti config.py:103 | 不在 .env.example |
 
 ## 7. 端口与服务地址（联动关系）
@@ -224,14 +227,16 @@ LLM_BASE_URL=http://192.168.31.170:1234
 LLM_ENDPOINT=/v1/chat/completions
 LLM_API_KEY=
 
-# 文本模型
+# 文本模型（LLM_TEXT_API_KEY 留空回落 LLM_API_KEY）
 LLM_TEXT_BASE_URL=http://192.168.31.170:1234
+LLM_TEXT_API_KEY=
 LLM_TEXT_MODEL=qwen/qwen3.6-35b-a3b
 LLM_TEXT_MAX_TOKENS=4096            # ★C++ 缺省 2048
 LLM_TEXT_TEMPERATURE=0.7
 
-# 视觉模型
+# 视觉模型（LLM_VISION_API_KEY 留空回落 LLM_API_KEY）
 LLM_VISION_BASE_URL=http://192.168.31.170:1234
+LLM_VISION_API_KEY=
 LLM_VISION_MODEL=qwen/qwen3.6-35b-a3b
 LLM_VISION_MAX_TOKENS=4096
 LLM_VISION_TEMPERATURE=0.5
@@ -258,6 +263,7 @@ DB_NAME=forensics.db
 NEO4J_URI=neo4j://127.0.0.1:7687
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=change-me
+GRAPHITI_LLM_API_KEY=             # 留空回落 LLM_TEXT_API_KEY，再回落 LLM_API_KEY
 GRAPHITI_USE_LOCAL_LLM=true
 GRAPHITI_BATCH_SIZE=25              # ★Settings 缺省 50 / GraphitiConfig 缺省 10
 GRAPHITI_MAX_RETRIES=3

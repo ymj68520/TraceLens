@@ -18,7 +18,9 @@ def _load_config(monkeypatch: pytest.MonkeyPatch, **env: str):
     # Collection-time imports load_dotenv the repo .env into os.environ, so
     # every key from_env reads must be scrubbed before applying explicit env.
     for key in ("GRAPHITI_LLM_MODEL", "LLM_TEXT_MODEL",
-                "GRAPHITI_LLM_BASE_URL", "LLM_TEXT_BASE_URL"):
+                "GRAPHITI_LLM_BASE_URL", "LLM_TEXT_BASE_URL",
+                "LLM_API_KEY", "LLM_TEXT_API_KEY", "GRAPHITI_LLM_API_KEY",
+                "EMBEDDING_API_KEY", "OPENAI_API_KEY"):
         monkeypatch.delenv(key, raising=False)
     for key, value in env.items():
         monkeypatch.setenv(key, value)
@@ -104,6 +106,68 @@ def test_graphiti_base_url_blank_falls_back_to_text_base(monkeypatch):
         LLM_TEXT_BASE_URL="http://cloud.example/step_plan",
     )
     assert cfg.llm_base_url == "http://cloud.example/step_plan/v1"
+
+
+def test_graphiti_api_key_override_wins(monkeypatch):
+    """Ingestion authenticates on its own when given its own key."""
+    cfg = _load_config(
+        monkeypatch,
+        LLM_API_KEY="shared-key",
+        LLM_TEXT_API_KEY="text-key",
+        GRAPHITI_LLM_API_KEY="graph-key",
+    )
+    assert cfg.llm_api_key == "graph-key"
+
+
+def test_graphiti_api_key_blank_override_follows_text_channel(monkeypatch):
+    cfg = _load_config(
+        monkeypatch,
+        LLM_API_KEY="shared-key",
+        LLM_TEXT_API_KEY="text-key",
+        GRAPHITI_LLM_API_KEY="   ",
+    )
+    assert cfg.llm_api_key == "text-key"
+
+
+def test_embedder_api_key_override_wins(monkeypatch):
+    cfg = _load_config(
+        monkeypatch,
+        LLM_API_KEY="shared-key",
+        GRAPHITI_LLM_API_KEY="graph-key",
+        EMBEDDING_API_KEY="embed-key",
+    )
+    assert cfg.embedder_api_key == "embed-key"
+
+
+def test_embedder_api_key_blank_follows_ingestion_key(monkeypatch):
+    cfg = _load_config(
+        monkeypatch,
+        LLM_API_KEY="shared-key",
+        LLM_TEXT_API_KEY="text-key",
+        GRAPHITI_LLM_API_KEY="graph-key",
+        EMBEDDING_API_KEY="   ",
+    )
+    assert cfg.embedder_api_key == "graph-key"
+
+
+def test_embedder_api_key_falls_back_to_shared_key(monkeypatch):
+    cfg = _load_config(monkeypatch, LLM_API_KEY="shared-key")
+    assert cfg.embedder_api_key == "shared-key"
+
+
+def test_graphiti_api_key_follows_text_channel(monkeypatch):
+    """Without its own key, ingestion takes the text channel's key."""
+    cfg = _load_config(
+        monkeypatch,
+        LLM_API_KEY="shared-key",
+        LLM_TEXT_API_KEY="text-key",
+    )
+    assert cfg.llm_api_key == "text-key"
+
+
+def test_graphiti_api_key_falls_back_to_shared_key(monkeypatch):
+    cfg = _load_config(monkeypatch, LLM_API_KEY="shared-key")
+    assert cfg.llm_api_key == "shared-key"
 
 
 def test_graphiti_base_url_unset_falls_back_to_text_base(monkeypatch):

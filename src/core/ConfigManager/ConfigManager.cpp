@@ -96,6 +96,8 @@ bool ConfigManager::getBool(const std::string& key, bool defaultValue) const {
 std::string ConfigManager::getLLMBaseUrl() const { return field_ai_disabled() ? "" : get("LLM_BASE_URL", "http://192.168.31.170:1234"); }
 std::string ConfigManager::getLLMEndpoint() const { return get("LLM_ENDPOINT", "/v1/chat/completions"); }
 std::string ConfigManager::getLLMApiKey() const { return get("LLM_API_KEY", ""); }
+std::string ConfigManager::getTextApiKey() const { return get("LLM_TEXT_API_KEY", getLLMApiKey()); }
+std::string ConfigManager::getVisionApiKey() const { return get("LLM_VISION_API_KEY", getLLMApiKey()); }
 std::string ConfigManager::getLLMThinkingMode() const {
     std::string mode = get("LLM_THINKING_MODE", "");
     return (mode == "enabled" || mode == "disabled") ? mode : std::string();
@@ -157,7 +159,7 @@ llm::LLMConfig ConfigManager::getTextModelConfig() const {
     llm::LLMConfig config;
     config.baseUrl = getTextBaseUrl();
     config.endpoint = getLLMEndpoint();
-    config.apiKey = getLLMApiKey();
+    config.apiKey = getTextApiKey();
     config.model = getTextModel();
     config.maxTokens = getTextMaxTokens();
     config.temperature = getTextTemperature();
@@ -177,7 +179,7 @@ llm::LLMConfig ConfigManager::getVisionModelConfig() const {
     llm::LLMConfig config;
     config.baseUrl = getVisionBaseUrl();
     config.endpoint = getLLMEndpoint();
-    config.apiKey = getLLMApiKey();
+    config.apiKey = getVisionApiKey();
     config.model = getVisionModel();
     config.maxTokens = getVisionMaxTokens();
     config.temperature = getVisionTemperature();

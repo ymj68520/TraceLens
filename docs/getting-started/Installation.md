@@ -211,11 +211,13 @@ cp .env.example .env
 |------|--------|------|
 | `LLM_BASE_URL` | `http://192.168.31.170:1234` | OpenAI 兼容端点（共享） |
 | `LLM_ENDPOINT` | `/v1/chat/completions` | chat completions 路径 |
-| `LLM_API_KEY` | 空 | API key（本地端点可为空） |
+| `LLM_API_KEY` | 空 | 共享 API key（本地端点可为空）；文本/视觉未单独配 key 时回落到这里 |
+| `LLM_TEXT_API_KEY` | 空（回落 `LLM_API_KEY`） | 文本端点自己的 key；图谱未单独配 key 时也回落到它 |
 | `LLM_TEXT_BASE_URL` | `http://192.168.31.170:1234` | 文本模型端点 |
 | `LLM_TEXT_MODEL` | `qwen/qwen3.6-35b-a3b` | 文本模型名 |
 | `LLM_TEXT_MAX_TOKENS` | `4096` | 文本模型 max tokens |
 | `LLM_TEXT_TEMPERATURE` | `0.7` | 文本模型温度 |
+| `LLM_VISION_API_KEY` | 空（回落 `LLM_API_KEY`） | 视觉端点自己的 key |
 | `LLM_VISION_BASE_URL` | `http://192.168.31.170:1234` | 视觉模型端点 |
 | `LLM_VISION_MODEL` | `qwen/qwen3.6-35b-a3b` | 视觉模型名 |
 | `LLM_VISION_MAX_TOKENS` | `4096` | 视觉模型 max tokens |
@@ -247,6 +249,8 @@ cp .env.example .env
 | `NEO4J_URI` | `neo4j://127.0.0.1:7687` | 连接串 |
 | `NEO4J_USER` | `neo4j` | 用户 |
 | `NEO4J_PASSWORD` | `change-me` | 密码（setup.sh 用它设置初始密码） |
+| `GRAPHITI_LLM_API_KEY` | 空（回落 `LLM_TEXT_API_KEY`，再回落 `LLM_API_KEY`） | 图谱摄入端点自己的 key |
+| `EMBEDDING_API_KEY` | 空（回落图谱 key，再回落文本 key，再回落 `LLM_API_KEY`） | 嵌入端点自己的 key |
 | `GRAPHITI_USE_LOCAL_LLM` | `true` | true = 用上面 LLM_TEXT_* 配置 |
 | `GRAPHITI_BATCH_SIZE` | `25` | 批大小（防 8096 token 溢出） |
 | `GRAPHITI_MAX_RETRIES` | `3` | 重试 |

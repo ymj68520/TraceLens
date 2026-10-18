@@ -130,6 +130,33 @@ class TestBuildGraphitiConfig:
         config = service._build_graphiti_config(group_id="t1")
         assert config.llm_model == "microsoft/phi-4"
 
+    def test_ingestion_api_key_override_wins(self, service, settings):
+        settings.graphiti_llm_api_key = "graph-key"
+        config = service._build_graphiti_config(group_id="t1")
+        assert config.llm_api_key == "graph-key"
+
+    def test_embedder_api_key_override_wins(self, service, settings, monkeypatch):
+        monkeypatch.delenv("EMBEDDING_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        settings.embedding_api_key = "embed-key"
+        settings.graphiti_llm_api_key = "graph-key"
+        config = service._build_graphiti_config(group_id="t1")
+        assert config.embedder_api_key == "embed-key"
+
+    def test_embedder_api_key_blank_follows_ingestion_key(self, service, settings, monkeypatch):
+        monkeypatch.delenv("EMBEDDING_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        settings.embedding_api_key = "   "
+        settings.graphiti_llm_api_key = "graph-key"
+        config = service._build_graphiti_config(group_id="t1")
+        assert config.embedder_api_key == "graph-key"
+
+    def test_ingestion_api_key_blank_follows_text_channel(self, service, settings):
+        settings.graphiti_llm_api_key = "   "
+        settings.llm_text_api_key = "text-key"
+        config = service._build_graphiti_config(group_id="t1")
+        assert config.llm_api_key == "text-key"
+
     def test_ingestion_model_env_override_wins(self, service, settings):
         settings.graphiti_llm_model = " other/model "
         config = service._build_graphiti_config(group_id="t1")

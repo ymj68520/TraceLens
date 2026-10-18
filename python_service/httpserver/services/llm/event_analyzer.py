@@ -14,6 +14,7 @@ from typing import Any, Dict, Optional
 import httpx
 
 from ...config import Settings
+from .file_analyzer import auth_headers
 from ...prompts import (
     EVENT_CLUSTER_ANALYSIS_SYSTEM,
     EVENT_CLUSTER_ANALYSIS_DEFAULT,
@@ -130,7 +131,7 @@ class EventAnalyzer:
                     "temperature": temperature or default_temperature,
                     **self.settings.llm_thinking_body,
                 },
-                headers={"Authorization": f"Bearer {self.settings.llm_api_key}"} if self.settings.llm_api_key else {},
+                headers=auth_headers(self.settings, "text"),
             )
             response.raise_for_status()
 

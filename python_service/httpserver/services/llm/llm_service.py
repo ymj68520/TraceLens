@@ -22,7 +22,7 @@ import httpx
 from ...config import Settings
 from ...path_utils import normalize_evidence_path
 from ..case_analysis.file_schema import ensure_file_analysis_schema
-from .file_analyzer import FileAnalyzer
+from .file_analyzer import FileAnalyzer, auth_headers
 from .model_manager import ModelManager
 from .event_analyzer import EventAnalyzer
 
@@ -512,11 +512,7 @@ class LLMService:
                 "temperature": default_temp if temperature is None else temperature,
                 **self.settings.llm_thinking_body,
             },
-            headers=(
-                {"Authorization": f"Bearer {self.settings.llm_api_key}"}
-                if self.settings.llm_api_key
-                else {}
-            ),
+            headers=auth_headers(self.settings, model_type),
         )
         response.raise_for_status()
         result = response.json()

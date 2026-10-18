@@ -168,6 +168,16 @@ class Settings(BaseSettings):
     llm_base_url: str = Field(default="http://192.168.31.170:1234", alias="LLM_BASE_URL")
     llm_endpoint: str = Field(default="/v1/chat/completions", alias="LLM_ENDPOINT")
     llm_api_key: str = Field(default="", alias="LLM_API_KEY")
+    # Per-channel keys. Blank (unset or an empty placeholder line in .env) falls
+    # back to LLM_API_KEY, so a deployment that shares one key across both
+    # endpoints needs no extra configuration.
+    llm_text_api_key: str = Field(default="", alias="LLM_TEXT_API_KEY")
+    llm_vision_api_key: str = Field(default="", alias="LLM_VISION_API_KEY")
+
+    def llm_api_key_for(self, model_type: str) -> str:
+        """API key for a model channel; the shared key covers a blank override."""
+        override = self.llm_text_api_key if model_type == "text" else self.llm_vision_api_key
+        return override.strip() or self.llm_api_key
 
     @field_validator("llm_endpoint", mode="before")
     @classmethod
@@ -274,6 +284,12 @@ class Settings(BaseSettings):
     # server than the pipeline analysis LLM (e.g. cloud chat + local phi-4
     # extraction). Empty/unset follows LLM_TEXT_BASE_URL.
     graphiti_llm_base_url: str = Field(default="", alias="GRAPHITI_LLM_BASE_URL")
+    # Ingestion key override. Blank follows the text channel key, which itself
+    # falls back to LLM_API_KEY, so a shared-key deployment sets nothing here.
+    graphiti_llm_api_key: str = Field(default="", alias="GRAPHITI_LLM_API_KEY")
+    # Embedding endpoint key. Blank follows the ingestion key, then the text
+    # channel, then LLM_API_KEY, so a single-key deployment sets nothing here.
+    embedding_api_key: str = Field(default="", alias="EMBEDDING_API_KEY")
 
     # mvp-phase1-acceptance SPEC §4: MVP scope switches. Defaults are the
     # acceptance form; set the env var to "true" to restore full behaviour.

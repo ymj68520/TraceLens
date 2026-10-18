@@ -35,6 +35,10 @@ public:
     std::string getLLMBaseUrl() const;
     std::string getLLMEndpoint() const;
     std::string getLLMApiKey() const;
+    // Per-channel keys. Empty LLM_TEXT_API_KEY / LLM_VISION_API_KEY falls back
+    // to LLM_API_KEY, so a single shared key keeps working.
+    std::string getTextApiKey() const;
+    std::string getVisionApiKey() const;
     int getLLMTimeoutSeconds() const;
     int getLLMMaxRetries() const;
     // LLM 分析数量上限约定：0 = 全量（不截断），负值按 0 处理。

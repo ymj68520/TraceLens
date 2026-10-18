@@ -135,6 +135,36 @@ TEST_F(ConfigManagerTest, LlmConcurrencyDefaultsToOneAndIsConfigurable) {
 }
 
 
+// dotenv refuses to overwrite a key already in the process environment, and a
+// developer shell may export these. Clear them so the file below is what loads.
+TEST_F(ConfigManagerTest, ChannelApiKeysFallBackToSharedKey) {
+    unsetenv("LLM_API_KEY");
+    unsetenv("LLM_TEXT_API_KEY");
+    unsetenv("LLM_VISION_API_KEY");
+
+    createEnvFile("LLM_API_KEY=shared-key\n");
+    auto currentPath = fs::current_path();
+    fs::current_path(testDir_);
+
+    auto& config = forensics::ConfigManager::instance();
+    ASSERT_TRUE(config.load(".env"));
+    EXPECT_EQ(config.getTextModelConfig().apiKey, "shared-key");
+    EXPECT_EQ(config.getVisionModelConfig().apiKey, "shared-key");
+
+    unsetenv("LLM_API_KEY");
+    unsetenv("LLM_TEXT_API_KEY");
+    unsetenv("LLM_VISION_API_KEY");
+    createEnvFile("LLM_API_KEY=shared-key\nLLM_TEXT_API_KEY=text-key\nLLM_VISION_API_KEY=vision-key\n");
+    ASSERT_TRUE(config.load(".env"));
+    EXPECT_EQ(config.getTextModelConfig().apiKey, "text-key");
+    EXPECT_EQ(config.getVisionModelConfig().apiKey, "vision-key");
+
+    unsetenv("LLM_API_KEY");
+    unsetenv("LLM_TEXT_API_KEY");
+    unsetenv("LLM_VISION_API_KEY");
+    fs::current_path(currentPath);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

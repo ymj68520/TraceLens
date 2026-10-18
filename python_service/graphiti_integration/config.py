@@ -122,14 +122,30 @@ class GraphitiConfig:
             neo4j_password=os.getenv("NEO4J_PASSWORD", ""),
             llm_base_url=llm_base_url,
             llm_model=llm_model,
-            llm_api_key=os.getenv("LLM_API_KEY", "local"),
+            # Ingestion authenticates on its own. A blank GRAPHITI_LLM_API_KEY
+            # follows the text channel, then the shared LLM_API_KEY.
+            llm_api_key=(
+                (os.getenv("GRAPHITI_LLM_API_KEY") or "").strip()
+                or (os.getenv("LLM_TEXT_API_KEY") or "").strip()
+                or os.getenv("LLM_API_KEY")
+                or "local"
+            ),
             # Embedder can point at a different provider than the chat LLM
             # (e.g. cloud chat model + local nomic embeddings). Falls back to
             # the LLM base URL/key so a single all-in-one local server (LM
             # Studio) keeps working without extra configuration.
             embedder_base_url=os.getenv("EMBEDDING_BASE_URL"),
             embedder_model=os.getenv("EMBEDDING_MODEL", "text-embedding-nomic-embed-text-v1.5"),
-            embedder_api_key=os.getenv("EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY"),
+            # The embedder authenticates on its own. A blank EMBEDDING_API_KEY
+            # follows the ingestion key, then the text channel, then the shared
+            # LLM_API_KEY; OPENAI_API_KEY remains the last resort.
+            embedder_api_key=(
+                (os.getenv("EMBEDDING_API_KEY") or "").strip()
+                or (os.getenv("GRAPHITI_LLM_API_KEY") or "").strip()
+                or (os.getenv("LLM_TEXT_API_KEY") or "").strip()
+                or (os.getenv("LLM_API_KEY") or "").strip()
+                or os.getenv("OPENAI_API_KEY")
+            ),
             embedder_dim=int(os.getenv("EMBEDDING_DIM", "768")),
             db_path=os.getenv("GRAPHITI_DB_PATH"),
             batch_size=int(os.getenv("GRAPHITI_BATCH_SIZE", "10")),  # Reduced from 50

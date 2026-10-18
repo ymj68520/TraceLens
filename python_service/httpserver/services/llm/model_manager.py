@@ -13,6 +13,7 @@ from typing import Any, Dict, Optional
 import httpx
 
 from ...config import Settings
+from .file_analyzer import auth_headers
 
 logger = logging.getLogger(__name__)
 
@@ -55,20 +56,16 @@ class ModelManager:
         """
         try:
             # 云端 OpenAI 兼容服务商对 /v1/models 同样要求 Bearer 鉴权，
-            # 缺头会在健康面板上把可用的云模型误报为离线
-            auth_headers = (
-                {"Authorization": f"Bearer {self.settings.llm_api_key}"}
-                if self.settings.llm_api_key
-                else {}
-            )
+            # 缺头会在健康面板上把可用的云模型误报为离线。每个通道用自己的 key。
+            headers = auth_headers(self.settings, model_type)
             if model_type == "text":
                 if text_client:
-                    response = await text_client.get("/v1/models", headers=auth_headers)
+                    response = await text_client.get("/v1/models", headers=headers)
                     return response.status_code == 200
                 base_url = self.settings.llm_text_base_url
             else:
                 if vision_client:
-                    response = await vision_client.get("/v1/models", headers=auth_headers)
+                    response = await vision_client.get("/v1/models", headers=headers)
                     return response.status_code == 200
                 base_url = self.settings.llm_vision_base_url
 
@@ -77,7 +74,7 @@ class ModelManager:
                 base_url=base_url,
                 timeout=httpx.Timeout(10.0),
             ) as tmp_client:
-                response = await tmp_client.get("/v1/models", headers=auth_headers)
+                response = await tmp_client.get("/v1/models", headers=headers)
                 return response.status_code == 200
         except Exception as e:
             logger.warning(f"Model status check failed for {model_type}: {e}")
@@ -164,11 +161,7 @@ class ModelManager:
             if client:
                 response = await client.get(
                     "/v1/models",
-                    headers=(
-                        {"Authorization": f"Bearer {self.settings.llm_api_key}"}
-                        if self.settings.llm_api_key
-                        else {}
-                    ),
+                    headers=auth_headers(self.settings, model_type),
                 )
                 response.raise_for_status()
                 data = response.json()

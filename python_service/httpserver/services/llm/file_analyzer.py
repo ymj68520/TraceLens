@@ -29,6 +29,17 @@ from ...prompts import (
 
 logger = logging.getLogger(__name__)
 
+
+def auth_headers(settings, model_type: str) -> Dict[str, str]:
+    """Bearer header for one model channel; empty when that channel has no key.
+
+    ``settings`` is typed loosely because tests hand in stand-ins. A stand-in
+    without the per-channel resolver keeps the shared ``llm_api_key``.
+    """
+    resolve = getattr(settings, "llm_api_key_for", None)
+    api_key = resolve(model_type) if resolve else getattr(settings, "llm_api_key", "")
+    return {"Authorization": f"Bearer {api_key}"} if api_key else {}
+
 # 单次文本分析的内容字符预算：超出即截断。CJK 下字符数≈token 数，128k 上下文
 # 需为系统提示与输出（max_tokens 默认 2000）留足余量，90k 字符是安全的经验值。
 MAX_ANALYSIS_CONTENT_CHARS = 90_000
@@ -234,7 +245,7 @@ class FileAnalyzer:
                         "temperature": temperature or default_temperature,
                         **self.settings.llm_thinking_body,
                     },
-                    headers={"Authorization": f"Bearer {self.settings.llm_api_key}"} if self.settings.llm_api_key else {},
+                    headers=auth_headers(self.settings, model_type),
                 )
                 response.raise_for_status()
 
@@ -351,7 +362,7 @@ class FileAnalyzer:
                     "temperature": self.settings.llm_vision_temperature,
                     **self.settings.llm_thinking_body,
                 },
-                headers={"Authorization": f"Bearer {self.settings.llm_api_key}"} if self.settings.llm_api_key else {},
+                headers=auth_headers(self.settings, "vision"),
             )
             response.raise_for_status()
 
@@ -459,7 +470,7 @@ class FileAnalyzer:
                     "temperature": self.settings.llm_vision_temperature,
                     **self.settings.llm_thinking_body,
                 },
-                headers={"Authorization": f"Bearer {self.settings.llm_api_key}"} if self.settings.llm_api_key else {},
+                headers=auth_headers(self.settings, "vision"),
             )
             response.raise_for_status()
 
