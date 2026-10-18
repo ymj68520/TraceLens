@@ -970,7 +970,11 @@ class ServiceManager:
                 cpp_backend=self._cpp_backend,
                 settings=self.settings,
                 tool_services=tool_services,
-                policy=AgentRunPolicy(max_model_requests=5),
+                policy=AgentRunPolicy(
+                    max_model_requests=getattr(
+                        self.settings, "agent_specialist_max_requests", 15
+                    )
+                ),
                 registry_builder=lambda r, observation_sink=None: build_read_only_registry(
                     tool_services, observation_sink=observation_sink
                 ),

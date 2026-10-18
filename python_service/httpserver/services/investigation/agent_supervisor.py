@@ -352,7 +352,7 @@ class SupervisorPlanPolicy(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    max_admissions_per_cycle: int = Field(default=4, ge=1)
+    max_admissions_per_cycle: int = Field(default=8, ge=1)
     allowed_action_kinds: tuple[str, ...] = (
         "delegate_investigation",
         "request_finalization",

@@ -271,6 +271,12 @@ class Settings(BaseSettings):
         default=True, alias="AGENT_REVIEW_LOCAL_ONLY"
     )
 
+    # Maximum model requests per specialist delegation turn (P4A/P8).
+    # Default 15 allows specialist to query tools and author structured findings.
+    agent_specialist_max_requests: int = Field(
+        default=15, alias="AGENT_SPECIALIST_MAX_REQUESTS"
+    )
+
 
     # RCA-1.3: optional structured failure diagnostics. DEFAULT OFF — when
     # disabled every agent failure path is byte-identical to pre-RCA-1
