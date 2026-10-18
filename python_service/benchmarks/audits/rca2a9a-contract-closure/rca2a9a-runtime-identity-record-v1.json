@@ -1,0 +1,16 @@
+{
+  "artifact_version": "RCA2A9aRuntimeIdentityRecordV1",
+  "baseline_commit": "325fa4eb8a86bc347484eea22d9116f22f2d1977",
+  "generated_at": "2026-10-16T00:56:49.679533+00:00",
+  "notes": "Contract closure complete. Candidate identity frozen. No live model calls authorized.",
+  "qualification_status": "HISTORICAL_QUALIFICATIONS_NOT_INHERITED",
+  "runtime_classification": "PROMPT_ONLY_GUIDANCE_CANDIDATE",
+  "runtime_hashes": {
+    "combined_oracle_contract_hash": "739b6683707d1b4c7339cf20eaf861514c902e9ac4b8ac8b3969fa02aef9a782",
+    "guidance_sha256": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+    "oracle_base_sha256": "52e3a57d5116c3fb290158d26eaaff1a69f95fa92efd6e06434a72c454f91a55",
+    "oracle_extension_sha256": "922db5e943ca2c980e8227743555a845d4452b0a6f9c0d9e7d0154fdc4b28348",
+    "output_schema_hash": "a214ec4f5e81fcbb",
+    "protocol_v2_sha256": "981af932f621b10ba26e1c93ef1cf18832301ef7c7b47bc619b6035308bebc03"
+  }
+}

@@ -78,9 +78,10 @@ const TaskSelector = () => {
                 <option value="">Select task...</option>
                 {tasks.map((task) => (
                     <option key={task.id} value={task.id}>
-                        {task.metadata?.source_label || task.image_path?.split('/').pop() || task.name || task.id} ({String(task.id).substring(0, 8)}) - {task.status}
+                        {task.metadata?.source_label || (task.image_path || task.name || task.id || '').split('/').pop()} ({String(task.id || '').substring(0, 8)}) - {task.status}
                     </option>
                 ))}
+
             </select>
         </div>
     );

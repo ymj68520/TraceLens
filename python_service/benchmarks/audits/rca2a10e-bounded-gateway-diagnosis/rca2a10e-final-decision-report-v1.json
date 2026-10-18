@@ -1,0 +1,12 @@
+{
+  "artifact_version": "RCA2A10eFinalDecisionReportV1",
+  "experiment_id": "rca2a10e-bounded-gateway-diagnosis",
+  "created_at_utc": "2026-10-16T06:04:46.170794+00:00",
+  "final_disposition": "GATEWAY_INCOMPATIBILITY_OBSERVED",
+  "future_recommendation": "CHANGE_GATEWAY_CANDIDATE",
+  "production_prompt_unchanged": true,
+  "production_schema_unchanged": true,
+  "rca2b_authorized": false,
+  "gen5_created": false,
+  "mandatory_stop": true
+}

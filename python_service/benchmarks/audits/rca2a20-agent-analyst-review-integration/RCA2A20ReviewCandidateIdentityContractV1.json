@@ -1,0 +1,19 @@
+{
+  "contract_version": "rca2a20-review-candidate-identity:v1",
+  "projection_schema": {
+    "candidate_id": "Unique string: finding_id for findings ('finding:...'), hypothesis_id for hypotheses ('h-...')",
+    "target_type": "finding | hypothesis",
+    "target_id": "Target ID in underlying subsystem",
+    "claim_type": "FACT | INFERENCE | HYPOTHESIS",
+    "content": "Claim or hypothesis natural language assertion",
+    "evidence_refs": "Tuple of canonical evidence references",
+    "source_revision": "Working state revision of candidate origin",
+    "source_integration_id": "Optional disposition_id or integration ID",
+    "grounding_status": "grounded | ungrounded",
+    "review_status": "review_pending | accepted | rejected",
+    "candidate_hash": "SHA-256 of canonical JSON (target_type, target_id, claim_type, text, evidence_refs)",
+    "created_at": "ISO-8601 UTC timestamp"
+  },
+  "staleness_guarantee": "Candidate hash mismatch or source revision mismatch triggers HTTP 409 Conflict.",
+  "status": "PASS"
+}

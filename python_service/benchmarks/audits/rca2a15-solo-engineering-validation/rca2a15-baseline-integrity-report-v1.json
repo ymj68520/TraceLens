@@ -1,0 +1,47 @@
+{
+  "artifact_version": "RCA2A15BaselineIntegrityReportV1",
+  "experiment_id": "rca2a15-solo-engineering-validation",
+  "timestamp_utc": "2026-10-17T05:05:00.000000+00:00",
+  "baseline_commit": "167093e70d2639e692ce52cb0aa7fa6ee5425fa7",
+  "parent_lineage": {
+    "rca2a14b_commit": "167093e70d2639e692ce52cb0aa7fa6ee5425fa7",
+    "rca2a14a_commit": "ce5649e37f5791d250dc87e23910aec2c75464e6",
+    "rca2a13_commit": "82227677a4ce4f68bde393c3e22c677bb411fb66",
+    "rca2a12_artifact_commit": "0419e111520e1460ff65bac7fb540f9b07745ec0",
+    "rca2a12_runtime_commit": "0c2e9b9cac244ebaaf457156ce0ff8dcc264b7b3",
+    "rca2a11b_baseline_commit": "622b2327e93706f24c1a3049aa1bc10af971f58c",
+    "rca2a11a_audit_commit": "b4330951be00ee64b98f13044cdcb4dd565dc2ba",
+    "rca2a11_artifact_commit": "7707279c353be6aff41b26b165f278792613d9c0",
+    "rca2a11_runtime_commit": "afbeb55bf76388d98a58cbbbb44bc4c8e1db10c0"
+  },
+  "historical_status_matrix": {
+    "rca2a12": "CROSS_CASE_COMPARISON_COMPLETED",
+    "rca2a13": "QUALIFICATION_PROTOCOL_READY_WITH_LIMITATIONS",
+    "rca2a14a": "PROTOCOL_READY_CUSTODY_BLOCKED",
+    "rca2a14b": "EXTERNAL_CUSTODY_NOT_AVAILABLE",
+    "rca2a14c": "NOT_STARTED",
+    "rca2a14": "DEFERRED",
+    "rca2b": "NOT_AUTHORIZED",
+    "gen5": "NOT_CREATED"
+  },
+  "candidate_specification": {
+    "candidate_id": "supervisor-v2-vocabulary-guidance-v1",
+    "candidate_type": "PROMPT_ONLY",
+    "guidance_sha256": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+    "output_schema_hash": "a214ec4f5e81fcbb",
+    "candidate_model_target": "deepseek-flash",
+    "candidate_provider_target": "generic"
+  },
+  "production_invariants": {
+    "production_supervisor_prompt_mutated": false,
+    "production_schema_mutated": false,
+    "production_resolver_mutated": false,
+    "production_state_policy_mutated": false,
+    "gen5_created": false,
+    "rca2b_implemented": false,
+    "historical_gen4_unchanged": true,
+    "real_provider_requests_count": 0
+  },
+  "working_tree_clean": true,
+  "disposition": "BASELINE_VERIFIED_UNCHANGED"
+}

@@ -1,0 +1,31 @@
+{
+  "artifact_version": "RCA2A11BaselineIntegrityReportV1",
+  "experiment_id": "rca2a11-deepseek-flash-vocabulary-comparison",
+  "created_at_utc": "2026-10-17T01:45:39.872846+00:00",
+  "baseline_commit": "afbeb55bf76388d98a58cbbbb44bc4c8e1db10c0",
+  "authorized_baseline": "dbdda63fdf4ba4d7f4d412291cdc162da47e895c",
+  "worktree_clean": true,
+  "production_source_hashes": {
+    "agent_supervisor": "8621316a59b9c016c6eacbe9742eb439532af26b401f09d0eef3c263acd8cd25",
+    "agent_integration_v2": "9be8946460d63993192c2abb58391bc6aa5af2617412ee27377f3275846439a0",
+    "agent_transitions": "77300b8d079fb21891ac59dd14732a5f1b611c719e2c5bfc924637166f250e54",
+    "agent_finalization": "505b0f566b2bd91822c8f150fc093fafcff4634b994b4bc2fda469df8caaaf4a",
+    "agent_model_adapter": "9d4f6482ef35eafd5761d7a5f8b08acbbab984f898558845c944b448908bbc1f",
+    "agent_failure_diagnostics": "76c4b23f1fb5226f7f12c946577a820ba720033d5f4941a7d6472566f2069b7e",
+    "agent_retry_timeout_facts": "b3d4742bab9ec3fd853193f21ae03de1f134a173cc551e5c0c350aebb594fbe1"
+  },
+  "runner_source_hash": "ee96e1ef208abd55c3ffb5c7c07c8c6b778b3edd51a568455b5f93b372213569",
+  "schema_hash": "a214ec4f5e81fcbb",
+  "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+  "oracle_hashes": {
+    "base_oracle_hash": "52e3a57d5116c3fb290158d26eaaff1a69f95fa92efd6e06434a72c454f91a55",
+    "extension_oracle_hash": "922db5e943ca2c980e8227743555a845d4452b0a6f9c0d9e7d0154fdc4b28348",
+    "combined_oracle_contract_hash": "739b6683707d1b4c7339cf20eaf861514c902e9ac4b8ac8b3969fa02aef9a782"
+  },
+  "historical_artifact_integrity": {
+    "epoch_a_ok": true,
+    "rca2a10e_ok": true,
+    "rca2a10f_ok": true,
+    "rca2a10g_ok": true
+  }
+}

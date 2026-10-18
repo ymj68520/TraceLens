@@ -1,0 +1,73 @@
+{
+  "artifact_version": "Generation4BindingV1",
+  "generation_id": "acceptance-generation-4",
+  "created_at": "2026-10-01T22:45:18+00:00",
+  "case_ids": [
+    "gen4-layered-dispersion",
+    "gen4-departure-staging"
+  ],
+  "protocol": {
+    "public_case": "public-holdout-case:v2",
+    "substrate": "sealed-evidence-substrate:v1",
+    "manifest": "sealed-evidence-manifest:v1",
+    "seal": "holdout-seal-v3 (UNCHANGED — no protocol v4, §6/§32)",
+    "evaluator": "benchmark-case-outcome:v2 (unchanged, §27)",
+    "execution_gate": "enforce_execution_gate_v3 (unchanged)"
+  },
+  "runtime": {
+    "baseline": "AgentV0RuntimeBaselineV3",
+    "baseline_sha256": "e18b6e6ab26c1d59f93798785947331e3338af63151612d56e350986f883451a",
+    "identity_closure": "acceptance-gen4/runtime-identity-closure.json (§2 Case C → superseding record)",
+    "superseding_record_sha256": "cae8c2831cfcbdc21f7183ae2c7589a6a35b03b3c9ffe72710368c8187d497b8",
+    "measured_runtime_commit": "1b6c0a88 (production files unchanged through seal-time HEAD)",
+    "head_at_seal": "16aa7dd737164a3bb5d50362904bf05d989a3397",
+    "investigation_subtree_at_seal": "2913506cb862f868a079b7dc9c57dd1e3d2d386a"
+  },
+  "content_hydration": {
+    "contract": "evidence-content-hydration:v1 (FROZEN d213145d)",
+    "contract_doc_sha256": "8dfd55ab959263781af22be11dfc8bf8c5038c70818df9ce3fe46f9944090363",
+    "content_store_sha256": "a85048ba1cb8e50764e462f2fc815d3e5228afc350c02e053dee5b06867fc809",
+    "note": "§33: seal binds the hydration contract and store implementation transitively via this generation binding (the seal's generation_binding slot), without extending the frozen HoldoutSealV3 schema"
+  },
+  "calibration": {
+    "binding": "CalibrationEvidenceBindingV3",
+    "sha256": "4c0235eaa80b8450cc879ebb568aa6c8bafc233c1a6683ad3897323e72cc3823",
+    "verdict": "MEASUREMENT_VALID / ZERO_CHANGE"
+  },
+  "acceptance": {
+    "profile": "AgentV0AcceptanceProfileV2 (UNCHANGED, §28)",
+    "profile_sha256": "c40f1adcad816e433f7edfc6cbc0b56dc32c031bf1fcb31528523ffa62f0e98d",
+    "runtime_binding": "AcceptanceProfileRuntimeBindingV3",
+    "runtime_binding_sha256": "0c177782f430ae487bfaf9ee301d897826b9d7b8883f07238fe34e7143e579ef"
+  },
+  "model_config": {
+    "artifact": "acceptance-gen4/gen4-model-config.json",
+    "sha256": "a980cafab34bb2c76dfec47edf2604c112a1d7211402ae18cb1760f7e253d8dd",
+    "model_id": "sensenova-6.8-flash-lite",
+    "temperature": 0.7,
+    "max_tokens": 16384,
+    "reasoning": "disabled"
+  },
+  "capability_selection": {
+    "record": "acceptance-gen4/capability-selection-record-v1.json",
+    "families": [
+      "fund_flow_layering",
+      "bulk_staging_discrimination"
+    ]
+  },
+  "independence_audit": "acceptance-gen4/holdout-independence-audit-v1.json (confirmed)",
+  "hydration_preseal": {
+    "validator": "scripts/validate_gen4_hydration.py (production content path only, §41)",
+    "per_case_proofs": [
+      "acceptance-gen4/hydration-preseal-gen4-layered-dispersion-pre.json",
+      "acceptance-gen4/hydration-preseal-gen4-departure-staging-pre.json",
+      "acceptance-gen4/hydration-preseal-gen4-layered-dispersion-post.json",
+      "acceptance-gen4/hydration-preseal-gen4-departure-staging-post.json"
+    ]
+  },
+  "execution": {
+    "model_calls_in_preparation": 0,
+    "gen4_execution_count": 0,
+    "b6_requires_explicit_authorization": true
+  }
+}

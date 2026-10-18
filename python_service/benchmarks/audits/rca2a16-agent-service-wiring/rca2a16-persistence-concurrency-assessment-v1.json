@@ -1,0 +1,53 @@
+{
+  "schema_version": "RCA2A16PersistenceConcurrencyAssessmentV1",
+  "audit_phase": "RCA-2A.16",
+  "task": "TASK-AGENT-V0-SERVICE-WIRING",
+  "status": "PERSISTENCE_CONCURRENCY_ASSESSED_SAFE",
+  "persistence_architecture": {
+    "database_type": "SQLite3 per task (<task_dir>/investigation.db)",
+    "working_state_revisions": {
+      "table": "agent_working_state_revisions",
+      "model": "WorkingStateRevision",
+      "semantics": "Append-only, strictly monotonically increasing revision numbers with cryptographic hash chaining (previous_state_hash)",
+      "isolation": "Task-scoped DB ownership"
+    },
+    "runs": {
+      "table": "agent_runs",
+      "model": "AgentRun",
+      "constraint": "Partial unique index idx_agent_run_one_active_per_investigation enforces maximum 1 active run per investigation"
+    },
+    "delegations": {
+      "table": "agent_delegations",
+      "model": "AgentDelegation",
+      "lifecycle": "queued -> running -> completed / failed / stale / cancelled"
+    },
+    "trajectory": {
+      "table": "agent_trajectory_events",
+      "model": "AgentTrajectoryEvent",
+      "semantics": "Immutable append-only audit trail with sequence numbers (seq)"
+    }
+  },
+  "concurrency_mechanisms": {
+    "http_boundary": {
+      "task_lock": "asyncio.Lock per task_id",
+      "active_set": "_agent_task_running set tracking executing tasks",
+      "conflict_behavior": "Immediate HTTP 409 Conflict rejection if cycle is already executing"
+    },
+    "optimistic_revision_guard": {
+      "guard_parameter": "expected_working_state_revision",
+      "enforcement": "commit_working_state validates expected_revision == latest.revision",
+      "conflict_behavior": "Raises WorkingStateRevisionConflictError; HTTP route maps to 409 Conflict"
+    },
+    "idempotency": {
+      "idempotency_keys": "Supported on start_run and commit_working_state; retries with identical keys return original records without duplicate side-effects"
+    }
+  },
+  "recovery_protocol": {
+    "startup_sweep": "ServiceManager initialization invokes recover_interrupted_agent_runtime()",
+    "interrupted_runs": "Transitioned to failed (stop_reason=runtime_restart)",
+    "interrupted_delegations": "Transitioned to failed (failure_code=runtime_restart)",
+    "interrupted_investigations": "Transitioned to paused (pause_reason=runtime_restart)",
+    "working_state_preservation": "Maintains last committed valid revision; zero rollbacks or synthetic state alterations",
+    "verified_by_test": "test_t23_restart_recovery_follows_existing_contract"
+  }
+}

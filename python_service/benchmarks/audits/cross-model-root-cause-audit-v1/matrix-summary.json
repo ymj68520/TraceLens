@@ -1,0 +1,89 @@
+{
+ "total_runs": 144,
+ "completed": 128,
+ "failed": 16,
+ "failed_stage_distribution": {
+  "None": 128,
+  "SUPERVISOR_INTEGRATE": 16
+ },
+ "taxonomy_distribution": {
+  "None": 128,
+  "MODEL_OUTPUT_CONTRACT_FAILURE": 11,
+  "PROVIDER_TIMEOUT_OR_LATENCY": 5
+ },
+ "failures_by_series": {
+  "b2-runtime-v3-incumbent": {
+   "runs": 24,
+   "failed": 0,
+   "stages": {}
+  },
+  "b2-runtime-v3-glm52": {
+   "runs": 24,
+   "failed": 0,
+   "stages": {}
+  },
+  "b2-restart-sensenova": {
+   "runs": 24,
+   "failed": 0,
+   "stages": {}
+  },
+  "baseline-mimo": {
+   "runs": 24,
+   "failed": 0,
+   "stages": {}
+  },
+  "wave2-dsv4f-sensenova": {
+   "runs": 8,
+   "failed": 0,
+   "stages": {}
+  },
+  "dsv4f-sensenova": {
+   "runs": 8,
+   "failed": 0,
+   "stages": {}
+  },
+  "glm-5.2-sensenova": {
+   "runs": 8,
+   "failed": 0,
+   "stages": {}
+  },
+  "space-bunny-alpha-openrouter": {
+   "runs": 8,
+   "failed": 5,
+   "stages": {
+    "SUPERVISOR_INTEGRATE": 5
+   }
+  },
+  "step-3.7-flash-stepfun": {
+   "runs": 8,
+   "failed": 5,
+   "stages": {
+    "SUPERVISOR_INTEGRATE": 5
+   }
+  },
+  "step-5-preview-stepfun": {
+   "runs": 8,
+   "failed": 6,
+   "stages": {
+    "SUPERVISOR_INTEGRATE": 6
+   }
+  }
+ },
+ "failed_cases_concentration": {
+  "t1-fraud-script-usb": 2,
+  "t2-cross-source-correlation": 2,
+  "t2-identity-trap": 0,
+  "t2-misleading-note": 2,
+  "t2-no-evidence": 3,
+  "t2-report-citation": 2,
+  "t2-temporal-trap": 3,
+  "t2-verification-temptation": 2
+ },
+ "question_status_disposition_pairs": {
+  "status=answered|disposition=supported": 36,
+  "status=open|disposition=None": 79,
+  "status=answered|disposition=inconclusive": 2,
+  "status=answered|disposition=not_supported": 10,
+  "status=in_progress|disposition=inconclusive": 1
+ }
+}

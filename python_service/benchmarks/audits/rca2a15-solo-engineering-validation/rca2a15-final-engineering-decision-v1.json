@@ -1,0 +1,49 @@
+{
+  "artifact_version": "RCA2A15FinalEngineeringDecisionV1",
+  "experiment_id": "rca2a15-solo-engineering-validation",
+  "timestamp_utc": "2026-10-17T05:12:00.000000+00:00",
+  "validation_mode": "SOLO_DEVELOPER_ENGINEERING_VALIDATION",
+  "final_decision": "SOLO_ENGINEERING_VALIDATION_COMPLETED",
+  "candidate_evaluation": {
+    "candidate_id": "supervisor-v2-vocabulary-guidance-v1",
+    "guidance_sha256": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+    "schema_hash": "a214ec4f5e81fcbb",
+    "engineering_verdict": "PROMISING_EXPLORATORY_CANDIDATE",
+    "qualification_status": "NOT_PRODUCTION_QUALIFIED",
+    "empirical_gains_retained": {
+      "canonical_validity_gain": "+37.5 pp (50.0% -> 87.5%)",
+      "semantic_adequacy_gain": "+25.0 pp (62.5% -> 87.5%)",
+      "safety_breaches": 0,
+      "known_limitations": "F3 cross-system identity overreach noted under DeepSeek-Flash"
+    }
+  },
+  "guidance_integration_strategy": {
+    "strategy_selected": "PREPARE_EXPERIMENTAL_OPT_IN",
+    "production_default": "supervisor-v2",
+    "production_prompt_status": "UNCHANGED",
+    "production_schema_status": "UNCHANGED"
+  },
+  "three_tier_evaluation_status": {
+    "tier_1_development_regression": "PASSED_AND_ACTIVE",
+    "tier_2_solo_engineering_validation": "PASSED_AND_ACTIVE",
+    "tier_3_independent_qualification": "DEFERRED_NOT_BLOCKING"
+  },
+  "next_critical_path_task": {
+    "task_id": "TASK-AGENT-V0-SERVICE-WIRING",
+    "task_name": "Agent v0 End-to-End Orchestrator Wiring & HTTP API Route",
+    "priority": "P1",
+    "target_components": [
+      "python_service/httpserver/services/service_manager.py",
+      "python_service/httpserver/routes/investigation_routes.py"
+    ],
+    "rationale": "Supervisor, Specialist, Registry, Transitions, and Gates are implemented and tested, but ServiceManager leaves orchestrator unwired and no HTTP endpoint exposes the agent loop. Connecting them is the true prerequisite to end-to-end execution."
+  },
+  "architectural_disposition": {
+    "production_prompt": "UNCHANGED",
+    "production_schema": "UNCHANGED",
+    "candidate_vocabulary_guidance_v1": "FROZEN_UNCHANGED",
+    "gen5_creation": "NOT_CREATED",
+    "rca2b_implementation": "NOT_AUTHORIZED",
+    "hard_stop_enforced": true
+  }
+}

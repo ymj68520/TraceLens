@@ -1,0 +1,13 @@
+{
+  "artifact_version": "RCA2A10SeatClaimV1",
+  "experiment_id": "rca2a10b-rebased-cross-case-vocabulary-comparison",
+  "global_seat": 1,
+  "scenario_id": "t2-no-evidence",
+  "pair_label": "A",
+  "pair_id": 1,
+  "arm": "control",
+  "claimed_phase": "RESULT_RECORDED",
+  "claimed_at_monotonic": 2887874.301305891,
+  "status": "COMPLETED",
+  "finalized_at_monotonic": 2887892.27246218
+}

@@ -1,0 +1,17 @@
+{
+  "artifact_version": "RCA2A8RuntimeIdentityRecordV1",
+  "audit_script_sha256": "9b4dc479e6e73e9d18bb2990adb6d2953213aaee72f4b438cd6f6cf1e4afa932",
+  "baseline_commit": "d4300d4cff64bbb4e68109ed3d5b3c3039d116ac",
+  "current_git_head": "d4300d4cff64bbb4e68109ed3d5b3c3039d116ac",
+  "deliverables_generated": 9,
+  "experiment_id": "rca2a8-semantic-validity",
+  "guidance_sha256": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+  "output_schema_hash": "a214ec4f5e81fcbb",
+  "production_prompt_modified": false,
+  "production_schema_modified": false,
+  "provider_preflights": 0,
+  "real_model_calls": 0,
+  "runner_sha256": "ce433704050b1ee0a560cfa6d1d10af1227857c1df39b701d922391dc5ba75c9",
+  "status": "AUDITED",
+  "worktree_clean": true
+}

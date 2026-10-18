@@ -1,0 +1,50 @@
+{
+  "artifact_version": "Gen3B6FrozenInputsV1",
+  "generation_id": "acceptance-generation-3",
+  "recorded_before_first_model_request": true,
+  "git_head": "d05f402dfb9b2518f53067557e3a5415fba07060",
+  "worktree_clean": true,
+  "runtime_investigation_subtree_hash": "ab8a5f1758da73bb394d375e32969a0cb248a59e",
+  "model": {
+    "provider": "sensenova-cloud",
+    "model_id": "sensenova-6.8-flash-lite",
+    "config_sha256": "9cdcb1fde1cdf6ca25067c0436bbc83618fcf3708b3fd4cc49207ba4b2d130fb"
+  },
+  "acceptance_profile_sha256": "c40f1adcad816e433f7edfc6cbc0b56dc32c031bf1fcb31528523ffa62f0e98d",
+  "calibration_binding_sha256": "e2c35c4e0fa744a5aa49a9b4b4ac1ec990999107ea1ac4eafa7e41645f94c038",
+  "generation_binding_sha256": "8ddf0d61a05474b129166035afcd2ecd3ab031b9f21e2594d92caf8ed59b58d7",
+  "admission_audit_superseding_record_sha256": "fe809ddb66d707a54c7bb0999349afd320d1c9901f237f254ed12e3a095a6c59",
+  "seal_hash": "d11a17e1a7f45e115fcca4ce4617265f7ab453bfb5e679ddd78f3432c9cf040b",
+  "parser_config_hash": "a45695aae0930bb81c56f5a533b028340f6da141b186a12abfe5423c71ce9961",
+  "bootstrap_transform_sha256": "d965d90be852f09a438f9de4c303a4d9ad0caa14993ab7b4fa1d97c1d51cc31a",
+  "evaluator_sha256": "67b9a11752de62d7732e1a109b9217392ee39f5141e6d15a6a2a4936bb6739a4",
+  "public_case_hashes": {
+    "gen3-failover-causality": "f3c254fdb13e5a67c401b7aa9ab15e656ffd1ecfc41ca4222a2c89e14091fbda",
+    "gen3-ledger-identity": "f5d5c09abdcd2e2c19716e5f31f9069a0268ab588e97536187e4aaf2ca36e31f"
+  },
+  "truth_hashes": {
+    "gen3-failover-causality": "23783fb457d719e146788c63ed122352cd728207cd533a3e9c28b26cb6f61d16",
+    "gen3-ledger-identity": "ae839246a3369a0f79a290859e176ef7015d429ec88b56dd102b51b43cafd467"
+  },
+  "substrate_image_hashes": {
+    "gen3-failover-causality": "0aa0e4c4d0640affd5a59b73ac44e22e37fa1711cbee6f0b3c4d0c3db8a38cfd",
+    "gen3-ledger-identity": "5202a1513e3b6c55d68a9226817f3f51e2073720d1b46ce7a366a85d65f565a0"
+  },
+  "evidence_manifest_hashes": {
+    "gen3-failover-causality": "d55475d0caa783307605cf3b4761faa7186d165337b3c6d0aa9969de3149c5ab",
+    "gen3-ledger-identity": "ad4e33691ef4f4aa318fd5dce7eb73804f3c572e917fede131ac35be1169bbe4"
+  },
+  "evidence_world_digests": {
+    "gen3-failover-causality": "d68811a6fec887e6b2aa4d5b30b75536cf7fe7283d69faaafb15f10f7b691b0e",
+    "gen3-ledger-identity": "6faa0265df5ddccde7de4cb1ce6994e64eba4ba96c8672373d48568736216d15"
+  },
+  "population": {
+    "families": [
+      "gen3-failover-causality",
+      "gen3-ledger-identity"
+    ],
+    "repetitions_per_family": 3,
+    "scheduled_runs": 6
+  },
+  "input_hash": "1a4da50dfe96a1c1789dd0fc0620dc6c839770a6a8099c79809197d91adcd646"
+}

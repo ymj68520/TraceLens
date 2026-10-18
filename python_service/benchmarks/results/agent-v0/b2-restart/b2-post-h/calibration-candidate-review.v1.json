@@ -1,0 +1,69 @@
+{
+  "artifact_version": "CalibrationCandidateReviewV1",
+  "round": "post-a1h-b4",
+  "created_at": "2026-09-30T00:00:00+00:00",
+  "inputs": {
+    "runtime_baseline": "benchmarks/profiles/precalibration-runtime-baseline-v4.json",
+    "b2_series": "benchmarks/results/agent-v0/b2-restart/b2-post-h (24 runs, 23 completed + 1 provider 429)",
+    "measurement_report": "benchmarks/results/agent-v0/b2-restart/b2-post-h/measurement-report-v4.json",
+    "case_outcomes": "benchmarks/results/agent-v0/b2-restart/b2-post-h/case-outcomes-v1.json"
+  },
+  "architecture_layer": {
+    "P_identity": 0,
+    "H_typed_handle": 0,
+    "S_semantic_transition_events": 0,
+    "G_evidence_lifecycle": 0,
+    "hard_gate_violations": 0,
+    "verdict": "CLEAN — no deterministic-contract defect observed on the 24-run distribution"
+  },
+  "output_reliability": {
+    "supervisor_plan_failures": "0/24",
+    "supervisor_integrate_failures": "0/24",
+    "specialist_structured_output_failures": "7/24 (29%)",
+    "specialist_failure_distribution": {
+      "t1-fraud-script-usb": "3/3",
+      "t2-misleading-note": "2/3",
+      "t2-temporal-trap": "2/3",
+      "note": "case-concentrated on the three heaviest-context cases; failure mode is SpecialistResultV1 output-retry exhaustion, not provider and not budget"
+    }
+  },
+  "numeric_candidates_reviewed": [
+    {
+      "candidate": "tool-call budget increase",
+      "causal_evidence_required": "duplicate calls systematically hit budget AND valid investigations stop only because of it (spec §23)",
+      "evidence_found": "94 duplicate calls across 23 runs (~4/run of ~11) — efficiency loss only; NO run stopped on tool budget; all 7 specialist failures are output-validation exhaustions",
+      "decision": "REJECTED — causal bar not met"
+    },
+    {
+      "candidate": "output retry increase (2 -> N)",
+      "causal_evidence_required": "retries systematically exhaust on recoverable failures",
+      "evidence_found": "retries exhaust on schema-emission failures of the same model; raising retries masks a model reliability limit (A1-T §27 precedent)",
+      "decision": "REJECTED"
+    },
+    {
+      "candidate": "cycle budget increase",
+      "causal_evidence_required": "valid investigations stopping on cycle limits",
+      "evidence_found": "no cycle-limit terminations observed",
+      "decision": "REJECTED"
+    }
+  ],
+  "model_reliability_review": {
+    "specialist_axis": "MODEL_RELIABILITY_LIMIT recorded — specialist structured-output failure 7/24 (29%), case-concentrated (t1 3/3, misleading 2/3, temporal 2/3); episodic schema-emission exhaustion, correctness never violated (all completed results passed every gate)",
+    "supervisor_axis": "stable (0/23 output failures; H=0 on the full distribution under the typed contract)",
+    "semantic_transition_axis": "2 partial runs (REQUIRED_QUESTION_OPEN x2) — supervisor closed questions it left open; minor, honest fail-closed"
+  },
+  "truth_semantic_outcome_gap": {
+    "case_outcome_distribution": {"incomplete": 23, "unavailable": 1, "success": 0},
+    "gap_analysis": [
+      "specialist failures: 7 runs never produced semantic output",
+      "coverage expectation gap: truth manifests expect coverage dimension records (e.g. cross-source-settlement, identity-assessment, citation-discipline, assertion-strength) that the current production flow does not record in any run",
+      "question expectation gap: truth expects specific terminal dispositions (answered + unresolved pairs) beyond the single charter question the driver seeds"
+    ],
+    "note": "identical wall as the historical B3.5/B4 epoch (case success 0/24); NOT an architecture regression — a truth-expectation vs production-flow capability gap to be addressed in a FUTURE work item, not by calibration and not by an A1-I amendment (spec §20)"
+  },
+  "decision": {
+    "calibration": "ZERO_CHANGE (production_changes = [])",
+    "recorded_model_limit": "MODEL_RELIABILITY_LIMIT on the specialist structured-output axis (case-concentrated)",
+    "rationale": "architecture layer clean; supervisor stable; no numeric candidate meets the causal bar; the dominant residual is a model capability limit that deterministic-contract changes must not chase (spec §22/§23/§24)"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "action": "settled",
+  "task_id": "bench-brun:c46a5c26afee1930a2179e85",
+  "investigation_id": "inv-brun:c46a5c26afee1930a2179e85",
+  "execution_cancelled": false,
+  "runs": [
+    {
+      "run_id": "run_dc8fbf160814438aa02ee283ef530ba0",
+      "before": "running",
+      "after": "failed",
+      "transition": "failed",
+      "stop_reason": "budget_exhausted",
+      "error_code": "finalization_denied"
+    }
+  ],
+  "investigation_finalized": false,
+  "settlement_events_appended": 1
+}

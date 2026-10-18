@@ -1,0 +1,1 @@
+Seized personal laptop used to operate a remittance settlement account. The bank directory holds the exported transfer statement of the account; the chat directory holds a coordination group export; the notes directory holds a card allocation worksheet; the docs directory holds a rental agreement. Assess the records exactly as they are.

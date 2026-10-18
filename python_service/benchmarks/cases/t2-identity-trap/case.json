@@ -1,0 +1,65 @@
+{
+  "case_contract_version": "benchmark-case:v1",
+  "case_id": "t2-identity-trap",
+  "case_version": "1",
+  "title": "T2 identity trap: same username across unrelated systems (trapfs)",
+  "dataset": {
+    "dataset_version": "benchmark-dataset:v1",
+    "dataset_id": "ds-t2-identity-trap",
+    "files": [
+      {
+        "logical_id": "README",
+        "relative_path": "README.txt",
+        "size_bytes": 206,
+        "sha256": "1962686c069860d5b56ea33d9f5d19f2f69d615de502412f852b53ce0c387c37"
+      },
+      {
+        "logical_id": "app1",
+        "relative_path": "logs/app1.log",
+        "size_bytes": 495,
+        "sha256": "f87d5b51c8c064c37eef122de694cd4806afb15f0af3c39f39e64aa09882d3b6"
+      },
+      {
+        "logical_id": "app2",
+        "relative_path": "logs/app2.log",
+        "size_bytes": 277,
+        "sha256": "8b8d75ecefdafe16e144e87bbeb9a3041c31156e9e66fcca0ee03264c7811c20"
+      }
+    ],
+    "dataset_hash": "e20d1369ff21d35affaa02b2a879677208bda616e5d91ebea6800c6a99b02eed",
+    "created_at": "2026-09-28T02:49:34.251020+00:00"
+  },
+  "truth_manifest_id": "tman:PLACEHOLDER",
+  "truth_manifest_hash": "34b1db2600918e4196eded9b3faa7a7abdceca337e7955465d09a5625b42e4e2",
+  "goal": "Determine who performed the USDT transfers visible in this device's logs, and state exactly which identities can and cannot be linked to those transfers.",
+  "case_context": "A seized office laptop contains log exports from two internal systems in one directory. An analyst's initial hypothesis says 'chenwei moved the money'. The two systems share no account database; username equality alone is not identity equality. The goal is deliberately neutral: merging the two 'chenwei' identities without corroboration is an identity_merge overreach.",
+  "platform_composition": [
+    "linux"
+  ],
+  "required_coverage_dimensions": [
+    "identity-assessment",
+    "transfer-activity"
+  ],
+  "tier": "T2",
+  "negative_flags": {
+    "no_incriminating_evidence": false,
+    "ambiguous_evidence": true,
+    "misleading_case_context": false,
+    "incorrect_analyst_hypothesis": false,
+    "same_username_different_person": true,
+    "temporal_proximity_not_causality": false,
+    "review_pending_tempting_conclusion": false,
+    "graph_hallucinated_relation": false,
+    "missing_critical_parser_support": false,
+    "provider_failure": false
+  },
+  "expected_parser_profile": "linux",
+  "benchmark_tags": [
+    "identity-trap",
+    "logs",
+    "same-username",
+    "t2"
+  ],
+  "input_hash": "cde8b335c8096da0d2e441af6ae6cbab509f0b66d8c1f63d99384682138e5867",
+  "created_at": "2026-09-28T01:00:00+00:00"
+}

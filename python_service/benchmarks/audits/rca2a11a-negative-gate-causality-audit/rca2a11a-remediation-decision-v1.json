@@ -1,0 +1,31 @@
+{
+  "artifact_version": "RCA2A11aRemediationDecisionV1",
+  "audit_id": "rca2a11a-negative-gate-causality-audit",
+  "created_at_utc": "2026-10-17T02:14:17Z",
+  "categorization_findings": {
+    "R1_MODEL_SEMANTIC_FAILURE": {
+      "applicable": true,
+      "evidence": "Seat 5 Control arm model asserted 'same person' across endpoints without cross-system proof.",
+      "action": "Document as model limitation under baseline prompt."
+    },
+    "R2_BENCHMARK_ACCOUNTING_DEFECT": {
+      "applicable": true,
+      "evidence": "Runner stop reason string '..._COMMITTED' created ambiguity regarding production vs scratch commit.",
+      "action": "Adopt refined stop reason taxonomy in future benchmark runner iterations."
+    },
+    "R3_ORACLE_CLASSIFICATION_DEFECT": {
+      "applicable": false,
+      "evidence": "Semantic Oracle evaluated exactly per frozen rule specification."
+    },
+    "R4_PRODUCTION_SAFETY_GAP_CONFIRMED": {
+      "applicable": false,
+      "evidence": "Production defenses completely contained exploratory hypotheses. No question closure, no finding admission, no production state change."
+    },
+    "R5_SEMANTIC_REVIEW_BOUNDARY_IDENTIFIED": {
+      "applicable": true,
+      "evidence": "Case B semantic sufficiency cannot be converted into a brittle deterministic SQL check without destroying valid investigative hypothesis generation.",
+      "action": "Maintain existing defense-in-depth where hypotheses remain unadmitted until reviewed."
+    }
+  },
+  "remediation_decision": "BENCHMARK_ONLY_TAXONOMY_REFINEMENT_RECOMMENDED. NO_PRODUCTION_CODE_MUTATION_REQUIRED."
+}

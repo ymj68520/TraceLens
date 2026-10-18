@@ -1,0 +1,41 @@
+{
+  "experiment_id": "bexp-agent-v0-step-5-preview",
+  "code_commit": "f711851c59ca00b9122ac986bd727ed66be063af",
+  "production_runtime_commit": "946f325eeb6add1072466aed96e5e2e7e38748ed",
+  "pre_calibration_profile_hash": "6dd38a0e0f68704fb881e7e1f78031d58dc54368b6188826a3262660d86b218c",
+  "runtime_baseline_file": "benchmarks/profiles/precalibration-runtime-baseline.v1.json",
+  "model_config_file": "benchmarks/results/agent-v0/a1-r/step-5-preview.model-config.json",
+  "corpus_id": "corpus-agent-v0-calibration",
+  "corpus_hash": "52e70af32e1af861c85e03d03635147d528c39926d917af197f46dbf04170dc7",
+  "repeat_policy": "3 fresh repeats per calibration case (Flash-class model; expand to 5 only on high variance)",
+  "cache_policy": "cold",
+  "graph_mode": "none",
+  "report_mode": "disabled",
+  "started_at": "2026-09-28T01:10:00+00:00",
+  "fresh_task_ids": {
+    "t1-fraud-script-usb": {
+      "repeat2": "b0ee67b6-4f1a-4221-bedb-59c1bf60fba0"
+    },
+    "t2-cross-source-correlation": {
+      "repeat2": "6fc4624c-6111-4c5b-a01b-c0daf8516f64"
+    },
+    "t2-identity-trap": {
+      "repeat2": "a281852d-2fc7-49ef-8889-41af24a8064c"
+    },
+    "t2-misleading-note": {
+      "repeat2": "e52d62b7-ad4e-4734-9ab3-34710bbdc3af"
+    },
+    "t2-no-evidence": {
+      "repeat2": "c34cc84f-a763-43f5-943b-734ef88f7f77"
+    },
+    "t2-report-citation": {
+      "repeat2": "de5f66e9-f455-4b75-81b6-cc23d70276ae"
+    },
+    "t2-temporal-trap": {
+      "repeat2": "294009d4-efbb-452e-b84f-a2f3b41fa5dc"
+    },
+    "t2-verification-temptation": {
+      "repeat2": "e0365905-6c81-4c7c-ba7c-2a5136125291"
+    }
+  }
+}

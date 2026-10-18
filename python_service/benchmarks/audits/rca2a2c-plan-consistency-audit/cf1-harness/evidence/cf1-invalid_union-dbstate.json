@@ -1,0 +1,200 @@
+{
+  "real_task_id": "49f798a0-d8dc-4413-b5b9-a02821401db0",
+  "alias_task_id": "bench-brun:f73ba2334ef5da5a4f9a9f50",
+  "recovery_summary": {
+    "runs_failed": 1,
+    "delegations_failed": 0,
+    "investigations_paused": 1,
+    "obligations_expired": 0
+  },
+  "at_cli_exit": {
+    "db_path": "/home/ymj68520/projects/TraceLens/build/data/tasks/49f798a0-d8dc-4413-b5b9-a02821401db0/investigation.db",
+    "investigations": [
+      {
+        "investigation_id": "inv-brun:f73ba2334ef5da5a4f9a9f50",
+        "status": "active",
+        "pause_reason": null
+      }
+    ],
+    "runs": [
+      {
+        "run_id": "run_02bf8921819c47be8fe9a86bac4614f8",
+        "status": "running",
+        "stop_reason": null,
+        "error_code": null,
+        "error_message": null
+      }
+    ],
+    "delegations": [],
+    "trajectory_events": [
+      {
+        "seq": 1,
+        "event_type": "investigation_created",
+        "run_id": null,
+        "payload": {}
+      },
+      {
+        "seq": 2,
+        "event_type": "run_admitted",
+        "run_id": "run_02bf8921819c47be8fe9a86bac4614f8",
+        "payload": {
+          "idempotency_key": null
+        }
+      },
+      {
+        "seq": 3,
+        "event_type": "attention_compiled",
+        "run_id": "run_02bf8921819c47be8fe9a86bac4614f8",
+        "payload": {
+          "attention_hash": "500b4153adb5c24c7d9b19ea8b9ec209b6fe38c0e86b943817559f6843c8fb15",
+          "attention_policy_version": "attention-policy:v1",
+          "item_count": 1,
+          "state_revision": 1
+        }
+      },
+      {
+        "seq": 4,
+        "event_type": "run_started",
+        "run_id": "run_02bf8921819c47be8fe9a86bac4614f8",
+        "payload": {}
+      },
+      {
+        "seq": 5,
+        "event_type": "transition_decision_rejected",
+        "run_id": "run_02bf8921819c47be8fe9a86bac4614f8",
+        "payload": {
+          "message": "agent_output_invalid: agent output did not satisfy the specialist result contract",
+          "supervisor_failure": "agent_output_invalid"
+        }
+      },
+      {
+        "seq": 6,
+        "event_type": "finalization_requested",
+        "run_id": null,
+        "payload": {
+          "expected_state_revision": 1,
+          "review_mode": "best_effort"
+        }
+      },
+      {
+        "seq": 7,
+        "event_type": "finalization_denied",
+        "run_id": "run_02bf8921819c47be8fe9a86bac4614f8",
+        "payload": {
+          "violation_codes": [
+            "COVERAGE_NOT_TERMINAL"
+          ]
+        }
+      }
+    ],
+    "finalizations": []
+  },
+  "after_production_recovery": {
+    "db_path": "/home/ymj68520/projects/TraceLens/build/data/tasks/49f798a0-d8dc-4413-b5b9-a02821401db0/investigation.db",
+    "investigations": [
+      {
+        "investigation_id": "inv-brun:f73ba2334ef5da5a4f9a9f50",
+        "status": "paused",
+        "pause_reason": "runtime_restart"
+      }
+    ],
+    "runs": [
+      {
+        "run_id": "run_02bf8921819c47be8fe9a86bac4614f8",
+        "status": "failed",
+        "stop_reason": "runtime_restart",
+        "error_code": "runtime_restart",
+        "error_message": "agent run interrupted by service restart"
+      }
+    ],
+    "delegations": [],
+    "trajectory_events": [
+      {
+        "seq": 1,
+        "event_type": "investigation_created",
+        "run_id": null,
+        "payload": {}
+      },
+      {
+        "seq": 2,
+        "event_type": "run_admitted",
+        "run_id": "run_02bf8921819c47be8fe9a86bac4614f8",
+        "payload": {
+          "idempotency_key": null
+        }
+      },
+      {
+        "seq": 3,
+        "event_type": "attention_compiled",
+        "run_id": "run_02bf8921819c47be8fe9a86bac4614f8",
+        "payload": {
+          "attention_hash": "500b4153adb5c24c7d9b19ea8b9ec209b6fe38c0e86b943817559f6843c8fb15",
+          "attention_policy_version": "attention-policy:v1",
+          "item_count": 1,
+          "state_revision": 1
+        }
+      },
+      {
+        "seq": 4,
+        "event_type": "run_started",
+        "run_id": "run_02bf8921819c47be8fe9a86bac4614f8",
+        "payload": {}
+      },
+      {
+        "seq": 5,
+        "event_type": "transition_decision_rejected",
+        "run_id": "run_02bf8921819c47be8fe9a86bac4614f8",
+        "payload": {
+          "message": "agent_output_invalid: agent output did not satisfy the specialist result contract",
+          "supervisor_failure": "agent_output_invalid"
+        }
+      },
+      {
+        "seq": 6,
+        "event_type": "finalization_requested",
+        "run_id": null,
+        "payload": {
+          "expected_state_revision": 1,
+          "review_mode": "best_effort"
+        }
+      },
+      {
+        "seq": 7,
+        "event_type": "finalization_denied",
+        "run_id": "run_02bf8921819c47be8fe9a86bac4614f8",
+        "payload": {
+          "violation_codes": [
+            "COVERAGE_NOT_TERMINAL"
+          ]
+        }
+      },
+      {
+        "seq": 8,
+        "event_type": "run_failed",
+        "run_id": "run_02bf8921819c47be8fe9a86bac4614f8",
+        "payload": {
+          "stop_reason": "runtime_restart"
+        }
+      },
+      {
+        "seq": 9,
+        "event_type": "investigation_paused",
+        "run_id": null,
+        "payload": {
+          "pause_reason": "runtime_restart"
+        }
+      },
+      {
+        "seq": 10,
+        "event_type": "runtime_recovered",
+        "run_id": null,
+        "payload": {
+          "delegations_failed": 0,
+          "investigations_paused": 1,
+          "runs_failed": 1
+        }
+      }
+    ],
+    "finalizations": []
+  }
+}

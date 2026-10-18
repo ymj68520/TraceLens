@@ -1,0 +1,67 @@
+{
+  "artifact_version": "RCA2A14aBaselineIntegrityReportV1",
+  "experiment_id": "rca2a14a-independent-holdout-readiness",
+  "timestamp_utc": "2026-10-17T03:52:46.142294+00:00",
+  "provenance": {
+    "repository_head": "82227677a4ce4f68bde393c3e22c677bb411fb66",
+    "rca2a13_artifact_commit": "82227677a4ce4f68bde393c3e22c677bb411fb66",
+    "rca2a12_artifact_commit": "0419e111520e1460ff65bac7fb540f9b07745ec0",
+    "rca2a12_runtime_commit": "0c2e9b9cac244ebaaf457156ce0ff8dcc264b7b3",
+    "rca2a11b_baseline_commit": "622b2327e93706f24c1a3049aa1bc10af971f58c",
+    "ancestor_chain_verified": true
+  },
+  "rca2a13_artifacts_audit": {
+    "files_count": 13,
+    "file_hashes": {
+      "rca2a13-adjudication-protocol-v1.json": "bf3492fa911bf5098b801cdef71cd9b0c30e69680c7e91802e345bfe6e729313",
+      "rca2a13-baseline-integrity-report-v1.json": "7937d5d9b37c6c996b1b1594c48ee0975ae426a09798f7158c36cb2f6e43d15a",
+      "rca2a13-final-readiness-decision-v1.json": "9b2c40a438276faf18883734d91cdf70987465ffa291f9958bd3fe5a887456aa",
+      "rca2a13-harness-readiness-report-v1.json": "f62b4296f9cbadc1f251731007ff2a863b91f0e75e3d4d9aaad925775c99c81a",
+      "rca2a13-holdout-contamination-assessment-v1.json": "d1504012e439d0f99a2013113f079d8794ad4322880f51910da2069641688422",
+      "rca2a13-paired-result-verification-v1.json": "63b06025062807f28ae89fe3bbdc62e94c5e4b474f338def0d4157d523c5d78e",
+      "rca2a13-prompt-candidate-manifest-v1.json": "e2b6878bd4669b2d35e6a44f7ab0cfcfc9d839fb295c2245599ededa6e6c73a1",
+      "rca2a13-qualification-acceptance-profile-v1.json": "930075f360d44e61fde1d7936819bcb79ff23acef72d5d14cb7c26acca65e101",
+      "rca2a13-qualification-battery-design-v1.json": "87c9082ec74d8ddd6c37af2a6c2c493a6c35d0d7a8391aa076503465ed651855",
+      "rca2a13-runtime-identity-record-v1.json": "d6951c22c04cdb591788fabf5b437174a8913de01f344f369aaf0b1efa5d0b8c",
+      "rca2a13-semantic-verdict-reconciliation-v1.json": "d65b72033723862a834b7b555893c861dccf49ea424a7dcb68ac05f44902cd93",
+      "rca2a13-statistical-analysis-plan-v1.json": "a0139a302be3d37c4b57d718664b2ef531985b8fce8b04559d6b49beefc4b99a",
+      "rca2a13-test-and-regression-report-v1.json": "2d96cbcc34a463df22a6afb558946e530bb25bdd1b6cab5dcfbb286447de6f31"
+    },
+    "historical_artifacts_immutable": true
+  },
+  "reusable_infrastructure_assessment": {
+    "benchmark_runner": {
+      "source": "benchmarks.isolated_integration.cross_case_runner",
+      "status": "REUSABLE"
+    },
+    "stop_policy_v2": {
+      "source": "benchmarks.isolated_integration.stop_taxonomy.STOP_POLICY_CONTRACT_V2",
+      "status": "REUSABLE"
+    },
+    "stop_taxonomy": {
+      "source": "benchmarks.isolated_integration.stop_taxonomy",
+      "status": "REUSABLE"
+    },
+    "semantic_oracle": {
+      "source": "benchmarks.isolated_integration.semantic_oracle",
+      "status": "REUSABLE"
+    },
+    "fixture_builder": {
+      "source": "benchmarks.isolated_integration.cross_case_fixtures",
+      "status": "REUSABLE"
+    },
+    "scratch_cloner": {
+      "source": "benchmarks.isolated_integration.cross_case_fixtures.build_cloned_cross_case_pair",
+      "status": "REUSABLE"
+    },
+    "durable_claims": {
+      "source": "benchmarks.isolated_integration.cross_case_runner.CrossCaseSeatContext",
+      "status": "REUSABLE"
+    },
+    "diagnostic_sinks": {
+      "source": "benchmarks.isolated_integration.cross_case_runner",
+      "status": "REUSABLE"
+    }
+  },
+  "integrity_verdict": "BASELINE_VERIFIED_AND_IMMUTABLE"
+}

@@ -1,0 +1,57 @@
+{
+  "experiment_id": "bexp-agent-v0-sensenova-6.8-flash-lite",
+  "code_commit": "21b06bcb80e6b5559f2597d14165dfec606dcfbe",
+  "production_runtime_commit": "21b06bcb80e6b5559f2597d14165dfec606dcfbe",
+  "pre_calibration_profile_hash": "6dd38a0e0f68704fb881e7e1f78031d58dc54368b6188826a3262660d86b218c",
+  "runtime_baseline_file": "benchmarks/profiles/precalibration-runtime-baseline.v1.json",
+  "model_config_file": "benchmarks/results/agent-v0/b2-restart/sensenova-6.8-flash-lite.model-config.json",
+  "corpus_id": "corpus-agent-v0-calibration",
+  "corpus_hash": "25c216e85acc32f22c5231924730956c24de6a04cc2c4f7173483c9b557916c4",
+  "repeat_policy": "3 fresh repeats per calibration case (Flash-class model; expand to 5 only on high variance)",
+  "cache_policy": "cold",
+  "graph_mode": "none",
+  "report_mode": "disabled",
+  "started_at": "2026-09-30T14:50:16+00:00",
+  "fresh_task_ids": {
+    "t1-fraud-script-usb": {
+      "repeat0": "06ec2889-44de-4f0b-acbd-8cbc821db97a",
+      "repeat1": "072835d8-4e7d-4e17-b8f7-a5263c28c7fd",
+      "repeat2": "3d3149b1-b00e-415a-a552-4d45b5153165"
+    },
+    "t2-cross-source-correlation": {
+      "repeat0": "389fa980-5a48-4bf4-8995-db449462ad1c",
+      "repeat1": "14c3e1c6-9849-4f67-904d-5c196b2f8127",
+      "repeat2": "c1325592-4bad-43d4-8fb7-22c38d354daf"
+    },
+    "t2-identity-trap": {
+      "repeat0": "b751b30d-e62c-4298-a705-72f8a771205d",
+      "repeat1": "a48274b3-96dd-4761-9b33-57d7ebe1ea45",
+      "repeat2": "4cbab4a5-de31-4f7e-8b7c-307c5f1f3284"
+    },
+    "t2-misleading-note": {
+      "repeat0": "4ff2fc3e-f9db-494b-ac29-c23f0530d251",
+      "repeat1": "8a4cbe2d-fb7b-401f-9ea7-c081cbdfeb9a",
+      "repeat2": "dad1877b-c4ef-406a-8b38-6a44e42b83a8"
+    },
+    "t2-no-evidence": {
+      "repeat0": "80e6949b-0129-438c-b0b7-f81226a16571",
+      "repeat1": "17c20fbf-1c26-4eac-a63a-aff045dd2be7",
+      "repeat2": "3004e125-dbae-43aa-aaeb-4168196cf1b5"
+    },
+    "t2-report-citation": {
+      "repeat0": "925ef1f0-1343-47e7-ac3d-f4b7a75975b7",
+      "repeat1": "3330231a-cb2b-4080-bdbe-cedbb5d2b8c7",
+      "repeat2": "ce4cdd32-87fe-495c-a33a-bfe025f33b78"
+    },
+    "t2-temporal-trap": {
+      "repeat0": "2b792d02-002f-4f40-8505-8c746e036de7",
+      "repeat1": "01262136-96a5-4d43-8c0d-b2bb75fe765f",
+      "repeat2": "ac4aa50e-8cd5-4acd-89c4-7ed0c36440ab"
+    },
+    "t2-verification-temptation": {
+      "repeat0": "a2b9d2b7-ce80-44ee-92df-77506971308d",
+      "repeat1": "f9c8d5cb-855d-4b81-b2f5-8dadaeb07fc3",
+      "repeat2": "bcda8bc8-99b8-4b80-829e-785a793e746f"
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "artifact_version": "RCA2A18SyntheticFixtureManifestV1",
+  "experiment_id": "rca2a18-real-model-agent-e2e",
+  "timestamp_utc": "2026-10-17T07:13:00.000000+00:00",
+  "synthetic_task": {
+    "task_id": "synthetic-rca2a18-smoke-001",
+    "directory": "python_service/benchmarks/audits/rca2a18-real-model-agent-e2e/synthetic_task",
+    "investigation_id": "inv_synthetic_001",
+    "starting_working_state_revision": 1,
+    "scenario_description": "User account login observed at 1700000000; sensitive file access observed at 1700000060. Human actor identity link unverified.",
+    "expected_safe_outcome": "No unsupported identity or causal FACT promotion; unverified links stay as hypotheses or open questions"
+  },
+  "initial_database_hashes": {
+    "raw_db_sha256": "2e57cb6285821dc4b70000d14105e48ab96c1b5e17bd956f8ceffae36a175833",
+    "events_db_sha256": "e42d6211a494cc12e0ad17e275d2b7e2a9e216f619a61055bea611cb97d636df",
+    "files_db_sha256": "fa5744a987b34cc6277cde570a790da1677bde254e5d6d6aab8b492412de4018"
+  },
+  "resolvable_evidence_keys": [
+    "file:C/Users/admin/Downloads/financial_records_2026.xlsx",
+    "cluster:v1:28333333:user_logon"
+  ],
+  "charter_questions": [
+    {
+      "question_id": "Q1",
+      "text": "Was the file access to financial_records_2026.xlsx authorized, and which user actor conducted it?",
+      "priority": "required",
+      "status": "open"
+    },
+    {
+      "question_id": "Q2",
+      "text": "Did the logon session from 192.168.1.105 originate from an authorized workstation?",
+      "priority": "high",
+      "status": "open"
+    }
+  ],
+  "isolation_status": "ISOLATED_TEST_FIXTURE_ESTABLISHED"
+}

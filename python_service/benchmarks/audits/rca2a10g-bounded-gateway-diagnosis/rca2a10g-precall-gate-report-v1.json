@@ -1,0 +1,24 @@
+{
+  "artifact_version": "RCA2A10GPreCallGateReportV1",
+  "experiment_id": "rca2a10g-bounded-gateway-diagnosis",
+  "created_at_utc": "2026-10-17T01:20:26.746708+00:00",
+  "gates": {
+    "REPOSITORY_IDENTITY_VERIFIED": true,
+    "HISTORICAL_ARTIFACTS_UNCHANGED": true,
+    "EXPERIMENT_IDENTITY_UNIQUE": true,
+    "EFFECTIVE_MODEL_CONFIG_VERIFIED": true,
+    "MODEL_ALIAS_POLICY_FROZEN": true,
+    "REQUEST_ENVELOPE_PARITY_PASS": true,
+    "V2_OUTPUT_SCHEMA_UNCHANGED": true,
+    "ORIGINAL_INSTRUCTIONS_UNCHANGED": true,
+    "SYNTHETIC_EVIDENCE_ONLY": true,
+    "D3_NON_STREAMING_REQUEST_FROZEN": true,
+    "D4_CONDITIONAL_REQUEST_FROZEN": true,
+    "RETRY_POLICY_VERIFIED": true,
+    "REQUEST_CLAIM_READY": true,
+    "DIAGNOSTIC_SINK_READY": true,
+    "NETWORK_BUDGET_VERIFIED": true,
+    "PRODUCTION_CODE_UNCHANGED": true
+  },
+  "verdict": "PRECALL_GATES_PASSED"
+}

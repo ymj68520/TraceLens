@@ -20,6 +20,7 @@ from httpserver.services.android_result_sets import freeze_selected_result, read
 from httpserver.services.android_field_package import build_package, verify_package
 from httpserver.services.evidence.resolver import EvidenceResolver
 from httpserver.services.evidence.exceptions import EvidenceNotFoundError
+from httpserver.services.investigation.repository import SUPPORTED_SCHEMA_VERSION
 from httpserver.services.forensic_report.generation import ReportGenerationAdmissionService, ReportGenerationInputBuilder
 from httpserver.services.forensic_report.generation_execution import (
     ReportCitationInvalidError, ReportGenerationExecutor, build_citation_manifest, validate_report_citations,
@@ -357,7 +358,7 @@ def test_operator_v8_copy_preparation_never_mutates_source(tmp_path):
     assert json.loads(result.stdout)["cutover_performed"] is False
     assert hashlib.sha256(source.read_bytes()).hexdigest() == before
     assert sqlite3.connect(source).execute("PRAGMA user_version").fetchone()[0] == 7
-    assert sqlite3.connect(output).execute("PRAGMA user_version").fetchone()[0] == 8
+    assert sqlite3.connect(output).execute("PRAGMA user_version").fetchone()[0] == SUPPORTED_SCHEMA_VERSION
     assert InvestigationRepository(output, "synthetic-migration").get_snapshot("file:/old") is not None
     again = subprocess.run([sys.executable, str(cli), "--task-record", str(task_record),
                             "--output-copy", str(output)], capture_output=True, text=True, timeout=30)

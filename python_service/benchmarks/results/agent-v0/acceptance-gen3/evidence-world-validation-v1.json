@@ -1,0 +1,71 @@
+{
+  "artifact_version": "EvidenceWorldValidationV1",
+  "generation_id": "acceptance-generation-3",
+  "created_at": "2026-10-01T00:00:00+00:00",
+  "zero_model_calls": true,
+  "provisioning_repetitions": 2,
+  "cases": [
+    {
+      "case_id": "gen3-ledger-identity",
+      "case_family": "identity_ambiguity",
+      "public_input_hash": "f5d5c09abdcd2e2c19716e5f31f9069a0268ab588e97536187e4aaf2ca36e31f",
+      "truth_input_hash": "ae839246a3369a0f79a290859e176ef7015d429ec88b56dd102b51b43cafd467",
+      "image_sha256": "5202a1513e3b6c55d68a9226817f3f51e2073720d1b46ce7a366a85d65f565a0",
+      "image_size_bytes": 16777216,
+      "evidence_world_digest": "6faa0265df5ddccde7de4cb1ce6994e64eba4ba96c8672373d48568736216d15",
+      "provision_digests": [
+        "6faa0265df5ddccde7de4cb1ce6994e64eba4ba96c8672373d48568736216d15",
+        "6faa0265df5ddccde7de4cb1ce6994e64eba4ba96c8672373d48568736216d15"
+      ],
+      "evidence_keys": [
+        "file:/README.txt",
+        "file:/billing/operator-accounts.csv",
+        "file:/chat/team-chat-export.txt",
+        "file:/ops/shift-roster.txt"
+      ],
+      "manifest_input_hash": "ad4e33691ef4f4aa318fd5dce7eb73804f3c572e917fede131ac35be1169bbe4",
+      "checks": {
+        "provisioning_reproducible": true,
+        "expected_keys_match_assets": true,
+        "indexed_world_matches_asset_set": true,
+        "indexed_sizes_match_public_assets": true,
+        "truth_public_separation_clean": true,
+        "attention_no_standalone_coverage": true,
+        "attention_no_duplicate_topology": true
+      },
+      "ok": true
+    },
+    {
+      "case_id": "gen3-failover-causality",
+      "case_family": "causal_ambiguity",
+      "public_input_hash": "f3c254fdb13e5a67c401b7aa9ab15e656ffd1ecfc41ca4222a2c89e14091fbda",
+      "truth_input_hash": "23783fb457d719e146788c63ed122352cd728207cd533a3e9c28b26cb6f61d16",
+      "image_sha256": "0aa0e4c4d0640affd5a59b73ac44e22e37fa1711cbee6f0b3c4d0c3db8a38cfd",
+      "image_size_bytes": 16777216,
+      "evidence_world_digest": "d68811a6fec887e6b2aa4d5b30b75536cf7fe7283d69faaafb15f10f7b691b0e",
+      "provision_digests": [
+        "d68811a6fec887e6b2aa4d5b30b75536cf7fe7283d69faaafb15f10f7b691b0e",
+        "d68811a6fec887e6b2aa4d5b30b75536cf7fe7283d69faaafb15f10f7b691b0e"
+      ],
+      "evidence_keys": [
+        "file:/README.txt",
+        "file:/change/maintenance-record.txt",
+        "file:/mail/oncall-handover.txt",
+        "file:/monitor/latency-alerts.log"
+      ],
+      "manifest_input_hash": "d55475d0caa783307605cf3b4761faa7186d165337b3c6d0aa9969de3149c5ab",
+      "checks": {
+        "provisioning_reproducible": true,
+        "expected_keys_match_assets": true,
+        "indexed_world_matches_asset_set": true,
+        "indexed_sizes_match_public_assets": true,
+        "truth_public_separation_clean": true,
+        "attention_no_standalone_coverage": true,
+        "attention_no_duplicate_topology": true
+      },
+      "ok": true
+    }
+  ],
+  "all_passed": true,
+  "input_hash": "87e646cf6d7b6930d6161b1f69a21a4ec89c8f5845ef7790f78f755ab9adf9e3"
+}

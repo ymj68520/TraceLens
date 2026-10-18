@@ -1,0 +1,141 @@
+{
+  "artifact_version": "RCA2A19RequestBudgetReportV1",
+  "experiment_id": "rca2a19-real-delegation-integration-e2e",
+  "timestamp_utc": "2026-10-17T08:30:11Z",
+  "budget_limits": {
+    "max_agent_http_cycles": 2,
+    "max_steps_per_cycle": 3,
+    "max_logical_generations": 10,
+    "max_physical_http_attempts": 30
+  },
+  "budget_consumption": {
+    "agent_http_cycles_executed": 2,
+    "logical_generations_consumed": 10,
+    "physical_http_attempts_consumed": 10,
+    "preflights_executed": 0,
+    "quota_exceeded": false
+  },
+  "telemetry_records": [
+    {
+      "request_sequence": 1,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 3042.43,
+      "input_tokens": 1216,
+      "output_tokens": 298,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    },
+    {
+      "request_sequence": 2,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 3102.31,
+      "input_tokens": 2554,
+      "output_tokens": 82,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    },
+    {
+      "request_sequence": 3,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 2410.68,
+      "input_tokens": 3062,
+      "output_tokens": 40,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    },
+    {
+      "request_sequence": 4,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 10544.59,
+      "input_tokens": 3352,
+      "output_tokens": 2125,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    },
+    {
+      "request_sequence": 5,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 8386.91,
+      "input_tokens": 4852,
+      "output_tokens": 1281,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    },
+    {
+      "request_sequence": 6,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 4416.03,
+      "input_tokens": 1609,
+      "output_tokens": 590,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    },
+    {
+      "request_sequence": 7,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 2662.31,
+      "input_tokens": 2550,
+      "output_tokens": 64,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    },
+    {
+      "request_sequence": 8,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 2402.22,
+      "input_tokens": 3040,
+      "output_tokens": 133,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    },
+    {
+      "request_sequence": 9,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 2905.29,
+      "input_tokens": 3254,
+      "output_tokens": 104,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    },
+    {
+      "request_sequence": 10,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 10903.77,
+      "input_tokens": 3645,
+      "output_tokens": 2385,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    }
+  ],
+  "verdict": "REQUEST_BUDGET_RESPECTED_STRICTLY"
+}

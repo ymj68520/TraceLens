@@ -1,0 +1,24 @@
+{
+  "artifact_version": "AcceptanceProfileRuntimeBindingV3",
+  "created_at": "2026-10-01T15:42:25+00:00",
+  "review": {
+    "type": "runtime compatibility review only (§33) — no threshold redesign",
+    "profile": "AcceptanceProfileV2 (agent-v0-acceptance-profile-v2.json, sha256 c40f1adcad816e433f7edfc6cbc0b56dc32c031bf1fcb31528523ffa62f0e98d)",
+    "items": {
+      "Structural semantics changed?": "NO — hard gates identical (no_cross_task_evidence_leak / no_graph_id_as_evidence / no_agent_accept_reject), all PASS 24/24",
+      "Functional semantics changed?": "NO — content hydration is a capability fix inside the existing read path; no gate, blocker, or transition changed",
+      "Semantic gates changed?": "NO — BenchmarkCaseOutcomeV2 unchanged, no evaluator bump (§27)",
+      "Negative-case gates changed?": "NO — overclaim/negative channels unchanged; zero negative-channel component failures in the V3 series",
+      "Reliability metric semantics changed?": "likely NO — hydration telemetry is additive observability; reliability metrics (structured-output failures, provider failures) measured with unchanged definitions (§37: re-measured, not inherited)",
+      "Availability semantics changed?": "NO — provider 429/timeout/5xx all zero in the V3 series (§36 signal only)"
+    },
+    "conclusion": "AcceptanceProfileV2 semantics remain applicable to RuntimeBaselineV3 — content hydration is a capability fix, not an acceptance requirement change",
+    "semantics_applicable": true
+  },
+  "binds": {
+    "acceptance_profile": "agent-v0-acceptance-profile-v2.json (UNCHANGED — no V3 profile created, §34/§35)",
+    "runtime_baseline": "agent-v0-runtime-baseline-v3.json",
+    "calibration_evidence_binding": "calibration-evidence-binding-v3.json",
+    "generation_binding": "future acceptance generations bind through the then-current generation-binding artifact; Gen-4 remains NOT CREATED (§41)"
+  }
+}

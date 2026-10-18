@@ -1,0 +1,66 @@
+{
+  "artifact_version": "RCA2A19DelegationLifecycleVerificationV1",
+  "experiment_id": "rca2a19-real-delegation-integration-e2e",
+  "timestamp_utc": "2026-10-17T08:09:02.000000+00:00",
+  "state_machine_specification": {
+    "states": [
+      "queued",
+      "running",
+      "completed",
+      "integrated",
+      "failed",
+      "cancelled"
+    ],
+    "valid_transitions": {
+      "queued": ["running", "failed", "cancelled"],
+      "running": ["completed", "failed", "cancelled"],
+      "completed": ["integrated", "failed"],
+      "integrated": [],
+      "failed": [],
+      "cancelled": []
+    },
+    "forbidden_transitions": [
+      "queued -> completed (must transition via running to capture start_time and lease)",
+      "queued -> integrated (cannot integrate without completion)",
+      "running -> integrated (must complete before integration)",
+      "integrated -> any (integrated is terminal and immutable)"
+    ]
+  },
+  "sqlite_schema_verification": {
+    "table_name": "agent_delegations",
+    "required_columns": [
+      "delegation_id",
+      "run_id",
+      "question_ref",
+      "status",
+      "assigned_to",
+      "created_at",
+      "started_at",
+      "completed_at",
+      "failure_code",
+      "failure_summary",
+      "result_hash",
+      "tool_invocations_count",
+      "evidence_refs_json"
+    ],
+    "indices": [
+      "ix_agent_delegations_run_id",
+      "ix_agent_delegations_status"
+    ],
+    "durability_guarantee": "SQLite WAL mode with BEGIN IMMEDIATE transactions"
+  },
+  "deterministic_test_coverage": {
+    "test_file": "python_service/tests/unit/investigation/test_agent_delegation_integration_e2e.py",
+    "relevant_tests": [
+      "test_t02_valid_plan_creates_delegation",
+      "test_t03_delegation_persistently_claimed",
+      "test_t09_completed_not_equal_to_integrated",
+      "test_t11_integration_state_revision_persisted",
+      "test_t12_duplicate_integration_blocked",
+      "test_t13_specialist_failure_retained",
+      "test_t14_interrupted_delegation_recoverable"
+    ],
+    "status": "ALL_TESTS_PASSING"
+  },
+  "verdict": "DELEGATION_LIFECYCLE_STRICTLY_VERIFIED"
+}

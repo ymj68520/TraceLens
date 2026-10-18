@@ -20,6 +20,14 @@ def investigation_db_path_for_task(task: dict) -> Path:
     they must agree on the parent directory. ``resolve(strict=False)`` normalizes
     syntactic differences (e.g. ``data/tasks/A`` vs ``./data/tasks/A``).
     """
+    if isinstance(task, str):
+        raise EvidenceStoreError(
+            f"expected task dict, got task_id string: {task!r}. Call cpp_backend.get_task first."
+        )
+    if not isinstance(task, dict):
+        raise EvidenceStoreError(
+            f"expected task dict from cpp_backend.get_task, got {type(task).__name__}"
+        )
     parents = []
     files_db = task.get("output_files_db")
     events_db = task.get("output_events_db")

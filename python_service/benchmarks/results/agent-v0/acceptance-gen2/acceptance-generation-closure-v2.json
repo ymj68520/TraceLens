@@ -1,0 +1,28 @@
+{
+  "artifact_version": "AcceptanceGenerationClosureV2",
+  "generation_id": "acceptance-generation-2",
+  "created_at": "2026-10-01T05:49:58+00:00",
+  "status": "CLOSED_INVALID",
+  "retry_policy": "NO RETRY (§35: no second Gen-2 B6 under any outcome once execution_count > 0)",
+  "execution_count": 6,
+  "decision_reference": "benchmarks/results/agent-v0/acceptance-gen2/agent-v0-acceptance-decision-v2.json (B6_INVALID)",
+  "invalidity_reason": "SUBSTRATE_EVIDENCE_SURFACE_MISMATCH (benchmark measurement defect, spec §12)",
+  "holdout_disposition": {
+    "gen2-attribution-contradiction": "CONSUMED",
+    "gen2-analyst-refutation": "CONSUMED",
+    "reason": "§34: semantic results exposed (executed with evaluator truth comparison); permanently prohibited from re-execution, re-use as holdout, or modified re-acceptance"
+  },
+  "binding": {
+    "acceptance_profile": "benchmarks/profiles/agent-v0-acceptance-profile-v2.json",
+    "calibration_binding": "benchmarks/profiles/calibration-evidence-binding-v2.json (sha256 e2c35c4e0fa744a5aa49a9b4b4ac1ec990999107ea1ac4eafa7e41645f94c038)",
+    "seal_hash": "a7b9d1ea92166d0ab56d4ab65cd5a40b530638eaec5a7954dc565801c59773e0",
+    "run_set_hash": "7b63834bc088b0fd7797225073bc781d9565fd84d3a8e45fb18cdcad16272fec"
+  },
+  "gen1_status_unchanged": "CLOSED / B6_INVALID / diagnostic NOT MET / holdout CONSUMED (permanent)",
+  "next_generation_requirements": [
+    "Acceptance Generation 3 with the same frozen protocol invariants (presealed Agent-visible inputs, construction-time charter, projection-only bootstrap, seal gates)",
+    "per-case evidence-bearing substrate images constructed and sealed as Agent-visible inputs at generation construction",
+    "the Gen-2 holdout pool may NOT be reused as the Gen-3 holdout (consumed); new instances required",
+    "explicit user authorization before any Gen-3 execution"
+  ]
+}

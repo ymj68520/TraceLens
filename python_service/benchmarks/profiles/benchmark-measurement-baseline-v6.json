@@ -1,0 +1,58 @@
+{
+  "artifact_version": "BenchmarkMeasurementBaselineV6",
+  "purpose": "Post-B5.5 benchmark/evaluation epoch for the acceptance-admission B2 rerun. The PRODUCTION runtime is unchanged (no RuntimeBaselineV5 — production hashes are identical to precalibration-runtime-baseline-v4); what changed is the benchmark/evaluation layer (spec §1).",
+  "supersedes": "BenchmarkMeasurementBaselineV5 — historical benchmark-defective epoch (coverage bootstrap omitted related_question_ids; 16/24 runs died on PLAN_DUPLICATE_DELEGATION)",
+  "production_runtime_binding": {
+    "runtime_git_commit": "a426672765faca508b128ae3f2671bede9df69f8",
+    "production_runtime_commit": "f7b02af6 (A1-H freeze; cec0381c touches benchmark/docs only — production tree verified identical by module hashes)",
+    "module_sha16": {
+      "agent_supervisor": "8621316a59b9c016",
+      "agent_integration_v2": "9be8946460d63993",
+      "agent_reference_bindings": "0a6fba6113ab7060",
+      "agent_specialist_result": "4f8b004d7bd8a1f1",
+      "agent_specialist_executor": "211f0b25742946df",
+      "agent_runtime": "8d0448e7f69ff03a",
+      "agent_transitions": "77300b8d079fb218",
+      "agent_tools_pydantic_bridge": "8a4bf62b7da084ff"
+    }
+  },
+  "benchmark_epoch_binding": {
+    "public_case_surface": "PublicCaseInputV2 semantics — seed_coverage_dimensions on the public case surface (names only; truth isolation preserved: no expected statuses, no evidence bindings, no truth labels)",
+    "required_coverage_bootstrap": "harness seeds charter coverage at investigation initialization (driver _seed_state); production stays CoverageTransition-only",
+    "case_contracts": "case contract v2 files (required_coverage_dimensions declared); revision record benchmarks/cases/b55-case-revision.json",
+    "corpus": {
+      "file": "benchmarks/corpus/corpus-agent-v0-calibration.v2.json",
+      "corpus_input_hash": "25c216e85acc32f22c52…",
+      "note": "full hash in the corpus file; case hashes superseded per b55-case-revision.json"
+    },
+    "evaluator": "benchmark-case-outcome:v2 (production-faithful disposition semantics; findings-channel overclaim; coverage requirements retained)",
+    "driver_bootstrap_hash": "scripts/run_p8b_baseline.py @ this commit (digest v5 carries the coverage-bootstrap proof: seeded dimensions + bootstrap state hash per run)",
+    "truth_manifest_hashes": "UNCHANGED from the sealed set (vocabulary mapping lives in evaluator v2; no truth file was edited)",
+    "acceptance_admission_record": "benchmarks/profiles/agent-v0-acceptance-profile-admission-record.v1.json",
+    "coverage_bootstrap_association_contract": {
+      "case": "A (single charter question per calibration case — verified for all 8)",
+      "rule": "all required coverage dimensions -> related_question_ids = the seeded charter questions; deterministic; public-surface derived; no truth content",
+      "implemented_in": "run_p8b_baseline.build_benchmark_seed_state (module-level single source of truth; driver closure + preflight share it)"
+    },
+    "bootstrap_preflight": "benchmarks/results/agent-v0/b2-restart/b2-post-b55-final/bootstrap-preflight-v1.json (G1-G7 all pass, 8/8 cases, zero model calls)"
+  },
+  "model_identity": {
+    "provider": "sensenova-cloud",
+    "model_id": "sensenova-6.8-flash-lite",
+    "adapter_model_config_digest": "ba51d65eeb2c29022216b069572db333d999fcd887098bc49b6f1da6e15ab764",
+    "generation_params": {
+      "temperature": 0.7,
+      "max_tokens": 16384,
+      "thinking_mode": "disabled",
+      "reasoning_effort": "none",
+      "timeout_seconds": 120,
+      "context_window_tokens": 131072
+    }
+  },
+  "prohibitions_during_series": [
+    "no prompt/model/temperature/retry/cycle/tool-budget/schema/coverage-logic/evaluator change",
+    "evaluator v2 bug discovered mid-series -> STOP, not patch-and-continue",
+    "holdout execution forbidden"
+  ],
+  "frozen_at": "2026-10-01T00:00:00+00:00"
+}

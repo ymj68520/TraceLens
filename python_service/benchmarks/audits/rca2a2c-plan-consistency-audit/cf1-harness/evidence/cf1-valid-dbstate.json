@@ -1,0 +1,576 @@
+{
+  "real_task_id": "b0f0d617-4d55-420d-a860-2d7855b7cab9",
+  "alias_task_id": "bench-brun:fd78f13b659b7da7771e0d1a",
+  "recovery_summary": {
+    "runs_failed": 1,
+    "delegations_failed": 0,
+    "investigations_paused": 1,
+    "obligations_expired": 0
+  },
+  "at_cli_exit": {
+    "db_path": "/home/ymj68520/projects/TraceLens/build/data/tasks/b0f0d617-4d55-420d-a860-2d7855b7cab9/investigation.db",
+    "investigations": [
+      {
+        "investigation_id": "inv-brun:fd78f13b659b7da7771e0d1a",
+        "status": "active",
+        "pause_reason": null
+      }
+    ],
+    "runs": [
+      {
+        "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+        "status": "running",
+        "stop_reason": null,
+        "error_code": null,
+        "error_message": null
+      }
+    ],
+    "delegations": [
+      {
+        "delegation_id": "del_8b2ab1a581a941819079aee5368ee6bf",
+        "question_ref": "q-1",
+        "status": "completed",
+        "failure_code": null,
+        "integrated_at": "2026-10-14T03:39:38.968235+00:00"
+      }
+    ],
+    "trajectory_events": [
+      {
+        "seq": 1,
+        "event_type": "investigation_created",
+        "run_id": null,
+        "payload": {}
+      },
+      {
+        "seq": 2,
+        "event_type": "run_admitted",
+        "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+        "payload": {
+          "idempotency_key": null
+        }
+      },
+      {
+        "seq": 3,
+        "event_type": "attention_compiled",
+        "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+        "payload": {
+          "attention_hash": "500b4153adb5c24c7d9b19ea8b9ec209b6fe38c0e86b943817559f6843c8fb15",
+          "attention_policy_version": "attention-policy:v1",
+          "item_count": 1,
+          "state_revision": 1
+        }
+      },
+      {
+        "seq": 4,
+        "event_type": "run_started",
+        "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+        "payload": {}
+      },
+      {
+        "seq": 5,
+        "event_type": "supervisor_plan_decided",
+        "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+        "payload": {
+          "decision": {
+            "actions": [
+              {
+                "action_id": "act-1",
+                "action_kind": "delegate_investigation",
+                "attention_item_id": "question:q-1",
+                "execution_group": null,
+                "investigation_intent": "",
+                "question_id": "q-1",
+                "source_scope_id": "windows",
+                "time_scope": null
+              }
+            ],
+            "attention_hash": "500b4153adb5c24c7d9b19ea8b9ec209b6fe38c0e86b943817559f6843c8fb15",
+            "based_on_state_hash": "4dc0f9b347b4ed25045319c0b3bb7f6951c0d75b14e74462a2771325e7621608",
+            "based_on_state_revision": 1,
+            "binding_table_hash": "203a045fd1c3510d4b03218040e0c2e7a20879dc36f3627ded485e307e21026d",
+            "binding_table_id": "rbt:203a045fd1c3510d4b03218040e0c2e7",
+            "decision_version": "supervisor-plan-decision:v1",
+            "integration_contract_version": "v2",
+            "investigation_id": "inv-brun:fd78f13b659b7da7771e0d1a",
+            "limitations": [],
+            "raw_model_proposal_v2": {
+              "actions": [
+                {
+                  "action_id": "",
+                  "action_type": "delegate_investigation",
+                  "attention_handle": "A1",
+                  "execution_group": null,
+                  "investigation_intent": "",
+                  "question_handle": "Q1",
+                  "source_scope_id": "windows",
+                  "time_scope": null
+                }
+              ],
+              "decision_version": "supervisor-plan-decision:v2",
+              "limitations": [],
+              "summary": "delegate the charter question",
+              "warnings": []
+            },
+            "resolution_record": {
+              "actions_total": 1,
+              "binding_table_id": "rbt:203a045fd1c3510d4b03218040e0c2e7",
+              "contract_version": "supervisor-plan-decision:v2",
+              "ok": true,
+              "resolved_action_summaries": [
+                "delegate_investigation:ok"
+              ],
+              "violations": []
+            },
+            "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+            "summary": "delegate the charter question",
+            "task_id": "bench-brun:fd78f13b659b7da7771e0d1a",
+            "warnings": []
+          },
+          "decision_hash": "f16227a50f92f4368358d540e71631c0918a8799ed5b4f45c1c7f26c7ff74799",
+          "model_config_hash": null,
+          "model_name": null,
+          "prompt_version": "supervisor-plan-decision:v2",
+          "usage": null
+        }
+      },
+      {
+        "seq": 6,
+        "event_type": "delegation_admitted",
+        "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+        "payload": {
+          "question_ref": "q-1"
+        }
+      },
+      {
+        "seq": 7,
+        "event_type": "delegation_started",
+        "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+        "payload": {}
+      },
+      {
+        "seq": 8,
+        "event_type": "delegation_completed",
+        "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+        "payload": {
+          "context_hash": "cfa3f9cde773b8efb7d2b65390601e1d3446d8ecb2f300ba25b5806bbedc8399",
+          "evidence_snapshots_admitted": 0,
+          "execution_input_hash": "729e547552a82736ab62eb32207ba006448c6085091ad714476f899f44605128",
+          "model_config_hash": "8f64b9b6599e32daf89be624121bc5ea04606a797ddde06fc2edba69b91ac14c",
+          "profile_id": "windows.specialist",
+          "profile_version": "1",
+          "result_hash": "67712fa8b448f5a4e0759e3bb9a26d817ffa66ca55d65595852869338ba0aeca",
+          "skill_bindings": [],
+          "specialist_proposal_contract": {
+            "proposal_hash": "1a581f894d5ca081653f8062f2ff47288f06c15c2fd2b47874eda38403430d6a",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "e254c0a1d449f19a2f989b0c7e29c276bb4ac8379ee3dfcd765d0888efbe02e9"
+          },
+          "tool_registry_hash": "b778f5ec289acb3b65ad8b306ed562eaacc2606d9af239afbf193db9e8856c7a"
+        }
+      },
+      {
+        "seq": 9,
+        "event_type": "supervisor_integration_committed",
+        "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+        "payload": {
+          "based_on_revision": 1,
+          "based_on_state_hash": "4dc0f9b347b4ed25045319c0b3bb7f6951c0d75b14e74462a2771325e7621608",
+          "decision": {
+            "available_handles_by_kind": {
+              "COV": 1,
+              "D": 1,
+              "E": 0,
+              "F": 0,
+              "H": 0,
+              "P": 0,
+              "Q": 1,
+              "X": 0
+            },
+            "based_on_state_hash": "4dc0f9b347b4ed25045319c0b3bb7f6951c0d75b14e74462a2771325e7621608",
+            "based_on_state_revision": 1,
+            "binding_table_hash": "b72eb311485a29de696153e94f04527eff9a32099c8000b8e9d45ae2f72309a9",
+            "binding_table_id": "rbt:b72eb311485a29de696153e94f04527e",
+            "decision_schema_version": "supervisor-integration-decision:v3",
+            "decision_version": "supervisor-integration-decision:v1",
+            "integration_contract_version": "v2",
+            "integration_summary": "",
+            "investigation_id": "inv-brun:fd78f13b659b7da7771e0d1a",
+            "limitations": [],
+            "offered_action_variants": [
+              "update_question",
+              "create_question",
+              "create_hypothesis",
+              "create_contradiction",
+              "update_coverage"
+            ],
+            "raw_model_proposal_v2": {
+              "actions": [
+                {
+                  "action_type": "update_question",
+                  "basis_handles": null,
+                  "blocker": null,
+                  "disposition": null,
+                  "investigated_summary": "honest no-evidence investigation completed; nothing fraud-related found",
+                  "limitations": null,
+                  "question_handle": "Q1",
+                  "superseded_by_handle": null,
+                  "to_status": "in_progress"
+                }
+              ],
+              "decision_version": "supervisor-integration-decision:v3",
+              "integration_summary": "",
+              "limitations": [],
+              "warnings": []
+            },
+            "resolution_record": {
+              "actions_total": 1,
+              "binding_table_id": "rbt:b72eb311485a29de696153e94f04527e",
+              "contract_version": "supervisor-integration-decision:v3",
+              "ok": true,
+              "resolved_action_summaries": [
+                "update_question"
+              ],
+              "violations": []
+            },
+            "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+            "source_result_hashes": [
+              "67712fa8b448f5a4e0759e3bb9a26d817ffa66ca55d65595852869338ba0aeca"
+            ],
+            "source_result_ids": [
+              "del_8b2ab1a581a941819079aee5368ee6bf"
+            ],
+            "task_id": "bench-brun:fd78f13b659b7da7771e0d1a",
+            "warnings": []
+          },
+          "decision_hash": "f0c9246aca8dc0472860aa7e2c538282c32e48439b7a039b19478cc908545e39",
+          "integration_policy_version": "supervisor-integration-policy:v1",
+          "operation_key": "integ:1a485d72ec48a8d92a0346acd4d13643",
+          "result_revision": 2,
+          "semantic_changed": true,
+          "source_results": [
+            {
+              "delegation_id": "del_8b2ab1a581a941819079aee5368ee6bf",
+              "result_hash": "67712fa8b448f5a4e0759e3bb9a26d817ffa66ca55d65595852869338ba0aeca"
+            }
+          ]
+        }
+      },
+      {
+        "seq": 10,
+        "event_type": "finalization_requested",
+        "run_id": null,
+        "payload": {
+          "expected_state_revision": 2,
+          "review_mode": "best_effort"
+        }
+      },
+      {
+        "seq": 11,
+        "event_type": "finalization_denied",
+        "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+        "payload": {
+          "violation_codes": [
+            "COVERAGE_NOT_TERMINAL"
+          ]
+        }
+      }
+    ],
+    "finalizations": []
+  },
+  "after_production_recovery": {
+    "db_path": "/home/ymj68520/projects/TraceLens/build/data/tasks/b0f0d617-4d55-420d-a860-2d7855b7cab9/investigation.db",
+    "investigations": [
+      {
+        "investigation_id": "inv-brun:fd78f13b659b7da7771e0d1a",
+        "status": "paused",
+        "pause_reason": "runtime_restart"
+      }
+    ],
+    "runs": [
+      {
+        "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+        "status": "failed",
+        "stop_reason": "runtime_restart",
+        "error_code": "runtime_restart",
+        "error_message": "agent run interrupted by service restart"
+      }
+    ],
+    "delegations": [
+      {
+        "delegation_id": "del_8b2ab1a581a941819079aee5368ee6bf",
+        "question_ref": "q-1",
+        "status": "completed",
+        "failure_code": null,
+        "integrated_at": "2026-10-14T03:39:38.968235+00:00"
+      }
+    ],
+    "trajectory_events": [
+      {
+        "seq": 1,
+        "event_type": "investigation_created",
+        "run_id": null,
+        "payload": {}
+      },
+      {
+        "seq": 2,
+        "event_type": "run_admitted",
+        "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+        "payload": {
+          "idempotency_key": null
+        }
+      },
+      {
+        "seq": 3,
+        "event_type": "attention_compiled",
+        "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+        "payload": {
+          "attention_hash": "500b4153adb5c24c7d9b19ea8b9ec209b6fe38c0e86b943817559f6843c8fb15",
+          "attention_policy_version": "attention-policy:v1",
+          "item_count": 1,
+          "state_revision": 1
+        }
+      },
+      {
+        "seq": 4,
+        "event_type": "run_started",
+        "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+        "payload": {}
+      },
+      {
+        "seq": 5,
+        "event_type": "supervisor_plan_decided",
+        "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+        "payload": {
+          "decision": {
+            "actions": [
+              {
+                "action_id": "act-1",
+                "action_kind": "delegate_investigation",
+                "attention_item_id": "question:q-1",
+                "execution_group": null,
+                "investigation_intent": "",
+                "question_id": "q-1",
+                "source_scope_id": "windows",
+                "time_scope": null
+              }
+            ],
+            "attention_hash": "500b4153adb5c24c7d9b19ea8b9ec209b6fe38c0e86b943817559f6843c8fb15",
+            "based_on_state_hash": "4dc0f9b347b4ed25045319c0b3bb7f6951c0d75b14e74462a2771325e7621608",
+            "based_on_state_revision": 1,
+            "binding_table_hash": "203a045fd1c3510d4b03218040e0c2e7a20879dc36f3627ded485e307e21026d",
+            "binding_table_id": "rbt:203a045fd1c3510d4b03218040e0c2e7",
+            "decision_version": "supervisor-plan-decision:v1",
+            "integration_contract_version": "v2",
+            "investigation_id": "inv-brun:fd78f13b659b7da7771e0d1a",
+            "limitations": [],
+            "raw_model_proposal_v2": {
+              "actions": [
+                {
+                  "action_id": "",
+                  "action_type": "delegate_investigation",
+                  "attention_handle": "A1",
+                  "execution_group": null,
+                  "investigation_intent": "",
+                  "question_handle": "Q1",
+                  "source_scope_id": "windows",
+                  "time_scope": null
+                }
+              ],
+              "decision_version": "supervisor-plan-decision:v2",
+              "limitations": [],
+              "summary": "delegate the charter question",
+              "warnings": []
+            },
+            "resolution_record": {
+              "actions_total": 1,
+              "binding_table_id": "rbt:203a045fd1c3510d4b03218040e0c2e7",
+              "contract_version": "supervisor-plan-decision:v2",
+              "ok": true,
+              "resolved_action_summaries": [
+                "delegate_investigation:ok"
+              ],
+              "violations": []
+            },
+            "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+            "summary": "delegate the charter question",
+            "task_id": "bench-brun:fd78f13b659b7da7771e0d1a",
+            "warnings": []
+          },
+          "decision_hash": "f16227a50f92f4368358d540e71631c0918a8799ed5b4f45c1c7f26c7ff74799",
+          "model_config_hash": null,
+          "model_name": null,
+          "prompt_version": "supervisor-plan-decision:v2",
+          "usage": null
+        }
+      },
+      {
+        "seq": 6,
+        "event_type": "delegation_admitted",
+        "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+        "payload": {
+          "question_ref": "q-1"
+        }
+      },
+      {
+        "seq": 7,
+        "event_type": "delegation_started",
+        "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+        "payload": {}
+      },
+      {
+        "seq": 8,
+        "event_type": "delegation_completed",
+        "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+        "payload": {
+          "context_hash": "cfa3f9cde773b8efb7d2b65390601e1d3446d8ecb2f300ba25b5806bbedc8399",
+          "evidence_snapshots_admitted": 0,
+          "execution_input_hash": "729e547552a82736ab62eb32207ba006448c6085091ad714476f899f44605128",
+          "model_config_hash": "8f64b9b6599e32daf89be624121bc5ea04606a797ddde06fc2edba69b91ac14c",
+          "profile_id": "windows.specialist",
+          "profile_version": "1",
+          "result_hash": "67712fa8b448f5a4e0759e3bb9a26d817ffa66ca55d65595852869338ba0aeca",
+          "skill_bindings": [],
+          "specialist_proposal_contract": {
+            "proposal_hash": "1a581f894d5ca081653f8062f2ff47288f06c15c2fd2b47874eda38403430d6a",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "e254c0a1d449f19a2f989b0c7e29c276bb4ac8379ee3dfcd765d0888efbe02e9"
+          },
+          "tool_registry_hash": "b778f5ec289acb3b65ad8b306ed562eaacc2606d9af239afbf193db9e8856c7a"
+        }
+      },
+      {
+        "seq": 9,
+        "event_type": "supervisor_integration_committed",
+        "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+        "payload": {
+          "based_on_revision": 1,
+          "based_on_state_hash": "4dc0f9b347b4ed25045319c0b3bb7f6951c0d75b14e74462a2771325e7621608",
+          "decision": {
+            "available_handles_by_kind": {
+              "COV": 1,
+              "D": 1,
+              "E": 0,
+              "F": 0,
+              "H": 0,
+              "P": 0,
+              "Q": 1,
+              "X": 0
+            },
+            "based_on_state_hash": "4dc0f9b347b4ed25045319c0b3bb7f6951c0d75b14e74462a2771325e7621608",
+            "based_on_state_revision": 1,
+            "binding_table_hash": "b72eb311485a29de696153e94f04527eff9a32099c8000b8e9d45ae2f72309a9",
+            "binding_table_id": "rbt:b72eb311485a29de696153e94f04527e",
+            "decision_schema_version": "supervisor-integration-decision:v3",
+            "decision_version": "supervisor-integration-decision:v1",
+            "integration_contract_version": "v2",
+            "integration_summary": "",
+            "investigation_id": "inv-brun:fd78f13b659b7da7771e0d1a",
+            "limitations": [],
+            "offered_action_variants": [
+              "update_question",
+              "create_question",
+              "create_hypothesis",
+              "create_contradiction",
+              "update_coverage"
+            ],
+            "raw_model_proposal_v2": {
+              "actions": [
+                {
+                  "action_type": "update_question",
+                  "basis_handles": null,
+                  "blocker": null,
+                  "disposition": null,
+                  "investigated_summary": "honest no-evidence investigation completed; nothing fraud-related found",
+                  "limitations": null,
+                  "question_handle": "Q1",
+                  "superseded_by_handle": null,
+                  "to_status": "in_progress"
+                }
+              ],
+              "decision_version": "supervisor-integration-decision:v3",
+              "integration_summary": "",
+              "limitations": [],
+              "warnings": []
+            },
+            "resolution_record": {
+              "actions_total": 1,
+              "binding_table_id": "rbt:b72eb311485a29de696153e94f04527e",
+              "contract_version": "supervisor-integration-decision:v3",
+              "ok": true,
+              "resolved_action_summaries": [
+                "update_question"
+              ],
+              "violations": []
+            },
+            "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+            "source_result_hashes": [
+              "67712fa8b448f5a4e0759e3bb9a26d817ffa66ca55d65595852869338ba0aeca"
+            ],
+            "source_result_ids": [
+              "del_8b2ab1a581a941819079aee5368ee6bf"
+            ],
+            "task_id": "bench-brun:fd78f13b659b7da7771e0d1a",
+            "warnings": []
+          },
+          "decision_hash": "f0c9246aca8dc0472860aa7e2c538282c32e48439b7a039b19478cc908545e39",
+          "integration_policy_version": "supervisor-integration-policy:v1",
+          "operation_key": "integ:1a485d72ec48a8d92a0346acd4d13643",
+          "result_revision": 2,
+          "semantic_changed": true,
+          "source_results": [
+            {
+              "delegation_id": "del_8b2ab1a581a941819079aee5368ee6bf",
+              "result_hash": "67712fa8b448f5a4e0759e3bb9a26d817ffa66ca55d65595852869338ba0aeca"
+            }
+          ]
+        }
+      },
+      {
+        "seq": 10,
+        "event_type": "finalization_requested",
+        "run_id": null,
+        "payload": {
+          "expected_state_revision": 2,
+          "review_mode": "best_effort"
+        }
+      },
+      {
+        "seq": 11,
+        "event_type": "finalization_denied",
+        "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+        "payload": {
+          "violation_codes": [
+            "COVERAGE_NOT_TERMINAL"
+          ]
+        }
+      },
+      {
+        "seq": 12,
+        "event_type": "run_failed",
+        "run_id": "run_335a75c0704f40a7869b201b45fe0e9c",
+        "payload": {
+          "stop_reason": "runtime_restart"
+        }
+      },
+      {
+        "seq": 13,
+        "event_type": "investigation_paused",
+        "run_id": null,
+        "payload": {
+          "pause_reason": "runtime_restart"
+        }
+      },
+      {
+        "seq": 14,
+        "event_type": "runtime_recovered",
+        "run_id": null,
+        "payload": {
+          "delegations_failed": 0,
+          "investigations_paused": 1,
+          "runs_failed": 1
+        }
+      }
+    ],
+    "finalizations": []
+  }
+}

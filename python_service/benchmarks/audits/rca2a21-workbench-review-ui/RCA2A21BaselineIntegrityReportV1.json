@@ -1,0 +1,24 @@
+{
+  "report_version": "rca2a21:v1",
+  "task_id": "TASK-INVESTIGATION-WORKBENCH-REVIEW-PANEL",
+  "audit_phase": "RCA-2A.21",
+  "baseline_commit": "058886b7358e54c7e2ed1dbd267678dc43af0aa0",
+  "rca2a20_implementation_commit": "624953bb895693ffbeba7289b90c13bb3ae2db0e",
+  "rca2a20_artifact_commit": "058886b7358e54c7e2ed1dbd267678dc43af0aa0",
+  "authorization": "BOUNDED FRONTEND INTEGRATION AUTHORIZED — STRICTLY OFFLINE",
+  "production_supervisor": "supervisor-v2",
+  "experimental_guidance": "DISABLED_BY_DEFAULT",
+  "rca2b_status": "NOT_AUTHORIZED",
+  "gen5_status": "NOT_CREATED",
+  "verified_invariants": {
+    "zero_real_provider_requests": true,
+    "workbench_layout_frozen_columns": 3,
+    "fourth_column_prevented": true,
+    "no_auto_fact_promotion": true,
+    "no_auto_finalization": true,
+    "no_auto_report_admission": true,
+    "no_evidence_mutation": true,
+    "reviewer_limitation_disclosed": true
+  },
+  "status": "BASELINE_VERIFIED"
+}

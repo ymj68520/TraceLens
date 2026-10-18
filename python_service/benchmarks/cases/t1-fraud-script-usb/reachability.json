@@ -1,0 +1,58 @@
+{
+  "reachability_version": "reachability-manifest:v1",
+  "case_id": "t1-fraud-script-usb",
+  "records": [
+    {
+      "truth_evidence_id": "TE-1",
+      "resolved_evidence_keys": [
+        "file:/data/入金记录.txt"
+      ],
+      "parser_reachable": true,
+      "agent_discoverable": true,
+      "status": "resolved",
+      "unavailable_reason": ""
+    },
+    {
+      "truth_evidence_id": "TE-2",
+      "resolved_evidence_keys": [
+        "file:/README.md"
+      ],
+      "parser_reachable": true,
+      "agent_discoverable": true,
+      "status": "resolved",
+      "unavailable_reason": ""
+    },
+    {
+      "truth_evidence_id": "TE-3",
+      "resolved_evidence_keys": [
+        "file:/data/客户清单.csv"
+      ],
+      "parser_reachable": true,
+      "agent_discoverable": true,
+      "status": "resolved",
+      "unavailable_reason": ""
+    },
+    {
+      "truth_evidence_id": "TE-4",
+      "resolved_evidence_keys": [
+        "file:/话术/开场白.txt"
+      ],
+      "parser_reachable": true,
+      "agent_discoverable": true,
+      "status": "resolved",
+      "unavailable_reason": ""
+    },
+    {
+      "truth_evidence_id": "TE-5",
+      "resolved_evidence_keys": [
+        "file:/话术/应对拒绝.txt"
+      ],
+      "parser_reachable": true,
+      "agent_discoverable": true,
+      "status": "resolved",
+      "unavailable_reason": ""
+    }
+  ],
+  "input_hash": "30e3b580418753797fb95f98a8fc09a3f71d8685ee7ed8ab78f89ec5e4b35ea5",
+  "created_at": "2026-09-27T14:43:57.772302+00:00"
+}

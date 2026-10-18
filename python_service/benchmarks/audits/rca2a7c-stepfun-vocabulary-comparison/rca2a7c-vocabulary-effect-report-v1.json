@@ -1,0 +1,42 @@
+{
+  "arm_comparisons": {
+    "control": {
+      "canonical_valid_count": 0,
+      "executed_seats": 4,
+      "pydantic_pass_count": 0,
+      "to_status_completed_count": 0,
+      "total_output_tokens": 12331
+    },
+    "treatment": {
+      "canonical_valid_count": 4,
+      "executed_seats": 4,
+      "pydantic_pass_count": 4,
+      "to_status_completed_count": 0,
+      "total_output_tokens": 15922
+    }
+  },
+  "artifact_version": "RCA2A7cVocabularyEffectReportV1",
+  "experiment_id": "rca2a7c-stepfun-vocabulary-comparison",
+  "interpretation_decision": "GUIDANCE_BENEFIT_OBSERVED_ON_SAMPLE",
+  "paired_counts": {
+    "both_invalid": 0,
+    "both_valid": 0,
+    "control_win": 0,
+    "incomplete_pair": 0,
+    "treatment_win": 4
+  },
+  "questions_answered": {
+    "1_completed_misuse_improved": false,
+    "2_pydantic_pass_improved": true,
+    "3_canonical_validity_improved": true,
+    "4_extra_cost_observed": true,
+    "5_new_errors_introduced": false,
+    "6_evidence_integrity_maintained": true,
+    "7_worth_further_prompt_investigation": true,
+    "8_rca2b_schema_still_necessary": false
+  },
+  "sample_size": {
+    "pairs": 4,
+    "total_seats": 8
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "artifact_version": "RCA2A10eEffectiveConfigReportV1",
+  "experiment_id": "rca2a10e-bounded-gateway-diagnosis",
+  "created_at_utc": "2026-10-16T06:04:46.170794+00:00",
+  "config_gate": {
+    "ok": true,
+    "checks": {
+      "provider_matches": true,
+      "base_url_matches": true,
+      "model_matches": true,
+      "temperature_matches": true,
+      "max_tokens_matches": true,
+      "timeout_matches": true,
+      "reasoning_effort_omitted": true,
+      "credential_available": true
+    },
+    "resolved_config": {
+      "provider": "generic",
+      "base_url": "https://api.hcnsec.cn/v1",
+      "model_name": "step-5-preview",
+      "temperature": 1.0,
+      "max_tokens": 4096,
+      "timeout_seconds": 360.0,
+      "reasoning_effort": null,
+      "credential_source_id": "LLM_API_KEY_ENV",
+      "credential_available": true
+    }
+  },
+  "model_identity_policy": {
+    "requested_model": "step-5-preview",
+    "expected_returned_model": "stepfun-ai/step-5-preview",
+    "allowed_returned_models": [
+      "openrouter/step-5-preview",
+      "step-5-preview",
+      "stepfun-ai/step-5-preview"
+    ],
+    "attestation_status": "UPSTREAM_MODEL_IDENTITY_NOT_INDEPENDENTLY_VERIFIED"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "artifact_version": "RCA2A14aHoldoutSealingReportV1",
+  "experiment_id": "rca2a14a-independent-holdout-readiness",
+  "timestamp_utc": "2026-10-17T03:53:15.968220+00:00",
+  "cryptographic_commitment_protocol": {
+    "integrity_vs_confidentiality_ruling": "SHA-256 guarantees content immutability; it does NOT provide confidentiality. If truth manifests or case files are readable in the codebase by the candidate owner, holdouts are unsealed.",
+    "case_commitment_formula": "SHA256(case_input_bytes || case_nonce)",
+    "truth_commitment_formula": "SHA256(truth_manifest_bytes || truth_nonce)",
+    "ledger_recording": "Commitments must be recorded on append-only custody ledger prior to qualification dispatch.",
+    "nonce_disclosure_schedule": "Nonces and truth manifests are revealed to adjudicators only after all model responses are written to immutable disk."
+  },
+  "current_sealing_status": {
+    "holdout_cases_sealed": false,
+    "sealed_cases_count": 0,
+    "status_code": "HOLDOUT_NOT_SEALED",
+    "reason": "Independent author and independent custodian roles are not present in current single-agent environment. Sealed cases cannot be truthfully attested."
+  },
+  "exposure_incident_protocol": {
+    "trigger": "Premature disclosure of case evidence or truth manifests to candidate prompt developer",
+    "action": "IMMEDIATE_HALT",
+    "status_code": "HOLDOUT_EXPOSURE_INCIDENT",
+    "remediation": "Exposed cases must be retired to development benchmark set; novel holdouts must be re-authored."
+  }
+}

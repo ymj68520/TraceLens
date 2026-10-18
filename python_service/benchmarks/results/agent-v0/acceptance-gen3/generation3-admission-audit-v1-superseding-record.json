@@ -1,0 +1,38 @@
+{
+  "artifact_version": "Generation3AdmissionAuditV1SupersedingRecord",
+  "created_at": "2026-10-01T00:00:00+00:00",
+  "purpose": "Gen-3 B6 authorization §1 Case B: the original Generation3AdmissionAuditV1 ran at commit f1ee9865; commit d05f402d subsequently changed holdout_contract_v3.py (provisioning_equivalence_check path normalization; provision_and_digest HTTP-400 retry). This record re-executes the admission audit at the FINAL head d05f402d — zero model calls — and supersedes the f1ee9865 binding for B6 entry.",
+  "final_head": "d05f402dfb9b2518f53067557e3a5415fba07060",
+  "worktree_clean": true,
+  "d05f402d_scope": {
+    "files_changed": [
+      "httpserver/services/benchmarks/holdout_contract_v3.py (1 insertion, 3 deletions: extra-evidence path normalization against files.db indexed_paths; creation retry)"
+    ],
+    "sealed_domain_unchanged": true,
+    "sealed_domain_check": "the seal binds holdout_contract.py (bootstrap transform), case_outcome.py (evaluator), filter profiles, images, public/truth/substrate artifacts — none touched by d05f402d; HoldoutSealV3 d11a17e1… verified unchanged at d05f402d (no rebuild needed)"
+  },
+  "rerun_results": {
+    "audit_artifact": "benchmarks/results/agent-v0/acceptance-gen3/generation3-admission-audit-v1.json",
+    "audit_sha256_prefix": "ec068044eac4d50688b42951",
+    "rerun_at_head": "d05f402dfb9b2518f53067557e3a5415fba07060",
+    "checks": [
+      "all_public_and_substrate_inputs_presealed: PASS",
+      "truth_public_substrate_isolation: PASS",
+      "provisioning_reproducible_and_equivalent: PASS (live x2 per case: d68811a6fec8… / 6faa0265df5d… — identical to the sealed digests)",
+      "attention_preflight_clean: PASS",
+      "acceptance_profile_frozen: PASS",
+      "runtime_frozen: PASS",
+      "model_frozen: PASS",
+      "execution_count_zero: PASS"
+    ],
+    "status": "ADMITTED_FOR_B6"
+  },
+  "unchanged": [
+    "holdout semantic content (public cases, charters, datasets)",
+    "TruthManifests",
+    "substrate images",
+    "HoldoutSealV3 (d11a17e1a7f45e115fcca4ce4617265f7ab453bfb5e679ddd78f3432c9cf040b)",
+    "AcceptanceProfileV2",
+    "CalibrationEvidenceBindingV2"
+  ]
+}

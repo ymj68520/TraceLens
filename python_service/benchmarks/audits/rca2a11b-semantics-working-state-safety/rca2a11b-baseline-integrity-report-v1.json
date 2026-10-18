@@ -1,0 +1,33 @@
+{
+  "artifact_version": "RCA2A11bBaselineIntegrityReportV1",
+  "audit_id": "rca2a11b-semantics-working-state-safety",
+  "created_at_utc": "2026-10-17T02:40:00Z",
+  "baseline_commit": "dbdda63fdf4ba4d7f4d412291cdc162da47e895c",
+  "runtime_commit": "afbeb55bf76388d98a58cbbbb44bc4c8e1db10c0",
+  "artifact_commit": "7707279c353be6aff41b26b165f278792613d9c0",
+  "audit_commit": "b4330951be00ee64b98f13044cdcb4dd565dc2ba",
+  "git_ancestry_verified": true,
+  "source_hashes": {
+    "cross_case_runner.py": "ee96e1ef208abd55c3ffb5c7c07c8c6b778b3edd51a568455b5f93b372213569",
+    "semantic_oracle.py": "52e3a57d5116c3fb290158d26eaaff1a69f95fa92efd6e06434a72c454f91a55",
+    "semantic_oracle_extension.py": "922db5e943ca2c980e8227743555a845d4452b0a6f9c0d9e7d0154fdc4b28348",
+    "stop_taxonomy.py": "b140fe309a764516e5f44081368fc83c44cfa7642ace20883e2f85f4a3b28dff",
+    "agent_runtime.py": "8d0448e7f69ff03a1f1545d6fd23b1ae888e589093f07f9f362f51ab93c2fb00",
+    "agent_transitions.py": "77300b8d079fb21891ac59dd14732a5f1b611c719e2c5bfc924637166f250e54",
+    "agent_integration_v2.py": "9be8946460d63993192c2abb58391bc6aa5af2617412ee27377f3275846439a0",
+    "agent_reference_bindings.py": "0a6fba6113ab70602e596f8f7f95a62acb5a1d3ffd1cbabd50be78fd1aa34a3f",
+    "repository.py": "3f808e2ecdb401f11a1f728cd5635494775adda6e4c0b1d71824ff66150c8cf2",
+    "agent_finalization.py": "505b0f566b2bd91822c8f150fc093fafcff4634b994b4bc2fda469df8caaaf4a",
+    "report_evidence.py": "6a36daa8f3fae208acd3c378e4667d19170f5f3d41f41bcca460ec2ffcdf4348"
+  },
+  "historical_artifact_hashes": {
+    "rca2a11-experiment-manifest-v1.json": "2ea9d103a02ce981999c4898cbb5a8f9e810cf6b10d5e31f47fd3e2ea16a0fbe",
+    "rca2a11-seat-execution-matrix-v1.json": "1dacd580280df28d1e12e85d43ce1b7322b8c794ff71efa1d551a6fa65be6dcf",
+    "rca2a11-semantic-oracle-evaluation-v1.json": "501f9054d1a3ff6947f4bc11b50027f2e50aebcf091b5ef693d99d2fca7f1cfc",
+    "rca2a11a-seat5-commit-causality-report-v1.json": "cba4b7e731cf03cb9438b0bf837177d7011bb0ab967a9a2732549d889db4dbc1",
+    "rca2a11a-commit-boundary-assessment-v1.json": "ae04d2685faba399e4623bfca4b56fdbd5dc10bd37b725d521a374e3902adcb3",
+    "rca2a11a-f2-semantic-win-verification-v1.json": "25223093e6d7b3f08904f6c42021e521a242f82e34b010f18e0632ab0743b74e",
+    "rca2a11a-negative-gate-semantics-report-v1.json": "1554521495e2ffb6b086531a6e5f46775ae6db1afc5fe54fd61fcb82ed9bd008"
+  },
+  "integrity_status": "INTEGRITY_VERIFIED_NO_DRIFT"
+}

@@ -1,0 +1,44 @@
+{
+ "manifest_version": "sealed-evidence-manifest:v1",
+ "case_id": "gen4-layered-dispersion",
+ "entries": [
+  {
+   "normalized_path": "/README.txt",
+   "size_bytes": 339,
+   "sha256": "75b36722788a5de9f9fe49a789158f2ce808fe6e3f584aaea007737a915fd525",
+   "expected_evidence_key": "file:/README.txt",
+   "category": "Log Files"
+  },
+  {
+   "normalized_path": "/bank/transfer-records.csv",
+   "size_bytes": 831,
+   "sha256": "3fc04d419451978aba673bf909f830168e6cbbda4fb1a9df6a0eabf4c4e99767",
+   "expected_evidence_key": "file:/bank/transfer-records.csv",
+   "category": "Documents"
+  },
+  {
+   "normalized_path": "/chat/group-instructions.txt",
+   "size_bytes": 448,
+   "sha256": "426ffa0ba679401aa7b0bdd8f2282db95b1e7fdf660d2a3c7ddd185346d81ccd",
+   "expected_evidence_key": "file:/chat/group-instructions.txt",
+   "category": "OS Config Files"
+  },
+  {
+   "normalized_path": "/docs/rental-agreement.txt",
+   "size_bytes": 156,
+   "sha256": "b198535b2efd145f0ffd1ccd842f412c74d28692de945fb072c8ce9e067bae24",
+   "expected_evidence_key": "file:/docs/rental-agreement.txt",
+   "category": "Log Files"
+  },
+  {
+   "normalized_path": "/notes/card-worksheet.txt",
+   "size_bytes": 280,
+   "sha256": "9e96d007ce9f8615788a9a23640e74055a97516f3eac9278b6bcd4b6dc93e723",
+   "expected_evidence_key": "file:/notes/card-worksheet.txt",
+   "category": "Log Files"
+  }
+ ],
+ "extra_evidence_policy": "fail_unless_allowlisted",
+ "allowlisted_non_semantic_patterns": [],
+ "input_hash": "13032d2e85955d2db2fa5223dd6f81007f50c84d931ab012bad2998a18cf5929"
+}

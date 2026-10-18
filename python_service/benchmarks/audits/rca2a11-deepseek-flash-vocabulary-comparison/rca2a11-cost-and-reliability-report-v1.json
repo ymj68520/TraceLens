@@ -1,0 +1,25 @@
+{
+  "artifact_version": "RCA2A11CostAndReliabilityReportV1",
+  "experiment_id": "rca2a11-deepseek-flash-vocabulary-comparison",
+  "created_at_utc": "2026-10-17T01:45:39.872846+00:00",
+  "total_logical_generations": 5,
+  "max_authorized_logical_generations": 32,
+  "total_stage_invocations_executed": 5,
+  "total_output_retries": 0,
+  "token_usage": {
+    "total_input_tokens": 17602,
+    "total_output_tokens": 2822,
+    "total_tokens": 20424,
+    "observability": "PARTIAL_PROXY_COUNT"
+  },
+  "latency": {
+    "mean_latency_ms": 5305.84,
+    "max_latency_ms": 5588.6,
+    "min_latency_ms": 4813.4
+  },
+  "provider_reliability": {
+    "stop_reason": "MANDATORY_NEGATIVE_GATE_VIOLATION_COMMITTED:UNSUPPORTED_FACT_PROMOTION",
+    "provider_failures_observed": false
+  },
+  "billing_claim": "PROVIDER_BILLING_UNOBSERVABLE"
+}

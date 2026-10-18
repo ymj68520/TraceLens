@@ -1,0 +1,23 @@
+{
+  "artifact_version": "RCA2A9aClosureDecisionReportV1",
+  "baseline_commit": "325fa4eb8a86bc347484eea22d9116f22f2d1977",
+  "closure_verdict": "CONTRACT_CLOSED_READY_FOR_AUTHORIZATION_REVIEW",
+  "gate_evaluation": {
+    "BLIND_ARM_INVARIANCE_PASS": true,
+    "BUDGET_CONTRACT_PASS": true,
+    "EQUIVALENT_ACTIONS_PASS": true,
+    "EVIDENCE_INTEGRITY_PASS": true,
+    "F4_STAGE_BOUNDARY_PASS": true,
+    "FULL_REGRESSION_PASS": true,
+    "HISTORICAL_ARTIFACTS_UNCHANGED": true,
+    "ORACLE_CONTRACT_PASS": true,
+    "PROTOCOL_V2_FROZEN": true,
+    "REAL_MODEL_CALLS_ZERO": true,
+    "RUNTIME_IDENTITY_STABLE": true,
+    "STALE_SOURCE_REJECTION_PASS": true,
+    "UNKNOWN_SEMANTIC_SUPPORT_PASS": true
+  },
+  "generated_at": "2026-10-16T00:56:49.679533+00:00",
+  "next_stage_state": "RCA-2A.10 = PROPOSED_NOT_AUTHORIZED",
+  "stop_directive_enforced": true
+}

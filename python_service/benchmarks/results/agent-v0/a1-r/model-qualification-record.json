@@ -1,0 +1,63 @@
+{
+  "record_schema": "ModelQualificationRecordV1",
+  "purpose": "A1-R reasoning-model discriminant (spec §3/§5)",
+  "provider": "hcnsec-cloud",
+  "requested_model": "step-5-preview",
+  "api_reported_model": "step-5-preview",
+  "reasoning_configuration": {
+    "mode": "provider default (normal chat configuration; no reasoning/thinking field sent — the model produces reasoning tokens by default)",
+    "measured_reasoning_tokens_on_probe": 0,
+    "probe_latency_s": 10.3,
+    "note": "provider does not itemize reasoning tokens; deliberation capability observed behaviourally (multi-step puzzle + typed agent loop)"
+  },
+  "temperature": 0.7,
+  "max_tokens": 16384,
+  "timeout_seconds": 120,
+  "context_window_tokens": 131072,
+  "adapter": {
+    "kind": "production build_chat_model (pydantic-ai OpenAIChatModel, frozen profile)",
+    "overrides": {
+      "llm_text_model": "step-5-preview",
+      "llm_thinking_mode": "",
+      "llm_text_temperature": 0.7
+    },
+    "compatibility_probes": [
+      {
+        "probe": "deep_production_specialist_smoke",
+        "result": "PASS (schema-valid SpecialistResultV1 with honest TOOL_ADAPTER_FAILED limitations)",
+        "note": "synthetic env has no tool services; failures are environmental"
+      },
+      {
+        "probe": "deliberation_puzzle",
+        "result": "coherent 665-token solution",
+        "latency_s": 10.3
+      }
+    ],
+    "rejected_candidates_considered": {
+      "DeepSeek-V4-Pro": "API reports self-dploy/DeepSeek-V4-Flash-Vision-Exp, 0 reasoning tokens — NOT reasoning-grade (name≠backend)",
+      "glm-5.3": "endpoint non-responsive (>240s timeout, re-confirmed 2026-09-29)",
+      "kimi-k3": "403 Forbidden at probe time (channel churn)",
+      "longcat-2.0": "503 no available channel",
+      "step-5-preview": "0 reasoning tokens on deliberation prompt",
+      "DeepSeek-V4.1-Flash/glm-5.3-flash/Qwen3.8-Flash-Next/sensenova-*": "flash/lite class (spec §3 forbids a 5th flash)"
+    }
+  },
+  "runtime_commit": "946f325eeb6add1072466aed96e5e2e7e38748ed",
+  "supervisor_contract_versions_compared": [
+    "v1",
+    "v2"
+  ],
+  "corpus_id": "corpus-agent-v0-calibration",
+  "corpus_hash": "52e70af32e1af861c85e03d03635147d528c39926d917af197f46dbf04170dc7",
+  "api_key": "NOT RECORDED",
+  "created_at": "2026-09-29T00:00:00+00:00",
+  "selection_outcome": {
+    "selected_model": "step-5-preview",
+    "selected_api_reported_model": "step-5-preview",
+    "selection_rationale": "ONLY endpoint candidate passing the FULL production specialist path (real ContextAssembler pack + full read-only tool registry + SpecialistResultV1 output, production retries=2): produced a schema-valid typed result with honest tool-failure limitations.  Reasoning depth caveat: provider reports 0 explicit reasoning tokens; deliberation quality observed on a 3-switch puzzle (665 completion tokens, 10.3s).  Chosen over name-reasoning candidates per spec §3 production-smoke rule.",
+    "qwen3_8_27b_disqualification": {
+      "reason": "production specialist path failed 16/16 runs (both contracts) with agent_output_invalid: the model violates frozen tool-arg schemas under the full registry (first failure: GetTaskContextInput extra-field args on a zero-arg extra=forbid tool; retries exhausted).  Raw single-tool probes with a clean empty schema pass — the failure manifests only under the real production context/registry prompt.  Runs preserved under qwen3.8-27b-disqualified/.",
+      "explicit_reasoning_tokens_on_probe": 454
+    }
+  }
+}

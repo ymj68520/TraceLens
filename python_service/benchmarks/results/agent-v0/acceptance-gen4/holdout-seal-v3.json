@@ -1,0 +1,82 @@
+{
+ "artifact_version": "HoldoutSealV3",
+ "generation_id": "acceptance-generation-3",
+ "holdout_set_id": "holdout-set-gen3-v1",
+ "protocol_version": "acceptance-generation-3-protocol:v1",
+ "public_case_hashes": {
+  "gen4-departure-staging": "d02fb63c688b0b141c2cd1353ce4737acc13902e5b98d42d234fdef1bcb2e092",
+  "gen4-layered-dispersion": "33bbb0aca7455e1a01d9827692a034e9ba5ffbff843fc44f8e05208c002bf326"
+ },
+ "public_asset_hashes": {
+  "gen4-departure-staging": {
+   "README.txt": "a253334934ece49c9e43df705680937a4826761fa90f14ecda1cb6eb949a17d9",
+   "logs/bulk-copy-audit.log": "b72fa1e024dfbb21c66d7aaaa694e289fa59e1a08eb8b725b129b7c6eabe66b3",
+   "policy/it-backup-policy.txt": "53e5941146436c8d78d34741dfca6ad1ba3a559a8c5b8915e25e508ad2cfb175",
+   "mail/ticket-2025-0412.txt": "3fdef2655b63f97db714b43b4766650e107d9a4aa82889d014757fcaa18698d6",
+   "data/clients-index.txt": "13307def488ba78303f2e1c9543a60f38ee57472a20f5dba822578289e933f48",
+   "hr/offboard-notice.txt": "f31050289aa6876ca828b8e4413e77296e034ee192187e8a7ae6c188285ee933"
+  },
+  "gen4-layered-dispersion": {
+   "README.txt": "75b36722788a5de9f9fe49a789158f2ce808fe6e3f584aaea007737a915fd525",
+   "bank/transfer-records.csv": "3fc04d419451978aba673bf909f830168e6cbbda4fb1a9df6a0eabf4c4e99767",
+   "chat/group-instructions.txt": "426ffa0ba679401aa7b0bdd8f2282db95b1e7fdf660d2a3c7ddd185346d81ccd",
+   "notes/card-worksheet.txt": "9e96d007ce9f8615788a9a23640e74055a97516f3eac9278b6bcd4b6dc93e723",
+   "docs/rental-agreement.txt": "b198535b2efd145f0ffd1ccd842f412c74d28692de945fb072c8ce9e067bae24"
+  }
+ },
+ "truth_hashes": {
+  "gen4-departure-staging": {
+   "truth_manifest_input_hash": "3221fe5314f7b95c1c41f4fdcf12609bc2c4ec488c40b0115500992301b6af95",
+   "truth_manifest_file_sha256": "ee6367f4996c30a2143ee60b384148722e925a04b2c7307c406652910f2f89c3",
+   "reachability_file_sha256": "028f22eea319240dec35025bd8567ba57bc82ee2bcce6150826b2f827476443f"
+  },
+  "gen4-layered-dispersion": {
+   "truth_manifest_input_hash": "36a62f65c0b8f59d07943c84fe4f4e59b15293ccc79f4cd65e30aa804421cd33",
+   "truth_manifest_file_sha256": "80412de05cc201fdb6a5ef24af4d68ca30ab7286f0b9cca0db25c797d649cfd0",
+   "reachability_file_sha256": "df35791b6aba38450a08402476310b29aae55d07dd147a0ceb3c4cfff8e714a0"
+  }
+ },
+ "evidence_substrate_hashes": {
+  "gen4-departure-staging": {
+   "substrate_input_hash": "f7e0e4fcc5d8f937649deec36d0b49189bda10b42086096549030e6db69ba627",
+   "image_sha256": "302435a5d9512cc2415f3ba81ee413ee6551539f375fdfb34cc468b42affcf8c",
+   "image_size_bytes": 16777216,
+   "expected_evidence_manifest_hash": "16d5561c61a4632a648a8adcb3e86b9cc84afa04b5c42cd4330118420656de21",
+   "parser_config_hash": "a45695aae0930bb81c56f5a533b028340f6da141b186a12abfe5423c71ce9961",
+   "expected_public_asset_manifest_hash": "d02fb63c688b0b141c2cd1353ce4737acc13902e5b98d42d234fdef1bcb2e092"
+  },
+  "gen4-layered-dispersion": {
+   "substrate_input_hash": "86c856f458bad92bf112acce1b9ccfd22f666da58ded42e2d9b34357bf451db5",
+   "image_sha256": "847dd6ed16d829161a40989fbc520c65a7d103e0fbb811f6f2e15ab6d2116a91",
+   "image_size_bytes": 16777216,
+   "expected_evidence_manifest_hash": "13032d2e85955d2db2fa5223dd6f81007f50c84d931ab012bad2998a18cf5929",
+   "parser_config_hash": "a45695aae0930bb81c56f5a533b028340f6da141b186a12abfe5423c71ce9961",
+   "expected_public_asset_manifest_hash": "33bbb0aca7455e1a01d9827692a034e9ba5ffbff843fc44f8e05208c002bf326"
+  }
+ },
+ "evidence_world_digests": {
+  "gen4-departure-staging": "42b5ffbb52cb4ab7b81f9df14f817db88b9f4dfea47a131d40b080edcc16b9a1",
+  "gen4-layered-dispersion": "82145b5cfb682925025aa767c21c97a6fb3d7907f580fc0dc7780bb5ac9500fa"
+ },
+ "evidence_manifest_hashes": {
+  "gen4-departure-staging": "16d5561c61a4632a648a8adcb3e86b9cc84afa04b5c42cd4330118420656de21",
+  "gen4-layered-dispersion": "13032d2e85955d2db2fa5223dd6f81007f50c84d931ab012bad2998a18cf5929"
+ },
+ "parser_config_hash": "a45695aae0930bb81c56f5a533b028340f6da141b186a12abfe5423c71ce9961",
+ "bootstrap_transform": {
+  "module": "httpserver/services/benchmarks/holdout_contract.py",
+  "code_sha256": "d965d90be852f09a438f9de4c303a4d9ad0caa14993ab7b4fa1d97c1d51cc31a"
+ },
+ "evaluator": {
+  "module": "httpserver/services/benchmarks/case_outcome.py",
+  "code_sha256": "67b9a11752de62d7732e1a109b9217392ee39f5141e6d15a6a2a4936bb6739a4"
+ },
+ "acceptance_profile_sha256": "c40f1adcad816e433f7edfc6cbc0b56dc32c031bf1fcb31528523ffa62f0e98d",
+ "calibration_binding_sha256": "4c0235eaa80b8450cc879ebb568aa6c8bafc233c1a6683ad3897323e72cc3823",
+ "acceptance_profile_generation_binding_sha256": "8d2e3162febd1fa3ee70358b6043037ff1b25ffdfc29a6b5670e25f5ed9d2ad7",
+ "runtime_investigation_subtree_hash": "2913506cb862f868a079b7dc9c57dd1e3d2d386a",
+ "model_config_hash": "a980cafab34bb2c76dfec47edf2604c112a1d7211402ae18cb1760f7e253d8dd",
+ "sealed_at": "2026-10-01T22:45:19+00:00",
+ "seal_reason": "acceptance-generation-4 sealed: runtime-v3-bound final sealed holdout; ADMITTED_FOR_B6 pending admission audit; execution_count = 0",
+ "seal_hash": "1c0f685e7a3f4e4079b0a0ca22c72e3ae9e4d276c9937a53b8fdecda3e7906ed"
+}

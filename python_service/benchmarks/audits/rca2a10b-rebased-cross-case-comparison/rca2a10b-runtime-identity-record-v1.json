@@ -1,0 +1,9 @@
+{
+  "artifact_version": "RCA2A10bRuntimeIdentityRecordV1",
+  "baseline_commit": "f7e7896c1417b35d6e241772aa796851608665ae",
+  "effective_config_hash": "e75140928ee98e63329ec12616ffc6fcbe2803c87e8b9d43a51d90510d29464d",
+  "experiment_id": "rca2a10b-rebased-cross-case-vocabulary-comparison",
+  "final_decision": "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE",
+  "preflight_verdict": "PREFLIGHT_PASS",
+  "runtime_commit": "bbf2244608eead2f254a54d13c3856c7f41a79a0"
+}

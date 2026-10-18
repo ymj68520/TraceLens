@@ -1,0 +1,95 @@
+{
+ "artifact_version": "RCA2A2StepFunDiagnosticManifestV1",
+ "created_at": "2026-10-13T14:12:53+00:00",
+ "parent_experiment": "RCA-2A.2 OpenRouter blocked experiment (rca2a2-diagnostic-experiment-manifest-v1.json, DIAGNOSTIC BLOCKED / PROVIDER_ENDPOINT_UNREACHABLE)",
+ "relationship": "NEW_PROVIDER_MODEL_DIAGNOSTIC — new experiment identity (provider AND model changed); the original OpenRouter manifest is retained untouched",
+ "head_commit": "0090a1ca",
+ "runtime": {
+  "nature": "RCA-1-modified production runtime; RuntimeBaselineV3 qualification identity NOT inherited",
+  "runtime_commit": "0090a1ca",
+  "runtime_hash_note": "key-file hashes in RCA2A2RuntimeInstrumentationIdentityRecordV1 (written at execution time)",
+  "key_files": {
+   "agent_orchestrator.py": "52e468b42e1c26a2a9835ba8e2ac2f625f8e142f97c62c7b6b9a421c18f14763",
+   "agent_model_adapter.py": "9d4f6482ef35eafd5761d7a5f8b08acbbab984f898558845c944b448908bbc1f",
+   "agent_failure_taxonomy.py": "c293d4773b0d7defd84b754f81343c2e42445156fda3b10e545268edf4ddbe5a",
+   "agent_failure_diagnostics.py": "76c4b23f1fb5226f7f12c946577a820ba720033d5f4941a7d6472566f2069b7e",
+   "benchmarks_runner.py": "6cefad3b7311661a62e8b745a76badfd7566204df3f8bf3d533c64b686b7fc14"
+  }
+ },
+ "diagnostic_instrumentation": {
+  "hashes": {
+   "agent_failure_diagnostics.py": "76c4b23f1fb5226f7f12c946577a820ba720033d5f4941a7d6472566f2069b7e",
+   "agent_failure_taxonomy.py": "c293d4773b0d7defd84b754f81343c2e42445156fda3b10e545268edf4ddbe5a"
+  },
+  "v2_readiness_gate": "tests/unit/benchmarks/test_rca2a2_v2_readiness_gate.py PASSED (production SupervisorIntegrationDecisionV2 contract; extra_forbidden + literal_error field-level observable)",
+  "env": "LLM_FAILURE_DIAGNOSTICS=1, LLM_FAILURE_DIAGNOSTICS_PATH=<abs>/stepfun-failures.jsonl",
+  "path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a2-stepfun-diagnostic/diagnostics/stepfun-failures.jsonl",
+  "boundary": "RCA-1.8 DiagnosticSinkOperationalBoundaryV1 (0600 absolute single-process redaction write-failure-isolated)"
+ },
+ "model_configuration": {
+  "candidate_id": "step-3.7-flash@stepfun",
+  "provider": "stepfun (DIRECT — no OpenRouter in any role)",
+  "endpoint": "https://api.stepfun.com/step_plan/v1",
+  "provider_model_id": "step-3.7-flash",
+  "frozen_config": "benchmarks/results/agent-v0/model-candidates/step-3.7-flash-stepfun/model-config-8x1.json",
+  "model_config_sha256": null,
+  "candidate_config_sha256": null,
+  "frozen_values": {
+   "temperature": 0.7,
+   "max_tokens": 16384,
+   "reasoning": "LLM_THINKING_MODE=disabled -> reasoning_effort=none",
+   "timeout_seconds": 120,
+   "structured_output": "tool/function-based (§11 path A)"
+  },
+  "historical_record": "3/8 terminal in the 582bc443 screening with 5/8 INTEGRATE-position retry exhaustions; capacity-clean; NOT_QUALIFIED_SCREENING artifact UNCHANGED by this diagnostic (§12)",
+  "identity_requirement": "requested_model == returned_model == step-3.7-flash; mismatch -> PROVIDER_IDENTITY_MISMATCH STOP"
+ },
+ "corpus": {
+  "file": "benchmarks/corpus/corpus-agent-v0-calibration.v2.json",
+  "input_hash": "25c216e85acc32f22c5231924730956c24de6a04cc2c4f7173483c9b557916c4"
+ },
+ "output_schema_hash": null,
+ "output_schema_hash_note": "recorded per-failure in diagnostics entries (schema_hash) against SupervisorIntegrationDecisionV2 — the UNCHANGED production contract; the RCA-2A.1 proposal is NOT injected",
+ "preregistered_samples": {
+  "order_frozen_before_first_api_call": true,
+  "cases": [
+   {
+    "order": 1,
+    "case_id": "t2-identity-trap",
+    "rationale": "historical success contrast (terminalized by space-bunny in 3be45146)"
+   },
+   {
+    "order": 2,
+    "case_id": "t2-no-evidence",
+    "rationale": "no-evidence semantics; historical INTEGRATE failure"
+   },
+   {
+    "order": 3,
+    "case_id": "t2-temporal-trap",
+    "rationale": "temporal reasoning; historical INTEGRATE failure"
+   },
+   {
+    "order": 4,
+    "case_id": "t2-report-citation",
+    "rationale": "citation semantics; historical INTEGRATE failure"
+   }
+  ],
+  "attempts": "4 cases x 1 attempt; failed runs NOT replaced or repeated"
+ },
+ "retry_timeout_facts": {
+  "http_attempt_timeout_s": 120,
+  "sdk_max_retries": 2,
+  "supervisor_output_retries": 1,
+  "specialist_output_retries": 2,
+  "run_timeout": "disabled",
+  "source": "agent_retry_timeout_facts.py (recorded only; nothing adjusted)"
+ },
+ "stop_conditions": [
+  "CONNECTIVITY_BLOCKED (APIConnectionError)",
+  "PROVIDER_CAPACITY_BLOCKED (429/quota)",
+  "PROVIDER_AUTH_BLOCKED (401/403)",
+  "PROVIDER_IDENTITY_MISMATCH (returned != requested)",
+  "CANDIDATE_CONFIG_MISMATCH (endpoint/revision differs from frozen record)",
+  "structural invariant violation (halt further runs, keep diagnostics)"
+ ]
+}

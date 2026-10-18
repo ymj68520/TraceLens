@@ -1,0 +1,25 @@
+{
+  "artifact_version": "RCA2A18FinalEngineeringDecisionV1",
+  "experiment_id": "rca2a18-real-model-agent-e2e",
+  "timestamp_utc": "2026-10-17T07:22:23Z",
+  "final_disposition": "REAL_MODEL_AGENT_E2E_PASS",
+  "evaluation_summary": {
+    "all_precall_hard_gates_passed": true,
+    "logical_generations": 2,
+    "physical_http_attempts": 2,
+    "provider": "generic",
+    "endpoint": "https://chat.cordapp.org/v1",
+    "model": "deepseek-flash",
+    "production_prompt_version": "supervisor-v2",
+    "http_cycle_triggered_real_supervisor": true,
+    "delegation_path_exercised": false,
+    "working_state_persisted": true,
+    "trajectory_persisted": true,
+    "zero_new_calls_on_replay": true,
+    "conflict_rejected_on_changed_params": true,
+    "evidence_untouched": true,
+    "findings_unpromoted": true,
+    "report_unadmitted": true
+  },
+  "mandatory_hard_stop": true
+}

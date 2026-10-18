@@ -1,0 +1,14 @@
+{
+  "config_schema": "ModelQualificationConfigV1",
+  "candidate_id": "step-5-preview@stepfun",
+  "provider": "stepfun (legacy generic path; .env LLM_TEXT_BASE_URL=https://api.stepfun.com/step_plan)",
+  "endpoint_base_url_class": "https://api.stepfun.com/step_plan/v1 (openai-compatible /v1/chat/completions)",
+  "overrides": {
+    "llm_text_model": "step-5-preview",
+    "llm_text_temperature": 0.7,
+    "llm_thinking_mode": "disabled",
+    "llm_text_max_tokens": 16384
+  },
+  "compatibility_notes": "ADAPTER_SMOKE_PASS (adapter-smoke.json: identity_exact step-5-preview, reasoning_effort=none ACCEPTED reasoning_tokens=0 = control-compatible, json_object + tools + Specialist-shaped output all PASS); CAPACITY_PREFLIGHT_PASS 3/3 (capacity-preflight.json, 256-token v3 final probe spec, identity exact every probe)",
+  "created_at": "2026-10-13T09:30:26+00:00"
+}

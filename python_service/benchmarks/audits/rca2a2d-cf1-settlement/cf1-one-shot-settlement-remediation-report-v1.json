@@ -1,0 +1,82 @@
+{
+  "artifact_version": "CF1OneShotSettlementRemediationReportV1",
+  "created_at": "2026-10-14T00:00:00+00:00",
+  "baseline_commit": "7766319603d0f50a6fe5fcb59cdb9382d9341693",
+  "baseline_tests": "2619 passed / 1 skipped / 0 failed (pre-stage re-run of the full suite at this commit was the RCA-2A.2c closure state)",
+  "verdict": "CF-1: REMEDIATED / TESTED",
+  "model_calls": 0,
+  "s1_current_implementation": {
+    "run_p8b_baseline.py": "one-shot driver: per repetition provisions a fresh task, executes through ProductionBenchmarkExecutor + the real orchestrator, evaluates against truth, persists artifacts; since RCA-2A.2d it also settles the execution's AgentRun at the one-shot exit boundary",
+    "AgentOrchestrator": "unchanged: PLAN containment remains non-terminal (live-service re-plan semantics preserved), INTEGRATE containment remains fail_run(internal_failure), run_loop has no exit cleanup (correct for a live service)",
+    "AgentRun repository": "unchanged: fail_run/cancel_run/finish_run are the run_id-targeted, transactional, transition-validated terminal primitives (BEGIN IMMEDIATE; terminal runs raise AgentRuntimeConflictError; queued->failed/cancelled and running->terminal are the only legal paths)",
+    "recover_interrupted_agent_runtime": "unchanged: task-wide crash-recovery sweep (running/queued runs -> failed(runtime_restart), pending delegations -> failed, active investigations -> paused, runtime_recovered markers); NOT invoked by the one-shot exit",
+    "run_loop exit handling / run_stop_reason": "unchanged; the settlement happens OUTSIDE the orchestrator, at the CLI execution boundary",
+    "FinalizationGate": "unchanged; a denial remains a denial (no record, no run completion)"
+  },
+  "s2_cf1_root_cause_and_scope": {
+    "root_cause": "PLAN containment is deliberately non-terminal (P4B: a contained PLAN failure must stay retryable so a live service can re-plan on the next invocation). A ONE-SHOT driver ends its process right after the cycle, so the non-terminal row outlives the process with no terminalizer — recovery only runs at the NEXT service startup, which a one-shot context never reaches. The defect is the missing invocation-exit boundary owner, NOT the PLAN containment semantics themselves.",
+    "impact_scope": "every one-shot benchmark/diagnostic execution whose cycle ended without finalization (valid plan + gate denial, PLAN containment, provider timeout, cancellation) persisted 'running' indefinitely; equivalent contained-model-failure causes produced asymmetric durable records (INTEGRATE failures read failed, PLAN failures read running). Live-service behavior was never affected and remains unchanged."
+  },
+  "s3_added_modified_reused": {
+    "added": [
+      "python_service/httpserver/services/benchmarks/one_shot_settlement.py (settlement adapter over existing repository primitives)",
+      "python_service/tests/unit/benchmarks/test_cf1_one_shot_settlement.py (12 helper-level regression tests)",
+      "python_service/benchmarks/audits/rca2a2d-cf1-settlement/ (this report set + harness + evidence)"
+    ],
+    "modified": [
+      "python_service/scripts/run_p8b_baseline.py (settlement call at the one-shot exit boundary, normal + exception paths; settlement.json artifact; independent accounting print)"
+    ],
+    "reused": [
+      "AgentRuntimeRepository.fail_run / cancel_run / get_run / list_runs / list_trajectory / get_finalization (existing targeted primitives; the CAS-equivalent is the transition table re-validated inside each BEGIN IMMEDIATE transaction)",
+      "InvestigationRepository.open_existing (fail-closed, never recreates a store)",
+      "RunStopReason / AgentRunStatus enums and RUN_TRANSITIONS (no new states)",
+      "the RCA-2A.2c FunctionModel sitecustomize harness mechanism (extended for T4/T6/T7 fault injection)"
+    ],
+    "not_touched": [
+      "AgentOrchestrator core",
+      "SupervisorAgentFactory",
+      "agent model adapter",
+      "StateTransitionPolicy",
+      "FinalizationGate",
+      "pydantic-ai retries",
+      "Evidence snapshot/resolver",
+      "recover_interrupted_agent_runtime",
+      "run_p8b_canary.py (the other ProductionBenchmarkExecutor consumer — out of this directive's entrypoint scope; the adapter is reusable there under future authorization)"
+    ]
+  },
+  "s4_final_settlement_design": "One-Shot CLI execution -> Agent execution returns or raises -> one-shot exit boundary (inside _async_run, before evaluation and artifact persistence) -> targeted AgentRun settlement over the execution's OWN task/investigation/run ids -> durable status verification (re-read; any remaining non-terminal run raises) -> benchmark artifact finalization (settlement.json written beside run_manifest/snapshot/result/failure). Cause mapping uses existing vocabulary only: cancelled execution -> cancel_run(cancelled); contained supervisor failure -> fail_run(internal_failure, error_code=<trajectory-recorded code verbatim>); finalization denied -> fail_run(budget_exhausted, error_code=finalization_denied); ended without finalization -> fail_run(budget_exhausted, error_code=one_shot_exit_without_finalization).",
+  "s5_why_fit_for_one_shot_without_touching_live_runtime": "The settlement lives entirely in the benchmark driver's exit boundary: the live service never calls it, and the orchestrator/PLAN semantics it relies on are untouched. In a live service PLAN containment still leaves the run retryable and the next invocation re-plans into the SAME run — verified unchanged (the RCA-2A.2c lifecycle tests pin the orchestrator-level semantics and still pass). The adapter settles only runs under the execution's own investigation id, so even if a store held foreign runs they are not scanned or modified (T10). Recovery keeps its exclusive role: abnormal-interrupt cleanup. The two are never invoked for each other's job.",
+  "s6_sqlite_state_and_transaction_rules": "Every settlement transition is one repository transaction (BEGIN IMMEDIATE): status transition validation against RUN_TRANSITIONS + trajectory append + commit, all-or-nothing. The adapter reads the persisted status first (friendly no-op), then attempts the transition; if a concurrent transition won the race the AgentRuntimeConflictError path re-reads and reports lost_race_no_regression — terminal states can never regress. A transition whose result does not durably terminalize the run raises ('did not persist') — a settlement that cannot persist NEVER reports success (T6), and the leftover row remains on the existing recovery path.",
+  "s7_cancellation_task_deletion_recovery": {
+    "cancellederror": "caught at the exit boundary only to choose the settlement mode; the run is settled cancel_run(cancelled) with a run_cancelled event, and the ORIGINAL CancelledError is re-raised untouched (CLI still crashes with exit 1; no model-failure rewrite; zero diagnostics entries) — T5",
+    "task_deletion": "a missing store is reported (store_missing) and never recreated: open_existing is fail-closed and the adapter pre-checks is_file; no stale write, no orphan rows — T7",
+    "recovery": "not invoked by the exit; after settlement it finds nothing to recover (runs_failed=0 in T1-T5,T7); when settlement itself failed (T6) the leftover running row is terminalized by recovery exactly as before the fix — the two mechanisms compose without interference"
+  },
+  "s8_benchmark_accounting_changes": "The [done]/gates accounting, snapshot terminal_status semantics, evaluate-only reproduction and cleanup ordering are UNCHANGED. Two additions: (1) settlement.json is persisted beside the run artifacts carrying the run-level truth (before/after/stop_reason/error_code, investigation_finalized) — CLI-exited, AgentRun-terminal and Investigation-finalized are now three independently recorded facts (T11); (2) a [settlement] line is printed inside the run log. The BenchmarkRunner outcome contract is untouched (the report travels through a closure holder, not the runner).",
+  "s9_test_results": {
+    "focused": "160 passed (new settlement tests + 2A.2c lifecycle/preflight tests + RCA-1 remediation + orchestrator + investigation loop + all benchmark tests)",
+    "new_tests": "12 helper-level (test_cf1_one_shot_settlement.py) + 7 CLI-level scenarios (T1-T7) executed live with evidence artifacts",
+    "full_suite": "2631 passed / 1 skipped / 0 failed (2619 baseline + 12 new settlement tests; zero pre-existing failures, zero removed tests, zero widened skips)",
+    "cli_matrix": "T1-T7 all PASS (cf1-lifecycle-regression-matrix-v1.json)"
+  },
+  "s10_historical_integrity": "44 rca2a2/rca2a2b audit artifacts re-hashed byte-identical after all work; AcceptanceProfileV2 (c40f1adc...) and RuntimeBaselineV3 (e18b6e6a...) unchanged; Gen-4 CLOSED_REJECTED records untouched; no qualification/acceptance artifact modified by this stage. Identity: the modified benchmark entrypoint is NOT the entrypoint of any historical measurement (see CF1OneShotSettlementIdentityRecordV1).",
+  "s11_known_limitations": [
+    "budget_exhausted is reused for 'the one-shot invocation consumed its cycle budget and ended' — the closest existing frozen stop reason; the precise cause rides in error_code (SEMANTIC_MAPPING_NOTE: a dedicated invocation_exit stop reason would require a frozen-enum change and was deliberately not made)",
+    "snapshot.json captures the run state BEFORE settlement (it is produced inside executor.execute); settlement.json plus the durable row carry the post-settlement truth — documented, accepted, artifact schema unchanged",
+    "the settlement covers run rows only; queued delegations of a cancelled/failed one-shot run stay queued in the store (factual), remaining recoverable by the existing sweep on any later service start",
+    "run_p8b_canary.py (the other one-shot entry) does not yet settle at exit; adopting the same adapter there is a one-line change left for future authorization",
+    "T6's fault injection proves the fail-loud path; a partial disk failure between two runs of a multi-investigation store is out of scope (one-shot stores hold exactly one investigation)"
+  ],
+  "final_state": {
+    "RCA-1": "CLOSED / TESTED",
+    "RCA-2A": "AUDITED",
+    "RCA-2A.1": "OFFLINE VALIDATED",
+    "RCA-2A.2c": "AUDITED",
+    "CF-1": "REMEDIATED / TESTED",
+    "RCA-2B": "NOT AUTHORIZED",
+    "Historical Gen-4": "CLOSED_REJECTED / UNCHANGED",
+    "AcceptanceProfileV2": "UNCHANGED",
+    "Model calls": 0,
+    "Gen-5": "NOT CREATED"
+  }
+}

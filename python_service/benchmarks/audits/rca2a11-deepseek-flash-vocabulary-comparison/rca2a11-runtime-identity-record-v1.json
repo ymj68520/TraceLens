@@ -1,0 +1,13 @@
+{
+  "artifact_version": "RCA2A11RuntimeIdentityRecordV1",
+  "experiment_id": "rca2a11-deepseek-flash-vocabulary-comparison",
+  "created_at_utc": "2026-10-17T01:45:39.872846+00:00",
+  "runtime_commit": "afbeb55bf76388d98a58cbbbb44bc4c8e1db10c0",
+  "authorized_baseline": "dbdda63fdf4ba4d7f4d412291cdc162da47e895c",
+  "provider": "generic",
+  "base_url": "https://chat.cordapp.org/v1",
+  "model_name": "deepseek-flash",
+  "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+  "schema_hash": "a214ec4f5e81fcbb",
+  "oracle_contract_hash": "739b6683707d1b4c7339cf20eaf861514c902e9ac4b8ac8b3969fa02aef9a782"
+}

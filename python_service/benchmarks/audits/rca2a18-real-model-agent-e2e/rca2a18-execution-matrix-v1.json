@@ -1,0 +1,59 @@
+{
+  "artifact_version": "RCA2A18ExecutionMatrixV1",
+  "experiment_id": "rca2a18-real-model-agent-e2e",
+  "timestamp_utc": "2026-10-17T07:16:00.000000+00:00",
+  "execution_schedule": [
+    {
+      "step": "Cycle_A_Smoke",
+      "endpoint": "POST /api/investigation/agent/cycle",
+      "payload": {
+        "task_id": "synthetic-rca2a18-smoke-001",
+        "request_id": "req-rca2a18-cycle-a",
+        "expected_working_state_revision": 1,
+        "max_steps": 1
+      },
+      "verification": "GET /api/investigation/agent/state",
+      "budget_cap": { "max_cycles": 1, "max_steps": 1 }
+    },
+    {
+      "step": "Cycle_B_Continuation",
+      "condition": "Cycle A completes without safety or persistence anomalies",
+      "endpoint": "POST /api/investigation/agent/cycle",
+      "payload": {
+        "task_id": "synthetic-rca2a18-smoke-001",
+        "request_id": "req-rca2a18-cycle-b",
+        "expected_working_state_revision": "authoritative revision from Cycle A",
+        "max_steps": 3
+      },
+      "verification": "GET /api/investigation/agent/state",
+      "budget_cap": { "max_cycles": 1, "max_steps": 3 }
+    },
+    {
+      "step": "Idempotent_Exact_Replay",
+      "endpoint": "POST /api/investigation/agent/cycle",
+      "payload": {
+        "task_id": "synthetic-rca2a18-smoke-001",
+        "request_id": "req-rca2a18-cycle-a",
+        "expected_working_state_revision": 1,
+        "max_steps": 1
+      },
+      "expected_result": "HTTP 200 Cached Outcome with ZERO new LLM calls"
+    },
+    {
+      "step": "Idempotent_Conflicting_Replay",
+      "endpoint": "POST /api/investigation/agent/cycle",
+      "payload": {
+        "task_id": "synthetic-rca2a18-smoke-001",
+        "request_id": "req-rca2a18-cycle-a",
+        "expected_working_state_revision": 1,
+        "max_steps": 3
+      },
+      "expected_result": "HTTP 409 Conflict with ZERO new LLM calls"
+    },
+    {
+      "step": "Evidence_Integrity_Audit",
+      "verification": "SHA-256 byte check on raw.db, events.db, and files.db against initial baseline"
+    }
+  ],
+  "matrix_status": "EXECUTION_MATRIX_FROZEN"
+}

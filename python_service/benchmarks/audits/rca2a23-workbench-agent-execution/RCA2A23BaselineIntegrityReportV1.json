@@ -1,0 +1,11 @@
+{
+  "deliverable": "RCA2A23BaselineIntegrityReportV1",
+  "schema_version": "rca2a23-baseline-integrity-report:v1",
+  "verified_at": "2026-10-17T11:09:56Z",
+  "baseline_commit": "0da403fdad8e2a09487757b4f0361c9dbb56d096",
+  "branch": "mvp/agent-v0-runtime-v3-requalification",
+  "rca2a22_audit_commit": "0da403fdad8e2a09487757b4f0361c9dbb56d096",
+  "rca2a22_impl_commit": "814b5f4aadabf09bfe818f320db5168207795055",
+  "working_tree_clean": true,
+  "status": "PASS"
+}

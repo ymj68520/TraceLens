@@ -1,0 +1,13 @@
+{
+ "substrate_version": "sealed-evidence-substrate:v1",
+ "substrate_id": "sub-gen4-departure-staging",
+ "case_id": "gen4-departure-staging",
+ "image_relative_path": "gen4-departure-staging.img",
+ "image_sha256": "302435a5d9512cc2415f3ba81ee413ee6551539f375fdfb34cc468b42affcf8c",
+ "image_size_bytes": 16777216,
+ "expected_public_asset_manifest_hash": "d02fb63c688b0b141c2cd1353ce4737acc13902e5b98d42d234fdef1bcb2e092",
+ "parser_config_hash": "a45695aae0930bb81c56f5a533b028340f6da141b186a12abfe5423c71ce9961",
+ "expected_evidence_manifest_hash": "16d5561c61a4632a648a8adcb3e86b9cc84afa04b5c42cd4330118420656de21",
+ "build_tool": "ext4 (dd + mke2fs + debugfs), inode times pinned",
+ "input_hash": "f7e0e4fcc5d8f937649deec36d0b49189bda10b42086096549030e6db69ba627"
+}

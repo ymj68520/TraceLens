@@ -1,0 +1,132 @@
+{
+  "analysis_method": {
+    "claims_allowed": [
+      "descriptive observations on this fixture/model/sample",
+      "whether to_status=completed recurred"
+    ],
+    "claims_forbidden": [
+      "model reliability improvement",
+      "qualification or readiness verdicts",
+      "any statement beyond the tested fixture/model"
+    ],
+    "paired_view": "per pair: which layers each arm reached; where they diverge, the raw args and sink entries decide",
+    "per_arm_table": "each arm: canonical_integration_valid count, per-layer reach counts, observables counts, token totals",
+    "statistical_testing": "none — 4 pairs cannot support significance; no p-values, no rates, no generalization",
+    "style": "descriptive paired counts ONLY"
+  },
+  "arms": {
+    "control": {
+      "factory": "SupervisorAgentFactory (production)",
+      "instructions": "production _integration_instructions_v2",
+      "instructions_sha256_bound_at_pair_time": "captured and pinned per pair by the INPUT_IDENTITY gate",
+      "schema": "SupervisorIntegrationDecisionV2 (frozen, unchanged)"
+    },
+    "treatment": {
+      "factory": "GuidanceIntegrationAgentFactory (INTEGRATE-only experimental)",
+      "guidance_bytes": 1427,
+      "guidance_sha256": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+      "guidance_version": "integration-vocabulary-guidance:v1",
+      "instructions": "production _integration_instructions_v2 + frozen guidance suffix",
+      "schema": "SupervisorIntegrationDecisionV2 (frozen, unchanged — byte-identical, see consistency report)"
+    }
+  },
+  "artifact_version": "RCA2A6ControlledComparisonProtocolV1",
+  "authored_by_phase": "rca2a6-vocabulary-guidance",
+  "baseline_commit": "85ab57523c966576b080846a6721e79ffa990b23",
+  "data_integrity": {
+    "historical_payloads": "RCA-2A.4 artifacts immutable (hash-pinned); the historical single failure is NOT a control arm",
+    "holdout": "no holdout access",
+    "reproducibility": "experiment manifest binds runtime source hash, adapter hash, schema hash, guidance sha256, fixture builder identity and the frozen model config before run 1"
+  },
+  "execution_boundary": "this protocol is a frozen DESIGN; executing it requires an explicit new authorization with real-model budget. Nothing here is an approval to call any provider",
+  "experiment_id": "rca2a6-controlled-comparison",
+  "fixture": {
+    "builder": "benchmarks.isolated_integration.fixtures.prepare_post_delegation_store(with_evidence=False) — the verified t2-no-evidence semantics",
+    "evidence": "public synthetic/calibration only",
+    "instance_discipline": "ONE fresh deterministic instance per ARM per pair (a committed integration mutates the store, so arms never share an instance); cross-instance identity is SEMANTIC (the 2A.3 parity fields: output_tool_schema, projection, model_settings, output_tool_names), not byte identity of run-scoped hashes",
+    "per_pair_instances": 2
+  },
+  "invariants_both_arms": {
+    "adapter": "production build_chat_model (unchanged source, hash-pinned at manifest time)",
+    "frozen_model_config": {
+      "llm_endpoint": "/v1/chat/completions",
+      "llm_text_base_url": "https://api.stepfun.com/step_plan",
+      "llm_text_max_tokens": 16384,
+      "llm_text_temperature": 0.7,
+      "llm_thinking_mode": "disabled",
+      "llm_timeout_seconds": 120,
+      "output_retry_budget": 1,
+      "provider": "stepfun",
+      "requested_model": "step-3.7-flash",
+      "sdk_retry_policy": "openai SDK client default (OpenAIProvider(base_url, api_key) unchanged construction)"
+    },
+    "grounding_and_policy": "production IntegrationDecisionValidator + StateTransitionPolicy (unchanged)",
+    "http_attempt_timeout": 120,
+    "model": "step-3.7-flash",
+    "only_allowed_model_visible_difference": "the guidance suffix",
+    "output_retry_budget": 1,
+    "output_tool_schema": "a214ec4f5e81fcbb",
+    "provider": "stepfun"
+  },
+  "metrics": {
+    "layered_diagnostics": {
+      "canonical_resolution_success": "stage step canonical_resolution",
+      "integration_commit_eligible": "StageResult.committed",
+      "output_tool_received": "stage step model_output_received",
+      "pydantic_parse_success": "stage step pydantic_validation",
+      "transition_validation_success": "stage step transition_validation"
+    },
+    "observables": {
+      "field_name_mismatch": "extra_forbidden/missing on the operand/status field names in raw args",
+      "input_tokens": "usage per response (recording proxy)",
+      "invalid_disposition": "enum error on disposition, or raw args scan",
+      "invalid_question_status": "enum error on to_status in the terminal validation details, or raw args scan of the recording proxy",
+      "output_retry_exhaustion": "UnexpectedModelBehavior with retry_attempts==1",
+      "output_tokens": "usage per response (recording proxy)",
+      "provider_timeout": "APITimeoutError classification",
+      "to_status_completed_recurrence": "EXPLICIT CHECK: scan every raw response's args for \"to_status\": \"completed\" and record per arm"
+    },
+    "primary": {
+      "canonical_integration_valid": "the stage reached integration_commit with status committed — the ONLY success metric; nothing below it counts as success"
+    },
+    "separation_rule": "Pydantic improvement != Policy success != Investigation finalization; an arm whose payload only parses better is NOT a policy success; finalization is NOT_EXERCISED in every arm and no incomplete investigation result may be recorded as success"
+  },
+  "pairing_and_order": {
+    "design": "paired diagnostics, deterministic order",
+    "randomization": "none (fixed order, declared in advance)",
+    "rule": "for pair i (i=1..4): prepare control instance, run control; prepare treatment instance, run treatment; never reorder, never skip, never re-run"
+  },
+  "pre_call_gates": {
+    "DIAGNOSTICS_READY": "deterministic FunctionModel invalid-output through BOTH arms -> RCA-1 sink with observable stage/schema_hash/tool_name/validation_error_details, 0600 permissions, zero real model calls",
+    "INPUT_IDENTITY_PASS": "per pair: semantic parity of both instances' captured model-visible input (2A.3 field discipline)",
+    "PROMPT_DIFF_PASS": "treatment instructions == control instructions + \\n\\n + guidance(GUIDANCE sha e00c1549284c…) exactly",
+    "SCHEMA_UNCHANGED": "output-tool schema hash == a214ec4f5e81fcbb in both arms and equal to the frozen RCA-2A.4 manifest"
+  },
+  "provider_capacity_gate": {
+    "classification_mapping": {
+      "PROVIDER_AUTH_BLOCKED": "PROVIDER_AUTH_BLOCKED",
+      "PROVIDER_QUOTA_BLOCKED": "PROVIDER_CAPACITY_BLOCKED"
+    },
+    "preflight_probes": 3,
+    "requirement": "CAPACITY_PREFLIGHT_PASS + identity exact on every probe, BEFORE pair 1",
+    "tool": "scripts/capacity_preflight_stepfun.py --out (exclusive create, exit-3 no-clobber)"
+  },
+  "sample_counts": {
+    "derivation": "retry budget 1 -> at most 2 requests per stage invocation",
+    "max_model_requests": 16,
+    "no_dynamic_increase": "the sample count is frozen here; results may NEVER be used to justify adding pairs",
+    "pairs": 4,
+    "per_arm_stage_invocations": 4,
+    "total_stage_invocations": 8
+  },
+  "status": "PREREGISTERED__NOT_EXECUTED",
+  "stop_conditions": [
+    "any pre-call gate fails",
+    "CAPACITY_PREFLIGHT not PASS / PROVIDER_AUTH_BLOCKED / PROVIDER_CAPACITY_BLOCKED",
+    "MODEL_IDENTITY_MISMATCH on any response",
+    "EXPERIMENT_IDENTITY_DRIFT (runtime/schema/guidance hash change mid-experiment)",
+    "any stage invocation raises an exception class outside {UnexpectedModelBehavior, APITimeoutError}",
+    "never re-execute a stage invocation",
+    "never add pairs after seeing results"
+  ]
+}

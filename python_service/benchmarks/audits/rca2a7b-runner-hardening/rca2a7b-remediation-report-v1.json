@@ -1,0 +1,30 @@
+{
+  "artifact_version": "RCA2A7bRemediationReportV1",
+  "audit_milestones": {
+    "baseline_verification": "cb78ea813cdc2678b352c80a77fcf57bc4ec96b9 confirmed clean, zero requests executed.",
+    "cross_arm_parity_closed": "Cloned isolated SQLite scratch architecture achieves exact byte-level canonical hash equality.",
+    "offline_simulation_completed": "14/14 offline simulation scenarios (E1-E14) passed with zero external network calls.",
+    "paired_metrics_operational": "Treatment win, control win, tie, and incomplete pair classification verified.",
+    "runner_lifecycle_hardened": "5 explicit phases enforced: NOT_STARTED, INPUT_VERIFIED, INVOCATION_STARTED, INVOCATION_FINISHED, RESULT_RECORDED.",
+    "sink_idempotency_secured": "Exclusive 0600 file creation, deterministic probe IDs, read-only gate recovery."
+  },
+  "baseline_commit": "cb78ea813cdc2678b352c80a77fcf57bc4ec96b9",
+  "boundary_commitments": {
+    "next_phase_status": "PROPOSED_NOT_AUTHORIZED",
+    "production_code_modified": false,
+    "rca2a7_historical_artifacts_modified": false,
+    "real_stepfun_requests_made": 0
+  },
+  "executive_summary": "RCA-2A.7b successfully hardened the benchmark runner and verified cross-arm parity without making any real model requests. All 5 runner defects were systematically remediated and verified across 8 sink idempotency tests (S1-S8) and 14 full-matrix simulation scenarios (E1-E14). Cross-arm input parity was rigorously proven using cloned isolated scratch stores, achieving canonical_control_hash == canonical_treatment_hash across all 4 pairs with exactly the registered experimental vocabulary guidance suffix as the sole prompt difference.",
+  "experiment_id": "rca2a7b-runner-hardening",
+  "metrics_summary": {
+    "cloned_parity_pairs_passed": 4,
+    "historical_semantic_differences": 0,
+    "historical_unexplained_differences": 0,
+    "preflight_requests": 0,
+    "real_model_requests": 0,
+    "total_unit_tests": 25,
+    "unit_tests_passed": 25
+  },
+  "readiness_verdict": "OFFLINE_REMEDIATED_READY_FOR_REAL_COMPARISON"
+}

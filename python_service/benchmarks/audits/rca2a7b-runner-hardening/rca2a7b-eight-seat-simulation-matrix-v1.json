@@ -1,0 +1,1382 @@
+{
+  "artifact_version": "RCA2A7bEightSeatSimulationMatrixV1",
+  "experiment_id": "rca2a7b-runner-hardening",
+  "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+  "logical_model_generations": 8,
+  "logical_model_generations_budget": 16,
+  "observation_tag": "SYNTHETIC_TEST_OBSERVATIONS",
+  "paired_metrics": {
+    "paired_counts": {
+      "both_invalid": 0,
+      "both_valid": 4,
+      "control_win": 0,
+      "incomplete_pair": 0,
+      "treatment_win": 0
+    },
+    "paired_results": {
+      "1": {
+        "classification": "both_valid",
+        "control": {
+          "arm": "control",
+          "diagnostic_sink_entries": [],
+          "evidence_integrity": {
+            "current_task_binding": true,
+            "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+            "model_generated_evidence_id_accepted": false
+          },
+          "field_scan_totals": {
+            "extra_forbidden": 0,
+            "fabricated_evidence_like_identifier": 0,
+            "invalid_disposition": 0,
+            "invalid_question_status": 0,
+            "invalid_union": 0,
+            "missing_required_field": 0,
+            "to_status_completed": 0,
+            "unknown_handle": 0,
+            "wrong_action_field_name": 0
+          },
+          "final_attempt_error": [],
+          "final_attempt_pydantic_pass": true,
+          "finalization": "NOT_EXERCISED",
+          "fixture_identity": {
+            "arm": "control",
+            "binding_table_hash": "f07427680d68a59dec90176a2770ffed7aa56bf314f110b54d9a216b7ea806b9",
+            "binding_table_resolves_to_current_synthetic_task": true,
+            "context_hash": "c66157c8314433be19580f8f6390836952aa81eae976e59118e8df9c6600ab10",
+            "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+            "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a7b-runner-hardening/.scratch/sim_matrix/fixtures/pair-01-control",
+            "investigation_id": "inv-cccccccc",
+            "pair_id": 1,
+            "run_id": "run_c15ec18d68cb4a24aa06cf08fc63e738",
+            "task_id": "task-A",
+            "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+          },
+          "http_attempt_upper_bound": 3,
+          "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+          "identity_sink_records": [
+            {
+              "requested_model": "step-3.7-flash",
+              "returned_model": "step-3.7-flash"
+            }
+          ],
+          "initial_attempt_error": [],
+          "initial_attempt_pydantic_pass": true,
+          "latency_ms": [
+            0.6
+          ],
+          "logical_model_generations": 1,
+          "pair_id": 1,
+          "phase": "RESULT_RECORDED",
+          "provider_error_classes": [],
+          "provider_error_classifications": [],
+          "pydantic_output_retries": 0,
+          "response_models": [
+            "step-3.7-flash"
+          ],
+          "retry_self_correction": false,
+          "returned_identity_exact": true,
+          "stage_layers": {
+            "canonical_integration_valid": true,
+            "canonical_resolution_success": true,
+            "exception_class": null,
+            "integration_decision_validator_success": true,
+            "output_tool_received": true,
+            "pydantic_parse_success": true,
+            "resolution_violations": [],
+            "scratch_commit_success": true,
+            "stage_invocation_success": true,
+            "transition_validation_success": true
+          },
+          "status": "EXECUTED",
+          "token_usage": {
+            "input_tokens": 51,
+            "output_tokens": 19
+          },
+          "validation_payload_count": 1
+        },
+        "treatment": {
+          "arm": "treatment",
+          "diagnostic_sink_entries": [],
+          "evidence_integrity": {
+            "current_task_binding": true,
+            "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+            "model_generated_evidence_id_accepted": false
+          },
+          "field_scan_totals": {
+            "extra_forbidden": 0,
+            "fabricated_evidence_like_identifier": 0,
+            "invalid_disposition": 0,
+            "invalid_question_status": 0,
+            "invalid_union": 0,
+            "missing_required_field": 0,
+            "to_status_completed": 0,
+            "unknown_handle": 0,
+            "wrong_action_field_name": 0
+          },
+          "final_attempt_error": [],
+          "final_attempt_pydantic_pass": true,
+          "finalization": "NOT_EXERCISED",
+          "fixture_identity": {
+            "arm": "treatment",
+            "binding_table_hash": "f07427680d68a59dec90176a2770ffed7aa56bf314f110b54d9a216b7ea806b9",
+            "binding_table_resolves_to_current_synthetic_task": true,
+            "context_hash": "c66157c8314433be19580f8f6390836952aa81eae976e59118e8df9c6600ab10",
+            "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+            "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a7b-runner-hardening/.scratch/sim_matrix/fixtures/pair-01-treatment",
+            "investigation_id": "inv-cccccccc",
+            "pair_id": 1,
+            "run_id": "run_c15ec18d68cb4a24aa06cf08fc63e738",
+            "task_id": "task-A",
+            "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+          },
+          "http_attempt_upper_bound": 3,
+          "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+          "identity_sink_records": [
+            {
+              "requested_model": "step-3.7-flash",
+              "returned_model": "step-3.7-flash"
+            }
+          ],
+          "initial_attempt_error": [],
+          "initial_attempt_pydantic_pass": true,
+          "latency_ms": [
+            0.5
+          ],
+          "logical_model_generations": 1,
+          "pair_id": 1,
+          "phase": "RESULT_RECORDED",
+          "provider_error_classes": [],
+          "provider_error_classifications": [],
+          "pydantic_output_retries": 0,
+          "response_models": [
+            "step-3.7-flash"
+          ],
+          "retry_self_correction": false,
+          "returned_identity_exact": true,
+          "stage_layers": {
+            "canonical_integration_valid": true,
+            "canonical_resolution_success": true,
+            "exception_class": null,
+            "integration_decision_validator_success": true,
+            "output_tool_received": true,
+            "pydantic_parse_success": true,
+            "resolution_violations": [],
+            "scratch_commit_success": true,
+            "stage_invocation_success": true,
+            "transition_validation_success": true
+          },
+          "status": "EXECUTED",
+          "token_usage": {
+            "input_tokens": 51,
+            "output_tokens": 19
+          },
+          "validation_payload_count": 1
+        }
+      },
+      "2": {
+        "classification": "both_valid",
+        "control": {
+          "arm": "control",
+          "diagnostic_sink_entries": [],
+          "evidence_integrity": {
+            "current_task_binding": true,
+            "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+            "model_generated_evidence_id_accepted": false
+          },
+          "field_scan_totals": {
+            "extra_forbidden": 0,
+            "fabricated_evidence_like_identifier": 0,
+            "invalid_disposition": 0,
+            "invalid_question_status": 0,
+            "invalid_union": 0,
+            "missing_required_field": 0,
+            "to_status_completed": 0,
+            "unknown_handle": 0,
+            "wrong_action_field_name": 0
+          },
+          "final_attempt_error": [],
+          "final_attempt_pydantic_pass": true,
+          "finalization": "NOT_EXERCISED",
+          "fixture_identity": {
+            "arm": "control",
+            "binding_table_hash": "04d5c1f174c0974b7b2fd8a1eaba829c5f71a25e2b7ee1c08190210dac21b26c",
+            "binding_table_resolves_to_current_synthetic_task": true,
+            "context_hash": "1585185b4d7cd3bbb05881d8cce846927480f6fc9d99609a366acd8e76fad150",
+            "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+            "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a7b-runner-hardening/.scratch/sim_matrix/fixtures/pair-02-control",
+            "investigation_id": "inv-cccccccc",
+            "pair_id": 2,
+            "run_id": "run_9f6372701bf6452aa09b44563092078c",
+            "task_id": "task-A",
+            "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+          },
+          "http_attempt_upper_bound": 3,
+          "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+          "identity_sink_records": [
+            {
+              "requested_model": "step-3.7-flash",
+              "returned_model": "step-3.7-flash"
+            }
+          ],
+          "initial_attempt_error": [],
+          "initial_attempt_pydantic_pass": true,
+          "latency_ms": [
+            0.9
+          ],
+          "logical_model_generations": 1,
+          "pair_id": 2,
+          "phase": "RESULT_RECORDED",
+          "provider_error_classes": [],
+          "provider_error_classifications": [],
+          "pydantic_output_retries": 0,
+          "response_models": [
+            "step-3.7-flash"
+          ],
+          "retry_self_correction": false,
+          "returned_identity_exact": true,
+          "stage_layers": {
+            "canonical_integration_valid": true,
+            "canonical_resolution_success": true,
+            "exception_class": null,
+            "integration_decision_validator_success": true,
+            "output_tool_received": true,
+            "pydantic_parse_success": true,
+            "resolution_violations": [],
+            "scratch_commit_success": true,
+            "stage_invocation_success": true,
+            "transition_validation_success": true
+          },
+          "status": "EXECUTED",
+          "token_usage": {
+            "input_tokens": 51,
+            "output_tokens": 19
+          },
+          "validation_payload_count": 1
+        },
+        "treatment": {
+          "arm": "treatment",
+          "diagnostic_sink_entries": [],
+          "evidence_integrity": {
+            "current_task_binding": true,
+            "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+            "model_generated_evidence_id_accepted": false
+          },
+          "field_scan_totals": {
+            "extra_forbidden": 0,
+            "fabricated_evidence_like_identifier": 0,
+            "invalid_disposition": 0,
+            "invalid_question_status": 0,
+            "invalid_union": 0,
+            "missing_required_field": 0,
+            "to_status_completed": 0,
+            "unknown_handle": 0,
+            "wrong_action_field_name": 0
+          },
+          "final_attempt_error": [],
+          "final_attempt_pydantic_pass": true,
+          "finalization": "NOT_EXERCISED",
+          "fixture_identity": {
+            "arm": "treatment",
+            "binding_table_hash": "04d5c1f174c0974b7b2fd8a1eaba829c5f71a25e2b7ee1c08190210dac21b26c",
+            "binding_table_resolves_to_current_synthetic_task": true,
+            "context_hash": "1585185b4d7cd3bbb05881d8cce846927480f6fc9d99609a366acd8e76fad150",
+            "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+            "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a7b-runner-hardening/.scratch/sim_matrix/fixtures/pair-02-treatment",
+            "investigation_id": "inv-cccccccc",
+            "pair_id": 2,
+            "run_id": "run_9f6372701bf6452aa09b44563092078c",
+            "task_id": "task-A",
+            "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+          },
+          "http_attempt_upper_bound": 3,
+          "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+          "identity_sink_records": [
+            {
+              "requested_model": "step-3.7-flash",
+              "returned_model": "step-3.7-flash"
+            }
+          ],
+          "initial_attempt_error": [],
+          "initial_attempt_pydantic_pass": true,
+          "latency_ms": [
+            0.4
+          ],
+          "logical_model_generations": 1,
+          "pair_id": 2,
+          "phase": "RESULT_RECORDED",
+          "provider_error_classes": [],
+          "provider_error_classifications": [],
+          "pydantic_output_retries": 0,
+          "response_models": [
+            "step-3.7-flash"
+          ],
+          "retry_self_correction": false,
+          "returned_identity_exact": true,
+          "stage_layers": {
+            "canonical_integration_valid": true,
+            "canonical_resolution_success": true,
+            "exception_class": null,
+            "integration_decision_validator_success": true,
+            "output_tool_received": true,
+            "pydantic_parse_success": true,
+            "resolution_violations": [],
+            "scratch_commit_success": true,
+            "stage_invocation_success": true,
+            "transition_validation_success": true
+          },
+          "status": "EXECUTED",
+          "token_usage": {
+            "input_tokens": 51,
+            "output_tokens": 19
+          },
+          "validation_payload_count": 1
+        }
+      },
+      "3": {
+        "classification": "both_valid",
+        "control": {
+          "arm": "control",
+          "diagnostic_sink_entries": [],
+          "evidence_integrity": {
+            "current_task_binding": true,
+            "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+            "model_generated_evidence_id_accepted": false
+          },
+          "field_scan_totals": {
+            "extra_forbidden": 0,
+            "fabricated_evidence_like_identifier": 0,
+            "invalid_disposition": 0,
+            "invalid_question_status": 0,
+            "invalid_union": 0,
+            "missing_required_field": 0,
+            "to_status_completed": 0,
+            "unknown_handle": 0,
+            "wrong_action_field_name": 0
+          },
+          "final_attempt_error": [],
+          "final_attempt_pydantic_pass": true,
+          "finalization": "NOT_EXERCISED",
+          "fixture_identity": {
+            "arm": "control",
+            "binding_table_hash": "9b78bb26fefb8b9bd4595c59d9406219d6deb9df67964f8b454a7ee1142d27ce",
+            "binding_table_resolves_to_current_synthetic_task": true,
+            "context_hash": "a7265f621c5ea3b2cb07b85b376f4cd64740c03a4cd2caf1e78a0e27bc0e7cdd",
+            "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+            "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a7b-runner-hardening/.scratch/sim_matrix/fixtures/pair-03-control",
+            "investigation_id": "inv-cccccccc",
+            "pair_id": 3,
+            "run_id": "run_d5931669fa7d42db9f77161cc27ec016",
+            "task_id": "task-A",
+            "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+          },
+          "http_attempt_upper_bound": 3,
+          "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+          "identity_sink_records": [
+            {
+              "requested_model": "step-3.7-flash",
+              "returned_model": "step-3.7-flash"
+            }
+          ],
+          "initial_attempt_error": [],
+          "initial_attempt_pydantic_pass": true,
+          "latency_ms": [
+            0.6
+          ],
+          "logical_model_generations": 1,
+          "pair_id": 3,
+          "phase": "RESULT_RECORDED",
+          "provider_error_classes": [],
+          "provider_error_classifications": [],
+          "pydantic_output_retries": 0,
+          "response_models": [
+            "step-3.7-flash"
+          ],
+          "retry_self_correction": false,
+          "returned_identity_exact": true,
+          "stage_layers": {
+            "canonical_integration_valid": true,
+            "canonical_resolution_success": true,
+            "exception_class": null,
+            "integration_decision_validator_success": true,
+            "output_tool_received": true,
+            "pydantic_parse_success": true,
+            "resolution_violations": [],
+            "scratch_commit_success": true,
+            "stage_invocation_success": true,
+            "transition_validation_success": true
+          },
+          "status": "EXECUTED",
+          "token_usage": {
+            "input_tokens": 51,
+            "output_tokens": 19
+          },
+          "validation_payload_count": 1
+        },
+        "treatment": {
+          "arm": "treatment",
+          "diagnostic_sink_entries": [],
+          "evidence_integrity": {
+            "current_task_binding": true,
+            "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+            "model_generated_evidence_id_accepted": false
+          },
+          "field_scan_totals": {
+            "extra_forbidden": 0,
+            "fabricated_evidence_like_identifier": 0,
+            "invalid_disposition": 0,
+            "invalid_question_status": 0,
+            "invalid_union": 0,
+            "missing_required_field": 0,
+            "to_status_completed": 0,
+            "unknown_handle": 0,
+            "wrong_action_field_name": 0
+          },
+          "final_attempt_error": [],
+          "final_attempt_pydantic_pass": true,
+          "finalization": "NOT_EXERCISED",
+          "fixture_identity": {
+            "arm": "treatment",
+            "binding_table_hash": "9b78bb26fefb8b9bd4595c59d9406219d6deb9df67964f8b454a7ee1142d27ce",
+            "binding_table_resolves_to_current_synthetic_task": true,
+            "context_hash": "a7265f621c5ea3b2cb07b85b376f4cd64740c03a4cd2caf1e78a0e27bc0e7cdd",
+            "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+            "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a7b-runner-hardening/.scratch/sim_matrix/fixtures/pair-03-treatment",
+            "investigation_id": "inv-cccccccc",
+            "pair_id": 3,
+            "run_id": "run_d5931669fa7d42db9f77161cc27ec016",
+            "task_id": "task-A",
+            "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+          },
+          "http_attempt_upper_bound": 3,
+          "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+          "identity_sink_records": [
+            {
+              "requested_model": "step-3.7-flash",
+              "returned_model": "step-3.7-flash"
+            }
+          ],
+          "initial_attempt_error": [],
+          "initial_attempt_pydantic_pass": true,
+          "latency_ms": [
+            0.4
+          ],
+          "logical_model_generations": 1,
+          "pair_id": 3,
+          "phase": "RESULT_RECORDED",
+          "provider_error_classes": [],
+          "provider_error_classifications": [],
+          "pydantic_output_retries": 0,
+          "response_models": [
+            "step-3.7-flash"
+          ],
+          "retry_self_correction": false,
+          "returned_identity_exact": true,
+          "stage_layers": {
+            "canonical_integration_valid": true,
+            "canonical_resolution_success": true,
+            "exception_class": null,
+            "integration_decision_validator_success": true,
+            "output_tool_received": true,
+            "pydantic_parse_success": true,
+            "resolution_violations": [],
+            "scratch_commit_success": true,
+            "stage_invocation_success": true,
+            "transition_validation_success": true
+          },
+          "status": "EXECUTED",
+          "token_usage": {
+            "input_tokens": 51,
+            "output_tokens": 19
+          },
+          "validation_payload_count": 1
+        }
+      },
+      "4": {
+        "classification": "both_valid",
+        "control": {
+          "arm": "control",
+          "diagnostic_sink_entries": [],
+          "evidence_integrity": {
+            "current_task_binding": true,
+            "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+            "model_generated_evidence_id_accepted": false
+          },
+          "field_scan_totals": {
+            "extra_forbidden": 0,
+            "fabricated_evidence_like_identifier": 0,
+            "invalid_disposition": 0,
+            "invalid_question_status": 0,
+            "invalid_union": 0,
+            "missing_required_field": 0,
+            "to_status_completed": 0,
+            "unknown_handle": 0,
+            "wrong_action_field_name": 0
+          },
+          "final_attempt_error": [],
+          "final_attempt_pydantic_pass": true,
+          "finalization": "NOT_EXERCISED",
+          "fixture_identity": {
+            "arm": "control",
+            "binding_table_hash": "9463717c1c067242d70bf46fdfce07d057356ffe0e6addea370a69a0088b393e",
+            "binding_table_resolves_to_current_synthetic_task": true,
+            "context_hash": "bd2871a69452ad9e5f1caf085a37d480d263958ec0490ced3aa75425b2251f12",
+            "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+            "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a7b-runner-hardening/.scratch/sim_matrix/fixtures/pair-04-control",
+            "investigation_id": "inv-cccccccc",
+            "pair_id": 4,
+            "run_id": "run_052c341ae64a4bb8b9cfc79f78ca2028",
+            "task_id": "task-A",
+            "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+          },
+          "http_attempt_upper_bound": 3,
+          "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+          "identity_sink_records": [
+            {
+              "requested_model": "step-3.7-flash",
+              "returned_model": "step-3.7-flash"
+            }
+          ],
+          "initial_attempt_error": [],
+          "initial_attempt_pydantic_pass": true,
+          "latency_ms": [
+            0.6
+          ],
+          "logical_model_generations": 1,
+          "pair_id": 4,
+          "phase": "RESULT_RECORDED",
+          "provider_error_classes": [],
+          "provider_error_classifications": [],
+          "pydantic_output_retries": 0,
+          "response_models": [
+            "step-3.7-flash"
+          ],
+          "retry_self_correction": false,
+          "returned_identity_exact": true,
+          "stage_layers": {
+            "canonical_integration_valid": true,
+            "canonical_resolution_success": true,
+            "exception_class": null,
+            "integration_decision_validator_success": true,
+            "output_tool_received": true,
+            "pydantic_parse_success": true,
+            "resolution_violations": [],
+            "scratch_commit_success": true,
+            "stage_invocation_success": true,
+            "transition_validation_success": true
+          },
+          "status": "EXECUTED",
+          "token_usage": {
+            "input_tokens": 51,
+            "output_tokens": 19
+          },
+          "validation_payload_count": 1
+        },
+        "treatment": {
+          "arm": "treatment",
+          "diagnostic_sink_entries": [],
+          "evidence_integrity": {
+            "current_task_binding": true,
+            "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+            "model_generated_evidence_id_accepted": false
+          },
+          "field_scan_totals": {
+            "extra_forbidden": 0,
+            "fabricated_evidence_like_identifier": 0,
+            "invalid_disposition": 0,
+            "invalid_question_status": 0,
+            "invalid_union": 0,
+            "missing_required_field": 0,
+            "to_status_completed": 0,
+            "unknown_handle": 0,
+            "wrong_action_field_name": 0
+          },
+          "final_attempt_error": [],
+          "final_attempt_pydantic_pass": true,
+          "finalization": "NOT_EXERCISED",
+          "fixture_identity": {
+            "arm": "treatment",
+            "binding_table_hash": "9463717c1c067242d70bf46fdfce07d057356ffe0e6addea370a69a0088b393e",
+            "binding_table_resolves_to_current_synthetic_task": true,
+            "context_hash": "bd2871a69452ad9e5f1caf085a37d480d263958ec0490ced3aa75425b2251f12",
+            "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+            "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a7b-runner-hardening/.scratch/sim_matrix/fixtures/pair-04-treatment",
+            "investigation_id": "inv-cccccccc",
+            "pair_id": 4,
+            "run_id": "run_052c341ae64a4bb8b9cfc79f78ca2028",
+            "task_id": "task-A",
+            "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+          },
+          "http_attempt_upper_bound": 3,
+          "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+          "identity_sink_records": [
+            {
+              "requested_model": "step-3.7-flash",
+              "returned_model": "step-3.7-flash"
+            }
+          ],
+          "initial_attempt_error": [],
+          "initial_attempt_pydantic_pass": true,
+          "latency_ms": [
+            0.5
+          ],
+          "logical_model_generations": 1,
+          "pair_id": 4,
+          "phase": "RESULT_RECORDED",
+          "provider_error_classes": [],
+          "provider_error_classifications": [],
+          "pydantic_output_retries": 0,
+          "response_models": [
+            "step-3.7-flash"
+          ],
+          "retry_self_correction": false,
+          "returned_identity_exact": true,
+          "stage_layers": {
+            "canonical_integration_valid": true,
+            "canonical_resolution_success": true,
+            "exception_class": null,
+            "integration_decision_validator_success": true,
+            "output_tool_received": true,
+            "pydantic_parse_success": true,
+            "resolution_violations": [],
+            "scratch_commit_success": true,
+            "stage_invocation_success": true,
+            "transition_validation_success": true
+          },
+          "status": "EXECUTED",
+          "token_usage": {
+            "input_tokens": 51,
+            "output_tokens": 19
+          },
+          "validation_payload_count": 1
+        }
+      }
+    },
+    "total_executed_seats": 8,
+    "total_unstarted_seats": 0,
+    "valid_control_count": 4,
+    "valid_treatment_count": 4
+  },
+  "preflight_logical_requests": 0,
+  "real_model_requests": 0,
+  "run_order": [
+    [
+      "C",
+      "T"
+    ],
+    [
+      "T",
+      "C"
+    ],
+    [
+      "T",
+      "C"
+    ],
+    [
+      "C",
+      "T"
+    ]
+  ],
+  "seats": [
+    {
+      "arm": "control",
+      "diagnostic_sink_entries": [],
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "model_generated_evidence_id_accepted": false
+      },
+      "field_scan_totals": {
+        "extra_forbidden": 0,
+        "fabricated_evidence_like_identifier": 0,
+        "invalid_disposition": 0,
+        "invalid_question_status": 0,
+        "invalid_union": 0,
+        "missing_required_field": 0,
+        "to_status_completed": 0,
+        "unknown_handle": 0,
+        "wrong_action_field_name": 0
+      },
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": true,
+      "finalization": "NOT_EXERCISED",
+      "fixture_identity": {
+        "arm": "control",
+        "binding_table_hash": "f07427680d68a59dec90176a2770ffed7aa56bf314f110b54d9a216b7ea806b9",
+        "binding_table_resolves_to_current_synthetic_task": true,
+        "context_hash": "c66157c8314433be19580f8f6390836952aa81eae976e59118e8df9c6600ab10",
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a7b-runner-hardening/.scratch/sim_matrix/fixtures/pair-01-control",
+        "investigation_id": "inv-cccccccc",
+        "pair_id": 1,
+        "run_id": "run_c15ec18d68cb4a24aa06cf08fc63e738",
+        "task_id": "task-A",
+        "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+      },
+      "http_attempt_upper_bound": 3,
+      "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+      "identity_sink_records": [
+        {
+          "requested_model": "step-3.7-flash",
+          "returned_model": "step-3.7-flash"
+        }
+      ],
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": true,
+      "latency_ms": [
+        0.6
+      ],
+      "logical_model_generations": 1,
+      "pair_id": 1,
+      "phase": "RESULT_RECORDED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_models": [
+        "step-3.7-flash"
+      ],
+      "retry_self_correction": false,
+      "returned_identity_exact": true,
+      "stage_layers": {
+        "canonical_integration_valid": true,
+        "canonical_resolution_success": true,
+        "exception_class": null,
+        "integration_decision_validator_success": true,
+        "output_tool_received": true,
+        "pydantic_parse_success": true,
+        "resolution_violations": [],
+        "scratch_commit_success": true,
+        "stage_invocation_success": true,
+        "transition_validation_success": true
+      },
+      "status": "EXECUTED",
+      "token_usage": {
+        "input_tokens": 51,
+        "output_tokens": 19
+      },
+      "validation_payload_count": 1
+    },
+    {
+      "arm": "treatment",
+      "diagnostic_sink_entries": [],
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "model_generated_evidence_id_accepted": false
+      },
+      "field_scan_totals": {
+        "extra_forbidden": 0,
+        "fabricated_evidence_like_identifier": 0,
+        "invalid_disposition": 0,
+        "invalid_question_status": 0,
+        "invalid_union": 0,
+        "missing_required_field": 0,
+        "to_status_completed": 0,
+        "unknown_handle": 0,
+        "wrong_action_field_name": 0
+      },
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": true,
+      "finalization": "NOT_EXERCISED",
+      "fixture_identity": {
+        "arm": "treatment",
+        "binding_table_hash": "f07427680d68a59dec90176a2770ffed7aa56bf314f110b54d9a216b7ea806b9",
+        "binding_table_resolves_to_current_synthetic_task": true,
+        "context_hash": "c66157c8314433be19580f8f6390836952aa81eae976e59118e8df9c6600ab10",
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a7b-runner-hardening/.scratch/sim_matrix/fixtures/pair-01-treatment",
+        "investigation_id": "inv-cccccccc",
+        "pair_id": 1,
+        "run_id": "run_c15ec18d68cb4a24aa06cf08fc63e738",
+        "task_id": "task-A",
+        "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+      },
+      "http_attempt_upper_bound": 3,
+      "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+      "identity_sink_records": [
+        {
+          "requested_model": "step-3.7-flash",
+          "returned_model": "step-3.7-flash"
+        }
+      ],
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": true,
+      "latency_ms": [
+        0.5
+      ],
+      "logical_model_generations": 1,
+      "pair_id": 1,
+      "phase": "RESULT_RECORDED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_models": [
+        "step-3.7-flash"
+      ],
+      "retry_self_correction": false,
+      "returned_identity_exact": true,
+      "stage_layers": {
+        "canonical_integration_valid": true,
+        "canonical_resolution_success": true,
+        "exception_class": null,
+        "integration_decision_validator_success": true,
+        "output_tool_received": true,
+        "pydantic_parse_success": true,
+        "resolution_violations": [],
+        "scratch_commit_success": true,
+        "stage_invocation_success": true,
+        "transition_validation_success": true
+      },
+      "status": "EXECUTED",
+      "token_usage": {
+        "input_tokens": 51,
+        "output_tokens": 19
+      },
+      "validation_payload_count": 1
+    },
+    {
+      "arm": "treatment",
+      "diagnostic_sink_entries": [],
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "model_generated_evidence_id_accepted": false
+      },
+      "field_scan_totals": {
+        "extra_forbidden": 0,
+        "fabricated_evidence_like_identifier": 0,
+        "invalid_disposition": 0,
+        "invalid_question_status": 0,
+        "invalid_union": 0,
+        "missing_required_field": 0,
+        "to_status_completed": 0,
+        "unknown_handle": 0,
+        "wrong_action_field_name": 0
+      },
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": true,
+      "finalization": "NOT_EXERCISED",
+      "fixture_identity": {
+        "arm": "treatment",
+        "binding_table_hash": "04d5c1f174c0974b7b2fd8a1eaba829c5f71a25e2b7ee1c08190210dac21b26c",
+        "binding_table_resolves_to_current_synthetic_task": true,
+        "context_hash": "1585185b4d7cd3bbb05881d8cce846927480f6fc9d99609a366acd8e76fad150",
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a7b-runner-hardening/.scratch/sim_matrix/fixtures/pair-02-treatment",
+        "investigation_id": "inv-cccccccc",
+        "pair_id": 2,
+        "run_id": "run_9f6372701bf6452aa09b44563092078c",
+        "task_id": "task-A",
+        "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+      },
+      "http_attempt_upper_bound": 3,
+      "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+      "identity_sink_records": [
+        {
+          "requested_model": "step-3.7-flash",
+          "returned_model": "step-3.7-flash"
+        }
+      ],
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": true,
+      "latency_ms": [
+        0.4
+      ],
+      "logical_model_generations": 1,
+      "pair_id": 2,
+      "phase": "RESULT_RECORDED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_models": [
+        "step-3.7-flash"
+      ],
+      "retry_self_correction": false,
+      "returned_identity_exact": true,
+      "stage_layers": {
+        "canonical_integration_valid": true,
+        "canonical_resolution_success": true,
+        "exception_class": null,
+        "integration_decision_validator_success": true,
+        "output_tool_received": true,
+        "pydantic_parse_success": true,
+        "resolution_violations": [],
+        "scratch_commit_success": true,
+        "stage_invocation_success": true,
+        "transition_validation_success": true
+      },
+      "status": "EXECUTED",
+      "token_usage": {
+        "input_tokens": 51,
+        "output_tokens": 19
+      },
+      "validation_payload_count": 1
+    },
+    {
+      "arm": "control",
+      "diagnostic_sink_entries": [],
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "model_generated_evidence_id_accepted": false
+      },
+      "field_scan_totals": {
+        "extra_forbidden": 0,
+        "fabricated_evidence_like_identifier": 0,
+        "invalid_disposition": 0,
+        "invalid_question_status": 0,
+        "invalid_union": 0,
+        "missing_required_field": 0,
+        "to_status_completed": 0,
+        "unknown_handle": 0,
+        "wrong_action_field_name": 0
+      },
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": true,
+      "finalization": "NOT_EXERCISED",
+      "fixture_identity": {
+        "arm": "control",
+        "binding_table_hash": "04d5c1f174c0974b7b2fd8a1eaba829c5f71a25e2b7ee1c08190210dac21b26c",
+        "binding_table_resolves_to_current_synthetic_task": true,
+        "context_hash": "1585185b4d7cd3bbb05881d8cce846927480f6fc9d99609a366acd8e76fad150",
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a7b-runner-hardening/.scratch/sim_matrix/fixtures/pair-02-control",
+        "investigation_id": "inv-cccccccc",
+        "pair_id": 2,
+        "run_id": "run_9f6372701bf6452aa09b44563092078c",
+        "task_id": "task-A",
+        "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+      },
+      "http_attempt_upper_bound": 3,
+      "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+      "identity_sink_records": [
+        {
+          "requested_model": "step-3.7-flash",
+          "returned_model": "step-3.7-flash"
+        }
+      ],
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": true,
+      "latency_ms": [
+        0.9
+      ],
+      "logical_model_generations": 1,
+      "pair_id": 2,
+      "phase": "RESULT_RECORDED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_models": [
+        "step-3.7-flash"
+      ],
+      "retry_self_correction": false,
+      "returned_identity_exact": true,
+      "stage_layers": {
+        "canonical_integration_valid": true,
+        "canonical_resolution_success": true,
+        "exception_class": null,
+        "integration_decision_validator_success": true,
+        "output_tool_received": true,
+        "pydantic_parse_success": true,
+        "resolution_violations": [],
+        "scratch_commit_success": true,
+        "stage_invocation_success": true,
+        "transition_validation_success": true
+      },
+      "status": "EXECUTED",
+      "token_usage": {
+        "input_tokens": 51,
+        "output_tokens": 19
+      },
+      "validation_payload_count": 1
+    },
+    {
+      "arm": "treatment",
+      "diagnostic_sink_entries": [],
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "model_generated_evidence_id_accepted": false
+      },
+      "field_scan_totals": {
+        "extra_forbidden": 0,
+        "fabricated_evidence_like_identifier": 0,
+        "invalid_disposition": 0,
+        "invalid_question_status": 0,
+        "invalid_union": 0,
+        "missing_required_field": 0,
+        "to_status_completed": 0,
+        "unknown_handle": 0,
+        "wrong_action_field_name": 0
+      },
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": true,
+      "finalization": "NOT_EXERCISED",
+      "fixture_identity": {
+        "arm": "treatment",
+        "binding_table_hash": "9b78bb26fefb8b9bd4595c59d9406219d6deb9df67964f8b454a7ee1142d27ce",
+        "binding_table_resolves_to_current_synthetic_task": true,
+        "context_hash": "a7265f621c5ea3b2cb07b85b376f4cd64740c03a4cd2caf1e78a0e27bc0e7cdd",
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a7b-runner-hardening/.scratch/sim_matrix/fixtures/pair-03-treatment",
+        "investigation_id": "inv-cccccccc",
+        "pair_id": 3,
+        "run_id": "run_d5931669fa7d42db9f77161cc27ec016",
+        "task_id": "task-A",
+        "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+      },
+      "http_attempt_upper_bound": 3,
+      "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+      "identity_sink_records": [
+        {
+          "requested_model": "step-3.7-flash",
+          "returned_model": "step-3.7-flash"
+        }
+      ],
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": true,
+      "latency_ms": [
+        0.4
+      ],
+      "logical_model_generations": 1,
+      "pair_id": 3,
+      "phase": "RESULT_RECORDED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_models": [
+        "step-3.7-flash"
+      ],
+      "retry_self_correction": false,
+      "returned_identity_exact": true,
+      "stage_layers": {
+        "canonical_integration_valid": true,
+        "canonical_resolution_success": true,
+        "exception_class": null,
+        "integration_decision_validator_success": true,
+        "output_tool_received": true,
+        "pydantic_parse_success": true,
+        "resolution_violations": [],
+        "scratch_commit_success": true,
+        "stage_invocation_success": true,
+        "transition_validation_success": true
+      },
+      "status": "EXECUTED",
+      "token_usage": {
+        "input_tokens": 51,
+        "output_tokens": 19
+      },
+      "validation_payload_count": 1
+    },
+    {
+      "arm": "control",
+      "diagnostic_sink_entries": [],
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "model_generated_evidence_id_accepted": false
+      },
+      "field_scan_totals": {
+        "extra_forbidden": 0,
+        "fabricated_evidence_like_identifier": 0,
+        "invalid_disposition": 0,
+        "invalid_question_status": 0,
+        "invalid_union": 0,
+        "missing_required_field": 0,
+        "to_status_completed": 0,
+        "unknown_handle": 0,
+        "wrong_action_field_name": 0
+      },
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": true,
+      "finalization": "NOT_EXERCISED",
+      "fixture_identity": {
+        "arm": "control",
+        "binding_table_hash": "9b78bb26fefb8b9bd4595c59d9406219d6deb9df67964f8b454a7ee1142d27ce",
+        "binding_table_resolves_to_current_synthetic_task": true,
+        "context_hash": "a7265f621c5ea3b2cb07b85b376f4cd64740c03a4cd2caf1e78a0e27bc0e7cdd",
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a7b-runner-hardening/.scratch/sim_matrix/fixtures/pair-03-control",
+        "investigation_id": "inv-cccccccc",
+        "pair_id": 3,
+        "run_id": "run_d5931669fa7d42db9f77161cc27ec016",
+        "task_id": "task-A",
+        "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+      },
+      "http_attempt_upper_bound": 3,
+      "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+      "identity_sink_records": [
+        {
+          "requested_model": "step-3.7-flash",
+          "returned_model": "step-3.7-flash"
+        }
+      ],
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": true,
+      "latency_ms": [
+        0.6
+      ],
+      "logical_model_generations": 1,
+      "pair_id": 3,
+      "phase": "RESULT_RECORDED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_models": [
+        "step-3.7-flash"
+      ],
+      "retry_self_correction": false,
+      "returned_identity_exact": true,
+      "stage_layers": {
+        "canonical_integration_valid": true,
+        "canonical_resolution_success": true,
+        "exception_class": null,
+        "integration_decision_validator_success": true,
+        "output_tool_received": true,
+        "pydantic_parse_success": true,
+        "resolution_violations": [],
+        "scratch_commit_success": true,
+        "stage_invocation_success": true,
+        "transition_validation_success": true
+      },
+      "status": "EXECUTED",
+      "token_usage": {
+        "input_tokens": 51,
+        "output_tokens": 19
+      },
+      "validation_payload_count": 1
+    },
+    {
+      "arm": "control",
+      "diagnostic_sink_entries": [],
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "model_generated_evidence_id_accepted": false
+      },
+      "field_scan_totals": {
+        "extra_forbidden": 0,
+        "fabricated_evidence_like_identifier": 0,
+        "invalid_disposition": 0,
+        "invalid_question_status": 0,
+        "invalid_union": 0,
+        "missing_required_field": 0,
+        "to_status_completed": 0,
+        "unknown_handle": 0,
+        "wrong_action_field_name": 0
+      },
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": true,
+      "finalization": "NOT_EXERCISED",
+      "fixture_identity": {
+        "arm": "control",
+        "binding_table_hash": "9463717c1c067242d70bf46fdfce07d057356ffe0e6addea370a69a0088b393e",
+        "binding_table_resolves_to_current_synthetic_task": true,
+        "context_hash": "bd2871a69452ad9e5f1caf085a37d480d263958ec0490ced3aa75425b2251f12",
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a7b-runner-hardening/.scratch/sim_matrix/fixtures/pair-04-control",
+        "investigation_id": "inv-cccccccc",
+        "pair_id": 4,
+        "run_id": "run_052c341ae64a4bb8b9cfc79f78ca2028",
+        "task_id": "task-A",
+        "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+      },
+      "http_attempt_upper_bound": 3,
+      "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+      "identity_sink_records": [
+        {
+          "requested_model": "step-3.7-flash",
+          "returned_model": "step-3.7-flash"
+        }
+      ],
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": true,
+      "latency_ms": [
+        0.6
+      ],
+      "logical_model_generations": 1,
+      "pair_id": 4,
+      "phase": "RESULT_RECORDED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_models": [
+        "step-3.7-flash"
+      ],
+      "retry_self_correction": false,
+      "returned_identity_exact": true,
+      "stage_layers": {
+        "canonical_integration_valid": true,
+        "canonical_resolution_success": true,
+        "exception_class": null,
+        "integration_decision_validator_success": true,
+        "output_tool_received": true,
+        "pydantic_parse_success": true,
+        "resolution_violations": [],
+        "scratch_commit_success": true,
+        "stage_invocation_success": true,
+        "transition_validation_success": true
+      },
+      "status": "EXECUTED",
+      "token_usage": {
+        "input_tokens": 51,
+        "output_tokens": 19
+      },
+      "validation_payload_count": 1
+    },
+    {
+      "arm": "treatment",
+      "diagnostic_sink_entries": [],
+      "evidence_integrity": {
+        "current_task_binding": true,
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "model_generated_evidence_id_accepted": false
+      },
+      "field_scan_totals": {
+        "extra_forbidden": 0,
+        "fabricated_evidence_like_identifier": 0,
+        "invalid_disposition": 0,
+        "invalid_question_status": 0,
+        "invalid_union": 0,
+        "missing_required_field": 0,
+        "to_status_completed": 0,
+        "unknown_handle": 0,
+        "wrong_action_field_name": 0
+      },
+      "final_attempt_error": [],
+      "final_attempt_pydantic_pass": true,
+      "finalization": "NOT_EXERCISED",
+      "fixture_identity": {
+        "arm": "treatment",
+        "binding_table_hash": "9463717c1c067242d70bf46fdfce07d057356ffe0e6addea370a69a0088b393e",
+        "binding_table_resolves_to_current_synthetic_task": true,
+        "context_hash": "bd2871a69452ad9e5f1caf085a37d480d263958ec0490ced3aa75425b2251f12",
+        "fixture_kind": "NO_EVIDENCE_HONEST_EMPTY",
+        "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a7b-runner-hardening/.scratch/sim_matrix/fixtures/pair-04-treatment",
+        "investigation_id": "inv-cccccccc",
+        "pair_id": 4,
+        "run_id": "run_052c341ae64a4bb8b9cfc79f78ca2028",
+        "task_id": "task-A",
+        "working_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96"
+      },
+      "http_attempt_upper_bound": 3,
+      "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+      "identity_sink_records": [
+        {
+          "requested_model": "step-3.7-flash",
+          "returned_model": "step-3.7-flash"
+        }
+      ],
+      "initial_attempt_error": [],
+      "initial_attempt_pydantic_pass": true,
+      "latency_ms": [
+        0.5
+      ],
+      "logical_model_generations": 1,
+      "pair_id": 4,
+      "phase": "RESULT_RECORDED",
+      "provider_error_classes": [],
+      "provider_error_classifications": [],
+      "pydantic_output_retries": 0,
+      "response_models": [
+        "step-3.7-flash"
+      ],
+      "retry_self_correction": false,
+      "returned_identity_exact": true,
+      "stage_layers": {
+        "canonical_integration_valid": true,
+        "canonical_resolution_success": true,
+        "exception_class": null,
+        "integration_decision_validator_success": true,
+        "output_tool_received": true,
+        "pydantic_parse_success": true,
+        "resolution_violations": [],
+        "scratch_commit_success": true,
+        "stage_invocation_success": true,
+        "transition_validation_success": true
+      },
+      "status": "EXECUTED",
+      "token_usage": {
+        "input_tokens": 51,
+        "output_tokens": 19
+      },
+      "validation_payload_count": 1
+    }
+  ],
+  "simulation_scenarios_summary": {
+    "E1": {
+      "details": "8/8 executed, 8 logical generations, scratch commits independent.",
+      "name": "All legal baseline",
+      "result": "PASS"
+    },
+    "E10": {
+      "details": "Pre-call check halts on EXPERIMENT_IDENTITY_DRIFT.",
+      "name": "Runtime source identity drift",
+      "result": "PASS"
+    },
+    "E11": {
+      "details": "Uncommitted seat not reported as success, no cross-arm contamination.",
+      "name": "Scratch commit failure",
+      "result": "PASS"
+    },
+    "E12": {
+      "details": "Internal exception attributed to UNEXPECTED_EXCEPTION:<class>.",
+      "name": "Unexpected runner exception",
+      "result": "PASS"
+    },
+    "E13": {
+      "details": "Pre-existing sink halts runner, no overwrite.",
+      "name": "Duplicate seat execution",
+      "result": "PASS"
+    },
+    "E14": {
+      "details": "Preserves executed facts, unstarted seats marked NOT_STARTED.",
+      "name": "Mid-run interruption",
+      "result": "PASS"
+    },
+    "E2": {
+      "details": "Model retries within budget, generation count accurate.",
+      "name": "Output retry self-correction",
+      "result": "PASS"
+    },
+    "E3": {
+      "details": "Schema failure recorded, doesn't halt entire matrix.",
+      "name": "Output retry exhausted",
+      "result": "PASS"
+    },
+    "E4": {
+      "details": "Pydantic passes but transition rejected, not marked canonical valid.",
+      "name": "Policy fail",
+      "result": "PASS"
+    },
+    "E5": {
+      "details": "Typed attribution PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE, stops remaining seats.",
+      "name": "Provider timeout",
+      "result": "PASS"
+    },
+    "E6": {
+      "details": "Halts remaining seats cleanly.",
+      "name": "Provider 429 quota block",
+      "result": "PASS"
+    },
+    "E7": {
+      "details": "Immediate MODEL_IDENTITY_MISMATCH stop.",
+      "name": "Model identity mismatch",
+      "result": "PASS"
+    },
+    "E8": {
+      "details": "Data quality error triggers DIAGNOSTIC_INSTRUMENTATION_FAILURE stop.",
+      "name": "Diagnostic sink failure",
+      "result": "PASS"
+    },
+    "E9": {
+      "details": "Fails closed on FABRICATED_EVIDENCE_OR_BASIS_HANDLE.",
+      "name": "Fabricated Evidence handle",
+      "result": "PASS"
+    }
+  },
+  "stage_invocations_executed": 8,
+  "stage_invocations_finished": 8,
+  "stage_invocations_scheduled": 8,
+  "stage_invocations_started": 8,
+  "stop_reason": null
+}

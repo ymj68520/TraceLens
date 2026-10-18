@@ -1,0 +1,9 @@
+{
+  "artifact_version": "RCA2A11PreflightReportV1",
+  "experiment_id": "rca2a11-deepseek-flash-vocabulary-comparison",
+  "created_at_utc": "2026-10-17T01:45:39.872846+00:00",
+  "preflight_status": "SKIPPED_REUSING_RCA2A10G_RECORD",
+  "preflight_justification": "RCA-2A.10g completed a full 11,257-byte INTEGRATE request on the exact same endpoint, model, and schema within the same session. Duplicate preflight was unnecessary and skipped to preserve budget.",
+  "preflight_logical_requests": 0,
+  "preflight_http_attempts": 0
+}

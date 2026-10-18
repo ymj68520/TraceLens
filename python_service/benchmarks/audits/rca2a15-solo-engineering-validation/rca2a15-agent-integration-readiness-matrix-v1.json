@@ -1,0 +1,95 @@
+{
+  "artifact_version": "RCA2A15AgentIntegrationReadinessMatrixV1",
+  "experiment_id": "rca2a15-solo-engineering-validation",
+  "timestamp_utc": "2026-10-17T05:07:00.000000+00:00",
+  "component_readiness_matrix": {
+    "InvestigationSupervisor": {
+      "status": "IMPLEMENTED_NOT_INTEGRATED",
+      "code_location": "httpserver/services/investigation/agent_supervisor.py",
+      "test_coverage": "tests/unit/investigation/test_agent_supervisor.py, test_rca2a2c_plan_lifecycle_contract.py",
+      "finding": "Plan and Integrate V2 methods are fully implemented and unit-tested with mock/offline models. However, in ServiceManager._create_agent_orchestrator(), supervisor is passed as None, leaving the live server orchestrator without an active planning engine."
+    },
+    "Specialist Delegation": {
+      "status": "IMPLEMENTED_NOT_INTEGRATED",
+      "code_location": "httpserver/services/investigation/agent_specialist_executor.py",
+      "test_coverage": "tests/unit/investigation/test_agent_specialist_executor.py",
+      "finding": "SourceSpecialistAgentFactory, PydanticAI bridge, tool execution, and proposal finalization are fully implemented and verified with TestModel. In ServiceManager, delegation_dispatcher is passed as None, meaning no dispatcher is wired to the live orchestrator."
+    },
+    "ToolRegistry": {
+      "status": "IMPLEMENTED_AND_TESTED",
+      "code_location": "httpserver/services/investigation/agent_tools/registry.py",
+      "test_coverage": "tests/unit/investigation/test_agent_tools.py",
+      "finding": "ForensicToolRegistry with read-only adapters (evidence, files, timeline, investigation_reads, platform_artifacts) is fully implemented, permission-checked, and observation-logged."
+    },
+    "EvidenceResolver": {
+      "status": "IMPLEMENTED_AND_TESTED",
+      "code_location": "httpserver/services/evidence/resolver.py",
+      "test_coverage": "tests/unit/investigation/test_evidence_snapshot_admission.py",
+      "finding": "Resolves (task_id, evidence_key) tuples, enforces task isolation, extracts snapshot candidates, and prevents cross-task data leakage at database level."
+    },
+    "GroundingValidator": {
+      "status": "IMPLEMENTED_AND_TESTED",
+      "code_location": "httpserver/services/investigation/grounding.py",
+      "test_coverage": "tests/unit/investigation/test_investigation_grounding.py",
+      "finding": "Validates model claims and citations against immutable evidence snapshots."
+    },
+    "AgentWorkingStateV1": {
+      "status": "IMPLEMENTED_AND_TESTED",
+      "code_location": "httpserver/services/investigation/agent_working_state.py",
+      "test_coverage": "tests/unit/investigation/test_agent_runtime_persistence.py",
+      "finding": "Pydantic data models for working state, questions, coverage, hypotheses, contradictions, and directives. Persisted in SQLite with optimistic locking revision guards."
+    },
+    "SupervisorIntegrationDecisionV2": {
+      "status": "IMPLEMENTED_AND_TESTED",
+      "code_location": "httpserver/services/investigation/agent_integration_v2.py",
+      "test_coverage": "tests/unit/investigation/test_agent_integration_v2.py, tests/unit/benchmarks/test_rca2a12_runner_simulation.py",
+      "finding": "Schema V2, typed handle binding tables, and resolution to canonical transitions are fully implemented and verified across 16 benchmark seats and unit tests."
+    },
+    "StateTransitionPolicy": {
+      "status": "IMPLEMENTED_AND_TESTED",
+      "code_location": "httpserver/services/investigation/agent_transitions.py",
+      "test_coverage": "tests/unit/investigation/test_agent_transitions.py",
+      "finding": "P2 deterministic transition engine, atomic commit gating, containment of invalid actions, and state revision increments (+1 per integration)."
+    },
+    "Semantic Verification": {
+      "status": "IMPLEMENTED_AND_TESTED",
+      "code_location": "httpserver/services/investigation/agent_verification.py",
+      "test_coverage": "tests/unit/investigation/test_final_semantic_review_wiring.py",
+      "finding": "SemanticVerifierAgent and review validators are implemented. Lazily wired into ServiceManager via _final_review_runner callback."
+    },
+    "Analyst Review": {
+      "status": "IMPLEMENTED_AND_TESTED",
+      "code_location": "httpserver/services/investigation/review.py",
+      "test_coverage": "tests/unit/investigation/test_investigation_secondary.py",
+      "finding": "Explicit analyst review actions (accept, reject, invalid) with atomic transition tracking."
+    },
+    "FinalizationGate": {
+      "status": "IMPLEMENTED_AND_TESTED",
+      "code_location": "httpserver/services/investigation/agent_finalization.py",
+      "test_coverage": "tests/unit/investigation/test_agent_finalization.py",
+      "finding": "Deterministic preflight and commit gates, blocking unresolved transition conflicts, requiring active run."
+    },
+    "Audit / Trajectory Persistence": {
+      "status": "IMPLEMENTED_AND_TESTED",
+      "code_location": "httpserver/services/investigation/agent_runtime.py",
+      "test_coverage": "tests/unit/investigation/test_agent_runtime_persistence.py",
+      "finding": "Immutable append-only SQLite table agent_trajectory_events storing all cycle outcomes and validation failures."
+    }
+  },
+  "execution_chain_audit": {
+    "stages": [
+      {"stage": "Investigation Context", "status": "REAL_PRODUCTION_CODE", "notes": "Builds from task store and working state."},
+      {"stage": "Supervisor Planning", "status": "IMPLEMENTED_UNWIRED_IN_SERVER", "notes": "Orchestrator has execute_cycle() logic, but supervisor=None in ServiceManager."},
+      {"stage": "Specialist Delegation", "status": "IMPLEMENTED_UNWIRED_IN_SERVER", "notes": "Executor implemented, but delegation_dispatcher=None in ServiceManager."},
+      {"stage": "Tool Invocation", "status": "REAL_PRODUCTION_CODE", "notes": "ForensicToolRegistry executes real SQLite adapters."},
+      {"stage": "Evidence-backed Results", "status": "REAL_PRODUCTION_CODE", "notes": "SpecialistResultValidator enforces evidence presence and trusted digests."},
+      {"stage": "Supervisor Integration", "status": "IMPLEMENTED_UNWIRED_IN_SERVER", "notes": "Integrated via runner in benchmarks, but unwired in live ServiceManager."},
+      {"stage": "Working State", "status": "REAL_PRODUCTION_CODE", "notes": "Fully functional in SQLite investigation.db."},
+      {"stage": "Verification", "status": "REAL_PRODUCTION_CODE", "notes": "Wired in ServiceManager via lazy adapter."},
+      {"stage": "Analyst Review", "status": "REAL_PRODUCTION_CODE", "notes": "Functional in database and repository."},
+      {"stage": "Finalization", "status": "REAL_PRODUCTION_CODE", "notes": "Functional via AgentOrchestrator.finalize()."}
+    ],
+    "api_endpoint_coverage": "ZERO (no FastAPI endpoints in routes/ expose AgentOrchestrator or execute_cycle)"
+  },
+  "overall_readiness_assessment": "CORE_MODULES_COMPLETE_SERVICE_WIRING_AND_API_PENDING"
+}

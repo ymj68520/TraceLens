@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
 import re
 import sqlite3
 import urllib.parse
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
@@ -230,12 +231,19 @@ class ResolvedEvidence:
     source_updated_at: Optional[int] = None
     file_path: Optional[str] = None
     content_path: Optional[str] = None
+    source_files_db: Optional[str] = None
     md5: Optional[str] = None
     extension: Optional[str] = None
     is_deleted: Optional[int] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ResolvedEvidence":
+        """Rebuild from to_dict() output (extra keys ignored)."""
+        known = {f.name for f in fields(cls)}
+        return cls(**{key: value for key, value in (data or {}).items() if key in known})
 
 
 class EvidenceResolver:
@@ -245,9 +253,14 @@ class EvidenceResolver:
         self,
         task_loader: Callable[[str], Awaitable[Dict[str, Any]]],
         content_reader: Optional[Callable[[str], Awaitable[str]]] = None,
+        content_provider: Optional[Callable[[ResolvedEvidence], Awaitable[Any]]] = None,
     ):
         self._task_loader = task_loader
         self._content_reader = content_reader
+        # Durable content backing (evidence content hydration contract v1):
+        # consulted only when the on-disk artifact read yields nothing.
+        # May raise ContentUnavailableError with an explicit reason code.
+        self.content_provider = content_provider
 
     @staticmethod
     def _paths(task_info: Dict[str, Any]) -> Dict[str, str]:
@@ -341,7 +354,9 @@ class EvidenceResolver:
             initial_summary=row.get("llm_summary"), source_refs=[forensic_path],
             related_evidence_keys=[], source_hash=row.get("md5"), source_size=row.get("size"),
             source_mtime=row.get("mtime") or row.get("ctime"), source_updated_at=row.get("llm_analyzed_at"),
-            file_path=forensic_path, content_path=content_path, md5=row.get("md5"),
+            file_path=forensic_path, content_path=content_path,
+            source_files_db=paths["files_db"] or None,
+            md5=row.get("md5"),
             extension=row.get("extension"), is_deleted=row.get("is_deleted"),
         )
 
@@ -435,12 +450,31 @@ class EvidenceResolver:
     async def bounded_content(self, resolved: ResolvedEvidence) -> str:
         if resolved.evidence_type == "event_cluster":
             return str(resolved.content or "")[:MAX_CONTENT_CHARS]
-        if not resolved.content_path:
-            return ""
-        if self._content_reader:
-            return (await self._content_reader(resolved.content_path))[:MAX_CONTENT_CHARS]
-        try:
-            with open(resolved.content_path, "r", encoding="utf-8", errors="ignore") as handle:
-                return handle.read(MAX_CONTENT_CHARS)
-        except OSError:
-            return ""
+        if self.content_provider is not None:
+            # Durable backing (verified adoption / deterministic reacquisition)
+            # is authoritative when configured: every byte is hash-checked
+            # against the parser-produced files.db hashes before serving.
+            located = await self.content_provider(resolved)
+            if self._content_reader:
+                return (await self._content_reader(located.path))[:MAX_CONTENT_CHARS]
+            from .evidence.content_store import decode_bounded_text
+
+            text, _encoding = await asyncio.to_thread(
+                decode_bounded_text, located.path, MAX_CONTENT_CHARS
+            )
+            return text
+        # Legacy on-disk artifact read (no durable backing configured)
+        text = ""
+        if resolved.content_path:
+            if self._content_reader:
+                try:
+                    text = (await self._content_reader(resolved.content_path))[:MAX_CONTENT_CHARS]
+                except OSError:
+                    text = ""
+            else:
+                try:
+                    with open(resolved.content_path, "r", encoding="utf-8", errors="ignore") as handle:
+                        text = handle.read(MAX_CONTENT_CHARS)
+                except OSError:
+                    text = ""
+        return text

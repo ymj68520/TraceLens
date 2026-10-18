@@ -1,0 +1,12 @@
+[
+  {
+    "requested_model": "step-3.7-flash",
+    "returned_model": "step-3.7-flash",
+    "upstream_provider": null
+  },
+  {
+    "requested_model": "step-3.7-flash",
+    "returned_model": "step-3.7-flash",
+    "upstream_provider": null
+  }
+]

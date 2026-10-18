@@ -1,0 +1,24 @@
+{
+  "answers_to_10_core_audit_questions": {
+    "q01_historical_artifacts_overwritten": "YES (HISTORICAL_ARTIFACTS_OVERWRITTEN). In commit e8680842, 11 audit files and scratch stores from commit bbf2244608 were overwritten in place within python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/. Historical Epoch A artifacts were recovered via git cat-file and archived read-only in historical_epoch_a_artifacts/.",
+    "q02_execution_epochs_and_identities": "Epoch A (commit bbf2244608, endpoint api.stepfun.com, model step-3.7-flash, CONFIGURATION_BLOCKED, 0 calls); Epoch B (commit e8680842, endpoint api.hcnsec.cn, model step-5-preview, 2 preflight calls, 1 stage invocation, halted on HTTP 500). Both reused the exact experiment_id: rca2a10b-rebased-cross-case-vocabulary-comparison.",
+    "q03_seat_1_logical_generations_consumed": "Exactly 1 logical model generation was consumed by Seat 1. It dispatched a single PydanticAI agent.run('integrate') invocation.",
+    "q04_http_attempts_observability": "HTTP_ATTEMPTS_UNOBSERVABLE. The OpenAI SDK configuration permits up to 3 physical attempts (1 initial + 2 retries), but without httpx wire hooks, physical attempt count cannot be independently observed.",
+    "q05_http_500_real_latency": "The wall-clock latency of Seat 1 from claim creation to finalization was 17.97 seconds (17,971.2ms). The reported 0.0s was an artifact extraction bug filtering only successful events; the ~204s narrative referenced an earlier streaming probe test.",
+    "q06_provider_billing_uncertainty": "YES. On HTTP 500, token usage is missing (USAGE_UNOBSERVABLE) and billing impact cannot be determined (PROVIDER_BILLING_UNOBSERVABLE). Asserting $0.00 cost is unfounded.",
+    "q07_failure_classification_transport_vs_model": "TRANSPORT / INFRASTRUCTURE FAILURE (HTTP 500). It was NOT a model schema or Pydantic validation failure. In Preflight Request 2, the model demonstrated native support for the V2 output schema.",
+    "q08_root_cause_confirmability_offline": "CANNOT BE CONCLUDED DEFINITIVELY (UNKNOWN). Offline evidence contradicts TOOL_SCHEMA_PROCESSING_FAILURE and GATEWAY_TIMEOUT, leaving UPSTREAM_MODEL_EXECUTION_FAILURE, REQUEST_SIZE_SENSITIVITY, and NON_STREAMING_CONNECTION_FAILURE as plausible hypotheses.",
+    "q09_viability_of_current_gateway": "QUESTIONABLE FOR BENCHMARK USE. The gateway exhibits connection dropping on non-streaming long requests and returned HTTP 500 on the full prompt. A bounded diagnostic protocol (RCA-2A.10e) must evaluate its long-request capability before attempting any paired benchmark.",
+    "q10_prerequisites_for_rca2a10e": "Requires: 1) Explicit user authorization; 2) New experiment ID (rca2a10e-bounded-gateway-diagnosis); 3) Bounded budget (<= 4 logical requests); 4) Diagnostic sink and durable claim; 5) Zero seat reuse from RCA-2A.10b; 6) No modifications to production Prompt/Schema."
+  },
+  "artifact_version": "RCA2A10dFinalAuditDecisionV1",
+  "audit_id": "rca2a10d-provenance-transport-audit",
+  "final_recommendations": {
+    "gen5_created": false,
+    "production_prompt_status": "UNCHANGED",
+    "production_schema_status": "UNCHANGED",
+    "rca2a10e_authorized": false,
+    "rca2b_authorized": false
+  },
+  "status": "PROVENANCE_AUDITED_WITH_IMMUTABILITY_VIOLATION"
+}

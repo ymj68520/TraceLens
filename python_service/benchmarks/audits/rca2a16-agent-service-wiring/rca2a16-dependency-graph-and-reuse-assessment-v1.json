@@ -1,0 +1,68 @@
+{
+  "artifact_version": "RCA2A16DependencyGraphAndReuseAssessmentV1",
+  "experiment_id": "rca2a16-agent-service-wiring",
+  "timestamp_utc": "2026-10-17T05:37:00.000000+00:00",
+  "architectural_investigation_qa": {
+    "q1_supervisor_llm_adapter": {
+      "question": "How does the Supervisor acquire the actual LLM Adapter?",
+      "answer": "Through build_chat_model(settings) in agent_model_adapter.py. SupervisorAgentFactory initializes the chat adapter from ServiceManager's settings, respecting provider configuration without rebuilding LLM clients."
+    },
+    "q2_specialist_executor_dispatch": {
+      "question": "How is SpecialistExecutor invoked via Dispatcher?",
+      "answer": "AgentOrchestrator accepts an async callable delegation_dispatcher(planning_context, decision, admitted). The dispatcher maps admitted delegations to SpecialistExecutionEnvelope and invokes SpecialistDelegationExecutor, returning DelegationExecutionSummary."
+    },
+    "q3_tool_registry_task_binding": {
+      "question": "How does ToolRegistry bind to the current task?",
+      "answer": "Through build_read_only_registry(services) with ForensicToolServices bound to cpp_backend and the task's investigation.db runtime. Tool observations are recorded with task_id and delegation_id."
+    },
+    "q4_evidence_resolver_task_context": {
+      "question": "How does EvidenceResolver establish task-scoped Evidence Context?",
+      "answer": "EvidenceResolver is instantiated with cpp_backend and explicitly invoked with task_id. It resolves evidence keys strictly within the task's storage partition (task-scoped artifacts and snapshots)."
+    },
+    "q5_grounding_validator_boundary": {
+      "question": "At which boundary is GroundingValidator enforced?",
+      "answer": "At two strict boundaries: 1) In SpecialistResultValidator (P4A) before a specialist result can complete; 2) In IntegrationDecisionValidator (P4B) before any transition proposal can reach StateTransitionPolicy."
+    },
+    "q6_working_state_persistence": {
+      "question": "Who reads and saves Agent Working State?",
+      "answer": "AgentRuntimeRepository directly reads from and writes to the 'agent_working_state' table in investigation.db using optimistic locking and SHA-256 state hashing."
+    },
+    "q7_trajectory_store_lifecycle": {
+      "question": "When does Trajectory Store create and commit records?",
+      "answer": "At each phase boundary: PLAN proposals, delegation admissions, specialist outcomes, integration commits/rejections, and finalization evaluations append immutable events to 'agent_trajectory' table."
+    },
+    "q8_cycle_concurrency_and_reentrancy": {
+      "question": "How does Agent Cycle control concurrency and reentrancy?",
+      "answer": "Through a two-layer control mechanism: 1) In-memory task-scoped execution claim/lock rejecting overlapping cycles for the same task with HTTP 409; 2) SQLite optimistic concurrency checking expected_working_state_revision against the database."
+    },
+    "q9_async_tasks_and_polling": {
+      "question": "What async execution and polling capabilities exist?",
+      "answer": "AgentOrchestrator.execute_cycle executes one bounded cycle asynchronously. Clients trigger the bounded cycle via POST /api/investigation/agent/cycle and read current status via GET /api/investigation/agent/state."
+    },
+    "q10_task_deletion_and_invalidation": {
+      "question": "How is Agent Cycle prevented from using invalid or deleted tasks?",
+      "answer": "The service layer checks task existence and database accessibility via cpp_backend and paths.investigation_db_path_for_task before opening the runtime. Non-existent or deleted tasks fail closed with HTTP 404/400."
+    }
+  },
+  "component_reuse_assessment": {
+    "reused_without_modification": [
+      "httpserver.services.investigation.agent_orchestrator.AgentOrchestrator",
+      "httpserver.services.investigation.agent_supervisor.InvestigationSupervisor",
+      "httpserver.services.investigation.agent_specialist_executor.SpecialistDelegationExecutor",
+      "httpserver.services.investigation.agent_working_state.AgentWorkingStateV1",
+      "httpserver.services.investigation.agent_transitions.StateTransitionPolicy",
+      "httpserver.services.investigation.agent_finalization_gate.FinalizationGate",
+      "httpserver.services.investigation.agent_tools.adapters.build_read_only_registry",
+      "httpserver.services.evidence.resolver.EvidenceResolver"
+    ],
+    "modified_components": [
+      "httpserver.services.service_manager.ServiceManager (wire supervisor and delegation dispatcher in _create_agent_orchestrator)",
+      "httpserver.config.Settings (add AGENT_EXECUTION_ENABLED and AGENT_EXPERIMENTAL_GUIDANCE_ENABLED)",
+      "httpserver.routes.investigation (add POST /agent/cycle and GET /agent/state endpoints)"
+    ],
+    "added_test_suites": [
+      "tests.unit.investigation.test_agent_orchestrator_wiring"
+    ]
+  },
+  "assessment_verdict": "REUSE_MAXIMIZED_ZERO_ARCHITECTURE_REDESIGN"
+}

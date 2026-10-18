@@ -1,0 +1,73 @@
+{
+  "artifact_version": "RCA2A18RealModelInvocationReportV1",
+  "experiment_id": "rca2a18-real-model-agent-e2e",
+  "timestamp_utc": "2026-10-17T07:22:23Z",
+  "execution_summary": {
+    "total_logical_generations": 2,
+    "total_physical_http_attempts": 2,
+    "budget_limits": {
+      "max_logical_generations": 6,
+      "max_physical_attempts": 18
+    },
+    "budget_status": "WITHIN_BUDGET"
+  },
+  "invocations": [
+    {
+      "request_sequence": 1,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 3426.14,
+      "input_tokens": 1290,
+      "output_tokens": 297,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    },
+    {
+      "request_sequence": 2,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 3733.2,
+      "input_tokens": 1290,
+      "output_tokens": 321,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    }
+  ],
+  "cycle_a_response": {
+    "cycle_id": "cycle_6bd2140dad81",
+    "task_id": "synthetic-rca2a18-smoke-001",
+    "investigation_id": "inv_synthetic_001",
+    "run_id": "run_b42b4573f2fc43e1b15bf04fbe4b36d6",
+    "starting_revision": 1,
+    "ending_revision": 1,
+    "integration_status": "skipped",
+    "integration_revision": null,
+    "delegation_ids": [],
+    "run_stop_reason": null,
+    "warnings": [
+      "supervisor proposed no delegations"
+    ],
+    "limitations": []
+  },
+  "cycle_b_response": {
+    "cycle_id": "cycle_d76e950fa2d5",
+    "task_id": "synthetic-rca2a18-smoke-001",
+    "investigation_id": "inv_synthetic_001",
+    "run_id": "run_b42b4573f2fc43e1b15bf04fbe4b36d6",
+    "starting_revision": 1,
+    "ending_revision": 1,
+    "integration_status": "skipped",
+    "integration_revision": null,
+    "delegation_ids": [],
+    "run_stop_reason": null,
+    "warnings": [
+      "supervisor proposed no delegations"
+    ],
+    "limitations": []
+  },
+  "status": "REAL_MODEL_INVOCATIONS_RECORDED"
+}

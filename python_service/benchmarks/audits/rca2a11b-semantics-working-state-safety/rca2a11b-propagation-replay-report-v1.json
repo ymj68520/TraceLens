@@ -1,0 +1,23 @@
+{
+  "artifact_version": "RCA2A11bPropagationReplayReportV1",
+  "audit_id": "rca2a11b-semantics-working-state-safety",
+  "created_at_utc": "2026-10-17T02:40:00Z",
+  "replay_inputs": {
+    "model_output": "Seat 5 SupervisorIntegrationDecisionV2 with CreateHypothesisActionV2('Accounts alice and bob belong to the same person...')",
+    "database_isolation": "Temporary SQLite scratch clone DB in python_service/benchmarks/scratch/",
+    "real_llm_calls": 0
+  },
+  "scenarios": {
+    "H1_hypothesis_persisted_correctly": "PASS (Inserted into agent_working_state_revisions revision 1)",
+    "H2_hypothesis_rehydrated_into_context": "PASS (Rendered in context under hypotheses array with H1 handle)",
+    "H3_hypothesis_remains_typed_unverified": "PASS (Status is active, assertion_class is HYPOTHESIS)",
+    "H4_valid_evidence_refs_scoped": "PASS (Evidence refs resolved inside task boundary)",
+    "H5_hypothesis_cannot_become_evidence_source": "PASS (Handle H1 rejected by Pydantic if used in basis_handles)",
+    "H6_question_closure_without_basis_rejected": "PASS (Rejected by StateTransitionPolicy with QUESTION_CLOSURE_BASIS_REQUIRED)",
+    "H7_unsupported_canonical_promotion_rejected": "PASS (SQLite triggers reject unproven finding inserts)",
+    "H8_report_publication_boundary_preserved": "PASS (FinalizationGate passes execution closure without triggering report publication)",
+    "H9_context_compression_preserves_uncertainty": "PASS (Working state hypotheses list preserves active status)",
+    "H10_stale_evidence_or_revision_handled": "PASS (StateTransitionPolicy rejects mismatched revision and stale hashes)"
+  },
+  "overall_replay_verdict": "ALL_10_SCENARIOS_PASSED"
+}

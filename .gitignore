@@ -477,5 +477,12 @@ python_service/models/
 
 # 运行时产物（案件库/任务库根目录与本地状态标记），不入库
 /data/
+/reports/
+/testimg/
+/web/.audit-pages*.cjs
 python_service/investigation.db
 python_service/.deps_installed
+
+# P8B benchmark mini images (reproducible via benchmarks/images/README.md)
+python_service/benchmarks/images/*.img
+

@@ -1,0 +1,72 @@
+{
+  "artifact_version": "RCA2A14bDatasetContractVerificationV1",
+  "experiment_id": "rca2a14b-external-holdout-custody",
+  "timestamp_utc": "2026-10-17T04:14:00.000000+00:00",
+  "actual_case_accounting": {
+    "actual_holdout_case_count": 0,
+    "actual_sealed_case_count": 0,
+    "received_external_packages": 0,
+    "mock_simulation_fixture_count": 28,
+    "mock_fixture_accounting_policy": "STRICT_EXCLUSION_FROM_QUALIFICATION_INVENTORY"
+  },
+  "package_contract_requirements": {
+    "case_bundle_fields": [
+      "qualification_case_id",
+      "case_version",
+      "capability_family",
+      "task_scope",
+      "synthetic_evidence_manifest",
+      "source_capability_manifest",
+      "initial_working_state",
+      "frozen_specialist_results",
+      "allowed_evidence_ids",
+      "case_input_hash"
+    ],
+    "sealed_truth_fields": [
+      "qualification_case_id",
+      "ground_truth_manifest",
+      "acceptable_inferences",
+      "prohibited_overclaims",
+      "expected_question_dispositions",
+      "expected_coverage_dispositions",
+      "known_ambiguities",
+      "unavailable_evidence",
+      "truth_manifest_hash"
+    ]
+  },
+  "intake_verification_gates": {
+    "CASE_ID_UNIQUE": {
+      "rule": "Every case ID must match ^Q[1-6]_[a-z0-9_]+$ and be unique across the entire qualification battery.",
+      "status": "GATE_FORMALIZED_AWAITING_DATA"
+    },
+    "CASE_VERSION_FROZEN": {
+      "rule": "Every case must carry an immutable semver string; mutable drafts are rejected.",
+      "status": "GATE_FORMALIZED_AWAITING_DATA"
+    },
+    "EVIDENCE_SCOPE_VALID": {
+      "rule": "All synthetic evidence items must be bound strictly to the declared task scope.",
+      "status": "GATE_FORMALIZED_AWAITING_DATA"
+    },
+    "EVIDENCE_KEY_RESOLVABLE": {
+      "rule": "Evidence references must resolve to legal (task_id, evidence_key) tuples parseable by EvidenceResolver.",
+      "status": "GATE_FORMALIZED_AWAITING_DATA"
+    },
+    "SOURCE_CAPABILITY_CONSISTENT": {
+      "rule": "Declared source capabilities must match available platform capability definitions.",
+      "status": "GATE_FORMALIZED_AWAITING_DATA"
+    },
+    "INPUT_TRUTH_SEPARATED": {
+      "rule": "Model visible input package must contain zero ground truth answers, dispositions, or criteria.",
+      "status": "GATE_FORMALIZED_AWAITING_DATA"
+    },
+    "HOLDOUT_NOVELTY_ATTESTED": {
+      "rule": "External author and custodian must attest that scenarios share no overlap or contamination with F1-F4.",
+      "status": "GATE_FORMALIZED_AWAITING_DATA"
+    },
+    "CANDIDATE_IDENTITY_FROZEN": {
+      "rule": "Candidate prompt hash (e00c1549...) and schema hash (a214ec4f...) must match exact frozen baseline.",
+      "status": "GATE_VERIFIED_PASSED"
+    }
+  },
+  "disposition": "CONTRACT_VERIFIED_DATASET_INTAKE_PENDING"
+}

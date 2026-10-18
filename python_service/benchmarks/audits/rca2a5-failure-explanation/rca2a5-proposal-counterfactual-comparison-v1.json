@@ -1,0 +1,1615 @@
+{
+  "artifact_version": "RCA2A5InterventionComparisonInputV1",
+  "attempts": {
+    "attempt_1": {
+      "envelope_compact": {
+        "parse": "rejected",
+        "parse_errors": [
+          {
+            "ctx": {
+              "expected": "'active', 'answered', 'blocked', 'candidate', 'covered', 'deferred', 'explained', 'high_value', 'in_progress', 'irrelevant', 'not_applicable', 'not_started', 'open', 'partial', 'rejected', 'relevant', 'resolved', 'retired', 'superseded', 'supported', 'unavailable', 'unresolved' or 'weakened'"
+            },
+            "input": "completed",
+            "loc": [
+              "actions",
+              0,
+              "to_status"
+            ],
+            "msg": "Input should be 'active', 'answered', 'blocked', 'candidate', 'covered', 'deferred', 'explained', 'high_value', 'in_progress', 'irrelevant', 'not_applicable', 'not_started', 'open', 'partial', 'rejected', 'relevant', 'resolved', 'retired', 'superseded', 'supported', 'unavailable', 'unresolved' or 'weakened'",
+            "type": "enum",
+            "url": "https://errors.pydantic.dev/2.13/v/enum"
+          },
+          {
+            "input": [
+              {
+                "action": "update",
+                "disposition": "no_evidence_found",
+                "investigated_summary": "Specialist investigation completed with no analyzable evidence of unauthorized logons found; no fraud-related activity detected.",
+                "limitations": [
+                  "no analyzable evidence of the queried activity"
+                ],
+                "target_handle": "Q1",
+                "to_status": "completed"
+              }
+            ],
+            "loc": [
+              "actions",
+              1
+            ],
+            "msg": "Field required",
+            "type": "missing",
+            "url": "https://errors.pydantic.dev/2.13/v/missing"
+          },
+          {
+            "input": [
+              {
+                "action": "update",
+                "disposition": "no_evidence_found",
+                "investigated_summary": "Specialist investigation completed with no analyzable evidence of unauthorized logons found; no fraud-related activity detected.",
+                "limitations": [
+                  "no analyzable evidence of the queried activity"
+                ],
+                "target_handle": "Q1",
+                "to_status": "completed"
+              }
+            ],
+            "loc": [
+              "actions",
+              2
+            ],
+            "msg": "Field required",
+            "type": "missing",
+            "url": "https://errors.pydantic.dev/2.13/v/missing"
+          },
+          {
+            "input": [
+              {
+                "action": "update",
+                "disposition": "no_evidence_found",
+                "investigated_summary": "Specialist investigation completed with no analyzable evidence of unauthorized logons found; no fraud-related activity detected.",
+                "limitations": [
+                  "no analyzable evidence of the queried activity"
+                ],
+                "target_handle": "Q1",
+                "to_status": "completed"
+              }
+            ],
+            "loc": [
+              "actions",
+              3
+            ],
+            "msg": "Field required",
+            "type": "missing",
+            "url": "https://errors.pydantic.dev/2.13/v/missing"
+          },
+          {
+            "input": [
+              {
+                "action": "update",
+                "disposition": "no_evidence_found",
+                "investigated_summary": "Specialist investigation completed with no analyzable evidence of unauthorized logons found; no fraud-related activity detected.",
+                "limitations": [
+                  "no analyzable evidence of the queried activity"
+                ],
+                "target_handle": "Q1",
+                "to_status": "completed"
+              }
+            ],
+            "loc": [
+              "actions",
+              4
+            ],
+            "msg": "Field required",
+            "type": "missing",
+            "url": "https://errors.pydantic.dev/2.13/v/missing"
+          },
+          {
+            "input": [
+              {
+                "action": "update",
+                "disposition": "no_evidence_found",
+                "investigated_summary": "Specialist investigation completed with no analyzable evidence of unauthorized logons found; no fraud-related activity detected.",
+                "limitations": [
+                  "no analyzable evidence of the queried activity"
+                ],
+                "target_handle": "Q1",
+                "to_status": "completed"
+              }
+            ],
+            "loc": [
+              "actions",
+              5
+            ],
+            "msg": "Field required",
+            "type": "missing",
+            "url": "https://errors.pydantic.dev/2.13/v/missing"
+          }
+        ]
+      },
+      "envelope_draft": {
+        "parse": "accepted",
+        "resolver": "rejected",
+        "resolver_violation_code": "proposal_status_not_in_kind_enum",
+        "resolver_violation_message": "to_status='completed' is not a member of QuestionStatus (frozen vocabulary: ['open', 'in_progress', 'answered', 'unresolved', 'blocked', 'deferred', 'superseded'])"
+      },
+      "envelope_faced_with_raw_v2_names": {
+        "error_fields": [
+          "action_type",
+          "disposition",
+          "finding_handle",
+          "handle",
+          "investigated_summary",
+          "limitations",
+          "proposal_handle",
+          "severity",
+          "status",
+          "target_handle",
+          "text",
+          "to_status"
+        ],
+        "parse": "rejected"
+      },
+      "raw_v2_replay": {
+        "errors_by_branch": {
+          "AddFindingReferenceActionV2": [
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddFindingReferenceActionV2",
+                "action_type"
+              ],
+              "type": "literal_error"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddFindingReferenceActionV2",
+                "finding_handle"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddFindingReferenceActionV2",
+                "handle"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddFindingReferenceActionV2",
+                "status"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddFindingReferenceActionV2",
+                "investigated_summary"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddFindingReferenceActionV2",
+                "limitations"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddFindingReferenceActionV2",
+                "disposition"
+              ],
+              "type": "extra_forbidden"
+            }
+          ],
+          "AddPendingProposalReferenceActionV2": [
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddPendingProposalReferenceActionV2",
+                "action_type"
+              ],
+              "type": "literal_error"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddPendingProposalReferenceActionV2",
+                "proposal_handle"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddPendingProposalReferenceActionV2",
+                "handle"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddPendingProposalReferenceActionV2",
+                "status"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddPendingProposalReferenceActionV2",
+                "investigated_summary"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddPendingProposalReferenceActionV2",
+                "limitations"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddPendingProposalReferenceActionV2",
+                "disposition"
+              ],
+              "type": "extra_forbidden"
+            }
+          ],
+          "CreateContradictionActionV2": [
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateContradictionActionV2",
+                "action_type"
+              ],
+              "type": "literal_error"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateContradictionActionV2",
+                "severity"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateContradictionActionV2",
+                "handle"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateContradictionActionV2",
+                "status"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateContradictionActionV2",
+                "investigated_summary"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateContradictionActionV2",
+                "limitations"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateContradictionActionV2",
+                "disposition"
+              ],
+              "type": "extra_forbidden"
+            }
+          ],
+          "CreateHypothesisActionV2": [
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateHypothesisActionV2",
+                "action_type"
+              ],
+              "type": "literal_error"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateHypothesisActionV2",
+                "text"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateHypothesisActionV2",
+                "handle"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateHypothesisActionV2",
+                "status"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateHypothesisActionV2",
+                "investigated_summary"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateHypothesisActionV2",
+                "limitations"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateHypothesisActionV2",
+                "disposition"
+              ],
+              "type": "extra_forbidden"
+            }
+          ],
+          "CreateQuestionActionV2": [
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateQuestionActionV2",
+                "action_type"
+              ],
+              "type": "literal_error"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateQuestionActionV2",
+                "text"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateQuestionActionV2",
+                "handle"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateQuestionActionV2",
+                "status"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateQuestionActionV2",
+                "investigated_summary"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateQuestionActionV2",
+                "limitations"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateQuestionActionV2",
+                "disposition"
+              ],
+              "type": "extra_forbidden"
+            }
+          ],
+          "UpdateContradictionActionV2": [
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateContradictionActionV2",
+                "action_type"
+              ],
+              "type": "literal_error"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateContradictionActionV2",
+                "contradiction_handle"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateContradictionActionV2",
+                "to_status"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateContradictionActionV2",
+                "handle"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateContradictionActionV2",
+                "status"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateContradictionActionV2",
+                "investigated_summary"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateContradictionActionV2",
+                "limitations"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateContradictionActionV2",
+                "disposition"
+              ],
+              "type": "extra_forbidden"
+            }
+          ],
+          "UpdateCoverageActionV2": [
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateCoverageActionV2",
+                "action_type"
+              ],
+              "type": "literal_error"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateCoverageActionV2",
+                "coverage_handle"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateCoverageActionV2",
+                "to_status"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateCoverageActionV2",
+                "handle"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateCoverageActionV2",
+                "status"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateCoverageActionV2",
+                "investigated_summary"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateCoverageActionV2",
+                "limitations"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateCoverageActionV2",
+                "disposition"
+              ],
+              "type": "extra_forbidden"
+            }
+          ],
+          "UpdateEvidenceRelevanceActionV2": [
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateEvidenceRelevanceActionV2",
+                "action_type"
+              ],
+              "type": "literal_error"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateEvidenceRelevanceActionV2",
+                "evidence_handle"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateEvidenceRelevanceActionV2",
+                "to_status"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateEvidenceRelevanceActionV2",
+                "handle"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateEvidenceRelevanceActionV2",
+                "status"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateEvidenceRelevanceActionV2",
+                "investigated_summary"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateEvidenceRelevanceActionV2",
+                "limitations"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateEvidenceRelevanceActionV2",
+                "disposition"
+              ],
+              "type": "extra_forbidden"
+            }
+          ],
+          "UpdateHypothesisActionV2": [
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateHypothesisActionV2",
+                "action_type"
+              ],
+              "type": "literal_error"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateHypothesisActionV2",
+                "hypothesis_handle"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateHypothesisActionV2",
+                "to_status"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateHypothesisActionV2",
+                "handle"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateHypothesisActionV2",
+                "status"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateHypothesisActionV2",
+                "investigated_summary"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateHypothesisActionV2",
+                "limitations"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateHypothesisActionV2",
+                "disposition"
+              ],
+              "type": "extra_forbidden"
+            }
+          ],
+          "UpdateQuestionActionV2": [
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateQuestionActionV2",
+                "question_handle"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateQuestionActionV2",
+                "to_status"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateQuestionActionV2",
+                "disposition"
+              ],
+              "type": "enum"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateQuestionActionV2",
+                "handle"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateQuestionActionV2",
+                "status"
+              ],
+              "type": "extra_forbidden"
+            }
+          ]
+        },
+        "pydantic_valid": false,
+        "raw_error_count": 72,
+        "union_branches_reporting": [
+          "AddFindingReferenceActionV2",
+          "AddPendingProposalReferenceActionV2",
+          "CreateContradictionActionV2",
+          "CreateHypothesisActionV2",
+          "CreateQuestionActionV2",
+          "UpdateContradictionActionV2",
+          "UpdateCoverageActionV2",
+          "UpdateEvidenceRelevanceActionV2",
+          "UpdateHypothesisActionV2",
+          "UpdateQuestionActionV2"
+        ]
+      },
+      "transform": {
+        "applied": [
+          {
+            "from": "action_type",
+            "to": "action",
+            "transformed_value": "update",
+            "value": "update_question"
+          },
+          {
+            "from": "handle",
+            "to": "target_handle",
+            "transformed_value": "Q1",
+            "value": "Q1"
+          },
+          {
+            "from": "status",
+            "to": "to_status",
+            "transformed_value": "completed",
+            "value": "completed"
+          },
+          {
+            "from": "investigated_summary",
+            "to": "investigated_summary",
+            "transformed_value": "Specialist investigation completed with no analyzable evidence of unauthorized logons found; no fraud-related activity detected.",
+            "value": "Specialist investigation completed with no analyzable evidence of unauthorized logons found; no fraud-related activity detected."
+          },
+          {
+            "from": "limitations",
+            "to": "limitations",
+            "transformed_value": [
+              "no analyzable evidence of the queried activity"
+            ],
+            "value": [
+              "no analyzable evidence of the queried activity"
+            ]
+          },
+          {
+            "from": "disposition",
+            "to": "disposition",
+            "transformed_value": "no_evidence_found",
+            "value": "no_evidence_found"
+          }
+        ],
+        "documented_mapping": {
+          "action_type update_question -> action update": "envelope literal",
+          "handle -> target_handle": "operand field rename",
+          "same-name pass-through": [
+            "disposition",
+            "limitations",
+            "investigated_summary"
+          ],
+          "status -> to_status": "status field rename"
+        },
+        "honesty_note": "the transform models a HYPOTHETICAL envelope-literate model; the REAL model emitted V2 field names — the transformed payloads are NOT model-generated proposal outputs"
+      }
+    },
+    "attempt_2": {
+      "envelope_compact": {
+        "parse": "rejected",
+        "parse_errors": [
+          {
+            "ctx": {
+              "expected": "'active', 'answered', 'blocked', 'candidate', 'covered', 'deferred', 'explained', 'high_value', 'in_progress', 'irrelevant', 'not_applicable', 'not_started', 'open', 'partial', 'rejected', 'relevant', 'resolved', 'retired', 'superseded', 'supported', 'unavailable', 'unresolved' or 'weakened'"
+            },
+            "input": "completed",
+            "loc": [
+              "actions",
+              0,
+              "to_status"
+            ],
+            "msg": "Input should be 'active', 'answered', 'blocked', 'candidate', 'covered', 'deferred', 'explained', 'high_value', 'in_progress', 'irrelevant', 'not_applicable', 'not_started', 'open', 'partial', 'rejected', 'relevant', 'resolved', 'retired', 'superseded', 'supported', 'unavailable', 'unresolved' or 'weakened'",
+            "type": "enum",
+            "url": "https://errors.pydantic.dev/2.13/v/enum"
+          },
+          {
+            "input": [
+              {
+                "action": "update",
+                "disposition": "not_supported",
+                "target_handle": "Q1",
+                "to_status": "completed"
+              }
+            ],
+            "loc": [
+              "actions",
+              1
+            ],
+            "msg": "Field required",
+            "type": "missing",
+            "url": "https://errors.pydantic.dev/2.13/v/missing"
+          },
+          {
+            "input": [
+              {
+                "action": "update",
+                "disposition": "not_supported",
+                "target_handle": "Q1",
+                "to_status": "completed"
+              }
+            ],
+            "loc": [
+              "actions",
+              2
+            ],
+            "msg": "Field required",
+            "type": "missing",
+            "url": "https://errors.pydantic.dev/2.13/v/missing"
+          },
+          {
+            "input": [
+              {
+                "action": "update",
+                "disposition": "not_supported",
+                "target_handle": "Q1",
+                "to_status": "completed"
+              }
+            ],
+            "loc": [
+              "actions",
+              3
+            ],
+            "msg": "Field required",
+            "type": "missing",
+            "url": "https://errors.pydantic.dev/2.13/v/missing"
+          },
+          {
+            "input": [
+              {
+                "action": "update",
+                "disposition": "not_supported",
+                "target_handle": "Q1",
+                "to_status": "completed"
+              }
+            ],
+            "loc": [
+              "actions",
+              4
+            ],
+            "msg": "Field required",
+            "type": "missing",
+            "url": "https://errors.pydantic.dev/2.13/v/missing"
+          },
+          {
+            "input": [
+              {
+                "action": "update",
+                "disposition": "not_supported",
+                "target_handle": "Q1",
+                "to_status": "completed"
+              }
+            ],
+            "loc": [
+              "actions",
+              5
+            ],
+            "msg": "Field required",
+            "type": "missing",
+            "url": "https://errors.pydantic.dev/2.13/v/missing"
+          }
+        ]
+      },
+      "envelope_draft": {
+        "parse": "accepted",
+        "resolver": "rejected",
+        "resolver_violation_code": "proposal_status_not_in_kind_enum",
+        "resolver_violation_message": "to_status='completed' is not a member of QuestionStatus (frozen vocabulary: ['open', 'in_progress', 'answered', 'unresolved', 'blocked', 'deferred', 'superseded'])"
+      },
+      "envelope_faced_with_raw_v2_names": {
+        "error_fields": [
+          "action_type",
+          "disposition",
+          "finding_handle",
+          "proposal_handle",
+          "question_handle",
+          "severity",
+          "target_handle",
+          "text",
+          "to_status"
+        ],
+        "parse": "rejected"
+      },
+      "raw_v2_replay": {
+        "errors_by_branch": {
+          "AddFindingReferenceActionV2": [
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddFindingReferenceActionV2",
+                "action_type"
+              ],
+              "type": "literal_error"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddFindingReferenceActionV2",
+                "finding_handle"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddFindingReferenceActionV2",
+                "question_handle"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddFindingReferenceActionV2",
+                "to_status"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddFindingReferenceActionV2",
+                "disposition"
+              ],
+              "type": "extra_forbidden"
+            }
+          ],
+          "AddPendingProposalReferenceActionV2": [
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddPendingProposalReferenceActionV2",
+                "action_type"
+              ],
+              "type": "literal_error"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddPendingProposalReferenceActionV2",
+                "proposal_handle"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddPendingProposalReferenceActionV2",
+                "question_handle"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddPendingProposalReferenceActionV2",
+                "to_status"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "AddPendingProposalReferenceActionV2",
+                "disposition"
+              ],
+              "type": "extra_forbidden"
+            }
+          ],
+          "CreateContradictionActionV2": [
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateContradictionActionV2",
+                "action_type"
+              ],
+              "type": "literal_error"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateContradictionActionV2",
+                "severity"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateContradictionActionV2",
+                "question_handle"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateContradictionActionV2",
+                "to_status"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateContradictionActionV2",
+                "disposition"
+              ],
+              "type": "extra_forbidden"
+            }
+          ],
+          "CreateHypothesisActionV2": [
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateHypothesisActionV2",
+                "action_type"
+              ],
+              "type": "literal_error"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateHypothesisActionV2",
+                "text"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateHypothesisActionV2",
+                "question_handle"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateHypothesisActionV2",
+                "to_status"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateHypothesisActionV2",
+                "disposition"
+              ],
+              "type": "extra_forbidden"
+            }
+          ],
+          "CreateQuestionActionV2": [
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateQuestionActionV2",
+                "action_type"
+              ],
+              "type": "literal_error"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateQuestionActionV2",
+                "text"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateQuestionActionV2",
+                "question_handle"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateQuestionActionV2",
+                "to_status"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "CreateQuestionActionV2",
+                "disposition"
+              ],
+              "type": "extra_forbidden"
+            }
+          ],
+          "UpdateContradictionActionV2": [
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateContradictionActionV2",
+                "action_type"
+              ],
+              "type": "literal_error"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateContradictionActionV2",
+                "contradiction_handle"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateContradictionActionV2",
+                "to_status"
+              ],
+              "type": "enum"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateContradictionActionV2",
+                "question_handle"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateContradictionActionV2",
+                "disposition"
+              ],
+              "type": "extra_forbidden"
+            }
+          ],
+          "UpdateCoverageActionV2": [
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateCoverageActionV2",
+                "action_type"
+              ],
+              "type": "literal_error"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateCoverageActionV2",
+                "coverage_handle"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateCoverageActionV2",
+                "to_status"
+              ],
+              "type": "enum"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateCoverageActionV2",
+                "question_handle"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateCoverageActionV2",
+                "disposition"
+              ],
+              "type": "extra_forbidden"
+            }
+          ],
+          "UpdateEvidenceRelevanceActionV2": [
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateEvidenceRelevanceActionV2",
+                "action_type"
+              ],
+              "type": "literal_error"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateEvidenceRelevanceActionV2",
+                "evidence_handle"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateEvidenceRelevanceActionV2",
+                "to_status"
+              ],
+              "type": "enum"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateEvidenceRelevanceActionV2",
+                "question_handle"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateEvidenceRelevanceActionV2",
+                "disposition"
+              ],
+              "type": "extra_forbidden"
+            }
+          ],
+          "UpdateHypothesisActionV2": [
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateHypothesisActionV2",
+                "action_type"
+              ],
+              "type": "literal_error"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateHypothesisActionV2",
+                "hypothesis_handle"
+              ],
+              "type": "missing"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateHypothesisActionV2",
+                "to_status"
+              ],
+              "type": "enum"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateHypothesisActionV2",
+                "question_handle"
+              ],
+              "type": "extra_forbidden"
+            },
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateHypothesisActionV2",
+                "disposition"
+              ],
+              "type": "extra_forbidden"
+            }
+          ],
+          "UpdateQuestionActionV2": [
+            {
+              "loc": [
+                "actions",
+                0,
+                "UpdateQuestionActionV2",
+                "to_status"
+              ],
+              "type": "enum"
+            }
+          ]
+        },
+        "pydantic_valid": false,
+        "raw_error_count": 46,
+        "union_branches_reporting": [
+          "AddFindingReferenceActionV2",
+          "AddPendingProposalReferenceActionV2",
+          "CreateContradictionActionV2",
+          "CreateHypothesisActionV2",
+          "CreateQuestionActionV2",
+          "UpdateContradictionActionV2",
+          "UpdateCoverageActionV2",
+          "UpdateEvidenceRelevanceActionV2",
+          "UpdateHypothesisActionV2",
+          "UpdateQuestionActionV2"
+        ]
+      },
+      "transform": {
+        "applied": [
+          {
+            "from": "action_type",
+            "to": "action",
+            "transformed_value": "update",
+            "value": "update_question"
+          },
+          {
+            "from": "question_handle",
+            "to": "target_handle",
+            "transformed_value": "Q1",
+            "value": "Q1"
+          },
+          {
+            "from": "to_status",
+            "to": "to_status",
+            "transformed_value": "completed",
+            "value": "completed"
+          },
+          {
+            "from": "disposition",
+            "to": "disposition",
+            "transformed_value": "not_supported",
+            "value": "not_supported"
+          }
+        ],
+        "documented_mapping": {
+          "action_type update_question -> action update": "envelope literal",
+          "handle -> target_handle": "operand field rename",
+          "same-name pass-through": [
+            "disposition",
+            "limitations",
+            "investigated_summary"
+          ],
+          "status -> to_status": "status field rename"
+        },
+        "honesty_note": "the transform models a HYPOTHETICAL envelope-literate model; the REAL model emitted V2 field names — the transformed payloads are NOT model-generated proposal outputs"
+      }
+    }
+  },
+  "baseline_commit": "69e5bdc78e4280464b8a087d9e797f9ab66078e0",
+  "disposition": "PROPOSAL_COMPARISON_COMPLETED_ONE_SAMPLE",
+  "evidence_class_markers": {
+    "counterfactual_simulation": [
+      "transformed-payload scheme outcomes"
+    ],
+    "deterministic_replay": [
+      "scheme comparisons on transformed payloads (explicit deterministic transforms, documented per field)"
+    ],
+    "hypothesis": [
+      "any statement about which names a model would guess"
+    ],
+    "observed_real_model_behavior": [
+      "the RAW payloads and their V2-scheme replay"
+    ],
+    "unverified_model_reliability": [
+      "no reliability-improvement rate is computed from one sample"
+    ]
+  },
+  "experiment_id": "rca2a5-failure-explanation",
+  "questions": {
+    "q1_errors_avoidable_by_envelope_naming": {
+      "answer": "NONE mechanically: the envelope's operand field is 'target_handle' and its status field is 'to_status' — the attempt-1 abbreviated names 'handle' and 'status' are extra_forbidden under the envelope exactly as under V2.  CORRECTION to the RCA-2A.4 field-level report q7: that report rated the 'handle' defect LIKELY_ADDRESSED_BY_PROPOSAL on the basis that 'the unified update envelope names its operand field handle' — the frozen contract names it target_handle; the defect is NOT addressed by envelope naming",
+      "evidence": {
+        "attempt_1": {
+          "error_fields": [
+            "action_type",
+            "disposition",
+            "finding_handle",
+            "handle",
+            "investigated_summary",
+            "limitations",
+            "proposal_handle",
+            "severity",
+            "status",
+            "target_handle",
+            "text",
+            "to_status"
+          ],
+          "parse": "rejected"
+        },
+        "attempt_2": {
+          "error_fields": [
+            "action_type",
+            "disposition",
+            "finding_handle",
+            "proposal_handle",
+            "question_handle",
+            "severity",
+            "target_handle",
+            "text",
+            "to_status"
+          ],
+          "parse": "rejected"
+        }
+      }
+    },
+    "q2_errors_entering_strict_retry": {
+      "answer": "attempt 2's to_status='completed' DOES enter strict parse (merged enum) -> retry feedback; attempt 1's disposition='no_evidence_found' does NOT enter strict parse (disposition stays an untyped string in the envelope; it is caught only at the resolver, AFTER the retry boundary) — under original V2 BOTH were parse-layer enum errors",
+      "attempt_1_compact_parse": "rejected",
+      "attempt_2_compact_parse": "rejected"
+    },
+    "q3_completed_illegal_everywhere": {
+      "answer": "YES — 'completed' is illegal in ALL THREE schemes (V2 per-branch enum; draft resolver P_STATUS_NOT_IN_KIND_ENUM; compact merged enum at parse); no scheme relaxes the vocabulary",
+      "evidence": {
+        "draft_resolver": true,
+        "merged_status_enum": true,
+        "question_status": true
+      }
+    },
+    "q4_resolver_new_rejections": {
+      "answer": "YES for the draft: enum-class rejections MOVE from parse (with retry feedback) to the resolver (fail-closed, no retry feedback): observed P_STATUS_NOT_IN_KIND_ENUM.  The compact variant restores parse-layer rejection for to_status but NOT for disposition (untyped) — the resolver disposition rejection is new relative to V2's parse-layer behavior",
+      "attempt_1_draft": {
+        "parse": "accepted",
+        "resolver": "rejected",
+        "resolver_violation_code": "proposal_status_not_in_kind_enum",
+        "resolver_violation_message": "to_status='completed' is not a member of QuestionStatus (frozen vocabulary: ['open', 'in_progress', 'answered', 'unresolved', 'blocked', 'deferred', 'superseded'])"
+      },
+      "attempt_2_draft": {
+        "parse": "accepted",
+        "resolver": "rejected",
+        "resolver_violation_code": "proposal_status_not_in_kind_enum",
+        "resolver_violation_message": "to_status='completed' is not a member of QuestionStatus (frozen vocabulary: ['open', 'in_progress', 'answered', 'unresolved', 'blocked', 'deferred', 'superseded'])"
+      }
+    },
+    "q5_actionable_feedback_preserved": {
+      "answer": "on THIS sample original V2 surfaces the most defect classes at the retry-enabled layer (wrong names AND both enums), at the cost of union cascade noise (72/46 raw errors for 3 and 1 genuine defects); compact trades cascade for a smaller schema but lets disposition defects pass the retry boundary silently; the draft moves the most checks behind the retry boundary.  One sample — no general ranking is claimed"
+    }
+  },
+  "rca2a4_q7_correction": {
+    "corrected_rating": {
+      "abbreviated_operand_name_handle": "NOT_ADDRESSED_BY_PROPOSAL (envelope operand field is target_handle; 'handle' remains extra_forbidden)",
+      "abbreviated_status_name_status": "UNKNOWN (unchanged — 'status' is illegal under the envelope too; only to_status is legal and attempt 2 already used it)",
+      "disposition_invalid_enum_no_evidence_found": "NOT_ADDRESSED_BY_PROPOSAL (unchanged value vocabulary; additionally DEMOTED below the retry boundary in both proposal variants)",
+      "to_status_invalid_enum_completed": "NOT_ADDRESSED_BY_PROPOSAL (unchanged)"
+    },
+    "nature": "append-only factual correction to the 2A.4 field-level report q7 rating; the historical artifact itself remains immutable"
+  },
+  "schemes_compared": {
+    "original_v2": "frozen SupervisorIntegrationDecisionV2 (10-branch non-discriminated union, per-branch typed enums)",
+    "strict_compact_typed": "frozen RCA-2A.1 building blocks composed (CompactTypedUpdateAction: merged status enum at PARSE + per-kind post-init validation)",
+    "uniform_proposal_v1_draft": "frozen RCA-2A.1 draft envelope (UpdateAction; statuses validated at the RESOLVER)"
+  }
+}

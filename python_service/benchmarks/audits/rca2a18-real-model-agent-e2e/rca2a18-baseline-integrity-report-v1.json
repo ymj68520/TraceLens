@@ -1,0 +1,33 @@
+{
+  "artifact_version": "RCA2A18BaselineIntegrityReportV1",
+  "experiment_id": "rca2a18-real-model-agent-e2e",
+  "timestamp_utc": "2026-10-17T07:10:00.000000+00:00",
+  "authorized_baseline": "98d9f3c950006c50010b0d2848b28cbb5520f182",
+  "runtime_commit": "f67653f50753941929621d12d209c7359e202de8",
+  "historical_lineage": {
+    "rca2a12_runtime": "0c2e9b9cac244ebaaf457156ce0ff8dcc264b7b3",
+    "rca2a12_artifact": "0419e111520e1460ff65bac7fb540f9b07745ec0",
+    "rca2a13": "82227677a4ce4f68bde393c3e22c677bb411fb66",
+    "rca2a14a": "ce5649e37f5791d250dc87e23910aec2c75464e6",
+    "rca2a14b": "167093e70d2639e692ce52cb0aa7fa6ee5425fa7",
+    "rca2a15": "c143895bbcaf1a9f8c291f325941822b06d14b67",
+    "rca2a16": "7ac1e25e4f5dd46cd21c1faf6a8ce006ebdab612",
+    "rca2a17": "98d9f3c950006c50010b0d2848b28cbb5520f182"
+  },
+  "candidate_verification": {
+    "candidate_id": "supervisor-v2",
+    "output_schema": "SupervisorIntegrationDecisionV2",
+    "schema_hash": "a214ec4f5e81fcbb",
+    "experimental_guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+    "guidance_default": "DISABLED",
+    "status": "HASHES_MATCH_EXACT"
+  },
+  "production_invariants": {
+    "production_supervisor_prompt": "UNCHANGED",
+    "production_schema": "UNCHANGED",
+    "vocabulary_guidance_v1": "FROZEN_EXPERIMENTAL_ONLY",
+    "real_provider_requests_executed_precall": 0,
+    "production_db_modified": false
+  },
+  "verification_status": "BASELINE_VERIFIED_CLEAN"
+}

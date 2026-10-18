@@ -1,0 +1,54 @@
+{
+  "artifact_version": "RCA2A10eD3ExecutionReportV1",
+  "experiment_id": "rca2a10e-bounded-gateway-diagnosis",
+  "created_at_utc": "2026-10-16T06:04:46.170794+00:00",
+  "result": {
+    "transport_mode": "non_streaming",
+    "logical_request_dispatched": true,
+    "logical_started_at_monotonic": 2896530.948284786,
+    "logical_finished_at_monotonic": 2896717.8823848,
+    "wall_clock_ms": 186934.10001369193,
+    "status_code": 500,
+    "exception_class": "ModelHTTPError",
+    "exception_message_sanitized": "status_code: 500, model_name: step-5-preview, body: {'message': '分组 auto 下模型 step-5-preview 的可用渠道不存在（retry） (request id: 202610160559511764711928268d9d6le4TxkuA)', 'type': 'new_api_error', 'param': ''",
+    "status": "D3_PROVIDER_INFRA_FAILURE",
+    "wire_attempts": [
+      {
+        "attempt_number": 1,
+        "url": "https://api.hcnsec.cn/v1/chat/completions",
+        "method": "POST",
+        "request_headers": {
+          "host": "api.hcnsec.cn",
+          "accept-encoding": "gzip, deflate, zstd",
+          "connection": "keep-alive",
+          "accept": "application/json",
+          "content-type": "application/json",
+          "user-agent": "pydantic-ai/2.30.0",
+          "x-stainless-lang": "python",
+          "x-stainless-package-version": "2.46.0",
+          "x-stainless-os": "Linux",
+          "x-stainless-arch": "x64",
+          "x-stainless-runtime": "CPython",
+          "x-stainless-runtime-version": "3.12.3",
+          "x-stainless-async": "async:asyncio",
+          "x-stainless-retry-count": "0",
+          "x-stainless-read-timeout": "360.0",
+          "content-length": "10939"
+        },
+        "request_body_bytes": 10939,
+        "started_at_monotonic": 2896530.962562194,
+        "started_at_utc": "2026-10-16T05:59:50.673023+00:00",
+        "status_code": 500,
+        "response_headers": {
+          "server": "nginx/1.26.3",
+          "content-type": "application/json; charset=utf-8",
+          "date": "Fri, 16 Oct 2026 05:59:50 GMT"
+        },
+        "finished_at_monotonic": 2896717.880167772,
+        "latency_ms": 186917.60557796806
+      }
+    ],
+    "physical_http_attempts": 1,
+    "identity_records": []
+  }
+}

@@ -1,0 +1,130 @@
+{
+  "manifest_version": "truth-manifest:v1",
+  "manifest_id": "tman:556b30159cb0967220167234",
+  "case_id": "t3-holdout-vpn-causal",
+  "case_version": "1",
+  "critical_evidence": [
+    {
+      "truth_evidence_id": "TE-1",
+      "evidence_identity_description": "/vpn/sessions.log: linan's VPN session on egress 45.33.11.9 ending 20:05:44.",
+      "expected_evidence_key": "file:/vpn/sessions.log",
+      "criticality": "critical",
+      "parser_expectation": "reachable",
+      "source_kind": "",
+      "semantic_role": "vpn_session",
+      "related_claim_ids": [
+        "TC-1"
+      ],
+      "notes": ""
+    },
+    {
+      "truth_evidence_id": "TE-2",
+      "evidence_identity_description": "/exchange/api.log: a 60000 USDT withdrawal from account xu*77 from ip 45.33.11.9 at 20:06:10 — a different account name than the laptop owner.",
+      "expected_evidence_key": "file:/exchange/api.log",
+      "criticality": "critical",
+      "parser_expectation": "reachable",
+      "source_kind": "",
+      "semantic_role": "withdrawal_log",
+      "related_claim_ids": [
+        "TC-2"
+      ],
+      "notes": ""
+    }
+  ],
+  "supporting_evidence": [
+    {
+      "truth_evidence_id": "TE-3",
+      "evidence_identity_description": "/README.txt: shared egress proves transit, not identity; the exchange log is a recovered record set.",
+      "expected_evidence_key": "file:/README.txt",
+      "criticality": "supporting",
+      "parser_expectation": "reachable",
+      "source_kind": "",
+      "semantic_role": "context_note",
+      "related_claim_ids": [
+        "TC-2"
+      ],
+      "notes": ""
+    }
+  ],
+  "irrelevant_evidence": [],
+  "expected_questions": [
+    {
+      "question_id": "TQ-1",
+      "text": "Can the 60000 USDT withdrawal be attributed to linan on this evidence?",
+      "expected_disposition": "unresolved",
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-2",
+        "TE-3"
+      ],
+      "acceptable_answers": [],
+      "unacceptable_answers": [
+        "asserting linan made the withdrawal"
+      ],
+      "priority": 0,
+      "notes": ""
+    }
+  ],
+  "confirmed_claims": [
+    {
+      "claim_id": "TC-1",
+      "proposition": "linan's laptop used VPN egress 45.33.11.9 in a session ending at 20:05:44 on 2024-08-11.",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "FACT",
+      "required_evidence_ids": [
+        "TE-1"
+      ],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "factual",
+      "notes": ""
+    },
+    {
+      "claim_id": "TC-2",
+      "proposition": "The withdrawal record belongs to account xu*77; ip equality at a shared VPN egress does not merge the identities.",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "INFERENCE",
+      "required_evidence_ids": [
+        "TE-2",
+        "TE-3"
+      ],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "identity_merge",
+      "notes": ""
+    }
+  ],
+  "acceptable_inferences": [],
+  "unsupported_or_prohibited_overclaims": [
+    {
+      "claim_id": "TP-1",
+      "proposition": "linan withdrew 60000 USDT via the exchange.",
+      "truth_status": "unsupported",
+      "maximum_assertion_class": null,
+      "required_evidence_ids": [],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "actor_attribution",
+      "notes": ""
+    }
+  ],
+  "expected_relations": [],
+  "expected_coverage": [
+    {
+      "dimension_id": "shared-egress-assessment",
+      "description": "The shared-egress linkage is assessed as transit-only and the withdrawal stays unattributed.",
+      "expected_status": "covered",
+      "requires_closure_basis": true,
+      "required_evidence_ids": [
+        "TE-2",
+        "TE-3"
+      ],
+      "notes": ""
+    }
+  ],
+  "known_ambiguities": [],
+  "unavailable_truth": [],
+  "notes": "HOLDOUT (sealed): same-IP identity trap + temporal adjacency causality trap in a VPN scenario. Different dataset from calibration t2-identity-trap/t2-temporal-trap; same dimensions. Single-reviewer truth.",
+  "input_hash": "556b30159cb09672201672342d4f4e65e1e901571f36b0e0a0c9a97e3de7e275",
+  "created_at": "2026-09-28T11:15:36.704516+00:00"
+}

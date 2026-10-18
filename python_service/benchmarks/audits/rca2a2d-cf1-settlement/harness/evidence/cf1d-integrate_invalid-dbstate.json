@@ -1,0 +1,466 @@
+{
+  "real_task_id": "e0d9d425-64f9-4b10-ad74-7cdebb1fc7aa",
+  "alias_task_id": "bench-brun:f2cfaf049ad014890c15d890",
+  "recovery_summary": {
+    "runs_failed": 0,
+    "delegations_failed": 0,
+    "investigations_paused": 1,
+    "obligations_expired": 0
+  },
+  "settlement_artifact": {
+    "action": "settled",
+    "task_id": "bench-brun:f2cfaf049ad014890c15d890",
+    "investigation_id": "inv-brun:f2cfaf049ad014890c15d890",
+    "execution_cancelled": false,
+    "runs": [
+      {
+        "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+        "before": "failed",
+        "after": "failed",
+        "transition": "already_terminal",
+        "stop_reason": "internal_failure",
+        "error_code": "supervisor_integration_failed"
+      }
+    ],
+    "investigation_finalized": false,
+    "settlement_events_appended": 0
+  },
+  "at_cli_exit": {
+    "db_path": "/home/ymj68520/projects/TraceLens/build/data/tasks/e0d9d425-64f9-4b10-ad74-7cdebb1fc7aa/investigation.db",
+    "investigations": [
+      {
+        "investigation_id": "inv-brun:f2cfaf049ad014890c15d890",
+        "status": "active",
+        "pause_reason": null
+      }
+    ],
+    "runs": [
+      {
+        "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+        "status": "failed",
+        "stop_reason": "internal_failure",
+        "error_code": "supervisor_integration_failed",
+        "error_message": "supervisor_integration_failed: supervisor INTEGRATE stage failed (contained, fail-closed)"
+      }
+    ],
+    "delegations": [
+      {
+        "delegation_id": "del_669ad8673db243f3963c202735eadb31",
+        "question_ref": "q-1",
+        "status": "completed",
+        "failure_code": null,
+        "integrated_at": null
+      }
+    ],
+    "trajectory_events": [
+      {
+        "seq": 1,
+        "event_type": "investigation_created",
+        "run_id": null,
+        "payload": {}
+      },
+      {
+        "seq": 2,
+        "event_type": "run_admitted",
+        "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+        "payload": {
+          "idempotency_key": null
+        }
+      },
+      {
+        "seq": 3,
+        "event_type": "attention_compiled",
+        "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+        "payload": {
+          "attention_hash": "500b4153adb5c24c7d9b19ea8b9ec209b6fe38c0e86b943817559f6843c8fb15",
+          "attention_policy_version": "attention-policy:v1",
+          "item_count": 1,
+          "state_revision": 1
+        }
+      },
+      {
+        "seq": 4,
+        "event_type": "run_started",
+        "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+        "payload": {}
+      },
+      {
+        "seq": 5,
+        "event_type": "supervisor_plan_decided",
+        "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+        "payload": {
+          "decision": {
+            "actions": [
+              {
+                "action_id": "act-1",
+                "action_kind": "delegate_investigation",
+                "attention_item_id": "question:q-1",
+                "execution_group": null,
+                "investigation_intent": "",
+                "question_id": "q-1",
+                "source_scope_id": "windows",
+                "time_scope": null
+              }
+            ],
+            "attention_hash": "500b4153adb5c24c7d9b19ea8b9ec209b6fe38c0e86b943817559f6843c8fb15",
+            "based_on_state_hash": "28c7aae17f537ecc0efe26d89da135e929714c0baf1bc81cdd3f8e3b2ae24d9f",
+            "based_on_state_revision": 1,
+            "binding_table_hash": "f7b621d71d362d308be39ee0df423678298e356a66463b80f05328cbcc9d6040",
+            "binding_table_id": "rbt:f7b621d71d362d308be39ee0df423678",
+            "decision_version": "supervisor-plan-decision:v1",
+            "integration_contract_version": "v2",
+            "investigation_id": "inv-brun:f2cfaf049ad014890c15d890",
+            "limitations": [],
+            "raw_model_proposal_v2": {
+              "actions": [
+                {
+                  "action_id": "",
+                  "action_type": "delegate_investigation",
+                  "attention_handle": "A1",
+                  "execution_group": null,
+                  "investigation_intent": "",
+                  "question_handle": "Q1",
+                  "source_scope_id": "windows",
+                  "time_scope": null
+                }
+              ],
+              "decision_version": "supervisor-plan-decision:v2",
+              "limitations": [],
+              "summary": "delegate the charter question",
+              "warnings": []
+            },
+            "resolution_record": {
+              "actions_total": 1,
+              "binding_table_id": "rbt:f7b621d71d362d308be39ee0df423678",
+              "contract_version": "supervisor-plan-decision:v2",
+              "ok": true,
+              "resolved_action_summaries": [
+                "delegate_investigation:ok"
+              ],
+              "violations": []
+            },
+            "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+            "summary": "delegate the charter question",
+            "task_id": "bench-brun:f2cfaf049ad014890c15d890",
+            "warnings": []
+          },
+          "decision_hash": "7f072e1c618f36aaea4024bb3d395ec2dc59bd070af01c4c275a7db6e5613729",
+          "model_config_hash": null,
+          "model_name": null,
+          "prompt_version": "supervisor-plan-decision:v2",
+          "usage": null
+        }
+      },
+      {
+        "seq": 6,
+        "event_type": "delegation_admitted",
+        "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+        "payload": {
+          "question_ref": "q-1"
+        }
+      },
+      {
+        "seq": 7,
+        "event_type": "delegation_started",
+        "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+        "payload": {}
+      },
+      {
+        "seq": 8,
+        "event_type": "delegation_completed",
+        "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+        "payload": {
+          "context_hash": "71f7f689ff8e941fb36ca176ebda2d1268a9b4f83dcd61a1c240aade2cba9345",
+          "evidence_snapshots_admitted": 0,
+          "execution_input_hash": "3bc3bd6159ee938a3f4da7fa759d8fc35d598f75adc472299c71f3d68df1c3ab",
+          "model_config_hash": "8f64b9b6599e32daf89be624121bc5ea04606a797ddde06fc2edba69b91ac14c",
+          "profile_id": "windows.specialist",
+          "profile_version": "1",
+          "result_hash": "3dad24a37335098a893952ed5c188dafa3190ad685463a460d00666edef67d9b",
+          "skill_bindings": [],
+          "specialist_proposal_contract": {
+            "proposal_hash": "0d7e96d31830e1666adb8f8b5de6474d2c8c4b6808f4df406d0dd6025cdf6fbb",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "e254c0a1d449f19a2f989b0c7e29c276bb4ac8379ee3dfcd765d0888efbe02e9"
+          },
+          "tool_registry_hash": "b778f5ec289acb3b65ad8b306ed562eaacc2606d9af239afbf193db9e8856c7a"
+        }
+      },
+      {
+        "seq": 9,
+        "event_type": "transition_decision_rejected",
+        "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+        "payload": {
+          "cause_chain": [
+            "pydantic_core._pydantic_core.ValidationError"
+          ],
+          "classified": true,
+          "exception_class": "UnexpectedModelBehavior",
+          "exception_module": "pydantic_ai.exceptions",
+          "message": "supervisor_integration_failed: supervisor INTEGRATE stage failed (contained, fail-closed)",
+          "stage": "integrate",
+          "supervisor_failure": "supervisor_integration_failed",
+          "underlying_code": "model_output_retry_exhausted"
+        }
+      },
+      {
+        "seq": 10,
+        "event_type": "run_failed",
+        "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+        "payload": {
+          "error_code": "supervisor_integration_failed",
+          "stop_reason": "internal_failure"
+        }
+      },
+      {
+        "seq": 11,
+        "event_type": "finalization_requested",
+        "run_id": null,
+        "payload": {
+          "expected_state_revision": 1,
+          "review_mode": "best_effort"
+        }
+      },
+      {
+        "seq": 12,
+        "event_type": "finalization_denied",
+        "run_id": null,
+        "payload": {
+          "violation_codes": [
+            "UNINTEGRATED_COMPLETED_DELEGATION",
+            "COVERAGE_NOT_TERMINAL"
+          ]
+        }
+      }
+    ],
+    "finalizations": []
+  },
+  "after_production_recovery": {
+    "db_path": "/home/ymj68520/projects/TraceLens/build/data/tasks/e0d9d425-64f9-4b10-ad74-7cdebb1fc7aa/investigation.db",
+    "investigations": [
+      {
+        "investigation_id": "inv-brun:f2cfaf049ad014890c15d890",
+        "status": "paused",
+        "pause_reason": "runtime_restart"
+      }
+    ],
+    "runs": [
+      {
+        "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+        "status": "failed",
+        "stop_reason": "internal_failure",
+        "error_code": "supervisor_integration_failed",
+        "error_message": "supervisor_integration_failed: supervisor INTEGRATE stage failed (contained, fail-closed)"
+      }
+    ],
+    "delegations": [
+      {
+        "delegation_id": "del_669ad8673db243f3963c202735eadb31",
+        "question_ref": "q-1",
+        "status": "completed",
+        "failure_code": null,
+        "integrated_at": null
+      }
+    ],
+    "trajectory_events": [
+      {
+        "seq": 1,
+        "event_type": "investigation_created",
+        "run_id": null,
+        "payload": {}
+      },
+      {
+        "seq": 2,
+        "event_type": "run_admitted",
+        "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+        "payload": {
+          "idempotency_key": null
+        }
+      },
+      {
+        "seq": 3,
+        "event_type": "attention_compiled",
+        "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+        "payload": {
+          "attention_hash": "500b4153adb5c24c7d9b19ea8b9ec209b6fe38c0e86b943817559f6843c8fb15",
+          "attention_policy_version": "attention-policy:v1",
+          "item_count": 1,
+          "state_revision": 1
+        }
+      },
+      {
+        "seq": 4,
+        "event_type": "run_started",
+        "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+        "payload": {}
+      },
+      {
+        "seq": 5,
+        "event_type": "supervisor_plan_decided",
+        "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+        "payload": {
+          "decision": {
+            "actions": [
+              {
+                "action_id": "act-1",
+                "action_kind": "delegate_investigation",
+                "attention_item_id": "question:q-1",
+                "execution_group": null,
+                "investigation_intent": "",
+                "question_id": "q-1",
+                "source_scope_id": "windows",
+                "time_scope": null
+              }
+            ],
+            "attention_hash": "500b4153adb5c24c7d9b19ea8b9ec209b6fe38c0e86b943817559f6843c8fb15",
+            "based_on_state_hash": "28c7aae17f537ecc0efe26d89da135e929714c0baf1bc81cdd3f8e3b2ae24d9f",
+            "based_on_state_revision": 1,
+            "binding_table_hash": "f7b621d71d362d308be39ee0df423678298e356a66463b80f05328cbcc9d6040",
+            "binding_table_id": "rbt:f7b621d71d362d308be39ee0df423678",
+            "decision_version": "supervisor-plan-decision:v1",
+            "integration_contract_version": "v2",
+            "investigation_id": "inv-brun:f2cfaf049ad014890c15d890",
+            "limitations": [],
+            "raw_model_proposal_v2": {
+              "actions": [
+                {
+                  "action_id": "",
+                  "action_type": "delegate_investigation",
+                  "attention_handle": "A1",
+                  "execution_group": null,
+                  "investigation_intent": "",
+                  "question_handle": "Q1",
+                  "source_scope_id": "windows",
+                  "time_scope": null
+                }
+              ],
+              "decision_version": "supervisor-plan-decision:v2",
+              "limitations": [],
+              "summary": "delegate the charter question",
+              "warnings": []
+            },
+            "resolution_record": {
+              "actions_total": 1,
+              "binding_table_id": "rbt:f7b621d71d362d308be39ee0df423678",
+              "contract_version": "supervisor-plan-decision:v2",
+              "ok": true,
+              "resolved_action_summaries": [
+                "delegate_investigation:ok"
+              ],
+              "violations": []
+            },
+            "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+            "summary": "delegate the charter question",
+            "task_id": "bench-brun:f2cfaf049ad014890c15d890",
+            "warnings": []
+          },
+          "decision_hash": "7f072e1c618f36aaea4024bb3d395ec2dc59bd070af01c4c275a7db6e5613729",
+          "model_config_hash": null,
+          "model_name": null,
+          "prompt_version": "supervisor-plan-decision:v2",
+          "usage": null
+        }
+      },
+      {
+        "seq": 6,
+        "event_type": "delegation_admitted",
+        "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+        "payload": {
+          "question_ref": "q-1"
+        }
+      },
+      {
+        "seq": 7,
+        "event_type": "delegation_started",
+        "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+        "payload": {}
+      },
+      {
+        "seq": 8,
+        "event_type": "delegation_completed",
+        "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+        "payload": {
+          "context_hash": "71f7f689ff8e941fb36ca176ebda2d1268a9b4f83dcd61a1c240aade2cba9345",
+          "evidence_snapshots_admitted": 0,
+          "execution_input_hash": "3bc3bd6159ee938a3f4da7fa759d8fc35d598f75adc472299c71f3d68df1c3ab",
+          "model_config_hash": "8f64b9b6599e32daf89be624121bc5ea04606a797ddde06fc2edba69b91ac14c",
+          "profile_id": "windows.specialist",
+          "profile_version": "1",
+          "result_hash": "3dad24a37335098a893952ed5c188dafa3190ad685463a460d00666edef67d9b",
+          "skill_bindings": [],
+          "specialist_proposal_contract": {
+            "proposal_hash": "0d7e96d31830e1666adb8f8b5de6474d2c8c4b6808f4df406d0dd6025cdf6fbb",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "e254c0a1d449f19a2f989b0c7e29c276bb4ac8379ee3dfcd765d0888efbe02e9"
+          },
+          "tool_registry_hash": "b778f5ec289acb3b65ad8b306ed562eaacc2606d9af239afbf193db9e8856c7a"
+        }
+      },
+      {
+        "seq": 9,
+        "event_type": "transition_decision_rejected",
+        "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+        "payload": {
+          "cause_chain": [
+            "pydantic_core._pydantic_core.ValidationError"
+          ],
+          "classified": true,
+          "exception_class": "UnexpectedModelBehavior",
+          "exception_module": "pydantic_ai.exceptions",
+          "message": "supervisor_integration_failed: supervisor INTEGRATE stage failed (contained, fail-closed)",
+          "stage": "integrate",
+          "supervisor_failure": "supervisor_integration_failed",
+          "underlying_code": "model_output_retry_exhausted"
+        }
+      },
+      {
+        "seq": 10,
+        "event_type": "run_failed",
+        "run_id": "run_f0dada36c1f44907b77953bd193a92e0",
+        "payload": {
+          "error_code": "supervisor_integration_failed",
+          "stop_reason": "internal_failure"
+        }
+      },
+      {
+        "seq": 11,
+        "event_type": "finalization_requested",
+        "run_id": null,
+        "payload": {
+          "expected_state_revision": 1,
+          "review_mode": "best_effort"
+        }
+      },
+      {
+        "seq": 12,
+        "event_type": "finalization_denied",
+        "run_id": null,
+        "payload": {
+          "violation_codes": [
+            "UNINTEGRATED_COMPLETED_DELEGATION",
+            "COVERAGE_NOT_TERMINAL"
+          ]
+        }
+      },
+      {
+        "seq": 13,
+        "event_type": "investigation_paused",
+        "run_id": null,
+        "payload": {
+          "pause_reason": "runtime_restart"
+        }
+      },
+      {
+        "seq": 14,
+        "event_type": "runtime_recovered",
+        "run_id": null,
+        "payload": {
+          "delegations_failed": 0,
+          "investigations_paused": 1,
+          "runs_failed": 0
+        }
+      }
+    ],
+    "finalizations": []
+  }
+}

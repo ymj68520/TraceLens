@@ -1,0 +1,15 @@
+{
+  "artifact_version": "RCA2A12EffectiveModelIdentityV1",
+  "experiment_id": "rca2a12-deepseek-flash-vocabulary-cross-case",
+  "timestamp_utc": "2026-10-17T03:10:05.126340+00:00",
+  "provider": "generic",
+  "endpoint": "https://chat.cordapp.org/v1",
+  "requested_model": "deepseek-flash",
+  "credential_available": true,
+  "credential_source_id": "SETTINGS_LLM_API_KEY",
+  "credential_length": 67,
+  "temperature": 1.0,
+  "max_tokens": 4096,
+  "timeout_seconds": 360.0,
+  "upstream_model_identity_status": "UPSTREAM_MODEL_IDENTITY_NOT_INDEPENDENTLY_VERIFIED"
+}

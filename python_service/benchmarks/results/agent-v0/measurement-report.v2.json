@@ -1,0 +1,634 @@
+{
+  "report_version": "measurement-report:v2",
+  "metric_additions": {
+    "benchmark_case_outcome": "benchmark-case-outcome:v1",
+    "finalization_pass_rate": "renamed display of the old functional-completion metric (B3.5 §2/§3): it measures FinalizationGate closure, not investigative success"
+  },
+  "corpus_id": "corpus-agent-v0-b2",
+  "corpus_version": "4",
+  "production_runtime_commit": "946f325eeb6add1072466aed96e5e2e7e38748ed",
+  "stages": {
+    "B2_baseline_full": {
+      "summary": {
+        "runs": 12,
+        "finalization_pass_rate": 0.25,
+        "case_outcome_distribution": {
+          "incomplete": 12
+        },
+        "case_success_rate": 0.0,
+        "wall_ms_median": 115716.0
+      },
+      "per_case": {
+        "t1-fraud-script-usb": {
+          "runs": 3,
+          "finalization_pass_rate": 0.333,
+          "case_outcome_distribution": {
+            "incomplete": 3
+          },
+          "case_success_rate": 0.0,
+          "wall_ms_median": 314543
+        },
+        "t2-identity-trap": {
+          "runs": 3,
+          "finalization_pass_rate": 0.333,
+          "case_outcome_distribution": {
+            "incomplete": 3
+          },
+          "case_success_rate": 0.0,
+          "wall_ms_median": 92605
+        },
+        "t2-no-evidence": {
+          "runs": 3,
+          "finalization_pass_rate": 0.0,
+          "case_outcome_distribution": {
+            "incomplete": 3
+          },
+          "case_success_rate": 0.0,
+          "wall_ms_median": 112411
+        },
+        "t2-temporal-trap": {
+          "runs": 3,
+          "finalization_pass_rate": 0.333,
+          "case_outcome_distribution": {
+            "incomplete": 3
+          },
+          "case_success_rate": 0.0,
+          "wall_ms_median": 185407
+        }
+      },
+      "runs": [
+        {
+          "stage_root": "baseline",
+          "case_id": "t1-fraud-script-usb",
+          "run_dir": "repeat0",
+          "run_id": "run_632825e7a3964ff5842498f65566f8bd",
+          "snapshot_hash": "c625755205a6437d8b711f3605e09890bf31797ce5c57ba9099d9215dca6ae1e",
+          "finalization_pass": true,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 508318
+        },
+        {
+          "stage_root": "baseline",
+          "case_id": "t1-fraud-script-usb",
+          "run_dir": "repeat1",
+          "run_id": "run_bb9e44ddbcde4e1e8a6eb17faf8453cb",
+          "snapshot_hash": "ad35fae84e91a91e158fb7d6eb3db173542099bf286caef454ac522ca88759c4",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 314543
+        },
+        {
+          "stage_root": "baseline",
+          "case_id": "t1-fraud-script-usb",
+          "run_dir": "repeat2",
+          "run_id": "run_dc4c86fb43ec419788d27f597f541e9e",
+          "snapshot_hash": "dfe57f0c391646a0a8ec9aa8efaf525fcf31465c52878a0099674a89e3dfeba5",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 216848
+        },
+        {
+          "stage_root": "baseline",
+          "case_id": "t2-identity-trap",
+          "run_dir": "repeat0",
+          "run_id": "run_0f1c99bb10834e8b94e3c1d166fb27f0",
+          "snapshot_hash": "da1e1fa16fcd8e6173ba18ecdfc8de03f100ba4ed1869be3f5fcc95e4d755696",
+          "finalization_pass": true,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 26516
+        },
+        {
+          "stage_root": "baseline",
+          "case_id": "t2-identity-trap",
+          "run_dir": "repeat1",
+          "run_id": "run_0e2a5f4918764f8a9a56832d1be28456",
+          "snapshot_hash": "e703aecdb5db98e05f437e628c1fa8a16bc6a033ee3954bb0bfd3eb4e2d94b91",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 92605
+        },
+        {
+          "stage_root": "baseline",
+          "case_id": "t2-identity-trap",
+          "run_dir": "repeat2",
+          "run_id": "run_56080c06e387472d89a70f849fa247fe",
+          "snapshot_hash": "e23313d297d4a7463dbe92a66da5fe4c0404c6a9eec5c94d4dc3f1853482a8bd",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 110040
+        },
+        {
+          "stage_root": "baseline",
+          "case_id": "t2-no-evidence",
+          "run_dir": "repeat0",
+          "run_id": "run_4654fb5afe1d4f15afb8f747ddc8a2d4",
+          "snapshot_hash": "c9ad9df1f515a0c53057f4bf4027c85e1f333a807b8a86382a628f4a019e7f3b",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 112411
+        },
+        {
+          "stage_root": "baseline",
+          "case_id": "t2-no-evidence",
+          "run_dir": "repeat1",
+          "run_id": "run_0ce083fbc0534bb48bc406cec909892b",
+          "snapshot_hash": "a4eae25b9271257e5aa4783b8330075d00af943b2ae14991c125eec98e457fc5",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 93653
+        },
+        {
+          "stage_root": "baseline",
+          "case_id": "t2-no-evidence",
+          "run_dir": "repeat2",
+          "run_id": "run_1b671b4b9f7247e5916ed12cb21a6539",
+          "snapshot_hash": "c436937c9ad48a94ef9cd4213f89852d4f57e0adf52cb59cd639cd22e44cd693",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 119021
+        },
+        {
+          "stage_root": "baseline",
+          "case_id": "t2-temporal-trap",
+          "run_dir": "repeat0",
+          "run_id": "run_540b9de3e7a14cf08397fa169d94a75d",
+          "snapshot_hash": "18121437f4ceb5d901d9722d487075fb35abf517ebcd643b8e1a756cf667f677",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 185407
+        },
+        {
+          "stage_root": "baseline",
+          "case_id": "t2-temporal-trap",
+          "run_dir": "repeat1",
+          "run_id": "run_ef4ca79b79364094aecdc0b4072e74e0",
+          "snapshot_hash": "977835147da81cf82bb084cb597c0a562d0ff1795dfb89e0fb982988ec87766a",
+          "finalization_pass": true,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 99208
+        },
+        {
+          "stage_root": "baseline",
+          "case_id": "t2-temporal-trap",
+          "run_dir": "repeat2",
+          "run_id": "run_3d6a6bc863bc4a5eb1e597b508be4308",
+          "snapshot_hash": "faf5ae4510a6a4d43200b1aca843f11d3763dfc3d7ec459ca0800815c6550be9",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 319137
+        }
+      ]
+    },
+    "A0_non_agent_baseline": {
+      "summary": {
+        "runs": 12,
+        "finalization_pass_rate": 1.0,
+        "case_outcome_distribution": {
+          "incomplete": 12
+        },
+        "case_success_rate": 0.0,
+        "wall_ms_median": 549.5
+      },
+      "runs": [
+        {
+          "stage_root": "A0",
+          "case_id": "t1-fraud-script-usb",
+          "run_dir": "repeat0",
+          "run_id": "run_5dd4ca7aad8145b0857a96daa8a9cde1",
+          "snapshot_hash": "4f69605cafec3e7c716276ca73f33a63ad3131eca0ed30f09e207f0cb69b26cb",
+          "finalization_pass": true,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 511
+        },
+        {
+          "stage_root": "A0",
+          "case_id": "t1-fraud-script-usb",
+          "run_dir": "repeat1",
+          "run_id": "run_f9133ba9c283447a939a75399df55687",
+          "snapshot_hash": "8f6e8200bd4d22d8d33f49d10327cb99f37faa503c49656af133523bca05f749",
+          "finalization_pass": true,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 507
+        },
+        {
+          "stage_root": "A0",
+          "case_id": "t1-fraud-script-usb",
+          "run_dir": "repeat2",
+          "run_id": "run_44d9eece5dfa47f6866f72613420d83e",
+          "snapshot_hash": "88a53fd43f696367c547cdca9fdf2baffc0923627feee5e884f4d5268428ce4f",
+          "finalization_pass": true,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 551
+        },
+        {
+          "stage_root": "A0",
+          "case_id": "t2-identity-trap",
+          "run_dir": "repeat0",
+          "run_id": "run_5e2e8cdbf62f405eb12debee88331451",
+          "snapshot_hash": "a9b85a5e11c8d9caeffc129d18a49966438d13bd2250e84f099fdf38efd4701f",
+          "finalization_pass": true,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 532
+        },
+        {
+          "stage_root": "A0",
+          "case_id": "t2-identity-trap",
+          "run_dir": "repeat1",
+          "run_id": "run_127c49d629ab43d9abc23f05518d23ee",
+          "snapshot_hash": "69e75650c837b39a73cccec161229727607068a515e3352c05030afce8acb6ce",
+          "finalization_pass": true,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 553
+        },
+        {
+          "stage_root": "A0",
+          "case_id": "t2-identity-trap",
+          "run_dir": "repeat2",
+          "run_id": "run_d00a814aa18b44eca1b680203c777814",
+          "snapshot_hash": "a01d3ab68f11b47af241e938ea4822e16cb41902518e44de02bd5d577083783e",
+          "finalization_pass": true,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 559
+        },
+        {
+          "stage_root": "A0",
+          "case_id": "t2-no-evidence",
+          "run_dir": "repeat0",
+          "run_id": "run_ede93532c78945c28cffa08b03a1125c",
+          "snapshot_hash": "e88e3c6e3a9926e468af7742f7d0455ba29033f4706dc26d7b29fa2eeb95c345",
+          "finalization_pass": true,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 558
+        },
+        {
+          "stage_root": "A0",
+          "case_id": "t2-no-evidence",
+          "run_dir": "repeat1",
+          "run_id": "run_ad785d4d5dc144409d53549adcda5ea6",
+          "snapshot_hash": "68ca7e284a3faf12335a58fe7d37cbc7cde2eaba1db7a533193b87c2f07f044d",
+          "finalization_pass": true,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 549
+        },
+        {
+          "stage_root": "A0",
+          "case_id": "t2-no-evidence",
+          "run_dir": "repeat2",
+          "run_id": "run_85d46b63e0fe4664b6bffa4e565d99d7",
+          "snapshot_hash": "45308995ef3f2f5adb2c451c4eda8146f8f9f256e954740e10987fd58c929abf",
+          "finalization_pass": true,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 550
+        },
+        {
+          "stage_root": "A0",
+          "case_id": "t2-temporal-trap",
+          "run_dir": "repeat0",
+          "run_id": "run_1e3f775342d74c9c930372f75fbe37b0",
+          "snapshot_hash": "ecac9f085337eff90f410432f7b0c0c023aba25d9462f1b83838560a1c51df94",
+          "finalization_pass": true,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 555
+        },
+        {
+          "stage_root": "A0",
+          "case_id": "t2-temporal-trap",
+          "run_dir": "repeat1",
+          "run_id": "run_4c046c76458744a19ec12ac2dcba7a36",
+          "snapshot_hash": "e50f5adee0d63b39be49dbc7b984b36c7b971998430b7344a6ed291e3926fd45",
+          "finalization_pass": true,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 548
+        },
+        {
+          "stage_root": "A0",
+          "case_id": "t2-temporal-trap",
+          "run_dir": "repeat2",
+          "run_id": "run_4608df3936ab49f88ee65397ff2dc88b",
+          "snapshot_hash": "0dc2cc394f8b10ca60771262419252888e91a592ac793f3e89a50a9e825c28c5",
+          "finalization_pass": true,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 429
+        }
+      ]
+    },
+    "A1_supervisor_only": {
+      "summary": {
+        "runs": 12,
+        "finalization_pass_rate": 0.083,
+        "case_outcome_distribution": {
+          "incomplete": 12
+        },
+        "case_success_rate": 0.0,
+        "wall_ms_median": 22423.0
+      },
+      "runs": [
+        {
+          "stage_root": "A1",
+          "case_id": "t1-fraud-script-usb",
+          "run_dir": "repeat0",
+          "run_id": "run_19ea7180ad004371bf47d05ab2aa42eb",
+          "snapshot_hash": "53f0b1a27c0455cf1d3f01debbceb38fb44df5109f6e1fd9b6c6e18b6451f819",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 47181
+        },
+        {
+          "stage_root": "A1",
+          "case_id": "t1-fraud-script-usb",
+          "run_dir": "repeat1",
+          "run_id": "run_d70fbf9131ce42f6ab7e7eb535b92cc4",
+          "snapshot_hash": "1d78c0518b4b96fe8709cf79784d61342b49946454a5f6256adad6669b59af44",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 24747
+        },
+        {
+          "stage_root": "A1",
+          "case_id": "t1-fraud-script-usb",
+          "run_dir": "repeat2",
+          "run_id": "run_8fe88b6b377648c0b3b6314a2b402423",
+          "snapshot_hash": "7b4bd53fd98cbafe4170838c7f8a8c7cd13973484ed01120933b420c13df7270",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 22029
+        },
+        {
+          "stage_root": "A1",
+          "case_id": "t2-identity-trap",
+          "run_dir": "repeat0",
+          "run_id": "run_ce41a691b389457688dc03051ce9fdde",
+          "snapshot_hash": "9c62d32a493623c44d4f362eeeb7fa371d93da57f2f09f4ed8b917e0652e98cb",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 21303
+        },
+        {
+          "stage_root": "A1",
+          "case_id": "t2-identity-trap",
+          "run_dir": "repeat1",
+          "run_id": "run_354c0a08428642059f8a838b0755e475",
+          "snapshot_hash": "14f9a83788afa83b6a96eafaac2e34e09698423a6889e705a99af49c73a218af",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 25075
+        },
+        {
+          "stage_root": "A1",
+          "case_id": "t2-identity-trap",
+          "run_dir": "repeat2",
+          "run_id": "run_77ee3c01ff4747afa0ad9c258d612bcc",
+          "snapshot_hash": "2257456e8e7fede0a56c59cf7a65b5c2316c552ddd822382eb36d33d1b88bd26",
+          "finalization_pass": true,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 21578
+        },
+        {
+          "stage_root": "A1",
+          "case_id": "t2-no-evidence",
+          "run_dir": "repeat0",
+          "run_id": "run_13878897375d4badbd4f6174ae13f115",
+          "snapshot_hash": "b1791778fa861f687ee9a3715f165e88d744e6dbce1e233417d56379ccdc0b35",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 30507
+        },
+        {
+          "stage_root": "A1",
+          "case_id": "t2-no-evidence",
+          "run_dir": "repeat1",
+          "run_id": "run_39a098dd3c1747919d767e826f8c5491",
+          "snapshot_hash": "e81bb6f44828b1855c3bbd5510d548c99e8a257aa0e8145ec001ed455dd65f8e",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 35066
+        },
+        {
+          "stage_root": "A1",
+          "case_id": "t2-no-evidence",
+          "run_dir": "repeat2",
+          "run_id": "run_e19b490e27c34bcba99bd3792770cbab",
+          "snapshot_hash": "6f346c5d66ed165dbbf29a4f1a7d56a2f3f55cba632897563c60bfc8300575ec",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 22390
+        },
+        {
+          "stage_root": "A1",
+          "case_id": "t2-temporal-trap",
+          "run_dir": "repeat0",
+          "run_id": "run_f8c739f9d77b43df84326cddb951fbb6",
+          "snapshot_hash": "6eaf4150384a71183d395f4af3d508614621276971670a05c779683307f44601",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 22407
+        },
+        {
+          "stage_root": "A1",
+          "case_id": "t2-temporal-trap",
+          "run_dir": "repeat1",
+          "run_id": "run_46f2e5d8841948dcaebb0c0ca7e766a1",
+          "snapshot_hash": "7c652af933e3562a5893e216f454fc35f9b7e264ddbbe49fdafe421ac5d836ec",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 16492
+        },
+        {
+          "stage_root": "A1",
+          "case_id": "t2-temporal-trap",
+          "run_dir": "repeat2",
+          "run_id": "run_b9929f7bacc946138bca7f77adb20aec",
+          "snapshot_hash": "5be16769ff8c1476d4577d7a2c7b1ca57e270f0072a64ca33b7f8670791bf939",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 22439
+        }
+      ]
+    },
+    "A2_supervisor_plus_specialist": {
+      "summary": {
+        "runs": 12,
+        "finalization_pass_rate": 0.25,
+        "case_outcome_distribution": {
+          "incomplete": 12
+        },
+        "case_success_rate": 0.0,
+        "wall_ms_median": 236759.0
+      },
+      "runs": [
+        {
+          "stage_root": "A2",
+          "case_id": "t1-fraud-script-usb",
+          "run_dir": "repeat0",
+          "run_id": "run_3838071582424fac99087b0c0476e41a",
+          "snapshot_hash": "48b514bd8b272225487d3881bf9e9fa6e0a7a89f453bb8f16db1b9acfdc3a2d4",
+          "finalization_pass": true,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 33394
+        },
+        {
+          "stage_root": "A2",
+          "case_id": "t1-fraud-script-usb",
+          "run_dir": "repeat1",
+          "run_id": "run_29e2bb0e99924dd3b92a200471813214",
+          "snapshot_hash": "8007c6c29f59a2bd382a4a65ea3b1f34497d7bd7e0e426b11ae63478d05ce843",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 151611
+        },
+        {
+          "stage_root": "A2",
+          "case_id": "t1-fraud-script-usb",
+          "run_dir": "repeat2",
+          "run_id": "run_9659a8e2515b4ff7bdcbc64295f9f333",
+          "snapshot_hash": "f617f62cd560591d349f89714715b830a73b470590a68210b9848171511dc833",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 262272
+        },
+        {
+          "stage_root": "A2",
+          "case_id": "t2-identity-trap",
+          "run_dir": "repeat0",
+          "run_id": "run_66398d6806d343d79e3b5e73c4725a4f",
+          "snapshot_hash": "c26e28f4228d46e6a87c02c2bb19de9095d09a0c3e7eaa051120fb25d7ea75ed",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 169280
+        },
+        {
+          "stage_root": "A2",
+          "case_id": "t2-identity-trap",
+          "run_dir": "repeat1",
+          "run_id": "run_3de12fad5a0f4e88be445a6a6777dc84",
+          "snapshot_hash": "572c64a5c3b2368468a3a0d2c20ef457fdc0987370daee192d852f88143f7dc6",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 461200
+        },
+        {
+          "stage_root": "A2",
+          "case_id": "t2-identity-trap",
+          "run_dir": "repeat2",
+          "run_id": "run_0bf6822fcf3c47149949748112c7170e",
+          "snapshot_hash": "f1b68c34b537f46d8cdff78516195ef1752fcf9004f6178a44e25a829feff233",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 249297
+        },
+        {
+          "stage_root": "A2",
+          "case_id": "t2-no-evidence",
+          "run_dir": "repeat0",
+          "run_id": "run_ad92b790b28f44a894a37e72d2a03fcb",
+          "snapshot_hash": "8ce9085cc28003d67deb3a3c67f7be3e9828855445114102257ce411f1280829",
+          "finalization_pass": true,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 224221
+        },
+        {
+          "stage_root": "A2",
+          "case_id": "t2-no-evidence",
+          "run_dir": "repeat1",
+          "run_id": "run_8dc2e6f00c9a44b1866f8f1494d4d94a",
+          "snapshot_hash": "0dcd2d931c5c1ea6d3bfe47ee136820d5a27177a7ce9ad491810d8204333257f",
+          "finalization_pass": true,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 102575
+        },
+        {
+          "stage_root": "A2",
+          "case_id": "t2-no-evidence",
+          "run_dir": "repeat2",
+          "run_id": "run_284de19617d64a25ab47b8b012f8ef83",
+          "snapshot_hash": "b63582fd35169b97ae9663ae1126da0c79b800eb9d8a447f8d4afb0351310d22",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 445372
+        },
+        {
+          "stage_root": "A2",
+          "case_id": "t2-temporal-trap",
+          "run_dir": "repeat0",
+          "run_id": "run_c857cace7e5f41128a0c77a5b9f08a1e",
+          "snapshot_hash": "bd1be4b756fd71086cc5a99189ecde9fe45a964a20fe056cc2b9b32a3066e448",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 538567
+        },
+        {
+          "stage_root": "A2",
+          "case_id": "t2-temporal-trap",
+          "run_dir": "repeat1",
+          "run_id": "run_5c6a2f554a3a4fa6a8763cc21afb7503",
+          "snapshot_hash": "7b14351115decf0fe1fca917e155b9d0e98929d32615b51ea510bde6cbc5203f",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 567729
+        },
+        {
+          "stage_root": "A2",
+          "case_id": "t2-temporal-trap",
+          "run_dir": "repeat2",
+          "run_id": "run_ffca4b353c34439dade6bf6a95a012b3",
+          "snapshot_hash": "2c7cba47d938bc67e1fca012119d199cbd1ac0bd50a37adc16b0977592b3c886",
+          "finalization_pass": false,
+          "case_outcome": "incomplete",
+          "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "wall_ms": 99024
+        }
+      ]
+    }
+  },
+  "notes": [
+    "§1: v1 artifacts under benchmarks/results/agent-v0/ are preserved untouched; this v2 report is an additive evaluate-only recompute (no model calls).",
+    "§6: A0 finalization_pass_rate=1.0 stands; its case outcomes are computed by the deterministic evaluator, not asserted."
+  ]
+}

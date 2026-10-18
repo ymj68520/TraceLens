@@ -1,0 +1,1815 @@
+{
+  "artifact_version": "HoldoutAcceptanceEvaluationV3",
+  "generation_id": "acceptance-generation-3",
+  "created_at": "2026-10-01T11:03:42+00:00",
+  "run_set_hash": "3d3ee2e17d5a4f75a8ef48f856255b0b8141a8939ef7b79cf59bb44ada43e65a",
+  "seal_hash": "d11a17e1a7f45e115fcca4ce4617265f7ab453bfb5e679ddd78f3432c9cf040b",
+  "profile": "benchmarks/profiles/agent-v0-acceptance-profile-v2.json",
+  "profile_status": "FROZEN",
+  "evaluator": "benchmark-case-outcome:v2 (deterministic; sealed Gen-3 truth read by the evaluator only)",
+  "evaluate_only_reproduction": {
+    "per_run": [
+      {
+        "case_id": "gen3-failover-causality",
+        "repeat": "repeat0",
+        "reproduced": true
+      },
+      {
+        "case_id": "gen3-failover-causality",
+        "repeat": "repeat1",
+        "reproduced": true
+      },
+      {
+        "case_id": "gen3-failover-causality",
+        "repeat": "repeat2",
+        "reproduced": true
+      },
+      {
+        "case_id": "gen3-ledger-identity",
+        "repeat": "repeat1",
+        "reproduced": true
+      },
+      {
+        "case_id": "gen3-ledger-identity",
+        "repeat": "repeat2",
+        "reproduced": true
+      }
+    ],
+    "all_reproduced": true
+  },
+  "evidence_world_run_proofs": [
+    {
+      "case_id": "gen3-failover-causality",
+      "repeat": "repeat0",
+      "substrate_id": "sub-gen3-failover-causality",
+      "image_sha256": "0aa0e4c4d0640affd5a59b73ac44e22e37fa1711cbee6f0b3c4d0c3db8a38cfd",
+      "actual_parsed_evidence_world_digest": "d68811a6fec887e6b2aa4d5b30b75536cf7fe7283d69faaafb15f10f7b691b0e",
+      "expected_sealed_evidence_world_digest": "d68811a6fec887e6b2aa4d5b30b75536cf7fe7283d69faaafb15f10f7b691b0e",
+      "match": true
+    },
+    {
+      "case_id": "gen3-failover-causality",
+      "repeat": "repeat1",
+      "substrate_id": "sub-gen3-failover-causality",
+      "image_sha256": "0aa0e4c4d0640affd5a59b73ac44e22e37fa1711cbee6f0b3c4d0c3db8a38cfd",
+      "actual_parsed_evidence_world_digest": "d68811a6fec887e6b2aa4d5b30b75536cf7fe7283d69faaafb15f10f7b691b0e",
+      "expected_sealed_evidence_world_digest": "d68811a6fec887e6b2aa4d5b30b75536cf7fe7283d69faaafb15f10f7b691b0e",
+      "match": true
+    },
+    {
+      "case_id": "gen3-failover-causality",
+      "repeat": "repeat2",
+      "substrate_id": "sub-gen3-failover-causality",
+      "image_sha256": "0aa0e4c4d0640affd5a59b73ac44e22e37fa1711cbee6f0b3c4d0c3db8a38cfd",
+      "actual_parsed_evidence_world_digest": "d68811a6fec887e6b2aa4d5b30b75536cf7fe7283d69faaafb15f10f7b691b0e",
+      "expected_sealed_evidence_world_digest": "d68811a6fec887e6b2aa4d5b30b75536cf7fe7283d69faaafb15f10f7b691b0e",
+      "match": true
+    },
+    {
+      "case_id": "gen3-ledger-identity",
+      "repeat": "repeat0",
+      "substrate_id": "sub-gen3-ledger-identity",
+      "image_sha256": "5202a1513e3b6c55d68a9226817f3f51e2073720d1b46ce7a366a85d65f565a0",
+      "actual_parsed_evidence_world_digest": "6faa0265df5ddccde7de4cb1ce6994e64eba4ba96c8672373d48568736216d15",
+      "expected_sealed_evidence_world_digest": "6faa0265df5ddccde7de4cb1ce6994e64eba4ba96c8672373d48568736216d15",
+      "match": true
+    },
+    {
+      "case_id": "gen3-ledger-identity",
+      "repeat": "repeat1",
+      "substrate_id": "sub-gen3-ledger-identity",
+      "image_sha256": "5202a1513e3b6c55d68a9226817f3f51e2073720d1b46ce7a366a85d65f565a0",
+      "actual_parsed_evidence_world_digest": "6faa0265df5ddccde7de4cb1ce6994e64eba4ba96c8672373d48568736216d15",
+      "expected_sealed_evidence_world_digest": "6faa0265df5ddccde7de4cb1ce6994e64eba4ba96c8672373d48568736216d15",
+      "match": true
+    },
+    {
+      "case_id": "gen3-ledger-identity",
+      "repeat": "repeat2",
+      "substrate_id": "sub-gen3-ledger-identity",
+      "image_sha256": "5202a1513e3b6c55d68a9226817f3f51e2073720d1b46ce7a366a85d65f565a0",
+      "actual_parsed_evidence_world_digest": "6faa0265df5ddccde7de4cb1ce6994e64eba4ba96c8672373d48568736216d15",
+      "expected_sealed_evidence_world_digest": "6faa0265df5ddccde7de4cb1ce6994e64eba4ba96c8672373d48568736216d15",
+      "match": true
+    }
+  ],
+  "per_run": [
+    {
+      "case_id": "gen3-failover-causality",
+      "repeat": "repeat0",
+      "status": "completed",
+      "rejection_codes": [
+        "COVERAGE_UNAVAILABLE_WITHOUT_CAPABILITY_BASIS",
+        "COVERAGE_UNAVAILABLE_WITHOUT_CAPABILITY_BASIS"
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [
+        {
+          "seq": 30,
+          "delegation_id": "del_2973dfd7585f4dc680d330d2bb0a3097",
+          "evidence_snapshots_admitted": 6,
+          "specialist_proposal_contract": {
+            "proposal_hash": "21fa98d7c2c45d19990c05ba4096b76c3c14a071e95aa38cfaea8fa5adea45ce",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "60ca64f2ddb6aa58c082a97c1933c42689019b54cee2746b05c2521fc0827b03"
+          },
+          "result_semantic_payload": {
+            "summary": "BLOCKED: the EDGE-GW latency timeline cannot be reconstructed from the available tool surface, because the body of the alert log is not retrievable. The scope contains exactly four files (/monitor/latency-alerts.log 270B, /change/maintenance-record.txt 165B, /mail/oncall-handover.txt 246B, /README.txt 251B) with matching CREATED and MODIFIED file-system events, but every get_evidence call returns content_preview=null at both 'digest' and 'preview' hydration levels, and search_evidence returns 0 registered evidence items (0/0) for both unfiltered and query-filtered calls. No LLM summary, no initial_summary/initial_description, and no secondary analyses or claims exist for any of the four files. Consequently I can establish only file-level metadata: the alert log exists, is 270 bytes, was created at epoch 1790848014 and modified at epoch 1737504000, and the modification times of all four files collapse to a single shared timestamp (1737504000) — a single-instant cluster with no internal ordering, which is itself a sign of bulk staging rather than organic incident-time logging. The two event clusters (cluster:v1:29847466:CREATED and cluster:v1:28958400:MODIFIED) are the only hydratable records and contain no EDGE-GW, latency, alert-threshold, or maintenance-window content. The delegation also names source scope 'windows' with a Windows specialist profile (account usage, execution traces, persistence, device/file activity), but get_task_context reports platforms=[] and source_scopes=[], so no Windows-derived evidence (event logs, registry, prefetch, amcache, shellbags) is registered in this task at all. On the causal question, therefore: the records establish nothing about a causal link between the maintenance drill and the latency degradation or recovery, and nothing about the existence, timing, magnitude, or recovery of an EDGE-GW latency event. I am deliberately not inferring the drill/latency narrative from the file names and the well-known post-hoc attribution fallacy they invite.",
+            "evidence_refs": [
+              "file:/monitor/latency-alerts.log",
+              "file:/change/maintenance-record.txt",
+              "file:/mail/oncall-handover.txt",
+              "file:/README.txt",
+              "cluster:v1:28958400:MODIFIED",
+              "cluster:v1:29847466:CREATED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c1",
+                "text": "The delegated scope contains exactly four files and no other artifacts: /monitor/latency-alerts.log (270 B), /change/maintenance-record.txt (165 B), /mail/oncall-handover.txt (246 B), /README.txt (251 B); no deleted files and no other file types are present.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/monitor/latency-alerts.log",
+                  "file:/change/maintenance-record.txt",
+                  "file:/mail/oncall-handover.txt",
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c2",
+                "text": "The body of /monitor/latency-alerts.log is not retrievable through the available tool surface: get_evidence returns content_preview=null at both 'digest' and 'preview' hydration levels, and search_evidence returns 0 registered evidence items (0/0) both unfiltered and for the query 'EDGE-GW latency'. No LLM summary, initial_summary, or initial_description is populated for any of the four files.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/monitor/latency-alerts.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c3",
+                "text": "All four files share a single MODIFIED timestamp of epoch 1737504000, and all four share a single CREATED timestamp of epoch 1790848014, so the file-system timeline contains no intra-incident ordering and no per-file differentiation.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "cluster:v1:28958400:MODIFIED",
+                  "cluster:v1:29847466:CREATED"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c4",
+                "text": "The task exposes no Windows platform scenario: get_task_context reports platforms=[] and source_scopes=[], so despite the delegation naming source scope 'windows' there is no Windows-derived evidence (event logs, registry, prefetch, amcache, shellbags) registered for this task.",
+                "assertion_class": "FACT",
+                "evidence_refs": [],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c5",
+                "text": "The available records establish nothing about a causal relationship between the maintenance drill and any EDGE-GW latency degradation or recovery, and nothing about the existence, timing, magnitude, or recovery of such a latency event; any such conclusion would be unsupported by the retrievable evidence.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/monitor/latency-alerts.log",
+                  "file:/change/maintenance-record.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c6",
+                "text": "A single shared modification instant across all four artifacts (alert log, change record, handover note, README) is more consistent with bulk staging of a synthetic or curated scenario than with organic logging during a live incident; this is an inference from metadata only, not a conclusion about the underlying event.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "cluster:v1:28958400:MODIFIED"
+                ],
+                "limitations": [
+                  "Inference rests solely on timestamp coincidence; no content, authorship, or process evidence is available to confirm or refute it."
+                ]
+              },
+              {
+                "candidate_id": "c7",
+                "text": "Even if the log body were readable, an alert log plus a change record alone would not establish causation between the drill and the latency event: temporal co-occurrence is necessary but not sufficient, and the records would lack the counterfactual and mechanism evidence (drill scope/blast radius, per-link telemetry, control-group comparison, rollback confirmation) required for a causal claim.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/monitor/latency-alerts.log",
+                  "file:/change/maintenance-record.txt"
+                ],
+                "limitations": [
+                  "This is a methodological statement about what such records can support, not a finding about the specific EDGE-GW incident."
+                ]
+              }
+            ],
+            "entity_candidates": [],
+            "limitations": [
+              "File contents are not retrievable: get_evidence returns content_preview=null at both 'digest' and 'preview' hydration levels for all four files, so no log line, timestamp, threshold, or narrative text could be read or quoted.",
+              "search_evidence returns 0 registered evidence items (0/0) both unfiltered and query-filtered, so no evidence digests, LLM summaries, or initial summaries are available as an alternative content path.",
+              "The task metadata reports platforms=[] and source_scopes=[]; no Windows-derived evidence is registered, so the Windows specialist mission cannot be executed at all in this scope.",
+              "No secondary analyses or claims exist (get_existing_analyses returned 0 items), so nothing prior constrains or corroborates the findings.",
+              "The EDGE-GW latency timeline is therefore not reconstructed; I have reported the retrieval failure rather than inferring plausible log content from the file name and the surrounding artifacts.",
+              "The CREATED timestamp (1790848014) postdates the MODIFIED timestamp (1737504000) by roughly 1.7 years, which is chronologically inverted and indicates that the timestamps describe artifact staging rather than a real incident chronology; all timestamp-based reasoning should be treated as unreliable.",
+              "Because the log body is unreadable, the causal question is answered only in the negative: the records establish no causal link, and no positive causal claim is offered."
+            ],
+            "warnings": [
+              "BLOCKED: requested reconstruction is impossible with the retrievable evidence — file bodies are unavailable at every hydration level.",
+              "Source-scope mismatch: the delegation names 'windows' but the task registers no platforms and no source scopes.",
+              "Chronologically inverted metadata: CREATED (1790848014) is later than MODIFIED (1737504000), undermining any timestamp-based timeline.",
+              "No EDGE-GW, latency, or maintenance content is present in any retrievable record; the file names are the only hint of the drill/latency scenario and are not evidence of the scenario's content."
+            ]
+          }
+        }
+      ],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "UNINTEGRATED_COMPLETED_DELEGATION",
+          "COVERAGE_NOT_TERMINAL",
+          "COVERAGE_NOT_TERMINAL"
+        ],
+        "completion_mode": null
+      },
+      "coverage_bootstrap": {
+        "seeded_coverage_dimensions": [
+          "alert-timeline-reconstruction",
+          "causal-claim-assessment"
+        ],
+        "bootstrap_state_hash": "11d67d1359fbc28bae42ebbfe4e0a379f68a2216d77cb3238a4a21e02823d581"
+      },
+      "evidence_world_proof": {
+        "substrate_id": "sub-gen3-failover-causality",
+        "image_sha256": "0aa0e4c4d0640affd5a59b73ac44e22e37fa1711cbee6f0b3c4d0c3db8a38cfd",
+        "actual_parsed_evidence_world_digest": "d68811a6fec887e6b2aa4d5b30b75536cf7fe7283d69faaafb15f10f7b691b0e",
+        "expected_sealed_evidence_world_digest": "d68811a6fec887e6b2aa4d5b30b75536cf7fe7283d69faaafb15f10f7b691b0e",
+        "match": true
+      },
+      "run_manifest_id": "brun:fb2897860ed42c87e5cf39f6",
+      "result_hash": "e7cd46e6c5e02aa4a7214dea6d76f801516f1ca470d098f0e356bab150e439c3",
+      "snapshot_hash": "13dbbe49e5d72e9f5fbd55c1659184ed61d7dce9cecd15d4cb352d631c72ebd2",
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "hard_gate_recompute_violations": [],
+      "evaluate_only_reproduced": true,
+      "delegations_completed": 1,
+      "delegations_failed": 0,
+      "integrated": 0,
+      "coverage_terminalization": {
+        "alert-timeline-reconstruction": "not_started",
+        "causal-claim-assessment": "not_started"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "terminal=not_started; terminal=not_started; no terminal question dispositions recorded",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "unavailable",
+            "detail": "integrated_delegations=0 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "2/2 discovered"
+          },
+          {
+            "component": "coverage:alert-timeline-reconstruction",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "coverage:causal-claim-assessment",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "unavailable",
+            "detail": "terminal=0 answered-terminals=0 unresolved-terminals=0; truth expects answered=1 unresolved=0 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "findings_count": 0,
+      "tool_calls": 22,
+      "wall_s": 234.4,
+      "tokens_in": 75346,
+      "tokens_out": 4254
+    },
+    {
+      "case_id": "gen3-failover-causality",
+      "repeat": "repeat1",
+      "status": "completed",
+      "rejection_codes": [
+        "COVERAGE_UNAVAILABLE_WITHOUT_CAPABILITY_BASIS",
+        "COVERAGE_UNAVAILABLE_WITHOUT_CAPABILITY_BASIS"
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [
+        {
+          "seq": 26,
+          "delegation_id": "del_4108bb8e29dc4d43bbd98c7bd6d11657",
+          "evidence_snapshots_admitted": 6,
+          "specialist_proposal_contract": {
+            "proposal_hash": "9618a1be141471f1492f1ba340d656bc1ec1dff68062ad09cc0b5668149edea5",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "a19227d0ce29cac46acd351a9ef2866e2975259c524db3868926691ce8eab33b"
+          },
+          "result_semantic_payload": {
+            "summary": "QUESTION UNANSWERABLE FROM THE AVAILABLE READ-ONLY SURFACE. The task registers four files under the delegated scope — /monitor/latency-alerts.log (270 B, inode 16), /change/maintenance-record.txt (165 B, inode 17), /mail/oncall-handover.txt (246 B, inode 18), /README.txt (251 B, inode 15) — but the forensic read facade exposes only their directory/index metadata. Every get_evidence call (both 'digest' and 'preview' hydration levels) returns empty content_preview / null initial_summary for all four files, and find_related_evidence returns zero links for the alert log. search_evidence returns 0 items (the files are indexed as files, not as parsed Evidence digests), get_existing_analyses returns 0 prior secondary analyses, and get_task_context reports no platforms, no source_scopes and no case_description body. The timeline index contains only two synthetic clusters: cluster:v1:28958400:MODIFIED (4 FILE_MODIFIED events at epoch 1737504000) and cluster:v1:29847466:CREATED (4 FILE_CREATED events at epoch 1790848014). Both timestamps are ~16 months apart and are filesystem write/create times of the scenario files themselves — they are artefacts of how the scenario was staged, not operational EDGE-GW observations. Because no log line, no maintenance-window boundary, no alert threshold, no latency sample, no recovery marker and no actor/authorship field is readable, I cannot reconstruct the EDGE-GW latency timeline, and I cannot assess whether the records establish or fail to establish any causal link between the maintenance drill and the latency degradation or recovery. Reporting a reconstructed timeline or a causal verdict would require inventing content that does not exist in the evidence, so I return the question as blocked with the specific follow-ups needed to unblock it.",
+            "evidence_refs": [
+              "file:/monitor/latency-alerts.log",
+              "file:/change/maintenance-record.txt",
+              "file:/mail/oncall-handover.txt",
+              "file:/README.txt",
+              "cluster:v1:28958400:MODIFIED",
+              "cluster:v1:29847466:CREATED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c-coverage-1",
+                "text": "The delegated 'windows' scope contains exactly four registered files: /monitor/latency-alerts.log (270 bytes, inode 16), /change/maintenance-record.txt (165 bytes, inode 17), /mail/oncall-handover.txt (246 bytes, inode 18) and /README.txt (251 bytes, inode 15); none is deleted.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/monitor/latency-alerts.log",
+                  "file:/change/maintenance-record.txt",
+                  "file:/mail/oncall-handover.txt",
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-coverage-2",
+                "text": "No file content is retrievable through the available read-only tools: get_evidence returns empty content_preview and null initial_summary/llm_summary for all four files at both 'digest' and 'preview' hydration levels, and find_related_evidence returns zero related items for the alert log.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/monitor/latency-alerts.log",
+                  "file:/change/maintenance-record.txt",
+                  "file:/mail/oncall-handover.txt",
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-coverage-3",
+                "text": "The only timeline events present are two synthetic filesystem clusters — 4 FILE_MODIFIED events at epoch 1737504000 (cluster:v1:28958400:MODIFIED) and 4 FILE_CREATED events at epoch 1790848014 (cluster:v1:29847466:CREATED) — which are scenario-staging artefacts and contain no EDGE-GW operational telemetry.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "cluster:v1:28958400:MODIFIED",
+                  "cluster:v1:29847466:CREATED"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-coverage-4",
+                "text": "search_evidence returns 0 Evidence digests, get_existing_analyses returns 0 prior secondary analyses, and get_task_context reports no platform, no source_scopes and no case_description body for this task.",
+                "assertion_class": "FACT",
+                "evidence_refs": [],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-block-1",
+                "text": "The EDGE-GW latency timeline cannot be reconstructed from the available evidence because no alert log line, latency sample, threshold, maintenance-window boundary, recovery marker, or authorship/actor field is readable.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/monitor/latency-alerts.log",
+                  "file:/change/maintenance-record.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-block-2",
+                "text": "No statement — establishing or negating — can be made about a causal relationship between the maintenance drill and the latency degradation or recovery; the evidence is silent on causation, not merely weak on it. Silence is not the same as refutation.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/change/maintenance-record.txt",
+                  "file:/monitor/latency-alerts.log",
+                  "file:/mail/oncall-handover.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-method-1",
+                "text": "Even once the log content becomes readable, this record set is structurally incapable of establishing causation on its own: it is a single-device alert log plus a change record plus a handover note, with no baseline traffic, no control gateway, no counterfactual, no load/CPU/error telemetry, and no per-actor attribution. It can support at most a temporal-coincidence inference, and a recovery-after",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/monitor/latency-alerts.log",
+                  "file:/change/maintenance-record.txt",
+                  "file:/mail/oncall-handover.txt"
+                ],
+                "limitations": [
+                  "Reasoned from file inventory and sizes, not from readable content; the actual record granularity is unverified."
+                ]
+              },
+              {
+                "candidate_id": "c-method-2",
+                "text": "The delegated question presumes the records can support a causal assessment; the honest answer is that the records are evidence of co-occurrence at best, and any causal verdict requires telemetry that is absent from this scope.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/monitor/latency-alerts.log",
+                  "file:/change/maintenance-record.txt"
+                ],
+                "limitations": [
+                  "Methodological judgment, not an observation of the record contents."
+                ]
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e-1",
+                "raw_value": "EDGE-GW",
+                "normalized_candidate": "EDGE-GW",
+                "entity_type_candidate": "device_or_service"
+              },
+              {
+                "candidate_id": "e-2",
+                "raw_value": "/monitor/latency-alerts.log",
+                "normalized_candidate": "/monitor/latency-alerts.log",
+                "entity_type_candidate": "file_path"
+              },
+              {
+                "candidate_id": "e-3",
+                "raw_value": "/change/maintenance-record.txt",
+                "normalized_candidate": "/change/maintenance-record.txt",
+                "entity_type_candidate": "file_path"
+              },
+              {
+                "candidate_id": "e-4",
+                "raw_value": "/mail/oncall-handover.txt",
+                "normalized_candidate": "/mail/oncall-handover.txt",
+                "entity_type_candidate": "file_path"
+              },
+              {
+                "candidate_id": "e-5",
+                "raw_value": "maintenance drill",
+                "normalized_candidate": "maintenance drill",
+                "entity_type_candidate": "change_event"
+              }
+            ],
+            "limitations": [
+              "No file content is readable through the available read-only tools; all factual statements above concern directory/index metadata and tool return values, not the contents of the alert log, maintenance record or handover note.",
+              "The EDGE-GW latency timeline is therefore not reconstructed — no timestamps, latency values, thresholds, alert states or recovery markers were observable.",
+              "No causal assessment is offered: the records are silent on causation, and silence is not refutation. Any verdict would be fabricated.",
+              "The two timeline clusters (epoch 1737504000 MODIFIED, epoch 1790848014 CREATED) are filesystem staging artefacts of the scenario and must not be read as operational EDGE-GW events.",
+              "c-method-1 and c-method-2 are methodological inferences reasoned from file inventory and sizes, not from readable record content; the actual granularity of the records is unverified.",
+              "find_related_evidence has no file->cluster read facade in this environment, so cross-file linkage could not be confirmed."
+            ],
+            "warnings": [
+              "BLOCKED: the delegated question cannot be answered with the current evidence surface — content-level extraction of /monitor/latency-alerts.log, /change/maintenance-record.txt and /mail/oncall-handover.txt is required.",
+              "No causal-relationship claim is made in either direction; the result deliberately avoids asserting that the drill caused, did not cause, or is uncorrelated with the latency degradation or recovery.",
+              "The file inventory and sizes indicate the records are small enough to be fully readable once content extraction is available; the block is a tooling/extraction gap, not a data-absence finding."
+            ]
+          }
+        }
+      ],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "UNINTEGRATED_COMPLETED_DELEGATION",
+          "COVERAGE_NOT_TERMINAL",
+          "COVERAGE_NOT_TERMINAL"
+        ],
+        "completion_mode": null
+      },
+      "coverage_bootstrap": {
+        "seeded_coverage_dimensions": [
+          "alert-timeline-reconstruction",
+          "causal-claim-assessment"
+        ],
+        "bootstrap_state_hash": "3bf0d883413f2df38af056e0d2e64839b42d387dc25274c042464c5d5857cde3"
+      },
+      "evidence_world_proof": {
+        "substrate_id": "sub-gen3-failover-causality",
+        "image_sha256": "0aa0e4c4d0640affd5a59b73ac44e22e37fa1711cbee6f0b3c4d0c3db8a38cfd",
+        "actual_parsed_evidence_world_digest": "d68811a6fec887e6b2aa4d5b30b75536cf7fe7283d69faaafb15f10f7b691b0e",
+        "expected_sealed_evidence_world_digest": "d68811a6fec887e6b2aa4d5b30b75536cf7fe7283d69faaafb15f10f7b691b0e",
+        "match": true
+      },
+      "run_manifest_id": "brun:04392cf3bd4d2caa804e22f5",
+      "result_hash": "6909649ac604a7b9ba860a12ab214a8f056bc09ca182116caf89bddb7691d11f",
+      "snapshot_hash": "eaeb805aba6e1e6a9c95d731a8508e364cf622ba2deb0bdb6babb3167fe3bbd5",
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "hard_gate_recompute_violations": [],
+      "evaluate_only_reproduced": true,
+      "delegations_completed": 1,
+      "delegations_failed": 0,
+      "integrated": 0,
+      "coverage_terminalization": {
+        "alert-timeline-reconstruction": "not_started",
+        "causal-claim-assessment": "not_started"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "terminal=not_started; terminal=not_started; no terminal question dispositions recorded",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "unavailable",
+            "detail": "integrated_delegations=0 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "2/2 discovered"
+          },
+          {
+            "component": "coverage:alert-timeline-reconstruction",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "coverage:causal-claim-assessment",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "unavailable",
+            "detail": "terminal=0 answered-terminals=0 unresolved-terminals=0; truth expects answered=1 unresolved=0 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "findings_count": 0,
+      "tool_calls": 18,
+      "wall_s": 215.8,
+      "tokens_in": 52389,
+      "tokens_out": 4035
+    },
+    {
+      "case_id": "gen3-failover-causality",
+      "repeat": "repeat2",
+      "status": "completed",
+      "rejection_codes": [],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [
+        {
+          "seq": 26,
+          "delegation_id": "del_5e375a1a4fab43cdb0b2271d45edafe4",
+          "evidence_snapshots_admitted": 6,
+          "specialist_proposal_contract": {
+            "proposal_hash": "58afa80ce0b286a26bdce5cb9a3f39de39b36cf244d3163ed606e407965781f8",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "b8d176b2c36aebb0140ba7185c1e60d9ac67be1fbe811afb39a8f19c3f77c40d"
+          },
+          "result_semantic_payload": {
+            "summary": "The delegated question asks for a reconstruction of the EDGE-GW latency timeline from the alert log and an assessment of what the records do and do not establish about causality between a maintenance drill and latency degradation/recovery. That reconstruction is NOT possible with the evidence reachable through the allowed read-only tools. The task contains exactly four files whose names match the question's premises (/monitor/latency-alerts.log, /change/maintenance-record.txt, /mail/oncall-handover.txt, /README.txt), but no tool exposed their contents: get_evidence returned null/empty content_preview at both 'digest' and 'preview' hydration levels, llm_summary/llm_description/initial_summary/initial_description are all null, md5 is empty, and there are 0 secondary analyses and 0 related-evidence links. The only facts actually observable are filesystem metadata (inode, size, mtime/ctime, is_deleted=0) and 8 timeline events consisting of one CREATED cluster and one MODIFIED cluster covering all four files. Consequently no EDGE-GW latency datapoint, no alert timestamp, no maintenance-drill window, and no recovery marker could be read, and no causal statement — in either direction — can be supported. What the record set DOES establish is limited to provenance/metadata: (a) the four artefacts coexist on the same filesystem and were created in a single instant (epoch 1790848014) and modified in a single instant (epoch 1737504000), i.e. their timestamps are degenerate and cannot be used to order the drill against the degradation; (b) the mtime (1737504000) precedes the recorded CREATED timestamp (1790848014) by ~5.3 years, which is internally inconsistent and indicates these are fabricated/fixture timestamps rather than forensic captures; (c) no file is deleted and no other file activity, logon, execution, registry or event-log evidence exists anywhere in the task. What the record set does NOT establish: that EDGE-GW ever degraded; that a maintenance drill occurred; that any alert fired; that latency recovered; that the drill temporally preceded, coincided with, or caused the degradation; and that the handover mail corroborates any of the above. A further structural limitation is that the delegated source scope 'windows' is not registered: get_task_context reports platforms=[] and source_scopes=[], so the Windows specialist profile (account usage, execution traces, persistence, device activity) has no backing source scope at all. The honest answer to the question is therefore a negative finding on evidence availability, with the caveat that a causality assessment cannot be rendered from metadata alone — even with content, co-timestamped files would not by themselves establish causation.",
+            "evidence_refs": [
+              "file:/monitor/latency-alerts.log",
+              "file:/change/maintenance-record.txt",
+              "file:/mail/oncall-handover.txt",
+              "file:/README.txt",
+              "cluster:v1:28958400:MODIFIED",
+              "cluster:v1:29847466:CREATED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c-01",
+                "text": "The task contains exactly four files, whose paths correspond to the artefacts the question presupposes: /monitor/latency-alerts.log (270 B, inode 16), /change/maintenance-record.txt (165 B, inode 17), /mail/oncall-handover.txt (246 B, inode 18) and /README.txt (251 B, inode 15); none is marked deleted.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/monitor/latency-alerts.log",
+                  "file:/change/maintenance-record.txt",
+                  "file:/mail/oncall-handover.txt",
+                  "file:/README.txt"
+                ],
+                "limitations": [
+                  "Established from search_files and get_evidence metadata only; file contents were not retrievable, so the artefacts' existence is confirmed but their substance is unverified."
+                ]
+              },
+              {
+                "candidate_id": "c-02",
+                "text": "No file content was retrievable through the allowed read-only tools: get_evidence returned null/empty content_preview at both 'digest' and 'preview' hydration levels for all four files, and llm_summary, llm_description, initial_summary and initial_description were all null with empty md5.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/monitor/latency-alerts.log",
+                  "file:/change/maintenance-record.txt",
+                  "file:/mail/oncall-handover.txt",
+                  "file:/README.txt"
+                ],
+                "limitations": [
+                  "This is a statement about tool output, not about the underlying filesystem; a content extraction failure in the tooling cannot be distinguished from genuinely empty/unreadable files."
+                ]
+              },
+              {
+                "candidate_id": "c-03",
+                "text": "No EDGE-GW latency datapoint, alert timestamp, maintenance-drill window, or recovery marker could be read, so the EDGE-GW latency timeline cannot be reconstructed from the available evidence.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/monitor/latency-alerts.log",
+                  "file:/change/maintenance-record.txt"
+                ],
+                "limitations": [
+                  "Negative finding; absence of retrievable content is not proof that the log contains no such data."
+                ]
+              },
+              {
+                "candidate_id": "c-04",
+                "text": "All four files share a single MODIFIED timestamp (epoch 1737504000) and a single CREATED timestamp (epoch 1790848014), and the recorded MODIFIED time precedes the recorded CREATED time by approximately 5.3 years.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "cluster:v1:28958400:MODIFIED",
+                  "cluster:v1:29847466:CREATED"
+                ],
+                "limitations": [
+                  "Derived from cluster event metadata; the ~5.3-year inversion indicates fixture/synthetic timestamps and means these times cannot be used to order the maintenance drill against any latency event."
+                ]
+              },
+              {
+                "candidate_id": "c-05",
+                "text": "The available record set does not establish any causal relationship — and does not establish a non-relationship — between the maintenance drill and EDGE-GW latency degradation or recovery; no causal direction can be supported because neither the drill window nor any latency measurement is readable.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/monitor/latency-alerts.log",
+                  "file:/change/maintenance-record.txt",
+                  "file:/mail/oncall-handover.txt"
+                ],
+                "limitations": [
+                  "This is a statement about evidentiary sufficiency, not a substantive finding about the incident; the underlying files may well contain the causal narrative, it is simply not accessible here."
+                ]
+              },
+              {
+                "candidate_id": "c-06",
+                "text": "Even if the file contents were retrievable, these four artefacts would constitute circumstantial/temporal evidence only: a latency alert log, a change record and an on-call handover note cannot by themselves establish causation, and no independent corroborating telemetry (metrics series, gateway logs, network traces) exists in the task.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/monitor/latency-alerts.log",
+                  "file:/change/maintenance-record.txt",
+                  "file:/mail/oncall-handover.txt"
+                ],
+                "limitations": [
+                  "Methodological inference about the evidentiary class of the artefacts; rests on the assumption that the four files are the complete record set, which is supported by search_files returning exactly 4 of 4 files."
+                ]
+              },
+              {
+                "candidate_id": "c-07",
+                "text": "The delegated source scope 'windows' is not registered for this task: get_task_context reports platforms=[] and source_scopes=[], so the Windows specialist profile (account usage, execution traces, persistence, device activity, registry/event-log coverage) has no backing source scope and no corroborating Windows evidence exists.",
+                "assertion_class": "FACT",
+                "evidence_refs": [],
+                "limitations": [
+                  "Sourced from get_task_context metadata rather than an evidence_key; no Windows-derived evidence (registry hive, event log, prefetch, amcache) is present in the task at all, so the profile's execution-claim corroboration rule cannot be applied."
+                ]
+              },
+              {
+                "candidate_id": "c-08",
+                "text": "No secondary analyses and no related-evidence links exist for any of the four files, so there is no prior analytical work to build on or conflict with.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/monitor/latency-alerts.log"
+                ],
+                "limitations": [
+                  "get_existing_analyses returned 0 items for the whole task; find_related_evidence returned 0 for the alert log and reported that the file->cluster read facade is not yet available."
+                ]
+              }
+            ],
+            "entity_candidates": [],
+            "limitations": [
+              "No file content was retrievable: get_evidence returned null/empty content_preview at both 'digest' and 'preview' hydration levels for all four files, with llm_summary, llm_description, initial_summary and initial_description all null and md5 empty. Every substantive claim about the EDGE-GW incident is therefore unavailable.",
+              "The EDGE-GW latency timeline could not be reconstructed: zero latency datapoints, zero alert timestamps and zero recovery markers were read.",
+              "No causal or non-causal relationship between the maintenance drill and latency degradation/recovery can be established from metadata alone; co-timestamping of files is not evidence of causation.",
+              "File timestamps are internally inconsistent — recorded MODIFIED time (epoch 1737504000) precedes recorded CREATED time (epoch 1790848014) by ~5.3 years — indicating synthetic/fixture timestamps that cannot be used for forensic ordering.",
+              "The delegated source scope 'windows' is not registered: get_task_context reports platforms=[] and source_scopes=[], so the Windows specialist profile has no backing source scope and no corroborating Windows evidence (registry, event log, prefetch, amcache, logon) exists.",
+              "find_related_evidence returned 0 for the alert log and reported that the file->cluster read facade is not yet available, limiting cross-linking between file and cluster evidence.",
+              "No independent corroboration exists: the task holds exactly 4 files with no metrics, telemetry, gateway logs or network traces, so even readable content would support only circumstantial/temporal reasoning.",
+              "This is a read-only investigation; no extraction, mutation or re-parsing was possible, so content unavailability could not be remediated from within the delegated scope."
+            ],
+            "warnings": [
+              "PRIMARY DELIVERABLE UNFULFILLED: the EDGE-GW latency timeline cannot be reconstructed because /monitor/latency-alerts.log content is not retrievable through any allowed tool. This result is a negative finding on evidence availability, not a substantive incident analysis.",
+              "The delegation names source scope 'windows' but the task registers no platforms and no source scopes (platforms=[], source_scopes=[]). The scope appears to be a mislabel; the task is a small generic-forensics file set, not a Windows image.",
+              "Do NOT treat the four co-timestamped files as evidence that the maintenance drill caused the latency degradation. The only observable relationship is identical degenerate timestamps, which is inconsistent (mtime precedes ctime by ~5.3 years) and cannot support any causal direction.",
+              "File content may well contain the full causal narrative — the files are non-empty (165-270 B) — so the negative finding reflects tooling/extraction failure, not necessarily an empty record set. Re-extraction is the highest-value next step."
+            ]
+          }
+        }
+      ],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "REQUIRED_QUESTION_OPEN"
+        ],
+        "completion_mode": null
+      },
+      "coverage_bootstrap": {
+        "seeded_coverage_dimensions": [
+          "alert-timeline-reconstruction",
+          "causal-claim-assessment"
+        ],
+        "bootstrap_state_hash": "1f3a3c95ea652d413e4f9d377c0fd47191824be2613e3dce97cbe34419ae4938"
+      },
+      "evidence_world_proof": {
+        "substrate_id": "sub-gen3-failover-causality",
+        "image_sha256": "0aa0e4c4d0640affd5a59b73ac44e22e37fa1711cbee6f0b3c4d0c3db8a38cfd",
+        "actual_parsed_evidence_world_digest": "d68811a6fec887e6b2aa4d5b30b75536cf7fe7283d69faaafb15f10f7b691b0e",
+        "expected_sealed_evidence_world_digest": "d68811a6fec887e6b2aa4d5b30b75536cf7fe7283d69faaafb15f10f7b691b0e",
+        "match": true
+      },
+      "run_manifest_id": "brun:41160e6e996b0d50c1872506",
+      "result_hash": "782eacd4bddd6e64e057026e741f38bdbbb7edf103486f4de6fdd02ddad45968",
+      "snapshot_hash": "66c66e004b9dfa2e9c44510de15a4404e156c30fe54d5a094ddebfaeb106e015",
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "hard_gate_recompute_violations": [],
+      "evaluate_only_reproduced": true,
+      "delegations_completed": 1,
+      "delegations_failed": 0,
+      "integrated": 1,
+      "coverage_terminalization": {
+        "alert-timeline-reconstruction": "unavailable",
+        "causal-claim-assessment": "unavailable"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "unresolved",
+          "disposition": "unavailable"
+        },
+        {
+          "question_id": "q-091ee1ad",
+          "status": "open",
+          "disposition": null
+        },
+        {
+          "question_id": "q-43495cfe",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "terminal=unavailable; terminal=unavailable; truth expects an answered question; none terminal-answered",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "satisfied",
+            "detail": "integrated_delegations=1 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "2/2 discovered"
+          },
+          {
+            "component": "coverage:alert-timeline-reconstruction",
+            "status": "failed",
+            "detail": "terminal=unavailable"
+          },
+          {
+            "component": "coverage:causal-claim-assessment",
+            "status": "failed",
+            "detail": "terminal=unavailable"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "satisfied",
+            "detail": "terminal=1 answered-terminals=0 unresolved-terminals=1; truth expects answered=1 unresolved=0 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "findings_count": 0,
+      "tool_calls": 18,
+      "wall_s": 274.0,
+      "tokens_in": 75435,
+      "tokens_out": 9752
+    },
+    {
+      "case_id": "gen3-ledger-identity",
+      "repeat": "repeat0",
+      "status": "runner_failed",
+      "rejection_codes": [],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [
+        {
+          "seq": 40,
+          "delegation_id": "del_8e788096ed4648b591978ebdad925f4c",
+          "evidence_snapshots_admitted": 6,
+          "specialist_proposal_contract": {
+            "proposal_hash": "435fb209477d425abaea6a41d3042cd0083481bfa60ed6b8ccbc264c62ea4a66",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "4f54da19f595dbf9b99d59d1259c7db0dad25b69b35f7e2eca97eb3ae4b744ea"
+          },
+          "result_semantic_payload": {
+            "summary": "SCOPE NOT ANSWERABLE WITH CURRENT TOOL ACCESS. The two records named in the question are present in the task image as files — /billing/operator-accounts.csv (149 bytes, inode 17, category \"Documents\") and /ops/shift-roster.txt (92 bytes, inode 18, category \"Log Files\") — so the billing and roster records themselves exist and are locatable. However, the read-only toolset exposes NO file body content: get_evidence returns an empty content_preview at both 'digest' and 'preview' hydration levels, the md5 field is an empty string (no content hash to fingerprint), and every file carries null llm_summary / llm_description / llm_keywords. There are 0 secondary analyses, 0 recorded claims, and find_related_evidence returns no file→cluster association (\"no read facade yet\"). Consequently I cannot enumerate which operator accounts appear, and I cannot state what the records attribute to each account. No account name, shift, role, cost, or any other attributed field is retrievable. The only facts I can support are filesystem-level: both records were MODIFIED at ts 1737504000 and CREATED at ts 1790847989, grouped with /README.txt and /chat/team-chat-export.txt in two 4-event clusters (cluster:v1:28958400:MODIFIED, cluster:v1:29847466:CREATED). Note also that the task metadata reports platforms=[] and source_scopes=[], so the 'windows' scope named in the delegation is not actually registered for this task — the evidence is plain filesystem metadata from a general_forensics profile, not Windows-derived.",
+            "evidence_refs": [
+              "file:/billing/operator-accounts.csv",
+              "file:/ops/shift-roster.txt",
+              "file:/README.txt",
+              "file:/chat/team-chat-export.txt",
+              "cluster:v1:28958400:MODIFIED",
+              "cluster:v1:29847466:CREATED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c-1",
+                "text": "The billing record exists at /billing/operator-accounts.csv (149 bytes, inode 17, extension csv, category Documents, not deleted).",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/billing/operator-accounts.csv",
+                  "cluster:v1:28958400:MODIFIED"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-2",
+                "text": "The roster record exists at /ops/shift-roster.txt (92 bytes, inode 18, extension txt, category Log Files, not deleted).",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/ops/shift-roster.txt",
+                  "cluster:v1:28958400:MODIFIED"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-3",
+                "text": "The body content of both records is not retrievable through the available read-only tools: get_evidence returns an empty content_preview at digest and preview hydration, the md5 field is empty, and all derived-summary fields (llm_summary, llm_description, llm_keywords) are null.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/billing/operator-accounts.csv",
+                  "file:/ops/shift-roster.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-4",
+                "text": "Therefore the question's substantive ask — which operator accounts appear and what each record attributes to each account — cannot be answered from the observable evidence in this task.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/billing/operator-accounts.csv",
+                  "file:/ops/shift-roster.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-5",
+                "text": "Both records, together with /README.txt and /chat/team-chat-export.txt, form two filesystem activity clusters: all four were MODIFIED at timestamp 1737504000 and CREATED at timestamp 1790847989, implying the four files were written as a single batch.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "cluster:v1:28958400:MODIFIED",
+                  "cluster:v1:29847466:CREATED"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-6",
+                "text": "The delegation names a 'windows' source scope, but the task metadata reports platforms=[] and source_scopes=[] under a general_forensics filter profile; the evidence available is filesystem metadata only, with no Windows artifacts (no registry, no event log, no prefetch/amcache) present.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/billing/operator-accounts.csv",
+                  "file:/ops/shift-roster.txt",
+                  "file:/README.txt",
+                  "file:/chat/team-chat-export.txt"
+                ],
+                "limitations": []
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e-1",
+                "raw_value": "/billing/operator-accounts.csv",
+                "normalized_candidate": "operator-accounts.csv",
+                "entity_type_candidate": "file_path"
+              },
+              {
+                "candidate_id": "e-2",
+                "raw_value": "/ops/shift-roster.txt",
+                "normalized_candidate": "shift-roster.txt",
+                "entity_type_candidate": "file_path"
+              },
+              {
+                "candidate_id": "e-3",
+                "raw_value": "149",
+                "normalized_candidate": "149 bytes",
+                "entity_type_candidate": "file_size"
+              },
+              {
+                "candidate_id": "e-4",
+                "raw_value": "92",
+                "normalized_candidate": "92 bytes",
+                "entity_type_candidate": "file_size"
+              },
+              {
+                "candidate_id": "e-5",
+                "raw_value": "1737504000",
+                "normalized_candidate": "1737504000 (unix epoch)",
+                "entity_type_candidate": "timestamp"
+              },
+              {
+                "candidate_id": "e-6",
+                "raw_value": "1790847989",
+                "normalized_candidate": "1790847989 (unix epoch)",
+                "entity_type_candidate": "timestamp"
+              }
+            ],
+            "limitations": [
+              "File body content is unavailable: get_evidence returns an empty content_preview at both 'digest' and 'preview' hydration levels for all four files, so no account names or attributed fields could be read.",
+              "The md5 field is an empty string for every file, so content cannot be fingerprinted or matched against any external reference.",
+              "All derived-summary fields (llm_summary, llm_description, llm_keywords, llm_analyzed_at, llm_model_used) are null on every file; no prior analysis exists to substitute for direct reading.",
+              "find_related_evidence reports no file→cluster association facade, so billing/roster records cannot be linked to any richer event cluster.",
+              "The timeline contains only MODIFIED and CREATED events with no actor/source-IP context, so no operator identity can be inferred from activity even in principle.",
+              "Task metadata reports platforms=[] and source_scopes=[] under a general_forensics profile, so the 'windows' scope in the delegation is unregistered and no Windows-specific corroboration (prefetch/amcache/registry/event log) is available.",
+              "The answer to the delegated question is therefore withheld rather than guessed; any account enumeration would be fabrication."
+            ],
+            "warnings": [
+              "QUESTION UNANSWERABLE: the delegated question asks for operator account names and their attributed fields, but the file contents of /billing/operator-accounts.csv and /ops/shift-roster.txt are not retrievable with the allowed tools — only filesystem metadata is observable.",
+              "SCOPE MISMATCH: the delegation specifies source scope 'windows', but the task registers no platforms and no source scopes; the available evidence is plain filesystem metadata from a general_forensics profile.",
+              "NO PRIOR WORK TO BUILD ON: 0 secondary analyses and 0 recorded claims exist, so there is no cached extraction of these records.",
+              "TIMELINE ANOMALY: the MODIFIED timestamp (1737504000) precedes the CREATED timestamp (1790847989) by roughly 1.7 years, which is internally inconsistent and suggests synthetic or unreliable timestamps; do not rely on these times for sequencing.",
+              "Only filesystem-level facts are asserted below; no claim about account identity, shift assignment, billing amount, or role is made."
+            ]
+          }
+        },
+        {
+          "seq": 45,
+          "delegation_id": "del_de2b45a619564c549fe7e8b28b6c2240",
+          "evidence_snapshots_admitted": 0,
+          "specialist_proposal_contract": {
+            "proposal_hash": "bccbcf932ede048c0cf34d36e0f5c5a69332632e5a19769968b642f6775e57ef",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "1661da456f05a35770a46aa0372f1333d2950a41cc96ee9060a5ed821677e10b"
+          },
+          "result_semantic_payload": {
+            "summary": "The delegated question asks for (a) the participants in the internal chat export and (b) whether any chat participant can be identified as a specific operator account in the billing records. The available read-only tool surface cannot answer either part at the content level. The scope does contain four files at the expected paths — /chat/team-chat-export.txt (212 B), /billing/operator-accounts.csv (149 B), /ops/shift-roster.txt (92 B), /README.txt (252 B) — but every get_evidence hydration attempt returns an empty content_preview, and the metadata fields that would otherwise carry content (llm_summary, llm_description, llm_keywords, initial_summary, initial_description) are all null for all four files. No secondary analyses exist (get_existing_analyses returns 0 items, so no accepted or rejected prior analysis is available to mine). find_related_evidence returns 0 related items and explicitly reports that the file→cluster association has no read facade. The entire timeline consists of 8 filesystem events only (4 CREATED at ts 1790847989, 4 MODIFIED at ts 1737504000) across those same four paths, with empty system_context and no user/account attribution. Consequently no chat handle, no chat message, no billing operator identifier, and no roster name is observable, and no chat participant can be matched to any billing operator account — not because the records refute such a link, but because the records' contents are not exposed to this investigation. The only established facts are structural: the files exist, their sizes, inodes, timestamps, and the fact that all four were created and modified in two single-instant batches, which is itself a noteworthy provenance signal (a bulk-staged evidence set rather than organically accumulated artifacts). No participant list, no identification, and no negative identification can be asserted from this evidence base.",
+            "evidence_refs": [
+              "file:/chat/team-chat-export.txt",
+              "file:/billing/operator-accounts.csv",
+              "file:/ops/shift-roster.txt",
+              "file:/README.txt",
+              "cluster:v1:28958400:MODIFIED",
+              "cluster:v1:29847466:CREATED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c-01",
+                "text": "The scope contains an internal chat export at /chat/team-chat-export.txt (212 bytes, inode 16, mtime/ctime 1737504000) and billing records at /billing/operator-accounts.csv (149 bytes, inode 17, mtime/ctime 1737504000), plus /ops/shift-roster.txt (92 bytes, inode 18) and /README.txt (252 bytes, inode 15).",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/chat/team-chat-export.txt",
+                  "file:/billing/operator-accounts.csv",
+                  "file:/ops/shift-roster.txt",
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-02",
+                "text": "The contents of all four files are not observable through the available read-only tools: every get_evidence call returns an empty content_preview and all content-bearing metadata fields (llm_summary, llm_description, llm_keywords, initial_summary, initial_description) are null.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/chat/team-chat-export.txt",
+                  "file:/billing/operator-accounts.csv",
+                  "file:/ops/shift-roster.txt",
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-03",
+                "text": "No chat participant can be identified as any specific operator account in the billing records on the basis of this evidence, because neither the chat handles nor the billing operator identifiers are readable. This is an absence of evidence, not evidence of absence: the records neither establish nor refute such an identification.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/chat/team-chat-export.txt",
+                  "file:/billing/operator-accounts.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-04",
+                "text": "The complete timeline for this scope contains exactly 8 events, all filesystem-level: 4 CREATED events at timestamp 1790847989 and 4 MODIFIED events at timestamp 1737504000, one per file, with empty system_context and no user or account attribution. No login, process, network, or user-activity events are present.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "cluster:v1:28958400:MODIFIED",
+                  "cluster:v1:29847466:CREATED"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-05",
+                "text": "All four files share identical creation and modification timestamps within their respective events, indicating the evidence set was staged as a single batch rather than accumulated organically; this weakens any inference about which person placed or edited which file.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "cluster:v1:28958400:MODIFIED",
+                  "cluster:v1:29847466:CREATED"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-06",
+                "text": "No prior secondary analysis exists for this task (0 items in get_existing_analyses), so there is no accepted or rejected analysis whose claims could be reused or contradicted.",
+                "assertion_class": "FACT",
+                "evidence_refs": [],
+                "limitations": []
+              }
+            ],
+            "entity_candidates": [],
+            "limitations": [
+              "File contents are not exposed by any available tool: get_evidence returns empty content_preview for all four files at both 'digest' and 'preview' hydration levels, and llm_summary/llm_description/llm_keywords are null.",
+              "No secondary analyses exist (0 items), so no prior accepted or rejected analysis is available to reuse.",
+              "find_related_evidence returns 0 related items and reports that the file-to-cluster association has no read facade.",
+              "The timeline contains only filesystem CREATED/MODIFIED events with empty system_context; no login, process, network, or user-activity events exist to attribute authorship or to bridge chat handles to accounts.",
+              "get_task_context reports no platforms and no source scopes, so the 'windows' scope in the question is not backed by any registered scenario in this task's metadata.",
+              "No entity_candidates are asserted, because asserting chat handles or operator account names would require content that is not observable; fabricating them would be a grounding violation."
+            ],
+            "warnings": [
+              "The delegated question presupposes that the chat export and billing records are readable. They are present as files but their contents are not accessible through the read-only tool surface, so the question cannot be answered as posed.",
+              "Absence of an identification must not be read as evidence that no chat participant is a billing operator; it reflects tool-level content unavailability.",
+              "The shared batch creation/modification timestamps across all four files are a provenance flag worth escalating: the evidence set appears staged rather than organically collected."
+            ]
+          }
+        }
+      ],
+      "finalization_event": {},
+      "coverage_bootstrap": {
+        "seeded_coverage_dimensions": [
+          "chat-actor-identification",
+          "ledger-entry-attribution"
+        ],
+        "bootstrap_state_hash": "50a8494e876a611f0d0f83edfff3e171dc43768d5809382010f3aa41bc0e13a4"
+      },
+      "evidence_world_proof": {
+        "substrate_id": "sub-gen3-ledger-identity",
+        "image_sha256": "5202a1513e3b6c55d68a9226817f3f51e2073720d1b46ce7a366a85d65f565a0",
+        "actual_parsed_evidence_world_digest": "6faa0265df5ddccde7de4cb1ce6994e64eba4ba96c8672373d48568736216d15",
+        "expected_sealed_evidence_world_digest": "6faa0265df5ddccde7de4cb1ce6994e64eba4ba96c8672373d48568736216d15",
+        "match": true
+      },
+      "failure_layer": "RUNTIME",
+      "failure_reason": "status_code: 429, model_name: sensenova-6.8-flash-lite, body: {'message': 'inference exceeds tpm/rpm limit', 'type': 'rate_limit_error', 'code': '429'}"
+    },
+    {
+      "case_id": "gen3-ledger-identity",
+      "repeat": "repeat1",
+      "status": "completed",
+      "rejection_codes": [],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [
+        {
+          "seq": 52,
+          "delegation_id": "del_5ff6636f53b6441dac911cb495451007",
+          "evidence_snapshots_admitted": 6,
+          "specialist_proposal_contract": {
+            "proposal_hash": "3a333d1e20aceb41026b718338c6decdfb3ecefb81512badbb7311d28302014d",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "00505b6eedc9b349cf2105226cce8c30acf5111dc8d3d5ab64b3c6673f090502"
+          },
+          "result_semantic_payload": {
+            "summary": "The question cannot be answered from the accessible evidence. The store does contain the two artifacts named in the question — /chat/team-chat-export.txt (212 bytes) and /billing/operator-accounts.csv (149 bytes), plus /ops/shift-roster.txt (92 bytes) and /README.txt (252 bytes) — but the read-only tools return only file metadata (path, size, extension, inode, mtime/ctime, category, type REG, not deleted). Every get_evidence call (digest and preview) returned content_preview: null with no llm_summary, llm_description, llm_keywords or initial_summary. search_evidence returns 0 items regardless of query (total_count 0), there are no registered source scopes and no detected platform scenario (platforms: []), so no Windows registry/event-log/database content is reachable, and get_existing_analyses returns 0 prior analyses. Consequently I cannot enumerate the chat participants, cannot enumerate the operator accounts in the billing record, and cannot perform the cross-reference between the two. The only defensible statements are structural: the artifacts exist, their sizes are small (212 B chat, 149 B billing — consistent with a handful of lines), and the billing record is the sole CSV in the image, i.e. the only billing-side operator-account source available. No participant-to-operator-account identity link is established, and equally no absence of such a link is established.",
+            "evidence_refs": [
+              "file:/README.txt",
+              "file:/chat/team-chat-export.txt",
+              "file:/billing/operator-accounts.csv",
+              "file:/ops/shift-roster.txt",
+              "cluster:v1:28958400:MODIFIED",
+              "cluster:v1:29847466:CREATED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c-1",
+                "text": "The image contains an internal chat export at /chat/team-chat-export.txt (212 bytes, extension txt, REG, not deleted) and a billing operator-account record at /billing/operator-accounts.csv (149 bytes, extension csv, REG, not deleted).",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/chat/team-chat-export.txt",
+                  "file:/billing/operator-accounts.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-2",
+                "text": "operator-accounts.csv is the only CSV file in the image, so it is the sole billing-side operator-account source available for any cross-reference.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/billing/operator-accounts.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-3",
+                "text": "The chat participants are NOT identified: no participant names, handles or user IDs were retrievable, because the evidence store exposes only file metadata and returns null content previews for all four files.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/chat/team-chat-export.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-4",
+                "text": "No chat participant can be identified as any specific operator account in the billing records on the basis of this evidence — but this is an absence of retrievable data, not evidence that no such mapping exists.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/chat/team-chat-export.txt",
+                  "file:/billing/operator-accounts.csv"
+                ],
+                "limitations": [
+                  "Absence-of-evidence: the underlying file contents were never readable, so the true state of any chat-to-account mapping is unknown, not disproven."
+                ]
+              },
+              {
+                "candidate_id": "c-5",
+                "text": "An auxiliary roster file /ops/shift-roster.txt (92 bytes) exists and could plausibly be a bridging artifact between chat participants and operator accounts, but its contents are equally unreadable, so it cannot be used to resolve any identity.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/ops/shift-roster.txt"
+                ],
+                "limitations": [
+                  "Contents unavailable; role inferred only from path and name."
+                ]
+              },
+              {
+                "candidate_id": "c-6",
+                "text": "All four files share identical mtime/ctime (1737504000) and were created at a single later timestamp (1790847989), consistent with a single bulk placement/copy of the whole set rather than organically generated records.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "cluster:v1:28958400:MODIFIED",
+                  "cluster:v1:29847466:CREATED"
+                ],
+                "limitations": [
+                  "Timestamps may reflect image packaging rather than original record creation; no provenance chain available."
+                ]
+              }
+            ],
+            "entity_candidates": [],
+            "limitations": [
+              "File contents are not retrievable through the available read-only tools; get_evidence returns null content_preview for every file at both digest and preview hydration levels.",
+              "No source scopes or platform scenarios are registered, so Windows-native sources (registry hives, event logs, prefetch/amcache) required by the profile interpretation rules are unavailable.",
+              "search_evidence returns an empty index, so keyword discovery is impossible and only search_files enumeration worked.",
+              "No identity-level entity candidates could be extracted, so no entity_candidates or correlation_candidates are asserted rather than guessed.",
+              "Timeline timestamps are internally inconsistent (mtime 1737504000 precedes the CREATED cluster at 1790847989), which limits any chronology-based inference."
+            ],
+            "warnings": [
+              "QUESTION NOT ANSWERABLE: the delegated question asks for chat participants and a chat-to-billing-account identity link, but the underlying file contents were never accessible; any enumerated participant list or mapping produced here would be fabrication.",
+              "The billing record is the only CSV in the image and its row count is unknown; do not treat the small file size (149 B) as a count of operator accounts.",
+              "File timestamps suggest bulk staging of the whole artifact set; treat the four files as a curated bundle, not as independently generated operational records."
+            ]
+          }
+        },
+        {
+          "seq": 55,
+          "delegation_id": "del_57387b5d705c4e15b8c3549cfc74c9a2",
+          "evidence_snapshots_admitted": 0,
+          "specialist_proposal_contract": {
+            "proposal_hash": "6d5ecf3c3f3693e1252290b18297b394c7939ab3390a68710237cd22b77e61b3",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "a52e9c8193ba073734adc4cf9cc9c67ee868d391c7330c7bf0180193c9447bc3"
+          },
+          "result_semantic_payload": {
+            "summary": "The two records named in the question do exist in the image as files — /billing/operator-accounts.csv (149 bytes, inode 17, category Documents) and /ops/shift-roster.txt (92 bytes, inode 18, category Log Files) — but their contents are NOT retrievable through the available read-only tools, so the operator accounts and the per-account attributions cannot be established. get_evidence returns only filesystem metadata for both files: content_preview is null (digest mode) / empty string (preview mode), md5 is empty, and llm_summary / llm_description / llm_keywords / initial_summary / initial_description are all null (the files were never LLM-analyzed). search_evidence returns 0 items for every query and for the kind=file filter, so no content-bearing evidence digest exists to hydrate; find_related_evidence returns 0 related items for both files and reports that the file→cluster association has no read facade. The only content that could be read at all came from the two timeline clusters, and both contain nothing but the four file-operation lines themselves (MODIFIED at t=1737504000 and CREATED at t=1790847989, all four files in each cluster). No timeline event carries an account, user, or source-IP context (system_context is empty for every event), and the task exposes no platform scenario and no registered source scopes, so no Windows account-usage, execution, or event-log evidence is present to corroborate or reconstruct the records. Consequently the question is unanswerable as posed with the tooling available: I cannot name a single operator account, and I cannot state what the billing or roster records attribute to any account. Any account name or attribution produced here would be fabricated rather than grounded, so none is offered.",
+            "evidence_refs": [
+              "file:/billing/operator-accounts.csv",
+              "file:/ops/shift-roster.txt",
+              "file:/README.txt",
+              "file:/chat/team-chat-export.txt",
+              "cluster:v1:28958400:MODIFIED",
+              "cluster:v1:29847466:CREATED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c-01",
+                "text": "The billing record exists in the image as /billing/operator-accounts.csv (149 bytes, inode 17, extension csv, category Documents, type REG, not deleted, mtime/ctime 1737504000).",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/billing/operator-accounts.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-02",
+                "text": "The roster record exists in the image as /ops/shift-roster.txt (92 bytes, inode 18, extension txt, category Log Files, type REG, not deleted, mtime/ctime 1737504000).",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/ops/shift-roster.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-03",
+                "text": "Neither record's contents are accessible through the available read-only tools: get_evidence returns null/empty content_preview, empty md5, and null llm_summary/llm_description/llm_keywords/initial_summary/initial_description for both files, and search_evidence returns 0 items for all queries and for the kind=file filter.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/billing/operator-accounts.csv",
+                  "file:/ops/shift-roster.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-04",
+                "text": "No operator account name, and no per-account attribution from the billing or roster records, can be established from the evidence available to this investigation; the question is therefore unanswerable as posed.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/billing/operator-accounts.csv",
+                  "file:/ops/shift-roster.txt",
+                  "cluster:v1:28958400:MODIFIED",
+                  "cluster:v1:29847466:CREATED"
+                ],
+                "limitations": [
+                  "Absence of a retrievable answer is a statement about tool access, not proof that the records lack account data; the files are non-empty (149 and 92 bytes) so the data almost certainly exists on disk but is outside the read facade."
+                ]
+              },
+              {
+                "candidate_id": "c-05",
+                "text": "The only readable content in the task is the four file-operation events per cluster: MODIFIED for all four files at t=1737504000 and CREATED for all four files at t=1790847989; these carry no account, user, or source-IP context (system_context empty).",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "cluster:v1:28958400:MODIFIED",
+                  "cluster:v1:29847466:CREATED"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-06",
+                "text": "The investigation is scoped to the 'windows' source scope, but the task metadata registers no platform scenario and no source scopes, so no Windows-derived account-usage, execution, or event-log evidence is present to corroborate the billing/roster records.",
+                "assertion_class": "FACT",
+                "evidence_refs": [],
+                "limitations": [
+                  "Derived from get_task_context metadata (platforms=[], source_scopes=[]) rather than from a cited evidence item; no evidence_key can ground a statement about absent platform registration."
+                ]
+              }
+            ],
+            "entity_candidates": [],
+            "limitations": [
+              "get_evidence exposes only filesystem metadata for all four files; content_preview is null/empty and all LLM-derived summary fields are null, so record contents cannot be read.",
+              "search_evidence returns 0 items for every query and for the kind=file filter, so no content-bearing evidence digest can be resolved.",
+              "find_related_evidence has no file→cluster read facade and returns 0 related items for both target files.",
+              "No Windows platform scenario or source scopes are registered in the task metadata, so no account-usage, execution, or event-log evidence is available for corroboration.",
+              "No deleted files are present, so no recovered prior version of either record is available.",
+              "File mtimes (1737504000) and timeline CREATED timestamps (1790847989) are internally inconsistent (creation recorded after modification), so file timestamps are unreliable for any sequencing claim."
+            ],
+            "warnings": [
+              "Question is unanswerable as posed with the available tooling: no operator account name and no per-account attribution could be grounded, so none is reported rather than fabricated.",
+              "The two records are non-empty (149 and 92 bytes), so the requested data most likely exists on disk but is outside the read facade — this is an access/ingestion gap, not evidence that the records lack account data.",
+              "No entity_candidates are emitted: emitting account identifiers without readable record content would be ungrounded.",
+              "The task metadata reports platforms=[] and source_scopes=[] despite the delegation naming the 'windows' source scope; no evidence_key can ground statements about absent platform registration."
+            ]
+          }
+        }
+      ],
+      "finalization_event": {
+        "event": "finalization_completed",
+        "violation_codes": [],
+        "completion_mode": "complete_with_limitations"
+      },
+      "coverage_bootstrap": {
+        "seeded_coverage_dimensions": [
+          "chat-actor-identification",
+          "ledger-entry-attribution"
+        ],
+        "bootstrap_state_hash": "9ad1efb3a7ef111e928042afb7fb8e83f02a960ee00d9ef9a2b4ed69c0dfecc2"
+      },
+      "evidence_world_proof": {
+        "substrate_id": "sub-gen3-ledger-identity",
+        "image_sha256": "5202a1513e3b6c55d68a9226817f3f51e2073720d1b46ce7a366a85d65f565a0",
+        "actual_parsed_evidence_world_digest": "6faa0265df5ddccde7de4cb1ce6994e64eba4ba96c8672373d48568736216d15",
+        "expected_sealed_evidence_world_digest": "6faa0265df5ddccde7de4cb1ce6994e64eba4ba96c8672373d48568736216d15",
+        "match": true
+      },
+      "run_manifest_id": "brun:e773b21fbe9884358ee5994e",
+      "result_hash": "4b72d70d03be63572ccc5b3e95cb1181fdebfbfdccf723b4f2e57ed3050f8c3f",
+      "snapshot_hash": "c21bc43c0ef6052004e527f6b4c749961da34c710e2d0e35600f4839bac47045",
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "hard_gate_violations": [],
+      "hard_gate_recompute_violations": [],
+      "evaluate_only_reproduced": true,
+      "delegations_completed": 2,
+      "delegations_failed": 0,
+      "integrated": 2,
+      "coverage_terminalization": {
+        "chat-actor-identification": "unavailable",
+        "ledger-entry-attribution": "unavailable"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "blocked",
+          "disposition": "unavailable"
+        },
+        {
+          "question_id": "q-2",
+          "status": "blocked",
+          "disposition": "unavailable"
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "terminal=unavailable; terminal=unavailable; truth expects an answered question; none terminal-answered",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "satisfied",
+            "detail": "integrated_delegations=2 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "2/2 discovered"
+          },
+          {
+            "component": "coverage:chat-actor-identification",
+            "status": "failed",
+            "detail": "terminal=unavailable"
+          },
+          {
+            "component": "coverage:ledger-entry-attribution",
+            "status": "failed",
+            "detail": "terminal=unavailable"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "satisfied",
+            "detail": "terminal=2 answered-terminals=0 unresolved-terminals=2; truth expects answered=2 unresolved=0 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "findings_count": 0,
+      "tool_calls": 44,
+      "wall_s": 276.8,
+      "tokens_in": 136927,
+      "tokens_out": 6209
+    },
+    {
+      "case_id": "gen3-ledger-identity",
+      "repeat": "repeat2",
+      "status": "completed",
+      "rejection_codes": [
+        "COVERAGE_UNAVAILABLE_WITHOUT_CAPABILITY_BASIS",
+        "COVERAGE_UNAVAILABLE_WITHOUT_CAPABILITY_BASIS"
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [
+        {
+          "seq": 40,
+          "delegation_id": "del_c1b6482dfb16418cad0a8765357525e7",
+          "evidence_snapshots_admitted": 6,
+          "specialist_proposal_contract": {
+            "proposal_hash": "14a570f119a5a9fb8ddf28c40fa4c160945889b66173efd12b8b47d5c5835b4b",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "1edc5a47dc7a26c928e534ce7e77a920a6ef8bb0c8cc3fc9cabe3fe560a38f19"
+          },
+          "result_semantic_payload": {
+            "summary": "BLOCKED — the question cannot be answered from the available read-only surfaces. The two target records do exist and are locatable: /billing/operator-accounts.csv (149 bytes, inode 17, category Documents, REG, not deleted) and /ops/shift-roster.txt (92 bytes, inode 18, category Log Files, REG, not deleted). However, their CONTENT is not retrievable through any permitted tool. get_evidence returned empty/null content_preview for both files at both 'digest' and 'preview' hydration levels; there is no 'full' hydration level exposed; no secondary analyses exist (get_existing_analyses returned 0 items); no related evidence is associated with either file (find_related_evidence returned 0); and search_evidence returns 0 items for any query, including 'billing roster'. The only substantive signal available is file-system metadata: both files (along with /README.txt and /chat/team-chat-export.txt) carry MODIFIED events at timestamp 1737504000 and CREATED events at timestamp 1790847989, all in cluster:v1:28958400:MODIFIED and cluster:v1:29847466:CREATED respectively. Notably the CREATED timestamp (1790847989) is ~1.7 years AFTER the MODIFIED timestamp (1737504000), which is internally inconsistent and suggests synthetic or backdated fixture metadata rather than a genuine filesystem timeline. No account identifiers, names, IDs, roles, amounts, shifts, or any per-record attribution are observable in any tool output. Therefore I cannot name which operator accounts appear, nor what the records attribute to each account. All claim_candidates are limited to verifiable file-level metadata; no account-level claims are asserted.",
+            "evidence_refs": [
+              "file:/billing/operator-accounts.csv",
+              "file:/ops/shift-roster.txt",
+              "file:/README.txt",
+              "file:/chat/team-chat-export.txt",
+              "cluster:v1:28958400:MODIFIED",
+              "cluster:v1:29847466:CREATED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c-1",
+                "text": "A billing record file named operator-accounts.csv exists at /billing/operator-accounts.csv, size 149 bytes, inode 17, extension csv, classified as category 'Documents', type REG, and is not marked deleted.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/billing/operator-accounts.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-2",
+                "text": "A roster record file named shift-roster.txt exists at /ops/shift-roster.txt, size 92 bytes, inode 18, extension txt, classified as category 'Log Files', type REG, and is not marked deleted.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/ops/shift-roster.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-3",
+                "text": "The complete set of files in this task's scope is exactly four: /README.txt, /chat/team-chat-export.txt, /billing/operator-accounts.csv, /ops/shift-roster.txt. No other billing, roster, ledger, HR, payroll, or account-management files are present.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/README.txt",
+                  "file:/chat/team-chat-export.txt",
+                  "file:/billing/operator-accounts.csv",
+                  "file:/ops/shift-roster.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-4",
+                "text": "The textual contents of operator-accounts.csv and shift-roster.txt were not retrievable via any permitted read-only tool; content_preview was empty/null at both digest and preview hydration levels, so the specific operator accounts and their attributed attributes are unobservable.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/billing/operator-accounts.csv",
+                  "file:/ops/shift-roster.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-5",
+                "text": "File-system metadata is internally inconsistent: MODIFIED events for all four files are timestamped 1737504000 while CREATED events are timestamped 1790847989, i.e. creation is recorded ~1.7 years after modification. This is not physically possible for a genuine single-write timeline and indicates synthetic, fixture-generated, or backdated metadata.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "cluster:v1:28958400:MODIFIED",
+                  "cluster:v1:29847466:CREATED"
+                ],
+                "limitations": [
+                  "Inference from timestamps alone; the underlying filesystem journal was not accessible to verify intent or provenance.",
+                  "The CREATED timestamp 1790847989 falls in the future relative to the MODIFIED timestamp 1737504000, which could also reflect clock skew, ingestion-time stamping, or an artificial fixture rather than deliberate falsification."
+                ]
+              },
+              {
+                "candidate_id": "c-6",
+                "text": "No operator account identifiers, account names, user IDs, roles, billing amounts, shift assignments, or any other per-record attribution are observable anywhere in the available evidence surfaces.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/billing/operator-accounts.csv",
+                  "file:/ops/shift-roster.txt",
+                  "cluster:v1:28958400:MODIFIED",
+                  "cluster:v1:29847466:CREATED"
+                ],
+                "limitations": []
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e-1",
+                "raw_value": "/billing/operator-accounts.csv",
+                "normalized_candidate": "operator-accounts.csv",
+                "entity_type_candidate": "file_path"
+              },
+              {
+                "candidate_id": "e-2",
+                "raw_value": "/ops/shift-roster.txt",
+                "normalized_candidate": "shift-roster.txt",
+                "entity_type_candidate": "file_path"
+              }
+            ],
+            "limitations": [
+              "The delegated question is unanswerable with the available tooling: file contents are not retrievable, so no operator account can be named and no per-record attribution can be stated.",
+              "get_evidence offers only 'digest' and 'preview' hydration levels; both returned empty/null content_preview for all four files, including the two target records.",
+              "No 'full' or 'raw' content retrieval path is exposed by the permitted toolset.",
+              "get_task_context reports platforms=[] and source_scopes=[], so the 'windows' scope is asserted by the delegation rather than confirmed by task metadata.",
+              "No Windows-native evidence (registry, event logs, prefetch, Amcache) is present in this task, so account usage could not be corroborated against execution or logon traces even if names were available.",
+              "File timestamps are internally inconsistent (CREATED postdates MODIFIED by ~1.7 years), so filesystem metadata carries reduced evidentiary weight and should not be relied upon for sequencing.",
+              "No account identifiers were invented or inferred; the absence of account data is reported as a gap rather than filled with plausible-looking names."
+            ],
+            "warnings": [
+              "NEGATIVE RESULT: This delegation cannot be satisfied. The answer requires reading record contents that are not accessible through any permitted read-only tool.",
+              "Do not treat the empty content_preview as evidence that the records are empty or contain no accounts. A 149-byte CSV and a 92-byte roster file almost certainly contain data; the tool simply does not expose it. Absence of retrievable content is not absence of content.",
+              "The timestamp inversion (CREATED 1790847989 after MODIFIED 1737504000) should be flagged to whoever owns the evidence ingestion pipeline before any timeline conclusions are drawn from these files.",
+              "Scope mismatch: the question is framed as Windows-derived evidence, but the actual artifacts are plain text/CSV files with no Windows provenance. This may indicate the wrong source scope was delegated."
+            ]
+          }
+        },
+        {
+          "seq": 41,
+          "delegation_id": "del_4caa59d67a594fc38a468429e8ec63cb",
+          "evidence_snapshots_admitted": 0,
+          "specialist_proposal_contract": {
+            "proposal_hash": "3d593195a93f8413cf25ed76ff50bdd0423a04ea82a0b1b63a185707ef353845",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "4d05e342a1d62c424cce5fa7d1d7bb49eab3877b585c8e8d26680d94fb7683c0"
+          },
+          "result_semantic_payload": {
+            "summary": "The delegated question asks (a) who the participants in the internal chat export are, and (b) whether any chat participant can be identified as a specific operator account in the billing records. The 'windows' source scope contains exactly four files: /README.txt (252 B), /chat/team-chat-export.txt (212 B), /billing/operator-accounts.csv (149 B), and /ops/shift-roster.txt (92 B). All four share a single MODIFIED timestamp (1737504000) and a single CREATED timestamp (1790847989), i.e. they were placed together as a bundle. However, the read-only toolset exposes only file metadata for these items: get_evidence returns empty content_preview, empty initial_summary/initial_description, and no llm_summary/llm_description/llm_keywords for any of the four files; there are no secondary analyses on record (get_existing_analyses returned 0), no related evidence (find_related_evidence returned 0), and the timeline contains only the 8 CREATED/MODIFIED file-system events already covered. Consequently, the identities of the chat participants, the names/handles/IDs in the billing CSV, and the roster entries are NOT readable from the available evidence, and no chat participant can be linked to any operator account on the basis of what is observable here. The task is therefore not answerable at the substantive level requested; the honest specialist result is a coverage failure with a documented limitation, not an inferred answer.",
+            "evidence_refs": [
+              "file:/chat/team-chat-export.txt",
+              "file:/billing/operator-accounts.csv",
+              "file:/ops/shift-roster.txt",
+              "file:/README.txt",
+              "cluster:v1:28958400:MODIFIED",
+              "cluster:v1:29847466:CREATED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c-1",
+                "text": "The 'windows' source scope contains exactly four files: /README.txt, /chat/team-chat-export.txt, /billing/operator-accounts.csv, and /ops/shift-roster.txt; no other files, registry hives, event logs, prefetch, amcache, or logon artifacts are present.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/README.txt",
+                  "file:/chat/team-chat-export.txt",
+                  "file:/billing/operator-accounts.csv",
+                  "file:/ops/shift-roster.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-2",
+                "text": "All four files share one MODIFIED timestamp (epoch 1737504000) and one CREATED timestamp (epoch 1790847989), indicating they were staged/placed as a single bundle rather than arising from independent operational activity.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "cluster:v1:28958400:MODIFIED",
+                  "cluster:v1:29847466:CREATED"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-3",
+                "text": "The content of /chat/team-chat-export.txt is not retrievable through the available read-only tools: get_evidence returns empty content_preview and null initial_summary/llm_summary for the file, so the list of chat participants cannot be enumerated from the accessible evidence.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/chat/team-chat-export.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-4",
+                "text": "The content of /billing/operator-accounts.csv is likewise not retrievable through the available read-only tools, so no operator account identifiers (names, employee IDs, aliases, or cost-centre codes) can be read from the billing record.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/billing/operator-accounts.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c-5",
+                "text": "Because neither the chat participant list nor the billing operator identifiers are readable, no chat participant can be identified as any specific operator account in the billing records on the basis of the observable evidence. This is an absence-of-evidence finding, not a negative identification: the underlying files are 212 B and 149 B respectively and plausibly do contain such identifiers, but ",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/chat/team-chat-export.txt",
+                  "file:/billing/operator-accounts.csv"
+                ],
+                "limitations": [
+                  "Conclusion is bounded by tool visibility, not by absence of content in the files themselves; a reviewer with raw file access may be able to answer the question substantively."
+                ]
+              },
+              {
+                "candidate_id": "c-6",
+                "text": "No prior secondary analysis exists for any of the four files, and no file has an LLM summary, description, or keyword set attached; there is therefore no pre-computed participant list or operator mapping anywhere in the task state.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/chat/team-chat-export.txt",
+                  "file:/billing/operator-accounts.csv",
+                  "file:/ops/shift-roster.txt",
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e-1",
+                "raw_value": "/chat/team-chat-export.txt",
+                "normalized_candidate": "chat_export_file",
+                "entity_type_candidate": "file_path"
+              },
+              {
+                "candidate_id": "e-2",
+                "raw_value": "/billing/operator-accounts.csv",
+                "normalized_candidate": "billing_operator_accounts_file",
+                "entity_type_candidate": "file_path"
+              },
+              {
+                "candidate_id": "e-3",
+                "raw_value": "/ops/shift-roster.txt",
+                "normalized_candidate": "shift_roster_file",
+                "entity_type_candidate": "file_path"
+              }
+            ],
+            "limitations": [
+              "File contents are not readable through the available read-only tools: get_evidence returns empty content_preview and null summaries for all four files, so neither chat participants nor billing operator accounts could be enumerated.",
+              "No secondary analyses, LLM summaries, or related-evidence links exist in the task state; there is no pre-computed participant list or operator mapping to reuse.",
+              "The 'windows' source scope contains no Windows-native artifacts (registry, event logs, prefetch, amcache, logon events, USN journal), so no independent corroboration of identity attribution is possible.",
+              "The absence of an identifiable link between chat participants and billing operator accounts is an absence-of-evidence finding, not a negative identification: the files are small enough (212 B and 149 B) that such identifiers plausibly exist but are not observable here.",
+              "Task metadata reports platforms=[] and source_scopes=[], so the 'windows' platform label in the delegation is not corroborated by registered scenario metadata.",
+              "All four files share identical MODIFIED and CREATED timestamps, so no independent temporal ordering between chat activity and billing activity can be established."
+            ],
+            "warnings": [
+              "Question is not substantively answerable with the accessible evidence: the requested participant list and the requested participant-to-operator mapping cannot be produced, and no inference was fabricated to fill the gap.",
+              "Delegation labels the scope 'windows' but the task context registers no platform scenario and no source scopes; results should not be cited as Windows-native forensic findings."
+            ]
+          }
+        }
+      ],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "UNINTEGRATED_COMPLETED_DELEGATION",
+          "COVERAGE_NOT_TERMINAL",
+          "COVERAGE_NOT_TERMINAL"
+        ],
+        "completion_mode": null
+      },
+      "coverage_bootstrap": {
+        "seeded_coverage_dimensions": [
+          "chat-actor-identification",
+          "ledger-entry-attribution"
+        ],
+        "bootstrap_state_hash": "d1002b795e7cae2408327250f3b465f63e83e78b9de1aed414fedfcc9452b13b"
+      },
+      "evidence_world_proof": {
+        "substrate_id": "sub-gen3-ledger-identity",
+        "image_sha256": "5202a1513e3b6c55d68a9226817f3f51e2073720d1b46ce7a366a85d65f565a0",
+        "actual_parsed_evidence_world_digest": "6faa0265df5ddccde7de4cb1ce6994e64eba4ba96c8672373d48568736216d15",
+        "expected_sealed_evidence_world_digest": "6faa0265df5ddccde7de4cb1ce6994e64eba4ba96c8672373d48568736216d15",
+        "match": true
+      },
+      "run_manifest_id": "brun:b47f1c7dc6c28b13825168d0",
+      "result_hash": "133acaf95d8c842e33983d52a30f9a2605b484c8ea65f20c2d020dbea1777ffd",
+      "snapshot_hash": "f9b0a624f333f2275f9782e29cd21ce93db2279f44370c8f657d8ef2e83b1b78",
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "hard_gate_recompute_violations": [],
+      "evaluate_only_reproduced": true,
+      "delegations_completed": 2,
+      "delegations_failed": 0,
+      "integrated": 0,
+      "coverage_terminalization": {
+        "chat-actor-identification": "not_started",
+        "ledger-entry-attribution": "not_started"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "open",
+          "disposition": null
+        },
+        {
+          "question_id": "q-2",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "terminal=not_started; terminal=not_started; no terminal question dispositions recorded",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "unavailable",
+            "detail": "integrated_delegations=0 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "2/2 discovered"
+          },
+          {
+            "component": "coverage:chat-actor-identification",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "coverage:ledger-entry-attribution",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "unavailable",
+            "detail": "terminal=0 answered-terminals=0 unresolved-terminals=0; truth expects answered=2 unresolved=0 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "findings_count": 0,
+      "tool_calls": 30,
+      "wall_s": 158.5,
+      "tokens_in": 97814,
+      "tokens_out": 7133
+    }
+  ],
+  "diagnosis": {
+    "P_identity_events": 0,
+    "H_handle_events": 0,
+    "S_semantic_events": 0,
+    "G_grounding_events": 0,
+    "rejection_code_distribution": {
+      "COVERAGE_UNAVAILABLE_WITHOUT_CAPABILITY_BASIS": 6
+    }
+  },
+  "cost": {
+    "tokens_in_total": 437911,
+    "tokens_out_total": 31383,
+    "wall_s_median": 234.4
+  },
+  "computed_axes": {
+    "structural": {
+      "verdict": "PASS",
+      "violations": []
+    },
+    "functional": {
+      "verdict": "FAIL",
+      "metric": "BenchmarkCaseOutcomeV2 (truth-based; no surrogate)",
+      "floor": "EVERY family >= 2/3 at {success, success_with_limitations}; no aggregate compensation",
+      "families": {
+        "gen3-failover-causality": {
+          "per_repetition": [
+            {
+              "repeat": "repeat0",
+              "outcome": "incomplete",
+              "qualifies": false
+            },
+            {
+              "repeat": "repeat1",
+              "outcome": "incomplete",
+              "qualifies": false
+            },
+            {
+              "repeat": "repeat2",
+              "outcome": "incomplete",
+              "qualifies": false
+            }
+          ],
+          "qualifying_count": 0,
+          "scheduled_reps": 3,
+          "floor_met": false
+        },
+        "gen3-ledger-identity": {
+          "per_repetition": [
+            {
+              "repeat": "repeat1",
+              "outcome": "incomplete",
+              "qualifies": false
+            },
+            {
+              "repeat": "repeat2",
+              "outcome": "incomplete",
+              "qualifies": false
+            }
+          ],
+          "qualifying_count": 0,
+          "scheduled_reps": 3,
+          "floor_met": false
+        }
+      },
+      "reporting_metrics_not_gates": {
+        "runs_with_integrated_delegation": 2,
+        "finalization_pass": 1
+      }
+    },
+    "reliability": {
+      "verdict": "PASS",
+      "population": 6,
+      "supervisor_plan_failure_runs": 0,
+      "supervisor_integrate_failure_runs": 0,
+      "specialist_structured_output_failure_runs": 0,
+      "thresholds_frozen": {
+        "supervisor_plan_structured_output_failure_rate_max": 0.2,
+        "supervisor_integrate_structured_output_failure_rate_max": 0.2,
+        "specialist_structured_output_failure_rate_max": 0.5
+      }
+    },
+    "availability": {
+      "verdict": "PASS",
+      "provider_terminal_runs": 1,
+      "population": 6,
+      "fraction": 0.1667
+    }
+  }
+}

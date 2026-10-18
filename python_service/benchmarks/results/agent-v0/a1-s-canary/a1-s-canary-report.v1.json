@@ -1,0 +1,120 @@
+{
+  "report_version": "a1-s-canary-report:v1",
+  "branch": "mvp/agent-v0-evidence-snapshot-admission",
+  "model": "step-5-preview (A1-R config unchanged, spec §28)",
+  "contract": "v2 only, 8 calibration cases x 1 (spec §28)",
+  "G_metric": {
+    "definition": "missing-snapshot grounding rejections (EVIDENCE_SNAPSHOT_MISSING + the EVIDENCE_REF_CROSS_TASK events that were decomposed as grounding rejections in A1-R)",
+    "before_a1s": {
+      "EVIDENCE_REF_CROSS_TASK": 7
+    },
+    "after_a1s": {},
+    "G_after": 0,
+    "verdict": "G = 0 — §29 primary target MET"
+  },
+  "runs_with_integrated_delegation": {
+    "a1r_v2_before": 0,
+    "a1s_after": 2,
+    "note": "FIRST successful integrations in the entire P8B/A1/A1-R measurement history (2 independent cases, hard gates PASS, real dispositions: supported on cross-source, not_supported on the temporal trap — the trap was HANDLED, not avoided)"
+  },
+  "supervisor_output_failures": {
+    "runner_failures": 6,
+    "reasons": [
+      "Exceeded maximum output retries (1)",
+      "Request timed out."
+    ],
+    "note": "unchanged by S (expected): supervisor structured-output reliability is the residual model-capability limiter"
+  },
+  "P_identity_events": 0,
+  "H_handle_events": 0,
+  "S_semantic_events": 0,
+  "per_runs": [
+    {
+      "case_id": "t1-fraud-script-usb",
+      "rejection_codes": [],
+      "status": "runner_failed",
+      "failure_reason": "Exceeded maximum output retries (1)"
+    },
+    {
+      "case_id": "t2-cross-source-correlation",
+      "rejection_codes": [],
+      "status": "completed",
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "delegations": 1,
+      "delegations_integrated": 1,
+      "questions": [
+        [
+          "q-1",
+          "answered",
+          "supported"
+        ]
+      ],
+      "wall_s": 280,
+      "hard_gates": "PASS"
+    },
+    {
+      "case_id": "t2-identity-trap",
+      "rejection_codes": [],
+      "status": "runner_failed",
+      "failure_reason": "Request timed out."
+    },
+    {
+      "case_id": "t2-misleading-note",
+      "rejection_codes": [],
+      "status": "runner_failed",
+      "failure_reason": "Exceeded maximum output retries (1)"
+    },
+    {
+      "case_id": "t2-no-evidence",
+      "rejection_codes": [],
+      "status": "runner_failed",
+      "failure_reason": "Exceeded maximum output retries (1)"
+    },
+    {
+      "case_id": "t2-report-citation",
+      "rejection_codes": [],
+      "status": "runner_failed",
+      "failure_reason": "Request timed out."
+    },
+    {
+      "case_id": "t2-temporal-trap",
+      "rejection_codes": [],
+      "status": "completed",
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "delegations": 1,
+      "delegations_integrated": 1,
+      "questions": [
+        [
+          "q-1",
+          "answered",
+          "not_supported"
+        ],
+        [
+          "q-29eb7fae",
+          "open",
+          null
+        ]
+      ],
+      "wall_s": 259,
+      "hard_gates": "PASS"
+    },
+    {
+      "case_id": "t2-verification-temptation",
+      "rejection_codes": [],
+      "status": "runner_failed",
+      "failure_reason": "Request timed out."
+    }
+  ],
+  "scenario_matrix": {
+    "determination": "Scenario C (§31): G = 0 AND integrations begin succeeding -> the Evidence lifecycle seam was a major hidden blocker. The A1 v2 interface is viable on a model that survives the supervisor-output stage; A1 viability re-evaluation (R2 reliability confirmation) is now meaningful, pending the supervisor-output reliability question on a stronger/cleaner endpoint.",
+    "freeze_decisions": {
+      "admission_boundary": "S4 freeze EARNED (G=0 canary + 9 deterministic invariant tests + 2406-test regression green)",
+      "supervisor_contract_v2": "still WITHHELD pending R2 (A1-R §28); default remains v1"
+    }
+  },
+  "hard_gates": "all PASS on completed runs; no §23 abort",
+  "p8b": "BLOCKED; holdout SEALED / NEVER RUN",
+  "production_changes": []
+}

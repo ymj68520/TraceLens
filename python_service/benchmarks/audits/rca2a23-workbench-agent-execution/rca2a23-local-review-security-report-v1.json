@@ -1,0 +1,20 @@
+{
+  "deliverable": "RCA2A23LocalReviewSecurityReportV1",
+  "schema_version": "rca2a23-local-review-security-report:v1",
+  "verified_at": "2026-10-17T11:09:56Z",
+  "security_controls": {
+    "client_host_verification": "restricted to _TRUSTED_LOCAL_HOSTS (127.0.0.1, ::1, localhost, testclient)",
+    "origin_header_verification": "when present, validated against _TRUSTED_LOCAL_HOSTS; cross-site origin returns 403",
+    "query_mismatch_check": "task_id query param must match body task_id; mismatch returns 409 Conflict",
+    "protected_endpoints": [
+      "POST /api/investigation/agent/cycle",
+      "POST /api/investigation/agent/review"
+    ]
+  },
+  "tests_passed": [
+    "T19",
+    "T20",
+    "T21"
+  ],
+  "status": "PASS"
+}

@@ -1,0 +1,39 @@
+{
+  "architectural_separation": {
+    "Analyst_Review": "Analyst acceptance of investigation findings",
+    "FinalizationGate": "Deterministic preflight evaluating mandatory verifications and unintegrated delegations",
+    "Report_Evidence_Admission": "Managed by ReportEvidenceService (add/update) and ReportGenerationAdmissionService (admit)",
+    "SUPERVISOR_EVALUATE": "Evaluates overall investigation progress and determines next steps",
+    "SUPERVISOR_INTEGRATE": "Produces IntegrationDecision; updates Working State questions, coverage, evidence relevance"
+  },
+  "artifact_version": "RCA2A9aF4BoundaryAuditV1",
+  "baseline_commit": "325fa4eb8a86bc347484eea22d9116f22f2d1977",
+  "forensic_call_path_audit": {
+    "bypasses_independent_report_admission": false,
+    "call_layer": "NONE",
+    "calls_report_evidence_admit_in_integrate": false,
+    "incorrectly_binds_review_pending_analysis": false,
+    "manufactures_analyst_accepted_finding": false,
+    "treats_finalization_as_publication": false,
+    "treats_integrate_as_report_admitted": false
+  },
+  "generated_at": "2026-10-16T00:56:49.679533+00:00",
+  "scenario_id": "t2-report-citation",
+  "stage_scope_contract": {
+    "exercised_in_integrate": [
+      "Evidence identity verification",
+      "Evidence provenance and integrity",
+      "Evidence relevance status transitions",
+      "Finding reference binding",
+      "Question and coverage updates"
+    ],
+    "report_admission_status": "NOT_EXERCISED",
+    "strictly_prohibited_in_integrate": [
+      "Report Evidence Admission",
+      "Report Publication",
+      "Analyst Acceptance Simulation",
+      "Automatic review_pending promotion"
+    ]
+  },
+  "verdict": "F4_STAGE_BOUNDARY_PASS"
+}

@@ -1,0 +1,30 @@
+{
+  "report_version": "rca2a22:v1",
+  "task_id": "TASK-INVESTIGATION-WORKBENCH-REVIEW-E2E-ACCEPTANCE",
+  "workbench_layout": "THREE_COLUMN_PRESERVED",
+  "column_1": {
+    "component": "FileEventPanel",
+    "selector": "[data-testid=\"file-event-panel\"]",
+    "role": "Evidence Workspace (Analyzed Files & Event Links)"
+  },
+  "column_2": {
+    "component": "InvestigationTimeline",
+    "selector": "[data-testid=\"tab-timeline\"]",
+    "role": "Investigation Timeline (File-centric timeline nodes)"
+  },
+  "column_3": {
+    "component": "AnalysisWorkspace",
+    "selector": "[data-testid=\"analysis-workspace-column\"]",
+    "docked_panel": "AgentReviewPanel [data-testid=\"agent-review-panel\"]",
+    "role": "Analysis Workspace Column with docked Agent Review"
+  },
+  "fourth_column_introduced": false,
+  "layout_preservation_status": "VERIFIED_THREE_COLUMNS_NO_FOURTH_COLUMN",
+  "runtime_environment": {
+    "browser": "Chromium 1234 Headless",
+    "node_version": "v22.23.1",
+    "playwright_version": "1.63.0",
+    "backend_port": 8098,
+    "frontend_port": 3100
+  }
+}

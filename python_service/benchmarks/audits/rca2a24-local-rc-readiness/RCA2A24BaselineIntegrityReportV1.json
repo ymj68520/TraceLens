@@ -1,0 +1,72 @@
+{
+  "deliverable": "RCA2A24BaselineIntegrityReportV1",
+  "schema_version": "rca2a24-baseline-integrity-report:v1",
+  "verified_at": "2026-10-17T11:32:49Z",
+  "baseline_commit": "d70d497df0c63408c79edfcc310be44f712f2be0",
+  "branch": "mvp/agent-v0-runtime-v3-requalification",
+  "rca2a23_audit_commit": "d70d497df0c63408c79edfcc310be44f712f2be0",
+  "rca2a23_impl_commit": "e31fd123d81bc0ab70c3957f4fc964f96984ea2f",
+  "historical_sha_reconciliation": [
+    {
+      "phase": "RCA-2A.20-impl",
+      "actual_git_sha": "624953bb06e0d4359527a9416800f343ab841c9e",
+      "short_prefix": "624953bb",
+      "status": "AUTHENTIC"
+    },
+    {
+      "phase": "RCA-2A.20-audit",
+      "actual_git_sha": "058886b7358e54c7e2ed1dbd267678dc43af0aa0",
+      "transcribed_sha": "058886b72049f57ebbf794aebe6d8fbf95782782",
+      "short_prefix": "058886b7",
+      "status": "RECONCILED",
+      "note": "Report text transcription variance; authentic Git object matches short prefix 058886b7."
+    },
+    {
+      "phase": "RCA-2A.21-impl",
+      "actual_git_sha": "9a50332b72b869938db876e16fe541d6de8cfafb",
+      "transcribed_sha": "9a50332b781da2fe6d2c4bc80735b54687d60541",
+      "short_prefix": "9a50332b",
+      "status": "RECONCILED",
+      "note": "Report text transcription variance; authentic Git object matches short prefix 9a50332b."
+    },
+    {
+      "phase": "RCA-2A.21-audit",
+      "actual_git_sha": "3d9e2a81583dfb86a9a8b51c86a80bcc84754f5d",
+      "transcribed_sha": "3d9e2a8183fe7ad475c4eb54dd2604bb84d2847c",
+      "short_prefix": "3d9e2a81",
+      "status": "RECONCILED",
+      "note": "Report text transcription variance; authentic Git object matches short prefix 3d9e2a81."
+    },
+    {
+      "phase": "RCA-2A.22-impl",
+      "actual_git_sha": "814b5f4aadabf09bfe818f320db5168207795055",
+      "short_prefix": "814b5f4a",
+      "status": "AUTHENTIC"
+    },
+    {
+      "phase": "RCA-2A.22-audit",
+      "actual_git_sha": "0da403fdad8e2a09487757b4f0361c9dbb56d096",
+      "short_prefix": "0da403fd",
+      "status": "AUTHENTIC"
+    },
+    {
+      "phase": "RCA-2A.23-impl",
+      "actual_git_sha": "e31fd123d81bc0ab70c3957f4fc964f96984ea2f",
+      "short_prefix": "e31fd123",
+      "status": "AUTHENTIC"
+    },
+    {
+      "phase": "RCA-2A.23-audit",
+      "actual_git_sha": "d70d497df0c63408c79edfcc310be44f712f2be0",
+      "short_prefix": "d70d497d",
+      "status": "AUTHENTIC"
+    }
+  ],
+  "schema_table_reconciliation": {
+    "authoritative_review_table": "investigation_finding_reviews",
+    "shorthand_notation_in_earlier_reports": "investigation_reviews",
+    "verdict": "SHORTHAND_DIAGRAM_LABEL_RECONCILED",
+    "note": "investigation_finding_reviews is the authoritative SQLite table defined in schema migrations with append-only triggers. investigation_reviews in audit diagrams was an informal diagram abbreviation."
+  },
+  "status": "PASS"
+}

@@ -1,0 +1,210 @@
+{
+  "artifact_version": "RCA2A11PairwiseComparisonV1",
+  "experiment_id": "rca2a11-deepseek-flash-vocabulary-comparison",
+  "created_at_utc": "2026-10-17T01:45:39.872846+00:00",
+  "paired_metrics": {
+    "pairs": {
+      "t2-no-evidence_A": {
+        "scenario_id": "t2-no-evidence",
+        "pair_label": "A",
+        "contract_outcome": "BOTH_INVALID",
+        "semantic_outcome": "BOTH_SEMANTICALLY_INADEQUATE",
+        "control_seat": 1,
+        "treatment_seat": 2,
+        "control_canonical_valid": false,
+        "treatment_canonical_valid": false,
+        "control_semantic_adequacy": "SEMANTICALLY_INADEQUATE",
+        "treatment_semantic_adequacy": "SEMANTICALLY_INADEQUATE",
+        "control_information_value": "DEGRADED",
+        "treatment_information_value": "DEGRADED"
+      },
+      "t2-no-evidence_B": {
+        "scenario_id": "t2-no-evidence",
+        "pair_label": "B",
+        "contract_outcome": "INCOMPLETE_PAIR",
+        "semantic_outcome": "SEMANTIC_COMPARISON_UNAVAILABLE",
+        "control_seat": 10,
+        "treatment_seat": 9,
+        "control_canonical_valid": null,
+        "treatment_canonical_valid": null,
+        "control_semantic_adequacy": "UNOBSERVABLE",
+        "treatment_semantic_adequacy": "UNOBSERVABLE",
+        "control_information_value": "UNOBSERVABLE",
+        "treatment_information_value": "UNOBSERVABLE"
+      },
+      "t2-temporal-trap_A": {
+        "scenario_id": "t2-temporal-trap",
+        "pair_label": "A",
+        "contract_outcome": "TREATMENT_WIN",
+        "semantic_outcome": "TREATMENT_SEMANTIC_WIN",
+        "control_seat": 3,
+        "treatment_seat": 4,
+        "control_canonical_valid": false,
+        "treatment_canonical_valid": true,
+        "control_semantic_adequacy": "SEMANTICALLY_INADEQUATE",
+        "treatment_semantic_adequacy": "SEMANTICALLY_ADEQUATE",
+        "control_information_value": "DEGRADED",
+        "treatment_information_value": "POSITIVE_DISCOVERY"
+      },
+      "t2-temporal-trap_B": {
+        "scenario_id": "t2-temporal-trap",
+        "pair_label": "B",
+        "contract_outcome": "INCOMPLETE_PAIR",
+        "semantic_outcome": "SEMANTIC_COMPARISON_UNAVAILABLE",
+        "control_seat": 12,
+        "treatment_seat": 11,
+        "control_canonical_valid": null,
+        "treatment_canonical_valid": null,
+        "control_semantic_adequacy": "UNOBSERVABLE",
+        "treatment_semantic_adequacy": "UNOBSERVABLE",
+        "control_information_value": "UNOBSERVABLE",
+        "treatment_information_value": "UNOBSERVABLE"
+      },
+      "t2-identity-trap_A": {
+        "scenario_id": "t2-identity-trap",
+        "pair_label": "A",
+        "contract_outcome": "INCOMPLETE_PAIR",
+        "semantic_outcome": "SEMANTIC_COMPARISON_UNAVAILABLE",
+        "control_seat": 5,
+        "treatment_seat": 6,
+        "control_canonical_valid": true,
+        "treatment_canonical_valid": null,
+        "control_semantic_adequacy": "SEMANTICALLY_INADEQUATE",
+        "treatment_semantic_adequacy": "UNOBSERVABLE",
+        "control_information_value": "DEGRADED",
+        "treatment_information_value": "UNOBSERVABLE"
+      },
+      "t2-identity-trap_B": {
+        "scenario_id": "t2-identity-trap",
+        "pair_label": "B",
+        "contract_outcome": "INCOMPLETE_PAIR",
+        "semantic_outcome": "SEMANTIC_COMPARISON_UNAVAILABLE",
+        "control_seat": 14,
+        "treatment_seat": 13,
+        "control_canonical_valid": null,
+        "treatment_canonical_valid": null,
+        "control_semantic_adequacy": "UNOBSERVABLE",
+        "treatment_semantic_adequacy": "UNOBSERVABLE",
+        "control_information_value": "UNOBSERVABLE",
+        "treatment_information_value": "UNOBSERVABLE"
+      },
+      "t2-report-citation_A": {
+        "scenario_id": "t2-report-citation",
+        "pair_label": "A",
+        "contract_outcome": "INCOMPLETE_PAIR",
+        "semantic_outcome": "SEMANTIC_COMPARISON_UNAVAILABLE",
+        "control_seat": 7,
+        "treatment_seat": 8,
+        "control_canonical_valid": null,
+        "treatment_canonical_valid": null,
+        "control_semantic_adequacy": "UNOBSERVABLE",
+        "treatment_semantic_adequacy": "UNOBSERVABLE",
+        "control_information_value": "UNOBSERVABLE",
+        "treatment_information_value": "UNOBSERVABLE"
+      },
+      "t2-report-citation_B": {
+        "scenario_id": "t2-report-citation",
+        "pair_label": "B",
+        "contract_outcome": "INCOMPLETE_PAIR",
+        "semantic_outcome": "SEMANTIC_COMPARISON_UNAVAILABLE",
+        "control_seat": 16,
+        "treatment_seat": 15,
+        "control_canonical_valid": null,
+        "treatment_canonical_valid": null,
+        "control_semantic_adequacy": "UNOBSERVABLE",
+        "treatment_semantic_adequacy": "UNOBSERVABLE",
+        "control_information_value": "UNOBSERVABLE",
+        "treatment_information_value": "UNOBSERVABLE"
+      }
+    },
+    "scenario_stratified": {
+      "t2-no-evidence": {
+        "pairs_count": 2,
+        "contract_outcomes": [
+          "BOTH_INVALID",
+          "INCOMPLETE_PAIR"
+        ],
+        "semantic_outcomes": [
+          "BOTH_SEMANTICALLY_INADEQUATE",
+          "SEMANTIC_COMPARISON_UNAVAILABLE"
+        ],
+        "treatment_contract_wins": 0,
+        "control_contract_wins": 0,
+        "both_valid": 0,
+        "both_invalid": 1,
+        "treatment_semantic_wins": 0,
+        "control_semantic_wins": 0,
+        "both_semantically_adequate": 0
+      },
+      "t2-temporal-trap": {
+        "pairs_count": 2,
+        "contract_outcomes": [
+          "TREATMENT_WIN",
+          "INCOMPLETE_PAIR"
+        ],
+        "semantic_outcomes": [
+          "TREATMENT_SEMANTIC_WIN",
+          "SEMANTIC_COMPARISON_UNAVAILABLE"
+        ],
+        "treatment_contract_wins": 1,
+        "control_contract_wins": 0,
+        "both_valid": 0,
+        "both_invalid": 0,
+        "treatment_semantic_wins": 1,
+        "control_semantic_wins": 0,
+        "both_semantically_adequate": 0
+      },
+      "t2-identity-trap": {
+        "pairs_count": 2,
+        "contract_outcomes": [
+          "INCOMPLETE_PAIR",
+          "INCOMPLETE_PAIR"
+        ],
+        "semantic_outcomes": [
+          "SEMANTIC_COMPARISON_UNAVAILABLE",
+          "SEMANTIC_COMPARISON_UNAVAILABLE"
+        ],
+        "treatment_contract_wins": 0,
+        "control_contract_wins": 0,
+        "both_valid": 0,
+        "both_invalid": 0,
+        "treatment_semantic_wins": 0,
+        "control_semantic_wins": 0,
+        "both_semantically_adequate": 0
+      },
+      "t2-report-citation": {
+        "pairs_count": 2,
+        "contract_outcomes": [
+          "INCOMPLETE_PAIR",
+          "INCOMPLETE_PAIR"
+        ],
+        "semantic_outcomes": [
+          "SEMANTIC_COMPARISON_UNAVAILABLE",
+          "SEMANTIC_COMPARISON_UNAVAILABLE"
+        ],
+        "treatment_contract_wins": 0,
+        "control_contract_wins": 0,
+        "both_valid": 0,
+        "both_invalid": 0,
+        "treatment_semantic_wins": 0,
+        "control_semantic_wins": 0,
+        "both_semantically_adequate": 0
+      }
+    },
+    "total_pairs": 8,
+    "contract_summary": {
+      "treatment_win": 1,
+      "control_win": 0,
+      "both_valid": 0,
+      "both_invalid": 1,
+      "incomplete_pair": 6
+    },
+    "semantic_summary": {
+      "treatment_semantic_win": 1,
+      "control_semantic_win": 0,
+      "both_semantically_adequate": 0,
+      "both_semantically_inadequate": 1,
+      "semantic_comparison_unavailable": 6
+    }
+  }
+}

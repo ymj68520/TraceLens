@@ -1,0 +1,31 @@
+{
+  "artifact_version": "RCA2A10bPreflightGateReportV1",
+  "attempts": [],
+  "attempts_executed": 0,
+  "endpoint": "https://api.stepfun.com/v1",
+  "experiment_id": "rca2a10b-rebased-cross-case-vocabulary-comparison",
+  "failure_explanation": "Resolved configuration points to confirmed credit-exhausted StepFun endpoint (https://api.stepfun.com/v1, step-3.7-flash), and no alternative configuration redirecting away from StepFun is active in environment variables or runtime configuration.",
+  "precall_deterministic_gates": {
+    "CROSS_ARM_PARITY_PASS": true,
+    "DIAGNOSTICS_READY": true,
+    "DURABLE_SEAT_CLAIM_READY": true,
+    "EFFECTIVE_MODEL_IDENTITY_RESOLVED": false,
+    "ENDPOINT_IDENTITY_FROZEN": false,
+    "EVIDENCE_RESOLVER_PASS": true,
+    "FIXTURE_INTEGRITY_PASS": true,
+    "MODEL_ADAPTER_COMPATIBLE": true,
+    "NO_PRODUCTION_MUTATION": true,
+    "ORACLE_ARM_BLIND": true,
+    "ORACLE_IDENTITY_RECONCILED": true,
+    "OUTPUT_TOOL_CONTRACT_COMPATIBLE": true,
+    "PRODUCTION_STAGE_PARITY_PASS": true,
+    "PROMPT_DIFF_EXACT": true,
+    "REQUEST_BUDGET_VALID": true,
+    "RUNTIME_IDENTITY_STABLE": true,
+    "SCHEMA_UNCHANGED": true,
+    "STALE_INPUT_REJECTION_PASS": true
+  },
+  "preflight_verdict": "PREFLIGHT_FAIL",
+  "requested_model": "step-3.7-flash",
+  "stop_reason": "CONFIGURATION_BLOCKED"
+}

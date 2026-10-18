@@ -1,0 +1,75 @@
+{
+  "report_version": "adapter-production-smoke:v1",
+  "round": "b2-model-requalification",
+  "requested_model_id": "sensenova-6.8-flash-lite",
+  "adapter_config": {
+    "base_url_class": "token.sensenova.cn",
+    "reasoning_effort": "none",
+    "temperature": 0.7,
+    "max_tokens": 16384,
+    "timeout_seconds": 120.0
+  },
+  "api_reported_model_id": "sensenova-6.8-flash-lite",
+  "probes": {
+    "basic_completion": {
+      "passed": true,
+      "output": "ADAPTER_SMOKE_OK",
+      "usage": {
+        "requests": 1,
+        "input_tokens": 74,
+        "output_tokens": 7,
+        "details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "latency_s": 0.6
+    },
+    "structured_output": {
+      "passed": true,
+      "output": {
+        "verdict": "not_supported",
+        "rationale": "No evidence files or contents were provided, so the claim about a USB script folder verified by two independent files cannot be checked.",
+        "confidence_0_to_100": 90
+      },
+      "usage": {
+        "requests": 1,
+        "input_tokens": 503,
+        "output_tokens": 86,
+        "details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "latency_s": 1.8
+    },
+    "tool_call_with_args": {
+      "passed": true,
+      "tool_args_seen": "file:notes.txt",
+      "final_output": "DONE",
+      "usage": {
+        "requests": 2,
+        "input_tokens": 792,
+        "output_tokens": 34,
+        "details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "latency_s": 2.16
+    },
+    "zero_arg_tool": {
+      "passed": true,
+      "final_output": "Task context: 3 files, 1 note, no events.",
+      "usage": {
+        "requests": 2,
+        "input_tokens": 723,
+        "output_tokens": 40,
+        "details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "latency_s": 2.06
+    }
+  },
+  "all_passed": true,
+  "created_at": "2026-09-29T19:03:52+0800",
+  "raw_probe_finish": "length"
+}

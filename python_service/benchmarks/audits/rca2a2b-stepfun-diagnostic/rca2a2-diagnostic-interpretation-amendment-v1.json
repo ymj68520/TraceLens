@@ -1,0 +1,15 @@
+{
+ "artifact_version": "RCA2A2DiagnosticInterpretationAmendmentV1",
+ "created_at": "2026-10-13T14:59:11+00:00",
+ "amends": "RCA2A2DiagnosticBaselineReportV1 (OpenRouter BLOCKED) + rca2a2-stepfun-integration-failure-matrix-v1.json (4x1 field-level UNKNOWN)",
+ "append_only": true,
+ "updates": [
+  "RCA-2A.2 OpenRouter block re-attributed: CONNECTIVITY / PROVIDER_ENDPOINT_UNREACHABLE (see RCA2A2ConnectivityAttributionAmendmentV1)",
+  "RCA-2A.2 StepFun layer-level reproduction (4/4 output-validation exhaustion at INTEGRATE) stands",
+  "RCA-2A.2b: the FIRST field-level V2 output validation failure is now captured with type+location evidence — at the SUPERVISOR_PLAN stage: 8 raw errors across 3 union branches = ONE payload matching no plan action variant (INVALID_UNION primary), extra_forbidden x7 + missing x1",
+  "PydanticAI retry feedback verified operating in production (one in-band output retry occurred before exhaustion)",
+  "the INTEGRATE-position field-level cause remains UNOBSERVED (this attempt's PLAN failed first); the historical INTEGRATE attribution stays SUSPECTED at field level",
+  "combined picture: real V2 output-validation failures occur at supervisor stages under real models and are now FIELD-ATTRIBUTABLE — the RCA-1 telemetry gap is closed in production"
+ ],
+ "interpretation_selection": "FIELD_LEVEL_SCHEMA_FAILURE_IDENTIFIED (plan-stage) — with the INTEGRATE-position cause explicitly NOT established by this single attempt"
+}

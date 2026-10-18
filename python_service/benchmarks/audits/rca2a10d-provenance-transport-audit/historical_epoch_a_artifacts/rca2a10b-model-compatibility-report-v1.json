@@ -1,0 +1,66 @@
+{
+  "adapter_configuration": {
+    "adapter_type": "PydanticAI OpenAIChatModel via AgentModelAdapter",
+    "output_tool_name": "final_result",
+    "protocol": "OpenAI Chat Completions API with Tool Calling",
+    "supports_json_object_output": true,
+    "supports_json_schema_output": false,
+    "supports_max_completion_tokens": false,
+    "supports_multiple_system_messages": false,
+    "supports_strict_tool_definition": false
+  },
+  "artifact_version": "RCA2A10bModelCompatibilityReportV1",
+  "contract_invariants_maintained": {
+    "additional_retries_prohibited": true,
+    "automatic_field_repair_disabled": true,
+    "free_form_json_parsing_disabled": true,
+    "pydantic_output_retry_budget": 1,
+    "regex_extraction_disabled": true,
+    "schema_relaxation_disabled": true,
+    "supervisor_prompt_unmodified": true
+  },
+  "evaluation_kind": "OFFLINE_ADAPTER_AND_SYNTHETIC_PROVIDER_TESTS",
+  "experiment_id": "rca2a10b-rebased-cross-case-vocabulary-comparison",
+  "overall_compatibility_verdict": "MODEL_ADAPTER_CONTRACT_COMPATIBLE",
+  "synthetic_test_battery": {
+    "credential_redaction_verified": {
+      "api_key_redacted": true,
+      "kind": "SYNTHETIC_TEST_OBSERVATION",
+      "status": "PASS"
+    },
+    "missing_usage_metadata_handling": {
+      "behavior": "DEGRADE_TO_USAGE_UNOBSERVABLE",
+      "kind": "SYNTHETIC_TEST_OBSERVATION",
+      "status": "PASS"
+    },
+    "output_tool_name_verified": {
+      "expected_tool_name": "final_result",
+      "kind": "SYNTHETIC_TEST_OBSERVATION",
+      "status": "PASS"
+    },
+    "provider_error_taxonomy": {
+      "classifications": {
+        "401": "PROVIDER_AUTH_BLOCKED",
+        "404": "PROVIDER_MODEL_UNAVAILABLE",
+        "429": "PROVIDER_QUOTA_BLOCKED",
+        "500": "PROVIDER_INFRA_FAILURE",
+        "timeout": "PROVIDER_TIMEOUT"
+      },
+      "kind": "SYNTHETIC_TEST_OBSERVATION",
+      "status": "PASS"
+    },
+    "pydantic_retry_feedback_handled": {
+      "calls_made": 2,
+      "kind": "SYNTHETIC_TEST_OBSERVATION",
+      "self_corrected": true,
+      "status": "PASS"
+    },
+    "valid_output_tool_handled": {
+      "kind": "SYNTHETIC_TEST_OBSERVATION",
+      "parsed_decision_version": "supervisor-integration-decision:v3",
+      "status": "PASS"
+    }
+  },
+  "target_output_schema": "SupervisorIntegrationDecisionV2",
+  "target_output_schema_hash": "a214ec4f5e81fcbb"
+}

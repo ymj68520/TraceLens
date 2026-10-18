@@ -1,0 +1,37 @@
+{
+  "artifact_version": "RCA2A10GRequestEnvelopeIdentityV1",
+  "experiment_id": "rca2a10g-bounded-gateway-diagnosis",
+  "created_at_utc": "2026-10-17T01:20:26.746708+00:00",
+  "d3_non_streaming_envelope": {
+    "instructions_chars": 3113,
+    "instructions_utf8_bytes": 3117,
+    "instructions_hash": "1f907d657daeb01c3b733152490d7af835293f9c88994b5cb46c141d634f8d59",
+    "tool_schema_chars": 7616,
+    "tool_schema_utf8_bytes": 7616,
+    "tool_schema_hash": "8482351da72d7ac8fb3567578f644951e9a858ba8895696c66375e981008581c",
+    "messages_hash": "ff9e9cabeab44b8d8ae422d8080d617ac907b7c6be9d8c3ac42c1b34e2fec128",
+    "serialized_http_body_bytes": 11257,
+    "request_body_sha256": "136316d6bd17138ffcb2c65d57c0aa03b4f3f89a2c04a4146f8ec77febd7b505",
+    "model_name": "deepseek-flash",
+    "stream": false,
+    "temperature": 1.0,
+    "max_tokens": 4096,
+    "timeout_seconds": 360.0
+  },
+  "d4_streaming_envelope": {
+    "instructions_chars": 3113,
+    "instructions_utf8_bytes": 3117,
+    "instructions_hash": "1f907d657daeb01c3b733152490d7af835293f9c88994b5cb46c141d634f8d59",
+    "tool_schema_chars": 7616,
+    "tool_schema_utf8_bytes": 7616,
+    "tool_schema_hash": "8482351da72d7ac8fb3567578f644951e9a858ba8895696c66375e981008581c",
+    "messages_hash": "ff9e9cabeab44b8d8ae422d8080d617ac907b7c6be9d8c3ac42c1b34e2fec128",
+    "serialized_http_body_bytes": 11256,
+    "request_body_sha256": "bc6dff386265bf2a4eed3b93096869e231741758c88a0223dfe65cfd79e52310",
+    "model_name": "deepseek-flash",
+    "stream": true,
+    "temperature": 1.0,
+    "max_tokens": 4096,
+    "timeout_seconds": 360.0
+  }
+}

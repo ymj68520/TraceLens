@@ -1,0 +1,247 @@
+{
+ "artifact_version": "IntegrationActionReachabilityMatrixV1",
+ "created_at": "2026-10-13T13:07:35+00:00",
+ "basis": "schema generated from the current production models (integration-schema-audit-v1.json); validation policy from resolve_integration_proposal_v2 / IntegrationDecisionValidator / StateTransitionPolicy code at 6f768b25",
+ "responsibility_boundary": "LLM chooses meaning; TraceLens binds identity (A1-S/A1-T/A1-H/v2 — unchanged by this audit)",
+ "server_owned_structurally_absent_from_schema": [
+  "task_id",
+  "investigation_id",
+  "run_id",
+  "based_on_state_revision",
+  "based_on_state_hash",
+  "source_result_ids",
+  "source_result_hashes",
+  "attention_hash",
+  "canonical evidence keys",
+  "delegation UUIDs",
+  "working-state revision echoes"
+ ],
+ "actions": [
+  {
+   "action": "update_question",
+   "semantics": "choose the question's new status (+ disposition for answered, blocker for blocked, supersession target)",
+   "operands": "Q-handle; E-handles for basis (answered/unresolved); Q-handle for supersession",
+   "status_enum": "QuestionStatus (7)",
+   "model_owned": [
+    "to_status",
+    "disposition",
+    "basis_handles (which evidence supports)",
+    "limitations",
+    "investigated_summary",
+    "blocker",
+    "superseded_by_handle"
+   ],
+   "server_owned": [
+    "handle->canonical q-id binding",
+    "identity fields",
+    "closure verification check",
+    "W3 disposition requirement",
+    "REQUIRED_QUESTION_CANNOT_DEFER"
+   ],
+   "transition": "QuestionTransition",
+   "evidence": "test_protocol_feasibility_audit (5 dispositions reach terminalization; answered-without-disposition fail-closed); test_integration_proposal_equivalence::test_eq_update_question_*"
+  },
+  {
+   "action": "create_question",
+   "semantics": "raise a new investigation question (text + source + priority + parent)",
+   "operands": "Q-handle parent (optional)",
+   "status_enum": "QuestionSource(6)/QuestionPriority",
+   "model_owned": [
+    "text",
+    "source",
+    "priority",
+    "parent"
+   ],
+   "server_owned": [
+    "question id assignment",
+    "parent binding"
+   ],
+   "transition": "CreateQuestion",
+   "evidence": "equivalence::test_eq_create_question"
+  },
+  {
+   "action": "update_evidence_relevance",
+   "semantics": "judge an evidence item's relevance to related questions",
+   "operands": "E-handle; Q-handles",
+   "status_enum": "EvidenceRelevanceStatus",
+   "model_owned": [
+    "to_status",
+    "related_question_handles"
+   ],
+   "server_owned": [
+    "E->canonical ref binding"
+   ],
+   "transition": "EvidenceRelevanceTransition",
+   "evidence": "equivalence::test_eq_update_evidence_relevance"
+  },
+  {
+   "action": "create_hypothesis",
+   "semantics": "state an investigation hypothesis with supporting evidence",
+   "operands": "E-handles",
+   "status_enum": "-",
+   "model_owned": [
+    "text",
+    "supporting_handles"
+   ],
+   "server_owned": [
+    "hypothesis id",
+    "evidence binding"
+   ],
+   "transition": "CreateHypothesis",
+   "evidence": "equivalence::test_eq_create_hypothesis"
+  },
+  {
+   "action": "update_hypothesis",
+   "semantics": "revise hypothesis standing",
+   "operands": "H-handle",
+   "status_enum": "HypothesisStatus (5)",
+   "model_owned": [
+    "to_status"
+   ],
+   "server_owned": [
+    "H binding"
+   ],
+   "transition": "HypothesisTransition",
+   "evidence": "equivalence::test_eq_update_hypothesis"
+  },
+  {
+   "action": "create_contradiction",
+   "semantics": "record conflicting evidence readings (severity, attempted resolution)",
+   "operands": "E-handles",
+   "status_enum": "ContradictionSeverity(3)",
+   "model_owned": [
+    "severity",
+    "refs_handles",
+    "attempted_resolution",
+    "impact",
+    "limitation"
+   ],
+   "server_owned": [
+    "contradiction id",
+    "evidence binding"
+   ],
+   "transition": "CreateContradiction",
+   "evidence": "test_protocol_feasibility_audit::test_conflicting_evidence_reachable_via_contradiction; equivalence::test_eq_create_contradiction"
+  },
+  {
+   "action": "update_contradiction",
+   "semantics": "advance contradiction standing with resolution basis",
+   "operands": "X-handle; E-handles",
+   "status_enum": "ContradictionStatus(4)",
+   "model_owned": [
+    "to_status",
+    "resolution_basis_handles",
+    "attempted_resolution",
+    "impact",
+    "limitation"
+   ],
+   "server_owned": [
+    "X binding",
+    "open-contradiction finalization block"
+   ],
+   "transition": "ContradictionTransition",
+   "evidence": "equivalence::test_eq_update_contradiction"
+  },
+  {
+   "action": "update_coverage",
+   "semantics": "declare coverage standing for a dimension with capability basis",
+   "operands": "COV-handle; E-handles; Q-handles",
+   "status_enum": "CoverageStatus(6)",
+   "model_owned": [
+    "to_status",
+    "basis_handles",
+    "limitation",
+    "capability_basis",
+    "related_question_handles"
+   ],
+   "server_owned": [
+    "COV binding",
+    "COVERAGE_* gates",
+    "required-coverage finalization check"
+   ],
+   "transition": "CoverageTransition",
+   "evidence": "equivalence::test_eq_update_coverage; test_protocol_feasibility (coverage terminalization)"
+  },
+  {
+   "action": "add_finding_reference",
+   "semantics": "attach a persisted reviewable finding to the integration",
+   "operands": "F-handle",
+   "status_enum": "-",
+   "model_owned": [
+    "finding_handle (choice)"
+   ],
+   "server_owned": [
+    "F->persisted finding binding (review_pending/accepted only)"
+   ],
+   "transition": "AddFindingReference",
+   "evidence": "equivalence::test_eq_add_finding_reference"
+  },
+  {
+   "action": "add_pending_proposal_reference",
+   "semantics": "attach a pending claim proposal",
+   "operands": "P-handle",
+   "status_enum": "-",
+   "model_owned": [
+    "proposal_handle (choice)"
+   ],
+   "server_owned": [
+    "P->durable proposal row binding (same task)"
+   ],
+   "transition": "AddPendingProposalReference",
+   "evidence": "equivalence::test_eq_add_pending_proposal_reference"
+  }
+ ],
+ "non_happy_paths": [
+  {
+   "case": "missing operand",
+   "enforcement": "schema required fields (OLD) / resolver P_MISSING_STATUS (NEW); empty basis on closure -> QUESTION_CLOSURE_BASIS_REQUIRED unchanged (resolver docstring A1 §26)",
+   "evidence": "test_protocol_feasibility::test_answered_without_disposition_fail_closed"
+  },
+  {
+   "case": "handle kind mismatch",
+   "enforcement": "Annotated pattern (OLD parse) / P_BASIS_HANDLE_NOT_EVIDENCE + binding kind check (NEW); binding table kind check unchanged",
+   "evidence": "equivalence::test_neg_cross_kind_basis_rejected_by_both"
+  },
+  {
+   "case": "handle unknown",
+   "enforcement": "binding table resolve -> HANDLE violations (fail-closed, all-or-nothing)",
+   "evidence": "equivalence::test_neg_unknown_handle_rejected_by_both"
+  },
+  {
+   "case": "stale reference",
+   "enforcement": "MergeGuard + stale digest exclusion before INTEGRATE (P4B, unchanged)",
+   "evidence": "test_agent_investigation_loop::test_stale_result_excluded_from_integration"
+  },
+  {
+   "case": "unavailable action",
+   "enforcement": "OLD: union has no such variant (schema); NEW: P_HANDLE_NOT_UPDATABLE for F/P update targets",
+   "evidence": "equivalence::test_neg_unavailable_action_stays_rejected"
+  },
+  {
+   "case": "cross-task evidence",
+   "enforcement": "EVIDENCE_REF_CROSS_TASK at snapshot/transition evidence resolution (A1-S §14 unchanged)",
+   "evidence": "metrics structural gates + agent_transitions EVIDENCE_REF_CROSS_TASK"
+  },
+  {
+   "case": "insufficient grounding",
+   "enforcement": "DeterministicGroundingValidator + P5A grounding tables (unchanged); claim-evidence support obligations",
+   "evidence": "test_agent_semantic_pipeline_e2e (grounding validator wiring)"
+  },
+  {
+   "case": "analyst note treated as evidence",
+   "enforcement": "evidence surface = durable store snapshots only (A1-S); analyst notes never enter the evidence binding domain (binding table builds from durable refs; notes are not refs)",
+   "evidence": "binding-table domains (agent_reference_bindings); A1-S contract tests"
+  },
+  {
+   "case": "claim assertion-strength illegal",
+   "enforcement": "SpecialistResultProposalV1 AssertionClass validation at the specialist boundary (A1-T, unchanged); IntegrationDecisionValidator proposal-ref resolution",
+   "evidence": "test_specialist_result_proposal (assertion_class validation)"
+  },
+  {
+   "case": "required question closure verification fails",
+   "enforcement": "StateTransitionPolicy QUESTION_CLOSURE_VERIFICATION_REQUIRED (P5B pending_verifications checker; unchanged)",
+   "evidence": "test_protocol_feasibility (seeded verification path) + test_agent_control_plane"
+  }
+ ],
+ "conclusion": "all ten canonical actions are expressible and reachable; every listed non-happy path is enforced server-side and unaffected by the proposal draft (which feeds the unchanged canonical path)"
+}

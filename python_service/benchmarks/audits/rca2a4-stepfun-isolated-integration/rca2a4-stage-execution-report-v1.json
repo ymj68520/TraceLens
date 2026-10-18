@@ -1,0 +1,79 @@
+{
+  "artifact_version": "RCA2A4StageExecutionReportV1",
+  "created_at": "2026-10-15T03:10:00+00:00",
+  "experiment_id": "rca2a4-stepfun-isolated-integration",
+  "baseline_commit": "3ad0dcf531975a4133f0e75b9d93f118967e4842",
+
+  "gate_sequence": [
+    {"gate": "baseline_verification", "result": "HEAD=3ad0dcf5, worktree clean, 44/44 historical artifacts byte-identical, AcceptanceProfileV2 c40f1adc..., 2A.3 deliverables present, INTEGRATION_INPUT_PARITY_PASS archived"},
+    {"gate": "input_parity_preflight", "result": "INTEGRATION_INPUT_PARITY_PASS — re-verified on the FROZEN Fixture A store (rca2a4-input-parity-gate-report-v1.json); context_hash and source_scope confirmed from frozen durable sources"},
+    {"gate": "manifest_freeze", "result": "RCA2A4StepFunDiagnosticManifestV1 frozen BEFORE any real call (rca2a4-stepfun-diagnostic-manifest-v1.json); identity re-verified with zero drift before execute"},
+    {"gate": "sink_readiness", "result": "READY — deterministic FunctionModel invalid-output drove the REAL harness path into the RCA-1 sink: stage=SUPERVISOR_INTEGRATE, schema_hash=frozen V2, validation details observable, tool_name/retry_attempts observable, 0600, no input/evidence/key leak, no commit"},
+    {"gate": "provider_verification", "result": "VERIFIED — production adapter builds step-3.7-flash at the frozen StepFun endpoint; temperature/max_tokens/reasoning_effort/timeout frozen; no FunctionModel injection; first attempt blocked on the system Debian sitecustomize false-positive, hardened to verify the ACTUAL injection risk (original factory functions + clean PYTHONPATH); blocked attempt preserved as attempt1-blocked artifact"},
+    {"gate": "capacity_preflight", "result": "CAPACITY_PREFLIGHT_PASS (one-time, frozen script, 3 probes @256 tokens, identity exact, no 429/quota/connection failure; written via benchmark_output_guard --out into the experiment directory; NOT counted as diagnostic)"}
+  ],
+
+  "execution": {
+    "invocations": 1,
+    "stage_steps_observed": [
+      {"step": "model_request_started", "observed": true},
+      {"step": "model_response_received", "observed": true, "count": 2},
+      {"step": "output_tool_received", "observed": true, "tool": "final_result", "raw_args_captured_per_attempt": true},
+      {"step": "pydantic_parse_success", "observed": false, "attempts_failed": 2},
+      {"step": "canonical_resolution_success", "observed": false, "not_reached"},
+      {"step": "transition_validation_success", "observed": false, "not_reached"},
+      {"step": "scratch_commit_success", "observed": false, "not_reached"}
+    ],
+    "finalization": "NOT_EXERCISED",
+    "plan_model_calls": 0,
+    "specialist_model_calls": 0,
+    "reexecuted_after_completion": false
+  },
+
+  "storage_and_mutation_boundary": {
+    "store": "controlled synthetic scratch task under benchmarks/audits/rca2a4-stepfun-isolated-integration/scratch/ (git-ignored); no real investigation.db touched",
+    "frozen_state_untouched": "working_state_hash identical before and after the stage",
+    "no_cross_task_publication": true,
+    "no_analyst_review": true,
+    "no_report_evidence": true,
+    "scratch_commit": "NOT reached (pydantic layer failed); scratch_commit_success=false — never to be conflated with a real production Investigation commit"
+  },
+
+  "evidence_integrity": {
+    "cross_task_leak": 0,
+    "fabricated_evidence": 0,
+    "graph_id_as_evidence": 0,
+    "analyst_note_as_evidence": 0,
+    "unauthorized_commit": 0,
+    "api_key_leak": 0,
+    "validation_input_leak_in_sink": 0,
+    "evidence_content_leak": 0
+  },
+
+  "cf1_lifecycle_boundary": {
+    "stage_ownership": "isolated_stage_diagnostic — the harness created no AgentRun; the bound run is the fixture's Path A run, terminal (failed) before and after; non_terminal_runs=[] after execution; one-shot settlement semantics not bypassed",
+    "execution_snapshot_status": "frozen (revision 1, hash unchanged)",
+    "settled_agent_run_status": "failed (Path A containment, pre-existing)",
+    "finalization_status": "NOT_EXERCISED"
+  },
+
+  "diagnostic_interpretation": {
+    "disposition": "INTEGRATE_FIELD_LEVEL_FAILURE_IDENTIFIED",
+    "one_line": "the historical INTEGRATE output-validation failure layer reproduced on the isolated harness with FULL field-level observability: the model's second (retry) output differs from a fully legal integration decision by exactly one frozen-enum violation (to_status='completed'), with a deterministic minimal-repair witness",
+    "single_success_caveat": "n/a — this was a failure; and even a single success would not prove the contract stable",
+    "single_failure_caveat": "this failure does not prove all models incompatible; it establishes the failure SHAPE on one real sample with direct raw-output evidence",
+    "qualifications_not_generated": ["READY_FOR_8X3", "QUALIFIED", "ACCEPTED"],
+    "historical_screening_unchanged": "step-3.7-flash NOT_QUALIFIED_SCREENING artifacts remain authoritative and untouched"
+  },
+
+  "artifacts": [
+    "rca2a4-stepfun-diagnostic-manifest-v1.json",
+    "rca2a4-input-parity-gate-report-v1.json",
+    "rca2a4-sink-readiness-gate-v1.json",
+    "rca2a4-provider-verification-v1.json (plus preserved attempt1-blocked variant)",
+    "capacity-preflight.json",
+    "rca2a4-stage-execution-evidence-v1.json (raw per-attempt args, usage, identity records, sink entries)",
+    "rca2a4-field-level-failure-report-v1.json",
+    "rca2a4-runtime-identity-record-v1.json"
+  ]
+}

@@ -19,7 +19,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python_service"))
 from httpserver.services.android_field_package import _snapshot
 from httpserver.services.investigation.paths import investigation_db_path_for_task
-from httpserver.services.investigation.repository import InvestigationRepository
+from httpserver.services.investigation.repository import (
+    InvestigationRepository,
+    SUPPORTED_SCHEMA_VERSION,
+)
 
 
 def sha256(path: Path) -> str:
@@ -63,13 +66,14 @@ def prepare(task_record: Path, output_copy: Path) -> dict:
             raise ValueError("source database bundle changed during backup")
         InvestigationRepository(candidate, task_id, allow_v7_upgrade=True)
         with sqlite3.connect(candidate) as con:
-            if con.execute("PRAGMA user_version").fetchone()[0] != 8:
+            prepared_version = con.execute("PRAGMA user_version").fetchone()[0]
+            if prepared_version != SUPPORTED_SCHEMA_VERSION:
                 raise ValueError("prepared copy has wrong schema")
             if con.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                 raise ValueError("prepared copy failed integrity check")
             if con.execute("PRAGMA foreign_key_check").fetchone():
                 raise ValueError("prepared copy failed foreign key check")
-        result = {"task_id": task_id, "source_schema": 7, "prepared_schema": 8,
+        result = {"task_id": task_id, "source_schema": 7, "prepared_schema": prepared_version,
                   "source_bundle_sha256": before, "prepared_copy_sha256": sha256(candidate),
                   "cutover_performed": False}
         os.link(candidate, output_copy)  # atomic no-overwrite publication

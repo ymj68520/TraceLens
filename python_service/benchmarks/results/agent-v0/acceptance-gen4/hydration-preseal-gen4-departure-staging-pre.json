@@ -1,0 +1,341 @@
+{
+  "case_id": "gen4-departure-staging",
+  "task_id": "20b6e610-fb26-42c4-9063-323b48f06431",
+  "world_digest": "42b5ffbb52cb4ab7b81f9df14f817db88b9f4dfea47a131d40b080edcc16b9a1",
+  "sealed_world_digest": "42b5ffbb52cb4ab7b81f9df14f817db88b9f4dfea47a131d40b080edcc16b9a1",
+  "parsed_world": {
+    "files_rows": [
+      {
+        "path": "/README.txt",
+        "name": "README.txt",
+        "size": 372,
+        "category": "Log Files",
+        "mtime": 1740787200,
+        "ctime": 1740787200,
+        "is_deleted": 0,
+        "md5": "",
+        "inode": 17
+      },
+      {
+        "path": "/data/clients-index.txt",
+        "name": "clients-index.txt",
+        "size": 275,
+        "category": "Log Files",
+        "mtime": 1740787200,
+        "ctime": 1740787200,
+        "is_deleted": 0,
+        "md5": "",
+        "inode": 21
+      },
+      {
+        "path": "/hr/offboard-notice.txt",
+        "name": "offboard-notice.txt",
+        "size": 106,
+        "category": "Log Files",
+        "mtime": 1740787200,
+        "ctime": 1740787200,
+        "is_deleted": 0,
+        "md5": "",
+        "inode": 22
+      },
+      {
+        "path": "/logs/bulk-copy-audit.log",
+        "name": "bulk-copy-audit.log",
+        "size": 649,
+        "category": "Log Files",
+        "mtime": 1740787200,
+        "ctime": 1740787200,
+        "is_deleted": 0,
+        "md5": "",
+        "inode": 18
+      },
+      {
+        "path": "/mail/ticket-2025-0412.txt",
+        "name": "ticket-2025-0412.txt",
+        "size": 274,
+        "category": "Log Files",
+        "mtime": 1740787200,
+        "ctime": 1740787200,
+        "is_deleted": 0,
+        "md5": "",
+        "inode": 20
+      },
+      {
+        "path": "/policy/it-backup-policy.txt",
+        "name": "it-backup-policy.txt",
+        "size": 372,
+        "category": "Backup Files",
+        "mtime": 1740787200,
+        "ctime": 1740787200,
+        "is_deleted": 0,
+        "md5": "",
+        "inode": 19
+      }
+    ],
+    "events_rows": [
+      {
+        "timestamp": 1740787200,
+        "event_type": "MODIFIED",
+        "file_path": "/README.txt",
+        "inode": 17,
+        "event_source": "FILE_SYSTEM",
+        "system_context": ""
+      },
+      {
+        "timestamp": 1740787200,
+        "event_type": "MODIFIED",
+        "file_path": "/data/clients-index.txt",
+        "inode": 21,
+        "event_source": "FILE_SYSTEM",
+        "system_context": ""
+      },
+      {
+        "timestamp": 1740787200,
+        "event_type": "MODIFIED",
+        "file_path": "/hr/offboard-notice.txt",
+        "inode": 22,
+        "event_source": "FILE_SYSTEM",
+        "system_context": ""
+      },
+      {
+        "timestamp": 1740787200,
+        "event_type": "MODIFIED",
+        "file_path": "/logs/bulk-copy-audit.log",
+        "inode": 18,
+        "event_source": "FILE_SYSTEM",
+        "system_context": ""
+      },
+      {
+        "timestamp": 1740787200,
+        "event_type": "MODIFIED",
+        "file_path": "/mail/ticket-2025-0412.txt",
+        "inode": 20,
+        "event_source": "FILE_SYSTEM",
+        "system_context": ""
+      },
+      {
+        "timestamp": 1740787200,
+        "event_type": "MODIFIED",
+        "file_path": "/policy/it-backup-policy.txt",
+        "inode": 19,
+        "event_source": "FILE_SYSTEM",
+        "system_context": ""
+      },
+      {
+        "timestamp": 1790893942,
+        "event_type": "CREATED",
+        "file_path": "/README.txt",
+        "inode": 17,
+        "event_source": "FILE_SYSTEM",
+        "system_context": ""
+      },
+      {
+        "timestamp": 1790893942,
+        "event_type": "CREATED",
+        "file_path": "/data/clients-index.txt",
+        "inode": 21,
+        "event_source": "FILE_SYSTEM",
+        "system_context": ""
+      },
+      {
+        "timestamp": 1790893942,
+        "event_type": "CREATED",
+        "file_path": "/hr/offboard-notice.txt",
+        "inode": 22,
+        "event_source": "FILE_SYSTEM",
+        "system_context": ""
+      },
+      {
+        "timestamp": 1790893942,
+        "event_type": "CREATED",
+        "file_path": "/logs/bulk-copy-audit.log",
+        "inode": 18,
+        "event_source": "FILE_SYSTEM",
+        "system_context": ""
+      },
+      {
+        "timestamp": 1790893942,
+        "event_type": "CREATED",
+        "file_path": "/mail/ticket-2025-0412.txt",
+        "inode": 20,
+        "event_source": "FILE_SYSTEM",
+        "system_context": ""
+      },
+      {
+        "timestamp": 1790893942,
+        "event_type": "CREATED",
+        "file_path": "/policy/it-backup-policy.txt",
+        "inode": 19,
+        "event_source": "FILE_SYSTEM",
+        "system_context": ""
+      }
+    ],
+    "evidence_keys": [
+      "file:/README.txt",
+      "file:/data/clients-index.txt",
+      "file:/hr/offboard-notice.txt",
+      "file:/logs/bulk-copy-audit.log",
+      "file:/mail/ticket-2025-0412.txt",
+      "file:/policy/it-backup-policy.txt"
+    ],
+    "indexed_paths": [
+      "/README.txt",
+      "/data/clients-index.txt",
+      "/hr/offboard-notice.txt",
+      "/logs/bulk-copy-audit.log",
+      "/mail/ticket-2025-0412.txt",
+      "/policy/it-backup-policy.txt"
+    ]
+  },
+  "first_read": {
+    "task_id": "20b6e610-fb26-42c4-9063-323b48f06431",
+    "items": [
+      {
+        "evidence_key": "file:/README.txt",
+        "resolved": true,
+        "provenance": "reacquired",
+        "persisted": true,
+        "sha256": "a253334934ece49c9e43df705680937a4826761fa90f14ecda1cb6eb949a17d9",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 372
+      },
+      {
+        "evidence_key": "file:/data/clients-index.txt",
+        "resolved": true,
+        "provenance": "reacquired",
+        "persisted": true,
+        "sha256": "13307def488ba78303f2e1c9543a60f38ee57472a20f5dba822578289e933f48",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 153
+      },
+      {
+        "evidence_key": "file:/hr/offboard-notice.txt",
+        "resolved": true,
+        "provenance": "reacquired",
+        "persisted": true,
+        "sha256": "f31050289aa6876ca828b8e4413e77296e034ee192187e8a7ae6c188285ee933",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 62
+      },
+      {
+        "evidence_key": "file:/logs/bulk-copy-audit.log",
+        "resolved": true,
+        "provenance": "reacquired",
+        "persisted": true,
+        "sha256": "b72fa1e024dfbb21c66d7aaaa694e289fa59e1a08eb8b725b129b7c6eabe66b3",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 649
+      },
+      {
+        "evidence_key": "file:/mail/ticket-2025-0412.txt",
+        "resolved": true,
+        "provenance": "reacquired",
+        "persisted": true,
+        "sha256": "3fdef2655b63f97db714b43b4766650e107d9a4aa82889d014757fcaa18698d6",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 158
+      },
+      {
+        "evidence_key": "file:/policy/it-backup-policy.txt",
+        "resolved": true,
+        "provenance": "reacquired",
+        "persisted": true,
+        "sha256": "53e5941146436c8d78d34741dfca6ad1ba3a559a8c5b8915e25e508ad2cfb175",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 156
+      }
+    ]
+  },
+  "second_read": {
+    "task_id": "20b6e610-fb26-42c4-9063-323b48f06431",
+    "items": [
+      {
+        "evidence_key": "file:/README.txt",
+        "resolved": true,
+        "provenance": "locator",
+        "persisted": true,
+        "sha256": "a253334934ece49c9e43df705680937a4826761fa90f14ecda1cb6eb949a17d9",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 372
+      },
+      {
+        "evidence_key": "file:/data/clients-index.txt",
+        "resolved": true,
+        "provenance": "locator",
+        "persisted": true,
+        "sha256": "13307def488ba78303f2e1c9543a60f38ee57472a20f5dba822578289e933f48",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 153
+      },
+      {
+        "evidence_key": "file:/hr/offboard-notice.txt",
+        "resolved": true,
+        "provenance": "locator",
+        "persisted": true,
+        "sha256": "f31050289aa6876ca828b8e4413e77296e034ee192187e8a7ae6c188285ee933",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 62
+      },
+      {
+        "evidence_key": "file:/logs/bulk-copy-audit.log",
+        "resolved": true,
+        "provenance": "locator",
+        "persisted": true,
+        "sha256": "b72fa1e024dfbb21c66d7aaaa694e289fa59e1a08eb8b725b129b7c6eabe66b3",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 649
+      },
+      {
+        "evidence_key": "file:/mail/ticket-2025-0412.txt",
+        "resolved": true,
+        "provenance": "locator",
+        "persisted": true,
+        "sha256": "3fdef2655b63f97db714b43b4766650e107d9a4aa82889d014757fcaa18698d6",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 158
+      },
+      {
+        "evidence_key": "file:/policy/it-backup-policy.txt",
+        "resolved": true,
+        "provenance": "locator",
+        "persisted": true,
+        "sha256": "53e5941146436c8d78d34741dfca6ad1ba3a559a8c5b8915e25e508ad2cfb175",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 156
+      }
+    ]
+  },
+  "checks": {
+    "world_digest_matches_sealed": true,
+    "all_resolved": true,
+    "first_read_reacquired": true,
+    "second_read_locator": true,
+    "all_sha256_match_sealed": true,
+    "content_available_explicit": true
+  },
+  "pre_status": "PASS"
+}

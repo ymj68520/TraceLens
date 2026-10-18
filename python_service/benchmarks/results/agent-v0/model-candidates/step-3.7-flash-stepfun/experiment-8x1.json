@@ -1,0 +1,41 @@
+{
+  "experiment_id": "bexp-agent-v0-step-3.7-flash@stepfun",
+  "code_commit": "84af3558c1ce40a47a2f99c47e5ee33ce1dda44b",
+  "production_runtime_commit": "84af3558c1ce40a47a2f99c47e5ee33ce1dda44b",
+  "pre_calibration_profile_hash": "6dd38a0e0f68704fb881e7e1f78031d58dc54368b6188826a3262660d86b218c",
+  "runtime_baseline_file": "benchmarks/profiles/precalibration-runtime-baseline.v1.json",
+  "model_config_file": "benchmarks/results/agent-v0/model-candidates/step-3.7-flash-stepfun/model-config-8x1.json",
+  "corpus_id": "corpus-agent-v0-calibration",
+  "corpus_hash": "25c216e85acc32f22c5231924730956c24de6a04cc2c4f7173483c9b557916c4",
+  "repeat_policy": "3 fresh repeats per calibration case (Flash-class model; expand to 5 only on high variance)",
+  "cache_policy": "cold",
+  "graph_mode": "none",
+  "report_mode": "disabled",
+  "started_at": "2026-10-13T07:40:23+00:00",
+  "fresh_task_ids": {
+    "t1-fraud-script-usb": {
+      "repeat0": "0a625e59-5446-4ba3-a79f-422f6832fcfb"
+    },
+    "t2-cross-source-correlation": {
+      "repeat0": "0a7b15c4-20e3-447e-802c-478c4da6aace"
+    },
+    "t2-identity-trap": {
+      "repeat0": "18326d19-7dcc-495a-9795-4513d7138b3a"
+    },
+    "t2-misleading-note": {
+      "repeat0": "f30b9916-e389-41c0-bd9c-c7adccf78f5c"
+    },
+    "t2-no-evidence": {
+      "repeat0": "5f6567ba-2369-41d7-8124-9f814b294f13"
+    },
+    "t2-report-citation": {
+      "repeat0": "1573db8d-f506-48a8-ac5e-978e0b9061aa"
+    },
+    "t2-temporal-trap": {
+      "repeat0": "b6ca2471-b032-4456-bae5-5873f16d33b1"
+    },
+    "t2-verification-temptation": {
+      "repeat0": "23660325-b884-4a96-b366-440e0c555299"
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "artifact_version": "RCA2A12PreCallGateReportV1",
+  "experiment_id": "rca2a12-deepseek-flash-vocabulary-cross-case",
+  "timestamp_utc": "2026-10-17T03:10:05.126340+00:00",
+  "precall_gates": {
+    "G01_BASELINE_VERIFIED": true,
+    "G02_HISTORICAL_ARTIFACTS_UNCHANGED": true,
+    "G03_EXPERIMENT_IDENTITY_UNIQUE": true,
+    "G04_STOP_POLICY_V2_FROZEN": true,
+    "G05_STOP_TAXONOMY_INTEGRATED": true,
+    "G06_MANDATORY_SAFETY_STOPS_PRESERVED": true,
+    "G07_MODEL_IDENTITY_RESOLVED": true,
+    "G08_MODEL_CONFIG_FROZEN": true,
+    "G09_SCHEMA_UNCHANGED": true,
+    "G10_PROMPT_DIFF_EXACT": true,
+    "G11_GUIDANCE_HASH_MATCH": true,
+    "G12_ORACLE_IDENTITY_FROZEN": true,
+    "G13_ORACLE_ARM_BLIND": true,
+    "G14_FIXTURE_PARITY_PASS": true,
+    "G15_SCRATCH_ISOLATION_PASS": true,
+    "G16_EVIDENCE_RESOLVER_PASS": true,
+    "G17_STATE_TRANSITION_POLICY_PASS": true,
+    "G18_DURABLE_CLAIM_READY": true,
+    "G19_DIAGNOSTIC_SINK_READY": true,
+    "G20_REQUEST_BUDGET_ENFORCED": true,
+    "G21_FULL_OFFLINE_SIMULATION_PASS": true,
+    "G22_FULL_UNIT_REGRESSION_PASS": true,
+    "G23_PRODUCTION_FILES_UNCHANGED": true
+  },
+  "all_gates_pass": true
+}

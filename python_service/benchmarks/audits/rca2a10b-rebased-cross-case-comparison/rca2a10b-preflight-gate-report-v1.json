@@ -1,0 +1,51 @@
+{
+  "artifact_version": "RCA2A10bPreflightGateReportV1",
+  "attempts": [
+    {
+      "attempt": 1,
+      "latency_ms": 3074.2,
+      "model_identity_match": true,
+      "purpose": "CONNECTIVITY_AND_IDENTITY",
+      "requested_model": "step-5-preview",
+      "returned_model": "stepfun-ai/step-5-preview",
+      "status": "SUCCESS",
+      "status_code": 200
+    },
+    {
+      "attempt": 2,
+      "latency_ms": 2288.8,
+      "purpose": "TOOL_CALLING_CONTRACT_COMPLIANCE",
+      "pydantic_valid": true,
+      "status": "SUCCESS",
+      "status_code": 200,
+      "tool_call_present": true
+    }
+  ],
+  "attempts_executed": 2,
+  "endpoint": "https://api.hcnsec.cn/v1",
+  "experiment_id": "rca2a10b-rebased-cross-case-vocabulary-comparison",
+  "failure_explanation": null,
+  "precall_deterministic_gates": {
+    "CROSS_ARM_PARITY_PASS": true,
+    "DIAGNOSTICS_READY": true,
+    "DURABLE_SEAT_CLAIM_READY": true,
+    "EFFECTIVE_MODEL_IDENTITY_RESOLVED": true,
+    "ENDPOINT_IDENTITY_FROZEN": true,
+    "EVIDENCE_RESOLVER_PASS": true,
+    "FIXTURE_INTEGRITY_PASS": true,
+    "MODEL_ADAPTER_COMPATIBLE": true,
+    "NO_PRODUCTION_MUTATION": true,
+    "ORACLE_ARM_BLIND": true,
+    "ORACLE_IDENTITY_RECONCILED": true,
+    "OUTPUT_TOOL_CONTRACT_COMPATIBLE": true,
+    "PRODUCTION_STAGE_PARITY_PASS": true,
+    "PROMPT_DIFF_EXACT": true,
+    "REQUEST_BUDGET_VALID": true,
+    "RUNTIME_IDENTITY_STABLE": true,
+    "SCHEMA_UNCHANGED": true,
+    "STALE_INPUT_REJECTION_PASS": true
+  },
+  "preflight_verdict": "PREFLIGHT_PASS",
+  "requested_model": "step-5-preview",
+  "stop_reason": null
+}

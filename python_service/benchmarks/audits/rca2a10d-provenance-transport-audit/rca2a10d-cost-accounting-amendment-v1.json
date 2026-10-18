@@ -1,0 +1,21 @@
+{
+  "artifact_version": "RCA2A10dCostAccountingAmendmentV1",
+  "audit_id": "rca2a10d-provenance-transport-audit",
+  "billing_reconciliation": {
+    "amended_billing_status": "PROVIDER_BILLING_UNOBSERVABLE",
+    "amended_token_usage": "USAGE_UNOBSERVABLE",
+    "amendment_rationale": "On an HTTP 500 error, no usage block is returned by the provider. Claiming $0.00 total monetary cost is unfounded because upstream gateways or GPU providers may still log or bill failed requests. Impact cannot be established without billing ledger access.",
+    "reported_cost": "$0.00",
+    "reported_tokens": {
+      "input": 0,
+      "output": 0,
+      "total": 0
+    }
+  },
+  "security_and_credential_audit": {
+    "active_credential_representation": "Unsalted SHA-256 fingerprint (28c7095f4abca1584533bc3909be5ca3c9814a4a6cebcda084bac239fc67db16)",
+    "leak_status": "ZERO_PLAINTEXT_KEYS_COMMITTED",
+    "recommendation": "Transition future benchmark runs to arbitrary Credential Source IDs (e.g. 'CRED_SOURCE_HCNSEC_CANDIDATE_01') completely decoupled from the underlying secret.",
+    "risk_assessment": "Unsalted SHA-256 hashes of high-entropy API keys resist pre-image dictionary attacks, but do not provide unconditional security. They uniquely correlate credentials across repositories."
+  }
+}

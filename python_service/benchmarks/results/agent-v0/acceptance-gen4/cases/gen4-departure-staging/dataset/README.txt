@@ -1,0 +1,1 @@
+Seized engineering workstation returned at offboarding. The logs directory holds the endpoint bulk-copy audit log; the policy directory holds the IT backup policy; the mail directory holds the approved backup ticket; the data directory holds an index of the managed client-data share; the hr directory holds the offboarding notice. Assess the records exactly as they are.

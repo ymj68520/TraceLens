@@ -1,0 +1,73 @@
+{
+  "case_id": "gen4-layered-dispersion",
+  "stage": "post",
+  "restart_proof": {
+    "parsed_world_unchanged_after_restart": true,
+    "extraction_cache_matches_sealed": true,
+    "same_evidence_keys": true,
+    "same_content_hashes": true,
+    "post_restart_locator": true
+  },
+  "hydration_after_restart": {
+    "task_id": "8662620d-c6fa-4166-9831-d6d299958435",
+    "items": [
+      {
+        "evidence_key": "file:/README.txt",
+        "resolved": true,
+        "provenance": "locator",
+        "persisted": true,
+        "sha256": "75b36722788a5de9f9fe49a789158f2ce808fe6e3f584aaea007737a915fd525",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 339
+      },
+      {
+        "evidence_key": "file:/bank/transfer-records.csv",
+        "resolved": true,
+        "provenance": "locator",
+        "persisted": true,
+        "sha256": "3fc04d419451978aba673bf909f830168e6cbbda4fb1a9df6a0eabf4c4e99767",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 715
+      },
+      {
+        "evidence_key": "file:/chat/group-instructions.txt",
+        "resolved": true,
+        "provenance": "locator",
+        "persisted": true,
+        "sha256": "426ffa0ba679401aa7b0bdd8f2282db95b1e7fdf660d2a3c7ddd185346d81ccd",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 226
+      },
+      {
+        "evidence_key": "file:/docs/rental-agreement.txt",
+        "resolved": true,
+        "provenance": "locator",
+        "persisted": true,
+        "sha256": "b198535b2efd145f0ffd1ccd842f412c74d28692de945fb072c8ce9e067bae24",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 82
+      },
+      {
+        "evidence_key": "file:/notes/card-worksheet.txt",
+        "resolved": true,
+        "provenance": "locator",
+        "persisted": true,
+        "sha256": "9e96d007ce9f8615788a9a23640e74055a97516f3eac9278b6bcd4b6dc93e723",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 170
+      }
+    ]
+  },
+  "task_deleted_after_proof": true,
+  "post_status": "PASS"
+}

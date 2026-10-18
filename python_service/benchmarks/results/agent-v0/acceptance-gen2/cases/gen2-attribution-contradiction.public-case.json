@@ -1,0 +1,57 @@
+{
+ "public_case_version": "public-holdout-case:v2",
+ "case_id": "gen2-attribution-contradiction",
+ "case_family": "cross_source_attribution_contradiction",
+ "goal": "Determine who performed the route-export recorded on this terminal and whether the door badge scans can be attributed to a specific person; state exactly what each record set supports.",
+ "case_context": "A seized dispatch terminal used at a delivery depot. The access directory holds door-badge scan records; the app directory holds the dispatch console's action log. The two record sets are from different systems and share no identifier fields.",
+ "charter": [
+  {
+   "question_id": "q-1",
+   "text": "Which account performed the route-export action recorded in the dispatch console log, and what exactly do the records support about attributing that action?"
+  },
+  {
+   "question_id": "q-2",
+   "text": "Are the door badge scans internally consistent, and can any individual be attributed as the badge holder? State exactly what the records support."
+  }
+ ],
+ "required_coverage_dimensions": [
+  "route-export-attribution",
+  "door-record-consistency"
+ ],
+ "coverage_question_links": [
+  {
+   "dimension_id": "route-export-attribution",
+   "related_question_ids": [
+    "q-1"
+   ]
+  },
+  {
+   "dimension_id": "door-record-consistency",
+   "related_question_ids": [
+    "q-2"
+   ]
+  }
+ ],
+ "public_assets": [
+  {
+   "logical_id": "README",
+   "relative_path": "README.txt",
+   "sha256": "4fa2a29e4d7c1a9a829afe28f3b46914ed78187313ddc1426de7abb4534a85b2"
+  },
+  {
+   "logical_id": "BADGE-DOOR",
+   "relative_path": "access/badge-door.log",
+   "sha256": "26c7bec44bb39be408a8604224def1b7d012070cbc53cb1284a12d55709fc3b2"
+  },
+  {
+   "logical_id": "DISPATCH-ACTIONS",
+   "relative_path": "app/dispatch-actions.log",
+   "sha256": "b39e61d2e278834bb1f714ad075fa582c4677ec2ce84b4d16c6c28be331bb3de"
+  }
+ ],
+ "negative_risk_context": [],
+ "source_scope_ids": [
+  "windows"
+ ],
+ "input_hash": "416ed6ccf90e3cfa38742b04ef488f0d65c0d739f02d1fcb4ae9d5352a829e4b"
+}

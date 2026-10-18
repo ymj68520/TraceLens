@@ -1,0 +1,1163 @@
+{
+  "artifact_version": "HoldoutAcceptanceEvaluationV1",
+  "created_at": "2026-10-01T01:57:34+00:00",
+  "run_set_hash": "58f418ec1308680b8616c6971a414ba464515d44637d94faf0b0c860d9156ec0",
+  "profile": "benchmarks/profiles/agent-v0-acceptance-profile-v2.json",
+  "profile_status": "FROZEN",
+  "evaluator": "benchmark-case-outcome:v2 (deterministic; truth read by the evaluator only)",
+  "evaluate_only_reproduction": {
+    "per_run": [
+      {
+        "case_id": "t3-holdout-refund-fraud",
+        "repeat": "repeat0",
+        "reproduced": true
+      },
+      {
+        "case_id": "t3-holdout-refund-fraud",
+        "repeat": "repeat1",
+        "reproduced": true
+      },
+      {
+        "case_id": "t3-holdout-refund-fraud",
+        "repeat": "repeat2",
+        "reproduced": true
+      },
+      {
+        "case_id": "t3-holdout-vpn-causal",
+        "repeat": "repeat0",
+        "reproduced": true
+      },
+      {
+        "case_id": "t3-holdout-vpn-causal",
+        "repeat": "repeat1",
+        "reproduced": true
+      },
+      {
+        "case_id": "t3-holdout-vpn-causal",
+        "repeat": "repeat2",
+        "reproduced": true
+      }
+    ],
+    "all_reproduced": true
+  },
+  "per_run": [
+    {
+      "case_id": "t3-holdout-refund-fraud",
+      "repeat": "repeat0",
+      "status": "completed",
+      "rejection_codes": [],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [
+        {
+          "seq": 17,
+          "delegation_id": "del_dcc4a5bd209847b3a9d2721067bd1ecf",
+          "evidence_snapshots_admitted": 4,
+          "specialist_proposal_contract": {
+            "proposal_hash": "8e7b9b229aef48510528478866a2390c69e51307135f7d8c90c18f53a3ece79c",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "80d416c83ffb860708b431e71176cd1a9b21fe71abb9c4d3ee90e0e019ed2ed4"
+          },
+          "result_semantic_payload": {
+            "summary": "The device contains two small record sets plus a README: /shop/refunds.csv (2 refund rows) and /finance/payouts.log (3 payout rows). They join on refund_id and amount: RF-9001 (1200) and RF-9002 (3400) appear in both, with identical amounts. RF-9003 (8800) appears only in payouts.log with no matching row in refunds.csv, so it is an orphan payout not supported by any shop refund record. All three payouts go to the same card, masked as *7712. The evidence does NOT identify any individual as the payout recipient: neither refunds.csv (customers customerA, customerB, tied to refund_ids only) nor payouts.log (destination is a masked card number) names a cardholder, and the README explicitly states the card holder is not identified in either system. Therefore no individual can be attributed as the payout recipient on this evidence; a shared payout card across three refunds is a weak indicator at best and cannot be elevated to a single-perpetrator conclusion.",
+            "evidence_refs": [
+              "file:/README.txt",
+              "file:/finance/payouts.log",
+              "file:/shop/refunds.csv",
+              "cluster:v1:29843235:CREATED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c1",
+                "text": "refunds.csv contains exactly two refund records: RF-9001 (order ORD-55101, customer customerA, amount 1200) and RF-9002 (order ORD-55102, customer customerB, amount 3400).",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/shop/refunds.csv"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c2",
+                "text": "payouts.log contains exactly three payout records dated 2024-09-01, 2024-09-02 and 2024-09-03, for refund_ids RF-9001 (1200), RF-9002 (3400) and RF-9003 (8800), all marked 'ok' and all sent to card *7712.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/finance/payouts.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c3",
+                "text": "RF-9001 and RF-9002 join cleanly between the shop refund table and the finance payout log on both refund_id and amount (1200 and 3400 respectively), so those two refunds are corroborated by a corresponding payout.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/shop/refunds.csv",
+                  "file:/finance/payouts.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c4",
+                "text": "RF-9003 (amount 8800) appears in payouts.log but has no corresponding row in refunds.csv; it is an orphan payout with no supporting shop refund record on this device.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/shop/refunds.csv",
+                  "file:/finance/payouts.log",
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c5",
+                "text": "All three payouts in payouts.log are directed to the same masked card *7712; the log records only the card's last four digits, not a cardholder name.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/finance/payouts.log",
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c6",
+                "text": "No individual can be attributed as the payout recipient on the basis of this evidence: the refund table's customer field (customerA, customerB) is tied to refund_ids, not to payout destinations, and the payout log identifies only a masked card number whose holder is not named in either file.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/shop/refunds.csv",
+                  "file:/finance/payouts.log",
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c7",
+                "text": "The README.txt on the device explicitly states that payouts all land on the same card, that RF-9003 has no row in the refund table, and that the card holder is not identified in either system — i.e., the source material itself flags that asserting a single perpetrator from the shared payout card would exceed the evidence.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c8",
+                "text": "The common card *7712 across three refund payouts is at most a weak correlation hint; it does not establish identity, intent, or authorship, and cannot support a single-perpetrator conclusion.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/finance/payouts.log",
+                  "file:/README.txt"
+                ],
+                "limitations": [
+                  "No account, identity, or authentication record links card *7712 to any named individual.",
+                  "No Windows telemetry (event logs, prefetch, amcache, registry) is present in the task to corroborate execution or user activity."
+                ]
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e1",
+                "raw_value": "RF-9001",
+                "normalized_candidate": "RF-9001",
+                "entity_type_candidate": "refund_id"
+              },
+              {
+                "candidate_id": "e2",
+                "raw_value": "RF-9002",
+                "normalized_candidate": "RF-9002",
+                "entity_type_candidate": "refund_id"
+              },
+              {
+                "candidate_id": "e3",
+                "raw_value": "RF-9003",
+                "normalized_candidate": "RF-9003",
+                "entity_type_candidate": "refund_id"
+              },
+              {
+                "candidate_id": "e4",
+                "raw_value": "ORD-55101",
+                "normalized_candidate": "ORD-55101",
+                "entity_type_candidate": "order_id"
+              },
+              {
+                "candidate_id": "e5",
+                "raw_value": "ORD-55102",
+                "normalized_candidate": "ORD-55102",
+                "entity_type_candidate": "order_id"
+              },
+              {
+                "candidate_id": "e6",
+                "raw_value": "customerA",
+                "normalized_candidate": "customerA",
+                "entity_type_candidate": "customer_name"
+              },
+              {
+                "candidate_id": "e7",
+                "raw_value": "customerB",
+                "normalized_candidate": "customerB",
+                "entity_type_candidate": "customer_name"
+              },
+              {
+                "candidate_id": "e8",
+                "raw_value": "*7712",
+                "normalized_candidate": "*7712",
+                "entity_type_candidate": "payment_card_last4"
+              }
+            ],
+            "limitations": [
+              "No Windows telemetry (event logs, prefetch, Amcache, registry, USN journal) is present in the task, so no attribution to a user account or executing process is possible.",
+              "Payouts.log records only the last four digits of the card (*7712); no cardholder name, PAN, account number, or bank identifier is available.",
+              "refunds.csv 'customer' values (customerA, customerB) are tied to refund_ids only and are not shown to be the payout recipients; no field in either file links a customer to a payout destination.",
+              "RF-9003 has no row in the refund table on this device; whether it was deleted, never created, or exists on another system cannot be determined from the available evidence.",
+              "No file timestamps distinguish authoring/edit times of the two record sets — both were created at the same captured timestamp — so ordering of shop vs. finance activity cannot be inferred beyond the payout dates inside payouts.log.",
+              "README.txt is an in-image narrative note rather than an independent forensic artifact; it is used here as corroborating context, not as the primary basis for the join findings."
+            ],
+            "warnings": [
+              "The task metadata reports no platform scenario and no registered source scopes, so the 'windows' scope delegation is effectively served by three flat files only.",
+              "Attribution of a single individual as payout recipient would overstate the evidence: the shared card *7712 across three refunds is a correlation hint at most, and the README explicitly warns against that leap."
+            ]
+          }
+        }
+      ],
+      "finalization_event": {
+        "event": "finalization_completed",
+        "violation_codes": [],
+        "completion_mode": "complete_with_limitations"
+      },
+      "coverage_bootstrap": {
+        "seeded_coverage_dimensions": [
+          "payout-attribution"
+        ],
+        "bootstrap_state_hash": "c1364c814aa88c783ab2385fb7144b4c807cbcf72daccb544aafe296595eafcf"
+      },
+      "run_manifest_id": "brun:65415fb71e6b70fec2f031f4",
+      "result_hash": "7def9340185535363760effbfc84feefec13318bf9e273c71db421566ec7e105",
+      "snapshot_hash": "36b8d33a23a5f56840f6fe4d3117c11c9698d8d4c11af8adb31a9bdad842f423",
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "hard_gate_violations": [],
+      "hard_gate_recompute_violations": [],
+      "evaluate_only_reproduced": true,
+      "delegations_completed": 1,
+      "delegations_failed": 0,
+      "integrated": 1,
+      "coverage_terminalization": {
+        "payout-attribution": "partial"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "answered",
+          "disposition": "not_supported"
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "terminal=partial",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "satisfied",
+            "detail": "integrated_delegations=1 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "2/2 discovered"
+          },
+          {
+            "component": "coverage:payout-attribution",
+            "status": "failed",
+            "detail": "terminal=partial"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "satisfied",
+            "detail": "terminal=1 answered-terminals=1 unresolved-terminals=1; truth expects answered=1 unresolved=0 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "discovered_evidence_count": 4,
+      "findings_count": 0,
+      "tool_calls": 9,
+      "wall_s": 88.4,
+      "tokens_in": 36816,
+      "tokens_out": 3833
+    },
+    {
+      "case_id": "t3-holdout-refund-fraud",
+      "repeat": "repeat1",
+      "status": "completed",
+      "rejection_codes": [
+        "agent_output_invalid"
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [
+        {
+          "seq": 19,
+          "delegation_id": "del_4fec01a4c29044f09f23d420ad99aecd",
+          "failure_code": "agent_output_invalid",
+          "message": ""
+        }
+      ],
+      "completions": [],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "COVERAGE_NOT_TERMINAL"
+        ],
+        "completion_mode": null
+      },
+      "coverage_bootstrap": {
+        "seeded_coverage_dimensions": [
+          "payout-attribution"
+        ],
+        "bootstrap_state_hash": "1892d00f58f8153783cd9aa515eaab867cd9a7f7cf5f99b77c1eb3ea30c484dc"
+      },
+      "run_manifest_id": "brun:fea067fed1c9e9886b111cfc",
+      "result_hash": "bb2cb0c76cd9961b3ea2ef41cd9265c72d726ab4b7d65250ab7c2f38faa6f81b",
+      "snapshot_hash": "0202b12103b1024c1c48f89d04eb2870445bd34ab4240ae5784360126fcae38c",
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "hard_gate_recompute_violations": [],
+      "evaluate_only_reproduced": true,
+      "delegations_completed": 0,
+      "delegations_failed": 1,
+      "integrated": 0,
+      "coverage_terminalization": {
+        "payout-attribution": "not_started"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "unavailable",
+            "detail": "integrated_delegations=0 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "2/2 discovered"
+          },
+          {
+            "component": "coverage:payout-attribution",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "unavailable",
+            "detail": "terminal=0 answered-terminals=0 unresolved-terminals=0; truth expects answered=1 unresolved=0 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "discovered_evidence_count": 4,
+      "findings_count": 0,
+      "tool_calls": 11,
+      "wall_s": 67.3,
+      "tokens_in": 37936,
+      "tokens_out": 5104
+    },
+    {
+      "case_id": "t3-holdout-refund-fraud",
+      "repeat": "repeat2",
+      "status": "completed",
+      "rejection_codes": [],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [
+        {
+          "seq": 20,
+          "delegation_id": "del_d93189e17c5c4617b0a65ffb4c1891f4",
+          "evidence_snapshots_admitted": 4,
+          "specialist_proposal_contract": {
+            "proposal_hash": "12818f4a846424ca83481b161f75c6b7a7ed42061a6210759807c750c3da71e5",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "5e5ad38f66ce66bcdb558b62008c7c73cf69c9e30b2a22400abef6f609d6a7b0"
+          },
+          "result_semantic_payload": {
+            "summary": "The device holds exactly two business records plus a README: /shop/refunds.csv (2 rows) and /finance/payouts.log (3 lines). The two systems relate by a single join key, refund_id. RF-9001 and RF-9002 appear in both files with matching amounts (1200 and 3400), so the payout log records a downstream cash-out of each refund. RF-9003 appears ONLY in the payout log (amount=8800, 2024-09-03) with no corresponding row in the refund table — an orphan payout not supported by any shop-side refund record. All three payouts go to the same masked card *7712. No individual can be attributed as the payout recipient: the card is masked to 4 digits, no cardholder name appears in either file, and the only named individuals (customerA, customerB) are the refunding customers in the shop system, not the payout beneficiary. The README explicitly warns that asserting a single perpetrator from the shared payout card exceeds the evidence. Attribution is therefore not supported at FACT level; at most an INFERENCE that one cardholder collected all three payouts, with the cardholder unidentifiable from this scope.",
+            "evidence_refs": [
+              "file:/shop/refunds.csv",
+              "file:/finance/payouts.log",
+              "file:/README.txt",
+              "cluster:v1:29843235:CREATED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c1",
+                "text": "The shop refund table and the finance payout log relate by the refund_id key: RF-9001 (amount 1200) and RF-9002 (amount 3400) each appear in both files with identical amounts.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/shop/refunds.csv",
+                  "file:/finance/payouts.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c2",
+                "text": "RF-9003 is paid out in the finance log (2024-09-03, amount 8800) but has no row in /shop/refunds.csv, so it is an orphan payout with no shop-side refund record to corroborate it.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/finance/payouts.log",
+                  "file:/shop/refunds.csv",
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c3",
+                "text": "All three payouts (RF-9001, RF-9002, RF-9003) are directed to the same card, masked as *7712.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/finance/payouts.log",
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c4",
+                "text": "No individual can be attributed as the payout recipient from this device's evidence: the card identifier is masked to four digits, no cardholder name appears in the payout log or the refund table, and the only named parties (customerA, customerB) are customers in the shop refund records rather than identified payout beneficiaries.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/finance/payouts.log",
+                  "file:/shop/refunds.csv",
+                  "file:/README.txt"
+                ],
+                "limitations": [
+                  "Absence of a cardholder name is an observation about the two files present in this scope; external cardholder records were not available in this task and are not excluded."
+                ]
+              },
+              {
+                "candidate_id": "c5",
+                "text": "It is plausible that a single cardholder of card *7712 collected all three payouts, including the orphan RF-9003 amount of 8800, but the identity of that cardholder is not determinable from this evidence.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/finance/payouts.log",
+                  "file:/README.txt"
+                ],
+                "limitations": [
+                  "Inference from a shared card token only; no identity linkage exists in the captured files."
+                ]
+              },
+              {
+                "candidate_id": "c6",
+                "text": "RF-9003's 8800 payout is the largest of the three and is the only one lacking a shop-side refund record, making it the most anomalous entry in the payout log.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/finance/payouts.log",
+                  "file:/shop/refunds.csv"
+                ],
+                "limitations": [
+                  "Anomaly is relative to the two captured files only; a complete shop refund ledger was not available to confirm RF-9003 never existed."
+                ]
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e1",
+                "raw_value": "*7712",
+                "normalized_candidate": "card *7712 (last four digits only)",
+                "entity_type_candidate": "payment_card_partial"
+              },
+              {
+                "candidate_id": "e2",
+                "raw_value": "RF-9001",
+                "normalized_candidate": null,
+                "entity_type_candidate": "refund_id"
+              },
+              {
+                "candidate_id": "e3",
+                "raw_value": "RF-9002",
+                "normalized_candidate": null,
+                "entity_type_candidate": "refund_id"
+              },
+              {
+                "candidate_id": "e4",
+                "raw_value": "RF-9003",
+                "normalized_candidate": "RF-9003 (orphan: payout log only)",
+                "entity_type_candidate": "refund_id"
+              },
+              {
+                "candidate_id": "e5",
+                "raw_value": "ORD-55101",
+                "normalized_candidate": null,
+                "entity_type_candidate": "order_id"
+              },
+              {
+                "candidate_id": "e6",
+                "raw_value": "ORD-55102",
+                "normalized_candidate": null,
+                "entity_type_candidate": "order_id"
+              },
+              {
+                "candidate_id": "e7",
+                "raw_value": "customerA",
+                "normalized_candidate": null,
+                "entity_type_candidate": "person_anonymous"
+              },
+              {
+                "candidate_id": "e8",
+                "raw_value": "customerB",
+                "normalized_candidate": null,
+                "entity_type_candidate": "person_anonymous"
+              }
+            ],
+            "limitations": [
+              "Task metadata reports no platform scenario and no registered source scopes, so the requested 'windows' scope yielded no Windows-derived evidence; only three flat files are available.",
+              "The payout log records only a masked card token (*7712); no cardholder name, account number, or identity field exists anywhere in the captured files.",
+              "The refund table contains just 2 rows and the payout log 3 lines; completeness of both ledgers cannot be verified, so the RF-9003 gap is established only against these captured files.",
+              "All files share a single mtime/ctime (1790594136) with no modification history, so authorship, editing order, and timing of individual entries cannot be determined.",
+              "No deleted files were present (deleted_only search returned nothing) and no file hashes are recorded (md5 empty), so tampering cannot be assessed.",
+              "Attribution to any specific individual is not supported by this evidence at any assertion level; the strongest supportable statement is that one unidentified cardholder of *7712 received all three payouts."
+            ],
+            "warnings": [
+              "The README.txt on the device explicitly warns that asserting a single perpetrator from the shared payout card exceeds the evidence; this warning is consistent with the raw records and should be carried into any downstream conclusion.",
+              "RF-9003 (8800) is the largest payout and the only one without a shop-side refund record; treat it as the key anomaly but do not characterize it as fraudulent without corroborating records."
+            ]
+          }
+        }
+      ],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "COVERAGE_NOT_TERMINAL"
+        ],
+        "completion_mode": null
+      },
+      "coverage_bootstrap": {
+        "seeded_coverage_dimensions": [
+          "payout-attribution"
+        ],
+        "bootstrap_state_hash": "723569ea660b8e3fc6a6e245f2667ddd8ac6ef5ff89b1a43ab17ca87393e1736"
+      },
+      "run_manifest_id": "brun:c8b2eb66a0b72e81d1108dbd",
+      "result_hash": "c8619819be2faedbe98b5dc403c059166c3c4179c457188307ae35f4a08a0e8c",
+      "snapshot_hash": "308e50ae145e924e07b7b8cfc804ac5ef8ce83425d8b3ee0c7beb90b9bd9614d",
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "hard_gate_recompute_violations": [],
+      "evaluate_only_reproduced": true,
+      "delegations_completed": 1,
+      "delegations_failed": 0,
+      "integrated": 1,
+      "coverage_terminalization": {
+        "payout-attribution": "not_started"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "terminal=not_started; no terminal question dispositions recorded",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "satisfied",
+            "detail": "integrated_delegations=1 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "2/2 discovered"
+          },
+          {
+            "component": "coverage:payout-attribution",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "unavailable",
+            "detail": "terminal=0 answered-terminals=0 unresolved-terminals=0; truth expects answered=1 unresolved=0 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "discovered_evidence_count": 4,
+      "findings_count": 0,
+      "tool_calls": 12,
+      "wall_s": 63.0,
+      "tokens_in": 39572,
+      "tokens_out": 3314
+    },
+    {
+      "case_id": "t3-holdout-vpn-causal",
+      "repeat": "repeat0",
+      "status": "completed",
+      "rejection_codes": [],
+      "supervisor_failures": [],
+      "delegation_failures": [],
+      "completions": [
+        {
+          "seq": 18,
+          "delegation_id": "del_9ae4f491661b4cf3816453ea8e8dcdd3",
+          "evidence_snapshots_admitted": 4,
+          "specialist_proposal_contract": {
+            "proposal_hash": "5afbfd177c25f8718027636c4bbe19db185d2d9df5763767969ac36ed78d9c9c",
+            "proposal_version": "specialist-result-proposal:v1",
+            "trusted_enrichment_digest": "d4dd6c112fb96b508e0440206fea6fdfd6c7c923eecb9aa7650fb500ee4b4802"
+          },
+          "result_semantic_payload": {
+            "summary": "The three artifacts in scope (/README.txt, /vpn/sessions.log, /exchange/api.log) do NOT support treating the laptop owner's VPN account and the recovered exchange account as the same person, and they do NOT establish any interaction or causal link between the two accounts.\n\nWhat the evidence actually shows:\n- /vpn/sessions.log contains exactly two records: user=linan connected at 2024-08-11 20:00:01 with egress=45.33.11.9 and disconnected at 20:05:44 with the same egress. No other user, no other IP.\n- /exchange/api.log contains exactly one record: 2024-08-11 20:06:10 withdrawal account=xu*77 amount=60000 USDT ip=45.33.11.9 ok. The account identifier is truncated (xu*77) and is not the string 'linan'.\n- /README.txt is the examiner's own scoping note and states the interpretation rule directly: the shared egress IP proves only that traffic transited the same VPN server, not that the accounts are one person.\n\nWhy the two premises in the question fail on this evidence:\n1. \"Matching username\" is not supported. The only username appearing anywhere is 'linan' (VPN log). The exchange log carries the truncated identifier 'xu*77'. These are different strings and there is no evidence in scope that xu*77 expands to linan or to any linan-associated identifier. The premise of a matching username is therefore not grounded in the record.\n2. \"Shared VPN egress IP\" is a weak, non-identifying signal. 45.33.11.9 is a single public egress address shared by two events 26 seconds apart. A VPN egress IP is a server-side attribute: it identifies the VPN server, not the end user. Anyone connecting through the same VPN endpoint at any time would produce the same value. It cannot, on its own, bind two accounts to one person.\n\nSession-timeline analysis:\n- The two logs are contiguous in time (VPN disconnect 20:05:44, exchange withdrawal 20:06:10, delta 26 s) but they are separate systems with no shared session, correlation, request, or transaction identifier. The exchange record carries no VPN session id and the VPN record carries no exchange request id.\n- The exchange record is a single withdrawal event; there is no login, no prior authentication event, no device fingerprint, no user-agent, no geo, and no prior exchange activity for xu*77 in scope. There is therefore no evidence that the withdrawal was initiated by, on behalf of, or in coordination with the VPN session.\n- All three files share the same filesystem mtime/ctime (1790594136) and appear in a single CREATED cluster, which reflects when the files were written into the evidence image, not when the underlying events occurred. That shared artifact-level timestamp is not evidence of a causal or interactive link between the accounts.\n\nBottom line: the evidence supports only that (a) a VPN session under user=linan was active on 2024-08-11 20:00:01–20:05:44 with egress 45.33.11.9, and (b) an exchange withdrawal of 60000 USDT under account xu*77 occurred at 20:06:10 from ip 45.33.11.9. It does not support identity equivalence, does not support a matching username, and does not establish interaction or causation. Attribution of the withdrawal to linan would require independent corroborating evidence not present in scope (see follow-ups).",
+            "evidence_refs": [
+              "file:/README.txt",
+              "file:/vpn/sessions.log",
+              "file:/exchange/api.log",
+              "cluster:v1:29843235:CREATED"
+            ],
+            "claim_candidates": [
+              {
+                "candidate_id": "c1",
+                "text": "The VPN session log contains exactly two records for user=linan, both with egress=45.33.11.9: connect at 2024-08-11 20:00:01 and disconnect at 2024-08-11 20:05:44. No other user or IP appears in the log.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/vpn/sessions.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c2",
+                "text": "The exchange API log contains exactly one record: a successful withdrawal of 60000 USDT at 2024-08-11 20:06:10 from ip=45.33.11.9 under account identifier 'xu*77'.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/exchange/api.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c3",
+                "text": "The two accounts referenced in scope are 'linan' (VPN) and 'xu*77' (exchange, truncated). No evidence in scope maps xu*77 to linan or to any linan-associated identifier.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/vpn/sessions.log",
+                  "file:/exchange/api.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c4",
+                "text": "The examiner scoping note in /README.txt explicitly states that the shared egress IP proves only that traffic transited the same VPN server, not that the accounts are one person.",
+                "assertion_class": "FACT",
+                "evidence_refs": [
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c5",
+                "text": "A VPN egress IP is a server-side attribute that identifies the VPN endpoint rather than the end user; sharing value 45.33.11.9 between two events is therefore a weak, non-identifying signal and cannot by itself bind two accounts to one person.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/vpn/sessions.log",
+                  "file:/exchange/api.log",
+                  "file:/README.txt"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c6",
+                "text": "The premise that the two accounts share a matching username is not supported by the evidence in scope; the only full username present is 'linan' and the exchange identifier 'xu*77' is a different, truncated string.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/vpn/sessions.log",
+                  "file:/exchange/api.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c7",
+                "text": "The session timeline shows temporal contiguity (VPN disconnect 20:05:44, exchange withdrawal 20:06:10, delta 26 s) but no shared session, correlation, request, or transaction identifier between the two systems; the evidence therefore does not establish interaction or a causal link between the VPN account and the exchange account.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "file:/vpn/sessions.log",
+                  "file:/exchange/api.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c8",
+                "text": "The shared filesystem mtime/ctime (1790594136) and single CREATED cluster across all three files reflect when the files were written into the evidence image, not when the underlying events occurred; it is not evidence of a causal or interactive link between the accounts.",
+                "assertion_class": "INFERENCE",
+                "evidence_refs": [
+                  "cluster:v1:29843235:CREATED",
+                  "file:/README.txt",
+                  "file:/vpn/sessions.log",
+                  "file:/exchange/api.log"
+                ],
+                "limitations": []
+              },
+              {
+                "candidate_id": "c9",
+                "text": "Attributing the 60000 USDT withdrawal under xu*77 to linan is a plausible hypothesis given the shared egress IP and 26-second temporal proximity, but it is not established by the evidence in scope and would require independent corroboration (e.g., unredacted exchange account identity, VPN authentication logs tying 45.33.11.9 to a specific device/session id, exchange-side device fingerprint or logi",
+                "assertion_class": "HYPOTHESIS",
+                "evidence_refs": [
+                  "file:/vpn/sessions.log",
+                  "file:/exchange/api.log"
+                ],
+                "limitations": []
+              }
+            ],
+            "entity_candidates": [
+              {
+                "candidate_id": "e1",
+                "raw_value": "linan",
+                "normalized_candidate": "linan",
+                "entity_type_candidate": "account_username"
+              },
+              {
+                "candidate_id": "e2",
+                "raw_value": "xu*77",
+                "normalized_candidate": "xu*77",
+                "entity_type_candidate": "account_identifier_truncated"
+              },
+              {
+                "candidate_id": "e3",
+                "raw_value": "45.33.11.9",
+                "normalized_candidate": "45.33.11.9",
+                "entity_type_candidate": "ip_address_vpn_egress"
+              },
+              {
+                "candidate_id": "e4",
+                "raw_value": "2024-08-11 20:00:01",
+                "normalized_candidate": null,
+                "entity_type_candidate": "timestamp"
+              },
+              {
+                "candidate_id": "e5",
+                "raw_value": "2024-08-11 20:05:44",
+                "normalized_candidate": null,
+                "entity_type_candidate": "timestamp"
+              },
+              {
+                "candidate_id": "e6",
+                "raw_value": "2024-08-11 20:06:10",
+                "normalized_candidate": null,
+                "entity_type_candidate": "timestamp"
+              },
+              {
+                "candidate_id": "e7",
+                "raw_value": "60000 USDT",
+                "normalized_candidate": null,
+                "entity_type_candidate": "amount"
+              }
+            ],
+            "limitations": [
+              "The 'windows' source scope in this task contains only three small text/log files; no Windows-native forensic artifacts (registry, Prefetch, Amcache, event logs, USN, NTFS metadata beyond a single CREATED cluster) are present, so the L2 windows profile's execution-corroboration rules could not be applied.",
+              "The exchange account identifier is truncated ('xu*77'), preventing any string-level identity comparison with 'linan'; identity equivalence cannot be affirmed or denied from the record.",
+              "The VPN log records only client-side connect/disconnect lines with a shared egress IP; there is no VPN server-side authentication record, no device fingerprint, and no per-connection unique identifier to bind the egress IP to a specific device or user beyond the log's own 'user=linan' field.",
+              "The exchange log contains a single withdrawal event with no login, no prior activity, and no device/session context for xu*77; there is no way to establish from this log that the withdrawal was initiated by the VPN session or by linan.",
+              "All filesystem timestamps collapse to a single value (1790594136) reflecting image-write time; only the event timestamps embedded in the log text carry forensic meaning.",
+              "The 26-second gap between VPN disconnect (20:05:44) and exchange withdrawal (20:06:10) is a temporal observation only; no causal mechanism is evidenced.",
+              "The README.txt scoping note is an examiner-authored statement, not independent forensic evidence; it is treated as an interpretation rule and cited as such rather than as corroboration."
+            ],
+            "warnings": [
+              "The premise in the question that the two accounts share a 'matching username' is not supported by the evidence in scope: the only full username present is 'linan' and the exchange identifier is the truncated string 'xu*77'.",
+              "The shared egress IP 45.33.11.9 is a VPN server-side attribute and is non-identifying; it must not be presented as proof of a common user.",
+              "Attribution of the 60000 USDT withdrawal to linan should be recorded only as a hypothesis, not as a finding, until independent corroboration is obtained."
+            ]
+          }
+        }
+      ],
+      "finalization_event": {
+        "event": "finalization_completed",
+        "violation_codes": [],
+        "completion_mode": "complete_with_limitations"
+      },
+      "coverage_bootstrap": {
+        "seeded_coverage_dimensions": [
+          "shared-egress-assessment"
+        ],
+        "bootstrap_state_hash": "f5276522e93ce07497dd9d83d00449121f0667627b3fe10a784ceab1f5af8227"
+      },
+      "run_manifest_id": "brun:63208d777b4d00592c1152e1",
+      "result_hash": "e5672e82662f5369fdc013d07646215ed64d5cd2b514439d704461ed926a5a35",
+      "snapshot_hash": "d79f42a3a659ccb6bdfe57ffd361bd737dc5acc9cd329b87c48dad58ad03a8ad",
+      "terminal_status": "completed",
+      "finalization_pass": true,
+      "hard_gate_violations": [],
+      "hard_gate_recompute_violations": [],
+      "evaluate_only_reproduced": true,
+      "delegations_completed": 1,
+      "delegations_failed": 0,
+      "integrated": 1,
+      "coverage_terminalization": {
+        "shared-egress-assessment": "covered"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "answered",
+          "disposition": "not_supported"
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "success",
+        "rationale": "all components satisfied",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "satisfied",
+            "detail": "integrated_delegations=1 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "2/2 discovered"
+          },
+          {
+            "component": "coverage:shared-egress-assessment",
+            "status": "satisfied",
+            "detail": "terminal=covered"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "satisfied",
+            "detail": "terminal=1 answered-terminals=1 unresolved-terminals=1; truth expects answered=0 unresolved=1 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "discovered_evidence_count": 4,
+      "findings_count": 0,
+      "tool_calls": 10,
+      "wall_s": 85.0,
+      "tokens_in": 37978,
+      "tokens_out": 4665
+    },
+    {
+      "case_id": "t3-holdout-vpn-causal",
+      "repeat": "repeat1",
+      "status": "completed",
+      "rejection_codes": [
+        "agent_output_invalid"
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [
+        {
+          "seq": 19,
+          "delegation_id": "del_d402cc37d28e4d598ef744dd807750e4",
+          "failure_code": "agent_output_invalid",
+          "message": ""
+        }
+      ],
+      "completions": [],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "COVERAGE_NOT_TERMINAL"
+        ],
+        "completion_mode": null
+      },
+      "coverage_bootstrap": {
+        "seeded_coverage_dimensions": [
+          "shared-egress-assessment"
+        ],
+        "bootstrap_state_hash": "559d241c38c538c35981671bb417b055ddef9992a69e1685182e7ee42e9341e7"
+      },
+      "run_manifest_id": "brun:bea8e5d8e3a53d404b58947b",
+      "result_hash": "024b4af1b48396e3422d8e45e25fff48c64b11f41e2874195f3a13af8da1a4b3",
+      "snapshot_hash": "12c3d92855c782da483db378f240ec2eb9b79330e26956928759d36f4c1e2196",
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "hard_gate_recompute_violations": [],
+      "evaluate_only_reproduced": true,
+      "delegations_completed": 0,
+      "delegations_failed": 1,
+      "integrated": 0,
+      "coverage_terminalization": {
+        "shared-egress-assessment": "not_started"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "unavailable",
+            "detail": "integrated_delegations=0 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "2/2 discovered"
+          },
+          {
+            "component": "coverage:shared-egress-assessment",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "unavailable",
+            "detail": "terminal=0 answered-terminals=0 unresolved-terminals=0; truth expects answered=0 unresolved=1 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "discovered_evidence_count": 4,
+      "findings_count": 0,
+      "tool_calls": 11,
+      "wall_s": 39.1,
+      "tokens_in": 33045,
+      "tokens_out": 3691
+    },
+    {
+      "case_id": "t3-holdout-vpn-causal",
+      "repeat": "repeat2",
+      "status": "completed",
+      "rejection_codes": [
+        "agent_output_invalid"
+      ],
+      "supervisor_failures": [],
+      "delegation_failures": [
+        {
+          "seq": 19,
+          "delegation_id": "del_97f63a414c7d469da8219fa09f327eba",
+          "failure_code": "agent_output_invalid",
+          "message": ""
+        }
+      ],
+      "completions": [],
+      "finalization_event": {
+        "event": "finalization_denied",
+        "violation_codes": [
+          "COVERAGE_NOT_TERMINAL"
+        ],
+        "completion_mode": null
+      },
+      "coverage_bootstrap": {
+        "seeded_coverage_dimensions": [
+          "shared-egress-assessment"
+        ],
+        "bootstrap_state_hash": "ac9b2d4e5aa23defe9b2989d494be6aee5636815ff37f75cc8f30509f3db78da"
+      },
+      "run_manifest_id": "brun:4bc0f60643bbeeb63a965b16",
+      "result_hash": "19b49780566cf5b6bf23fc6510f6141e1e52d26d834fa1f956fd5230743ba430",
+      "snapshot_hash": "1974a6d2533e98cb027937012bc7ebe3ef5aca001a866e3e9489fe07c5f7f726",
+      "terminal_status": "failed",
+      "finalization_pass": false,
+      "hard_gate_violations": [],
+      "hard_gate_recompute_violations": [],
+      "evaluate_only_reproduced": true,
+      "delegations_completed": 0,
+      "delegations_failed": 1,
+      "integrated": 0,
+      "coverage_terminalization": {
+        "shared-egress-assessment": "not_started"
+      },
+      "questions": [
+        {
+          "question_id": "q-1",
+          "status": "open",
+          "disposition": null
+        }
+      ],
+      "case_outcome_v2": {
+        "outcome": "incomplete",
+        "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+        "components": [
+          {
+            "component": "structural_hard_gates",
+            "status": "satisfied",
+            "detail": "all gates passed"
+          },
+          {
+            "component": "semantic_output_available",
+            "status": "unavailable",
+            "detail": "integrated_delegations=0 findings=0"
+          },
+          {
+            "component": "critical_evidence_discovery",
+            "status": "satisfied",
+            "detail": "2/2 discovered"
+          },
+          {
+            "component": "coverage:shared-egress-assessment",
+            "status": "failed",
+            "detail": "terminal=not_started"
+          },
+          {
+            "component": "question_dispositions",
+            "status": "unavailable",
+            "detail": "terminal=0 answered-terminals=0 unresolved-terminals=0; truth expects answered=0 unresolved=1 (v2 production semantics)"
+          },
+          {
+            "component": "overclaim_constraints",
+            "status": "unavailable",
+            "detail": "no findings produced on the findings channel; claim-level overclaim is adjudicated by the case-level negative gates, not by substring matching"
+          }
+        ]
+      },
+      "discovered_evidence_count": 4,
+      "findings_count": 0,
+      "tool_calls": 11,
+      "wall_s": 91.8,
+      "tokens_in": 37890,
+      "tokens_out": 4724
+    }
+  ],
+  "diagnosis": {
+    "P_identity_events": 0,
+    "H_handle_events": 0,
+    "S_semantic_events": 0,
+    "G_grounding_events": 0,
+    "rejection_code_distribution": {
+      "agent_output_invalid": 3
+    }
+  },
+  "cost": {
+    "tokens_in_total": 223237,
+    "tokens_out_total": 25331,
+    "wall_s_median": 76.15
+  },
+  "computed_axes": {
+    "structural": {
+      "verdict": "PASS",
+      "violations": [],
+      "measurement": "structural_hard_gates recomputed independently from every persisted snapshot"
+    },
+    "functional": {
+      "verdict": "FAIL",
+      "metric": "BenchmarkCaseOutcomeV2 (truth-based; no surrogate)",
+      "floor": "EVERY family >= 2/3 reps at {success, success_with_limitations}",
+      "families": {
+        "t3-holdout-refund-fraud": {
+          "per_repetition": [
+            {
+              "repeat": "repeat0",
+              "outcome": "incomplete",
+              "qualifies": false
+            },
+            {
+              "repeat": "repeat1",
+              "outcome": "incomplete",
+              "qualifies": false
+            },
+            {
+              "repeat": "repeat2",
+              "outcome": "incomplete",
+              "qualifies": false
+            }
+          ],
+          "qualifying_count": 0,
+          "scheduled_reps": 3,
+          "floor_met": false
+        },
+        "t3-holdout-vpn-causal": {
+          "per_repetition": [
+            {
+              "repeat": "repeat0",
+              "outcome": "success",
+              "qualifies": true
+            },
+            {
+              "repeat": "repeat1",
+              "outcome": "incomplete",
+              "qualifies": false
+            },
+            {
+              "repeat": "repeat2",
+              "outcome": "incomplete",
+              "qualifies": false
+            }
+          ],
+          "qualifying_count": 1,
+          "scheduled_reps": 3,
+          "floor_met": false
+        }
+      },
+      "reporting_metrics_not_gates": {
+        "runs_with_integrated_delegation": 3,
+        "finalization_pass": 2
+      }
+    },
+    "reliability": {
+      "verdict": "PASS",
+      "population": 6,
+      "supervisor_plan_failure_runs": 0,
+      "supervisor_integrate_failure_runs": 0,
+      "specialist_structured_output_failure_runs": 3,
+      "thresholds_frozen": {
+        "supervisor_plan_structured_output_failure_rate_max": 0.2,
+        "supervisor_integrate_structured_output_failure_rate_max": 0.2,
+        "specialist_structured_output_failure_rate_max": 0.5
+      }
+    },
+    "availability": {
+      "verdict": "PASS",
+      "provider_terminal_runs": 0,
+      "population": 6,
+      "fraction": 0.0,
+      "threshold_frozen": {
+        "provider_terminal_runs_max_fraction": 0.2
+      }
+    }
+  }
+}

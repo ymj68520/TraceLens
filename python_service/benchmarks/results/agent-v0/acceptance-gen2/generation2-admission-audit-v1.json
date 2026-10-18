@@ -1,0 +1,99 @@
+{
+  "artifact_version": "Generation2AdmissionAuditV1",
+  "generation_id": "acceptance-generation-2",
+  "created_at": "2026-10-01T00:00:00+00:00",
+  "zero_model_calls": true,
+  "status": "ADMITTED_FOR_B6",
+  "admission": "ADMITTED_FOR_B6",
+  "checks": {
+    "all_agent_visible_inputs_presealed": {
+      "ok": true,
+      "seal_hash": "a7b9d1ea92166d0ab56d4ab65cd5a40b530638eaec5a7954dc565801c59773e0",
+      "violations": []
+    },
+    "no_semantic_authoring_at_b6_runtime": {
+      "ok": true,
+      "public_surface": [
+        "CharterQuestionV2",
+        "CoverageQuestionLinkV2",
+        "ExecutionBlockedError",
+        "GEN2_GENERATION_ID",
+        "GEN2_HOLDOUT_SET_ID",
+        "GEN2_PROTOCOL_VERSION",
+        "GEN2_TRUTH_BUNDLE_VERSION",
+        "HoldoutContractError",
+        "HoldoutSealV2",
+        "NEGATIVE_FLAGS_OWNERSHIP",
+        "NegativeRiskContextEntryV2",
+        "PUBLIC_HOLDOUT_CASE_VERSION",
+        "PublicAssetV2",
+        "PublicHoldoutCaseV2",
+        "build_gen2_seal",
+        "build_holdout_working_state",
+        "derive_benchmark_case_v1",
+        "enforce_execution_gate",
+        "load_public_holdout_case",
+        "serialize_agent_visible_inputs",
+        "verify_holdout_seal",
+        "verify_truth_public_isolation"
+      ],
+      "offending": []
+    },
+    "bootstrap_is_projection_only": {
+      "ok": true,
+      "cases": [
+        {
+          "case_id": "gen2-analyst-refutation",
+          "questions_verbatim": true,
+          "coverage_verbatim_and_not_started": true,
+          "state_hash": "dbb3da6306aa5238f76d602a1eec2d2fad2ab99628e57232240799e864f5af86"
+        },
+        {
+          "case_id": "gen2-attribution-contradiction",
+          "questions_verbatim": true,
+          "coverage_verbatim_and_not_started": true,
+          "state_hash": "5ebed3dc0e6d212354d1e9e3dc4c6e70812711a36019daf255f90af2f6ea592e"
+        }
+      ]
+    },
+    "truth_isolated": {
+      "ok": true,
+      "negative_flags_ownership": "evaluator_only_truth_metadata",
+      "cases": [
+        {
+          "case_id": "gen2-analyst-refutation",
+          "violations": []
+        },
+        {
+          "case_id": "gen2-attribution-contradiction",
+          "violations": []
+        }
+      ]
+    },
+    "acceptance_profile_frozen": {
+      "ok": true,
+      "expected_sha256": "c40f1adcad816e433f7edfc6cbc0b56dc32c031bf1fcb31528523ffa62f0e98d"
+    },
+    "production_runtime_frozen": {
+      "ok": true,
+      "investigation_subtree_hash": "ab8a5f1758da73bb394d375e32969a0cb248a59e",
+      "b6_execution_reference": "ab8a5f1758da73bb394d375e32969a0cb248a59e"
+    },
+    "model_frozen": {
+      "ok": true,
+      "sha256": "9cdcb1fde1cdf6ca25067c0436bbc83618fcf3708b3fd4cc49207ba4b2d130fb",
+      "model": "sensenova-6.8-flash-lite (CALIBRATION-QUALIFIED; formal sealed acceptance NOT ESTABLISHED — see docs/specs/agent-v0-acceptance-status.md)"
+    },
+    "holdout_never_executed": {
+      "ok": true,
+      "execution_count": 0,
+      "stray_artifacts": []
+    }
+  },
+  "all_passed": true,
+  "b6_preconditions": [
+    "explicit user authorization for B6 (never auto-executed)",
+    "Gen-2 preflight (load/validate/hash-check/bootstrap, zero model calls) must pass at execution entry",
+    "enforce_execution_gate must run before the first task provisioning"
+  ]
+}

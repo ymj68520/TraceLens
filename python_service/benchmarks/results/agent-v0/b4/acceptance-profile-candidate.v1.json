@@ -1,0 +1,94 @@
+{
+  "profile_version": "agent-v0-acceptance-profile:v1",
+  "profile_id": "aacc-agent-v0-holdout-candidate",
+  "status": "candidate",
+  "corpus_hash": "52e70af32e1af861c85e03d03635147d528c39926d917af197f46dbf04170dc7",
+  "calibration_profile_hash": "23e350151fc04230eec7358b3571d60200172bba28206924483fb0e886cf6a2e",
+  "model_provider": "hcnsec-cloud",
+  "model_id": "MiMo-V2.6-Flash",
+  "thresholds": [
+    {
+      "metric_id": "case_outcome_incorrect_rate",
+      "threshold_type": "case_level_ceiling",
+      "minimum": null,
+      "maximum": 0.0,
+      "rationale": "any truth-semantic incorrect outcome (premature closure, prohibited overclaim asserted, structural gate violation) fails that case outright",
+      "supporting_experiment_ids": []
+    },
+    {
+      "metric_id": "case_outcome_success_rate",
+      "threshold_type": "aggregate",
+      "minimum": 0.8,
+      "maximum": null,
+      "rationale": "§33 review (2026-09-28): the sealed holdout contains 3 cases, so an aggregate floor of 0.8 is arithmetically 3/3 — the B4-era 'at least 4 of 5' wording was stale. Why 0.8 and not 0.7/0.9: on a 3-case sealed set the only distinct integer cuts are 2/3 (0.67) and 3/3 (1.0); the product-correctness position is that NO sealed trap case may fail, which this floor expresses. If a future corpus revision changes the sealed case count, this floor must be re-derived from product correctness (never from a model baseline, §38) with the per-case requirements below kept explicit.  Empirical honesty: all four qualification models measure 0.0 today; this floor is a product requirement, and the current population is an unsupported-model qualification, not a bar to lower.",
+      "supporting_experiment_ids": []
+    },
+    {
+      "metric_id": "critical_evidence_recall",
+      "threshold_type": "case_level_floor",
+      "minimum": 1.0,
+      "maximum": null,
+      "rationale": "every reachable critical evidence item must be discovered on cases where critical evidence exists (§5: zero-critical cases exempt)",
+      "supporting_experiment_ids": []
+    },
+    {
+      "metric_id": "premature_closure_rate",
+      "threshold_type": "case_level_ceiling",
+      "minimum": null,
+      "maximum": 0.0,
+      "rationale": "truth-unresolved questions must never be closed as answered",
+      "supporting_experiment_ids": []
+    },
+    {
+      "metric_id": "provider_failure_rate",
+      "threshold_type": "observational_only",
+      "minimum": null,
+      "maximum": null,
+      "rationale": "reported separately; never folded into quality (§10)",
+      "supporting_experiment_ids": []
+    },
+    {
+      "metric_id": "unsupported_fact_rate",
+      "threshold_type": "case_level_ceiling",
+      "minimum": null,
+      "maximum": 0.0,
+      "rationale": "semantic invariant — never calibratable (P5B/P8 frozen)",
+      "supporting_experiment_ids": []
+    }
+  ],
+  "zero_tolerance_gate_ids": [
+    "agent_review_authority",
+    "citation_outside_pack_allowlist",
+    "cross_task_isolation",
+    "evidence_ref_grounding",
+    "finalization_hard_blocker_bypass",
+    "graph_id_not_evidence",
+    "mandatory_verification_bypass",
+    "writer_assertion_ceiling"
+  ],
+  "notes": "CANDIDATE (B4 §37): thresholds are proposed from product correctness requirements and frozen BEFORE holdout execution; §40 holds both a quality-if-output-exists axis (unsupported FACT/overclaim/ceiling) and a functional axis (case outcome) so vacuous closure cannot score as high quality. Holdout remains SEALED (§42).",
+  "input_hash": "b4cefcc4497ac9a2af6b59874519ac5d10e868512b1e035629d21e92936ab68a",
+  "created_at": "2026-09-28T12:12:26.295711+00:00",
+  "case_level_requirements": {
+    "principle": "§33: high-risk negative/trap cases are governed by case-level success requirements, never masked by the aggregate",
+    "required_case_outcomes": [
+      {
+        "applies_to": "every sealed holdout case",
+        "requirement": "outcome in {success, success_with_limitations}; an incorrect or incomplete outcome fails that case outright regardless of the aggregate"
+      },
+      {
+        "applies_to": "trap-shaped sealed cases (identity/causal traps, negative-evidence cases such as the VPN-egress and refund-fraud holdouts)",
+        "requirement": "the trap must be HANDLED, not avoided: identity traps must not merge (false_entity_merge=0), causal traps must not assert causation, negative-evidence cases must close unresolved questions as limitations rather than inventing affirmative findings"
+      }
+    ]
+  },
+  "silence_guard": {
+    "principle": "§34: a silent model must never fake-PASS via '0 unsupported FACT'",
+    "mechanism": "structural, not a separate threshold: BenchmarkCaseOutcomeV1 marks any run without semantic output (integrated delegations or findings) incomplete, and incomplete never satisfies the success-rate floor. The aggregate success floor therefore doubles as the functional floor; the zero-tolerance ceilings (unsupported FACT, premature closure, incorrect) apply only to runs that produced semantic output."
+  },
+  "freeze_status": {
+    "status": "BLOCKED (§32)",
+    "reason": "freezing requires product correctness requirements (held) + full v5 calibration distributions (held) + selected model reliability (ABSENT — no model qualified).  The candidate is fully specified so that the freeze is mechanical once a qualified model exists.",
+    "must_never_be_revised_from": "future holdout results (§32)"
+  }
+}

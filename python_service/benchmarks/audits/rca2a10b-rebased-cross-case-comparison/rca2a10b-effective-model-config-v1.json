@@ -1,0 +1,30 @@
+{
+  "artifact_version": "RCA2A10bEffectiveModelConfigV1",
+  "block_reason": null,
+  "credential_fingerprint": "28c7095f4abca1584533bc3909be5ca3c9814a4a6cebcda084bac239fc67db16",
+  "credential_source": ".env (LLM_API_KEY)",
+  "effective_config_hash": "e75140928ee98e63329ec12616ffc6fcbe2803c87e8b9d43a51d90510d29464d",
+  "endpoint_fingerprint": "173aa41a6dcc0071bd1e6026426346ad83aa3dab25dee72ce32c3a136341b4d0",
+  "environment_variables_inspected": {
+    "LLM_BASE_URL": "https://api.hcnsec.cn",
+    "LLM_PROVIDER": null,
+    "LLM_TEXT_BASE_URL": "https://api.hcnsec.cn",
+    "LLM_TEXT_MODEL": "step-5-preview",
+    "OPENROUTER_API_KEY": "PRESENT"
+  },
+  "experiment_id": "rca2a10b-rebased-cross-case-vocabulary-comparison",
+  "investigation_details": {
+    "dot_env_exists": true,
+    "dot_env_file": "/home/ymj68520/projects/TraceLens/.env",
+    "runtime_rebased_endpoint": "https://api.hcnsec.cn/v1",
+    "unconfigured_history_probed": false
+  },
+  "max_tokens": 4096,
+  "reasoning_effort_mapping": null,
+  "resolved_endpoint": "https://api.hcnsec.cn/v1",
+  "resolved_model_name": "step-5-preview",
+  "resolved_provider": "generic",
+  "status": "CONFIGURATION_RESOLVED",
+  "temperature": 1.0,
+  "timeout_seconds": 360.0
+}

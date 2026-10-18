@@ -1,0 +1,89 @@
+{
+  "artifact_version": "RCA2A9ScenarioCapabilityMatrixV1",
+  "baseline_commit": "7ea26f627e6197216bffdee3ead12ddc1cd78062",
+  "generated_at": "2026-10-15T14:32:04Z",
+  "scenarios": {
+    "t2-identity-trap": {
+      "charter_question": "Which account performed the USDT transfers, and can the system-2 chenwei be identified as the transferring person?",
+      "expected_integration_obligations": [
+        "ground only the promoted app1.log handle",
+        "reject unreferenced app2.log, graph node IDs, or cross-task references",
+        "forbid identity merge overclaim"
+      ],
+      "known_stage_limitations": [],
+      "objective": "determine whether same-named accounts across systems represent same actor",
+      "representable_in_isolated_integrate": true,
+      "required_evidence": [
+        "file:C/logs/app1.log"
+      ],
+      "requires_adapter": false,
+      "scenario_id": "t2-identity-trap",
+      "stage_applicability": "INTEGRATE_REPRESENTABLE",
+      "task_id": "t2-identity-trap",
+      "tier": "T2",
+      "title": "T2 identity trap: same username across unrelated systems (trapfs)"
+    },
+    "t2-no-evidence": {
+      "charter_question": "Does this device contain evidence of fraud-related financial activity, and what exactly can and cannot be concluded from the analyzed content?",
+      "expected_integration_obligations": [
+        "keep required charter question non-terminal (open or in_progress)",
+        "record investigative limitation",
+        "zero fabricated evidence references"
+      ],
+      "known_stage_limitations": [],
+      "objective": "detect unauthorized access and fraud-related financial activity",
+      "representable_in_isolated_integrate": true,
+      "required_evidence": [],
+      "requires_adapter": false,
+      "scenario_id": "t2-no-evidence",
+      "stage_applicability": "INTEGRATE_REPRESENTABLE",
+      "task_id": "t2-no-evidence",
+      "tier": "T2",
+      "title": "T2 no-evidence / indeterminate: benign office volume (cleanfs)"
+    },
+    "t2-report-citation": {
+      "charter_question": "What payment evidence is present, and which documents must stay out of the evidentiary chain?",
+      "expected_integration_obligations": [
+        "mark payment ledger relevant",
+        "mark personal report irrelevant or unadmitted",
+        "do not attempt report publication or report admission in INTEGRATE stage"
+      ],
+      "known_stage_limitations": [
+        "REPORT_CITATION_STAGE_LIMITED: SUPERVISOR_INTEGRATE cannot execute ReportEvidenceService.admit or publish report; stage only supports relevance marking and finding references"
+      ],
+      "objective": "determine payment collection evidence and exclude irrelevant personal files",
+      "representable_in_isolated_integrate": false,
+      "required_evidence": [
+        "file:C/data/收款记录.txt",
+        "file:C/personal/体检报告.txt"
+      ],
+      "requires_adapter": true,
+      "scenario_id": "t2-report-citation",
+      "stage_applicability": "REQUIRES_ADAPTER",
+      "task_id": "t2-report-citation",
+      "tier": "T2",
+      "title": "T2 report citation discipline: irrelevant personal file (citatfs)"
+    },
+    "t2-temporal-trap": {
+      "charter_question": "Does the temporal adjacency between wangfang messages and zhangming USDT deposit entries establish interaction, causation, or shared intent?",
+      "expected_integration_obligations": [
+        "record temporal observation as inference or fact with strict limitation",
+        "prohibit causal overclaim or identity merge",
+        "bind only authentic task evidence"
+      ],
+      "known_stage_limitations": [],
+      "objective": "determine whether temporal proximity between chat logs indicates fraud collaboration",
+      "representable_in_isolated_integrate": true,
+      "required_evidence": [
+        "file:C/chat/wangfang.log",
+        "file:C/chat/zhangming.log"
+      ],
+      "requires_adapter": false,
+      "scenario_id": "t2-temporal-trap",
+      "stage_applicability": "INTEGRATE_REPRESENTABLE",
+      "task_id": "t2-temporal-trap",
+      "tier": "T2",
+      "title": "T2 temporal proximity without causality (tempfs)"
+    }
+  }
+}

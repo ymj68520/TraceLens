@@ -1,0 +1,17 @@
+{
+ "artifact_version": "RCA2A2ConnectivityAttributionAmendmentV1",
+ "created_at": "2026-10-13T14:06:43+00:00",
+ "policy": "append-only; original OpenRouter blocked artifacts byte-identical (capacity-preflight.json / capacity-preflight-proxy.json / manifest / matrix / baseline report untouched)",
+ "amends": "RCA2A2DiagnosticBaselineReportV1 — the OpenRouter DIAGNOSTIC BLOCKED is precisely attributed",
+ "experiment_status": "DIAGNOSTIC_BLOCKED",
+ "blocker_category": "CONNECTIVITY",
+ "blocker_code": "PROVIDER_ENDPOINT_UNREACHABLE",
+ "provider_capacity": "NOT_EVALUATED",
+ "model_semantics": "NOT_EVALUATED",
+ "evidence_unchanged": [
+  "capacity-preflight.json: 3/3 APIConnectionError (direct)",
+  "capacity-preflight-proxy.json: 3/3 APIConnectionError; documented LAN proxy 192.168.31.19:7897 TCP-unreachable"
+ ],
+ "attribution_note": "APIConnectionError is a transport-layer reachability failure: the provider endpoint (openrouter.ai) was never reached, so provider capacity/quota was never evaluated and model output semantics were never exercised. This is a CONNECTIVITY block, not a capacity or semantic result.",
+ "continuation": "new experiment identity RCA2A2StepFunDiagnosticManifestV1 on the historically connected StepFun provider (direct; no OpenRouter in any role)"
+}

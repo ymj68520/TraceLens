@@ -1,0 +1,24 @@
+{
+  "report_version": "rca2a21:v1",
+  "task_id": "TASK-INVESTIGATION-WORKBENCH-REVIEW-PANEL",
+  "audit_phase": "RCA-2A.21",
+  "context_mapping_policy": {
+    "primary_basis": "Canonical evidence key resolution matching candidate.evidence_refs",
+    "forbidden_heuristics": [
+      "LLM summary substring search",
+      "Display title heuristics",
+      "Array index guesswork"
+    ],
+    "context_filter_toggle": {
+      "implemented": true,
+      "modes": ["All Task Candidates", "Filtered by Context Evidence"]
+    },
+    "fallback_behavior": "When no direct context match exists, analyst accesses task-scoped review queue directly without false context association."
+  },
+  "epistemic_integrity": {
+    "fact_handling": "FACT assertions verified against grounded evidence",
+    "hypothesis_handling": "HYPOTHESIS assertions prominently tagged with warning: 'This is a hypothesis, not a verified fact.' Acceptance preserves HYPOTHESIS epistemic class.",
+    "auto_fact_promotion_prevented": true
+  },
+  "status": "MAPPING_INVARIANTS_VERIFIED"
+}

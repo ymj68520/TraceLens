@@ -1,0 +1,88 @@
+{
+  "artifact_version": "ModelValidationRecordV2",
+  "round": "p8b-b2-restart",
+  "created_at": "2026-09-29T11:15:41+00:00",
+  "provider": "sensenova-cloud",
+  "requested_model_id": "sensenova-6.8-flash-lite",
+  "api_reported_model_id": "sensenova-6.8-flash-lite",
+  "base_url_class": "token.sensenova.cn/v1",
+  "adapter_config_hash": "ba51d65eeb2c29022216b069572db333d999fcd887098bc49b6f1da6e15ab764",
+  "generation_params": {
+    "temperature": 0.7,
+    "max_tokens": 16384,
+    "timeout_seconds": 120.0,
+    "thinking_mode": "disabled",
+    "reasoning_effort_sent": "none",
+    "reasoning_metadata_exposed": {
+      "provider_reports_reasoning_tokens": true,
+      "observed_reasoning_tokens_with_effort_none": 0
+    }
+  },
+  "tool_registry_hash": "2583c323521aff470ed0cd464ace102f15420a1114d9c24a004bd1893f643bcf",
+  "supervisor_contract": "v2 (FROZEN; production default flipped at ed382cbb)",
+  "evidence_snapshot_admission": "S4 (FROZEN at f711851c)",
+  "runtime_baseline": {
+    "artifact": "AgentV0RuntimeBaselineV2",
+    "file_sha256": "48e4bc5c730bae022b72176fb7096923ffe2fa3e1158699b6f40bd235b65646b",
+    "frozen_at_commit": "f711851c59ca00b9122ac986bd727ed66be063af"
+  },
+  "model_config_artifact": {
+    "path": "benchmarks/results/agent-v0/b2-restart/sensenova-6.8-flash-lite.model-config.json",
+    "sha256": "9cdcb1fde1cdf6ca25067c0436bbc83618fcf3708b3fd4cc49207ba4b2d130fb"
+  },
+  "smokes": {
+    "adapter_smoke": {
+      "artifact": "benchmarks/results/agent-v0/b2-restart/smoke/adapter-smoke.v1.json",
+      "all_passed": true,
+      "probes": {
+        "basic_completion": true,
+        "structured_output": true,
+        "tool_call_with_args": true,
+        "zero_arg_tool": true
+      }
+    },
+    "specialist_deep_smoke": {
+      "result": "PASS with episodic fragility",
+      "runs": [
+        {
+          "run": "smoke-deep/t2-no-evidence/repeat0",
+          "plan_v2": "valid (delegation admitted)",
+          "specialist": "FAILED agent_output_invalid (episodic; raw cause not captured, sanitized production path)",
+          "tool_calls": 9,
+          "zero_arg_tool_ok": true
+        },
+        {
+          "run": "diagnosis repeat9 (exception telemetry armed, zero exceptions fired)",
+          "plan_v2": "valid",
+          "specialist": "completed + integrated (INTEGRATE v2 committed, 4 evidence snapshots admitted by S4)"
+        }
+      ]
+    },
+    "supervisor_deep_smoke": {
+      "result": "PASS",
+      "plan_v2_valid": true,
+      "integrate_v2_valid": true,
+      "handle_rejections": 0
+    }
+  },
+  "secrets_redacted": true,
+  "git_head": "ed382cbb51fae511b5289d59116fe26e13e8fed0",
+  "canary_outcome": {
+    "artifact": "benchmarks/results/agent-v0/b2-restart/canary-aggregate.v1.json",
+    "runs": "8/8 runner-completed (fresh tasks, v2 contract, S4 admission)",
+    "hard_gates": "ALL PASS (no §9 STOP_CORRECTNESS)",
+    "P_identity": 0,
+    "H_handle": 0,
+    "S_semantic": 0,
+    "G_grounding": 0,
+    "EVIDENCE_SNAPSHOT_MISSING": 0,
+    "finalization_pass": "7/8 (t2-verification-temptation denied: UNINTEGRATED_COMPLETED_DELEGATION)",
+    "integrated_delegations": "1/8 cases (t2-verification-temptation)",
+    "specialist_output_failures": "7/8 (Exceeded maximum output retries (2) -> agent_output_invalid)",
+    "supervisor_structured_output_failures": "0/8 (step-5-preview historical: 67% — bottleneck eliminated at supervisor layer)",
+    "critical_recall_completed_runs": "t1 2/2, cross-source 2/2, identity 2/2, misleading 1/1, temporal 2/2, verify 1/1, report 1/1"
+  },
+  "disposition": "MODEL_NOT_QUALIFIED (§13 gate failed: specialist output contract 7/8 systematic; <2 independent integrating cases)",
+  "disposition_basis": "SpecialistResultV1 schema-discipline failure, precisely named in specialist-output-diagnosis.v1.json: model fills server-computed fields (execution_digest as string, tool_call_count, observation_count) -> extra_forbidden/type errors -> output retries exhausted. Supervisor layer and all correctness gates are clean.",
+  "updated_at": "2026-09-29T12:12:36+00:00"
+}

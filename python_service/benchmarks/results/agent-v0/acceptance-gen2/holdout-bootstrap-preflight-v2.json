@@ -1,0 +1,61 @@
+{
+  "artifact_version": "HoldoutBootstrapPreflightV2",
+  "generation_id": "acceptance-generation-2",
+  "created_at": "2026-10-01T00:00:00+00:00",
+  "zero_model_calls": true,
+  "seal_hash": "a7b9d1ea92166d0ab56d4ab65cd5a40b530638eaec5a7954dc565801c59773e0",
+  "frozen_identities": {
+    "git_head": "87918b56cecea3b82420c30dc66456626f1c80ec",
+    "investigation_subtree_hash": "ab8a5f1758da73bb394d375e32969a0cb248a59e",
+    "acceptance_profile_sha256": "c40f1adcad816e433f7edfc6cbc0b56dc32c031bf1fcb31528523ffa62f0e98d",
+    "calibration_binding_sha256": "e2c35c4e0fa744a5aa49a9b4b4ac1ec990999107ea1ac4eafa7e41645f94c038",
+    "model_config_sha256": "9cdcb1fde1cdf6ca25067c0436bbc83618fcf3708b3fd4cc49207ba4b2d130fb",
+    "bootstrap_transform_sha256": "2f8c14f84f19dabfa225dfe568fa1ace6544e87b6e97a4b7027f0d9c55dd61b5",
+    "evaluator_sha256": "67b9a11752de62d7732e1a109b9217392ee39f5141e6d15a6a2a4936bb6739a4"
+  },
+  "cases": [
+    {
+      "case_id": "gen2-analyst-refutation",
+      "case_family": "misleading_analyst_context",
+      "public_input_hash": "e7d31f6aef7c79394f806666a606a447681a91368d1edf5c5c8f0c0a9c1f31e0",
+      "seed_state_hash": "dbb3da6306aa5238f76d602a1eec2d2fad2ab99628e57232240799e864f5af86",
+      "attention_item_ids": [
+        "question:q-1"
+      ],
+      "checks": {
+        "sealed_public_case_loads": true,
+        "bootstrap_deterministic": true,
+        "links_verbatim_required_not_started": true,
+        "questions_verbatim_from_charter": true,
+        "attention_deterministic": true,
+        "no_standalone_coverage_item": true,
+        "no_duplicate_question_scope_topology": true
+      },
+      "ok": true
+    },
+    {
+      "case_id": "gen2-attribution-contradiction",
+      "case_family": "cross_source_attribution_contradiction",
+      "public_input_hash": "416ed6ccf90e3cfa38742b04ef488f0d65c0d739f02d1fcb4ae9d5352a829e4b",
+      "seed_state_hash": "5ebed3dc0e6d212354d1e9e3dc4c6e70812711a36019daf255f90af2f6ea592e",
+      "attention_item_ids": [
+        "question:q-1",
+        "question:q-2"
+      ],
+      "checks": {
+        "sealed_public_case_loads": true,
+        "bootstrap_deterministic": true,
+        "links_verbatim_required_not_started": true,
+        "questions_verbatim_from_charter": true,
+        "attention_deterministic": true,
+        "no_standalone_coverage_item": true,
+        "no_duplicate_question_scope_topology": true
+      },
+      "ok": true
+    }
+  ],
+  "execution_gate_passed": true,
+  "failures": [],
+  "all_passed": true,
+  "input_hash": "0daa01720dc7256e52431bd10506e6c2ff6c861ecad7e1cb802fbf5891da854c"
+}

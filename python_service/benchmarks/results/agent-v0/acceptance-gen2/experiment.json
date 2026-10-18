@@ -1,0 +1,27 @@
+{
+  "experiment_id": "bexp-agent-v0-b6-gen2",
+  "code_commit": "6c9b1549595d4c4e3be84d35fad0fd7758926ab2",
+  "production_runtime_commit": "6c9b1549595d4c4e3be84d35fad0fd7758926ab2",
+  "model_config_file": "benchmarks/results/agent-v0/b2-restart/sensenova-6.8-flash-lite.model-config.json",
+  "candidate_id": "sensenova-6.8-flash-lite",
+  "generation_id": "acceptance-generation-2",
+  "seal_hash": "a7b9d1ea92166d0ab56d4ab65cd5a40b530638eaec5a7954dc565801c59773e0",
+  "preflight_input_hash": "0daa01720dc7256e52431bd10506e6c2ff6c861ecad7e1cb802fbf5891da854c",
+  "repeat_policy": "Gen-2 B6 §7: 2 families x 3 independent repetitions, case-major; every attempt fresh task/investigation/run/state",
+  "cache_policy": "cold",
+  "graph_mode": "none",
+  "report_mode": "disabled",
+  "started_at": "2026-10-01T05:17:24+00:00",
+  "fresh_task_ids": {
+    "gen2-analyst-refutation": {
+      "repeat0": "414f61a3-0042-41c2-8891-7a228c499b6e",
+      "repeat1": "c198e0ce-9e05-4a4a-9def-74140c74d5e9",
+      "repeat2": "b73ee7c6-7207-4247-922b-247fa7dee5a3"
+    },
+    "gen2-attribution-contradiction": {
+      "repeat0": "a9a89b13-04c8-478c-8af2-dc4d9de4d67e",
+      "repeat1": "05b74c77-d118-4c0a-ba8e-16b042576989",
+      "repeat2": "06464f9e-35fb-45b5-bf67-c22575708cb4"
+    }
+  }
+}

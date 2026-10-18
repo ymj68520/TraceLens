@@ -1,0 +1,323 @@
+{
+  "artifact_version": "RCA2A11ExperimentManifestV1",
+  "experiment_id": "rca2a11-deepseek-flash-vocabulary-comparison",
+  "created_at_utc": "2026-10-17T01:45:39.872846+00:00",
+  "runtime_commit": "afbeb55bf76388d98a58cbbbb44bc4c8e1db10c0",
+  "provider": "generic",
+  "sanitized_endpoint": "https://chat.cordapp.org/v1",
+  "requested_model": "deepseek-flash",
+  "returned_model_policy": [
+    "deepseek-flash",
+    "deepseek-ai/deepseek-flash",
+    "deepseek/deepseek-flash"
+  ],
+  "effective_model_config": {
+    "provider": "generic",
+    "base_url": "https://chat.cordapp.org/v1",
+    "model_name": "deepseek-flash",
+    "temperature": 1.0,
+    "max_tokens": 4096,
+    "timeout_seconds": 360.0,
+    "reasoning_effort": null
+  },
+  "control_instructions_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+  "schema_hash": "a214ec4f5e81fcbb",
+  "oracle_contract_hash": "739b6683707d1b4c7339cf20eaf861514c902e9ac4b8ac8b3969fa02aef9a782",
+  "seat_schedule": [
+    {
+      "global_seat": 1,
+      "scenario_id": "t2-no-evidence",
+      "pair_label": "A",
+      "arm": "control",
+      "pair_id": 1
+    },
+    {
+      "global_seat": 2,
+      "scenario_id": "t2-no-evidence",
+      "pair_label": "A",
+      "arm": "treatment",
+      "pair_id": 1
+    },
+    {
+      "global_seat": 3,
+      "scenario_id": "t2-temporal-trap",
+      "pair_label": "A",
+      "arm": "control",
+      "pair_id": 1
+    },
+    {
+      "global_seat": 4,
+      "scenario_id": "t2-temporal-trap",
+      "pair_label": "A",
+      "arm": "treatment",
+      "pair_id": 1
+    },
+    {
+      "global_seat": 5,
+      "scenario_id": "t2-identity-trap",
+      "pair_label": "A",
+      "arm": "control",
+      "pair_id": 1
+    },
+    {
+      "global_seat": 6,
+      "scenario_id": "t2-identity-trap",
+      "pair_label": "A",
+      "arm": "treatment",
+      "pair_id": 1
+    },
+    {
+      "global_seat": 7,
+      "scenario_id": "t2-report-citation",
+      "pair_label": "A",
+      "arm": "control",
+      "pair_id": 1
+    },
+    {
+      "global_seat": 8,
+      "scenario_id": "t2-report-citation",
+      "pair_label": "A",
+      "arm": "treatment",
+      "pair_id": 1
+    },
+    {
+      "global_seat": 9,
+      "scenario_id": "t2-no-evidence",
+      "pair_label": "B",
+      "arm": "treatment",
+      "pair_id": 2
+    },
+    {
+      "global_seat": 10,
+      "scenario_id": "t2-no-evidence",
+      "pair_label": "B",
+      "arm": "control",
+      "pair_id": 2
+    },
+    {
+      "global_seat": 11,
+      "scenario_id": "t2-temporal-trap",
+      "pair_label": "B",
+      "arm": "treatment",
+      "pair_id": 2
+    },
+    {
+      "global_seat": 12,
+      "scenario_id": "t2-temporal-trap",
+      "pair_label": "B",
+      "arm": "control",
+      "pair_id": 2
+    },
+    {
+      "global_seat": 13,
+      "scenario_id": "t2-identity-trap",
+      "pair_label": "B",
+      "arm": "treatment",
+      "pair_id": 2
+    },
+    {
+      "global_seat": 14,
+      "scenario_id": "t2-identity-trap",
+      "pair_label": "B",
+      "arm": "control",
+      "pair_id": 2
+    },
+    {
+      "global_seat": 15,
+      "scenario_id": "t2-report-citation",
+      "pair_label": "B",
+      "arm": "treatment",
+      "pair_id": 2
+    },
+    {
+      "global_seat": 16,
+      "scenario_id": "t2-report-citation",
+      "pair_label": "B",
+      "arm": "control",
+      "pair_id": 2
+    }
+  ],
+  "retry_policy": {
+    "pydantic_output_retry_budget": 1,
+    "sdk_transport_max_retries": 2
+  },
+  "request_budget": {
+    "stage_invocations": 16,
+    "output_retry_budget_per_invocation": 1,
+    "max_logical_model_generations": 32,
+    "preflight_logical_requests": 3,
+    "sdk_max_retries": 2,
+    "diagnostic_http_attempts_max": 96,
+    "preflight_http_attempts_max": 9,
+    "total_max_http_attempts": 105
+  },
+  "hard_stop_conditions": [
+    "Provider Authentication Failure",
+    "Provider Credit Exhaustion",
+    "Provider Capacity Failure",
+    "Provider Infrastructure Failure",
+    "Model Identity Drift",
+    "Diagnostic Sink Failure",
+    "Durable Claim Inconsistency",
+    "Unknown Dispatch Outcome",
+    "Cross-task Evidence Incident",
+    "Grounding Bypass",
+    "Unauthorized Scratch Commit",
+    "Production State Mutation"
+  ],
+  "pair_audits": [
+    {
+      "scenario_id": "t2-no-evidence",
+      "pair_label": "A",
+      "pair_id": 1,
+      "parity": {
+        "scenario_id": "t2-no-evidence",
+        "parity_pass": true,
+        "verdict": "CROSS_ARM_PARITY_PASS",
+        "canonical_control_hash": "f85e0c5e3f0258975a03e4d6a73c5c3945baa6a66fc32fd8ab22093fbee885bc",
+        "canonical_treatment_hash": "f85e0c5e3f0258975a03e4d6a73c5c3945baa6a66fc32fd8ab22093fbee885bc",
+        "instructions_exact_suffix": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "model_settings_equal": true,
+        "input_contract_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29"
+      }
+    },
+    {
+      "scenario_id": "t2-no-evidence",
+      "pair_label": "B",
+      "pair_id": 2,
+      "parity": {
+        "scenario_id": "t2-no-evidence",
+        "parity_pass": true,
+        "verdict": "CROSS_ARM_PARITY_PASS",
+        "canonical_control_hash": "3e2f2aa1ebd12c4e0abac3d6faf6d548cda7bade1fa3446aaa1cc171230dab35",
+        "canonical_treatment_hash": "3e2f2aa1ebd12c4e0abac3d6faf6d548cda7bade1fa3446aaa1cc171230dab35",
+        "instructions_exact_suffix": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "model_settings_equal": true,
+        "input_contract_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29"
+      }
+    },
+    {
+      "scenario_id": "t2-temporal-trap",
+      "pair_label": "A",
+      "pair_id": 1,
+      "parity": {
+        "scenario_id": "t2-temporal-trap",
+        "parity_pass": true,
+        "verdict": "CROSS_ARM_PARITY_PASS",
+        "canonical_control_hash": "04cdc9835a9a1e0300dd76df543ff48043a3718ed1182f18d5f638023d269693",
+        "canonical_treatment_hash": "04cdc9835a9a1e0300dd76df543ff48043a3718ed1182f18d5f638023d269693",
+        "instructions_exact_suffix": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "model_settings_equal": true,
+        "input_contract_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29"
+      }
+    },
+    {
+      "scenario_id": "t2-temporal-trap",
+      "pair_label": "B",
+      "pair_id": 2,
+      "parity": {
+        "scenario_id": "t2-temporal-trap",
+        "parity_pass": true,
+        "verdict": "CROSS_ARM_PARITY_PASS",
+        "canonical_control_hash": "84534536e359ae7075953e465a315922b5505a93e22222d63d9c2721985c3b38",
+        "canonical_treatment_hash": "84534536e359ae7075953e465a315922b5505a93e22222d63d9c2721985c3b38",
+        "instructions_exact_suffix": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "model_settings_equal": true,
+        "input_contract_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29"
+      }
+    },
+    {
+      "scenario_id": "t2-identity-trap",
+      "pair_label": "A",
+      "pair_id": 1,
+      "parity": {
+        "scenario_id": "t2-identity-trap",
+        "parity_pass": true,
+        "verdict": "CROSS_ARM_PARITY_PASS",
+        "canonical_control_hash": "08ccb4561dba6bb2adbfe9b96d6154a9b12feb00cb01c50fef9424b28261c771",
+        "canonical_treatment_hash": "08ccb4561dba6bb2adbfe9b96d6154a9b12feb00cb01c50fef9424b28261c771",
+        "instructions_exact_suffix": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "model_settings_equal": true,
+        "input_contract_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29"
+      }
+    },
+    {
+      "scenario_id": "t2-identity-trap",
+      "pair_label": "B",
+      "pair_id": 2,
+      "parity": {
+        "scenario_id": "t2-identity-trap",
+        "parity_pass": true,
+        "verdict": "CROSS_ARM_PARITY_PASS",
+        "canonical_control_hash": "a116a35fcf259141a5115240250fa9fca3cb36033a55676ef1765cd0372df633",
+        "canonical_treatment_hash": "a116a35fcf259141a5115240250fa9fca3cb36033a55676ef1765cd0372df633",
+        "instructions_exact_suffix": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "model_settings_equal": true,
+        "input_contract_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29"
+      }
+    },
+    {
+      "scenario_id": "t2-report-citation",
+      "pair_label": "A",
+      "pair_id": 1,
+      "parity": {
+        "scenario_id": "t2-report-citation",
+        "parity_pass": true,
+        "verdict": "CROSS_ARM_PARITY_PASS",
+        "canonical_control_hash": "c2c2e05c45ef6a878087107aab8e4beeacdf70a380f842cd31b56a5d6c5aad1f",
+        "canonical_treatment_hash": "c2c2e05c45ef6a878087107aab8e4beeacdf70a380f842cd31b56a5d6c5aad1f",
+        "instructions_exact_suffix": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "model_settings_equal": true,
+        "input_contract_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29"
+      }
+    },
+    {
+      "scenario_id": "t2-report-citation",
+      "pair_label": "B",
+      "pair_id": 2,
+      "parity": {
+        "scenario_id": "t2-report-citation",
+        "parity_pass": true,
+        "verdict": "CROSS_ARM_PARITY_PASS",
+        "canonical_control_hash": "71b96cd65cb0f9440b9952cebe482ba7440ec8265d213cc6bf258d16bd3d7b07",
+        "canonical_treatment_hash": "71b96cd65cb0f9440b9952cebe482ba7440ec8265d213cc6bf258d16bd3d7b07",
+        "instructions_exact_suffix": true,
+        "projection_equal": true,
+        "schema_equal": true,
+        "model_settings_equal": true,
+        "input_contract_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29"
+      }
+    }
+  ]
+}

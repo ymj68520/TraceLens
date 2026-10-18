@@ -1,0 +1,48 @@
+{
+ "real_task_id": "99056801-d923-4a95-9ca2-a17b2ea61cbd",
+ "alias_task_id": "bench-brun:ad00bda05b06d4d36dfaae18",
+ "recovery_summary": {
+  "runs_failed": 0,
+  "delegations_failed": 0,
+  "investigations_paused": 1,
+  "obligations_expired": 0
+ },
+ "at_cli_exit": {
+  "runs": [
+   [
+    "run_f5e40bc6718341b59bf031e04096a746",
+    "cancelled",
+    "cancelled",
+    null
+   ]
+  ],
+  "events": [
+   "investigation_created",
+   "run_admitted",
+   "attention_compiled",
+   "run_started",
+   "run_cancelled"
+  ],
+  "finalizations": []
+ },
+ "after_recovery": {
+  "runs": [
+   [
+    "run_f5e40bc6718341b59bf031e04096a746",
+    "cancelled",
+    "cancelled",
+    null
+   ]
+  ],
+  "events": [
+   "investigation_created",
+   "run_admitted",
+   "attention_compiled",
+   "run_started",
+   "run_cancelled",
+   "investigation_paused",
+   "runtime_recovered"
+  ],
+  "finalizations": []
+ }
+}

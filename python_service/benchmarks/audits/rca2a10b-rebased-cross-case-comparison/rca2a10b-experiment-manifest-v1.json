@@ -1,0 +1,380 @@
+{
+  "artifact_version": "RCA2A10bExperimentManifestV1",
+  "authorization_status": "BOUNDED_LIVE_COMPARISON_AUTHORIZED",
+  "baseline_commit": "f7e7896c1417b35d6e241772aa796851608665ae",
+  "effective_model_configuration": {
+    "config_hash": "e75140928ee98e63329ec12616ffc6fcbe2803c87e8b9d43a51d90510d29464d",
+    "endpoint": "https://api.hcnsec.cn/v1",
+    "endpoint_fingerprint": "173aa41a6dcc0071bd1e6026426346ad83aa3dab25dee72ce32c3a136341b4d0",
+    "provider": "generic",
+    "requested_model": "step-5-preview",
+    "status": "CONFIGURATION_RESOLVED"
+  },
+  "experiment_id": "rca2a10b-rebased-cross-case-vocabulary-comparison",
+  "fixture_arm_records": [
+    {
+      "arm": "control",
+      "binding_table_hash": "52af9b53e74a32be30aef1f47c70365a6dba8a8a9ffa8a6e206d0c7cf749cef6",
+      "context_hash": "850ec90eec96eb7968aba003a6cd700e0f54012e0d523c5a9dab80435027d533",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/scratch/t2-identity-trap_pair_a/t2-identity-trap-p01-control",
+      "investigation_id": "inv-t2-identity-trap-001",
+      "pair_id": 1,
+      "pair_label": "A",
+      "run_id": "run_72ac505dea3f4f44991dae4bd0bc384f",
+      "scenario_id": "t2-identity-trap",
+      "task_id": "t2-identity-trap",
+      "working_state_hash": "b9f33a07d996b0181af461090fae445e06fe7d7e430e9feeaa62878583896dbc"
+    },
+    {
+      "arm": "treatment",
+      "binding_table_hash": "52af9b53e74a32be30aef1f47c70365a6dba8a8a9ffa8a6e206d0c7cf749cef6",
+      "context_hash": "850ec90eec96eb7968aba003a6cd700e0f54012e0d523c5a9dab80435027d533",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/scratch/t2-identity-trap_pair_a/t2-identity-trap-p01-treatment",
+      "investigation_id": "inv-t2-identity-trap-001",
+      "pair_id": 1,
+      "pair_label": "A",
+      "run_id": "run_72ac505dea3f4f44991dae4bd0bc384f",
+      "scenario_id": "t2-identity-trap",
+      "task_id": "t2-identity-trap",
+      "working_state_hash": "b9f33a07d996b0181af461090fae445e06fe7d7e430e9feeaa62878583896dbc"
+    },
+    {
+      "arm": "control",
+      "binding_table_hash": "db2d983a527f91c7c05b290d850137bd2cc4cfcd2c5737f35f168d41c51d2be1",
+      "context_hash": "dd9e86f5e695a1eeeec0219e5b08cbeb2d34525bec012a0203e77f205c1e7b0f",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/scratch/t2-identity-trap_pair_b/t2-identity-trap-p02-control",
+      "investigation_id": "inv-t2-identity-trap-001",
+      "pair_id": 2,
+      "pair_label": "B",
+      "run_id": "run_c3b298bc6d104f82ab8669080894c931",
+      "scenario_id": "t2-identity-trap",
+      "task_id": "t2-identity-trap",
+      "working_state_hash": "b9f33a07d996b0181af461090fae445e06fe7d7e430e9feeaa62878583896dbc"
+    },
+    {
+      "arm": "treatment",
+      "binding_table_hash": "db2d983a527f91c7c05b290d850137bd2cc4cfcd2c5737f35f168d41c51d2be1",
+      "context_hash": "dd9e86f5e695a1eeeec0219e5b08cbeb2d34525bec012a0203e77f205c1e7b0f",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/scratch/t2-identity-trap_pair_b/t2-identity-trap-p02-treatment",
+      "investigation_id": "inv-t2-identity-trap-001",
+      "pair_id": 2,
+      "pair_label": "B",
+      "run_id": "run_c3b298bc6d104f82ab8669080894c931",
+      "scenario_id": "t2-identity-trap",
+      "task_id": "t2-identity-trap",
+      "working_state_hash": "b9f33a07d996b0181af461090fae445e06fe7d7e430e9feeaa62878583896dbc"
+    },
+    {
+      "arm": "control",
+      "binding_table_hash": "db5947bc6a52d2636ed6eccc0430cc116f6e066d05d6ce48020391698d238718",
+      "context_hash": "436cbca404f23f8e04e7088eb76b035516da8b5e28084e28a5b4473049862352",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/scratch/t2-no-evidence_pair_a/t2-no-evidence-p01-control",
+      "investigation_id": "inv-t2-no-evidence-001",
+      "pair_id": 1,
+      "pair_label": "A",
+      "run_id": "run_59fd163043534eb09a9e06b0b47daf15",
+      "scenario_id": "t2-no-evidence",
+      "task_id": "t2-no-evidence",
+      "working_state_hash": "d974d5c790573448ed75b8d0e14e0eb77088342da455b6762f7f2b81da578bd8"
+    },
+    {
+      "arm": "treatment",
+      "binding_table_hash": "db5947bc6a52d2636ed6eccc0430cc116f6e066d05d6ce48020391698d238718",
+      "context_hash": "436cbca404f23f8e04e7088eb76b035516da8b5e28084e28a5b4473049862352",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/scratch/t2-no-evidence_pair_a/t2-no-evidence-p01-treatment",
+      "investigation_id": "inv-t2-no-evidence-001",
+      "pair_id": 1,
+      "pair_label": "A",
+      "run_id": "run_59fd163043534eb09a9e06b0b47daf15",
+      "scenario_id": "t2-no-evidence",
+      "task_id": "t2-no-evidence",
+      "working_state_hash": "d974d5c790573448ed75b8d0e14e0eb77088342da455b6762f7f2b81da578bd8"
+    },
+    {
+      "arm": "control",
+      "binding_table_hash": "ee3e2ed2b8ce8c3048f9f1cce0275ec3c59f84bd1a5d6a74b8162ec2c9722e00",
+      "context_hash": "acd5f5778f0412d33c2a3f3d0a2be213a1c238d8b1a057bd14f5e5840909296e",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/scratch/t2-no-evidence_pair_b/t2-no-evidence-p02-control",
+      "investigation_id": "inv-t2-no-evidence-001",
+      "pair_id": 2,
+      "pair_label": "B",
+      "run_id": "run_d126e82a46db4e47a72a4c89e2035555",
+      "scenario_id": "t2-no-evidence",
+      "task_id": "t2-no-evidence",
+      "working_state_hash": "d974d5c790573448ed75b8d0e14e0eb77088342da455b6762f7f2b81da578bd8"
+    },
+    {
+      "arm": "treatment",
+      "binding_table_hash": "ee3e2ed2b8ce8c3048f9f1cce0275ec3c59f84bd1a5d6a74b8162ec2c9722e00",
+      "context_hash": "acd5f5778f0412d33c2a3f3d0a2be213a1c238d8b1a057bd14f5e5840909296e",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/scratch/t2-no-evidence_pair_b/t2-no-evidence-p02-treatment",
+      "investigation_id": "inv-t2-no-evidence-001",
+      "pair_id": 2,
+      "pair_label": "B",
+      "run_id": "run_d126e82a46db4e47a72a4c89e2035555",
+      "scenario_id": "t2-no-evidence",
+      "task_id": "t2-no-evidence",
+      "working_state_hash": "d974d5c790573448ed75b8d0e14e0eb77088342da455b6762f7f2b81da578bd8"
+    },
+    {
+      "arm": "control",
+      "binding_table_hash": "4cdf6e8528b36c6ae2caf6d2e274bdd3a2c9f7eefc90a3408eebeeaa4f5ccbca",
+      "context_hash": "2b657aade33cce6de3fd1036b0df78c1cbc26f055e9e6bd2c324eddda6f05e82",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/scratch/t2-report-citation_pair_a/t2-report-citation-p01-control",
+      "investigation_id": "inv-t2-report-citation-001",
+      "pair_id": 1,
+      "pair_label": "A",
+      "run_id": "run_d9baf699d2674a678dab141f7ea381ee",
+      "scenario_id": "t2-report-citation",
+      "task_id": "t2-report-citation",
+      "working_state_hash": "04adf3220fc3bc69402647ebaf19a89d56ffd395af8ebdbadd6010fb8e4c264f"
+    },
+    {
+      "arm": "treatment",
+      "binding_table_hash": "4cdf6e8528b36c6ae2caf6d2e274bdd3a2c9f7eefc90a3408eebeeaa4f5ccbca",
+      "context_hash": "2b657aade33cce6de3fd1036b0df78c1cbc26f055e9e6bd2c324eddda6f05e82",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/scratch/t2-report-citation_pair_a/t2-report-citation-p01-treatment",
+      "investigation_id": "inv-t2-report-citation-001",
+      "pair_id": 1,
+      "pair_label": "A",
+      "run_id": "run_d9baf699d2674a678dab141f7ea381ee",
+      "scenario_id": "t2-report-citation",
+      "task_id": "t2-report-citation",
+      "working_state_hash": "04adf3220fc3bc69402647ebaf19a89d56ffd395af8ebdbadd6010fb8e4c264f"
+    },
+    {
+      "arm": "control",
+      "binding_table_hash": "8cd0a209cf2b24c311345215d9c8f9f66f1940f35f38ce15449596d6f3d9310e",
+      "context_hash": "200758260e32a1104511aa1aad23892d4950b31b4d1141b10e458ce03dcd78f5",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/scratch/t2-report-citation_pair_b/t2-report-citation-p02-control",
+      "investigation_id": "inv-t2-report-citation-001",
+      "pair_id": 2,
+      "pair_label": "B",
+      "run_id": "run_8b037e55b2bb46ea90a4c68e30a1f3f3",
+      "scenario_id": "t2-report-citation",
+      "task_id": "t2-report-citation",
+      "working_state_hash": "04adf3220fc3bc69402647ebaf19a89d56ffd395af8ebdbadd6010fb8e4c264f"
+    },
+    {
+      "arm": "treatment",
+      "binding_table_hash": "8cd0a209cf2b24c311345215d9c8f9f66f1940f35f38ce15449596d6f3d9310e",
+      "context_hash": "200758260e32a1104511aa1aad23892d4950b31b4d1141b10e458ce03dcd78f5",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/scratch/t2-report-citation_pair_b/t2-report-citation-p02-treatment",
+      "investigation_id": "inv-t2-report-citation-001",
+      "pair_id": 2,
+      "pair_label": "B",
+      "run_id": "run_8b037e55b2bb46ea90a4c68e30a1f3f3",
+      "scenario_id": "t2-report-citation",
+      "task_id": "t2-report-citation",
+      "working_state_hash": "04adf3220fc3bc69402647ebaf19a89d56ffd395af8ebdbadd6010fb8e4c264f"
+    },
+    {
+      "arm": "control",
+      "binding_table_hash": "9ef7b64094ac7261448bb2fe172e9b9829cb7bc8ff7fcd61c836779f4482f2a1",
+      "context_hash": "e646283a56c693176034233dcb039a50182a6ed75045b886acc9135ac0392cff",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/scratch/t2-temporal-trap_pair_a/t2-temporal-trap-p01-control",
+      "investigation_id": "inv-t2-temporal-trap-001",
+      "pair_id": 1,
+      "pair_label": "A",
+      "run_id": "run_5bc15abdb50e4f0c96524e3ed7e4f0b3",
+      "scenario_id": "t2-temporal-trap",
+      "task_id": "t2-temporal-trap",
+      "working_state_hash": "e395a1cd8bad99dcaea1d261affc1c39bc56a4b81d4a6d17f053eb7a0e6c0f1f"
+    },
+    {
+      "arm": "treatment",
+      "binding_table_hash": "9ef7b64094ac7261448bb2fe172e9b9829cb7bc8ff7fcd61c836779f4482f2a1",
+      "context_hash": "e646283a56c693176034233dcb039a50182a6ed75045b886acc9135ac0392cff",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/scratch/t2-temporal-trap_pair_a/t2-temporal-trap-p01-treatment",
+      "investigation_id": "inv-t2-temporal-trap-001",
+      "pair_id": 1,
+      "pair_label": "A",
+      "run_id": "run_5bc15abdb50e4f0c96524e3ed7e4f0b3",
+      "scenario_id": "t2-temporal-trap",
+      "task_id": "t2-temporal-trap",
+      "working_state_hash": "e395a1cd8bad99dcaea1d261affc1c39bc56a4b81d4a6d17f053eb7a0e6c0f1f"
+    },
+    {
+      "arm": "control",
+      "binding_table_hash": "f6f68a2a3fb5d892c0031ffdf3bc5e5a93c6ae846453600ca2a74319997c065d",
+      "context_hash": "09fbfaeb13af1d5114a652a6d748c3b577a1c759a98f2f3694d862253982be69",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/scratch/t2-temporal-trap_pair_b/t2-temporal-trap-p02-control",
+      "investigation_id": "inv-t2-temporal-trap-001",
+      "pair_id": 2,
+      "pair_label": "B",
+      "run_id": "run_1cde6147d7164f2791f8d200e356f465",
+      "scenario_id": "t2-temporal-trap",
+      "task_id": "t2-temporal-trap",
+      "working_state_hash": "e395a1cd8bad99dcaea1d261affc1c39bc56a4b81d4a6d17f053eb7a0e6c0f1f"
+    },
+    {
+      "arm": "treatment",
+      "binding_table_hash": "f6f68a2a3fb5d892c0031ffdf3bc5e5a93c6ae846453600ca2a74319997c065d",
+      "context_hash": "09fbfaeb13af1d5114a652a6d748c3b577a1c759a98f2f3694d862253982be69",
+      "fixture_path": "/home/ymj68520/projects/TraceLens/python_service/benchmarks/audits/rca2a10b-rebased-cross-case-comparison/scratch/t2-temporal-trap_pair_b/t2-temporal-trap-p02-treatment",
+      "investigation_id": "inv-t2-temporal-trap-001",
+      "pair_id": 2,
+      "pair_label": "B",
+      "run_id": "run_1cde6147d7164f2791f8d200e356f465",
+      "scenario_id": "t2-temporal-trap",
+      "task_id": "t2-temporal-trap",
+      "working_state_hash": "e395a1cd8bad99dcaea1d261affc1c39bc56a4b81d4a6d17f053eb7a0e6c0f1f"
+    }
+  ],
+  "frozen_timestamp": 1792121728.5729876,
+  "request_budget": {
+    "diagnostic_http_attempts_max": 96,
+    "max_logical_model_generations": 32,
+    "output_retry_budget_per_invocation": 1,
+    "preflight_http_attempts_max": 9,
+    "preflight_logical_requests": 3,
+    "sdk_max_retries": 2,
+    "stage_invocations": 16,
+    "total_max_http_attempts": 105
+  },
+  "runtime_commit": "bbf2244608eead2f254a54d13c3856c7f41a79a0",
+  "runtime_source_hashes": {
+    "base_oracle": "52e3a57d5116c3fb290158d26eaaff1a69f95fa92efd6e06434a72c454f91a55",
+    "combined_oracle_contract": "739b6683707d1b4c7339cf20eaf861514c902e9ac4b8ac8b3969fa02aef9a782",
+    "diagnostic_sink": "76c4b23f1fb5226f7f12c946577a820ba720033d5f4941a7d6472566f2069b7e",
+    "extension_oracle": "922db5e943ca2c980e8227743555a845d4452b0a6f9c0d9e7d0154fdc4b28348",
+    "guidance_factory": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+    "model_adapter": "9d4f6482ef35eafd5761d7a5f8b08acbbab984f898558845c944b448908bbc1f",
+    "output_schema": "a214ec4f5e81fcbb",
+    "runner": "39efc3d37452f907b290d6468511dd42dbf76882f3684958ca1f8211efe1d6d1",
+    "stage_harness": "80359cbb6a442b2fa34a94d1852d5d22c30d3b608bcd422fcabb05d5470192aa"
+  },
+  "scenario_order": [
+    "t2-no-evidence",
+    "t2-temporal-trap",
+    "t2-identity-trap",
+    "t2-report-citation"
+  ],
+  "seat_order": [
+    {
+      "arm": "control",
+      "global_seat": 1,
+      "pair_id": 1,
+      "pair_label": "A",
+      "scenario_id": "t2-no-evidence"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 2,
+      "pair_id": 1,
+      "pair_label": "A",
+      "scenario_id": "t2-no-evidence"
+    },
+    {
+      "arm": "control",
+      "global_seat": 3,
+      "pair_id": 1,
+      "pair_label": "A",
+      "scenario_id": "t2-temporal-trap"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 4,
+      "pair_id": 1,
+      "pair_label": "A",
+      "scenario_id": "t2-temporal-trap"
+    },
+    {
+      "arm": "control",
+      "global_seat": 5,
+      "pair_id": 1,
+      "pair_label": "A",
+      "scenario_id": "t2-identity-trap"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 6,
+      "pair_id": 1,
+      "pair_label": "A",
+      "scenario_id": "t2-identity-trap"
+    },
+    {
+      "arm": "control",
+      "global_seat": 7,
+      "pair_id": 1,
+      "pair_label": "A",
+      "scenario_id": "t2-report-citation"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 8,
+      "pair_id": 1,
+      "pair_label": "A",
+      "scenario_id": "t2-report-citation"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 9,
+      "pair_id": 2,
+      "pair_label": "B",
+      "scenario_id": "t2-no-evidence"
+    },
+    {
+      "arm": "control",
+      "global_seat": 10,
+      "pair_id": 2,
+      "pair_label": "B",
+      "scenario_id": "t2-no-evidence"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 11,
+      "pair_id": 2,
+      "pair_label": "B",
+      "scenario_id": "t2-temporal-trap"
+    },
+    {
+      "arm": "control",
+      "global_seat": 12,
+      "pair_id": 2,
+      "pair_label": "B",
+      "scenario_id": "t2-temporal-trap"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 13,
+      "pair_id": 2,
+      "pair_label": "B",
+      "scenario_id": "t2-identity-trap"
+    },
+    {
+      "arm": "control",
+      "global_seat": 14,
+      "pair_id": 2,
+      "pair_label": "B",
+      "scenario_id": "t2-identity-trap"
+    },
+    {
+      "arm": "treatment",
+      "global_seat": 15,
+      "pair_id": 2,
+      "pair_label": "B",
+      "scenario_id": "t2-report-citation"
+    },
+    {
+      "arm": "control",
+      "global_seat": 16,
+      "pair_id": 2,
+      "pair_label": "B",
+      "scenario_id": "t2-report-citation"
+    }
+  ],
+  "stop_conditions": [
+    "CONFIGURATION_UNRESOLVED_OR_BLOCKED",
+    "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE",
+    "MODEL_IDENTITY_MISMATCH",
+    "EXPERIMENT_IDENTITY_DRIFT",
+    "DIAGNOSTIC_SINK_FAILURE",
+    "SEAT_CLAIM_INCONSISTENCY",
+    "DUPLICATE_SEAT_EXECUTION_PROHIBITED",
+    "SEAT_ALREADY_CLAIMED_OR_OUTCOME_UNKNOWN",
+    "TOTAL_HTTP_ATTEMPTS_EXCEEDED",
+    "DIAGNOSTIC_HTTP_ATTEMPTS_EXCEEDED",
+    "UNEXPECTED_RUNNER_EXCEPTION"
+  ]
+}

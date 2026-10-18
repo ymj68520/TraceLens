@@ -1,0 +1,91 @@
+{
+  "artifact_version": "RCA2A16HistoricalMetricAmendmentV1",
+  "experiment_id": "rca2a16-agent-service-wiring",
+  "timestamp_utc": "2026-10-17T05:36:00.000000+00:00",
+  "source_artifacts_verified": {
+    "pairwise_comparison": {
+      "path": "python_service/benchmarks/audits/rca2a12-deepseek-flash-vocabulary-cross-case/rca2a12-pairwise-comparison-v1.json",
+      "sha256": "87351e87f1933fad5fb66c03b89d9a2367a69f23aa890a8e02a0ce63b138592d"
+    },
+    "semantic_oracle_evaluation": {
+      "path": "python_service/benchmarks/audits/rca2a12-deepseek-flash-vocabulary-cross-case/rca2a12-semantic-oracle-evaluation-v1.json",
+      "sha256": "af4403242a661510552dc32603c196448f697e91c5d3a899fee96d5830a179ca"
+    },
+    "information_value_analysis": {
+      "path": "python_service/benchmarks/audits/rca2a12-deepseek-flash-vocabulary-cross-case/rca2a12-information-value-analysis-v1.json",
+      "sha256": "832fbd711fb0448f007a620d8b6a217f02b30cb0160ac7fa5466181a48c2d9c1"
+    }
+  },
+  "reconstructed_historical_metrics": {
+    "canonical_integration_validity": {
+      "control_numerator": 4,
+      "control_denominator": 8,
+      "control_rate": 0.500,
+      "treatment_numerator": 7,
+      "treatment_denominator": 8,
+      "treatment_rate": 0.875,
+      "delta_pp": 37.5,
+      "control_valid_seats": [5, 12, 14, 16],
+      "treatment_valid_seats": [2, 4, 6, 8, 9, 11, 13],
+      "discrepancy_with_rca2a15": "NONE_CONSISTENT"
+    },
+    "semantic_adequacy": {
+      "control_numerator": 3,
+      "control_denominator": 8,
+      "control_rate": 0.375,
+      "treatment_numerator": 5,
+      "treatment_denominator": 8,
+      "treatment_rate": 0.625,
+      "delta_pp": 25.0,
+      "control_adequate_seats": [5, 12, 16],
+      "treatment_adequate_seats": [2, 4, 8, 9, 11],
+      "discrepancy_with_rca2a15": "RCA-2A.15 cited 62.5% (5/8) -> 87.5% (7/8). While delta (+25.0 pp) was preserved correctly, baseline was erroneously shifted by confusing Treatment Semantic Adequacy (5/8=62.5%) as Control baseline and Treatment Canonical Validity (7/8=87.5%) as Treatment outcome."
+    },
+    "information_value": {
+      "control_positive_discovery": {
+        "numerator": 3,
+        "denominator": 8,
+        "rate": 0.375,
+        "seats": [5, 12, 16]
+      },
+      "treatment_positive_discovery": {
+        "numerator": 3,
+        "denominator": 8,
+        "rate": 0.375,
+        "seats": [4, 8, 11]
+      },
+      "treatment_information_neutral": {
+        "numerator": 2,
+        "denominator": 8,
+        "rate": 0.250,
+        "seats": [2, 9]
+      },
+      "treatment_non_degraded": {
+        "numerator": 5,
+        "denominator": 8,
+        "rate": 0.625,
+        "seats": [2, 4, 8, 9, 11]
+      },
+      "pairwise_wins": {
+        "treatment_wins": 4,
+        "control_wins": 2,
+        "ties": 2
+      },
+      "discrepancy_with_rca2a15": "RCA-2A.15 cited 25.0% (2/8) -> 87.5% (7/8) (+62.5 pp). '2/8' and '7/8' were ungrounded conflations between pairwise win counts and canonical validity. POSITIVE_DISCOVERY cannot be equated with NEW_GROUNDED_INFORMATION."
+    },
+    "f3_identity_trap_attribution": {
+      "actual_overreach_seat": 6,
+      "actual_overreach_arm": "treatment",
+      "actual_scenario_pair": "t2-identity-trap_A",
+      "model_flaw": "DeepSeek-Flash cross-system identity overreach occurred in Seat 6 (treatment), where the model conflated Linux and Windows account namespaces.",
+      "discrepancy_with_rca2a15": "RCA-2A.15 text erroneously attributed this defect to Seat 10. Seat 10 was actually Control in t2-no-evidence_B. The actual overreach seat was strictly Seat 6."
+    }
+  },
+  "amendment_policy": {
+    "historical_artifacts_modified": false,
+    "amendment_type": "APPEND_ONLY_CORRECTION",
+    "qualification_dependency_status": "PROMPT_QUALIFICATION_REMAINS_DEFERRED",
+    "service_wiring_impact": "UNBLOCKED_INDEPENDENT_OF_HISTORICAL_DISCREPANCIES"
+  },
+  "disposition": "HISTORICAL_METRIC_AMENDMENT_RECORDED"
+}

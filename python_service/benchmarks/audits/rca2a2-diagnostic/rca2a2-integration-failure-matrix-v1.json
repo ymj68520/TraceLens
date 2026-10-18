@@ -1,0 +1,57 @@
+{
+ "artifact_version": "RCA2A2IntegrationFailureMatrixV1",
+ "created_at": "2026-10-13T13:52:35+00:00",
+ "outcome": "DIAGNOSTIC BLOCKED — provider unreachable; zero INTEGRATE attempts observed",
+ "scheduled_runs": 4,
+ "runs_started": 0,
+ "integrate_attempts_observed": 0,
+ "layers": {
+  "output_tool_received": 0,
+  "pydantic_parse_success": 0,
+  "canonical_resolution_success": 0,
+  "integration_commit_success": 0
+ },
+ "field_level_validation_error_distribution": {
+  "MISSING_REQUIRED_FIELD": 0,
+  "EXTRA_FORBIDDEN_FIELD": 0,
+  "INVALID_ENUM": 0,
+  "INVALID_UNION": 0,
+  "WRONG_FIELD_TYPE": 0,
+  "INVALID_HANDLE_SHAPE": 0,
+  "TOOL_CALL_NOT_PRODUCED": 0,
+  "PROVIDER_TIMEOUT": 0,
+  "OTHER": 0,
+  "FIELD_LEVEL_CAUSE_UNKNOWN": 0
+ },
+ "provider_blocks": [
+  {
+   "gate": "capacity preflight (direct)",
+   "disposition": "PROVIDER_CAPACITY_BLOCKED",
+   "evidence": "capacity-preflight.json: 3/3 APIConnectionError"
+  },
+  {
+   "gate": "capacity preflight (single documented-proxy correction)",
+   "disposition": "PROVIDER_CAPACITY_BLOCKED",
+   "evidence": "capacity-preflight-proxy.json: 3/3 APIConnectionError; proxy 192.168.31.19:7897 TCP-unreachable (LAN topology changed)"
+  }
+ ],
+ "preregistered_samples": [
+  {
+   "case_id": "t2-identity-trap",
+   "status": "NOT STARTED"
+  },
+  {
+   "case_id": "t2-no-evidence",
+   "status": "NOT STARTED"
+  },
+  {
+   "case_id": "t2-temporal-trap",
+   "status": "NOT STARTED"
+  },
+  {
+   "case_id": "t2-report-citation",
+   "status": "NOT STARTED"
+  }
+ ],
+ "interpretation": "INSUFFICIENT_DIAGNOSTIC_EVIDENCE — no INTEGRATE attempt was observed, so no field-level attribution is possible for the historical cross-model failures. Per directive §8 these remain SUSPECTED+INSUFFICIENT_TELEMETRY."
+}

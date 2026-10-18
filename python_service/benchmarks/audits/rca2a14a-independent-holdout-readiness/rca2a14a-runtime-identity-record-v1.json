@@ -1,0 +1,30 @@
+{
+  "artifact_version": "RCA2A14aRuntimeIdentityRecordV1",
+  "experiment_id": "rca2a14a-independent-holdout-readiness",
+  "timestamp_utc": "2026-10-17T03:59:39.159168+00:00",
+  "candidate_specification": {
+    "candidate_id": "supervisor-v2-vocabulary-guidance-v1",
+    "candidate_status": "QUALIFICATION_PENDING",
+    "candidate_type": "PROMPT_ONLY",
+    "output_schema_hash": "a214ec4f5e81fcbb",
+    "guidance_sha256": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+    "candidate_model_target": "deepseek-flash",
+    "candidate_provider_target": "generic"
+  },
+  "production_boundaries": {
+    "production_prompt_mutated": false,
+    "production_schema_mutated": false,
+    "production_resolver_mutated": false,
+    "production_state_policy_mutated": false,
+    "historical_gen4_unchanged": true,
+    "acceptance_profile_v2_unchanged": true,
+    "gen5_created": false
+  },
+  "provenance": {
+    "repository_head": "82227677a4ce4f68bde393c3e22c677bb411fb66",
+    "rca2a13_artifact_commit": "82227677a4ce4f68bde393c3e22c677bb411fb66",
+    "rca2a12_artifact_commit": "0419e111520e1460ff65bac7fb540f9b07745ec0",
+    "rca2a12_runtime_commit": "0c2e9b9cac244ebaaf457156ce0ff8dcc264b7b3",
+    "rca2a11b_baseline_commit": "622b2327e93706f24c1a3049aa1bc10af971f58c"
+  }
+}

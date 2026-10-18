@@ -1,0 +1,60 @@
+{
+  "all_passed": true,
+  "artifact_version": "RCA2A9ProductionStageParityReportV1",
+  "baseline_commit": "7ea26f627e6197216bffdee3ead12ddc1cd78062",
+  "generated_at": "2026-10-15T14:32:04Z",
+  "scenarios": {
+    "t2-identity-trap": {
+      "input_contract_valid": true,
+      "instructions_equal": true,
+      "parity_pass": true,
+      "path_a_instructions_hash": "3780dbc44c4e11746c505afa6c180758e12d3de6e238e088cbc443d0c4090ee5",
+      "path_b_instructions_hash": "3780dbc44c4e11746c505afa6c180758e12d3de6e238e088cbc443d0c4090ee5",
+      "projection_equal": true,
+      "scenario_id": "t2-identity-trap",
+      "settings_equal": true,
+      "tools_equal": true,
+      "verdict": "PRODUCTION_STAGE_PARITY_PASS",
+      "violations": []
+    },
+    "t2-no-evidence": {
+      "input_contract_valid": true,
+      "instructions_equal": true,
+      "parity_pass": true,
+      "path_a_instructions_hash": "282f25794cbd12a39e98a2786bb18816cc3d294186bb0390ac3ea05bdbf42863",
+      "path_b_instructions_hash": "282f25794cbd12a39e98a2786bb18816cc3d294186bb0390ac3ea05bdbf42863",
+      "projection_equal": true,
+      "scenario_id": "t2-no-evidence",
+      "settings_equal": true,
+      "tools_equal": true,
+      "verdict": "PRODUCTION_STAGE_PARITY_PASS",
+      "violations": []
+    },
+    "t2-report-citation": {
+      "input_contract_valid": true,
+      "instructions_equal": true,
+      "parity_pass": true,
+      "path_a_instructions_hash": "6bdd551b2531af2c4615f2ec3d8c2dbe761d77722fd7a1bb6adc631dbd0d8baa",
+      "path_b_instructions_hash": "6bdd551b2531af2c4615f2ec3d8c2dbe761d77722fd7a1bb6adc631dbd0d8baa",
+      "projection_equal": true,
+      "scenario_id": "t2-report-citation",
+      "settings_equal": true,
+      "tools_equal": true,
+      "verdict": "PRODUCTION_STAGE_PARITY_PASS",
+      "violations": []
+    },
+    "t2-temporal-trap": {
+      "input_contract_valid": true,
+      "instructions_equal": true,
+      "parity_pass": true,
+      "path_a_instructions_hash": "281d4153ac73318fcec3193ecfbbfa0bed6bfe7fb4d60471b00a753991153b42",
+      "path_b_instructions_hash": "281d4153ac73318fcec3193ecfbbfa0bed6bfe7fb4d60471b00a753991153b42",
+      "projection_equal": true,
+      "scenario_id": "t2-temporal-trap",
+      "settings_equal": true,
+      "tools_equal": true,
+      "verdict": "PRODUCTION_STAGE_PARITY_PASS",
+      "violations": []
+    }
+  }
+}

@@ -1,0 +1,115 @@
+{
+  "artifact_version": "ModelCandidatePoolV2",
+  "wave": 2,
+  "created_at": "2026-10-02T00:00:00+00:00",
+  "endpoint": {
+    "base_url": "https://token.sensenova.cn",
+    "api_class": "openai-compatible /v1/chat/completions",
+    "credential": "LLM_API_KEY (single cloud credential; no other provider endpoints configured in .env)",
+    "models_listed_today": [
+      "deepseek-flash",
+      "deepseek-v4-flash",
+      "deepseek-v4-pro",
+      "deepseek-v4.1-flash",
+      "glm-5.2",
+      "kimi-k3",
+      "sensenova-6.8-flash-lite",
+      "sensenova-u1-fast",
+      "sensenova-u1.5-lite"
+    ],
+    "listing_verified_at": "2026-10-02"
+  },
+  "frozen_axis": {
+    "runtime": "RuntimeBaselineV3 FROZEN (no runtime/prompt/policy/ToolRegistry/AcceptanceProfile changes; §1)",
+    "holdouts": "Gen-1/2/3/4 SEALED/CONSUMED — zero access (§31)",
+    "only_candidate_axis": "model/provider configuration (§11)"
+  },
+  "entries": [
+    {
+      "candidate_id": "sensenova-6.8-flash-lite",
+      "role": "CONTROL",
+      "temperature": 0.7,
+      "reasoning_mode": "disabled (reasoning_effort=none)",
+      "max_tokens": 16384,
+      "timeout_s": 120,
+      "retry_policy": "LLM_MAX_RETRIES=3",
+      "context_limit": 131072,
+      "quota_tier_state": "active",
+      "tool_call_support": "yes (production-measured)",
+      "structured_output_support": "json_object (production-measured)",
+      "status": "FROZEN_CONTROL — formal acceptance REJECTED; §26: no re-run, remains control measurement"
+    },
+    {
+      "candidate_id": "glm-5.2",
+      "role": "CARRIED_FROM_WAVE_1",
+      "temperature": 0.7,
+      "reasoning_mode": "disabled",
+      "quota_tier_state": "active (transient 429s possible)",
+      "status": "EXCLUDED — §27: exact config NOT_QUALIFIED by valid 8x3 (specialist collapse 58.3% > 0.5 ceiling); no re-run, no seed change, no temperature tweak under same identity"
+    },
+    {
+      "candidate_id": "deepseek-v4.1-flash",
+      "role": "CANDIDATE",
+      "temperature": 0.7,
+      "reasoning_mode": "disabled",
+      "quota_tier_state": "wave-1: 403 'model is not available in the current token plan' → PROVIDER_AUTH/TIER_BLOCKED",
+      "status": "smoke re-check this wave; failure class §7 PROVIDER_AUTH_BLOCKED expected to persist"
+    },
+    {
+      "candidate_id": "deepseek-v4-pro",
+      "role": "CANDIDATE",
+      "temperature": 0.7,
+      "reasoning_mode": "disabled",
+      "quota_tier_state": "wave-1: 429 EndpointRPMExceeded → PROVIDER_QUOTA_BLOCKED",
+      "status": "smoke re-check this wave (quota may have recovered)"
+    },
+    {
+      "candidate_id": "deepseek-v4-flash",
+      "role": "CANDIDATE",
+      "temperature": 0.7,
+      "reasoning_mode": "disabled",
+      "quota_tier_state": "wave-1: smoke PASS but 8x1 quota-starved (6/6 delegation failures agent_rate_limited) → PROVIDER_QUOTA_BLOCKED, semantic qualification NOT ESTABLISHED",
+      "status": "re-enter admission smoke → 8x1 → 8x3 chain this wave (§28 re-entry semantics; not a qualification re-run)"
+    },
+    {
+      "candidate_id": "kimi-k3",
+      "role": "CANDIDATE",
+      "temperature": 1,
+      "reasoning_mode": "disabled",
+      "quota_tier_state": "unknown (wave-1 smoke blocked pre-flight by temperature 400)",
+      "status": "NEW candidate configuration: provider-mandated temperature=1 frozen per §5 before qualification; admission smoke this wave"
+    },
+    {
+      "candidate_id": "deepseek-flash",
+      "role": "CANDIDATE",
+      "temperature": 0.7,
+      "reasoning_mode": "disabled",
+      "quota_tier_state": "unknown (never probed in wave-1)",
+      "status": "NEW candidate; admission smoke this wave"
+    },
+    {
+      "candidate_id": "sensenova-u1-fast",
+      "role": "CANDIDATE",
+      "temperature": 0.7,
+      "reasoning_mode": "disabled",
+      "quota_tier_state": "wave-1: 404 model is not found → PROVIDER_MODEL_UNAVAILABLE; still endpoint-listed today",
+      "status": "availability re-check this wave"
+    },
+    {
+      "candidate_id": "sensenova-u1.5-lite",
+      "role": "CANDIDATE",
+      "temperature": 0.7,
+      "reasoning_mode": "disabled",
+      "quota_tier_state": "wave-1: 404 model is not found → PROVIDER_MODEL_UNAVAILABLE; still endpoint-listed today",
+      "status": "availability re-check this wave"
+    }
+  ],
+  "screens_chain": "admission smoke (§6) → 8x1 screening (§8-§9) → 8x3 24-run (§10-§20) → disposition (§21-§22)",
+  "dispositions_allowed": [
+    "QUALIFIED_FOR_PROMOTION",
+    "NOT_QUALIFIED",
+    "PROVIDER_QUOTA_BLOCKED",
+    "PROVIDER_INFRA_BLOCKED",
+    "MEASUREMENT_INVALID"
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "config_schema": "ModelQualificationConfigV1",
+  "provider": "sensenova-cloud",
+  "endpoint_base_url_class": "token.sensenova.cn (openai-compatible /v1/chat/completions)",
+  "runtime_commit": "ed382cbb51fae511b5289d59116fe26e13e8fed0",
+  "supervisor_contract": "v2 (FROZEN, R2 disposition V2_FREEZE_RECOMMENDED)",
+  "evidence_admission": "A1-S S4 FROZEN (f711851c)",
+  "runtime_baseline": "AgentV0RuntimeBaselineV2 (sha256 48e4bc5c730bae022b72176fb7096923ffe2fa3e1158699b6f40bd235b65646b)",
+  "corpus_id": "corpus-agent-v0-calibration",
+  "corpus_hash": "52e70af32e1af861c85e03d03635147d528c39926d917af197f46dbf04170dc7",
+  "frozen_from_env": {
+    "max_tokens": 16384,
+    "timeout_seconds": 120,
+    "context_window_tokens": 131072,
+    "tool_registry": "frozen production read-only registry",
+    "prompts_policies": "frozen production modules (runtime commit binding above)"
+  },
+  "created_at": "2026-09-29T00:00:00+00:00",
+  "candidate_id": "sensenova-6.8-flash-lite",
+  "role": "b2_restart_candidate",
+  "requested_model_id": "sensenova-6.8-flash-lite",
+  "api_reported_model_id": "sensenova-6.8-flash-lite",
+  "overrides": {
+    "llm_text_model": "sensenova-6.8-flash-lite",
+    "llm_text_temperature": 0.7,
+    "llm_thinking_mode": "disabled"
+  },
+  "compatibility_encoding": {
+    "reasoning_effort": "none",
+    "source": "LLM_THINKING_MODE=disabled -> adapter openai_reasoning_effort=none; verified accepted by provider (reasoning_tokens -> 0), adapter-smoke.v1.json"
+  },
+  "smoke": {
+    "adapter": "benchmarks/results/agent-v0/b2-restart/smoke/adapter-smoke.v1.json",
+    "result": "ALL PASS (basic completion, structured json_object output, tool call with args, ZERO-arg tool, usage metadata)"
+  }
+}

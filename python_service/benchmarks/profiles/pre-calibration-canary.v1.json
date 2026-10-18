@@ -1,0 +1,39 @@
+{
+  "profile_version": "pre-calibration-profile:v1",
+  "git_commit": "dbb1cb30",
+  "parameter_values": {
+    "attention.exploration_allowance": "None",
+    "attention.window_size": "None",
+    "correlation.max_candidates": "200",
+    "correlation.temporal_window_seconds": "3600",
+    "graph.max_candidates_per_cycle": "32",
+    "graph.max_parallel_materializations": "2",
+    "provider.max_tokens": "16384",
+    "provider.temperature": "0.7",
+    "provider.thinking_mode": "disabled",
+    "provider.timeout_seconds": "120",
+    "report.max_context_chars": "48000",
+    "report.max_detailed_items": "4",
+    "report.max_evidence_items": "24",
+    "report.max_graph_expansion": "8",
+    "specialist.max_output_retries": "2",
+    "supervisor.max_cycles_per_invocation": "1",
+    "supervisor.max_cycles_per_run": "20"
+  },
+  "model_config_id": "madpt:b2de6f72c7b28002631546e5",
+  "prompt_versions": {
+    "supervisor-plan-decision": "supervisor-plan-decision:v1"
+  },
+  "policy_versions": {
+    "chapter-validation": "chapter-validation:v1",
+    "narrative-policy": "report-narrative-policy:starter:v1"
+  },
+  "tool_registry_hash": "built-per-dispatch-from-read-only-catalog",
+  "graph_policy_version": "graph-admission:v15",
+  "report_policy_versions": {
+    "context-pack": "report-context-pack:v1"
+  },
+  "inventory_hash": "09b555cdf599b3cab57dac1ff7c82a679e5c44bbb5229608e48498fd4aa85128",
+  "input_hash": "6dd38a0e0f68704fb881e7e1f78031d58dc54368b6188826a3262660d86b218c",
+  "created_at": "2026-09-27T12:31:56.430651+00:00"
+}

@@ -1,0 +1,40 @@
+{
+  "artifact_version": "RCA2A17ConcurrencyAndAtomicityReportV1",
+  "experiment_id": "rca2a17-cycle-lifecycle-hardening",
+  "timestamp_utc": "2026-10-17T06:38:00.000000+00:00",
+  "concurrency_controls": {
+    "in_process_synchronization": {
+      "primitive": "asyncio.Lock per task_id",
+      "scope": "python_service process",
+      "behavior": "Acquires lock before claim and orchestrator execution; releases in finally block"
+    },
+    "inter_process_coordination": {
+      "primitive": "SQLite BEGIN IMMEDIATE transaction + UNIQUE(task_id, request_id)",
+      "scope": "All worker processes targeting the same investigation.db",
+      "behavior": "Guarantees exactly one process can successfully INSERT or claim the execution slot"
+    },
+    "optimistic_revision_validation": {
+      "primitive": "expected_working_state_revision matching latest_working_state.revision",
+      "behavior": "Rejects stale revision requests with HTTP 409 before invoking orchestrator"
+    },
+    "db_level_integrity_triggers": {
+      "revision_monotonicity": "Enforced by triggers preventing skipping or decrementing revision numbers",
+      "hash_chaining": "Enforced by triggers validating parent_state_hash matches previous revision state_hash",
+      "immutable_history": "Enforced by triggers forbidding UPDATE or DELETE on historical working state revisions"
+    }
+  },
+  "verified_test_cases": [
+    "T01_durable_claim_persisted",
+    "T02_identical_request_returns_cached_response",
+    "T03_concurrent_identical_requests_serialized",
+    "T04_conflicting_payload_same_request_id_rejected",
+    "T05_cycle_execution_failure_persists_error",
+    "T06_running_status_transition_atomic",
+    "T07_outcome_caching_idempotent",
+    "T08_multi_process_claim_collision_handled",
+    "T09_cross_servicemanager_concurrency_controlled",
+    "T10_separate_task_executions_remain_independent",
+    "T11_stale_expected_revision_rejected"
+  ],
+  "verdict": "CONCURRENCY_AND_ATOMICITY_VERIFIED_RIGOROUS"
+}

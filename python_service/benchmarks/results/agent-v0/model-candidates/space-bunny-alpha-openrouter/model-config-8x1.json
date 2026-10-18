@@ -1,0 +1,15 @@
+{
+  "config_schema": "ModelQualificationConfigV1",
+  "candidate_id": "space-bunny-alpha@openrouter",
+  "provider": "openrouter",
+  "endpoint_base_url_class": "https://openrouter.ai/api/v1 (openai-compatible /v1/chat/completions)",
+  "overrides": {
+    "llm_provider": "openrouter",
+    "llm_text_model": "stealth/space-bunny-alpha",
+    "llm_text_temperature": 0.7,
+    "llm_thinking_mode": "",
+    "llm_text_max_tokens": 16384
+  },
+  "compatibility_notes": "ADAPTER_SMOKE_PASS (S1-S8, adapter-smoke.json); CAPACITY_PREFLIGHT_PASS 3/3 (capacity-preflight.json); reasoning parameter OMITTED per frozen candidate identity (§2: endpoint mandates reasoning, reasoning_effort=none rejected — PROVIDER_PARAMETER_CONSTRAINT recorded at smoke S7); temperature 0.7 accepted; max_tokens rides OpenAI-compatible max_tokens field",
+  "created_at": "2026-10-03T00:00:00+00:00"
+}

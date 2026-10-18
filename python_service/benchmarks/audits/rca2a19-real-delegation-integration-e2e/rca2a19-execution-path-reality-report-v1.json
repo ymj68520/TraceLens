@@ -1,0 +1,94 @@
+{
+  "artifact_version": "RCA2A19ExecutionPathRealityReportV1",
+  "experiment_id": "rca2a19-real-delegation-integration-e2e",
+  "timestamp_utc": "2026-10-17T08:08:48.000000+00:00",
+  "architectural_reality_inspection": {
+    "q01_admitted_to_dispatcher_mechanism": {
+      "question": "How are admitted delegations passed to SpecialistDelegationDispatcher?",
+      "answer": "In AgentOrchestrator._step_execute_delegations, admitted delegations are passed as (planning_context, plan_decision, admitted) to the delegation_dispatcher callable configured during ServiceManager initialization.",
+      "status": "VERIFIED"
+    },
+    "q02_orchestrator_instantiation_reality": {
+      "question": "Does ServiceManager instantiate SpecialistDelegationDispatcher or direct executor?",
+      "answer": "ServiceManager registers an async closure _delegation_dispatcher inside _create_agent_orchestrator. This closure instantiates ContextAssembler, ForensicToolRegistry, ObservationSink, and invokes SourceSpecialistExecutor.execute directly for each admitted delegation.",
+      "status": "VERIFIED"
+    },
+    "q03_specialist_selection_mechanism": {
+      "question": "How is the target Specialist determined?",
+      "answer": "The target specialist is resolved deterministically from the delegation's action_kind and capability envelope. For source-level investigation, SourceSpecialistExecutor is invoked using the standard source analysis skill profile.",
+      "status": "VERIFIED"
+    },
+    "q04_tool_registry_provisioning": {
+      "question": "How is ForensicToolRegistry provisioned with live database connections?",
+      "answer": "ServiceManager retrieves task metadata via get_task(task_id), builds ForensicToolServices with live facades (investigation_service, read_service, event_service, secondary_executor), and creates a ForensicToolRegistry bound to the task's database paths.",
+      "status": "VERIFIED"
+    },
+    "q05_tool_scoping_enforcement": {
+      "question": "How is tool execution prevented from accessing other tasks' files?",
+      "answer": "Task isolation is enforced at the database level by binding sqlite3 connections strictly to task_dict['output_files_db'], task_dict['output_events_db'], and task_dict['output_raw_db'], and validating task IDs in all tool queries.",
+      "status": "VERIFIED"
+    },
+    "q06_specialist_result_structure": {
+      "question": "What schema does the specialist result return?",
+      "answer": "The specialist returns SpecialistResultProposalV1 containing delegation_id, result_hash, canonical evidence_refs, observations, summary, and verification_obligations.",
+      "status": "VERIFIED"
+    },
+    "q07_evidence_resolver_role": {
+      "question": "How are evidence refs in specialist results validated?",
+      "answer": "EvidenceResolver queries the underlying SQLite files and events tables to confirm that every file: and cluster: key exists and belongs to the task before admission.",
+      "status": "VERIFIED"
+    },
+    "q08_grounding_validator_role": {
+      "question": "How does GroundingValidator check claims against evidence?",
+      "answer": "GroundingValidator verifies that every hypothesis or finding cites valid, resolved evidence handles. Claims referencing ungrounded handles or invalid handle types are rejected fail-closed.",
+      "status": "VERIFIED"
+    },
+    "q09_completed_vs_integrated": {
+      "question": "What is the difference between completed and integrated delegation states?",
+      "answer": "'completed' indicates the specialist finished tool execution and returned a valid result proposal. 'integrated' indicates the supervisor evaluated the result in integrate_v2, StateTransitionPolicy accepted the transitions, and working state revision was incremented.",
+      "status": "VERIFIED"
+    },
+    "q10_integration_context_construction": {
+      "question": "How is the integration context assembled for the supervisor?",
+      "answer": "AgentOrchestrator builds IntegrationContextV1 containing fresh completed delegation results, current working state digests, attention digests, and binds them into ReferenceBindingTableV1 via render_integration_context_v2.",
+      "status": "VERIFIED"
+    },
+    "q11_state_transition_policy_validation": {
+      "question": "What checks does StateTransitionPolicy enforce on supervisor decisions?",
+      "answer": "It validates that question dispositions match question existence, hypotheses reference valid evidence handles, no ungrounded findings are created, and revision increments atomically.",
+      "status": "VERIFIED"
+    },
+    "q12_working_state_revision_atomicity": {
+      "question": "How is working state persisted atomically in SQLite?",
+      "answer": "Working state revisions are inserted into agent_working_state_revisions with an incremental revision number and state_hash within an immediate SQLite transaction.",
+      "status": "VERIFIED"
+    },
+    "q13_trajectory_recording_completeness": {
+      "question": "Are all lifecycle events captured in trajectory?",
+      "answer": "Yes, agent_trajectory_events logs plan_proposed, delegation_dispatched, tool_invoked, delegation_completed, integration_evaluated, and state_committed with exact sequence numbers and timestamps.",
+      "status": "VERIFIED"
+    },
+    "q14_failure_isolation": {
+      "question": "How are specialist execution failures handled without corrupting state?",
+      "answer": "Specialist errors are caught by try/except, recorded with failure_code in agent_delegations, and returned as a failed summary so the cycle can proceed safely.",
+      "status": "VERIFIED"
+    },
+    "q15_concurrency_and_replay_safety": {
+      "question": "How does the orchestrator prevent duplicate delegation runs on replay?",
+      "answer": "Cycle requests are claimed atomically with UNIQUE(task_id, request_id). Exact replays return cached responses without executing new cycles or model calls.",
+      "status": "VERIFIED"
+    }
+  },
+  "runtime_wiring_summary": {
+    "entrypoint": "POST /api/investigation/agent/cycle",
+    "orchestrator": "AgentOrchestrator",
+    "supervisor": "InvestigationSupervisor (supervisor-v2)",
+    "dispatcher": "ServiceManager._delegation_dispatcher",
+    "specialist": "SourceSpecialistExecutor",
+    "tools": "ForensicToolRegistry",
+    "resolver": "EvidenceResolver",
+    "validator": "GroundingValidator & StateTransitionPolicy",
+    "persistence": "SQLite investigation.db (AgentRuntimeRepository)"
+  },
+  "verdict": "EXECUTION_PATH_FULLY_RECONSTRUCTED_AND_VERIFIED"
+}

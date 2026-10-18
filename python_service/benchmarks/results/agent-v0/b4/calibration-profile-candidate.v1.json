@@ -1,0 +1,49 @@
+{
+  "profile_version": "agent-v0-calibration-profile:v1",
+  "profile_id": "acal-agent-v0-zero-change-mimo-v2-6-flash",
+  "status": "candidate",
+  "baseline_commit": "946f325eeb6add1072466aed96e5e2e7e38748ed",
+  "tuned_parameters": {},
+  "unchanged_parameters": {
+    "agent_run.max_output_retries": "2",
+    "correlation.max_candidates": "200",
+    "graph.max_candidates_per_cycle": "32",
+    "provider.max_tokens": "16384",
+    "provider.temperature": "0.7",
+    "provider.thinking_mode": "disabled",
+    "report.max_evidence_items": "24",
+    "supervisor.max_cycles_per_invocation": "1",
+    "supervisor.max_cycles_per_run": "20"
+  },
+  "model_assumptions": {
+    "capability_note": "MODEL_CAPABILITY_LIMIT recorded for Agent Supervisor integration (17/24 runs fail at INTEGRATE/proposal stage, zero self-corrections); profile is PROVISIONAL for this model",
+    "model_id": "MiMo-V2.6-Flash",
+    "provider": "hcnsec-cloud"
+  },
+  "policy_versions": {
+    "assertion_policy": "P5B frozen (unchanged)",
+    "finalization_gate": "frozen (unchanged)",
+    "state_transition_policy": "frozen (unchanged)"
+  },
+  "expected_resource_class": "cloud chat-completions endpoint, flash-class",
+  "calibration_corpus_hash": "52e70af32e1af861c85e03d03635147d528c39926d917af197f46dbf04170dc7",
+  "supporting_experiment_ids": [
+    "bexp-agent-v0-b2-baseline"
+  ],
+  "input_hash": "94eaec850dd28d431c85a4ca569f2918b4740a563d5c942b23e2bf492cd7b020",
+  "created_at": "2026-09-28T12:12:26.295390+00:00",
+  "qualification_outcome": {
+    "experiment_artifact": "model-qualification-experiment.v1.json",
+    "selection_decision": "none / NO_QUALIFIED_MODEL_CONFIGURATION (§15)",
+    "model_qualification_experiment_id": "mqexp-agent-v0-2026-09-28",
+    "candidates_dispositions": {
+      "mimo-v2.6-flash-reference": "unsupported_provisional_supervisor_role",
+      "deepseek-v4-flash": "rejected",
+      "kimi-k3": "rejected",
+      "glm-5.3": "inconclusive"
+    },
+    "freeze_status": "BLOCKED (§31): a calibration profile binds a SELECTED model; NO_QUALIFIED_MODEL_CONFIGURATION means there is nothing to bind.  The zero-change candidate content (tuned_parameters={}) is retained unchanged for the future round in which a qualified model exists.",
+    "production_changes": [],
+    "cc1_status": "MODEL_CAPABILITY_LIMIT — generalized across 4 tested model families; §29: no calibratable-numeric causal evidence, no cycle or budget increase"
+  }
+}

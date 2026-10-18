@@ -1,0 +1,43 @@
+{
+  "amended_evidence_integrity_accounting": {
+    "model_evidence_hallucination_rate": "UNOBSERVABLE",
+    "model_false_closure_rate": "UNOBSERVABLE",
+    "model_semantic_adequacy": "UNOBSERVABLE",
+    "observed_evidence_integrity_incidents": 0,
+    "unauthorized_scratch_commits": 0
+  },
+  "amended_semantic_oracle_accounting": {
+    "seat_1": {
+      "oracle": "NOT_EVALUATED",
+      "reason": "PROVIDER_ERROR_NO_MODEL_DECISION"
+    },
+    "seats_2_to_16": {
+      "oracle": "NOT_EVALUATED",
+      "reason": "SEAT_NOT_STARTED"
+    }
+  },
+  "amended_stage_results": {
+    "completed_pairs": 0,
+    "control_canonical_validity": "UNOBSERVABLE",
+    "control_stage_attempts": 1,
+    "control_successful_model_outputs": 0,
+    "cross_case_semantic_adequacy": "UNOBSERVABLE",
+    "evaluable_paired_comparisons": 0,
+    "guidance_effect": "UNOBSERVABLE",
+    "treatment_canonical_validity": "UNOBSERVABLE",
+    "treatment_stage_attempts": 0,
+    "treatment_successful_model_outputs": 0
+  },
+  "artifact_version": "RCA2A10dOutcomeAccountingAmendmentV1",
+  "audit_id": "rca2a10d-provenance-transport-audit",
+  "categorical_separation_invariants": {
+    "provider_http_500_is_not_canonical_integration_failure": true,
+    "provider_http_500_is_not_pydantic_validation_failure": true,
+    "provider_http_500_is_not_semantic_oracle_failure": true
+  },
+  "historical_erroneous_reporting": {
+    "flaw_explanation": "Treating an early provider HTTP 500 infrastructure crash on Seat 1 as an empirical observation of 0/8 model validation failures conflates transport failure with schema validation failure.",
+    "reported_control_validity": "Control 0/8 valid",
+    "reported_treatment_validity": "Treatment 0/8 valid"
+  }
+}

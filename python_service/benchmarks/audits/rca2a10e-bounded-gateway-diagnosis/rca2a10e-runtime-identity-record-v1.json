@@ -1,0 +1,10 @@
+{
+  "artifact_version": "RCA2A10eRuntimeIdentityRecordV1",
+  "experiment_id": "rca2a10e-bounded-gateway-diagnosis",
+  "created_at_utc": "2026-10-16T06:04:46.170794+00:00",
+  "runtime_commit": "4f4d277b707d7d58c63cf2b28dcfcb656afc591e",
+  "authorized_baseline": "4a63cfb197958a42ff8a7779311595742b2fbe41",
+  "python_runtime": "3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]",
+  "schema_hash": "a214ec4f5e81fcbb",
+  "instructions_hash": "3bd3f839b256ee14271500fe3e7cebc13865644a1da577ba148c29e67700e143"
+}

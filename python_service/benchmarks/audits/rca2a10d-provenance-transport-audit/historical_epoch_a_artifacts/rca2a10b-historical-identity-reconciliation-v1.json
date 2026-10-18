@@ -1,0 +1,29 @@
+{
+  "artifact_version": "RCA2A10bHistoricalIdentityReconciliationV1",
+  "experiment_id": "rca2a10b-rebased-cross-case-vocabulary-comparison",
+  "hash_domain_explanation": {
+    "binding_target_for_rca2a10b": {
+      "base_oracle_sha256": "52e3a57d5116c3fb290158d26eaaff1a69f95fa92efd6e06434a72c454f91a55",
+      "combined_oracle_contract_hash": "739b6683707d1b4c7339cf20eaf861514c902e9ac4b8ac8b3969fa02aef9a782",
+      "extension_oracle_sha256": "922db5e943ca2c980e8227743555a845d4452b0a6f9c0d9e7d0154fdc4b28348"
+    },
+    "cause": "Hash domain distinction between JSON report artifact and Python source code. In RCA-2A.9a audit metadata, extension artifact JSON was initially referenced in textual description while the runtime record used Python source SHA-256 (922db5e9...). The actual evaluation code in semantic_oracle.py and semantic_oracle_extension.py is byte-identical and did not drift.",
+    "contract_drift_detected": false,
+    "discrepancy_resolved": true
+  },
+  "oracle_identities": {
+    "base_oracle_source_path": "benchmarks/isolated_integration/semantic_oracle.py",
+    "base_oracle_source_sha256": "52e3a57d5116c3fb290158d26eaaff1a69f95fa92efd6e06434a72c454f91a55",
+    "combined_oracle_contract_formula": "sha256(base_oracle_source_sha256 + ':' + extension_oracle_source_sha256)",
+    "combined_oracle_contract_hash": "739b6683707d1b4c7339cf20eaf861514c902e9ac4b8ac8b3969fa02aef9a782",
+    "extension_oracle_source_path": "benchmarks/isolated_integration/semantic_oracle_extension.py",
+    "extension_oracle_source_sha256": "922db5e943ca2c980e8227743555a845d4452b0a6f9c0d9e7d0154fdc4b28348",
+    "rca2a9a_extension_artifact_sha256": "c784926ee9a5a6de368c27bce580da9508e3632a30bbff579f4dafc6f3260525"
+  },
+  "rca2a10_retrospective_corrections": {
+    "cross_case_model_effect": "UNOBSERVABLE",
+    "historical_artifacts_immutable": true,
+    "provider_blocker": "PROVIDER_CREDIT_EXHAUSTED",
+    "rca2b_necessity": "NOT_ESTABLISHED"
+  }
+}

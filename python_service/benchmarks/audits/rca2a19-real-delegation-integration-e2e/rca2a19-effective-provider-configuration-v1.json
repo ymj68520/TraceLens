@@ -1,0 +1,31 @@
+{
+  "artifact_version": "RCA2A19EffectiveProviderConfigurationV1",
+  "experiment_id": "rca2a19-real-delegation-integration-e2e",
+  "timestamp_utc": "2026-10-17T08:09:22.000000+00:00",
+  "provider_identity": {
+    "provider_type": "generic",
+    "base_url": "https://chat.cordapp.org/v1",
+    "authorized_model": "deepseek-flash",
+    "timeout_seconds": 90.0,
+    "temperature": 0.0,
+    "max_tokens": 4096
+  },
+  "request_budget_limits": {
+    "max_agent_http_cycles": 2,
+    "max_steps_per_cycle": 3,
+    "max_logical_generations": 10,
+    "max_physical_http_attempts": 30,
+    "max_provider_preflights": 0,
+    "auto_retry_enabled": false,
+    "auto_restart_forbidden": true
+  },
+  "interceptor_policy": {
+    "interceptor_class": "RequestBudgetGuard",
+    "concurrency_lock": "threading.Lock",
+    "fail_closed_thresholds": {
+      "logical_exceeded_error": "RuntimeError('REQUEST_BUDGET_EXHAUSTED: Maximum logical LLM generations reached')",
+      "physical_exceeded_error": "RuntimeError('REQUEST_BUDGET_EXHAUSTED: Maximum physical HTTP attempts reached')"
+    }
+  },
+  "verdict": "PROVIDER_CONFIGURATION_AND_BUDGET_GUARD_FROZEN"
+}

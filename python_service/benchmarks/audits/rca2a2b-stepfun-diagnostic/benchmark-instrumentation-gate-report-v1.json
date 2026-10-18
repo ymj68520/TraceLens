@@ -1,0 +1,37 @@
+{
+ "artifact_version": "BenchmarkInstrumentationGateReportV1",
+ "created_at": "2026-10-13T14:55:05+00:00",
+ "verdict": "PASSED — benchmark-path instrumentation verified end-to-end with deterministic mocks; NO real model calls consumed by the gate",
+ "entrypoint": "scripts/run_p8b_baseline.py (real CLI, real task provisioning via the live service, real orchestrator construction WITH the RCA-1.3 sink injection fixed in f566105d)",
+ "mock": "PYTHONPATH sitecustomize: SupervisorAgentFactory plan/integrate agents -> FunctionModel (valid plan args / KNOWN-ILLEGAL V2 integrate args: extra_forbidden tool_call_count + literal_error to_status); specialist -> FunctionModel search_evidence round-trip then an HONEST empty-evidence proposal (zero fabrication)",
+ "chain_verified": [
+  "run_p8b_baseline -> model construction -> AgentOrchestrator construction",
+  "diagnostic sink injection (failure_diagnostics_sink from env/settings — the f566105d wiring fix verified live)",
+  "INTEGRATE with known-illegal V2 output-tool arguments",
+  "failure containment (AgentRun failed/internal_failure, no integration commit)",
+  "diagnostic JSONL written with all §2 required fields"
+ ],
+ "checks": {
+  "sink_enabled": true,
+  "sink_file_exists": true,
+  "entries": 1,
+  "stage": "SUPERVISOR_INTEGRATE",
+  "run_id_matches_persisted_AgentRun": true,
+  "AgentRun_terminal": "failed/internal_failure",
+  "schema_hash": "a214ec4f5e81fcbb",
+  "schema_hash_matches_production_V2": true,
+  "validation_error_details_loc_type": [
+   "actions/0/UpdateQuestionActionV2/tool_call_count (extra_forbidden)",
+   "update_coverage to_status literal_error"
+  ],
+  "retry_attempts_observable": 1,
+  "tool_name_observable": "final_result",
+  "file_permissions": "0600",
+  "evidence_content_leak": "none (validation entries carry type+loc only)",
+  "validation_input_leak": "none (asserted)",
+  "api_key_leak": "none",
+  "illegal_integration_commit": "none"
+ },
+ "iterations_note": "the gate took 5 deterministic iterations to converge the mocks (instruction extraction, honest empty-evidence specialist for the t2-no-evidence semantics — fabrication was correctly rejected fail-closed); every iteration used FunctionModel, zero real calls",
+ "sink_evidence": "gate-sink-evidence.jsonl (alongside this report)"
+}

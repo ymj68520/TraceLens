@@ -1,0 +1,137 @@
+{
+  "artifact_version": "RCA2A9FixtureIntegrityReportV1",
+  "baseline_commit": "7ea26f627e6197216bffdee3ead12ddc1cd78062",
+  "fixtures": {
+    "t2-identity-trap": {
+      "evidence_bindings_count": 1,
+      "evidence_kind": "REAL_BOUND_TASK_EVIDENCE",
+      "gate_counts": {
+        "analyst_note_as_evidence": 0,
+        "cross_task_leak": 0,
+        "fabricated_evidence": 0,
+        "graph_id_as_evidence": 0
+      },
+      "integrity_pass": true,
+      "integrity_verdict": "EVIDENCE_INTEGRITY_PASS",
+      "inventory": [
+        {
+          "backing_row": {
+            "md5": "md5_system1_app1",
+            "path": "C/logs/app1.log",
+            "size": 2048
+          },
+          "binding_handle": "E1",
+          "canonical_ref": "file:C/logs/app1.log",
+          "kind": "evidence",
+          "task_id": "t2-identity-trap"
+        }
+      ],
+      "investigation_id": "inv-t2-identity-trap-001",
+      "run_id": "run_2fb03105208e45aeaea6b6fe54d3e14d",
+      "scenario_id": "t2-identity-trap",
+      "specialist_result_kind": "SYNTHETIC_SPECIALIST_RESULT",
+      "task_id": "t2-identity-trap"
+    },
+    "t2-no-evidence": {
+      "evidence_bindings_count": 0,
+      "evidence_kind": "NO_EVIDENCE_HONEST_EMPTY",
+      "gate_counts": {
+        "analyst_note_as_evidence": 0,
+        "cross_task_leak": 0,
+        "fabricated_evidence": 0,
+        "graph_id_as_evidence": 0
+      },
+      "integrity_pass": true,
+      "integrity_verdict": "EVIDENCE_INTEGRITY_PASS",
+      "inventory": [],
+      "investigation_id": "inv-t2-no-evidence-001",
+      "run_id": "run_bd0d54a75d5d46beaf31286cfba39b01",
+      "scenario_id": "t2-no-evidence",
+      "specialist_result_kind": "SYNTHETIC_SPECIALIST_RESULT",
+      "task_id": "t2-no-evidence"
+    },
+    "t2-report-citation": {
+      "evidence_bindings_count": 2,
+      "evidence_kind": "REAL_BOUND_TASK_EVIDENCE",
+      "gate_counts": {
+        "analyst_note_as_evidence": 0,
+        "cross_task_leak": 0,
+        "fabricated_evidence": 0,
+        "graph_id_as_evidence": 0
+      },
+      "integrity_pass": true,
+      "integrity_verdict": "EVIDENCE_INTEGRITY_PASS",
+      "inventory": [
+        {
+          "backing_row": {
+            "md5": "md5_shoukuan_ledger",
+            "path": "C/data/收款记录.txt",
+            "size": 1024
+          },
+          "binding_handle": "E1",
+          "canonical_ref": "file:C/data/收款记录.txt",
+          "kind": "evidence",
+          "task_id": "t2-report-citation"
+        },
+        {
+          "backing_row": {
+            "md5": "md5_tijian_report",
+            "path": "C/personal/体检报告.txt",
+            "size": 512
+          },
+          "binding_handle": "E2",
+          "canonical_ref": "file:C/personal/体检报告.txt",
+          "kind": "evidence",
+          "task_id": "t2-report-citation"
+        }
+      ],
+      "investigation_id": "inv-t2-report-citation-001",
+      "run_id": "run_74fcd797896c4d63b1f0c7ab95894cfa",
+      "scenario_id": "t2-report-citation",
+      "specialist_result_kind": "SYNTHETIC_SPECIALIST_RESULT",
+      "task_id": "t2-report-citation"
+    },
+    "t2-temporal-trap": {
+      "evidence_bindings_count": 2,
+      "evidence_kind": "REAL_BOUND_TASK_EVIDENCE",
+      "gate_counts": {
+        "analyst_note_as_evidence": 0,
+        "cross_task_leak": 0,
+        "fabricated_evidence": 0,
+        "graph_id_as_evidence": 0
+      },
+      "integrity_pass": true,
+      "integrity_verdict": "EVIDENCE_INTEGRITY_PASS",
+      "inventory": [
+        {
+          "backing_row": {
+            "md5": "md5_wangfang_chat",
+            "path": "C/chat/wangfang.log",
+            "size": 1024
+          },
+          "binding_handle": "E1",
+          "canonical_ref": "file:C/chat/wangfang.log",
+          "kind": "evidence",
+          "task_id": "t2-temporal-trap"
+        },
+        {
+          "backing_row": {
+            "md5": "md5_zhangming_chat",
+            "path": "C/chat/zhangming.log",
+            "size": 2048
+          },
+          "binding_handle": "E2",
+          "canonical_ref": "file:C/chat/zhangming.log",
+          "kind": "evidence",
+          "task_id": "t2-temporal-trap"
+        }
+      ],
+      "investigation_id": "inv-t2-temporal-trap-001",
+      "run_id": "run_d2fde022a7934eccae72ec33f3b84cd9",
+      "scenario_id": "t2-temporal-trap",
+      "specialist_result_kind": "SYNTHETIC_SPECIALIST_RESULT",
+      "task_id": "t2-temporal-trap"
+    }
+  },
+  "generated_at": "2026-10-15T14:32:04Z"
+}

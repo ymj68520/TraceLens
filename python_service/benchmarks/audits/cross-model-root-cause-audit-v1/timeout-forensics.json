@@ -1,0 +1,156 @@
+{
+ "artifact_version": "TimeoutForensicsV1",
+ "timeout_budget_origin": "adapter: model_settings['timeout']=120 (LLM_TIMEOUT_SECONDS) passed per HTTP attempt (pydantic_ai/models/openai.py:1141); AsyncOpenAI(max_retries=2 default) retries APITimeoutError twice more; run-level asyncio.wait_for budget NOT armed (production_executor.py:95-99: generation_params has no timeout_seconds key -> wait_for(timeout=None))",
+ "timeouts": [
+  {
+   "case_id": "t1-fraud-script-usb",
+   "repeat": "repeat0",
+   "run_started_at": "2026-10-13T09:31:11.305869+00:00",
+   "run_failed_at": "2026-10-13T09:42:44.906052+00:00",
+   "request_sent_at": null,
+   "response_headers_at": null,
+   "first_token_at": null,
+   "response_completed_at": null,
+   "timeout_at": null,
+   "retry_started_at": null,
+   "unavailable_reason": "per-request timing was never instrumented; non-streaming agent.run() has no first-token concept; identity telemetry records completed responses only",
+   "last_durable_event": "delegation_completed",
+   "last_durable_event_at": "2026-10-13T09:36:42.947425+00:00",
+   "post_event_gap_s": 362.0,
+   "gap_fits_3x120s": true,
+   "completed_model_requests_in_run": 9,
+   "tool_observations": 11,
+   "classification": {
+    "primary": "PROVIDER_RESPONSE_LATENCY",
+    "manifestation": "PROVIDER_TRANSPORT_TIMEOUT",
+    "amplifier": "SDK_INTERNAL_RETRY (openai DEFAULT_MAX_RETRIES=2 -> 3 attempts x 120s)",
+    "excluded": {
+     "LOCAL_REQUEST_SCHEDULING": "delegation_completed at T, gap uniform 362s across 5 runs; specialist phase (11 tool calls, 3.5 min) completed normally on the same machine/connection",
+     "AGENT_RETRY_AMPLIFICATION": "pydantic-ai never retries transport errors; LLM_MAX_RETRIES=3 is unconsumed on the agent path (only config.py:263 defines it)",
+     "PROVIDER_QUOTA": "zero 429/quota events in any series"
+    },
+    "evidence_basis": "gap == 3x120s+overhead on all five runs + code audit of the retry stack; per-request server-side timing was never persisted, so sub-attempt attribution is UNVERIFIED"
+   }
+  },
+  {
+   "case_id": "t2-misleading-note",
+   "repeat": "repeat0",
+   "run_started_at": "2026-10-13T09:54:02.861740+00:00",
+   "run_failed_at": "2026-10-13T10:03:01.174439+00:00",
+   "request_sent_at": null,
+   "response_headers_at": null,
+   "first_token_at": null,
+   "response_completed_at": null,
+   "timeout_at": null,
+   "retry_started_at": null,
+   "unavailable_reason": "per-request timing was never instrumented; non-streaming agent.run() has no first-token concept; identity telemetry records completed responses only",
+   "last_durable_event": "delegation_completed",
+   "last_durable_event_at": "2026-10-13T09:56:59.319661+00:00",
+   "post_event_gap_s": 361.9,
+   "gap_fits_3x120s": true,
+   "completed_model_requests_in_run": 11,
+   "tool_observations": 13,
+   "classification": {
+    "primary": "PROVIDER_RESPONSE_LATENCY",
+    "manifestation": "PROVIDER_TRANSPORT_TIMEOUT",
+    "amplifier": "SDK_INTERNAL_RETRY (openai DEFAULT_MAX_RETRIES=2 -> 3 attempts x 120s)",
+    "excluded": {
+     "LOCAL_REQUEST_SCHEDULING": "delegation_completed at T, gap uniform 362s across 5 runs; specialist phase (11 tool calls, 3.5 min) completed normally on the same machine/connection",
+     "AGENT_RETRY_AMPLIFICATION": "pydantic-ai never retries transport errors; LLM_MAX_RETRIES=3 is unconsumed on the agent path (only config.py:263 defines it)",
+     "PROVIDER_QUOTA": "zero 429/quota events in any series"
+    },
+    "evidence_basis": "gap == 3x120s+overhead on all five runs + code audit of the retry stack; per-request server-side timing was never persisted, so sub-attempt attribution is UNVERIFIED"
+   }
+  },
+  {
+   "case_id": "t2-no-evidence",
+   "repeat": "repeat0",
+   "run_started_at": "2026-10-13T10:03:13.227444+00:00",
+   "run_failed_at": "2026-10-13T10:12:40.362424+00:00",
+   "request_sent_at": null,
+   "response_headers_at": null,
+   "first_token_at": null,
+   "response_completed_at": null,
+   "timeout_at": null,
+   "retry_started_at": null,
+   "unavailable_reason": "per-request timing was never instrumented; non-streaming agent.run() has no first-token concept; identity telemetry records completed responses only",
+   "last_durable_event": "delegation_completed",
+   "last_durable_event_at": "2026-10-13T10:06:38.447966+00:00",
+   "post_event_gap_s": 361.9,
+   "gap_fits_3x120s": true,
+   "completed_model_requests_in_run": 10,
+   "tool_observations": 11,
+   "classification": {
+    "primary": "PROVIDER_RESPONSE_LATENCY",
+    "manifestation": "PROVIDER_TRANSPORT_TIMEOUT",
+    "amplifier": "SDK_INTERNAL_RETRY (openai DEFAULT_MAX_RETRIES=2 -> 3 attempts x 120s)",
+    "excluded": {
+     "LOCAL_REQUEST_SCHEDULING": "delegation_completed at T, gap uniform 362s across 5 runs; specialist phase (11 tool calls, 3.5 min) completed normally on the same machine/connection",
+     "AGENT_RETRY_AMPLIFICATION": "pydantic-ai never retries transport errors; LLM_MAX_RETRIES=3 is unconsumed on the agent path (only config.py:263 defines it)",
+     "PROVIDER_QUOTA": "zero 429/quota events in any series"
+    },
+    "evidence_basis": "gap == 3x120s+overhead on all five runs + code audit of the retry stack; per-request server-side timing was never persisted, so sub-attempt attribution is UNVERIFIED"
+   }
+  },
+  {
+   "case_id": "t2-report-citation",
+   "repeat": "repeat0",
+   "run_started_at": "2026-10-13T10:12:52.420665+00:00",
+   "run_failed_at": "2026-10-13T10:22:03.035227+00:00",
+   "request_sent_at": null,
+   "response_headers_at": null,
+   "first_token_at": null,
+   "response_completed_at": null,
+   "timeout_at": null,
+   "retry_started_at": null,
+   "unavailable_reason": "per-request timing was never instrumented; non-streaming agent.run() has no first-token concept; identity telemetry records completed responses only",
+   "last_durable_event": "delegation_completed",
+   "last_durable_event_at": "2026-10-13T10:16:01.237356+00:00",
+   "post_event_gap_s": 361.8,
+   "gap_fits_3x120s": true,
+   "completed_model_requests_in_run": 11,
+   "tool_observations": 12,
+   "classification": {
+    "primary": "PROVIDER_RESPONSE_LATENCY",
+    "manifestation": "PROVIDER_TRANSPORT_TIMEOUT",
+    "amplifier": "SDK_INTERNAL_RETRY (openai DEFAULT_MAX_RETRIES=2 -> 3 attempts x 120s)",
+    "excluded": {
+     "LOCAL_REQUEST_SCHEDULING": "delegation_completed at T, gap uniform 362s across 5 runs; specialist phase (11 tool calls, 3.5 min) completed normally on the same machine/connection",
+     "AGENT_RETRY_AMPLIFICATION": "pydantic-ai never retries transport errors; LLM_MAX_RETRIES=3 is unconsumed on the agent path (only config.py:263 defines it)",
+     "PROVIDER_QUOTA": "zero 429/quota events in any series"
+    },
+    "evidence_basis": "gap == 3x120s+overhead on all five runs + code audit of the retry stack; per-request server-side timing was never persisted, so sub-attempt attribution is UNVERIFIED"
+   }
+  },
+  {
+   "case_id": "t2-temporal-trap",
+   "repeat": "repeat0",
+   "run_started_at": "2026-10-13T10:22:15.157572+00:00",
+   "run_failed_at": "2026-10-13T10:31:13.220510+00:00",
+   "request_sent_at": null,
+   "response_headers_at": null,
+   "first_token_at": null,
+   "response_completed_at": null,
+   "timeout_at": null,
+   "retry_started_at": null,
+   "unavailable_reason": "per-request timing was never instrumented; non-streaming agent.run() has no first-token concept; identity telemetry records completed responses only",
+   "last_durable_event": "delegation_completed",
+   "last_durable_event_at": "2026-10-13T10:25:11.227204+00:00",
+   "post_event_gap_s": 362.0,
+   "gap_fits_3x120s": true,
+   "completed_model_requests_in_run": 11,
+   "tool_observations": 11,
+   "classification": {
+    "primary": "PROVIDER_RESPONSE_LATENCY",
+    "manifestation": "PROVIDER_TRANSPORT_TIMEOUT",
+    "amplifier": "SDK_INTERNAL_RETRY (openai DEFAULT_MAX_RETRIES=2 -> 3 attempts x 120s)",
+    "excluded": {
+     "LOCAL_REQUEST_SCHEDULING": "delegation_completed at T, gap uniform 362s across 5 runs; specialist phase (11 tool calls, 3.5 min) completed normally on the same machine/connection",
+     "AGENT_RETRY_AMPLIFICATION": "pydantic-ai never retries transport errors; LLM_MAX_RETRIES=3 is unconsumed on the agent path (only config.py:263 defines it)",
+     "PROVIDER_QUOTA": "zero 429/quota events in any series"
+    },
+    "evidence_basis": "gap == 3x120s+overhead on all five runs + code audit of the retry stack; per-request server-side timing was never persisted, so sub-attempt attribution is UNVERIFIED"
+   }
+  }
+ ]
+}

@@ -1,0 +1,145 @@
+{
+  "deliverable": "RCA2A23BrowserFullWorkflowE2EV1",
+  "schema_version": "rca2a23-browser-full-workflow-e2e:v1",
+  "verified_at": "2026-10-17T11:09:56Z",
+  "browser": "Chromium (Headless)",
+  "frontend_url": "http://127.0.0.1:3100",
+  "backend_url": "http://127.0.0.1:8098",
+  "browser_steps_passed": [
+    {
+      "test_id": "B01",
+      "name": "Real browser loads Investigation Workbench",
+      "passed": true,
+      "detail": {
+        "url": "http://127.0.0.1:3100/investigation?taskId=synthetic-rca2a23-workbench-001"
+      }
+    },
+    {
+      "test_id": "B02",
+      "name": "Three-column layout strictly preserved with Execution Control and Review Panel in Column 3",
+      "passed": true,
+      "detail": {
+        "execControl": true,
+        "reviewPanel": true,
+        "analysisCol": true
+      }
+    },
+    {
+      "test_id": "B03",
+      "name": "Initial Agent state rendered accurately before cycle execution",
+      "passed": true,
+      "detail": {
+        "revision": "Rev 1",
+        "status": "idle",
+        "candidateCount": 0
+      }
+    },
+    {
+      "test_id": "B04",
+      "name": "In-flight execution state and duplicate click prevention observed",
+      "passed": true,
+      "detail": {}
+    },
+    {
+      "test_id": "B05",
+      "name": "Agent cycle completes with valid CycleOutcome (Rev 1 -> Rev 2)",
+      "passed": true,
+      "detail": {
+        "status": 200,
+        "ending_revision": 2,
+        "cycle_id": "cycle_rca2a23_002"
+      }
+    },
+    {
+      "test_id": "B06",
+      "name": "Agent state displays updated revision (Rev 2)",
+      "passed": true,
+      "detail": {
+        "revision": "Rev 2"
+      }
+    },
+    {
+      "test_id": "B07",
+      "name": "Review candidate queue automatically refreshes with newly generated candidate",
+      "passed": true,
+      "detail": {
+        "count": 1,
+        "candidateId": "finding:disp_rca2a23_cand_02"
+      }
+    },
+    {
+      "test_id": "B08",
+      "name": "Candidate details and evidence reference verified",
+      "passed": true,
+      "detail": {
+        "content": "Security Account Manager registry hive accessed via suspicio",
+        "hasEvRef": true
+      }
+    },
+    {
+      "test_id": "B09",
+      "name": "Explicit Accept review submitted and accepted (200 OK)",
+      "passed": true,
+      "detail": {
+        "status": 200,
+        "decision": "accepted",
+        "review_id": "freview:02d9e7b91ad1468eae13",
+        "reviewer": "analyst"
+      }
+    },
+    {
+      "test_id": "B10",
+      "name": "Candidate status reflects accepted state in UI",
+      "passed": true,
+      "detail": {}
+    },
+    {
+      "test_id": "B11",
+      "name": "Browser reload confirms persistent accepted status and review history in SQLite",
+      "passed": true,
+      "detail": {
+        "reloadedRevision": "Rev 2",
+        "persistedAccepted": true,
+        "persistedHistory": true
+      }
+    },
+    {
+      "test_id": "B12",
+      "name": "Second agent cycle advances revision to Rev 3 and generates second candidate",
+      "passed": true,
+      "detail": {
+        "count": 2,
+        "revision": "Rev 3"
+      }
+    },
+    {
+      "test_id": "B13",
+      "name": "Explicit Reject review submitted and rejected (200 OK)",
+      "passed": true,
+      "detail": {
+        "status": 200,
+        "decision": "rejected",
+        "review_id": "freview:160be1a5558f5efa9c36"
+      }
+    },
+    {
+      "test_id": "B14",
+      "name": "Browser reload preserves both accepted and rejected reviews durably in SQLite",
+      "passed": true,
+      "detail": {
+        "candidateCount": 2,
+        "hasRejectedStatus": true
+      }
+    },
+    {
+      "test_id": "B15",
+      "name": "Reviewer authority limitation explicitly disclosed in UI",
+      "passed": true,
+      "detail": {
+        "noticeText": "Reviewer: analyst[REVIEWER_AUTHENTICATION_LIMITATION: caller-declared identity in local mode]"
+      }
+    }
+  ],
+  "all_browser_steps_passed": true,
+  "status": "PASS"
+}

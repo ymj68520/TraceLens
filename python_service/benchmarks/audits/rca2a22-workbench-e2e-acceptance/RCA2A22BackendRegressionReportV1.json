@@ -1,0 +1,17 @@
+{
+  "report_version": "rca2a22:v1",
+  "task_id": "TASK-INVESTIGATION-WORKBENCH-REVIEW-E2E-ACCEPTANCE",
+  "pytest_summary": {
+    "test_path": "python_service/tests/unit/investigation/test_agent_*.py",
+    "total_tests_passed": 724,
+    "skipped_tests": 1,
+    "failed_tests": 0,
+    "duration_seconds": 50.36
+  },
+  "analyst_review_suite": {
+    "test_file": "test_agent_analyst_review_integration.py",
+    "tests_passed": 36,
+    "failed": 0
+  },
+  "disposition": "BACKEND_REGRESSION_PASS"
+}

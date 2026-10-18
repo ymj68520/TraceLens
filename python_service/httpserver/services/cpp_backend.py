@@ -374,6 +374,20 @@ class CppBackendService:
         result = await self._request("GET", "/api/forensics/extract/status", params={"job_id": job_id})
         return result
 
+    async def materialize_file(self, task_id: str, file_path: str) -> Dict[str, Any]:
+        """
+        Extract one known file from the task's image (synchronous).
+
+        Mirrors POST /api/forensics/files/materialize: the C++ side resolves
+        only paths that are known records in the task's raw DB and writes the
+        bytes under the task extract directory. Returns the response dict;
+        failures carry success=False / status (never raises).
+        """
+        payload = {"task_id": task_id, "path": file_path}
+        return await self._request(
+            "POST", "/api/forensics/files/materialize", json=payload, max_retries=1
+        )
+
     # Export Operations
 
     async def export_toon(

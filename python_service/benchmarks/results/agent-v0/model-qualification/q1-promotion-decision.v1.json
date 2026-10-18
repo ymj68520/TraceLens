@@ -1,0 +1,82 @@
+{
+  "artifact_version": "q1-promotion-decision:v1",
+  "screening_report": "q1-screening-report.v1.json",
+  "reference_summary": {
+    "candidate_id": "mimo-v2.6-flash-reference",
+    "runs_total": 24,
+    "case_outcome_success": 0,
+    "integration_invalid_runs": 24
+  },
+  "candidate_decisions": [
+    {
+      "candidate_id": "deepseek-v4-flash",
+      "hard_gates": "PASS",
+      "runs_total": 8,
+      "runs_completed": 8,
+      "not_run_cases": [],
+      "case_outcome_success": 0,
+      "case_outcome_distribution": {
+        "incomplete": 8
+      },
+      "finalization_pass": 4,
+      "integration_invalid_runs": 8,
+      "provider_failure_runs": 0,
+      "outcome_better_than_reference": false,
+      "integration_better_than_reference": false,
+      "integration_invalid_rate": 1.0,
+      "disqualified": false,
+      "notes": []
+    },
+    {
+      "candidate_id": "glm-5.3",
+      "hard_gates": "PASS",
+      "runs_total": 1,
+      "runs_completed": 1,
+      "not_run_cases": [
+        "t1-fraud-script-usb",
+        "t2-cross-source-correlation",
+        "t2-identity-trap",
+        "t2-misleading-note",
+        "t2-report-citation",
+        "t2-temporal-trap",
+        "t2-verification-temptation"
+      ],
+      "case_outcome_success": 0,
+      "case_outcome_distribution": {
+        "incomplete": 1
+      },
+      "finalization_pass": 1,
+      "integration_invalid_runs": 1,
+      "provider_failure_runs": 0,
+      "outcome_better_than_reference": false,
+      "integration_better_than_reference": false,
+      "integration_invalid_rate": 1.0,
+      "disqualified": false,
+      "notes": []
+    },
+    {
+      "candidate_id": "kimi-k3",
+      "hard_gates": "PASS",
+      "runs_total": 8,
+      "runs_completed": 7,
+      "not_run_cases": [],
+      "case_outcome_success": 0,
+      "case_outcome_distribution": {
+        "incomplete": 7
+      },
+      "finalization_pass": 0,
+      "integration_invalid_runs": 7,
+      "provider_failure_runs": 1,
+      "outcome_better_than_reference": false,
+      "integration_better_than_reference": false,
+      "integration_invalid_rate": 1.0,
+      "disqualified": false,
+      "notes": []
+    }
+  ],
+  "eligible_for_q2": [],
+  "advancing_to_q2": [],
+  "decision_rule": "§15 NO_QUALIFIED_MODEL_CONFIGURATION",
+  "stop_experiment": true,
+  "stop_reason": "§15: no candidate materially improves on the MiMo reference; record NO QUALIFIED MODEL CONFIGURATION and do not enter Q2 or holdout."
+}

@@ -1,0 +1,26 @@
+{
+  "artifact_version": "RCA2A3RuntimeIdentityRecordV1",
+  "created_at": "2026-10-14T00:00:00+00:00",
+  "baseline_commit": "7d94dfe96568010d61e5006ab8a1d51580031796",
+  "result_commit": "recorded post-execution in the commit introducing this file",
+  "identity_statement": "This stage adds benchmark-side diagnostic tooling ONLY. The production supervisor, integration contract, orchestrator, policy, gate, retry and runtime persistence modules are byte-identical to the CF-1 remediation state (hashes below). No qualification or acceptance identity is claimed or inherited by the harness; any future real-model diagnostic on this harness requires its own explicit identity freeze.",
+  "sha256_at_execution": {
+    "harness_module": "69c7ff42dbf02e8f6523414badd7fa1a3f8c0cfc53db07d46377bf40ec509c90",
+    "fixtures_module": "d7ad2a13a9c1fbb442af8dfa11727351cc1f2284101e1542c1d9b5389868006f",
+    "stage_tests": "5fca915655cbe967685b118217bad926939db23bb7f585fe403de9d32e43009d",
+    "parity_evidence": "2040ebc441031939ee3138b195605cad97cb20557160106da0d847905bfff1ce",
+    "unchanged_agent_integration_v2": "9be8946460d63993192c2abb58391bc6aa5af2617412ee27377f3275846439a0",
+    "unchanged_agent_supervisor": "8621316a59b9c016c6eacbe9742eb439532af26b401f09d0eef3c263acd8cd25",
+    "unchanged_agent_orchestrator_vs_cf1": "52e468b42e1c26a2a9835ba8e2ac2f625f8e142f97c62c7b6b9a421c18f14763"
+  },
+  "frozen_surfaces_untouched": [
+    "SupervisorIntegrationDecisionV2", "Supervisor prompts/instructions",
+    "SupervisorAgentFactory output contracts", "IntegrationDecisionValidator",
+    "StateTransitionPolicy", "GroundingValidator", "FinalizationGate",
+    "PydanticAI retries", "Provider SDK retries/timeouts",
+    "AcceptanceProfileV2 (c40f1adc...)", "Historical RuntimeBaselineV3"
+  ],
+  "historical_artifacts": "44 rca2a2/rca2a2b artifacts re-verified byte-identical after all work",
+  "model_calls": 0,
+  "rca_2b": "NOT AUTHORIZED"
+}

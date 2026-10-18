@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from ..services.field_security import audit_actor
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..config import get_settings
 from ..services import get_service_manager
 from ..services.evidence import (
     EvidenceNotFoundError,
@@ -39,6 +40,14 @@ from ..services.investigation import (
     SecondaryAnalysisExecutor,
     SecondaryAnalysisStatus,
     AnalysisReviewDecision,
+    AgentAnalystReviewService,
+    EvidenceProvenanceError,
+    FactPromotionBlockedError,
+    ReviewCandidateProjection,
+    ReviewConflictError,
+    ReviewDecisionOutcome,
+    ReviewDecisionRequest,
+    ReviewHistoryItem,
 )
 from ..services.investigation.repository import InvestigationMigrationRequiredError
 
@@ -588,3 +597,591 @@ async def get_investigation_graph(
         raise HTTPException(
             status_code=503, detail="investigation store is unavailable"
         ) from exc
+
+
+# ---------------------------------------------------------------------------
+# Agent v0 Execution & State routes (RCA-2A.16)
+# ---------------------------------------------------------------------------
+
+import asyncio
+
+_agent_task_locks: dict[str, asyncio.Lock] = {}
+_agent_task_running: set[str] = set()
+
+
+class AgentCycleRequest(BaseModel):
+    """Strict public boundary for triggering one bounded Agent v0 cycle."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: str = Field(min_length=1)
+    investigation_id: Optional[str] = None
+    expected_working_state_revision: Optional[int] = None
+    request_id: Optional[str] = None
+    source_scope_ids: list[str] = Field(default_factory=list)
+    max_steps: Optional[int] = Field(default=None, ge=1)
+    enable_experimental_guidance: Optional[bool] = None
+
+
+class AgentCycleResponse(BaseModel):
+    """Structured response from executing one bounded agent cycle."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    cycle_id: str
+    task_id: str
+    investigation_id: str
+    run_id: Optional[str] = None
+    starting_revision: int
+    ending_revision: Optional[int] = None
+    integration_status: str
+    integration_revision: Optional[int] = None
+    delegation_ids: list[str] = Field(default_factory=list)
+    run_stop_reason: Optional[str] = None
+    warnings: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+
+
+class AgentQuestionSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    question_id: str
+    status: str
+    disposition: Optional[str] = None
+
+
+class AgentStateResponse(BaseModel):
+    """Read-only view of current agent working state and execution status."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: str
+    investigation_id: str
+    working_state_revision: int
+    working_state_hash: str
+    objective: Optional[str] = None
+    agent_execution_status: str
+    questions_count: int
+    questions_summary: list[AgentQuestionSummary] = Field(default_factory=list)
+    findings_count: int
+    hypotheses_count: int
+    active_delegations_count: int
+    latest_trajectory_ref: Optional[str] = None
+
+
+def _get_agent_orchestrator():
+    try:
+        manager = get_service_manager()
+        return manager.agent_orchestrator
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="agent orchestrator is unavailable",
+        ) from exc
+
+
+@router.post(
+    "/agent/cycle",
+    response_model=AgentCycleResponse,
+    status_code=200,
+)
+async def execute_agent_cycle(
+    http_request: Request,
+    request: AgentCycleRequest,
+    task_id: Optional[str] = Query(None),
+) -> AgentCycleResponse:
+    """Trigger one bounded Agent v0 PLAN->EXECUTE->INTEGRATE->EVALUATE cycle."""
+    verify_trusted_review_caller(http_request)
+
+    if task_id and task_id != request.task_id:
+        raise HTTPException(
+            status_code=409,
+            detail=f"task_id mismatch: query task_id {task_id!r} != body task_id {request.task_id!r}",
+        )
+
+    manager = get_service_manager()
+    settings = manager.settings
+
+    if not getattr(settings, "agent_execution_enabled", False):
+        raise HTTPException(
+            status_code=403,
+            detail="agent execution is disabled by configuration",
+        )
+
+    from ..services.investigation.agent_runtime import (
+        AgentRuntimeConflictError,
+        AgentRuntimeRepository,
+        WorkingStateRevisionConflictError,
+    )
+    from ..services.investigation.paths import investigation_db_path_for_task
+
+    try:
+        task = await manager.cpp_backend.get_task(request.task_id)
+        if not isinstance(task, dict) or task.get("id") != request.task_id:
+            raise HTTPException(
+                status_code=404,
+                detail=f"task not found or investigation db unavailable for {request.task_id}",
+            )
+        db_path = investigation_db_path_for_task(task)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=f"task not found or investigation db unavailable for {request.task_id}",
+        ) from exc
+
+    if not db_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"task not found or investigation db unavailable for {request.task_id}",
+        )
+
+    # Concurrency control: task-scoped claim/lock
+    if request.task_id in _agent_task_running:
+        raise HTTPException(
+            status_code=409,
+            detail=f"agent cycle is already running for task {request.task_id}",
+        )
+
+    lock = _agent_task_locks.setdefault(request.task_id, asyncio.Lock())
+    if lock.locked():
+        raise HTTPException(
+            status_code=409,
+            detail=f"agent cycle is already running for task {request.task_id}",
+        )
+
+    import hashlib
+    import json
+    import uuid
+
+    request_id = request.request_id or f"req_{uuid.uuid4().hex[:16]}"
+
+    async with lock:
+        _agent_task_running.add(request.task_id)
+        execution_id = None
+        runtime = None
+        try:
+            from ..services.investigation.repository import InvestigationRepository
+
+            repo = InvestigationRepository(db_path, request.task_id)
+            runtime = AgentRuntimeRepository(repo)
+            orchestrator = _get_agent_orchestrator()
+
+            # Resolve or create investigation
+            investigation_id = request.investigation_id
+            if not investigation_id:
+                existing_invs = runtime.list_investigations()
+                if existing_invs:
+                    investigation_id = existing_invs[0].investigation_id
+                else:
+                    from ..services.investigation.agent_working_state import (
+                        AgentWorkingStateV1,
+                    )
+
+                    new_inv_id = f"inv_{uuid.uuid4().hex[:12]}"
+                    initial_state = AgentWorkingStateV1(
+                        task_id=request.task_id,
+                        investigation_id=new_inv_id,
+                        objective="Automated Agent Investigation",
+                    )
+                    inv, _ = await orchestrator.create_investigation(
+                        request.task_id,
+                        initial_state,
+                    )
+                    investigation_id = inv.investigation_id
+
+            # Canonical input fingerprint for durable idempotency
+            effective_guidance = (
+                request.enable_experimental_guidance
+                if request.enable_experimental_guidance is not None
+                else getattr(settings, "agent_experimental_guidance_enabled", False)
+            )
+            supervisor_prompt_version = (
+                "supervisor-v2-vocabulary-guidance-v1"
+                if effective_guidance
+                else "supervisor-v2"
+            )
+            fingerprint_data = {
+                "task_id": request.task_id,
+                "investigation_id": investigation_id,
+                "expected_working_state_revision": request.expected_working_state_revision,
+                "source_scope_ids": sorted(request.source_scope_ids or []),
+                "max_steps": request.max_steps,
+                "effective_execution_options": {
+                    "enable_experimental_guidance": bool(effective_guidance),
+                    "supervisor_prompt_version": supervisor_prompt_version,
+                },
+            }
+            input_fingerprint = hashlib.sha256(
+                json.dumps(fingerprint_data, sort_keys=True).encode("utf-8")
+            ).hexdigest()
+
+            # Atomic claim in SQLite
+            try:
+                execution, is_replayed = runtime.claim_cycle_execution(
+                    investigation_id=investigation_id,
+                    request_id=request_id,
+                    input_fingerprint=input_fingerprint,
+                    expected_revision=request.expected_working_state_revision,
+                )
+            except (AgentRuntimeConflictError, WorkingStateRevisionConflictError) as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+            # If replayed and already completed, return cached response directly
+            if is_replayed and execution.cycle_outcome_json:
+                return AgentCycleResponse.model_validate_json(execution.cycle_outcome_json)
+
+            execution_id = execution.execution_id
+            runtime.mark_cycle_execution_running(execution_id)
+
+            # Re-verify task before running cycle (Task deletion safety)
+            task_check = await manager.cpp_backend.get_task(request.task_id)
+            if not isinstance(task_check, dict) or task_check.get("id") != request.task_id:
+                runtime.fail_cycle_execution(execution_id, "task was deleted before execution", status="failed")
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"task not found or investigation db unavailable for {request.task_id}",
+                )
+
+            outcome = await orchestrator.execute_cycle(
+                request.task_id,
+                investigation_id,
+                source_scope_ids=request.source_scope_ids,
+            )
+
+            # Re-verify task before marking completed (Task deletion safety)
+            task_post_check = await manager.cpp_backend.get_task(request.task_id)
+            if not isinstance(task_post_check, dict) or task_post_check.get("id") != request.task_id:
+                runtime.fail_cycle_execution(execution_id, "task was deleted during execution", status="failed")
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"task not found or investigation db unavailable for {request.task_id}",
+                )
+
+            response = AgentCycleResponse(
+                cycle_id=outcome.cycle_id,
+                task_id=request.task_id,
+                investigation_id=outcome.investigation_id,
+                run_id=outcome.run_id,
+                starting_revision=outcome.starting_revision,
+                ending_revision=outcome.ending_revision,
+                integration_status=outcome.integration_status,
+                integration_revision=outcome.integration_revision,
+                delegation_ids=list(outcome.delegation_ids),
+                run_stop_reason=outcome.run_stop_reason,
+                warnings=list(outcome.warnings),
+                limitations=list(outcome.limitations),
+            )
+
+            # Persist completed cycle outcome for durable idempotency
+            runtime.complete_cycle_execution(
+                execution_id,
+                response.model_dump_json(),
+            )
+
+            return response
+        except HTTPException:
+            raise
+        except Exception as exc:
+            if runtime is not None and execution_id is not None:
+                try:
+                    runtime.fail_cycle_execution(execution_id, str(exc), status="failed")
+                except Exception:
+                    pass
+            raise HTTPException(
+                status_code=500,
+                detail=f"agent cycle execution failed: {type(exc).__name__}: {exc}"[:300],
+            ) from exc
+        finally:
+            _agent_task_running.discard(request.task_id)
+
+
+@router.get(
+    "/agent/state",
+    response_model=AgentStateResponse,
+    status_code=200,
+)
+async def get_agent_state(
+    task_id: str = Query(..., min_length=1),
+    investigation_id: Optional[str] = Query(None),
+) -> AgentStateResponse:
+    """Read-only query of current agent working state. Zero LLM calls or mutations."""
+    from ..services.investigation.agent_runtime import AgentRuntimeRepository
+    from ..services.investigation.agent_working_state import working_state_from_json
+    from ..services.investigation.paths import investigation_db_path_for_task
+
+    manager = get_service_manager()
+    try:
+        task = await manager.cpp_backend.get_task(task_id)
+        if not isinstance(task, dict) or task.get("id") != task_id:
+            raise HTTPException(
+                status_code=404,
+                detail=f"task not found or investigation db unavailable for {task_id}",
+            )
+        db_path = investigation_db_path_for_task(task)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=f"task not found or investigation db unavailable for {task_id}",
+        ) from exc
+
+    if not db_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"task not found or investigation db unavailable for {task_id}",
+        )
+
+    from ..services.investigation.repository import InvestigationRepository
+
+    repo = InvestigationRepository(db_path, task_id)
+    runtime = AgentRuntimeRepository(repo)
+
+
+    inv_id = investigation_id
+    if not inv_id:
+        existing_invs = runtime.list_investigations()
+        if not existing_invs:
+            raise HTTPException(
+                status_code=404,
+                detail=f"no investigation found for task {task_id}",
+            )
+        inv_id = existing_invs[0].investigation_id
+
+    latest = runtime.get_latest_working_state(inv_id)
+    if latest is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"no working state found for investigation {inv_id}",
+        )
+
+    state = working_state_from_json(task_id, inv_id, latest.state)
+    q_summaries = [
+        AgentQuestionSummary(
+            question_id=q.question_id,
+            status=q.status.value,
+            disposition=q.disposition.value if q.disposition else None,
+        )
+        for q in state.questions
+    ]
+
+    runs = runtime.list_runs(inv_id)
+    active_run = next((r for r in runs if r.status.value in ("queued", "running")), None)
+    exec_status = "running" if active_run and active_run.status.value == "running" else "idle"
+
+    trajectories = runtime.list_trajectory(inv_id)
+    latest_traj_ref = None
+    if trajectories:
+        last_evt = trajectories[-1]
+        evt_type = last_evt.event_type.value if hasattr(last_evt.event_type, "value") else str(last_evt.event_type)
+        latest_traj_ref = f"{evt_type}:{last_evt.seq}"
+
+    active_dels = []
+    if active_run:
+        active_dels = [
+            d for d in runtime.list_delegations(active_run.run_id)
+            if d.status.value in ("queued", "running")
+        ]
+
+    return AgentStateResponse(
+        task_id=task_id,
+        investigation_id=inv_id,
+        working_state_revision=latest.revision,
+        working_state_hash=latest.state_hash,
+        objective=state.objective,
+        agent_execution_status=exec_status,
+        questions_count=len(state.questions),
+        questions_summary=q_summaries,
+        findings_count=len(state.finding_refs),
+        hypotheses_count=len(state.hypotheses),
+        active_delegations_count=len(active_dels),
+        latest_trajectory_ref=latest_traj_ref,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Agent Analyst Review routes (RCA-2A.20)
+# ---------------------------------------------------------------------------
+
+def get_agent_analyst_review_service() -> AgentAnalystReviewService:
+    """Resolve the ready AgentAnalystReviewService through ServiceManager."""
+    try:
+        return get_service_manager().agent_analyst_review_service
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="agent analyst review service is unavailable",
+        ) from exc
+
+
+@router.get(
+    "/agent/review-candidates",
+    response_model=list[ReviewCandidateProjection],
+    status_code=200,
+)
+async def list_agent_review_candidates(
+    task_id: str = Query(..., min_length=1),
+    investigation_id: Optional[str] = Query(None),
+    service: AgentAnalystReviewService = Depends(get_agent_analyst_review_service),
+) -> list[ReviewCandidateProjection]:
+    """Read-only query of all review candidates for a task. 0 LLM calls, 0 writes."""
+    try:
+        return await service.list_candidates(task_id, investigation_id=investigation_id)
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except EvidenceStoreError as exc:
+        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+
+
+@router.get(
+    "/agent/review-candidates/{candidate_id:path}",
+    response_model=ReviewCandidateProjection,
+    status_code=200,
+)
+async def get_agent_review_candidate(
+    candidate_id: str,
+    task_id: str = Query(..., min_length=1),
+    investigation_id: Optional[str] = Query(None),
+    service: AgentAnalystReviewService = Depends(get_agent_analyst_review_service),
+) -> ReviewCandidateProjection:
+    """Read-only query of a specific review candidate by id. 0 LLM calls, 0 writes."""
+    try:
+        return await service.get_candidate(task_id, candidate_id, investigation_id=investigation_id)
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except EvidenceStoreError as exc:
+        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+
+
+@router.get(
+    "/agent/reviews/history",
+    response_model=list[ReviewHistoryItem],
+    status_code=200,
+)
+async def get_agent_review_history(
+    task_id: str = Query(..., min_length=1),
+    candidate_id: Optional[str] = Query(None),
+    investigation_id: Optional[str] = Query(None),
+    service: AgentAnalystReviewService = Depends(get_agent_analyst_review_service),
+) -> list[ReviewHistoryItem]:
+    """Read-only query of append-only review history."""
+    try:
+        return await service.get_history(task_id, candidate_id=candidate_id, investigation_id=investigation_id)
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except EvidenceStoreError as exc:
+        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+
+
+_TRUSTED_LOCAL_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", "testclient", "testserver"})
+
+
+def verify_trusted_review_caller(http_request: Request) -> None:
+    """Enforce trusted caller, host, and origin boundary for single-user review & agent mutations."""
+    settings = get_settings()
+    if not getattr(settings, "agent_review_local_only", True):
+        return
+
+    client_host = (
+        http_request.client.host
+        if (http_request.client and hasattr(http_request.client, "host"))
+        else "testclient"
+    )
+    if client_host not in _TRUSTED_LOCAL_HOSTS:
+        raise HTTPException(
+            status_code=403,
+            detail=f"untrusted client host {client_host!r}: review mutations are restricted to trusted local development callers",
+        )
+
+    headers = getattr(http_request, "headers", None)
+    if headers:
+        # Validate Host header against DNS rebinding attacks
+        host_header = headers.get("host")
+        if host_header:
+            host_name = host_header.split(":")[0].strip().lower()
+            if host_name and host_name not in _TRUSTED_LOCAL_HOSTS:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"untrusted host header {host_header!r}: local mutations are restricted to trusted development hosts",
+                )
+
+        # Validate X-Forwarded-Host header against proxy spoofing
+        forwarded_host = headers.get("x-forwarded-host")
+        if forwarded_host:
+            f_host_name = forwarded_host.split(",")[0].split(":")[0].strip().lower()
+            if f_host_name and f_host_name not in _TRUSTED_LOCAL_HOSTS:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"untrusted x-forwarded-host header {forwarded_host!r}: local mutations are restricted to trusted development hosts",
+                )
+
+        # Validate X-Forwarded-For header against proxied external requests
+        forwarded_for = headers.get("x-forwarded-for")
+        if forwarded_for:
+            for ip_raw in forwarded_for.split(","):
+                ip = ip_raw.strip().lower()
+                if ip and ip not in _TRUSTED_LOCAL_HOSTS:
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"untrusted x-forwarded-for address {ip_raw.strip()!r}: local mutations cannot be forwarded from external networks",
+                    )
+
+        origin = headers.get("origin")
+        if origin:
+            from urllib.parse import urlparse
+
+            parsed = urlparse(origin)
+            origin_host = parsed.hostname
+            if not origin_host or origin_host not in _TRUSTED_LOCAL_HOSTS:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"untrusted request origin {origin!r}: local mutations are restricted to trusted development origins",
+                )
+
+
+@router.post(
+    "/agent/review",
+    response_model=ReviewDecisionOutcome,
+    status_code=200,
+)
+async def submit_agent_review(
+    http_request: Request,
+    request: ReviewDecisionRequest,
+    task_id: Optional[str] = Query(None),
+    service: AgentAnalystReviewService = Depends(get_agent_analyst_review_service),
+) -> ReviewDecisionOutcome:
+    """Submit an explicit human analyst review decision for an agent candidate.
+
+    Guarantees:
+      - 200 on success or exact idempotent replay.
+      - 403 on untrusted non-local client mutation in local-only mode.
+      - 404 on task or candidate not found.
+      - 409 on query task_id mismatch, stale candidate hash, revision mismatch, concurrent claim, or conflicting replay.
+      - 422 on evidence provenance failure or unauthorized fact promotion.
+      - 503 on store unavailable.
+    """
+    verify_trusted_review_caller(http_request)
+
+    if task_id and task_id != request.task_id:
+        raise HTTPException(
+            status_code=409,
+            detail=f"task_id mismatch: query task_id {task_id!r} != body task_id {request.task_id!r}",
+        )
+
+    try:
+        return await service.submit_review(request.task_id, request)
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ReviewConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (EvidenceProvenanceError, FactPromotionBlockedError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except EvidenceStoreError as exc:
+        raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"review submission failed: {exc}") from exc
+
+
+

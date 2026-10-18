@@ -1,0 +1,82 @@
+{
+  "schema_version": "RCA2A16HTTPContractReportV1",
+  "audit_phase": "RCA-2A.16",
+  "task": "TASK-AGENT-V0-SERVICE-WIRING",
+  "status": "HTTP_CONTRACT_VERIFIED",
+  "endpoints": {
+    "post_agent_cycle": {
+      "path": "/api/investigation/agent/cycle",
+      "method": "POST",
+      "request_model": "AgentCycleRequest",
+      "request_fields": {
+        "task_id": "str (min_length=1)",
+        "investigation_id": "Optional[str]",
+        "expected_working_state_revision": "Optional[int]",
+        "max_delegations": "int (default=4, ge=1, le=16)"
+      },
+      "response_model": "AgentCycleResponse",
+      "response_fields": {
+        "cycle_id": "str",
+        "task_id": "str",
+        "investigation_id": "str",
+        "working_state_revision": "int",
+        "plan_status": "str",
+        "delegations_executed_count": "int",
+        "integration_status": "str",
+        "evaluation_status": "str",
+        "new_revision_committed": "bool",
+        "stop_reason": "Optional[str]",
+        "warnings": "list[str]"
+      },
+      "status_codes": {
+        "200": "Cycle execution completed (outcome reported)",
+        "400": "Invalid parameters or malformed request payload",
+        "403": "Agent execution disabled by configuration (agent_execution_enabled=False)",
+        "404": "Task not found or investigation db unavailable",
+        "409": "Agent cycle already running for task or working state revision conflict",
+        "503": "Agent orchestrator service unavailable"
+      }
+    },
+    "get_agent_state": {
+      "path": "/api/investigation/agent/state",
+      "method": "GET",
+      "query_parameters": {
+        "task_id": "str (min_length=1)",
+        "investigation_id": "Optional[str]"
+      },
+      "response_model": "AgentStateResponse",
+      "response_fields": {
+        "task_id": "str",
+        "investigation_id": "str",
+        "working_state_revision": "int",
+        "state_hash": "str",
+        "objective": "str",
+        "status": "str",
+        "questions_count": "int",
+        "questions_summary": "list[AgentQuestionSummary]",
+        "findings_count": "int",
+        "hypotheses_count": "int",
+        "active_delegations_count": "int",
+        "latest_trajectory_ref": "Optional[str]"
+      },
+      "status_codes": {
+        "200": "Authoritative working state projection returned from SQLite",
+        "404": "Task not found or investigation db unavailable",
+        "503": "Investigation service unavailable"
+      },
+      "model_calls": 0,
+      "state_mutation": false
+    }
+  },
+  "verified_tests": [
+    "test_t04_feature_disabled_rejects_execution",
+    "test_t05_valid_task_starts_bounded_cycle",
+    "test_t06_invalid_task_rejected",
+    "test_t07_deleted_task_rejected",
+    "test_t15_get_state_reads_authoritative_state",
+    "test_t16_get_state_performs_no_model_calls",
+    "test_t17_duplicate_request_idempotency_controlled",
+    "test_t18_concurrent_cycle_conflict_controlled",
+    "test_t19_stale_revision_rejected"
+  ]
+}

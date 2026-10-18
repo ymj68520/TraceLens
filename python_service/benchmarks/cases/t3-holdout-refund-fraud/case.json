@@ -1,0 +1,62 @@
+{
+  "case_contract_version": "benchmark-case:v1",
+  "case_id": "t3-holdout-refund-fraud",
+  "case_version": "1",
+  "title": "HOLDOUT SEALED t3-holdout-refund-fraud",
+  "dataset": {
+    "dataset_version": "benchmark-dataset:v1",
+    "dataset_id": "ds-t3-holdout-refund-fraud",
+    "files": [
+      {
+        "logical_id": "README",
+        "relative_path": "README.txt",
+        "size_bytes": 333,
+        "sha256": "f94f3afabbb166d65255112acc1a4e77ae7390f0088be214a697d3d28b76890c"
+      },
+      {
+        "logical_id": "payouts",
+        "relative_path": "finance/payouts.log",
+        "size_bytes": 186,
+        "sha256": "583535968436817ba9374d27f70f8897f986e5979793f2de0c86e9becae239ca"
+      },
+      {
+        "logical_id": "refunds",
+        "relative_path": "shop/refunds.csv",
+        "size_bytes": 103,
+        "sha256": "8996aaf5ff38257c13cdf618ea052d39c54fbbad099b9a084c95db03dc9c01f4"
+      }
+    ],
+    "dataset_hash": "2933cb843ddca6e9177f1879905b20254504924eb9b4bef1cbcc7d68637a7e4b",
+    "created_at": "2026-09-28T11:15:36.807484+00:00"
+  },
+  "truth_manifest_id": "tman:c938223cb8a3973d4d87c481",
+  "truth_manifest_hash": "c938223cb8a3973d4d87c4817235f8915a9e7d3f34349604f81ee5ce7dc9c863",
+  "goal": "[SEALED HOLDOUT] t3-holdout-refund-fraud",
+  "case_context": "[SEALED HOLDOUT]",
+  "platform_composition": [
+    "linux"
+  ],
+  "required_coverage_dimensions": [
+    "payout-attribution"
+  ],
+  "tier": "T2",
+  "negative_flags": {
+    "no_incriminating_evidence": false,
+    "ambiguous_evidence": true,
+    "misleading_case_context": false,
+    "incorrect_analyst_hypothesis": false,
+    "same_username_different_person": false,
+    "temporal_proximity_not_causality": false,
+    "review_pending_tempting_conclusion": false,
+    "graph_hallucinated_relation": false,
+    "missing_critical_parser_support": false,
+    "provider_failure": false
+  },
+  "expected_parser_profile": "linux",
+  "benchmark_tags": [
+    "holdout",
+    "sealed"
+  ],
+  "input_hash": "5d139609d06ebab8d237818a9cce8fd7134414766460279de52625dd9dda0f79",
+  "created_at": "2026-09-28T11:15:36.807440+00:00"
+}

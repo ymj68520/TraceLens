@@ -1,0 +1,23 @@
+{
+  "artifact_version": "RCA2A3DeterministicStageGateReportV1",
+  "created_at": "2026-10-14T00:00:00+00:00",
+  "baseline_commit": "7d94dfe96568010d61e5006ab8a1d51580031796",
+  "method": "13 deterministic pytest tests on the REAL P1 SQLite repository through the isolated stage harness; zero provider calls; specialist results are SYNTHETIC_SPECIALIST_RESULTs driven through the REAL executor/registry/completion transaction",
+  "tests": [
+    {"id": "PARITY-A", "name": "test_parity_also_holds_on_no_evidence_fixture", "verdict": "PASS", "asserts": "Path B model-visible input byte-identical to Path A production capture on the no-evidence fixture; empty evidence contract legal (no fabricated keys)"},
+    {"id": "PARITY-B", "name": "test_integration_input_parity_path_a_vs_path_b", "verdict": "PASS", "asserts": "full §6 field matrix equal; D-handles for fresh results and E-handles for real bound evidence present; IsolatedIntegrationInputV1 validates"},
+    {"id": "T1", "name": "test_t1_valid_integration_decision_commits", "verdict": "PASS", "asserts": "production chain in order (model_output_received -> pydantic_validation -> canonical_resolution -> decision_validator -> transition_validation -> integration_commit); revision +1; delegation integrated exactly as the normal path; stage created no run; finalization NOT_EXERCISED"},
+    {"id": "T2", "name": "test_t2_invalid_union_fails_closed_observable", "verdict": "PASS", "asserts": "UNKNOWN discriminant -> pydantic FAIL, retry mechanism identical to production (retry_attempts=1 recorded), ONE diagnostics entry for the ONE failed payload, no commit, state unchanged"},
+    {"id": "T3", "name": "test_t3_extra_forbidden_field_rejected_and_sanitized", "verdict": "PASS", "asserts": "server-owned field (tool_call_count) -> extra_forbidden with field location recorded; offending input VALUE never recorded (details carry type+loc only)"},
+    {"id": "T4", "name": "test_t4_invalid_enum_rejected_within_frozen_retry_budget", "verdict": "PASS", "asserts": "invalid enum -> literal_error; exactly 2 model invocations (initial + 1 in-band retry, the frozen budget); no auto-correction, no commit"},
+    {"id": "T5", "name": "test_t5_handle_layers_each_own_their_validation", "verdict": "PASS", "asserts": "pattern-valid unknown handle -> resolver HANDLE_UNKNOWN fail-closed; wrong-kind handle -> schema pattern rejection first; binding table hash immutable (no evidence identity drift)"},
+    {"id": "T6", "name": "test_t6_stale_inputs_refused", "verdict": "PASS", "asserts": "revision moved after context freeze -> commit refuses (no partial state); tampered source result hash -> commit revalidation refuses (delegation stays unintegrated)"},
+    {"id": "T7", "name": "test_t7_mixed_actions_all_or_nothing", "verdict": "PASS", "asserts": "legal + illegal action in one proposal -> WHOLE proposal rejected; no partial commit; evidence snapshot payload/captured_at unchanged"},
+    {"id": "T8", "name": "test_t8_provider_failures_classified_not_schema", "verdict": "PASS", "asserts": "APITimeoutError -> provider_request_timeout; APIConnectionError -> provider_connection_error; neither misreported as model_output_*; contained, no commit"},
+    {"id": "T9", "name": "test_t9_diagnostic_sink_on_harness_path", "verdict": "PASS", "asserts": "0600 JSONL sink on the REAL harness path: stage=SUPERVISOR_INTEGRATE, run_id matches the test AgentRun, schema_hash matches production V2, tool_name=final_result, retry_attempts=1, validation_error_details observable"},
+    {"id": "T10", "name": "test_t10_stage_lifecycle_ownership", "verdict": "PASS", "asserts": "no non-terminal AgentRun after the stage; bound run stays terminal; finalization explicitly NOT_EXERCISED; agent_run_created=false; specialist result byte-identical (no re-execution)"},
+    {"id": "CONTRACT", "name": "test_stage_input_contract_rejects_incomplete", "verdict": "PASS", "asserts": "IsolatedIntegrationInputV1 validator rejects missing required fields"}
+  ],
+  "summary": {"total": 13, "pass": 13, "fail": 0},
+  "suite_result": "2644 passed / 1 skipped / 0 failed (full python_service unit suite; 2631 baseline + 13 new; zero regressions)"
+}

@@ -1,0 +1,93 @@
+{
+  "artifact_version": "RCA2A5InterventionComparisonV1",
+  "baseline_commit": "69e5bdc78e4280464b8a087d9e797f9ab66078e0",
+  "decision_rule": "this is a DESIGN assessment only; it does not select an implementation and does not authorize any production change; the shortest-schema option is NOT automatically preferred — direction C carries the highest requalification cost and unverified model compatibility",
+  "directions": {
+    "A_keep_original_v2": {
+      "description": "keep the full typed schema and frozen instructions unchanged",
+      "does_not_handle": [
+        "to_status='completed' enum violation (reproduced as the sole attempt-2 blocker)",
+        "attempt-1 abbreviated field names",
+        "attempt-1 illegal disposition value"
+      ],
+      "grounding_policy_risk": "none (unchanged)",
+      "handles_observed_errors": [],
+      "output_tool_schema_change": "none",
+      "prompt_token_delta": 0,
+      "residual_risk": "the input-level vocabulary collision (D* envelope 'status': 'completed') remains model-visible",
+      "resolver_rejection_change": "none",
+      "retry_feedback_change": "none",
+      "runtime_identity_and_requalification_cost": "none"
+    },
+    "B_vocabulary_guidance_candidate": {
+      "description": "instructions-only: state that to_status for questions must come from the frozen QuestionStatus vocabulary, that run/delegation 'completed' is a DIFFERENT state machine, map closure statuses to their policy requirements (answered->basis+disposition, unresolved->basis+limitations+summary, blocked->blocker) AND spell out the frozen QuestionDisposition vocabulary with the status/disposition mapping; schema unchanged",
+      "does_not_handle": [
+        "attempt-1 abbreviated field NAMES (a vocabulary statement cannot force field-name choice)",
+        "any future wrong-branch union cascade",
+        "evidence-less closures — irrelevant to B: the counterfactuals prove the policy layer rejects them regardless of what the model is told"
+      ],
+      "grounding_policy_risk": "none (policy unchanged; guidance only mirrors EXISTING frozen policy rules)",
+      "handles_observed_errors": [
+        "attempt-2 to_status='completed' — the exact legal value list becomes instruction text BEFORE the first attempt",
+        "the status-vs-disposition mapping gap (q4) closes",
+        "attempt-1's illegal disposition VALUE class (no_evidence_found) — the frozen QuestionDisposition members become prose (note: on THIS sample the disposition error co-occurred with naming errors, so class-level coverage only)"
+      ],
+      "output_tool_schema_change": "none",
+      "prompt_token_delta": "small positive (a few hundred tokens of static rule text; measured before any authorization to implement",
+      "residual_risk": "guidance increases instruction length; value lists in text can drift from the schema if enums ever change (mitigatable by deriving text from the enum at build time — implementation detail, not decided here)",
+      "resolver_rejection_change": "none",
+      "retry_feedback_change": "none (schema unchanged)",
+      "runtime_identity_and_requalification_cost": "production prompt change -> new INTEGRATE runtime identity -> requalification required (V3 discipline); zero schema migration"
+    },
+    "C_strict_compact_typed_candidate": {
+      "description": "RCA-2A.1 experimental contract (uniform update envelope, compact typed merged status enum, strict per-kind parse validation) while keeping per-kind member checks and server-side identity binding",
+      "does_not_handle": [
+        "the VALUE vocabulary itself — 'completed' is illegal there too; if the model's priming persists it fails the same way (one retry instead of zero)",
+        "attempt-1 abbreviated field names (target_handle/to_status are still the required names)",
+        "disposition enum violations pass the retry boundary (untyped string; resolver fail-closed AFTER retry)",
+        "evidence-less closures (counterfactuals show the policy layer rejects them regardless of schema — unchanged by C)"
+      ],
+      "grounding_policy_risk": "none observed on this sample (canonical actions identical post-resolver); the None-vs-[] basis distinction is preserved by the 2A.1 resolver",
+      "handles_observed_errors": [
+        "attempt-2 to_status='completed' — merged enum rejects at parse with retry feedback (value list in the parse error)",
+        "union cascade noise — 6 variants instead of 10 branches; -38% model-face size (2A.1 measurement)"
+      ],
+      "output_tool_schema_change": "YES — new model-facing schema (proposal envelope + merged enum)",
+      "prompt_token_delta": "negative on the model face (2A.1: approximately -38% schema tokens), instructions unchanged",
+      "residual_risk": "one sample cannot establish model compatibility with the envelope; a controlled comparison is the only honest way to measure",
+      "resolver_rejection_change": "new proposal-layer violation codes fire before the canonical resolver (P_STATUS_NOT_IN_KIND_ENUM observed on this sample)",
+      "retry_feedback_change": "parse-layer for merged status; RESOLVER-side (no retry) for disposition/foreign-field classes",
+      "runtime_identity_and_requalification_cost": "HIGHEST: new output contract -> new runtime identity -> full requalification; schema migration risk; equivalence proven offline (2A.1: 16/16) but model compatibility UNVERIFIED"
+    }
+  },
+  "disposition": "ASSESSMENT_ONLY__NOT_IMPLEMENTED__VOCABULARY_GUIDANCE_WORTH_TESTING",
+  "evidence_class_markers": {
+    "counterfactual_simulation": [
+      "policy-layer outcomes of repaired payloads"
+    ],
+    "deterministic_replay": [
+      "scheme behavior on this sample"
+    ],
+    "hypothesis": [
+      "priming/causality claims; model behavior under changed contracts"
+    ],
+    "observed_real_model_behavior": [
+      "the two raw payloads anchor every 'handles observed errors' row"
+    ],
+    "unverified_model_reliability": [
+      "ALL improvement/compatibility expectations — nothing here is a reliability measurement"
+    ]
+  },
+  "experiment_id": "rca2a5-failure-explanation",
+  "final_disposition_rca2a5": {
+    "basis": "the confirmed failure layer is a status-vocabulary error (VOCABULARY_COLLISION_CONFIRMED as an input fact + MODEL_INVALID_STATUS_CHOICE_OBSERVED with the legal values schema-visible but never prose-visible, and the enum-value feedback cut off by the frozen retry budget); direction B targets exactly this class with zero schema change and the smallest requalification surface; direction C adds NO coverage for the observed value-vocabulary defect on this sample (identical accepted values) at the highest identity/requalification cost, and both proposal variants demonstrably DEMOTE disposition validation below the retry boundary",
+    "not_claimed": "B's effectiveness is UNVERIFIED (one sample; needs a controlled real-model comparison under explicit new authorization); this is a design-evaluation conclusion, not a model qualification judgment and not an implementation approval",
+    "value": "VOCABULARY_GUIDANCE_WORTH_TESTING"
+  },
+  "inputs": {
+    "counterfactual": "COUNTERFACTUALS_REJECTED_AT_POLICY_LAYER__FAIL_CLOSED_HOLDING",
+    "failure_explanation": "DETERMINISTIC_REPLAY_CONFIRMED",
+    "proposal_comparison": "PROPOSAL_COMPARISON_COMPLETED_ONE_SAMPLE",
+    "vocabulary": "VOCABULARY_COLLISION_CONFIRMED__AND__MODEL_INVALID_STATUS_CHOICE_OBSERVED"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "report_version": "rca2a21:v1",
+  "task_id": "TASK-INVESTIGATION-WORKBENCH-REVIEW-PANEL",
+  "audit_phase": "RCA-2A.21",
+  "questions_answered": {
+    "q01_task_selector": "Top-bar global TaskSelector (web/src/components/common/TaskSelector.jsx) synchronizing URL query param task_id/taskId and Redux state.tasks.currentTask.",
+    "q02_investigation_id_source": "Automatically resolved by backend if omitted; projected in candidate records as c.investigation_id.",
+    "q03_analysis_workspace_panels": "EvidenceAnalysisPanel (file context or evidence key) and EventAnalysisPanel (event narrative and corroborating evidence).",
+    "q04_reusable_finding_review_ui": "ClaimList.jsx (web/src/pages/Investigation/components/ClaimList.jsx) providing badge variants for assertion class, review status, grounding, and accept/reject actions.",
+    "q05_evidence_citation_viewer": "Investigation.jsx onTraceEvidence(evidenceKey) sets selectedEvidenceKey, routing AnalysisWorkspace to EvidenceAnalysisPanel.",
+    "q06_review_candidate_json_schema": "ReviewCandidateProjection: candidate_id, target_type, target_id, claim_type, content, evidence_refs, source_revision, source_integration_id, grounding_status, review_status, candidate_hash, created_at, reviewed_at, reviewer, review_note.",
+    "q07_candidate_id_special_characters": "Yes, finding candidate IDs include colons (e.g. finding:disp_f_01); client encodes via encodeURIComponent(candidateId).",
+    "q08_task_scope_verification": "Backend validates task_id via cpp_backend.get_task(task_id) and scopes SQLite queries by WHERE task_id = ? AND investigation_id = ?.",
+    "q09_post_review_mutation_fields": "task_id, investigation_id, review_target_id, expected_source_revision, expected_candidate_hash, decision, reviewer, request_id, note, requested_assertion_class.",
+    "q10_reviewer_identity": "Caller-declared identity via localStorage.getItem('auth_user') || 'analyst'.",
+    "q11_http_layer_auth": "Desktop/single-user development mode; no cryptographic session tokens; acknowledged as REVIEWER_AUTHENTICATION_LIMITATION.",
+    "q12_toast_error_polling_mechanism": "useToast (ToastContext.jsx) providing toast.success/error/warning/info; pythonApi error payload provides status, message, data.detail."
+  },
+  "components_summary": {
+    "added": [
+      "web/src/pages/Investigation/components/AgentReviewPanel.jsx",
+      "web/src/pages/Investigation/components/AgentReviewPanel.test.jsx"
+    ],
+    "modified": [
+      "web/src/services/investigationService.js",
+      "web/src/services/investigationService.test.js",
+      "web/src/pages/Investigation/components/AnalysisWorkspace.jsx",
+      "web/src/pages/Investigation/Investigation.test.jsx"
+    ],
+    "reused": [
+      "web/src/components/common/Badge.jsx",
+      "web/src/components/common/Button.jsx",
+      "web/src/components/common/Spinner.jsx",
+      "web/src/components/common/ToastContext.jsx",
+      "web/src/components/common/useToast.js",
+      "web/src/services/api.js",
+      "web/src/pages/Investigation/components/EvidenceAnalysisPanel.jsx",
+      "web/src/pages/Investigation/components/EventAnalysisPanel.jsx",
+      "web/src/pages/Investigation/Investigation.jsx"
+    ]
+  },
+  "layout_preservation": "THREE_COLUMN_FROZEN_PRESERVED"
+}

@@ -1,0 +1,83 @@
+{
+ "public_case_version": "public-holdout-case:v2",
+ "case_id": "gen4-departure-staging",
+ "case_family": "bulk_staging_discrimination",
+ "goal": "Establish from the endpoint audit log what bulk file operation occurred on 2025-05-16 and its exact scope; assess that operation against the frozen authorization records; and state exactly what the records do and do not establish about any transfer of the copied data to third parties.",
+ "case_context": "A seized engineering workstation returned at offboarding. The logs directory holds the endpoint bulk-copy audit log; the policy directory holds the IT backup policy; the mail directory holds the approved backup ticket; the data directory holds an index of the managed client-data share; the hr directory holds the offboarding notice. Assess the records exactly as they are.",
+ "charter": [
+  {
+   "question_id": "q-1",
+   "text": "依据审计日志,2025-05-16 晚间该工作站发生了什么批量文件操作?请仅依据记录给出事实描述:操作时间窗、涉及的源目录、目标位置、文件规模,以及云盘同步客户端的状态变化。"
+  },
+  {
+   "question_id": "q-2",
+   "text": "该操作与已批准的备份授权(工单与政策)相对照,哪些部分在授权范围内,哪些部分超出了授权范围?依据是什么?"
+  },
+  {
+   "question_id": "q-3",
+   "text": "这些记录能否证明被复制的客户数据已被传输给第三方,或已被用于离职后的用途?请精确说明记录能确立与不能确立的边界。"
+  }
+ ],
+ "required_coverage_dimensions": [
+  "bulk-copy-timeline",
+  "authorization-scope-assessment",
+  "third-party-transfer-boundary"
+ ],
+ "coverage_question_links": [
+  {
+   "dimension_id": "bulk-copy-timeline",
+   "related_question_ids": [
+    "q-1"
+   ]
+  },
+  {
+   "dimension_id": "authorization-scope-assessment",
+   "related_question_ids": [
+    "q-2"
+   ]
+  },
+  {
+   "dimension_id": "third-party-transfer-boundary",
+   "related_question_ids": [
+    "q-3"
+   ]
+  }
+ ],
+ "public_assets": [
+  {
+   "logical_id": "README-TXT",
+   "relative_path": "README.txt",
+   "sha256": "a253334934ece49c9e43df705680937a4826761fa90f14ecda1cb6eb949a17d9"
+  },
+  {
+   "logical_id": "LOGS-BULK-COPY-AUDIT-LOG",
+   "relative_path": "logs/bulk-copy-audit.log",
+   "sha256": "b72fa1e024dfbb21c66d7aaaa694e289fa59e1a08eb8b725b129b7c6eabe66b3"
+  },
+  {
+   "logical_id": "POLICY-IT-BACKUP-POLICY-TXT",
+   "relative_path": "policy/it-backup-policy.txt",
+   "sha256": "53e5941146436c8d78d34741dfca6ad1ba3a559a8c5b8915e25e508ad2cfb175"
+  },
+  {
+   "logical_id": "MAIL-TICKET-2025-0412-TXT",
+   "relative_path": "mail/ticket-2025-0412.txt",
+   "sha256": "3fdef2655b63f97db714b43b4766650e107d9a4aa82889d014757fcaa18698d6"
+  },
+  {
+   "logical_id": "DATA-CLIENTS-INDEX-TXT",
+   "relative_path": "data/clients-index.txt",
+   "sha256": "13307def488ba78303f2e1c9543a60f38ee57472a20f5dba822578289e933f48"
+  },
+  {
+   "logical_id": "HR-OFFBOARD-NOTICE-TXT",
+   "relative_path": "hr/offboard-notice.txt",
+   "sha256": "f31050289aa6876ca828b8e4413e77296e034ee192187e8a7ae6c188285ee933"
+  }
+ ],
+ "negative_risk_context": [],
+ "source_scope_ids": [
+  "windows"
+ ],
+ "input_hash": "d02fb63c688b0b141c2cd1353ce4737acc13902e5b98d42d234fdef1bcb2e092"
+}

@@ -1,0 +1,33 @@
+{
+  "artifact_version": "RCA2A10dSeatAccountingAuditV1",
+  "audit_id": "rca2a10d-provenance-transport-audit",
+  "seat_1_audit": {
+    "arm": "control",
+    "claim_created_before_remote_invocation": true,
+    "claim_exclusive_create_succeeded": true,
+    "claim_fsync_succeeded": true,
+    "claim_wall_clock_elapsed_ms": 17971.2,
+    "claimed_at_monotonic": 2887874.301305891,
+    "consumption_status": "SEAT_CONSUMED_REEXECUTION_PROHIBITED",
+    "diagnostic_record_persisted": true,
+    "final_claim_phase": "RESULT_RECORDED",
+    "final_claim_status": "COMPLETED",
+    "finalized_at_monotonic": 2887892.27246218,
+    "meaning_of_completed": "The execution attempt and failure diagnostics for this seat were fully recorded to durable storage. It DOES NOT signify model success, canonical validity, or investigation completion.",
+    "pair_label": "A",
+    "provider_error_recorded": true,
+    "provider_request_dispatched": true,
+    "scenario_id": "t2-no-evidence",
+    "seat_id": 1,
+    "seat_result_persisted": true
+  },
+  "seats_2_to_16_audit": {
+    "diagnostic_records_created": 0,
+    "durable_claims_created": 0,
+    "requests_dispatched": 0,
+    "status": "NOT_STARTED",
+    "stop_reason": "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE"
+  },
+  "unconfirmed_dispatches": [],
+  "verdict": "SEAT_ACCOUNTING_AUDITED"
+}

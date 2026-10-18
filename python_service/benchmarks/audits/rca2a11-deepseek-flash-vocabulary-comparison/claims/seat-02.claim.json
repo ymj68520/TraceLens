@@ -1,0 +1,13 @@
+{
+  "artifact_version": "RCA2A10SeatClaimV1",
+  "experiment_id": "rca2a11-deepseek-flash-vocabulary-comparison",
+  "global_seat": 2,
+  "scenario_id": "t2-no-evidence",
+  "pair_label": "A",
+  "pair_id": 1,
+  "arm": "treatment",
+  "claimed_phase": "RESULT_RECORDED",
+  "claimed_at_monotonic": 2967690.978384632,
+  "status": "COMPLETED",
+  "finalized_at_monotonic": 2967696.466719703
+}

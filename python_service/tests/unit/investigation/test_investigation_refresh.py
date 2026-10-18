@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+from httpserver.services.investigation.repository import SUPPORTED_SCHEMA_VERSION
+
 from httpserver.services.evidence import ResolvedEvidence
 from httpserver.services.investigation import (
     AnalysisReviewDecision,
@@ -77,7 +79,7 @@ def test_v5_to_v7_migration_and_new_db_v7(tmp_path):
     conn.commit(); conn.close()
 
     reopened = InvestigationRepository(repo.db_path, "A")
-    assert sqlite3.connect(repo.db_path).execute("PRAGMA user_version").fetchone()[0] == 8
+    assert sqlite3.connect(repo.db_path).execute("PRAGMA user_version").fetchone()[0] == SUPPORTED_SCHEMA_VERSION
     assert reopened.get_event(event.event_id).title == "event"
     assert len(reopened.list_event_evidence(event.event_id)) == 1
 

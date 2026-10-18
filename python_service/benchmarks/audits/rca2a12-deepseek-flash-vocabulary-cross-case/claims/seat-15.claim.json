@@ -1,0 +1,13 @@
+{
+  "artifact_version": "RCA2A10SeatClaimV1",
+  "experiment_id": "rca2a12-deepseek-flash-vocabulary-cross-case",
+  "global_seat": 15,
+  "scenario_id": "t2-report-citation",
+  "pair_label": "B",
+  "pair_id": 2,
+  "arm": "treatment",
+  "claimed_phase": "RESULT_RECORDED",
+  "claimed_at_monotonic": 2972830.258512645,
+  "status": "COMPLETED",
+  "finalized_at_monotonic": 2972835.059310256
+}

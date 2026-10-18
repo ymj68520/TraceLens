@@ -1,0 +1,156 @@
+{
+  "artifact_version": "CF1LifecycleRegressionMatrixV1",
+  "created_at": "2026-10-14T00:00:00+00:00",
+  "baseline_commit": "7766319603d0f50a6fe5fcb59cdb9382d9341693",
+  "method_note": "T1-T7 executed through the REAL run_p8b_baseline CLI (live local service, real task provisioning, real orchestrator + SQLite) with PYTHONPATH-sitecustomize FunctionModel injection (zero real model calls, tripwire on the unpatched model seam). T8-T11 are helper-level tests on the REAL P1 repository. T12 is hash-chain verification. Raw evidence: harness/evidence/ and harness/results/.",
+  "matrix": [
+    {
+      "id": "T1",
+      "scenario": "valid PLAN, investigation not finalizable",
+      "layer": "CLI (harness scenario=valid)",
+      "result": "PASS",
+      "assertions": {
+        "cli_exit_after_settlement": "exit 0; [settlement] settled runs=run_...:running->failed finalized=False printed before [done]",
+        "no_residual_active_agentrun": "run at exit = failed/budget_exhausted; recovery afterwards runs_failed=0",
+        "no_fabricated_finalization": "finalization record ABSENT; investigation_finalized=false; error_code=finalization_denied (the denial stays a denial)",
+        "no_duplicate_delegation": "one delegation, completed, untouched"
+      },
+      "evidence": "cf1d-valid-dbstate.json, cf1d-valid-stdout.log"
+    },
+    {
+      "id": "T2",
+      "scenario": "PLAN output-tool ValidationError + retry exhaustion",
+      "layer": "CLI (harness scenario=invalid_union)",
+      "result": "PASS",
+      "assertions": {
+        "plan_containment_normal": "transition_decision_rejected + supervisor_failure=agent_output_invalid + diagnostics model_output_retry_exhausted/retry_attempts=1",
+        "failure_reason_preserved": "settled row error_code=agent_output_invalid (verbatim), stop_reason=internal_failure",
+        "no_running_residue": "recovery runs_failed=0",
+        "state_events_consistent": "run_failed event appended by settlement; no other transitions"
+      },
+      "evidence": "cf1d-invalid_union-dbstate.json, cf1d-invalid_union-diagnostics.jsonl"
+    },
+    {
+      "id": "T3",
+      "scenario": "typed APITimeoutError from the provider seam",
+      "layer": "CLI (harness scenario=timeout)",
+      "result": "PASS",
+      "assertions": {
+        "agent_timeout_attribution_kept": "containment supervisor_failure=agent_timeout (typed provider_request_timeout classification); settled error_code=agent_timeout",
+        "no_schema_failure_misreport": "no model_output_validation_error anywhere; diagnostics entry provider_request_timeout/classified=true",
+        "settled_correctly": "failed/internal_failure; recovery runs_failed=0"
+      },
+      "evidence": "cf1d-timeout-dbstate.json, cf1d-timeout-diagnostics.jsonl"
+    },
+    {
+      "id": "T4",
+      "scenario": "INTEGRATE containment (known-illegal V2 integrate args)",
+      "layer": "CLI (harness scenario=integrate_invalid)",
+      "result": "PASS",
+      "assertions": {
+        "original_failed_terminal_not_overwritten": "settlement transition=already_terminal; row keeps failed/internal_failure/supervisor_integration_failed from RCA-1.1 containment",
+        "delegation_stays_unintegrated": "delegation completed with integrated_at=None, untouched",
+        "finalization_denied": "no finalization record; investigation_finalized=false",
+        "settlement_idempotent_here": "no transition, no events"
+      },
+      "evidence": "cf1d-integrate_invalid-dbstate.json"
+    },
+    {
+      "id": "T5",
+      "scenario": "CancelledError from the model seam",
+      "layer": "CLI (harness scenario=cancelled)",
+      "result": "PASS",
+      "assertions": {
+        "cancel_exception_still_propagates": "raw asyncio.CancelledError traceback, CLI exit 1, no result/failure files",
+        "exit_settlement_matches_contract": "run settled cancelled/cancelled with run_cancelled event — NOT failed, NOT a model error",
+        "not_rewritten_as_model_failure": "no transition_decision_rejected, no diagnostics entries",
+        "other_runs_unaffected": "single fresh-task store; nothing else touched"
+      },
+      "evidence": "cf1d-cancelled-dbstate.json, cf1d-cancelled-stdout.log"
+    },
+    {
+      "id": "T6",
+      "scenario": "SQLite settlement write failure (injected OperationalError)",
+      "layer": "CLI (harness scenario=sqlite_failure)",
+      "result": "PASS",
+      "assertions": {
+        "no_fake_success_status": "NO settlement.json (the report never existed), NO result.json; runner outcome = failed/RUNTIME layer with failure_reason 'injected settlement fault'",
+        "no_settlement_pass_reported": "settlement raised; the CLI printed [fail], exit 1",
+        "transaction_intact": "row left running/None (fail_run raised inside its BEGIN IMMEDIATE; nothing half-written)",
+        "legacy_state_safely_recoverable": "recovery afterwards runs_failed=1 (terminalized failed/runtime_restart, the pre-existing path)"
+      },
+      "evidence": "cf1d-sqlite_failure-dbstate.json, failure.json artifact"
+    },
+    {
+      "id": "T7",
+      "scenario": "investigation store deleted before settlement",
+      "layer": "CLI (harness scenario=task_deletion)",
+      "result": "PASS",
+      "assertions": {
+        "task_not_recreated": "investigation.db absent from the task dir after the CLI finished; settlement reported store_missing and returned",
+        "no_stale_write": "zero writes attempted against the deleted store (open_existing is fail-closed and never recreates)",
+        "no_orphaned_agentrun": "nothing was created outside the deleted store"
+      },
+      "evidence": "cf1d-task_deletion-stdout.log, settlement.json artifact (action=store_missing), task dir listing"
+    },
+    {
+      "id": "T8",
+      "scenario": "same run settled twice",
+      "layer": "helper tests (real repository)",
+      "result": "PASS",
+      "assertions": {
+        "second_settlement_no_transitions": "transition=already_terminal",
+        "no_duplicate_audit_events": "settlement_events_appended=0; trajectory length unchanged",
+        "original_failure_info_intact": "stop_reason/error_code unchanged"
+      },
+      "evidence": "tests/unit/benchmarks/test_cf1_one_shot_settlement.py::test_second_settlement_is_noop_without_new_events"
+    },
+    {
+      "id": "T9",
+      "scenario": "recovery after one-shot settlement",
+      "layer": "helper tests + every CLI scenario's collector",
+      "result": "PASS",
+      "assertions": {
+        "no_agent_reexecution": "recovery performs no PLAN/delegation work (primitive is transition-only)",
+        "no_double_settlement": "recovery runs_failed=0 after settlement",
+        "legal_terminal_state_unchanged": "run rows identical before/after recovery; recovery may still pause the still-active investigation (its own unchanged semantics, out of settlement scope)"
+      },
+      "evidence": "test_cf1_one_shot_settlement.py::test_recovery_after_settlement_changes_nothing; recovery_summary in every cf1d-* dbstate"
+    },
+    {
+      "id": "T10",
+      "scenario": "multiple AgentRuns in one task store",
+      "layer": "helper tests (real repository)",
+      "result": "PASS",
+      "assertions": {
+        "only_target_investigation_settled": "second investigation's run stays running with identical events",
+        "other_run_state_revision_events_unchanged": "trajectory count identical"
+      },
+      "evidence": "test_cf1_one_shot_settlement.py::test_settlement_is_isolated_to_target_investigation"
+    },
+    {
+      "id": "T11",
+      "scenario": "benchmark accounting independence",
+      "layer": "helper tests + CLI artifacts",
+      "result": "PASS",
+      "assertions": {
+        "three_facts_independent": "settlement report carries AgentRun terminal states AND investigation_finalized as separate fields; CLI-exited is the driver's own fact",
+        "completed_not_equated_to_successful_runs": "[done]/gates accounting unchanged; snapshot terminal_status semantics unchanged; settlement.json records the run-level truth separately (T1: gates=PASS + finalized=False + run failed/budget_exhausted coexist)"
+      },
+      "evidence": "test_cf1_one_shot_settlement.py::test_accounting_facts_are_independent; T1 artifacts"
+    },
+    {
+      "id": "T12",
+      "scenario": "historical artifact hash chain",
+      "layer": "hash verification",
+      "result": "PASS",
+      "assertions": {
+        "historical_reports_unmodified": "44 rca2a2/rca2a2b artifacts re-hashed after all work — byte-identical to the pre-stage manifest",
+        "consumed_holdouts_untouched": "no Gen-1..Gen-4 artifact, profile, or acceptance record modified (git status clean of any such path)"
+      },
+      "evidence": "rca2a2c-baseline-artifact-hashes-v1.json + post-stage re-verification in the remediation report"
+    }
+  ],
+  "summary": {"total": 12, "pass": 12, "fail": 0},
+  "exit_gate": "CF-1: REMEDIATED / TESTED"
+}

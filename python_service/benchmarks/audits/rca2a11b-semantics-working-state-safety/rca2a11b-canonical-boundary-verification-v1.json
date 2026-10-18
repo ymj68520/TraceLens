@@ -1,0 +1,24 @@
+{
+  "artifact_version": "RCA2A11bCanonicalBoundaryVerificationV1",
+  "audit_id": "rca2a11b-semantics-working-state-safety",
+  "created_at_utc": "2026-10-17T02:40:00Z",
+  "question_closure_boundary": {
+    "rule": "UpdateQuestionActionV2 cannot close required questions without verified evidence basis handles.",
+    "enforcement": "Pydantic restricts basis_handles to EvidenceHandle ('E\\d+'); StateTransitionPolicy verifies handles resolve to valid evidence items; QUESTION_CLOSURE_BASIS_REQUIRED gate rejects ungrounded closures.",
+    "boundary_status": "VERIFIED_FAIL_CLOSED"
+  },
+  "canonical_finding_promotion_boundary": {
+    "rule": "Hypotheses in working state cannot directly become accepted findings in investigation_findings.",
+    "enforcement": "Database triggers trg_investigation_finding_legal_transition, trg_investigation_finding_no_identity_update, and trg_investigation_finding_review_provenance enforce review provenance and status restrictions.",
+    "boundary_status": "VERIFIED_FAIL_CLOSED"
+  },
+  "report_evidence_admission_boundary": {
+    "rule": "ReportEvidenceService requires valid file/cluster evidence keys. Hypotheses cannot be submitted as evidence sources.",
+    "enforcement": "ReportEvidenceService.add() verifies evidence_key via EvidenceResolver. Raw evidence direct admission by analyst is preserved.",
+    "boundary_status": "VERIFIED_FAIL_CLOSED"
+  },
+  "finalization_gate_boundary": {
+    "rule": "FinalizationGate evaluates investigation execution closure (all delegations complete, unintegrated results resolved), decoupled from finding acceptance and report publication.",
+    "boundary_status": "VERIFIED_DECOUPLED"
+  }
+}

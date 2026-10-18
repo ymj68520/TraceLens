@@ -1,0 +1,51 @@
+{
+  "artifact_version": "StepFunStep37FlashAdapterSmokeV1",
+  "candidate_id": "step-3.7-flash@stepfun",
+  "created_at": "2026-10-13T07:35:07+00:00",
+  "api_key_present": true,
+  "provider_endpoint": "https://api.stepfun.com/step_plan/v1",
+  "requested_model": "step-3.7-flash",
+  "accepted_reasoning_mode": "disabled",
+  "data_policy": {
+    "candidate_data_policy": "CALIBRATION_ONLY",
+    "real_case_evidence_allowed": false
+  },
+  "checks": {
+    "S1_identity_reasoning_none": {
+      "pass": true,
+      "returned_model": "step-3.7-flash",
+      "identity_exact": true,
+      "reasoning": "reasoning_effort=none accepted (control-compatible, §14)",
+      "usage": {
+        "completion_tokens": 16,
+        "prompt_tokens": 18,
+        "total_tokens": 34,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": null,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": null,
+          "cache_write_tokens": null,
+          "cached_tokens": 0
+        }
+      }
+    },
+    "S2_json_object": {
+      "pass": true,
+      "parse_error": null
+    },
+    "S4_S5_tool_calls": {
+      "pass": true,
+      "zero_arg_exact": true,
+      "param_no_invented_fields": true
+    },
+    "S6_trace_lens_shaped_output": {
+      "pass": true,
+      "extra_forbid_enum_list_nested_ok": true
+    }
+  },
+  "disposition": "ADAPTER_SMOKE_PASS"
+}

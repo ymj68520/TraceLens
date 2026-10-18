@@ -1,0 +1,11 @@
+{
+  "artifact_version": "RCA2A10FTransportCompatibilityReportV1",
+  "experiment_id": "rca2a10f-bounded-gateway-diagnosis",
+  "created_at_utc": "2026-10-16T07:31:33.653139+00:00",
+  "sdk_max_retries": 0,
+  "pydantic_output_retries": 0,
+  "max_logical_generations": 2,
+  "max_physical_attempts": 2,
+  "wire_attempt_observability": "INDEPENDENTLY_OBSERVABLE_ON_WIRE",
+  "streaming_support": "NATIVE_PYDANTIC_AI_RUN_STREAM"
+}

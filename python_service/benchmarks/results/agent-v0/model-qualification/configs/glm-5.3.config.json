@@ -1,0 +1,73 @@
+{
+  "config_schema": "ModelQualificationConfigV1",
+  "provider": "hcnsec-cloud",
+  "endpoint_base_url": "https://api.hcnsec.cn",
+  "runtime_commit": "946f325eeb6add1072466aed96e5e2e7e38748ed",
+  "pre_calibration_profile_hash": "6dd38a0e0f68704fb881e7e1f78031d58dc54368b6188826a3262660d86b218c",
+  "corpus_id": "corpus-agent-v0-calibration",
+  "corpus_hash": "52e70af32e1af861c85e03d03635147d528c39926d917af197f46dbf04170dc7",
+  "frozen_from_env": {
+    "max_tokens": 16384,
+    "timeout_seconds": 120,
+    "context_window_tokens": 131072,
+    "tool_registry": "frozen production read-only registry",
+    "prompts_policies": "frozen production modules (runtime commit binding above)"
+  },
+  "created_at": "2026-09-28T00:00:00+00:00",
+  "candidate_id": "glm-5.3",
+  "role": "q1_candidate",
+  "requested_model_id": "glm-5.3",
+  "api_reported_model_id": null,
+  "overrides": {
+    "llm_text_model": "glm-5.3",
+    "llm_text_temperature": 0.7,
+    "llm_thinking_mode": ""
+  },
+  "compatibility_encoding": {
+    "reasoning_effort": null,
+    "source": "provider default (normal chat configuration, §4); GLM thinking-disabled body encoding also tried and equally unresponsive"
+  },
+  "availability_note": "endpoint deployment non-responsive: 6 probe requests (incl. stream) produced zero bytes within 60-302s.  PROVIDER/INFRA classification per §12; one real production-path Q1 run retained as run-level evidence, remaining cases recorded not_run(upstream_unavailable).",
+  "compatibility_probes": [
+    {
+      "probe": "normal_chat_60s",
+      "http": null,
+      "error": "TimeoutError: read timed out"
+    },
+    {
+      "probe": "json_object_60s",
+      "http": null,
+      "error": "TimeoutError: read timed out"
+    },
+    {
+      "probe": "reasoning_effort_none_60s",
+      "http": null,
+      "error": "TimeoutError: read timed out"
+    },
+    {
+      "probe": "normal_chat_180s",
+      "http": null,
+      "error": "TimeoutError: read timed out"
+    },
+    {
+      "probe": "glm_thinking_disabled_300s",
+      "http": null,
+      "error": "TimeoutError: read timed out"
+    },
+    {
+      "probe": "stream_302s",
+      "http": null,
+      "first_chunk_s": null,
+      "error": "connection closed after 302.5s with zero chunks"
+    }
+  ],
+  "effective_adapter_config": {
+    "base_url": "https://api.hcnsec.cn/v1",
+    "model_name": "glm-5.3",
+    "reasoning_effort": null,
+    "timeout_seconds": 120,
+    "temperature": 0.7,
+    "max_tokens": 16384
+  },
+  "adapter_config_hash": "916678e2f3a14f1cd903053b3f70bee28721ab2bfb18e311f6ca6d409cfe7f95"
+}

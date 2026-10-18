@@ -1,0 +1,30 @@
+{
+  "accounting_contract": {
+    "best_case_logical_generations": 16,
+    "fail_closed_ceiling": "Any invocation exceeding allocated ceiling immediately aborts execution",
+    "http_attempts_observability": "Flagged HTTP_ATTEMPTS_UNOBSERVABLE when raw transport hooks are unconfigured",
+    "preflight_budget_isolation": "Preflight requests tracked in independent ceiling (3 logical / 9 HTTP max)",
+    "unknown_outcome_handling": "ATTEMPT_OUTCOME_UNKNOWN seats locked and non-reclaimable; no auto-retry",
+    "unstarted_seats_consumption": "0 logical generations consumed by unstarted seats",
+    "worst_case_logical_generations": 32
+  },
+  "artifact_version": "RCA2A9aBudgetContractReportV1",
+  "baseline_commit": "325fa4eb8a86bc347484eea22d9116f22f2d1977",
+  "budget_audit": {
+    "arms_per_pair": 2,
+    "diagnostic_http_attempts_max": 96,
+    "http_attempts_per_logical_request_max": 3,
+    "max_logical_model_generations": 32,
+    "output_retry_budget_per_invocation": 1,
+    "paired_repetitions_per_scenario": 2,
+    "preflight_http_attempts_max": 9,
+    "preflight_logical_requests": 3,
+    "scenarios_count": 4,
+    "sdk_max_retries": 2,
+    "stage_invocations": 16,
+    "total_http_attempts_upper_bound": 105,
+    "total_logical_requests_upper_bound": 35
+  },
+  "generated_at": "2026-10-16T00:56:49.679533+00:00",
+  "verdict": "BUDGET_CONTRACT_PASS"
+}

@@ -1,0 +1,29 @@
+{
+  "artifact_version": "Generation2InterpretationAddendumV1",
+  "created_at": "2026-10-01T00:00:00+00:00",
+  "nature": "APPEND-ONLY clarification of the Generation-2 invalidity reason-code and diagnostic-agent-behavior record. No existing artifact is modified; the DecisionV2/ClosureV2 records remain authoritative and unchanged.",
+  "amends": {
+    "decision_artifact": "benchmarks/results/agent-v0/acceptance-gen2/agent-v0-acceptance-decision-v2.json",
+    "decision_sha256": "efd802dc91e812a6c93d3f75d5ceb2428f5760d24d1998a22240c50cf85758b1",
+    "closure_artifact": "benchmarks/results/agent-v0/acceptance-gen2/acceptance-generation-closure-v2.json",
+    "closure_sha256": "63a615fff605c59bdff5fe07a56304c58a93337c139e2978d78bf72f2bf7fd99"
+  },
+  "formal_measurement_status": "B6_INVALID",
+  "formal_acceptance_status": "NOT_ESTABLISHED",
+  "holdout_status": "CONSUMED",
+  "reason_code_precise": "HOLDOUT_EVIDENCE_SUBSTRATE_NOT_CORRECTLY_PRESEALED",
+  "reason_statement_precise": "sealed public semantic contract != actual indexed Evidence world: the provisioning substrate image's extraction content formed the agents' entire indexed evidence universe, while the sealed public assets were copied into extracted_files only after the completion-time evidence index was built and therefore never became retrievable Evidence.",
+  "diagnostic_agent_behavior": {
+    "status": "DIAGNOSTIC_ONLY",
+    "formal_status": "NOT_FORMAL_ACCEPTANCE_EVIDENCE",
+    "observations": [
+      "Agent refused to fabricate missing target evidence (attribution family: 'No account can be named; any named account would be fabricated')",
+      "Agent correctly surfaced the evidence-world mismatch (explicit reporting of the actual evidence universe and of unregistered source scopes)",
+      "Agent refused unsupported attribution (badge consistency reported UNDETERMINED, not asserted inconsistent)",
+      "Agent verified the analyst statement as a claim and refuted it without upgrading it to FACT",
+      "deterministic check: fabricated evidence citations 0/6 runs"
+    ],
+    "note": "these behaviors are diagnostic observations about the runtime under a mismatched evidence world; they establish no acceptance outcome"
+  },
+  "supersession_note": "the Gen-2 seal bound the bootstrap-transform code hash of holdout_contract.py; the Generation-3 preparation extends the case-id namespace check inside that module (generic 'gen<N>-' namespaces). The Gen-2 generation is CLOSED_INVALID and its re-execution is already prohibited, so the resulting seal-gate fail-closed state for Gen-2 is harmless; Gen-2 artifacts themselves remain byte-identical."
+}

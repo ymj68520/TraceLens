@@ -1,0 +1,11 @@
+{
+  "deliverable": "RCA2A23ExecutionRecoveryReportV1",
+  "schema_version": "rca2a23-execution-recovery-report:v1",
+  "verified_at": "2026-10-17T11:09:56Z",
+  "idempotency_guarantees": {
+    "duplicate_post_same_request_id": "returns prior completed outcome without re-execution",
+    "duplicate_post_changed_fingerprint": "fails closed with 409 Conflict",
+    "timeout_retry_handling": "retains stable request_id, allowing safe user retry"
+  },
+  "status": "PASS"
+}

@@ -1,0 +1,1 @@
+{"kind": "harness_installed", "scenario": "smoke", "patched": ["SupervisorAgentFactory.build_plan_agent_v2", "SupervisorAgentFactory.build_plan_agent", "SupervisorAgentFactory.build_integration_agent_v2", "SupervisorAgentFactory.build_integration_agent", "SpecialistDelegationExecutor._get_model", "agent_model_adapter.build_chat_model (tripwire)"]}

@@ -1,0 +1,29 @@
+{
+  "experiment_id": "bexp-agent-v0-step-3.7-flash@stepfun",
+  "code_commit": "0090a1ca606f254cc9c45b48ab3d8b3858ea46c4",
+  "production_runtime_commit": "0090a1ca606f254cc9c45b48ab3d8b3858ea46c4",
+  "pre_calibration_profile_hash": "6dd38a0e0f68704fb881e7e1f78031d58dc54368b6188826a3262660d86b218c",
+  "runtime_baseline_file": "benchmarks/profiles/precalibration-runtime-baseline.v1.json",
+  "model_config_file": "benchmarks/results/agent-v0/model-candidates/step-3.7-flash-stepfun/model-config-8x1.json",
+  "corpus_id": "corpus-agent-v0-calibration",
+  "corpus_hash": "25c216e85acc32f22c5231924730956c24de6a04cc2c4f7173483c9b557916c4",
+  "repeat_policy": "3 fresh repeats per calibration case (Flash-class model; expand to 5 only on high variance)",
+  "cache_policy": "cold",
+  "graph_mode": "none",
+  "report_mode": "disabled",
+  "started_at": "2026-10-13T14:13:20+00:00",
+  "fresh_task_ids": {
+    "t2-identity-trap": {
+      "repeat0": "a693f4b1-286c-41f8-81b6-6b84c62f9135"
+    },
+    "t2-no-evidence": {
+      "repeat0": "8da9ce8a-c062-431b-8f8a-9f64691a5a06"
+    },
+    "t2-temporal-trap": {
+      "repeat0": "74dd1d9f-f2d6-496c-b78f-ec01da3cacd5"
+    },
+    "t2-report-citation": {
+      "repeat0": "04a1022e-791e-4e29-9cb3-1b8e92e988a9"
+    }
+  }
+}

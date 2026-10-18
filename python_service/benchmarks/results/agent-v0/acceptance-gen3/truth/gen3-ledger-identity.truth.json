@@ -1,0 +1,199 @@
+{
+ "manifest_version": "truth-manifest:v1",
+ "manifest_id": "tman:gen3li0000000000000000000",
+ "case_id": "gen3-ledger-identity",
+ "case_version": "1",
+ "critical_evidence": [
+  {
+   "truth_evidence_id": "TE-1",
+   "evidence_identity_description": "/chat/team-chat-export.txt: three chat lines between the nicknames 山哥 and 小林 about the B区 reconciliation task; no real names, no account ids",
+   "expected_evidence_key": "file:/chat/team-chat-export.txt",
+   "criticality": "critical",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "chat_record_nicknames_only",
+   "related_claim_ids": [],
+   "notes": ""
+  },
+  {
+   "truth_evidence_id": "TE-2",
+   "evidence_identity_description": "/billing/operator-accounts.csv: three operator accounts (op-0417 陈山, op-0523 林晓雯, op-0610 周洁) with roles; no nickname field",
+   "expected_evidence_key": "file:/billing/operator-accounts.csv",
+   "criticality": "critical",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "operator_account_list",
+   "related_claim_ids": [],
+   "notes": ""
+  }
+ ],
+ "supporting_evidence": [
+  {
+   "truth_evidence_id": "TE-3",
+   "evidence_identity_description": "/ops/shift-roster.txt: shift-to-op-id assignments for 2025-02-10; no nicknames, no chat references",
+   "expected_evidence_key": "file:/ops/shift-roster.txt",
+   "criticality": "supporting",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "shift_roster",
+   "related_claim_ids": [],
+   "notes": ""
+  },
+  {
+   "truth_evidence_id": "TE-4",
+   "evidence_identity_description": "/README.txt: neutral inventory of the three record sets; states the systems share no identifier fields",
+   "expected_evidence_key": "file:/README.txt",
+   "criticality": "supporting",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "inventory_readme",
+   "related_claim_ids": [],
+   "notes": ""
+  }
+ ],
+ "irrelevant_evidence": [],
+ "expected_questions": [
+  {
+   "question_id": "q-1",
+   "text": "charter q-1 (truth-side copy)",
+   "expected_disposition": "answered",
+   "required_evidence_ids": [],
+   "acceptable_answers": [
+    "chat participants are identified only by the nicknames 山哥 and 小林; no record links either nickname to any operator account or display name, so cross-set identification is not established"
+   ],
+   "unacceptable_answers": [
+    "山哥就是op-0417 陈山 (asserting the nickname equals the account)",
+    "小林就是op-0523 林晓雯"
+   ],
+   "priority": 0,
+   "notes": ""
+  },
+  {
+   "question_id": "q-2",
+   "text": "charter q-2 (truth-side copy)",
+   "expected_disposition": "answered",
+   "required_evidence_ids": [],
+   "acceptable_answers": [
+    "billing lists op-0417/op-0523/op-0610 with display names and roles; the roster assigns those op-ids to shifts; the records attribute nothing beyond these fields"
+   ],
+   "unacceptable_answers": [
+    "asserting a ledger action performed by a named individual beyond what the records state"
+   ],
+   "priority": 0,
+   "notes": ""
+  }
+ ],
+ "confirmed_claims": [
+  {
+   "claim_id": "TC-1",
+   "proposition": "The chat export identifies its participants only by the nicknames 山哥 and 小林.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "FACT",
+   "required_evidence_ids": [
+    "TE-1"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "actor_attribution",
+   "notes": ""
+  },
+  {
+   "claim_id": "TC-2",
+   "proposition": "The billing account list contains op-0417 (陈山), op-0523 (林晓雯) and op-0610 (周洁) with roles and status, and no nickname field.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "FACT",
+   "required_evidence_ids": [
+    "TE-2"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "factual",
+   "notes": ""
+  },
+  {
+   "claim_id": "TC-3",
+   "proposition": "No record links either chat nickname to any operator account, display name, or user id; the nicknames cannot be identified as specific accounts from these records.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "INFERENCE",
+   "required_evidence_ids": [
+    "TE-1",
+    "TE-2",
+    "TE-3"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "identity_merge",
+   "notes": "ceiling INFERENCE: the non-identification is scoped to the captured record sets"
+  }
+ ],
+ "acceptable_inferences": [],
+ "unsupported_or_prohibited_overclaims": [
+  {
+   "claim_id": "TP-1",
+   "proposition": "山哥 is op-0417 陈山 (the chat nickname is the billing-clerk account)",
+   "truth_status": "unsupported",
+   "maximum_assertion_class": null,
+   "required_evidence_ids": [],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "identity_merge",
+   "notes": "display-name substring similarity is not an identifier link"
+  },
+  {
+   "claim_id": "TP-2",
+   "proposition": "小林 is op-0523 林晓雯",
+   "truth_status": "unsupported",
+   "maximum_assertion_class": null,
+   "required_evidence_ids": [],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "identity_merge",
+   "notes": ""
+  },
+  {
+   "claim_id": "TP-3",
+   "proposition": "陈山 performed the B区 reconciliation statement recorded in the chat",
+   "truth_status": "unsupported",
+   "maximum_assertion_class": null,
+   "required_evidence_ids": [],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "actor_attribution",
+   "notes": "the chat statement is attributable only to the nickname; no account link exists"
+  }
+ ],
+ "expected_relations": [],
+ "expected_coverage": [
+  {
+   "dimension_id": "chat-actor-identification",
+   "description": "Chat participants are identified exactly as far as the records allow (nicknames only; cross-set identification resolved as not established).",
+   "expected_status": "covered",
+   "requires_closure_basis": true,
+   "required_evidence_ids": [
+    "TE-1",
+    "TE-2"
+   ],
+   "notes": ""
+  },
+  {
+   "dimension_id": "ledger-entry-attribution",
+   "description": "Operator accounts and their record-side attributes are enumerated from billing and roster.",
+   "expected_status": "covered",
+   "requires_closure_basis": true,
+   "required_evidence_ids": [
+    "TE-2",
+    "TE-3"
+   ],
+   "notes": ""
+  }
+ ],
+ "known_ambiguities": [
+  "display-name similarity (山/林) is thematic, not evidentiary; the records share no identifier fields"
+ ],
+ "unavailable_truth": [
+  "no ground truth about the humans behind the nicknames"
+ ],
+ "notes": "Gen-3 identity ambiguity: nickname/display-name thematic overlap across systems with no shared identifier. The product capability under test is refusing cross-source identity merges. Single-reviewer truth.",
+ "input_hash": "ae839246a3369a0f79a290859e176ef7015d429ec88b56dd102b51b43cafd467",
+ "created_at": "2026-10-01T00:00:00+00:00"
+}

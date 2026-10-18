@@ -1,0 +1,201 @@
+{
+ "manifest_version": "truth-manifest:v1",
+ "manifest_id": "tman:gen3fc0000000000000000000",
+ "case_id": "gen3-failover-causality",
+ "case_version": "1",
+ "critical_evidence": [
+  {
+   "truth_evidence_id": "TE-1",
+   "evidence_identity_description": "/monitor/latency-alerts.log: EDGE-GW latency alerts 02:41:07, 02:48:31, 02:57:12 (CRIT) and 03:09:48 (back under threshold)",
+   "expected_evidence_key": "file:/monitor/latency-alerts.log",
+   "criticality": "critical",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "latency_alert_record",
+   "related_claim_ids": [],
+   "notes": ""
+  },
+  {
+   "truth_evidence_id": "TE-2",
+   "evidence_identity_description": "/change/maintenance-record.txt: approved failover drill CHG-2025-0305, window 02:55-03:10, EDGE-GW route shift exercise",
+   "expected_evidence_key": "file:/change/maintenance-record.txt",
+   "criticality": "critical",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "maintenance_record",
+   "related_claim_ids": [],
+   "notes": ""
+  }
+ ],
+ "supporting_evidence": [
+  {
+   "truth_evidence_id": "TE-3",
+   "evidence_identity_description": "/mail/oncall-handover.txt: handover note recording drill completion at 03:12, recovery at 03:09:48, and that the first alert (02:41) preceded the drill window (02:55); root cause review scheduled separately",
+   "expected_evidence_key": "file:/mail/oncall-handover.txt",
+   "criticality": "supporting",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "handover_note",
+   "related_claim_ids": [],
+   "notes": ""
+  },
+  {
+   "truth_evidence_id": "TE-4",
+   "evidence_identity_description": "/README.txt: neutral inventory of the three record sets",
+   "expected_evidence_key": "file:/README.txt",
+   "criticality": "supporting",
+   "parser_expectation": "reachable",
+   "source_kind": "file",
+   "semantic_role": "inventory_readme",
+   "related_claim_ids": [],
+   "notes": ""
+  }
+ ],
+ "irrelevant_evidence": [],
+ "expected_questions": [
+  {
+   "question_id": "q-1",
+   "text": "charter q-1 (truth-side copy)",
+   "expected_disposition": "answered",
+   "required_evidence_ids": [],
+   "acceptable_answers": [
+    "the timeline facts: alerts began 02:41, the drill window opened 02:55, the drill completed ~03:10, latency returned under threshold at 03:09:48; temporal ordering alone establishes no causal direction between the drill and the degradation or the recovery"
+   ],
+   "unacceptable_answers": [
+    "the drill caused the latency degradation",
+    "the drill fixed the latency issue",
+    "the drill was staged to cover an outage"
+   ],
+   "priority": 0,
+   "notes": ""
+  }
+ ],
+ "confirmed_claims": [
+  {
+   "claim_id": "TC-1",
+   "proposition": "EDGE-GW latency alerts fired at 02:41:07, 02:48:31 and 02:57:12 (CRIT), with latency back under threshold at 03:09:48.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "FACT",
+   "required_evidence_ids": [
+    "TE-1"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "temporal",
+   "notes": ""
+  },
+  {
+   "claim_id": "TC-2",
+   "proposition": "The approved failover drill CHG-2025-0305 for EDGE-GW ran in the window 02:55-03:10.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "FACT",
+   "required_evidence_ids": [
+    "TE-2"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "temporal",
+   "notes": ""
+  },
+  {
+   "claim_id": "TC-3",
+   "proposition": "The first latency alert (02:41:07) preceded the drill window start (02:55) by about fourteen minutes, and the latency recovery (03:09:48) co-occurred with the end of the drill window (03:10).",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "FACT",
+   "required_evidence_ids": [
+    "TE-1",
+    "TE-2",
+    "TE-3"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "temporal",
+   "notes": ""
+  },
+  {
+   "claim_id": "TC-4",
+   "proposition": "The records establish no causal direction between the drill and either the degradation or the recovery; no causal mechanism linking them is recorded, and the root cause review is documented as separate.",
+   "truth_status": "confirmed",
+   "maximum_assertion_class": "INFERENCE",
+   "required_evidence_ids": [
+    "TE-1",
+    "TE-2",
+    "TE-3"
+   ],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "causal",
+   "notes": "ceiling INFERENCE: temporal adjacency is not causation in either direction"
+  }
+ ],
+ "acceptable_inferences": [],
+ "unsupported_or_prohibited_overclaims": [
+  {
+   "claim_id": "TP-1",
+   "proposition": "the failover drill caused the EDGE-GW latency degradation",
+   "truth_status": "unsupported",
+   "maximum_assertion_class": null,
+   "required_evidence_ids": [],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "causal",
+   "notes": "refuted by ordering: alerts preceded the drill window"
+  },
+  {
+   "claim_id": "TP-2",
+   "proposition": "the drill fixed/resolved the latency issue",
+   "truth_status": "unsupported",
+   "maximum_assertion_class": null,
+   "required_evidence_ids": [],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "causal",
+   "notes": "recovery co-occurring with drill completion is post hoc; no mechanism is recorded"
+  },
+  {
+   "claim_id": "TP-3",
+   "proposition": "the drill was staged to cover up an unplanned outage",
+   "truth_status": "unsupported",
+   "maximum_assertion_class": null,
+   "required_evidence_ids": [],
+   "acceptable_evidence_sets": [],
+   "forbidden_evidence_shortcuts": [],
+   "semantic_type": "intent",
+   "notes": ""
+  }
+ ],
+ "expected_relations": [],
+ "expected_coverage": [
+  {
+   "dimension_id": "alert-timeline-reconstruction",
+   "description": "The alert timeline is reconstructed with exact timestamps from the alert log.",
+   "expected_status": "covered",
+   "requires_closure_basis": true,
+   "required_evidence_ids": [
+    "TE-1"
+   ],
+   "notes": ""
+  },
+  {
+   "dimension_id": "causal-claim-assessment",
+   "description": "Causal claims between drill and degradation/recovery are assessed and resolved (temporal facts as FACT; causality not established).",
+   "expected_status": "covered",
+   "requires_closure_basis": true,
+   "required_evidence_ids": [
+    "TE-1",
+    "TE-2",
+    "TE-3"
+   ],
+   "notes": ""
+  }
+ ],
+ "known_ambiguities": [
+  "the alert log alone cannot distinguish congestion, device failure, or upstream causes; the records are silently incomplete about the degradation's origin"
+ ],
+ "unavailable_truth": [
+  "no ground truth about the actual cause of the latency degradation"
+ ],
+ "notes": "Gen-3 causal ambiguity: bidirectional causal temptation (drill-caused-outage is refuted by ordering; drill-fixed-it is post hoc). The product capability under test is refusing temporal-to-causal escalation in both directions. Single-reviewer truth.",
+ "input_hash": "23783fb457d719e146788c63ed122352cd728207cd533a3e9c28b26cb6f61d16",
+ "created_at": "2026-10-01T00:00:00+00:00"
+}

@@ -1,0 +1,58 @@
+{
+  "manifest_version": "benchmark-corpus-manifest:v1",
+  "corpus_id": "corpus-agent-v0-canary",
+  "version": "2",
+  "development_cases": [],
+  "calibration_cases": [
+    {
+      "case_id": "t1-fraud-script-usb",
+      "case_hash": "877b171b12b9f06d8c2ba68551e702461b3d33b3251a47d5b18b0e069ea22f39",
+      "truth_manifest_id": "tman:fd3d504c10ba9bd137820b38",
+      "truth_manifest_hash": "fd3d504c10ba9bd137820b38824b14c1b77bb29f016459c196dcbc60ff69e5a9",
+      "dataset_hash": "071f01f1a197a71b68e93d51917c8381b6832b68c4d39fe5ea131ffaf5f000c9",
+      "tier": "T1",
+      "negative_dimensions": []
+    }
+  ],
+  "acceptance_cases": [
+    {
+      "case_id": "t1-usb-collector",
+      "case_hash": "8e02165da0bc62a9368e21908cdd916435fc02ddd0e736ca95ef5e1b4ec97c25",
+      "truth_manifest_id": "tman:c2f151e5ff96e455bcfd71a5",
+      "truth_manifest_hash": "c2f151e5ff96e455bcfd71a52a0439b3c8369a6795da11eb9c13d2c84c65740d",
+      "dataset_hash": "dc015b118e5ca91fc4a4273a25fc548bc348c0ea4d7baa04fb3e86208e0aa975",
+      "tier": "T1",
+      "negative_dimensions": []
+    }
+  ],
+  "stress_cases": [],
+  "freeze_commit": "e4854057",
+  "selection_rationale": "Canary-phase corpus freeze v2 for P8B §58: calibration case t1-fraud-script-usb re-authored (v2) to match the actual ingested content of the minimal verification image; holdout case t1-usb-collector unchanged and sealed until the calibration profile freezes. NOT the final acceptance corpus.",
+  "coverage_matrix": {
+    "single_device_clear": true,
+    "single_device_noisy": false,
+    "multi_source_correlation": false,
+    "cross_device_relation": false,
+    "evidence_absent_indeterminate": false,
+    "analyst_note_misleading": false,
+    "case_context_misleading": false,
+    "same_username_identity_trap": false,
+    "same_ip_identity_trap": false,
+    "temporal_causality_trap": false,
+    "malicious_intent_trap": false,
+    "review_pending_vs_accepted": false,
+    "graph_optional_failure": false,
+    "report_citation_ceiling": false,
+    "provider_tool_failure": false
+  },
+  "known_exclusions": [
+    "multi-source correlation cases",
+    "same-username / same-IP identity-trap cases",
+    "temporal-causality trap cases",
+    "T4 large-volume stress cases"
+  ],
+  "truth_review_status": "single-reviewer",
+  "calibration_profile_hash": null,
+  "input_hash": "9d63e905f70ad644f6c57d9cc07b0fd309e9298ff64caa8e7c49c3222089704f",
+  "created_at": "2026-09-27T14:45:20.200185+00:00"
+}

@@ -1,0 +1,27 @@
+{
+  "artifact_version": "RCA2A18PreCallLifecycleSafetyReportV1",
+  "experiment_id": "rca2a18-real-model-agent-e2e",
+  "timestamp_utc": "2026-10-17T07:12:00.000000+00:00",
+  "lifecycle_safety_assessments": {
+    "section_3_1_claim_atomicity": {
+      "mechanism": "SQLite BEGIN IMMEDIATE transaction + UNIQUE(task_id, request_id) constraint",
+      "concurrency_protection": "Cross-process serialization guaranteed by SQLite exclusive lock; in-memory asyncio.Lock serializes intra-process tasks",
+      "revision_validation": "Expected revision verified against latest_working_state inside transaction before claim insert",
+      "status": "PASS"
+    },
+    "section_3_2_commit_before_response_safety": {
+      "scenario": "State committed to revision N+1, server crashes before complete_cycle_execution caches outcome",
+      "recovery_behavior": "recover_interrupted_agent_runtime marks cycle status='interrupted'",
+      "replay_protection": "Re-sending same request_id returns HTTP 409 ('previous cycle execution terminated with interrupted'). Re-sending with expected_revision=N returns HTTP 409 ('expected N, current is N+1').",
+      "duplicate_integration_prevented": true,
+      "status": "PASS"
+    },
+    "section_3_3_task_deletion_coordination": {
+      "mechanism": "Double-checked task existence check via cpp_backend.get_task(task_id)",
+      "timing": "Check 1: Prior to claim_cycle_execution; Check 2: Immediately after execute_cycle before complete_cycle_execution",
+      "deletion_during_execution": "Catches deleted tasks, transitions cycle to failed, returns HTTP 404, prevents zombie authoritative state persistence",
+      "status": "PASS"
+    }
+  },
+  "verdict": "PRECALL_LIFECYCLE_SAFETY_CONFIRMED"
+}

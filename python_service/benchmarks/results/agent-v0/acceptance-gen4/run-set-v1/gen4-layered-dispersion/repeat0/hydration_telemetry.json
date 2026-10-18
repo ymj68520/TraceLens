@@ -1,0 +1,15 @@
+{
+  "hydration_attempted": 15,
+  "hydration_success": 15,
+  "hydration_unavailable": {},
+  "reacquire_count": 5,
+  "locator_hit_count": 10,
+  "adopted_count": 0,
+  "adopted_legacy_count": 0,
+  "content_integrity_failure_count": 0,
+  "first_hydration_latency_seconds": 0.0725373481400311,
+  "locator_hydration_latency_seconds_total": 0.24751127301715314,
+  "locator_hydration_latency_count": 10,
+  "reacquire_hydration_latency_seconds_total": 0.47447126801125705,
+  "bytes_persisted_total": 2054
+}

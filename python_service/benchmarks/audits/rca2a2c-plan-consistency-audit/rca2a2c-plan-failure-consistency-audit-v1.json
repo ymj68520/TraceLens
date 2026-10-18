@@ -1,0 +1,163 @@
+{
+  "artifact_version": "RCA2A2cPlanFailureConsistencyAuditV1",
+  "created_at": "2026-10-14T00:00:00+00:00",
+  "baseline_commit": "4b006c287d8a7822dae96a678b8835a9b71fdfc4",
+  "authorization_scope": "offline audit + benchmark tooling safety fix only; no real model calls, no production lifecycle/schema/prompt/policy change, no holdout consumption, no 8x1/8x3, no Gen-5",
+  "model_calls": 0,
+  "section_1_baseline": {
+    "head": "4b006c287d8a7822dae96a678b8835a9b71fdfc4",
+    "worktree_at_start": "clean",
+    "historical_artifacts_hashed": "rca2a2c-baseline-artifact-hashes-v1.json (44 artifacts across rca2a2-stepfun-diagnostic + rca2a2b-stepfun-diagnostic; all byte-identical at audit end)",
+    "code_reviewed": {
+      "agent_orchestrator.py": "read in full (2202 lines)",
+      "agent_supervisor.py": "read in full (809 lines)",
+      "agent_integration_v2.py": "read in full (1175 lines)",
+      "agent_finalization.py": "FinalizationGate consumed via orchestrator paths + live gate denials",
+      "agent_failure_diagnostics.py": "sink + taxonomy consumed via containment paths",
+      "agent_runtime.py": "run lifecycle primitives + recovery sweep read (5668 lines, targeted)",
+      "run_p8b_baseline.py": "read (CLI, wiring, output semantics)",
+      "production_executor.py": "read (timeout path, finalization factory)"
+    },
+    "added": [
+      "scripts/benchmark_output_guard.py",
+      "tests/unit/investigation/test_rca2a2c_plan_lifecycle_contract.py",
+      "tests/unit/benchmarks/test_rca2a2c_preflight_output_protection.py",
+      "benchmarks/audits/rca2a2c-plan-consistency-audit/ (this artifact set + CF-1 harness + evidence)",
+      "benchmarks/audits/rca2a2b-stepfun-diagnostic/rca2a2b-interpretation-addendum-v1.json (append-only)",
+      "docs/specs/agent-rca2a2b-field-level-diagnostic-report.md (addendum section appended; original sections untouched)"
+    ],
+    "modified": [
+      "scripts/capacity_preflight_stepfun.py (output-path contract only)",
+      "scripts/capacity_preflight_stepfun_step5preview.py (output-path contract only)",
+      "scripts/capacity_preflight_openrouter.py (output-path contract only)"
+    ],
+    "reused": [
+      "run_p8b_baseline.py + ProductionBenchmarkExecutor (real CLI reproduction path)",
+      "pydantic-ai FunctionModel (offline deterministic model seam; the RCA-2A.2b instrumentation-gate mechanism)",
+      "AgentRuntimeRepository.recover_interrupted_agent_runtime (production recovery primitive)",
+      "ListFailureDiagnosticSink / JsonlFailureDiagnosticSink (RCA-1.3 diagnostics)",
+      "existing test fixtures _build_env / FakeCppBackend (test_agent_investigation_loop.py)"
+    ]
+  },
+  "section_2_cf1_lifecycle_investigation": {
+    "method": "REAL run_p8b_baseline CLI (live local service, real task provisioning, real orchestrator + SQLite persistence) with PYTHONPATH-sitecustomize FunctionModel injection — production instructions, schemas, gates and DB semantics untouched; zero real model calls by construction (tripwire on the unpatched model-construction seam)",
+    "scenarios": [
+      {
+        "scenario": "PLAN valid (control)",
+        "cli_outcome": "run completed; hard gates PASS; delegation admitted+completed; supervisor_integration_committed; finalization DENIED (COVERAGE_NOT_TERMINAL)",
+        "agent_run_at_exit": "running / stop_reason=None",
+        "containment": "n/a",
+        "diagnostics_entries": 0,
+        "after_recovery_sweep": "failed(runtime_restart) + investigation paused(runtime_restart) + runtime_recovered marker",
+        "evidence": "evidence/cf1-valid-dbstate.json, evidence/cf1-valid-model-calls.jsonl"
+      },
+      {
+        "scenario": "PLAN output invalid (historical type-discriminant payload)",
+        "cli_outcome": "run completed; hard gates PASS; no delegation; finalization DENIED",
+        "agent_run_at_exit": "running / stop_reason=None",
+        "containment": "first-class outcome (transition_decision_rejected, supervisor_failure=agent_output_invalid); run NOT failed",
+        "diagnostics_entries": 1,
+        "diagnostics_shape": "SUPERVISOR_PLAN / model_output_retry_exhausted / retry_attempts=1 / UnexpectedModelBehavior <- ValidationError / 8-error INVALID_UNION presentation BYTE-IDENTICAL to RCA-2A.2b",
+        "after_recovery_sweep": "failed(runtime_restart)",
+        "evidence": "evidence/cf1-invalid_union-dbstate.json, evidence/cf1-invalid_union-diagnostics.jsonl"
+      },
+      {
+        "scenario": "PLAN provider timeout",
+        "cli_outcome": "run completed; hard gates PASS; finalization DENIED",
+        "agent_run_at_exit": "running / stop_reason=None",
+        "containment": "first-class outcome (supervisor_failure=agent_timeout); run NOT failed",
+        "diagnostics_entries": 1,
+        "diagnostics_shape": "SUPERVISOR_PLAN / provider_request_timeout / classified=true / exception_class=APITimeoutError (RCA-1.2 typed classification working)",
+        "after_recovery_sweep": "failed(runtime_restart)",
+        "evidence": "evidence/cf1-timeout-dbstate.json, evidence/cf1-timeout-diagnostics.jsonl"
+      },
+      {
+        "scenario": "PLAN cancelled (CancelledError)",
+        "cli_outcome": "CLI CRASHED exit 1 with raw asyncio.CancelledError; NO result files, NO driver_failure.json (except Exception never catches BaseException)",
+        "agent_run_at_exit": "running / stop_reason=None; trajectory ends at run_started — ZERO containment events",
+        "containment": "NONE — CancelledError propagates unconverted (correct per RCA-1.1 pattern)",
+        "diagnostics_entries": 0,
+        "after_recovery_sweep": "failed(runtime_restart)",
+        "evidence": "evidence/cf1-cancelled-dbstate.json, evidence/cf1-cancelled-stdout.log"
+      }
+    ],
+    "audit_questions": {
+      "normal_exit_persisting_running": "YES — observed in all four scenarios. Within the live production service this is designed P4B semantics (runs persist across invocations; recovery is the restart terminalizer, spec §15.6). In a ONE-SHOT driver (the benchmark CLI) the process exits normally and the row persists 'running' indefinitely unless a later service startup sweeps it or the store is deleted.",
+      "who_terminalizes_after_plan_containment": "NOBODY in the one-shot path. PLAN containment (exception / v2-resolution rejection / validator rejection) deliberately does NOT terminalize — unlike INTEGRATE containment which calls fail_run(internal_failure). The only terminalizer is AgentRuntimeRepository.recover_interrupted_agent_runtime(), invoked at the NEXT orchestrator.initialize() (service startup), which the one-shot CLI never reaches.",
+      "run_loop_final_cleanup": "run_loop has no exit cleanup — consistent with its live-service design (it must NOT terminalize: the next invocation continues the run). The gap is at the DRIVER exit boundary, not in run_loop.",
+      "restart_recovery_role": "VERIFIED correct and exclusively abnormal-exit-oriented: queued/running runs -> failed(runtime_restart), queued/running delegations -> failed, active investigations -> paused(runtime_restart); idempotent (second call zeros); does not re-execute or resume; 4/4 scenarios terminalized.",
+      "cancellederror_and_task_deletion": "CancelledError is NEVER converted to an ordinary failure (except Exception only, verified live: zero diagnostics entries, zero containment events, CLI crash with raw CancelledError). Task deletion removes the store including any stale row (no zombie rows; the driver's --cleanup-tasks path deletes through the normal lifecycle API).",
+      "status_write_failure_fail_closed": "YES — every run transition is a single BEGIN IMMEDIATE transaction (transition validation + trajectory append + commit); a failed write raises and rolls back with no half-state. In the PLAN containment path a trajectory-write failure propagates as an exception (cycle outcome lost) but never commits partial state: fail-closed, no fail-open."
+    },
+    "cf1_verdict": "RUNTIME_LIFECYCLE_DEFECT_CONFIRMED",
+    "cf1_verdict_scope": [
+      "CF-1.1 (defect, confirmed): at the ONE-SHOT INVOCATION EXIT boundary there is no deterministic terminalizer for non-terminal AgentRun rows. A normally-ended, fully-successful benchmark execution persists 'running' (observed in the control scenario); a PLAN-contained failure persists 'running' (observed in invalid-union and timeout scenarios). The durable state contradicts the execution reality for the lifetime of the store unless an out-of-band recovery sweep runs.",
+      "CF-1.2 (inconsistency, confirmed; designed for the live service): PLAN containment is non-terminal while INTEGRATE containment is terminal (fail_run). The asymmetry is intentional (PLAN rejection must stay retryable so a live service can re-plan on the next invocation) but is recorded nowhere in the lifecycle contract/spec, and it yields asymmetric durable records for equivalent contained-model-failure causes in one-shot artifacts.",
+      "CF-1.3 (explicitly NOT defects): CancelledError pass-through; recovery sweep correctness/idempotence/no-re-execution; FinalizationGate fail-closed denial (no record, no run transition); typed timeout classification; transactional status writes."
+    ],
+    "minimal_fix_design_NOT_IMPLEMENTED": {
+      "recommended_option": "A",
+      "option_A_driver_side_settle_reusing_the_frozen_primitive": {
+        "change": "The one-shot driver (run_p8b_baseline / ProductionBenchmarkExecutor.execute) invokes the EXISTING AgentRuntimeRepository.recover_interrupted_agent_runtime() once after run_loop + finalization and BEFORE persisting the snapshot. Nothing else changes.",
+        "rationale": "At driver exit the runtime genuinely stops; the recovery primitive is the frozen, idempotent, spec-§15.6 terminalizer; the persisted snapshot then records the terminal row while the containment cause stays preserved in trajectory + diagnostics. Zero schema change, zero orchestrator behavior change, zero live-service impact.",
+        "rejected_variant": "a narrower driver-side fail_run(budget_exhausted) — rejected: misstates the cause; a new RunStopReason member would be a frozen-enum change.",
+        "effort": "driver-only, ~5 lines + tests",
+        "authorization": "Runtime-affecting change — NOT IMPLEMENTED in RCA-2A.2c; requires independent authorization."
+      },
+      "option_B_first_class_invocation_exit_stop_reason": {
+        "change": "new RunStopReason member (e.g. invocation_exit) + an orchestrator terminalization method invoked when the caller declares it will not re-invoke.",
+        "cost": "touches the frozen RunStopReason enum + RUN_TRANSITIONS + spec §15.2; honest semantics but a runtime contract change.",
+        "authorization": "requires independent authorization; recorded as the alternative."
+      },
+      "option_C_rejected": "making PLAN containment itself terminal — REJECTED by this audit: it would regress live-service re-plan semantics (a transient provider failure must not kill the run). Any fix must preserve non-terminal PLAN containment in the live service."
+    },
+    "regression_test_design_for_the_fix_NOT_IMPLEMENTED": [
+      "driver-exit settle: after execute_cycle + finalize denial, the settle call terminalizes the row (failed/runtime_restart); the snapshot records a terminal run; containment cause remains in trajectory + diagnostics; second call is a no-op (idempotent).",
+      "live-service non-regression: PLAN containment followed by a NEW execute_cycle invocation re-plans successfully in the SAME run — proving the fix did not make PLAN containment terminal.",
+      "both are expressible as extensions of tests/unit/investigation/test_rca2a2c_plan_lifecycle_contract.py"
+    ]
+  },
+  "section_3_plan_contract_consistency": {
+    "verdict": "PLAN_CONTRACT_CONSISTENT_ON_TESTED_DOMAIN",
+    "detail_artifact": "plan-output-contract-consistency-report-v1.json",
+    "deterministic_verification": "plan-contract-verification-v1.json",
+    "one_line": "The model-visible v2 PLAN output-tool schema is field-identical to the production schema; instructions and schema contradict each other nowhere; all three action variants, no_action and empty-plan paths are constructible; the RCA-2A.2b INVALID_UNION reproduces byte-identically from the model-side discriminant naming error alone — a model capability failure, not a prompt/schema defect."
+  },
+  "section_4_preflight_artifact_protection": {
+    "verdict": "IMPLEMENTED (benchmark tooling only; provider request content and gate thresholds byte-identical)",
+    "detail_artifact": "preflight-artifact-protection-report-v1.json"
+  },
+  "section_5_historical_interpretation": {
+    "addendum_artifact": "../rca2a2b-stepfun-diagnostic/rca2a2b-interpretation-addendum-v1.json",
+    "original_files": "byte-identical (44 artifacts re-hashed at audit end; see rca2a2c-baseline-artifact-hashes-v1.json)",
+    "attribution_guard": "the PLAN INVALID_UNION is NOT attributed to anything the INTEGRATE unified-envelope proposal would solve; INTEGRATE field-level cause remains NOT_OBSERVED"
+  },
+  "section_6_regression": {
+    "new_test_files": [
+      "tests/unit/investigation/test_rca2a2c_plan_lifecycle_contract.py (13 tests)",
+      "tests/unit/benchmarks/test_rca2a2c_preflight_output_protection.py (16 tests)"
+    ],
+    "coverage": [
+      "PLAN output validation failure containment + non-terminal run + field-level diagnostics",
+      "PLAN provider timeout containment + typed classification",
+      "PLAN valid output (delegation admission, integration path exercised live via CLI control scenario)",
+      "CancelledError propagation without conversion",
+      "Finalization fail-closed (denial -> no record, run untouched)",
+      "persistence/exit consistency (RUNNING_AT_BENCHMARK_EXIT pinned) + recovery terminalization",
+      "restart recovery idempotence + no re-execution",
+      "PLAN instructions vs schema consistency (schema identity, three variants, historical INVALID_UNION, identity-echo prohibition)",
+      "preflight missing --out rejection, exclusive-create no-clobber, refused write leaves original intact, 0600 mode, synthetic write path with zero network, no key material in artifacts"
+    ],
+    "full_suite": "2619 passed / 0 failed / 1 skipped (python_service tests/unit, offline)"
+  },
+  "section_8_final_state": {
+    "RCA-1": "CLOSED / TESTED",
+    "RCA-2A.1": "OFFLINE VALIDATED",
+    "RCA-2A.2b": "DIAGNOSTIC_COMPLETED",
+    "RCA-2A.2c": "AUDITED",
+    "RCA-2B": "NOT AUTHORIZED",
+    "Model calls": 0,
+    "Historical Gen-4": "UNCHANGED",
+    "Gen-5": "NOT CREATED"
+  }
+}

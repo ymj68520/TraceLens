@@ -1,0 +1,13 @@
+{
+ "substrate_version": "sealed-evidence-substrate:v1",
+ "substrate_id": "sub-gen4-layered-dispersion",
+ "case_id": "gen4-layered-dispersion",
+ "image_relative_path": "gen4-layered-dispersion.img",
+ "image_sha256": "847dd6ed16d829161a40989fbc520c65a7d103e0fbb811f6f2e15ab6d2116a91",
+ "image_size_bytes": 16777216,
+ "expected_public_asset_manifest_hash": "33bbb0aca7455e1a01d9827692a034e9ba5ffbff843fc44f8e05208c002bf326",
+ "parser_config_hash": "a45695aae0930bb81c56f5a533b028340f6da141b186a12abfe5423c71ce9961",
+ "expected_evidence_manifest_hash": "13032d2e85955d2db2fa5223dd6f81007f50c84d931ab012bad2998a18cf5929",
+ "build_tool": "ext4 (dd + mke2fs + debugfs), inode times pinned",
+ "input_hash": "86c856f458bad92bf112acce1b9ccfd22f666da58ded42e2d9b34357bf451db5"
+}

@@ -1,0 +1,34 @@
+{
+  "contract_version": "rca2a20-review-decision:v1",
+  "mutation_endpoint": {
+    "method": "POST",
+    "path": "/api/investigation/agent/review",
+    "request_model": "ReviewDecisionRequest",
+    "response_model": "ReviewDecisionOutcome"
+  },
+  "execution_steps_accept": [
+    "Read Candidate and validate task and candidate existence",
+    "Validate candidate hash and source revision staleness",
+    "Validate all evidence_refs resolve in task scope via EvidenceResolver",
+    "Block unsupported FACT promotion and preserve epistemic type",
+    "Atomic execution claim and review commit via SQLite BEGIN IMMEDIATE",
+    "Write review history row to investigation_finding_reviews",
+    "Update investigation_findings to accepted with review provenance",
+    "Append trajectory event final_semantic_review_recorded"
+  ],
+  "execution_steps_reject": [
+    "Read Candidate and validate task and candidate existence",
+    "Validate candidate hash and source revision staleness",
+    "Update investigation_findings to rejected with review provenance",
+    "Write review history row to investigation_finding_reviews",
+    "Preserve original agent proposals and evidence references intact",
+    "Append trajectory event final_semantic_review_recorded"
+  ],
+  "error_mappings": {
+    "404": "Task not found, candidate not found",
+    "409": "Stale candidate hash, revision mismatch, conflicting replay, concurrent claim",
+    "422": "Evidence provenance failure, note cited as evidence, unsupported fact promotion",
+    "503": "Underlying storage unavailable"
+  },
+  "status": "PASS"
+}

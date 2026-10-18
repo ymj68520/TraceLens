@@ -1,0 +1,46 @@
+{
+  "artifact_version": "AgentV0RuntimeBaselineV3",
+  "supersedes": "agent-v0-runtime-baseline-v2.json (v2-era runtime → historical)",
+  "frozen_at_commit": "09c74e96fe511aef18d8a909870255cd48ee20d7",
+  "reason": "production evidence content hydration remediation (content-hydration phase)",
+  "content_hydration_contract": {
+    "version": "evidence-content-hydration:v1",
+    "status": "FROZEN",
+    "contract_doc": "docs/specs/evidence-content-hydration-contract.md",
+    "store_module": "httpserver/services/evidence/content_store.py",
+    "storage_schema": "files.db additive columns content_sha256/content_size/content_stored_at + data/tasks/<id>/content/blobs/<sha256>",
+    "reason_code_enum": [
+      "CONTENT_NOT_PERSISTED_LEGACY",
+      "CONTENT_UNSUPPORTED_TYPE",
+      "CONTENT_SOURCE_MISSING",
+      "CONTENT_INTEGRITY_MISMATCH",
+      "CONTENT_READ_FAILED",
+      "CONTENT_EXCEEDS_PERSISTENCE_LIMIT"
+    ],
+    "agent_tool_surface": "get_evidence output gains additive content_available / content_unavailable_reason fields (tool id/version unchanged)"
+  },
+  "supervisor_contract": {
+    "version": "v2",
+    "note": "unchanged by this phase"
+  },
+  "evidence_admission": "A1-S S4 FROZEN — unchanged; snapshots stay metadata-only",
+  "model_config": "unchanged from the v2-era frozen configuration (sensenova-6.8-flash-lite via .env); no model change in this phase",
+  "calibration": {
+    "prior_binding": "CalibrationEvidenceBindingV2 → HISTORICAL (production behavior changed; cannot serve as future Gen-4 admission evidence)",
+    "required_before_gen4": [
+      "model/runtime requalification",
+      "new valid B2 calibration measurement",
+      "CalibrationEvidence rebinding",
+      "AcceptanceProfile review/binding to this runtime"
+    ],
+    "executed_this_phase": "content hydration canary ONLY — not a calibration measurement"
+  },
+  "acceptance": {
+    "generation_1": "CLOSED_INVALID / CONSUMED",
+    "generation_2": "CLOSED_INVALID / CONSUMED",
+    "generation_3": "CLOSED_INVALID / CONSUMED (EVIDENCE_CONTENT_SURFACE_TRANSIENT — remediated by this contract)",
+    "formal_acceptance": "NOT ESTABLISHED",
+    "generation_4": "PROHIBITED until the §6 obligations in the contract doc are separately directed and complete"
+  },
+  "created_at": "2026-10-01T00:00:00+00:00"
+}

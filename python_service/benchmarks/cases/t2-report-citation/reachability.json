@@ -1,0 +1,38 @@
+{
+  "reachability_version": "reachability-manifest:v1",
+  "case_id": "t2-report-citation",
+  "records": [
+    {
+      "truth_evidence_id": "TE-1",
+      "resolved_evidence_keys": [
+        "file:/data/收款记录.txt"
+      ],
+      "parser_reachable": true,
+      "agent_discoverable": true,
+      "status": "resolved",
+      "unavailable_reason": ""
+    },
+    {
+      "truth_evidence_id": "TE-2",
+      "resolved_evidence_keys": [
+        "file:/platform/说明.txt"
+      ],
+      "parser_reachable": true,
+      "agent_discoverable": true,
+      "status": "resolved",
+      "unavailable_reason": ""
+    },
+    {
+      "truth_evidence_id": "TE-3",
+      "resolved_evidence_keys": [
+        "file:/personal/体检报告.txt"
+      ],
+      "parser_reachable": true,
+      "agent_discoverable": true,
+      "status": "resolved",
+      "unavailable_reason": ""
+    }
+  ],
+  "input_hash": "97257e4aed156abde3600830a144a7109eefbb7e148c1c08cd9aa12d07db20ac",
+  "created_at": "2026-09-28T11:15:36.604988+00:00"
+}

@@ -1,0 +1,126 @@
+{
+  "manifest_version": "truth-manifest:v1",
+  "manifest_id": "tman:c938223cb8a3973d4d87c481",
+  "case_id": "t3-holdout-refund-fraud",
+  "case_version": "1",
+  "critical_evidence": [
+    {
+      "truth_evidence_id": "TE-1",
+      "evidence_identity_description": "/shop/refunds.csv: two refund rows RF-9001/RF-9002; RF-9003 absent.",
+      "expected_evidence_key": "file:/shop/refunds.csv",
+      "criticality": "critical",
+      "parser_expectation": "reachable",
+      "source_kind": "",
+      "semantic_role": "refund_table",
+      "related_claim_ids": [
+        "TC-1"
+      ],
+      "notes": ""
+    },
+    {
+      "truth_evidence_id": "TE-2",
+      "evidence_identity_description": "/finance/payouts.log: three payouts all to card *7712, including RF-9003 with no refund row.",
+      "expected_evidence_key": "file:/finance/payouts.log",
+      "criticality": "critical",
+      "parser_expectation": "reachable",
+      "source_kind": "",
+      "semantic_role": "payout_log",
+      "related_claim_ids": [
+        "TC-1",
+        "TC-2"
+      ],
+      "notes": ""
+    }
+  ],
+  "supporting_evidence": [],
+  "irrelevant_evidence": [],
+  "expected_questions": [
+    {
+      "question_id": "TQ-1",
+      "text": "Which payouts match recorded refunds, and who received them?",
+      "expected_disposition": "answered",
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-2"
+      ],
+      "acceptable_answers": [],
+      "unacceptable_answers": [],
+      "priority": 0,
+      "notes": ""
+    }
+  ],
+  "confirmed_claims": [
+    {
+      "claim_id": "TC-1",
+      "proposition": "Payouts RF-9001 and RF-9002 match recorded refunds; RF-9003 has no matching refund row; all three payouts landed on card *7712.",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "FACT",
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-2"
+      ],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "factual",
+      "notes": ""
+    },
+    {
+      "claim_id": "TC-2",
+      "proposition": "The holder of card *7712 is not identified in either system; the refund/payout pattern is consistent with fraud but a perpetrator cannot be named on this evidence.",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "INFERENCE",
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-2"
+      ],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "actor_attribution",
+      "notes": ""
+    }
+  ],
+  "acceptable_inferences": [],
+  "unsupported_or_prohibited_overclaims": [
+    {
+      "claim_id": "TP-1",
+      "proposition": "The card holder committed refund fraud (named actor).",
+      "truth_status": "unsupported",
+      "maximum_assertion_class": null,
+      "required_evidence_ids": [],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "actor_attribution",
+      "notes": ""
+    },
+    {
+      "claim_id": "TP-2",
+      "proposition": "Payout RF-9003 was created by forging a refund record.",
+      "truth_status": "unsupported",
+      "maximum_assertion_class": null,
+      "required_evidence_ids": [],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "causal",
+      "notes": ""
+    }
+  ],
+  "expected_relations": [],
+  "expected_coverage": [
+    {
+      "dimension_id": "payout-attribution",
+      "description": "Payout-refund linkage is established by exact id; the actor stays unnamed at INFERENCE ceiling.",
+      "expected_status": "covered",
+      "requires_closure_basis": true,
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-2"
+      ],
+      "notes": ""
+    }
+  ],
+  "known_ambiguities": [],
+  "unavailable_truth": [],
+  "notes": "HOLDOUT (sealed): multi-source linkage + actor-attribution ceiling in a refund-fraud scenario. Different dataset from calibration cases; same dimensions (correlation, verification discipline). Single-reviewer truth.",
+  "input_hash": "c938223cb8a3973d4d87c4817235f8915a9e7d3f34349604f81ee5ce7dc9c863",
+  "created_at": "2026-09-28T11:15:36.806621+00:00"
+}

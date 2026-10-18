@@ -1,0 +1,39 @@
+{
+  "artifact_version": "RCA2A11aF2SemanticWinVerificationV1",
+  "audit_id": "rca2a11a-negative-gate-causality-audit",
+  "created_at_utc": "2026-10-17T02:14:17Z",
+  "scenario_id": "t2-temporal-trap",
+  "pair_id": 1,
+  "pair_label": "A",
+  "pair_outcome": "TREATMENT_WIN",
+  "seat_3_control": {
+    "action": "UpdateQuestionActionV2",
+    "policy_verdict": "rejected",
+    "policy_violations": [
+      "QUESTION_CLOSURE_VERIFICATION_REQUIRED"
+    ],
+    "oracle_verdict": "FAIL",
+    "adequacy": "SEMANTICALLY_INADEQUATE",
+    "information_value": "DEGRADED",
+    "commit_status": "INVALID_PROPOSAL_REJECTED_BEFORE_COMMIT"
+  },
+  "seat_4_treatment": {
+    "action": "CreateHypothesisActionV2",
+    "policy_verdict": "accepted",
+    "policy_violations": [],
+    "oracle_verdict": "PASS",
+    "adequacy": "SEMANTICALLY_ADEQUATE",
+    "information_value": "POSITIVE_DISCOVERY",
+    "commit_status": "UNCONTESTED_COMMITTED_TO_SCRATCH",
+    "positive_discovery_verification": {
+      "evidence_ids_used": [
+        "Valid temporal evidence references (login followed by file access)"
+      ],
+      "causality_assertion_avoided": true,
+      "investigative_openness_preserved": true,
+      "factual_temporal_sequence_captured": true,
+      "information_value_grade": "POSITIVE_DISCOVERY (Legitimate investigative hypothesis advancing the case without unfounded causal leap)"
+    }
+  },
+  "blind_oracle_integrity": "The Semantic Oracle evaluated both outputs under identical calibration rules without knowledge of arm labels. Treatment achieved a genuine semantic and policy victory."
+}

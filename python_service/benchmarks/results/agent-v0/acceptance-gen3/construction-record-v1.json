@@ -1,0 +1,43 @@
+{
+  "artifact_version": "Gen3ConstructionRecordV1",
+  "generation_id": "acceptance-generation-3",
+  "created_at": "2026-10-01T00:00:00+00:00",
+  "role_stages": [
+    {
+      "role": "Holdout Author",
+      "produced": [
+        "cases/*.public-case.json",
+        "cases/*/dataset/*"
+      ]
+    },
+    {
+      "role": "Truth Author",
+      "produced": [
+        "truth/*.truth.json",
+        "truth/*.reachability.json"
+      ]
+    },
+    {
+      "role": "Evidence Substrate Builder",
+      "produced": [
+        "images/*.img (per-case ext4, pinned inode times, contains EXACTLY the public asset set — no generic demo content)"
+      ]
+    },
+    {
+      "role": "Protocol Validator",
+      "produced": [
+        "substrates/*.evidence-manifest.json",
+        "substrates/*.substrate.json",
+        "substrates/*.evidence-world.json",
+        "evidence-world-validation-v1.json (real provisioning x2, zero model calls)"
+      ]
+    },
+    {
+      "role": "Acceptance Executor",
+      "produced": [
+        "HoldoutSealV3 + admission audit (separate scripts); execution NOT in this phase"
+      ]
+    }
+  ],
+  "design_basis": "product capability families only (identity ambiguity; causal ambiguity), new actors/filenames/timelines/hashes; not designed around any model's weaknesses nor from Generation-2 answers"
+}

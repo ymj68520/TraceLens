@@ -1,0 +1,13 @@
+{
+ "substrate_version": "sealed-evidence-substrate:v1",
+ "substrate_id": "sub-gen3-failover-causality",
+ "case_id": "gen3-failover-causality",
+ "image_relative_path": "gen3-failover-causality.img",
+ "image_sha256": "0aa0e4c4d0640affd5a59b73ac44e22e37fa1711cbee6f0b3c4d0c3db8a38cfd",
+ "image_size_bytes": 16777216,
+ "expected_public_asset_manifest_hash": "f3c254fdb13e5a67c401b7aa9ab15e656ffd1ecfc41ca4222a2c89e14091fbda",
+ "parser_config_hash": "a45695aae0930bb81c56f5a533b028340f6da141b186a12abfe5423c71ce9961",
+ "expected_evidence_manifest_hash": "d55475d0caa783307605cf3b4761faa7186d165337b3c6d0aa9969de3149c5ab",
+ "build_tool": "ext4 (dd + mke2fs + debugfs), inode times pinned",
+ "input_hash": "9f287d644d215c4ec2022e7b71ff539eac9787f0e5c56cf56b370e2a6745e3b8"
+}

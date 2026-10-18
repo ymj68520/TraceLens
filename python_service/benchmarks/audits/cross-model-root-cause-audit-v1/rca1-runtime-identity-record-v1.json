@@ -1,0 +1,134 @@
+{
+ "artifact_version": "RCA1RuntimeIdentityRecordV1",
+ "created_at": "2026-10-13T12:42:56+00:00",
+ "head_commit": "798f088c",
+ "manifest_scope": "production agent runtime surface (adapter, orchestrator, supervisor, specialist, transitions, finalization, integration contracts, tool bridge, benchmark runner/executor, config)",
+ "reference_points": {
+  "historical_runtime_v3_qualification": {
+   "commit": "985f09e1",
+   "basis": "tracelens_git_commit recorded in every b2-runtime-v3 run manifest (the runtime that produced the incumbent 20/24 B2 series and the RuntimeBaselineV3 qualification era)"
+  },
+  "audit_baseline": {
+   "commit": "a79bf406"
+  },
+  "rca1_remediation": {
+   "commit": "798f088c"
+  }
+ },
+ "files": {
+  "python_service/httpserver/services/investigation/agent_model_adapter.py": {
+   "worktree": "9d4f6482ef35eafd5761d7a5f8b08acbbab984f898558845c944b448908bbc1f",
+   "historical_runtime_v3_qualification": "f2962fa7ae062bb314be70d65ee2f9944e1a47264b8c85e7d21cda4ae8afb5cf",
+   "audit_baseline": "9d4f6482ef35eafd5761d7a5f8b08acbbab984f898558845c944b448908bbc1f",
+   "rca1_remediation": "9d4f6482ef35eafd5761d7a5f8b08acbbab984f898558845c944b448908bbc1f",
+   "differs_from": [
+    "historical_runtime_v3_qualification"
+   ]
+  },
+  "python_service/httpserver/services/investigation/agent_orchestrator.py": {
+   "worktree": "04b40ddb17c9167f6f2640f40ab8430abf88b8710543969bb7f069d45e0d4e5e",
+   "historical_runtime_v3_qualification": "86bc33b5b984336ad1968b8831b2ba1be405a39d13fc97cf47eae1198941663e",
+   "audit_baseline": "86bc33b5b984336ad1968b8831b2ba1be405a39d13fc97cf47eae1198941663e",
+   "rca1_remediation": "04b40ddb17c9167f6f2640f40ab8430abf88b8710543969bb7f069d45e0d4e5e",
+   "differs_from": [
+    "historical_runtime_v3_qualification",
+    "audit_baseline"
+   ]
+  },
+  "python_service/httpserver/services/investigation/agent_supervisor.py": {
+   "worktree": "8621316a59b9c016c6eacbe9742eb439532af26b401f09d0eef3c263acd8cd25",
+   "historical_runtime_v3_qualification": "8621316a59b9c016c6eacbe9742eb439532af26b401f09d0eef3c263acd8cd25",
+   "audit_baseline": "8621316a59b9c016c6eacbe9742eb439532af26b401f09d0eef3c263acd8cd25",
+   "rca1_remediation": "8621316a59b9c016c6eacbe9742eb439532af26b401f09d0eef3c263acd8cd25",
+   "differs_from": []
+  },
+  "python_service/httpserver/services/investigation/agent_specialist_executor.py": {
+   "worktree": "9c3a78bc6f3a2630f75ca307cc721058d2ff6b597270072ec537be35eb2b4ad1",
+   "historical_runtime_v3_qualification": "211f0b25742946dfbe89e5b8e1995fa48867af8b41be849ee88c5ae4eb37cf4e",
+   "audit_baseline": "211f0b25742946dfbe89e5b8e1995fa48867af8b41be849ee88c5ae4eb37cf4e",
+   "rca1_remediation": "9c3a78bc6f3a2630f75ca307cc721058d2ff6b597270072ec537be35eb2b4ad1",
+   "differs_from": [
+    "historical_runtime_v3_qualification",
+    "audit_baseline"
+   ]
+  },
+  "python_service/httpserver/services/investigation/agent_specialist_result.py": {
+   "worktree": "4f8b004d7bd8a1f1cd6237a4f31db15cba8153fc8b6d884d807939a7868968dd",
+   "historical_runtime_v3_qualification": "4f8b004d7bd8a1f1cd6237a4f31db15cba8153fc8b6d884d807939a7868968dd",
+   "audit_baseline": "4f8b004d7bd8a1f1cd6237a4f31db15cba8153fc8b6d884d807939a7868968dd",
+   "rca1_remediation": "4f8b004d7bd8a1f1cd6237a4f31db15cba8153fc8b6d884d807939a7868968dd",
+   "differs_from": []
+  },
+  "python_service/httpserver/services/investigation/agent_transitions.py": {
+   "worktree": "77300b8d079fb21891ac59dd14732a5f1b611c719e2c5bfc924637166f250e54",
+   "historical_runtime_v3_qualification": "77300b8d079fb21891ac59dd14732a5f1b611c719e2c5bfc924637166f250e54",
+   "audit_baseline": "77300b8d079fb21891ac59dd14732a5f1b611c719e2c5bfc924637166f250e54",
+   "rca1_remediation": "77300b8d079fb21891ac59dd14732a5f1b611c719e2c5bfc924637166f250e54",
+   "differs_from": []
+  },
+  "python_service/httpserver/services/investigation/agent_finalization.py": {
+   "worktree": "505b0f566b2bd91822c8f150fc093fafcff4634b994b4bc2fda469df8caaaf4a",
+   "historical_runtime_v3_qualification": "505b0f566b2bd91822c8f150fc093fafcff4634b994b4bc2fda469df8caaaf4a",
+   "audit_baseline": "505b0f566b2bd91822c8f150fc093fafcff4634b994b4bc2fda469df8caaaf4a",
+   "rca1_remediation": "505b0f566b2bd91822c8f150fc093fafcff4634b994b4bc2fda469df8caaaf4a",
+   "differs_from": []
+  },
+  "python_service/httpserver/services/investigation/agent_integration.py": {
+   "worktree": "6d93e4e40b671ce3109b3c3678cd0396013bfc079bd1113b8b8f71ed2c4fc97a",
+   "historical_runtime_v3_qualification": "6d93e4e40b671ce3109b3c3678cd0396013bfc079bd1113b8b8f71ed2c4fc97a",
+   "audit_baseline": "6d93e4e40b671ce3109b3c3678cd0396013bfc079bd1113b8b8f71ed2c4fc97a",
+   "rca1_remediation": "6d93e4e40b671ce3109b3c3678cd0396013bfc079bd1113b8b8f71ed2c4fc97a",
+   "differs_from": []
+  },
+  "python_service/httpserver/services/investigation/agent_integration_v2.py": {
+   "worktree": "9be8946460d63993192c2abb58391bc6aa5af2617412ee27377f3275846439a0",
+   "historical_runtime_v3_qualification": "9be8946460d63993192c2abb58391bc6aa5af2617412ee27377f3275846439a0",
+   "audit_baseline": "9be8946460d63993192c2abb58391bc6aa5af2617412ee27377f3275846439a0",
+   "rca1_remediation": "9be8946460d63993192c2abb58391bc6aa5af2617412ee27377f3275846439a0",
+   "differs_from": []
+  },
+  "python_service/httpserver/services/investigation/agent_tools/pydantic_bridge.py": {
+   "worktree": "8a4bf62b7da084ffbff793c36e55dcf0578ad4abe761de5bb46b88f9694232cb",
+   "historical_runtime_v3_qualification": "8a4bf62b7da084ffbff793c36e55dcf0578ad4abe761de5bb46b88f9694232cb",
+   "audit_baseline": "8a4bf62b7da084ffbff793c36e55dcf0578ad4abe761de5bb46b88f9694232cb",
+   "rca1_remediation": "8a4bf62b7da084ffbff793c36e55dcf0578ad4abe761de5bb46b88f9694232cb",
+   "differs_from": []
+  },
+  "python_service/httpserver/services/benchmarks/runner.py": {
+   "worktree": "6cefad3b7311661a62e8b745a76badfd7566204df3f8bf3d533c64b686b7fc14",
+   "historical_runtime_v3_qualification": "abe772ef3da75dfee0d37463d20dc26a9589cb4e05060490a882473f25a9465f",
+   "audit_baseline": "abe772ef3da75dfee0d37463d20dc26a9589cb4e05060490a882473f25a9465f",
+   "rca1_remediation": "6cefad3b7311661a62e8b745a76badfd7566204df3f8bf3d533c64b686b7fc14",
+   "differs_from": [
+    "historical_runtime_v3_qualification",
+    "audit_baseline"
+   ]
+  },
+  "python_service/httpserver/services/benchmarks/production_executor.py": {
+   "worktree": "cc2da9430ed53e180bceb6106308eeb6e290190e25bd72bd09818c7d9dc12f72",
+   "historical_runtime_v3_qualification": "cc2da9430ed53e180bceb6106308eeb6e290190e25bd72bd09818c7d9dc12f72",
+   "audit_baseline": "cc2da9430ed53e180bceb6106308eeb6e290190e25bd72bd09818c7d9dc12f72",
+   "rca1_remediation": "cc2da9430ed53e180bceb6106308eeb6e290190e25bd72bd09818c7d9dc12f72",
+   "differs_from": []
+  },
+  "python_service/httpserver/config.py": {
+   "worktree": "126cda581d67ccad2382506417b1b6e85aba76690cdeb6fc7c61c80101935efa",
+   "historical_runtime_v3_qualification": "93f6f14d9a41aaa96779b6642ad44d4c9f3145947705a598e117dac670f333b5",
+   "audit_baseline": "ef7e9376b32c22b7cd2c90e215b7287f3ec694f4fff03f53a775d17756ffcc3f",
+   "rca1_remediation": "126cda581d67ccad2382506417b1b6e85aba76690cdeb6fc7c61c80101935efa",
+   "differs_from": [
+    "historical_runtime_v3_qualification",
+    "audit_baseline"
+   ]
+  }
+ },
+ "summary": {
+  "manifest_files": 13,
+  "files_differing_from_historical_v3": 5,
+  "frozen_profile_files": {
+   "python_service/benchmarks/profiles/precalibration-runtime-baseline-v3.json": "b7ef22d65f85c8dcd951ef5c636705d56f86ed6490f670ec24abafd7a91daca5",
+   "python_service/benchmarks/profiles/agent-v0-acceptance-profile-v2.json": "c40f1adcad816e433f7edfc6cbc0b56dc32c031bf1fcb31528523ffa62f0e98d"
+  }
+ },
+ "declaration": "The Historical RuntimeBaselineV3 qualification identity does NOT automatically transfer to the RCA-1 modified runtime. The RCA-1 runtime is an observability/failure-path derivative: INTEGRATE exception containment, type-driven failure classification, optional default-off diagnostics, benchmark disposition correctness. It is NOT the runtime that produced the B2 24-run series or the Gen-4 acceptance series. No B2 re-run was executed and no new official RuntimeBaseline was created; any future qualification requires a fresh measurement under section 14."
+}

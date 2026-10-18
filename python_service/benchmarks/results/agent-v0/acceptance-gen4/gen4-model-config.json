@@ -1,0 +1,28 @@
+{
+  "config_schema": "Gen4ModelConfigV1",
+  "created_at": "2026-10-01T00:00:00+00:00",
+  "generation_id": "acceptance-generation-4",
+  "provider": "sensenova-cloud",
+  "model_id": "sensenova-6.8-flash-lite",
+  "endpoint": {
+    "base_url": "https://token.sensenova.cn",
+    "path_class": "/v1/chat/completions (openai-compatible)"
+  },
+  "generation_params": {
+    "temperature": 0.7,
+    "max_tokens": 16384,
+    "thinking_mode": "disabled",
+    "reasoning_effort": "none (thinking disabled maps to reasoning_effort none; field not sent)"
+  },
+  "transport": {
+    "timeout_seconds": 120,
+    "retry_policy": "adapter default (pydantic-ai 2.30.0 pin; provider quirks centralized in agent_model_adapter profile: json_object output mode, no strict tools, single system message)"
+  },
+  "runtime_binding": {
+    "runtime_baseline": "AgentV0RuntimeBaselineV3",
+    "superseding_record": "benchmarks/results/agent-v0/acceptance-gen4/runtime-baseline-v3-superseding-record.json",
+    "qualification_record": "benchmarks/results/agent-v0/requalification/runtime-v3-qualification/model-runtime-qualification-v3.json (QUALIFIED_FOR_B2)",
+    "calibration_evidence_binding": "benchmarks/profiles/calibration-evidence-binding-v3.json (MEASUREMENT_VALID, ZERO_CHANGE)"
+  },
+  "identity_note": "identical provider/model/params/transport to the configuration that qualified and produced the V3 B2 baseline; any deviation invalidates the generation"
+}

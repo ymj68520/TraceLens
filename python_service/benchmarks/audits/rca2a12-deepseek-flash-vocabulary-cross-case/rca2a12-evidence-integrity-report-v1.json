@@ -1,0 +1,9 @@
+{
+  "artifact_version": "RCA2A12EvidenceIntegrityReportV1",
+  "experiment_id": "rca2a12-deepseek-flash-vocabulary-cross-case",
+  "timestamp_utc": "2026-10-17T03:10:05.126340+00:00",
+  "production_db_mutations": 0,
+  "grounding_bypass_occurrences": 0,
+  "fabricated_evidence_in_canonical_store": 0,
+  "evidence_integrity_status": "CERTIFIED_IMMUTABLE"
+}

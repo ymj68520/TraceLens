@@ -1,0 +1,58 @@
+{
+  "record": "runtime-v3-requalification-preflight:v1",
+  "created_at": "2026-10-01T13:27:05+00:00",
+  "git": {
+    "branch": "mvp/agent-v0-runtime-v3-requalification",
+    "head": "e021ee04421b3235a7b4bfc2432d232f66d8636f",
+    "frozen_runtime_head": "d213145dc29b05fc8b7bbe83ab3070e572cbca71",
+    "runtime_is_frozen_head": false,
+    "runtime_delta_vs_frozen_head": [
+      "python_service/httpserver/services/evidence/content_store.py",
+      "python_service/scripts/preflight_runtime_v3_requalification.py",
+      "python_service/scripts/run_p8b_baseline.py"
+    ],
+    "runtime_delta_allowed": true,
+    "subtree_hashes": {
+      "python_service/httpserver": "f7fc81026e1a9a24ac9bf90f201a81d222dd50e0",
+      "python_service/scripts/run_p8b_baseline.py": "e861cb1424161d69c7b47a80ba3f67f8e7570f68",
+      "python_service/scripts/canary_content_hydration.py": "d85a5323554cfac7d5a44ae9924c96711619a674",
+      "src": "378d4d9d40ee281bed35b3f7d789f620a1c5f8c4",
+      "config": "87883d0e79f3b823d115983883f3813f1e743597"
+    },
+    "worktree_dirty_paths": [
+      "M python_service/scripts/preflight_runtime_v3_requalification.py",
+      "?? python_service/benchmarks/results/agent-v0/content-hydration-canary/images/",
+      "?? python_service/benchmarks/results/agent-v0/requalification/"
+    ]
+  },
+  "runtime_epoch": "AgentV0RuntimeBaselineV3 (historical: V2, PreCalibration V1/V4/V6-era)",
+  "contracts": {
+    "supervisor": "v2 (frozen, A1 R2 disposition)",
+    "specialist_proposal": "SpecialistResultProposalV1 + deterministic finalizer (A1-T, 546d0d2c)",
+    "typed_handle": "decision schema v3 (A1-H, f7b02af6)",
+    "snapshot": "S4 evidence snapshot admission (A1-S, f711851c) — metadata-only",
+    "finalization_gate": "UNINTEGRATED_COMPLETED_DELEGATION / COVERAGE_NOT_TERMINAL / REQUIRED_QUESTION_OPEN (unchanged)",
+    "content_hydration": "evidence-content-hydration:v1 (FROZEN d213145d)"
+  },
+  "artifact_sha256": {
+    "runtime_baseline_v3": "e18b6e6ab26c1d59f93798785947331e3338af63151612d56e350986f883451a",
+    "content_hydration_contract_doc": "8dfd55ab959263781af22be11dfc8bf8c5038c70818df9ce3fe46f9944090363",
+    "content_store_module": "16ec70e9c7971b2f092e21f86318efc94afd696986ec1a7c98c5b39e4a376155",
+    "tool_registry": "3d682dd59e7800cf0e09345a31952085ab868e8755eeb475b0092807ab59ce72",
+    "tool_definitions": "0bd9854c9935678ee1050c15bbda660edb3bb459a4004e39f1dec89bde77f0ba",
+    "investigation_prompts": "7ec43170726294edb5fd17f89217ea4fa11020a4be7f2500cc6ca8d751075fbf",
+    "agent_supervisor": "8621316a59b9c016c6eacbe9742eb439532af26b401f09d0eef3c263acd8cd25",
+    "agent_specialist_executor": "211f0b25742946dfbe89e5b8e1995fa48867af8b41be849ee88c5ae4eb37cf4e",
+    "agent_specialist_result": "4f8b004d7bd8a1f1cd6237a4f31db15cba8153fc8b6d884d807939a7868968dd",
+    "acquisition_snapshot": "54ccfc765c2f34d2320a76174da4cdae1bcbf8857e6bceb2ddd1546fe1ee84f0",
+    "agent_finalization": "505b0f566b2bd91822c8f150fc093fafcff4634b994b4bc2fda469df8caaaf4a",
+    "agent_transitions": "77300b8d079fb21891ac59dd14732a5f1b611c719e2c5bfc924637166f250e54",
+    "benchmark_runner": "abe772ef3da75dfee0d37463d20dc26a9589cb4e05060490a882473f25a9465f",
+    "b2_driver": "baca8db51cd1c0b0f37a662f89b31c26848a943e1fe2d049e71ec9b21dee823f"
+  },
+  "service_health": {
+    "cpp_8666": "healthy",
+    "python_8090": "healthy"
+  },
+  "preflight_status": "PASS"
+}

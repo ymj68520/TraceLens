@@ -1,0 +1,6 @@
+{
+  "stage": "A5",
+  "status": "NOT_SEPARABLY_RUNNABLE",
+  "reason": "graph stage requires runtime wiring changes (prohibited by the \u00a70 freeze); Neo4j reachable = environment eligible for a future run",
+  "recorded_at": "2026-09-28"
+}

@@ -1,0 +1,183 @@
+{
+  "all_gates_pass": true,
+  "artifact_version": "RCA2A10BaselineIntegrityReportV1",
+  "authorized_baseline_commit": "23f088babb28fa449801b28c3fc21eb09511780d",
+  "experiment_id": "rca2a10-cross-case-vocabulary-comparison",
+  "gates": {
+    "ALL_PAIRS_PARITY_PASS": true,
+    "DIAGNOSTICS_READY": true,
+    "DURABLE_SEAT_CLAIM_READY": true,
+    "F4_BOUNDARY_INTACT": true,
+    "ORACLE_CONTRACT_FROZEN": true,
+    "PROMPT_DIFF_EXACT": true,
+    "SCHEMA_UNCHANGED": true,
+    "SOURCE_IDENTITY_STABLE": true
+  },
+  "hashes": {
+    "base_oracle_hash": "52e3a57d5116c3fb290158d26eaaff1a69f95fa92efd6e06434a72c454f91a55",
+    "combined_oracle_contract_hash": "739b6683707d1b4c7339cf20eaf861514c902e9ac4b8ac8b3969fa02aef9a782",
+    "diagnostic_sink_hash": "76c4b23f1fb5226f7f12c946577a820ba720033d5f4941a7d6472566f2069b7e",
+    "extension_oracle_hash": "922db5e943ca2c980e8227743555a845d4452b0a6f9c0d9e7d0154fdc4b28348",
+    "guidance_sha256": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+    "model_adapter_hash": "9d4f6482ef35eafd5761d7a5f8b08acbbab984f898558845c944b448908bbc1f",
+    "output_schema_hash": "a214ec4f5e81fcbb",
+    "protocol_v2_hash": "981af932f621b10ba26e1c93ef1cf18832301ef7c7b47bc619b6035308bebc03",
+    "runner_source_hash": "211353a937cffe8a9ca3f0999210a257e4b34514bb7ed803efd48bd374e3b283",
+    "stage_harness_hash": "80359cbb6a442b2fa34a94d1852d5d22c30d3b608bcd422fcabb05d5470192aa"
+  },
+  "pair_parity_audits": [
+    {
+      "pair_id": 1,
+      "pair_label": "A",
+      "parity": {
+        "canonical_control_hash": "e461ada90552cc7fa4fceff887d869c3f823c316183041712676c1b6621ad3ae",
+        "canonical_treatment_hash": "e461ada90552cc7fa4fceff887d869c3f823c316183041712676c1b6621ad3ae",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+        "input_contract_equal": true,
+        "instructions_exact_suffix": true,
+        "model_settings_equal": true,
+        "parity_pass": true,
+        "projection_equal": true,
+        "scenario_id": "t2-no-evidence",
+        "schema_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "verdict": "CROSS_ARM_PARITY_PASS"
+      },
+      "scenario_id": "t2-no-evidence"
+    },
+    {
+      "pair_id": 2,
+      "pair_label": "B",
+      "parity": {
+        "canonical_control_hash": "ce0d9522eb4914ad33f865ef856ea42b45322d60382f997413b889d51c2dc6bf",
+        "canonical_treatment_hash": "ce0d9522eb4914ad33f865ef856ea42b45322d60382f997413b889d51c2dc6bf",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+        "input_contract_equal": true,
+        "instructions_exact_suffix": true,
+        "model_settings_equal": true,
+        "parity_pass": true,
+        "projection_equal": true,
+        "scenario_id": "t2-no-evidence",
+        "schema_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "verdict": "CROSS_ARM_PARITY_PASS"
+      },
+      "scenario_id": "t2-no-evidence"
+    },
+    {
+      "pair_id": 1,
+      "pair_label": "A",
+      "parity": {
+        "canonical_control_hash": "5bd6cb6b2c7421b829a5aa61b05938827c4bdc369c21f3baa0d6b62687cad133",
+        "canonical_treatment_hash": "5bd6cb6b2c7421b829a5aa61b05938827c4bdc369c21f3baa0d6b62687cad133",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+        "input_contract_equal": true,
+        "instructions_exact_suffix": true,
+        "model_settings_equal": true,
+        "parity_pass": true,
+        "projection_equal": true,
+        "scenario_id": "t2-temporal-trap",
+        "schema_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "verdict": "CROSS_ARM_PARITY_PASS"
+      },
+      "scenario_id": "t2-temporal-trap"
+    },
+    {
+      "pair_id": 2,
+      "pair_label": "B",
+      "parity": {
+        "canonical_control_hash": "d8ba20c968f7c7c2af6096696737d3e171433656bad70047172095866c728b35",
+        "canonical_treatment_hash": "d8ba20c968f7c7c2af6096696737d3e171433656bad70047172095866c728b35",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+        "input_contract_equal": true,
+        "instructions_exact_suffix": true,
+        "model_settings_equal": true,
+        "parity_pass": true,
+        "projection_equal": true,
+        "scenario_id": "t2-temporal-trap",
+        "schema_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "verdict": "CROSS_ARM_PARITY_PASS"
+      },
+      "scenario_id": "t2-temporal-trap"
+    },
+    {
+      "pair_id": 1,
+      "pair_label": "A",
+      "parity": {
+        "canonical_control_hash": "09b028994f3338d51c623ff1a9616ec06ee9bcb6bcf96dac7542c29168d19c02",
+        "canonical_treatment_hash": "09b028994f3338d51c623ff1a9616ec06ee9bcb6bcf96dac7542c29168d19c02",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+        "input_contract_equal": true,
+        "instructions_exact_suffix": true,
+        "model_settings_equal": true,
+        "parity_pass": true,
+        "projection_equal": true,
+        "scenario_id": "t2-identity-trap",
+        "schema_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "verdict": "CROSS_ARM_PARITY_PASS"
+      },
+      "scenario_id": "t2-identity-trap"
+    },
+    {
+      "pair_id": 2,
+      "pair_label": "B",
+      "parity": {
+        "canonical_control_hash": "6b9674ad59281616bc1b8a33fbe17abec9b99c18bc6a75a64c55cec1eeaaf18b",
+        "canonical_treatment_hash": "6b9674ad59281616bc1b8a33fbe17abec9b99c18bc6a75a64c55cec1eeaaf18b",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+        "input_contract_equal": true,
+        "instructions_exact_suffix": true,
+        "model_settings_equal": true,
+        "parity_pass": true,
+        "projection_equal": true,
+        "scenario_id": "t2-identity-trap",
+        "schema_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "verdict": "CROSS_ARM_PARITY_PASS"
+      },
+      "scenario_id": "t2-identity-trap"
+    },
+    {
+      "pair_id": 1,
+      "pair_label": "A",
+      "parity": {
+        "canonical_control_hash": "60ca184cef7da4836f0f02d2ddaf279f32a217f5d6dff93bd0f8849a8114291e",
+        "canonical_treatment_hash": "60ca184cef7da4836f0f02d2ddaf279f32a217f5d6dff93bd0f8849a8114291e",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+        "input_contract_equal": true,
+        "instructions_exact_suffix": true,
+        "model_settings_equal": true,
+        "parity_pass": true,
+        "projection_equal": true,
+        "scenario_id": "t2-report-citation",
+        "schema_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "verdict": "CROSS_ARM_PARITY_PASS"
+      },
+      "scenario_id": "t2-report-citation"
+    },
+    {
+      "pair_id": 2,
+      "pair_label": "B",
+      "parity": {
+        "canonical_control_hash": "046f5fe8a0c5fa3964711d84fd13f0d81b6d06d95aefe719258a8500b5de87d3",
+        "canonical_treatment_hash": "046f5fe8a0c5fa3964711d84fd13f0d81b6d06d95aefe719258a8500b5de87d3",
+        "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+        "input_contract_equal": true,
+        "instructions_exact_suffix": true,
+        "model_settings_equal": true,
+        "parity_pass": true,
+        "projection_equal": true,
+        "scenario_id": "t2-report-citation",
+        "schema_equal": true,
+        "schema_hash": "a214ec4f5e81fcbb",
+        "verdict": "CROSS_ARM_PARITY_PASS"
+      },
+      "scenario_id": "t2-report-citation"
+    }
+  ],
+  "runtime_commit": "15d91e2b4680fd24cf89c5ca5fef13fa45c24ef6"
+}

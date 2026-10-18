@@ -1,0 +1,81 @@
+{
+  "artifact_version": "RCA2A7PairedExecutionMatrixV1",
+  "experiment_id": "rca2a7-stepfun-vocabulary-comparison",
+  "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+  "logical_model_generations": 0,
+  "logical_model_generations_budget": 16,
+  "preflight_logical_requests": 0,
+  "preflight_status": "NOT_STARTED",
+  "real_model_requests": 0,
+  "run_order": [
+    [
+      "C",
+      "T"
+    ],
+    [
+      "T",
+      "C"
+    ],
+    [
+      "T",
+      "C"
+    ],
+    [
+      "C",
+      "T"
+    ]
+  ],
+  "seats": [
+    {
+      "arm": "control",
+      "pair_id": 1,
+      "reason": "instrumentation_source_hash_changed_after_manifest_freeze",
+      "status": "NOT_STARTED"
+    },
+    {
+      "arm": "treatment",
+      "pair_id": 1,
+      "reason": "instrumentation_source_hash_changed_after_manifest_freeze",
+      "status": "NOT_STARTED"
+    },
+    {
+      "arm": "treatment",
+      "pair_id": 2,
+      "reason": "instrumentation_source_hash_changed_after_manifest_freeze",
+      "status": "NOT_STARTED"
+    },
+    {
+      "arm": "control",
+      "pair_id": 2,
+      "reason": "instrumentation_source_hash_changed_after_manifest_freeze",
+      "status": "NOT_STARTED"
+    },
+    {
+      "arm": "treatment",
+      "pair_id": 3,
+      "reason": "instrumentation_source_hash_changed_after_manifest_freeze",
+      "status": "NOT_STARTED"
+    },
+    {
+      "arm": "control",
+      "pair_id": 3,
+      "reason": "instrumentation_source_hash_changed_after_manifest_freeze",
+      "status": "NOT_STARTED"
+    },
+    {
+      "arm": "control",
+      "pair_id": 4,
+      "reason": "instrumentation_source_hash_changed_after_manifest_freeze",
+      "status": "NOT_STARTED"
+    },
+    {
+      "arm": "treatment",
+      "pair_id": 4,
+      "reason": "instrumentation_source_hash_changed_after_manifest_freeze",
+      "status": "NOT_STARTED"
+    }
+  ],
+  "stage_invocations_executed": 0,
+  "stage_invocations_scheduled": 8,
+  "stop_reason": "DETERMINISTIC_DIAGNOSTIC_GATE_FAILED_AND_FROZEN_HASH_DRIFT_AFTER_CODE_REVIEW"
+}

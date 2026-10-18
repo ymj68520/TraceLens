@@ -1,0 +1,35 @@
+{
+  "artifact_version": "RCA2A2bInterpretationAddendumV1",
+  "created_at": "2026-10-14T00:00:00+00:00",
+  "baseline": "4b006c287d8a7822dae96a678b8835a9b71fdfc4",
+  "amends": "rca2a2b-field-level-failure-report-v1.json",
+  "append_only": true,
+  "original_files_untouched": [
+    "rca2a2b-field-level-failure-report-v1.json",
+    "rca2a2-diagnostic-interpretation-amendment-v1.json",
+    "diagnostics/stepfun-failures.jsonl",
+    "gate-sink-evidence.jsonl",
+    "qual-8x1/t2-no-evidence/repeat0/"
+  ],
+  "interpretation": {
+    "Diagnostic execution": "COMPLETED",
+    "Field-level failure": "IDENTIFIED_AT_SUPERVISOR_PLAN",
+    "INTEGRATE field-level cause": "NOT_OBSERVED",
+    "AgentRun persistent status": "RUNNING_AT_BENCHMARK_EXIT",
+    "CF-1": "UNDER_LIFECYCLE_REVIEW",
+    "RCA-2B": "NOT_AUTHORIZED"
+  },
+  "binding_statements": [
+    "The recorded failure is a PLAN-stage output-validation failure: the single action payload matched NO union variant (extra_forbidden x7 + missing x1 across all three branches = ONE payload, INVALID_UNION primary). INTEGRATE was never reached in this attempt, so nothing in this record may be read as INTEGRATE evidence.",
+    "The PLAN-stage INVALID_UNION must NOT be auto-attributed to any problem the INTEGRATE unified-envelope proposal (RCA-2A.1) would solve. Any such attribution requires its own field-level INTEGRATE evidence from a run that actually reaches the INTEGRATE output-validation layer; until then the INTEGRATE-position field-level cause stays NOT_OBSERVED and the historical INTEGRATE attribution stays SUSPECTED.",
+    "The AgentRun row persisted 'running' at benchmark CLI exit is the CF-1 symptom (pre-existing P4B re-plan semantics; the restart-recovery sweep is the terminalizer). This addendum records the state; the lifecycle review outcome is owned by the RCA-2A.2c audit."
+  ],
+  "rca2a2c_cross_reference": {
+    "audit_artifact": "benchmarks/audits/rca2a2c-plan-consistency-audit/rca2a2c-plan-failure-consistency-audit-v1.json",
+    "what_the_audit_added": [
+      "Offline reproduction through the REAL run_p8b_baseline CLI with a deterministic FunctionModel: the historical 8-error INVALID_UNION presentation is reproduced byte-identically from the discriminant naming error alone (field 'type' instead of 'action_type'); containment shape identical (SUPERVISOR_PLAN, model_output_retry_exhausted, retry_attempts=1, UnexpectedModelBehavior <- ValidationError).",
+      "Schema/instruction consistency verdict for the PLAN v2 contract: PLAN_CONTRACT_CONSISTENT_ON_TESTED_DOMAIN — the model-visible output-tool schema is field-identical to the production schema; no instruction-required field is schema-forbidden; all three action variants and the no_action path are constructible. The INVALID_UNION is a model-side field-naming failure, not a prompt/schema contradiction.",
+      "CF-1 lifecycle review outcome: RUNTIME_LIFECYCLE_DEFECT_CONFIRMED, scoped to the one-shot invocation exit boundary (no deterministic terminalizer for non-terminal AgentRun rows when the controlling process exits normally; PLAN containment is deliberately non-terminal for live-service re-plan). Fix design recorded; production behavior intentionally NOT changed pending independent authorization."
+    ]
+  }
+}

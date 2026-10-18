@@ -1,0 +1,33 @@
+{
+  "artifact_version": "RCA2A17FinalEngineeringDecisionV1",
+  "experiment_id": "rca2a17-cycle-lifecycle-hardening",
+  "timestamp_utc": "2026-10-17T06:45:00.000000+00:00",
+  "decision": "CYCLE_LIFECYCLE_HARDENING_APPROVED",
+  "phase_verdict": "AGENT_CYCLE_LIFECYCLE_HARDENED",
+  "key_accomplishments": [
+    "Durable cycle execution persistence implemented in agent_cycle_executions SQLite table.",
+    "Atomic request claim and caching of completed cycle responses prevents double execution.",
+    "Zero-computation idempotent replay verified for identical request_id and payload fingerprint.",
+    "Conflicting payload with reused request_id rejected with HTTP 409 Conflict.",
+    "Optimistic revision concurrency control rejects stale requests with HTTP 409 Conflict.",
+    "Service restart recovery swept via recover_interrupted_agent_runtime(), marking active cycles interrupted without corrupting state.",
+    "Backwards-compatible AgentRuntimeRecoverySummary preserves legacy 4-key dict contract across all existing test suites.",
+    "Double-checked task existence check prevents zombie writes on task deletion.",
+    "Strict grounding validator and finalization gate invariants maintained.",
+    "All 32 deterministic lifecycle tests (T01-T32) passed (100%).",
+    "Full multi-suite regression (132 tests) passed with zero defects."
+  ],
+  "safety_and_governance": {
+    "real_provider_requests_executed": 0,
+    "production_supervisor_prompt_modified": false,
+    "production_schema_modified": false,
+    "vocabulary_guidance_v1_status": "FROZEN_EXPERIMENTAL_ONLY",
+    "finalization_gate_auto_published": false,
+    "report_evidence_auto_admitted": false,
+    "analyst_acceptance_auto_executed": false
+  },
+  "readiness": {
+    "agent_v0_backend_lifecycle": "HARDENED_AND_READY",
+    "mandatory_hard_stop": true
+  }
+}

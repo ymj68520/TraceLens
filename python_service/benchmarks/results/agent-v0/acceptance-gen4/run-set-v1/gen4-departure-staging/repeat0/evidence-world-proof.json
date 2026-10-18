@@ -1,0 +1,17 @@
+{
+ "substrate_id": "sub-gen4-departure-staging",
+ "sealed_image_hash": "302435a5d9512cc2415f3ba81ee413ee6551539f375fdfb34cc468b42affcf8c",
+ "actual_image_hash": "302435a5d9512cc2415f3ba81ee413ee6551539f375fdfb34cc468b42affcf8c",
+ "sealed_world_digest": "42b5ffbb52cb4ab7b81f9df14f817db88b9f4dfea47a131d40b080edcc16b9a1",
+ "parsed_world_match": "indirect",
+ "indirect_note": "task store was cleaned by the recovery pass before parsed-digest comparison existed; sealed-world equivalence is covered by construction x2, preflight x2, and the direct parsed-world proofs on the other runs; this run's hydration audit (captured pre-cleanup) and snapshot evidence refs are the surviving direct evidence",
+ "snapshot_evidence_refs_within_sealed_keys": true,
+ "match": true,
+ "hydration": {
+  "hydrated_evidence_count": 6,
+  "sealed_evidence_count": 6,
+  "all_matches_sealed": true,
+  "content_integrity_failures": 0
+ },
+ "recovered_after_driver_defect": true
+}

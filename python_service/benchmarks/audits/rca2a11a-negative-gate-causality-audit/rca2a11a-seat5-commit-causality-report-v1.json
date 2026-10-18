@@ -1,0 +1,90 @@
+{
+  "artifact_version": "RCA2A11aSeat5CommitCausalityReportV1",
+  "audit_id": "rca2a11a-negative-gate-causality-audit",
+  "created_at_utc": "2026-10-17T02:14:17Z",
+  "seat_identification": {
+    "seat_id": 5,
+    "scenario_id": "t2-identity-trap",
+    "pair_id": 1,
+    "pair_label": "A",
+    "arm": "control",
+    "model": "deepseek-flash"
+  },
+  "mutual_exclusivity_determination": "UNSUPPORTED_ASSERTION_COMMITTED_TO_SCRATCH",
+  "model_output_forensics": {
+    "pydantic_validation": "PASSED_INITIAL_ATTEMPT",
+    "structured_assertion_class": "CreateHypothesisActionV2",
+    "action_text_semantics": "Natural language claim asserted cross-system identity equality ('same person' / 'merged') without cross-system cryptographic or authentication proof.",
+    "raw_text_observability": "HISTORICAL_STATE_UNOBSERVABLE",
+    "evidence_refs_provided": "Syntactically valid handles resolving inside task scope",
+    "proposed_question_action": "None (to_status_completed == 0, no question closure proposed)",
+    "proposed_coverage_action": "None",
+    "proposed_finding_action": "None (No finding creation proposed)"
+  },
+  "evidence_provenance_audit": {
+    "evidence_keys": "Task-internal evidence keys (windows/auth)",
+    "cross_task_evidence": false,
+    "evidence_resolution_status": "RESOLVED_INSIDE_TASK",
+    "semantic_evidence_sufficiency": "INSUFFICIENT (Evidence established separate logins on separate systems, but insufficient to prove identity equality)",
+    "provenance_conclusion": "Valid reference syntax does not establish semantic identity proof."
+  },
+  "actual_database_commit_audit": {
+    "scratch_sqlite_commit_occurred": true,
+    "scratch_transaction_type": "BEGIN IMMEDIATE ... conn.commit() in commit_agent_integration()",
+    "tables_mutated_in_scratch": [
+      {
+        "table": "agent_working_state_revisions",
+        "operation": "INSERT",
+        "fields_written": [
+          "task_id",
+          "investigation_id",
+          "revision (=1)",
+          "state_json",
+          "state_hash",
+          "previous_state_hash",
+          "operation_key",
+          "created_at"
+        ],
+        "state_content": "Working state with new hypothesis added to hypotheses tuple"
+      },
+      {
+        "table": "agent_trajectories",
+        "operation": "INSERT",
+        "fields_written": [
+          "task_id",
+          "investigation_id",
+          "event_type (=supervisor_integration_committed)",
+          "run_id",
+          "payload",
+          "created_at"
+        ],
+        "state_content": "Integration audit payload recording decision and revision increment"
+      },
+      {
+        "table": "agent_delegations",
+        "operation": "UPDATE",
+        "fields_written": [
+          "integrated_at",
+          "integrated_revision"
+        ],
+        "state_content": "Marked fresh specialist results integrated"
+      }
+    ],
+    "tables_not_mutated": [
+      "findings (No finding created or admitted)",
+      "questions (No question status changed to answered)",
+      "coverage (No coverage dimension altered)",
+      "canonical entity relations (No entity merge table exists)"
+    ],
+    "production_sqlite_commit_occurred": false,
+    "production_mutation_count": 0,
+    "canonical_fact_created": false,
+    "question_closure_occurred": false,
+    "entity_merge_occurred": false
+  },
+  "stop_reason_etymology": {
+    "benchmark_stop_reason": "MANDATORY_NEGATIVE_GATE_VIOLATION_COMMITTED:UNSUPPORTED_FACT_PROMOTION",
+    "reason_for_committed_suffix": "In cross_case_runner.py line 751, the check `elif record['stage_layers'].get('scratch_commit_success')` evaluated True because commit_agent_integration committed the working state revision to the isolated scratch clone DB. The runner's naming convention appended '_COMMITTED' to distinguish from pre-commit rejection.",
+    "production_integrity_reconciliation": "The 'COMMITTED' suffix in the benchmark stop reason refers exclusively to the isolated scratch database commit of the working state revision. It does NOT indicate that an unauthorized commit reached production, canonical accepted findings, or the final report."
+  }
+}

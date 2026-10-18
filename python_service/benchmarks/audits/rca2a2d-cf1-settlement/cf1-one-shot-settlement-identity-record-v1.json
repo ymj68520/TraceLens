@@ -1,0 +1,35 @@
+{
+  "artifact_version": "CF1OneShotSettlementIdentityRecordV1",
+  "created_at": "2026-10-14T00:00:00+00:00",
+  "baseline_commit": "7766319603d0f50a6fe5fcb59cdb9382d9341693",
+  "result_commit": "recorded post-execution in the commit introducing this file (same convention as RCA2A2RuntimeInstrumentationIdentityRecordV1)",
+  "identity_statement": "The modified benchmark execution environment is NOT claimed to carry the same identity as any historical qualification measurement. The benchmark entrypoint sha256 below DIFFERS from the entrypoint that produced every historical qualification/acceptance artifact set; those measurements remain bound to their own recorded runtime identity and are not re-interpreted under this settlement build.",
+  "modified_runtime_files": [
+    "python_service/scripts/run_p8b_baseline.py (one-shot exit-boundary settlement wiring + settlement.json artifact)",
+    "python_service/httpserver/services/benchmarks/one_shot_settlement.py (NEW — settlement adapter)"
+  ],
+  "sha256_at_execution": {
+    "benchmark_entrypoint_hash": "c058af65582ab47c5917240d2069666b02b64dfdd432566c8bacfcd70f5a3887",
+    "settlement_helper_hash": "e0d6886bc052cc43bcdc2061e24a71acb6e5e2ed58fcd7b11f4d57019f525956",
+    "settlement_tests_hash": "01f1226580d85e0ef24246dd2fa8a21fe8a20667a6ffd412d7912bc65998ba31",
+    "production_executor_hash_unchanged": "cc2da9430ed53e180bceb6106308eeb6e290190e25bd72bd09818c7d9dc12f72",
+    "agent_orchestrator_hash_unchanged_vs_2a2c": "52e468b42e1c26a2a9835ba8e2ac2f625f8e142f97c62c7b6b9a421c18f14763",
+    "agent_runtime_hash_unchanged": "8d0448e7f69ff03a1f1545d6fd23b1ae888e589093f07f9f362f51ab93c2fb00"
+  },
+  "unchanged_frozen_surfaces": [
+    "Supervisor PLAN/INTEGRATE schema (agent_supervisor.py / agent_integration_v2.py untouched)",
+    "instructions/prompts (untouched)",
+    "ToolRegistry / pydantic_bridge (untouched)",
+    "StateTransitionPolicy / GroundingValidator (untouched)",
+    "FinalizationGate (untouched)",
+    "PydanticAI retries / SDK retries / timeouts (untouched)",
+    "Evidence Snapshot / EvidenceResolver (untouched)",
+    "AgentRunStatus / RunStopReason enums and RUN_TRANSITIONS (untouched)",
+    "recover_interrupted_agent_runtime semantics (untouched)",
+    "Historical qualification/acceptance artifacts (44 rca2a2/rca2a2b artifacts + all Gen-4 records re-verified byte-identical)"
+  ],
+  "historical_gen4": "CLOSED_REJECTED / UNCHANGED (immutable)",
+  "acceptance_profile_v2": "UNCHANGED (agent-v0-acceptance-profile-v2.json, sha256 c40f1adcad816e43...)",
+  "model_calls": 0,
+  "rca_2b": "NOT AUTHORIZED"
+}

@@ -1,0 +1,14 @@
+{
+  "artifact_version": "RCA2A11bBenchmarkRemediationReportV1",
+  "audit_id": "rca2a11b-semantics-working-state-safety",
+  "created_at_utc": "2026-10-17T02:40:00Z",
+  "remediation_file": "python_service/benchmarks/isolated_integration/stop_taxonomy.py",
+  "key_remediations": [
+    "Introduced DecoupledSeatAssessment with 6 independent axes.",
+    "Separated scratch working state commits from canonical finding promotions.",
+    "Classified benign overasserted hypotheses in scratch as SEMANTICALLY_INADEQUATE_HYPOTHESIS_COMMITTED.",
+    "Provided backward-compatible reclassify_historical_seat_record() function."
+  ],
+  "production_modifications": "ZERO (0). All remediations are benchmark-only.",
+  "regression_safety": "All existing benchmark tests and historical replay suites pass 100%."
+}

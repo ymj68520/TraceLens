@@ -1,0 +1,89 @@
+{
+  "artifact_version": "EvidenceWorldValidationV1",
+  "generation_id": "acceptance-generation-4",
+  "created_at": "2026-10-01T00:00:00+00:00",
+  "zero_model_calls": true,
+  "provisioning_repetitions": 2,
+  "cases": [
+    {
+      "case_id": "gen4-layered-dispersion",
+      "case_family": "fund_flow_layering",
+      "public_input_hash": "33bbb0aca7455e1a01d9827692a034e9ba5ffbff843fc44f8e05208c002bf326",
+      "truth_input_hash": "36a62f65c0b8f59d07943c84fe4f4e59b15293ccc79f4cd65e30aa804421cd33",
+      "image_sha256": "847dd6ed16d829161a40989fbc520c65a7d103e0fbb811f6f2e15ab6d2116a91",
+      "image_size_bytes": 16777216,
+      "evidence_world_digest": "82145b5cfb682925025aa767c21c97a6fb3d7907f580fc0dc7780bb5ac9500fa",
+      "provision_digests": [
+        "82145b5cfb682925025aa767c21c97a6fb3d7907f580fc0dc7780bb5ac9500fa",
+        "82145b5cfb682925025aa767c21c97a6fb3d7907f580fc0dc7780bb5ac9500fa"
+      ],
+      "evidence_keys": [
+        "file:/README.txt",
+        "file:/bank/transfer-records.csv",
+        "file:/chat/group-instructions.txt",
+        "file:/docs/rental-agreement.txt",
+        "file:/notes/card-worksheet.txt"
+      ],
+      "manifest_input_hash": "13032d2e85955d2db2fa5223dd6f81007f50c84d931ab012bad2998a18cf5929",
+      "sealed_content_hashes": {
+        "file:/README.txt": "75b36722788a5de9f9fe49a789158f2ce808fe6e3f584aaea007737a915fd525",
+        "file:/bank/transfer-records.csv": "3fc04d419451978aba673bf909f830168e6cbbda4fb1a9df6a0eabf4c4e99767",
+        "file:/chat/group-instructions.txt": "426ffa0ba679401aa7b0bdd8f2282db95b1e7fdf660d2a3c7ddd185346d81ccd",
+        "file:/docs/rental-agreement.txt": "b198535b2efd145f0ffd1ccd842f412c74d28692de945fb072c8ce9e067bae24",
+        "file:/notes/card-worksheet.txt": "9e96d007ce9f8615788a9a23640e74055a97516f3eac9278b6bcd4b6dc93e723"
+      },
+      "checks": {
+        "provisioning_reproducible": true,
+        "expected_keys_match_assets": true,
+        "indexed_world_matches_asset_set": true,
+        "indexed_sizes_match_public_assets": true,
+        "truth_public_separation_clean": true,
+        "attention_no_standalone_coverage": true,
+        "attention_no_duplicate_topology": true
+      },
+      "ok": true
+    },
+    {
+      "case_id": "gen4-departure-staging",
+      "case_family": "bulk_staging_discrimination",
+      "public_input_hash": "d02fb63c688b0b141c2cd1353ce4737acc13902e5b98d42d234fdef1bcb2e092",
+      "truth_input_hash": "3221fe5314f7b95c1c41f4fdcf12609bc2c4ec488c40b0115500992301b6af95",
+      "image_sha256": "302435a5d9512cc2415f3ba81ee413ee6551539f375fdfb34cc468b42affcf8c",
+      "image_size_bytes": 16777216,
+      "evidence_world_digest": "42b5ffbb52cb4ab7b81f9df14f817db88b9f4dfea47a131d40b080edcc16b9a1",
+      "provision_digests": [
+        "42b5ffbb52cb4ab7b81f9df14f817db88b9f4dfea47a131d40b080edcc16b9a1",
+        "42b5ffbb52cb4ab7b81f9df14f817db88b9f4dfea47a131d40b080edcc16b9a1"
+      ],
+      "evidence_keys": [
+        "file:/README.txt",
+        "file:/data/clients-index.txt",
+        "file:/hr/offboard-notice.txt",
+        "file:/logs/bulk-copy-audit.log",
+        "file:/mail/ticket-2025-0412.txt",
+        "file:/policy/it-backup-policy.txt"
+      ],
+      "manifest_input_hash": "16d5561c61a4632a648a8adcb3e86b9cc84afa04b5c42cd4330118420656de21",
+      "sealed_content_hashes": {
+        "file:/README.txt": "a253334934ece49c9e43df705680937a4826761fa90f14ecda1cb6eb949a17d9",
+        "file:/data/clients-index.txt": "13307def488ba78303f2e1c9543a60f38ee57472a20f5dba822578289e933f48",
+        "file:/hr/offboard-notice.txt": "f31050289aa6876ca828b8e4413e77296e034ee192187e8a7ae6c188285ee933",
+        "file:/logs/bulk-copy-audit.log": "b72fa1e024dfbb21c66d7aaaa694e289fa59e1a08eb8b725b129b7c6eabe66b3",
+        "file:/mail/ticket-2025-0412.txt": "3fdef2655b63f97db714b43b4766650e107d9a4aa82889d014757fcaa18698d6",
+        "file:/policy/it-backup-policy.txt": "53e5941146436c8d78d34741dfca6ad1ba3a559a8c5b8915e25e508ad2cfb175"
+      },
+      "checks": {
+        "provisioning_reproducible": true,
+        "expected_keys_match_assets": true,
+        "indexed_world_matches_asset_set": true,
+        "indexed_sizes_match_public_assets": true,
+        "truth_public_separation_clean": true,
+        "attention_no_standalone_coverage": true,
+        "attention_no_duplicate_topology": true
+      },
+      "ok": true
+    }
+  ],
+  "all_passed": true,
+  "input_hash": "d52176d0679170a578897a57f6236a0114dd5f06997355f4cc9c14dcfc5f46aa"
+}

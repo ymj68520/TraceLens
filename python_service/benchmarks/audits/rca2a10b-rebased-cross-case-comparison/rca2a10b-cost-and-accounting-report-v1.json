@@ -1,0 +1,26 @@
+{
+  "artifact_version": "RCA2A10bCostAndAccountingReportV1",
+  "budget_compliance": "PASS_WITHIN_BUDGET",
+  "budget_limit": {
+    "diagnostic_http_attempts_max": 96,
+    "max_logical_model_generations": 32,
+    "output_retry_budget_per_invocation": 1,
+    "preflight_http_attempts_max": 9,
+    "preflight_logical_requests": 3,
+    "sdk_max_retries": 2,
+    "stage_invocations": 16,
+    "total_max_http_attempts": 105
+  },
+  "diagnostic_stage_invocations_used": 0,
+  "experiment_id": "rca2a10b-rebased-cross-case-vocabulary-comparison",
+  "http_attempts_used": 5,
+  "logical_model_generations_used": 1,
+  "monetary_cost_usd": 0.0,
+  "preflight_logical_requests_used": 2,
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "total": 0
+  },
+  "total_latency_seconds": 0.0
+}

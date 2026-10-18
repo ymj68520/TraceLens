@@ -1,0 +1,51 @@
+{
+  "artifact_version": "RCA2A14bBaselineIntegrityReportV1",
+  "experiment_id": "rca2a14b-external-holdout-custody",
+  "timestamp_utc": "2026-10-17T04:12:00.000000+00:00",
+  "baseline_commit": "ce5649e37f5791d250dc87e23910aec2c75464e6",
+  "parent_lineage": {
+    "rca2a14a_commit": "ce5649e37f5791d250dc87e23910aec2c75464e6",
+    "rca2a13_commit": "82227677a4ce4f68bde393c3e22c677bb411fb66",
+    "rca2a12_artifact_commit": "0419e111520e1460ff65bac7fb540f9b07745ec0",
+    "rca2a12_runtime_commit": "0c2e9b9cac244ebaaf457156ce0ff8dcc264b7b3",
+    "rca2a11b_baseline_commit": "622b2327e93706f24c1a3049aa1bc10af971f58c",
+    "rca2a11a_audit_commit": "b4330951be00ee64b98f13044cdcb4dd565dc2ba",
+    "rca2a11_artifact_commit": "7707279c353be6aff41b26b165f278792613d9c0",
+    "rca2a11_runtime_commit": "afbeb55bf76388d98a58cbbbb44bc4c8e1db10c0"
+  },
+  "candidate_specification": {
+    "candidate_id": "supervisor-v2-vocabulary-guidance-v1",
+    "candidate_type": "PROMPT_ONLY",
+    "guidance_sha256": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+    "output_schema_hash": "a214ec4f5e81fcbb",
+    "candidate_model_target": "deepseek-flash",
+    "candidate_provider_target": "generic"
+  },
+  "rca2a14a_artifact_verification": {
+    "rca2a14a-acceptance-profile-closure-v1.json": "345d7164d475bfea309d6754f46586d9440a1a38a66049080de8f16e6d75a84c",
+    "rca2a14a-audit-report.md": "590df34625bcd34fe3fa6eb083c25ffa2f3e4b92910e0df1513861a8343eadde",
+    "rca2a14a-baseline-integrity-report-v1.json": "53c8a62eb7288e43bf9c01cf756336d91cb2898b282da253312ba04c32075beb",
+    "rca2a14a-blind-adjudication-readiness-v1.json": "352a73a4577f00393bedd19bb5d49d7757c7b067151b8c019bdaa7c86ff0b133",
+    "rca2a14a-custody-and-access-control-report-v1.json": "b6f215a7b09dd5b6e9a087e4c1693b4a2d2a4c92f2ea7d2e3ea73ba94d355503",
+    "rca2a14a-final-readiness-decision-v1.json": "1dcd0839f4ff6c51912d6cf19f4f4e64fbc1afaceb54d99a97e9527aaa92a695",
+    "rca2a14a-holdout-battery-manifest-v1.json": "50a700aadaceb370d2d4d74c71636d78673289ddff81f8b5f59e136186b1809b",
+    "rca2a14a-holdout-sealing-report-v1.json": "0397ff0caaf2bcbe478eed897a2504a3cd32ae11e10b297769726c774c75c8ab",
+    "rca2a14a-qualification-harness-readiness-v1.json": "2e1bc151f6e168046ffec0bad474a80a89694a673766375c8a79fde93020baca",
+    "rca2a14a-risk-metric-contract-v1.json": "4a99efc7ea0719cc6092ca672ba7837059f9ca034089417493872239bd3d5550",
+    "rca2a14a-runtime-identity-record-v1.json": "d9431a2928f14c38f94ddd5eb3e62dececce0064af1124b5c4928c89046269e9",
+    "rca2a14a-statistical-power-and-budget-report-v1.json": "935deb30e366396f380cfaa3da04048d407f2a41edc4fd8aa7a65c692a86f3d2",
+    "rca2a14a-test-and-regression-report-v1.json": "8e746eab5c3ef7aa2cecef04a444c354f8289f6c9fbeb81f9641a6a40ad92dca"
+  },
+  "production_invariants": {
+    "production_supervisor_prompt_mutated": false,
+    "production_schema_mutated": false,
+    "production_resolver_mutated": false,
+    "production_state_policy_mutated": false,
+    "gen5_created": false,
+    "rca2b_implemented": false,
+    "historical_gen4_unchanged": true,
+    "real_provider_requests_count": 0
+  },
+  "working_tree_clean": true,
+  "disposition": "BASELINE_VERIFIED_UNCHANGED"
+}

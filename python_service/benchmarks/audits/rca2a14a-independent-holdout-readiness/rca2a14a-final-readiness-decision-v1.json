@@ -1,0 +1,34 @@
+{
+  "artifact_version": "RCA2A14aFinalReadinessDecisionV1",
+  "experiment_id": "rca2a14a-independent-holdout-readiness",
+  "timestamp_utc": "2026-10-17T03:59:39.159174+00:00",
+  "final_disposition": "PROTOCOL_READY_CUSTODY_BLOCKED",
+  "readiness_summary": {
+    "baseline_integrity_verification": "PASS (Commit 82227677 verified; all 13 RCA-2A.13 reports immutable)",
+    "risk_metric_contract": "PASS (MODEL_TEXT_OVERASSERTION cleanly decoupled from UNSUPPORTED_FACT_COMMITTED)",
+    "holdout_battery_specification": "PASS (Q1-Q6 capability families, case contract schema, three-valued truth model frozen)",
+    "truth_sealing_protocol": "PASS (Cryptographic commitment formulas and nonce disclosure protocol frozen)",
+    "statistical_power_reconciliation": "PASS (48 seats reconciled to 24 pairs; confirmatory size set to 38-52 pairs; screening vs confirmatory tiers established)",
+    "acceptance_profile_closure": "PASS (Hard gates vs Quality gates separated; Absolute quality vs Relative improvement separated)",
+    "blind_adjudication_readiness": "PASS (Arm-blind envelope and anti-leakage safeguards frozen)",
+    "harness_readiness": "PASS (28/28 deterministic offline tests T01-T28 passed; 14 fail-closed paths verified)",
+    "independent_custody_status": "BLOCKED (Single coding agent environment lacks authentic role separation; formal sealed cases count = 0)"
+  },
+  "remaining_blockers": [
+    "Independent holdout authorship: Novel Q1-Q6 cases must be authored in an isolated repository without access by the prompt developer.",
+    "Independent custody: Sealed truth manifests must be managed by an independent third-party custodian with access tokens withheld from the executing agent.",
+    "Confirmatory sample size: Formal production qualification requires 38 to 52 pairs (76 to 104 seats) to achieve 80% statistical power."
+  ],
+  "future_stage_boundary": {
+    "proposed_phase": "RCA-2A.14 \u2014 Sealed Prompt Qualification Execution",
+    "authorization_status": "NOT_AUTHORIZED",
+    "prerequisites_for_authorization": [
+      "Independent Holdout Author assigned and novel cases authored (PENDING)",
+      "Independent Custodian assigned and truth manifests sealed (PENDING)",
+      "Cryptographic commitments posted to public ledger (PENDING)",
+      "Arm-blind adjudication panel staffed (PENDING)",
+      "Formal user directive authorizing live execution (PENDING)"
+    ]
+  },
+  "architectural_decision": "MANDATORY_STOP_ENFORCED"
+}

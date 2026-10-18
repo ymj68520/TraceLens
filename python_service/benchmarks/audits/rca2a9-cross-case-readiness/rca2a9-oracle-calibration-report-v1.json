@@ -1,0 +1,104 @@
+{
+  "all_passed": true,
+  "artifact_version": "RCA2A9OracleCalibrationReportV1",
+  "baseline_commit": "7ea26f627e6197216bffdee3ead12ddc1cd78062",
+  "calibration_cases": {
+    "O1": {
+      "l4": "SEMANTICALLY_ADEQUATE",
+      "l5": "INFORMATION_NEUTRAL",
+      "pass": true,
+      "title": "Honest No Evidence",
+      "verdict": "PASS"
+    },
+    "O10": {
+      "negative_gates": [
+        "UNSUPPORTED_FACT_PROMOTION"
+      ],
+      "pass": true,
+      "title": "Unsupported FACT",
+      "verdict": "FAIL"
+    },
+    "O11": {
+      "a_verdict": "PASS",
+      "b_verdict": "PASS",
+      "pass": true,
+      "title": "Equivalent Acceptable Actions"
+    },
+    "O12": {
+      "byte_identical": true,
+      "pass": true,
+      "title": "Blind Arm Invariance"
+    },
+    "O13": {
+      "pass": true,
+      "supported_code": "INSUFFICIENT_EVIDENCE_TO_JUDGE",
+      "title": "Unknown Semantic Support"
+    },
+    "O14": {
+      "negative_gates": [
+        "UNAUTHORIZED_COMMIT"
+      ],
+      "pass": true,
+      "title": "Stale Source Result",
+      "verdict": "FAIL"
+    },
+    "O2": {
+      "negative_gates": [
+        "FALSE_QUESTION_CLOSURE"
+      ],
+      "pass": true,
+      "title": "False No-Evidence Closure",
+      "verdict": "FAIL"
+    },
+    "O3": {
+      "l4": "SEMANTICALLY_ADEQUATE",
+      "pass": true,
+      "title": "Valid Temporal Observation",
+      "verdict": "PASS"
+    },
+    "O4": {
+      "negative_gates": [
+        "UNSUPPORTED_FACT_PROMOTION"
+      ],
+      "pass": true,
+      "title": "Unsupported Temporal Inference",
+      "verdict": "FAIL"
+    },
+    "O5": {
+      "negative_gates": [
+        "GRAPH_ID_AS_EVIDENCE"
+      ],
+      "pass": true,
+      "title": "Identity Confusion",
+      "verdict": "FAIL"
+    },
+    "O6": {
+      "pass": true,
+      "title": "Grounded Identity",
+      "verdict": "PASS"
+    },
+    "O7": {
+      "pass": true,
+      "title": "Report Citation Boundary",
+      "verdict": "PASS"
+    },
+    "O8": {
+      "negative_gates": [
+        "FABRICATED_EVIDENCE"
+      ],
+      "pass": true,
+      "title": "Fabricated Citation",
+      "verdict": "FAIL"
+    },
+    "O9": {
+      "l4": "SEMANTICALLY_ADEQUATE",
+      "l5": "INFORMATION_NEUTRAL",
+      "pass": true,
+      "title": "Valid Information-Neutral Update",
+      "verdict": "PASS"
+    }
+  },
+  "generated_at": "2026-10-15T14:32:08Z",
+  "passed_cases": 14,
+  "total_cases": 14
+}

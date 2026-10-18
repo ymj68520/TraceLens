@@ -1,0 +1,38 @@
+{
+  "reachability_version": "reachability-manifest:v1",
+  "case_id": "t2-misleading-note",
+  "records": [
+    {
+      "truth_evidence_id": "TE-1",
+      "resolved_evidence_keys": [
+        "file:/export/app.log"
+      ],
+      "parser_reachable": true,
+      "agent_discoverable": true,
+      "status": "resolved",
+      "unavailable_reason": ""
+    },
+    {
+      "truth_evidence_id": "TE-2",
+      "resolved_evidence_keys": [
+        "file:/scheduler/jobs.conf"
+      ],
+      "parser_reachable": true,
+      "agent_discoverable": true,
+      "status": "resolved",
+      "unavailable_reason": ""
+    },
+    {
+      "truth_evidence_id": "TE-3",
+      "resolved_evidence_keys": [
+        "file:/README.txt"
+      ],
+      "parser_reachable": true,
+      "agent_discoverable": true,
+      "status": "resolved",
+      "unavailable_reason": ""
+    }
+  ],
+  "input_hash": "823cdd1f6a9e19fb075266cbd755e3d71cf77abad7663f55fa37b76d1348de1e",
+  "created_at": "2026-09-28T11:15:36.285361+00:00"
+}

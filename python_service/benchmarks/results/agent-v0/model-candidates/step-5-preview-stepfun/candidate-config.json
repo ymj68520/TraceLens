@@ -1,0 +1,35 @@
+{
+  "artifact_version": "CandidateConfigurationIdentityV2",
+  "candidate_id": "step-5-preview@stepfun",
+  "wave": 2,
+  "provider": "stepfun",
+  "provider_endpoint": "https://api.stepfun.com/step_plan/v1",
+  "provider_model_id": "step-5-preview",
+  "model_family": "step-5",
+  "routing_policy": {
+    "route": "direct provider endpoint (no stealth routing)",
+    "explicit_model_in_every_request": true,
+    "identity_verification": "S1 identity_exact; smoke returned_model=step-5-preview; preflight 3/3 identity exact"
+  },
+  "generation_params": {
+    "temperature": 0.7,
+    "max_tokens": 16384,
+    "reasoning": {
+      "requested": "LLM_THINKING_MODE=disabled → reasoning_effort=none",
+      "endpoint_response": "ACCEPTED (control-compatible, §14) — smoke probe completion_tokens_details.reasoning_tokens=0",
+      "frozen_value": "reasoning_effort=none"
+    }
+  },
+  "timeout_seconds": 120,
+  "retry_policy": "LLM_MAX_RETRIES=3 (frozen)",
+  "structured_output_mode": {
+    "runtime_mode": "tool/function-based Pydantic output (§11 path A — unchanged production mechanism)",
+    "local_validation": "canonical Pydantic extra=forbid validation unchanged (S6 PASS)"
+  },
+  "tool_call_mode": "supported, non-strict definitions (S4/S5 PASS)",
+  "secret_handling": "legacy LLM_API_KEY path (provider = .env LLM_TEXT_BASE_URL); key never recorded in artifacts",
+  "prior_history": "step-5-preview was disqualified in the R2 era (ed382cbb, 67% systemic output failures) under the superseded v2 contract and a different serving path; this screening is a fresh, independent measurement under the frozen RuntimeBaselineV3 — no result carried over",
+  "created_at": "2026-10-13T09:30:26+00:00",
+  "config_hash_method": "sha256 over json.dumps(config minus config_hash/config_hash_method, sort_keys=True, ensure_ascii=False) utf-8",
+  "config_hash": "f24130f54ae852778a5ba905a1f0b27b427b79f8103109362fe09e4cd355b0fe"
+}

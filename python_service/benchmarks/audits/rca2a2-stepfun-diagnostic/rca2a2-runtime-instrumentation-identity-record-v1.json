@@ -1,0 +1,26 @@
+{
+ "artifact_version": "RCA2A2RuntimeInstrumentationIdentityRecordV1",
+ "created_at": "2026-10-13T14:30:03+00:00",
+ "head_commit": "0090a1ca",
+ "runtime_commit_at_execution": "0090a1ca (worktree delta: benchmark sink wiring fix, recorded post-execution)",
+ "instrumentation_identity": {
+  "agent_failure_taxonomy.py": "c293d4773b0d7defd84b754f81343c2e42445156fda3b10e545268edf4ddbe5a",
+  "agent_failure_diagnostics.py": "76c4b23f1fb5226f7f12c946577a820ba720033d5f4941a7d6472566f2069b7e",
+  "agent_orchestrator.py": "52e468b42e1c26a2a9835ba8e2ac2f625f8e142f97c62c7b6b9a421c18f14763",
+  "run_p8b_baseline.py": "5e1eb48e35d3e3edc59a67685e839ac5f221c97555edc42186a2afed4edcd2d4"
+ },
+ "output_contract_identity": {
+  "contract": "SupervisorIntegrationDecisionV2 (production, unchanged)",
+  "schema_hash_note": "per-failure schema_hash recorded by the sink; the V2 readiness gate pins schema_hash_of(SupervisorIntegrationDecisionV2)",
+  "readiness_gate": "test_rca2a2_v2_readiness_gate.py PASSED (production contract version path)"
+ },
+ "model_identity": {
+  "requested": "step-3.7-flash",
+  "returned": "step-3.7-flash (every identity record, all 4 runs)",
+  "frozen_config_sha256": {
+   "model-config-8x1.json": "3b9f33ec0fb56010…",
+   "candidate-config.json": "7646dad58d022274…"
+  }
+ },
+ "non_transfer": "RuntimeBaselineV3 qualification identity does not apply to this diagnostic runtime (RCA1RuntimeIdentityRecordV1 declaration stands)"
+}

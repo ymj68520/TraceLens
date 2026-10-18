@@ -1,0 +1,111 @@
+{
+ "artifact_version": "RCA2A2bFieldLevelFailureReportV1",
+ "created_at": "2026-10-13T14:59:11+00:00",
+ "experiment_id": "rca2a2b-stepfun-diagnostic",
+ "scheduled": 1,
+ "started": 1,
+ "run_status": {
+  "benchmark_harness": "completed (structural gates PASS, finalization DENIED: COVERAGE_NOT_TERMINAL)",
+  "AgentRun": "run_6bdfab51cde34b45a98c1d06223e921b — PLAN-stage failure contained; row status running (pre-existing P4B PLAN-containment semantics; recovery sweep terminalizes on restart) — consistency finding CF-1"
+ },
+ "failure_stage": "SUPERVISOR_PLAN (delegations_completed_before=0 — the INTEGRATE position was NOT reached in this attempt)",
+ "provider_and_identity": {
+  "requested_model": "step-3.7-flash",
+  "returned_model": "step-3.7-flash",
+  "identity_records": 2,
+  "identity_exact": true,
+  "provider_request_latency": "unobservable per request (no per-request timing instrumentation)",
+  "elapsed_s": 61.9
+ },
+ "observed_failure": {
+  "layer": "V2 output-tool validation (pydantic), PLAN output contract",
+  "exception_class": "UnexpectedModelBehavior (pydantic_ai.exceptions)",
+  "cause_chain": [
+   "pydantic_core._pydantic_core.ValidationError"
+  ],
+  "normalized_code": "model_output_retry_exhausted",
+  "capture_marker": "TERMINAL_VALIDATION_ERROR_ONLY — only the final exhausted ValidationError is captured; per-retry raw outputs are not recorded, so no claim is made about the full retry sequence",
+  "raw_validation_error_count": 8,
+  "note_on_union_cascade": "one model payload produced 8 errors across 3 union branches — these are ONE model failure, not 8 (directive §6)",
+  "grouped_failure_locations": [
+   {
+    "branch": "DelegateInvestigationActionV2",
+    "errors": [
+     {
+      "type": "extra_forbidden",
+      "loc_tail": "type"
+     }
+    ]
+   },
+   {
+    "branch": "RequestFinalizationActionV2",
+    "errors": [
+     {
+      "type": "extra_forbidden",
+      "loc_tail": "type"
+     },
+     {
+      "type": "extra_forbidden",
+      "loc_tail": "attention_handle"
+     },
+     {
+      "type": "extra_forbidden",
+      "loc_tail": "question_handle"
+     },
+     {
+      "type": "extra_forbidden",
+      "loc_tail": "source_scope_id"
+     },
+     {
+      "type": "missing",
+      "loc_tail": "reason_code"
+     }
+    ]
+   },
+   {
+    "branch": "NoPlanActionV2",
+    "errors": [
+     {
+      "type": "extra_forbidden",
+      "loc_tail": "type"
+     },
+     {
+      "type": "extra_forbidden",
+      "loc_tail": "attention_handle"
+     }
+    ]
+   }
+  ],
+  "error_types": {
+   "extra_forbidden": 7,
+   "missing": 1
+  },
+  "likely_primary_violation": {
+   "class": "INVALID_UNION (payload matched no plan action variant)",
+   "support": "every branch rejects: the emitted actions[0] carries none of the variant discriminators correctly (no delegate shape, request-finalization shape missing reason_code while carrying foreign handle fields, no-plan shape carrying foreign fields) — i.e. the model emitted an action payload that fits no legal plan action",
+   "status": "supported by the terminal ValidationError (type+loc per branch)"
+  },
+  "field_level_cause": "IDENTIFIED at the PLAN stage (payload/union mismatch); the INTEGRATE-specific field-level cause remains UNOBSERVED (INTEGRATE was never reached in this attempt)"
+ },
+ "retry_accounting": {
+  "pydantic_output_retries": "1 (frozen supervisor budget; marker-parsed)",
+  "sdk_request_retries": "not observable per failure",
+  "http_attempts": "not observable per failure",
+  "identity_records": 2,
+  "note": "'Exceeded maximum output retries (1)' is ONE pydantic output retry, NOT an HTTP/SDK retry (directive §8)"
+ },
+ "evidence_integrity": {
+  "hard_gates": "PASS (all structural zero-tolerance gates)",
+  "cross_task_leak": 0,
+  "fabricated_evidence": 0,
+  "graph_id_as_evidence": 0,
+  "finalization": "DENIED (COVERAGE_NOT_TERMINAL) — fail-closed",
+  "grounding": "not exercised (no delegations in this attempt)"
+ },
+ "diagnostic_instrumentation": {
+  "sink_entries": 1,
+  "gate": "BenchmarkInstrumentationGateReportV1 PASSED before the real call",
+  "run_id_correlation": true,
+  "data_quality": "VALID (no sink write failures)"
+ }
+}

@@ -1,0 +1,154 @@
+{
+ "artifact_version": "AuditFindingsV1",
+ "created_at": "2026-10-13T11:42:54+00:00",
+ "findings": [
+  {
+   "id": "F-1",
+   "severity": "high",
+   "class": "BENCHMARK_DISPOSITION_DEFECT",
+   "title": "READY_FOR_8X3 fall-through on unclassified run failures",
+   "evidence": [
+    "scripts/disposition_openrouter_8x1.py:254-286 (decision tree: no RUNTIME_FAILURE_UNATTRIBUTED/terminalization branch)",
+    "benchmarks/audits/cross-model-root-cause-audit-v1/matrix-summary.json",
+    "tests/unit/benchmarks/test_screening_disposition_regression.py (xfail-pinned)"
+   ],
+   "confirmed": true
+  },
+  {
+   "id": "F-2",
+   "severity": "high",
+   "class": "RUNTIME_OR_ADAPTER_DEFECT",
+   "title": "Asymmetric exception containment: PLAN caught+evented, INTEGRATE uncaught",
+   "evidence": [
+    "httpserver/services/investigation/agent_orchestrator.py:~1318 (PLAN except -> trajectory event + first-class outcome)",
+    "httpserver/services/investigation/agent_orchestrator.py:1596,1681 (integrate_v2/integrate, no try/except)",
+    "16/16 run-level failures escaped at INTEGRATE with empty supervisor_failures digests"
+   ],
+   "confirmed": true
+  },
+  {
+   "id": "F-3",
+   "severity": "high",
+   "class": "INSUFFICIENT_TELEMETRY",
+   "title": "Run failures persist str(exc)[:500] only; actual model outputs, validation errors and retry feedback are never serialized",
+   "evidence": [
+    "httpserver/services/benchmarks/runner.py:300-307 (FailureLayer.RUNTIME + str(exc)[:500])",
+    "httpserver/services/investigation/agent_specialist_executor.py:116-131 (safe_failure_message sanitizes)",
+    "FailureLayer enum (metrics.py:224-242) has 18 fine-grained members; only RUNTIME is used at the boundary",
+    "raw_exception_type/request_attempts/output_validation_attempts absent from all 104+40 run artifacts"
+   ],
+   "confirmed": true
+  },
+  {
+   "id": "F-4",
+   "severity": "medium",
+   "class": "ADAPTER_COMPATIBILITY_DEFECT",
+   "title": "map_provider_exception misclasses openai.APITimeoutError as AGENT_INTERNAL_FAILURE (never AGENT_TIMEOUT)",
+   "evidence": [
+    "httpserver/services/investigation/agent_specialist_executor.py:87-97",
+    "openai.APITimeoutError MRO: APITimeoutError->APIConnectionError->APIError (no TimeoutError base, no status_code)"
+   ],
+   "confirmed": true
+  },
+  {
+   "id": "F-5",
+   "severity": "medium",
+   "class": "ADAPTER_COMPATIBILITY_DEFECT",
+   "title": "LLM_MAX_RETRIES is dead configuration on the agent path",
+   "evidence": [
+    "httpserver/config.py:263 defines llm_max_retries; zero consumers in httpserver/services/investigation/",
+    "httpserver/services/investigation/agent_model_adapter.py builds AsyncOpenAI via OpenAIProvider without max_retries -> SDK default 2"
+   ],
+   "confirmed": true
+  },
+  {
+   "id": "F-6",
+   "severity": "medium",
+   "class": "BENCHMARK_DISPOSITION_DEFECT",
+   "title": "Production run-level timeout not armed: generation_params has no timeout_seconds key",
+   "evidence": [
+    "httpserver/services/benchmarks/production_executor.py:95-99 (budget = timeout_seconds or generation_params.get('timeout_seconds') -> None -> wait_for unbounded)",
+    "step-5-preview run manifests: generation_params = {temperature, max_tokens, thinking_mode, reasoning_effort}"
+   ],
+   "confirmed": true
+  },
+  {
+   "id": "F-7",
+   "severity": "medium",
+   "class": "BENCHMARK_DISPOSITION_DEFECT",
+   "title": "Non-terminalized attribution text mislabels every failed run as M7 MODEL_OUTPUT_SCHEMA_FAILURE",
+   "evidence": [
+    "scripts/disposition_openrouter_8x1.py:183-189",
+    "step-5-preview screening-report.json non_terminalized entries show 'Request timed out.' under the M7-schema label"
+   ],
+   "confirmed": true
+  },
+  {
+   "id": "F-8",
+   "severity": "info",
+   "class": "BENCHMARK_DISPOSITION_DEFECT",
+   "title": "0.5 'collapse ceiling' constant serves two different denominators across eras (wave-1 delegation-axis vs screening run-axis)",
+   "evidence": [
+    "scripts/disposition_wave2_final.py:40 (SPECIALIST_COLLAPSE_CEILING=0.5 re-defined locally)",
+    "disposition_openrouter_8x1.py applies it to run_axis_rate = output-failed runs / scheduled"
+   ],
+   "confirmed": true
+  },
+  {
+   "id": "F-9",
+   "severity": "high",
+   "class": "PROVIDER_LIMITATION",
+   "title": "step-5-preview latency exceeds the frozen 120s per-attempt budget at INTEGRATE (5/5 runs, 362s = 3x120s+overhead)",
+   "evidence": [
+    "benchmarks/audits/cross-model-root-cause-audit-v1/timeout-forensics.json",
+    "same machine/config: step-3.7-flash 8/8 zero timeouts"
+   ],
+   "confirmed": true
+  },
+  {
+   "id": "F-10",
+   "severity": "medium",
+   "class": "MODEL_COMPATIBILITY_FAILURE (SUSPECTED)",
+   "title": "Three independent providers' models fail the INTEGRATE output-tool contract at the same protocol position while the incumbent passes; actual outputs unlogged",
+   "evidence": [
+    "benchmarks/audits/cross-model-root-cause-audit-v1/output-retry-forensics.json (11 occurrences, all INTEGRATE)",
+    "schema asymmetry: INTEGRATE_V2 9833 bytes/19 $defs vs PLAN_V2 2686/3 (agent_integration_v2.py:205,263)",
+    "b2-restart specialist diagnosis (specialist-output-diagnosis.v1.json) proves capture was possible but was specialist-only and not re-armed"
+   ],
+   "confirmed": false,
+   "note": "prior is strong (3/3 models x 11/11 first-INTEGRATE failures vs incumbent supervisor 0 failures) but the directive forbids model attribution without output-level evidence"
+  },
+  {
+   "id": "F-11",
+   "severity": "info",
+   "class": "VERIFIED_INTACT",
+   "title": "Protocol reachability: valid outputs pass the full production chain for all five dispositions",
+   "evidence": [
+    "tests/unit/investigation/test_protocol_feasibility_audit.py (10 tests: 5 dispositions -> terminalization; W3 fail-closed; contradiction; fail-closed invalid ref; FinalizationGate PASS)"
+   ],
+   "confirmed": true
+  },
+  {
+   "id": "F-12",
+   "severity": "info",
+   "class": "VERIFIED_INTACT",
+   "title": "Terminalization metric: single frozen definition across all disposition scripts; historical 20/24, 10/24 reproduced exactly",
+   "evidence": [
+    "benchmarks/audits/cross-model-root-cause-audit-v1/terminalization-audit.json",
+    "scripts/disposition_wave2_final.py:41 OPEN_STATUSES imported unchanged by wave2_screening and openrouter_8x1"
+   ],
+   "confirmed": true
+  },
+  {
+   "id": "F-13",
+   "severity": "info",
+   "class": "VERIFIED_INTACT",
+   "title": "Cross-era: specialist output-contract epidemic was fixed by A1-T (0 specialist '(2)' failures in every post-A1-T series); legacy MiMo 0/24 era failed at integration REJECTION codes (QUESTION_DISPOSITION_REQUIRED/CLOSURE_BASIS) — fail-closed, not silent",
+   "evidence": [
+    "failure-matrix.json delegation-failure histogram (agent_output_invalid x9 all pre-A1-T or incumbent 1/24; zero in the three new-candidate series)",
+    "legacy flat digests in benchmarks/results/agent-v0/baseline/"
+   ],
+   "confirmed": true
+  }
+ ]
+}

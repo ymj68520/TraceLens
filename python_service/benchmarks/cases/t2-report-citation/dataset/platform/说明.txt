@@ -1,0 +1,3 @@
+内部平台名：聚宝盆
+后台地址：http://jbpenl-admin.example
+客服组每组每日拉新指标：20人

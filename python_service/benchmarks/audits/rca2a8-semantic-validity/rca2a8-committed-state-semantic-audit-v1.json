@@ -1,0 +1,266 @@
+{
+  "artifact_version": "RCA2A8CommittedStateSemanticAuditV1",
+  "epistemic_classification": "PERSISTED_STATE_FACT_AND_POST_HOC_SEMANTIC_REVIEW",
+  "experiment_id": "rca2a8-semantic-validity",
+  "overall_semantic_verdict": "VALID_BUT_INFORMATION_NEUTRAL",
+  "ten_audit_questions_answers": {
+    "10_merely_formally_valid_or_informative": "It represents an epistemically honest, contractually compliant non-terminal state update. Formally valid across L1-L3; semantically VALID_BUT_INFORMATION_NEUTRAL with respect to new factual discoveries.",
+    "1_actual_actions_submitted": "All 4 Treatment runs submitted exactly one UpdateQuestionActionV2 on question q-1, updating investigated_summary and limitations.",
+    "2_question_kept_in_progress_or_open": "Yes. Pair 1 left status at 'open'; Pairs 2, 3, 4 transitioned status to 'in_progress'. None attempted terminal closure.",
+    "3_created_new_questions_findings_hypotheses_contradictions": "No. Exactly 0 questions, 0 findings, 0 hypotheses, and 0 contradictions were created.",
+    "4_changed_required_question_terminal_state": "No. The required charter question q-1 remains strictly non-terminal.",
+    "5_changed_coverage_obligations": "No. Coverage obligations remained empty and completely unmodified.",
+    "6_generated_evidence_backed_investigative_information": "No substantive evidence-backed positive findings. Because Fixture A has zero analyzable evidence, the specialist reported no evidence and supervisor accurately summarized the absence of evidence.",
+    "7_introduced_unsupported_inferences_or_false_certainty": "No. The model explicitly stated that absence of evidence does not prove absence of unauthorized activity, avoiding false certainty.",
+    "8_preserved_limitations_under_no_evidence": "Yes. All 4 Treatment commits explicitly recorded limitations ('no analyzable evidence of the queried activity').",
+    "9_left_clear_obligations_for_subsequent_investigation": "Yes. By keeping the question non-terminal ('open'/'in_progress') and noting the need for additional evidence/delegations, subsequent investigation obligations were preserved."
+  },
+  "treatment_seats": [
+    {
+      "applied_canonical_action": {
+        "action_type": "update_question",
+        "disposition": null,
+        "investigated_summary": "Specialist investigation (D1) completed; no analyzable evidence of unauthorized logons found.",
+        "limitations": [
+          "no analyzable evidence of the queried activity"
+        ],
+        "question_handle": "q-1",
+        "to_status": "open"
+      },
+      "arm": "treatment",
+      "four_layer_evaluation": {
+        "L1_SCHEMA_VALIDITY": "PASS",
+        "L2_CANONICAL_VALIDITY": "PASS",
+        "L3_STATE_INTEGRITY": "PASS",
+        "L4_SEMANTIC_ADEQUACY": "VALID_BUT_INFORMATION_NEUTRAL"
+      },
+      "pair_id": 1,
+      "post_integration_state": {
+        "basis_refs": [],
+        "disposition": null,
+        "investigated_summary": "Specialist investigation (D1) completed; no analyzable evidence of unauthorized logons found.",
+        "limitations": [
+          "no analyzable evidence of the queried activity"
+        ],
+        "previous_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96",
+        "question_id": "q-1",
+        "revision": 2,
+        "state_hash": "283ec0c49e99b4290078188447e8b936225ed75008bbe6ddfccc3034c5de96e1",
+        "status": "open"
+      },
+      "pre_integration_state": {
+        "basis_refs": [],
+        "disposition": null,
+        "investigated_summary": null,
+        "limitations": [],
+        "question_id": "q-1",
+        "revision": 1,
+        "state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96",
+        "status": "open"
+      },
+      "semantic_audit_checks": {
+        "basis_refs_empty": true,
+        "contradictions_created": 0,
+        "coverage_obligations_modified": false,
+        "decision_integration_summary": "Integrated completed specialist result D1 into required question Q1. The investigation found no analyzable evidence of unauthorized logons. The question remains open because absence of evidence does not satisfy closure policy, and no E-handle basis references are available to support closure.",
+        "decision_limitations": [
+          "No evidence handles (E*) exist to serve as basis for question closure",
+          "Specialist result D1 is a delegation completion, not evidence"
+        ],
+        "evidence_linkages_created": 0,
+        "hypotheses_created": 0,
+        "limitations_recorded": [
+          "no analyzable evidence of the queried activity"
+        ],
+        "question_disposition": null,
+        "question_status_transition": "open -> open",
+        "status_is_non_terminal": true
+      }
+    },
+    {
+      "applied_canonical_action": {
+        "action_type": "update_question",
+        "disposition": "inconclusive",
+        "investigated_summary": "honest no-evidence investigation; nothing fraud-related found",
+        "limitations": [
+          "no analyzable evidence of the queried activity"
+        ],
+        "question_handle": "q-1",
+        "to_status": "in_progress"
+      },
+      "arm": "treatment",
+      "four_layer_evaluation": {
+        "L1_SCHEMA_VALIDITY": "PASS",
+        "L2_CANONICAL_VALIDITY": "PASS",
+        "L3_STATE_INTEGRITY": "PASS",
+        "L4_SEMANTIC_ADEQUACY": "VALID_BUT_INFORMATION_NEUTRAL"
+      },
+      "pair_id": 2,
+      "post_integration_state": {
+        "basis_refs": [],
+        "disposition": "inconclusive",
+        "investigated_summary": "honest no-evidence investigation; nothing fraud-related found",
+        "limitations": [
+          "no analyzable evidence of the queried activity"
+        ],
+        "previous_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96",
+        "question_id": "q-1",
+        "revision": 2,
+        "state_hash": "6e57095c4e15b999ea319fd4a9f1f85823313f83a374d8d9711544e20c644b63",
+        "status": "in_progress"
+      },
+      "pre_integration_state": {
+        "basis_refs": [],
+        "disposition": null,
+        "investigated_summary": null,
+        "limitations": [],
+        "question_id": "q-1",
+        "revision": 1,
+        "state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96",
+        "status": "open"
+      },
+      "semantic_audit_checks": {
+        "basis_refs_empty": true,
+        "contradictions_created": 0,
+        "coverage_obligations_modified": false,
+        "decision_integration_summary": "Specialist delegation D1 completed for required question Q1 regarding unauthorized logons. The investigation found no analyzable evidence of the queried activity. Question status updated to in_progress with inconclusive disposition due to absence of evidence; remains open pending additional evidence or alternative investigation approaches.",
+        "decision_limitations": [
+          "No E* evidence handles or F* findings available to serve as basis for question closure",
+          "Absence of evidence does not prove absence of unauthorized logons",
+          "Single specialist delegation may not be exhaustive; additional investigation paths may exist"
+        ],
+        "evidence_linkages_created": 0,
+        "hypotheses_created": 0,
+        "limitations_recorded": [
+          "no analyzable evidence of the queried activity"
+        ],
+        "question_disposition": "inconclusive",
+        "question_status_transition": "open -> in_progress",
+        "status_is_non_terminal": true
+      }
+    },
+    {
+      "applied_canonical_action": {
+        "action_type": "update_question",
+        "disposition": null,
+        "investigated_summary": "Specialist delegation D1 completed with no analyzable evidence of unauthorized logons. Further evidence collection required before the question can be answered.",
+        "limitations": [
+          "no analyzable evidence of the queried activity per specialist result D1"
+        ],
+        "question_handle": "q-1",
+        "to_status": "in_progress"
+      },
+      "arm": "treatment",
+      "four_layer_evaluation": {
+        "L1_SCHEMA_VALIDITY": "PASS",
+        "L2_CANONICAL_VALIDITY": "PASS",
+        "L3_STATE_INTEGRITY": "PASS",
+        "L4_SEMANTIC_ADEQUACY": "VALID_BUT_INFORMATION_NEUTRAL"
+      },
+      "pair_id": 3,
+      "post_integration_state": {
+        "basis_refs": [],
+        "disposition": null,
+        "investigated_summary": "Specialist delegation D1 completed with no analyzable evidence of unauthorized logons. Further evidence collection required before the question can be answered.",
+        "limitations": [
+          "no analyzable evidence of the queried activity per specialist result D1"
+        ],
+        "previous_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96",
+        "question_id": "q-1",
+        "revision": 2,
+        "state_hash": "22f632a06f8eb9ef78d18cef08f635659f1485095f3ba4ec9de5bb1f0fe11e86",
+        "status": "in_progress"
+      },
+      "pre_integration_state": {
+        "basis_refs": [],
+        "disposition": null,
+        "investigated_summary": null,
+        "limitations": [],
+        "question_id": "q-1",
+        "revision": 1,
+        "state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96",
+        "status": "open"
+      },
+      "semantic_audit_checks": {
+        "basis_refs_empty": true,
+        "contradictions_created": 0,
+        "coverage_obligations_modified": false,
+        "decision_integration_summary": "Integrated specialist result D1 into question Q1. The delegation found no evidence of unauthorized logons, but absence of evidence does not support closure. Q1 status updated to in_progress to reflect ongoing investigation; question remains open pending collection of analyzable evidence.",
+        "decision_limitations": [
+          "No E-handle evidence available to support question closure",
+          "Specialist result D1 is no-evidence; cannot form basis for answered/unresolved disposition without additional evidence"
+        ],
+        "evidence_linkages_created": 0,
+        "hypotheses_created": 0,
+        "limitations_recorded": [
+          "no analyzable evidence of the queried activity per specialist result D1"
+        ],
+        "question_disposition": null,
+        "question_status_transition": "open -> in_progress",
+        "status_is_non_terminal": true
+      }
+    },
+    {
+      "applied_canonical_action": {
+        "action_type": "update_question",
+        "disposition": "inconclusive",
+        "investigated_summary": "Specialist investigation (D1) found no evidence of unauthorized logons; question remains open pending additional evidence",
+        "limitations": [
+          "no analyzable evidence of the queried activity"
+        ],
+        "question_handle": "q-1",
+        "to_status": "in_progress"
+      },
+      "arm": "treatment",
+      "four_layer_evaluation": {
+        "L1_SCHEMA_VALIDITY": "PASS",
+        "L2_CANONICAL_VALIDITY": "PASS",
+        "L3_STATE_INTEGRITY": "PASS",
+        "L4_SEMANTIC_ADEQUACY": "VALID_BUT_INFORMATION_NEUTRAL"
+      },
+      "pair_id": 4,
+      "post_integration_state": {
+        "basis_refs": [],
+        "disposition": "inconclusive",
+        "investigated_summary": "Specialist investigation (D1) found no evidence of unauthorized logons; question remains open pending additional evidence",
+        "limitations": [
+          "no analyzable evidence of the queried activity"
+        ],
+        "previous_state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96",
+        "question_id": "q-1",
+        "revision": 2,
+        "state_hash": "87f99afd74512969ff5c1de5ddd767457f13688111052b56eb5b26636512558d",
+        "status": "in_progress"
+      },
+      "pre_integration_state": {
+        "basis_refs": [],
+        "disposition": null,
+        "investigated_summary": null,
+        "limitations": [],
+        "question_id": "q-1",
+        "revision": 1,
+        "state_hash": "4b8471a61486e9812a8f745db8669ceab09b6bd554429322c3117a294c99bf96",
+        "status": "open"
+      },
+      "semantic_audit_checks": {
+        "basis_refs_empty": true,
+        "contradictions_created": 0,
+        "coverage_obligations_modified": false,
+        "decision_integration_summary": "Integrated completed specialist result D1 (no analyzable evidence) into open required question Q1. Question dispositioned as inconclusive and moved to in_progress due to absence of evidence; cannot be closed as answered/unresolved without basis evidence handles.",
+        "decision_limitations": [
+          "no E* evidence handles available to serve as basis for question closure",
+          "absence of evidence does not satisfy closure policy for required questions",
+          "specialist delegation D1 completed but found no analyzable evidence of the queried activity"
+        ],
+        "evidence_linkages_created": 0,
+        "hypotheses_created": 0,
+        "limitations_recorded": [
+          "no analyzable evidence of the queried activity"
+        ],
+        "question_disposition": "inconclusive",
+        "question_status_transition": "open -> in_progress",
+        "status_is_non_terminal": true
+      }
+    }
+  ]
+}

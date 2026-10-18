@@ -1,0 +1,7 @@
+{
+  "artifact_version": "RCA2A10NegativeGatesAuditV1",
+  "experiment_id": "rca2a10-cross-case-vocabulary-comparison",
+  "negative_gates_findings": [],
+  "negative_gates_triggered_total": 0,
+  "verdict": "NEGATIVE_GATES_CLEAN"
+}

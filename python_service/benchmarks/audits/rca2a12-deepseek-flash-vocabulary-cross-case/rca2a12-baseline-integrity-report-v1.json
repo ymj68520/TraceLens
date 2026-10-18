@@ -1,0 +1,23 @@
+{
+  "artifact_version": "RCA2A12BaselineIntegrityReportV1",
+  "experiment_id": "rca2a12-deepseek-flash-vocabulary-cross-case",
+  "timestamp_utc": "2026-10-17T03:10:05.126340+00:00",
+  "baseline_commit": "622b2327e93706f24c1a3049aa1bc10af971f58c",
+  "runtime_commit": "0c2e9b9cac244ebaaf457156ce0ff8dcc264b7b3",
+  "runtime_source_hashes": {
+    "cross_case_runner": "0134a1649cf8f1e348ed6ca2e4b2e4251b6e1f5a7bdbf52ce71ffd31cee9ca46",
+    "stop_taxonomy": "eebc3ee3d24bfc35deaa575c1d986087b04c791b9fbe8e2f5fba08024fd6c6b2",
+    "integration_v2": "9be8946460d63993192c2abb58391bc6aa5af2617412ee27377f3275846439a0",
+    "model_adapter": "9d4f6482ef35eafd5761d7a5f8b08acbbab984f898558845c944b448908bbc1f"
+  },
+  "schema_hash": "a214ec4f5e81fcbb",
+  "guidance_hash": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+  "oracle_hash": "b97baaa49f1a4c266abd88c748c1367b23cc96a851a75a65591d9f7760f01a0f",
+  "historical_artifact_hashes": {
+    "rca2a11_manifest": "2ea9d103a02ce981999c4898cbb5a8f9e810cf6b10d5e31f47fd3e2ea16a0fbe",
+    "rca2a11a_causality": "cba4b7e731cf03cb9438b0bf837177d7011bb0ab967a9a2732549d889db4dbc1",
+    "rca2a11b_baseline": "f38a95f9922a3d25106bdcb4658ed01ee3c00a78fa3ffcb72ec7a23365d7c011"
+  },
+  "git_clean": false,
+  "baseline_integrity_status": "CERTIFIED_IMMUTABLE"
+}

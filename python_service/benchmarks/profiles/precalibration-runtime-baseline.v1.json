@@ -1,0 +1,76 @@
+{
+  "profile_version": "precalibration-runtime-baseline:v1",
+  "purpose": "P8B §1/§2/§28 PreCalibrationRuntimeBaselineV1 — frozen runtime identity for ALL B2 baseline and B3 ablation runs. No prompt/instruction/tool-description/budget/temperature/model-parameter/semantic-policy change is permitted after this freeze until B3 completes.",
+  "runtime_git_commit": "946f325eeb6add1072466aed96e5e2e7e38748ed",
+  "corpus_freeze_commit": "9e6c511cb59fb866c0ef2c205a0229e8c4e5c1a9",
+  "production_runtime_commit": "946f325eeb6add1072466aed96e5e2e7e38748ed",
+  "commit_lineage_note": "corpus-freeze descendant 9e6c511c adds ONLY benchmark artifacts (cases/corpus/manifests/scripts); zero production-code diff vs 946f325e since 3bbad3a6 (the last production-path commit, verified by git diff --stat dbb1cb30..9e6c511c -- httpserver/).",
+  "model_identity": {
+    "provider": "hcnsec-cloud",
+    "model_id": "MiMo-V2.6-Flash",
+    "endpoint_host": "api.hcnsec.cn",
+    "generation_params": {
+      "temperature": 0.7,
+      "max_tokens": 16384,
+      "thinking_mode": "disabled",
+      "reasoning_effort": "none",
+      "timeout_seconds": 120,
+      "context_window_tokens": 131072
+    },
+    "adapter_model_config_digest": "f0b3bf2c428cb0ed31ec708c3fa64816acfb19afaea16176c35daa927c274b1e"
+  },
+  "code_identity": {
+    "supervisor_module_sha16": "5832d2c7b5464f21",
+    "agent_context_module_sha16": "c5535158d5369a74",
+    "pydantic_bridge_module_sha16": "bc26c93a6fbbc236",
+    "evidence_adapter_module_sha16": "faa56cbfab9dde0b",
+    "agent_model_adapter_module_sha16": "f2962fa7ae062bb3",
+    "tool_registry_schema_hash": "2583c323521aff470ed0cd464ace102f15420a1114d9c24a004bd1893f643bcf",
+    "canary_pipeline_fixes_included": [
+      "Supervisor identity-echo + verbatim-ref-copy instructions (3bbad3a6)",
+      "L1b_result_identity layer in SpecialistContextPack (3bbad3a6)",
+      "ToolExecutionError -> ToolFailed conversion in pydantic_bridge (3bbad3a6)",
+      "bounded_content preview fallback in get_evidence adapter (3bbad3a6)",
+      "thinking -> openai_reasoning_effort mapping (dbb1cb30)"
+    ]
+  },
+  "prompt_versions": {
+    "supervisor-plan-decision": "supervisor-plan-decision:v1"
+  },
+  "policy_versions": {
+    "supervisor_cycle_policy": "SupervisorCyclePolicy defaults (max_cycles_per_invocation=1, max_cycles_per_run=20, final_review_mode=best_effort)",
+    "agent_run_policy": "AgentRunPolicy max_output_retries=2",
+    "correlation_bounds": "max_candidates=200, temporal_window_seconds=3600",
+    "graph_admission": "graph-admission:v15 (max_candidates_per_cycle=32, max_parallel_materializations=2)",
+    "report_retrieval": "RetrievalBudgetV1 max_evidence_items=24, max_detailed_items=4, max_context_chars=48000, max_graph_expansion=8",
+    "assertion_policy": "P5B AssertionPolicy frozen (semantic invariants NEVER calibratable)",
+    "finalization_policy": "FinalizationGate frozen (UNINTEGRATED_COMPLETED_DELEGATION hard blocker)"
+  },
+  "pre_calibration_profile_hash": "6dd38a0e0f68704fb881e7e1f78031d58dc54368b6188826a3262660d86b218c",
+  "pre_calibration_profile_file": "benchmarks/profiles/pre-calibration-canary.v1.json",
+  "model_validation_record_file": "benchmarks/profiles/model-validation-canary.v1.json",
+  "canary_record": {
+    "purpose": "production_path_canary",
+    "include_in_baseline": false,
+    "exclude_from_calibration_statistics": true,
+    "benchmark_run_id": "brun:a3cb9cecd3a4906166e4a483",
+    "result_hash": "e4c8d250",
+    "observations": {
+      "critical_evidence_recall": "2/2",
+      "target_files_discovered": "5/5",
+      "model_requests": 5,
+      "input_tokens": 25694,
+      "output_tokens": 1176,
+      "tool_observations": 11,
+      "terminal_status": "finalization_denied",
+      "root_quality_issue": "INTEGRATE fabricated evidence ref + missing question closure basis (EVIDENCE_REF_INVALID, QUESTION_CLOSURE_BASIS_REQUIRED, UNINTEGRATED_COMPLETED_DELEGATION)",
+      "control_plane": "fail-closed PASS (policy/gate behavior correct)"
+    }
+  },
+  "prohibitions_after_freeze": [
+    "no prompt edits", "no Agent instruction edits", "no tool description edits",
+    "no runtime budget edits", "no temperature edits", "no model parameter edits",
+    "no semantic policy edits"
+  ],
+  "frozen_at": "2026-09-28T01:05:00+00:00"
+}

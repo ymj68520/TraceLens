@@ -565,6 +565,60 @@ class ReportRepository:
             )
         return completed
 
+    def complete_prevalidated_publication(
+        self,
+        *,
+        task_id: str,
+        report_id: str,
+        title: str,
+        manifest_path: str,
+        model: str,
+        input_hash: str,
+    ) -> ReportVersion:
+        """P7B Adapter B publication primitive.
+
+        Reuses the R2 version allocator / READY row transaction without
+        requiring an R2 ``report_generation_inputs`` row or a second LLM.
+        The caller publishes the immutable manifest first; this transaction
+        then makes the Viewer-visible version atomically.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            version_row = conn.execute(
+                "SELECT COALESCE(MAX(version), 0) + 1 AS next_version "
+                "FROM report_versions WHERE scope_type = ? AND scope_id = ?",
+                (ScopeType.TASK.value, task_id),
+            ).fetchone()
+            version = int(version_row["next_version"])
+            report_kind = "agent_aware_generation"
+            conn.execute(
+                """INSERT INTO report_versions
+                   (report_id, version, scope_type, scope_id, status, title,
+                    task_ids_json, stage, progress, generated_at,
+                    manifest_path, warnings_json, created_at, report_kind)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', 100, ?, ?, '[]',
+                           ?, ?)""",
+                (
+                    report_id,
+                    version,
+                    ScopeType.TASK.value,
+                    task_id,
+                    ReportStatus.READY.value,
+                    title,
+                    json.dumps([task_id]),
+                    now,
+                    manifest_path,
+                    now,
+                    report_kind,
+                ),
+            )
+            conn.commit()
+        completed = self.get(report_id)
+        if completed is None:
+            raise RuntimeError("prevalidated report version disappeared")
+        return completed
+
     def list_stale_generations(self) -> list[ReportGenerationInput]:
         """Non-terminal generations (restart/shutdown recovery input)."""
         with self._connect() as conn:

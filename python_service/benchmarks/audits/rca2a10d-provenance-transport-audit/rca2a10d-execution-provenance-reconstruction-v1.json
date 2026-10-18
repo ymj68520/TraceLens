@@ -1,0 +1,52 @@
+{
+  "artifact_version": "RCA2A10dExecutionProvenanceReconstructionV1",
+  "audit_id": "rca2a10d-provenance-transport-audit",
+  "provenance_classification": "EXPERIMENT_IDENTITY_REUSE",
+  "provenance_findings": "Two distinct operational epochs with differing endpoints, models, manifests, and execution outcomes reused the exact same experiment_id (rca2a10b-rebased-cross-case-vocabulary-comparison). Epoch A was blocked at pre-call gates due to pointing to StepFun; Epoch B executed live preflight and 1 stage invocation before halting on provider HTTP 500.",
+  "reconstructed_epochs": {
+    "epoch_a": {
+      "artifact_commit": "bbf2244608eead2f254a54d13c3856c7f41a79a0",
+      "blocked_seats": 16,
+      "diagnostic_records_count": 0,
+      "durable_claims_count": 0,
+      "effective_config_hash": "2841c2b7e69b714098213df7215adc09ca6c0954750c9e1854f7ecc5c8695925",
+      "endpoint_identity": "https://api.stepfun.com/v1",
+      "executed_seats": 0,
+      "execution_epoch_id": "rca2a10b-epoch-a-config-blocked",
+      "experiment_id": "rca2a10b-rebased-cross-case-vocabulary-comparison",
+      "final_stop_reason": "CONFIGURATION_BLOCKED",
+      "manifest_sha256": "aeec1dcf429d3662ddb4b8861d8b63e804f85e493e87fc4c207a9c84917a1ae5",
+      "oracle_combined_hash": "739b6683707d1b4c7339cf20eaf861514c902e9ac4b8ac8b3969fa02aef9a782",
+      "precall_gate_status": "PRECALL_GATE_BLOCKED",
+      "preflight_logical_requests": 0,
+      "requested_model": "step-3.7-flash",
+      "returned_model": null,
+      "runner_sha256": "86124117c02a1b75cb4b1238549e358c27cf9cbb72c1c73ec2beae6c2fbb086c",
+      "runtime_commit": "f7e7896c06a9c824417fe90754183b0a4d3acb81",
+      "stage_invocations": 0
+    },
+    "epoch_b": {
+      "artifact_commit": "e86808427b8a50ca27ca695318527399b442f9b9",
+      "diagnostic_records_count": 1,
+      "durable_claims_count": 1,
+      "effective_config_hash": "e75140928ee98e63329ec12616ffc6fcbe2803c87e8b9d43a51d90510d29464d",
+      "endpoint_identity": "https://api.hcnsec.cn/v1",
+      "executed_seats": 1,
+      "execution_epoch_id": "rca2a10b-epoch-b-rebased-live",
+      "experiment_id": "rca2a10b-rebased-cross-case-vocabulary-comparison",
+      "final_stop_reason": "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE",
+      "halted_seats": 15,
+      "manifest_sha256": "f9b6413321328326a0c5fa57e4e7e60a9960ffbb954a72d73f15b8109d943b17",
+      "oracle_combined_hash": "739b6683707d1b4c7339cf20eaf861514c902e9ac4b8ac8b3969fa02aef9a782",
+      "precall_gate_status": "PRECALL_GATES_ALL_PASS (18/18)",
+      "preflight_logical_requests": 2,
+      "preflight_verdict": "PREFLIGHT_PASS",
+      "requested_model": "step-5-preview",
+      "returned_model": "stepfun-ai/step-5-preview",
+      "runner_sha256": "6fcb9804eaa6ccec90126a1ca8ef63404c0ae3d15479ae4e2c076a084adcc9b9",
+      "runtime_commit": "bbf2244608eead2f254a54d13c3856c7f41a79a0",
+      "stage_invocations": 1
+    }
+  },
+  "verdict": "PROVENANCE_RECONCILED"
+}

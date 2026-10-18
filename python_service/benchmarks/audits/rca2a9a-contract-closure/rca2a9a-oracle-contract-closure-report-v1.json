@@ -1,0 +1,31 @@
+{
+  "artifact_version": "RCA2A9aOracleContractClosureReportV1",
+  "base_oracle_version": "RCA2A9SemanticOracleV1",
+  "baseline_commit": "325fa4eb8a86bc347484eea22d9116f22f2d1977",
+  "calibration_coverage": "All 14 baseline calibration cases (O1-O14) plus extended contract tests (O1-O7) pass deterministically with zero real model calls.",
+  "contracts_verified": {
+    "BLIND_ARM_INVARIANCE": {
+      "details": "Evaluation logic strictly ignores arm parameter ('control' vs 'treatment'); produces bitwise identical evaluation result.",
+      "status": "PASS"
+    },
+    "EQUIVALENT_ACCEPTABLE_ACTIONS": {
+      "details": "Multiple structurally distinct valid action paths (open with limitation, in_progress with limitation) are accepted without structural JSON bias.",
+      "status": "PASS"
+    },
+    "NEGATIVE_GATES_ENFORCEMENT": {
+      "details": "Unsupported fact promotion, unsupported causality, graph node IDs, analyst notes as fact, and cross-task citations fail closed.",
+      "status": "PASS"
+    },
+    "STALE_SOURCE_REJECTION": {
+      "details": "Mismatched state revision or stale source hash triggers UNAUTHORIZED_COMMIT with STALE_INTEGRATION_INPUT.",
+      "status": "PASS"
+    },
+    "UNKNOWN_SEMANTIC_SUPPORT": {
+      "details": "Evidence ID resolves to real item, but content is inconclusive/insufficient -> returns INSUFFICIENT_EVIDENCE_TO_JUDGE without false adequacy or mechanical failure.",
+      "status": "PASS"
+    }
+  },
+  "generated_at": "2026-10-16T00:56:49.679533+00:00",
+  "oracle_version": "RCA2A9aSemanticOracleExtensionV1",
+  "verdict": "ORACLE_CONTRACT_PASS"
+}

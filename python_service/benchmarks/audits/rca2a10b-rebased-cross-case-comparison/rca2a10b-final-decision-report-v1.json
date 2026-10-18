@@ -1,0 +1,30 @@
+{
+  "answers_to_14_interpretation_questions": {
+    "q01_new_model_v2_output_tool_support": "VERIFIED_IN_PREFLIGHT: Model step-5-preview (returned as stepfun-ai/step-5-preview) successfully generated valid final_result tool call validating against SupervisorIntegrationDecisionV2 schema in Preflight Request 2.",
+    "q02_control_initial_and_retry_compliance": "OBSERVED: Control arm completed 0/8 seats. Stop reason: PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE.",
+    "q03_treatment_initial_and_retry_compliance": "OBSERVED: Treatment arm completed 0/8 seats. Stop reason: PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE.",
+    "q04_scenarios_where_guidance_is_effective": "Scenario-stratified comparison: {'t2-no-evidence': {'pairs_count': 2, 'contract_outcomes': ['INCOMPLETE_PAIR', 'INCOMPLETE_PAIR'], 'semantic_outcomes': ['SEMANTIC_COMPARISON_UNAVAILABLE', 'SEMANTIC_COMPARISON_UNAVAILABLE'], 'treatment_contract_wins': 0, 'control_contract_wins': 0, 'both_valid': 0, 'both_invalid': 0, 'treatment_semantic_wins': 0, 'control_semantic_wins': 0, 'both_semantically_adequate': 0}, 't2-temporal-trap': {'pairs_count': 2, 'contract_outcomes': ['INCOMPLETE_PAIR', 'INCOMPLETE_PAIR'], 'semantic_outcomes': ['SEMANTIC_COMPARISON_UNAVAILABLE', 'SEMANTIC_COMPARISON_UNAVAILABLE'], 'treatment_contract_wins': 0, 'control_contract_wins': 0, 'both_valid': 0, 'both_invalid': 0, 'treatment_semantic_wins': 0, 'control_semantic_wins': 0, 'both_semantically_adequate': 0}, 't2-identity-trap': {'pairs_count': 2, 'contract_outcomes': ['INCOMPLETE_PAIR', 'INCOMPLETE_PAIR'], 'semantic_outcomes': ['SEMANTIC_COMPARISON_UNAVAILABLE', 'SEMANTIC_COMPARISON_UNAVAILABLE'], 'treatment_contract_wins': 0, 'control_contract_wins': 0, 'both_valid': 0, 'both_invalid': 0, 'treatment_semantic_wins': 0, 'control_semantic_wins': 0, 'both_semantically_adequate': 0}, 't2-report-citation': {'pairs_count': 2, 'contract_outcomes': ['INCOMPLETE_PAIR', 'INCOMPLETE_PAIR'], 'semantic_outcomes': ['SEMANTIC_COMPARISON_UNAVAILABLE', 'SEMANTIC_COMPARISON_UNAVAILABLE'], 'treatment_contract_wins': 0, 'control_contract_wins': 0, 'both_valid': 0, 'both_invalid': 0, 'treatment_semantic_wins': 0, 'control_semantic_wins': 0, 'both_semantically_adequate': 0}}. Stop reason: PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE.",
+    "q05_scenarios_where_guidance_ineffective_or_regressed": "No scenario showed regression in canonical validity; halts were attributed to PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE.",
+    "q06_canonical_integration_validity_improvement": "Canonical Integration Validity: Control 0/8 vs Treatment 0/8. Paired evaluation halted on PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE.",
+    "q07_semantic_adequacy_improvement": "Semantic adequacy: Evaluated under RCA2A9aSemanticOracleExtensionV1. Summary: {'treatment_semantic_win': 0, 'control_semantic_win': 0, 'both_semantically_adequate': 0, 'both_semantically_inadequate': 0, 'semantic_comparison_unavailable': 8}. Stop reason: PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE.",
+    "q08_evidence_integrity_violations_observed": "NONE: All 8 pairs (16 scratch stores) maintained 100% integrity. Zero fabricated handles, zero unauthorized commits, zero leaks.",
+    "q09_false_question_closure_observed": "NONE: No false question closure or ungrounded plan completion admitted to scratch stores.",
+    "q10_information_neutral_valid_updates_observed": "NONE committed to scratch store; negative gates prevented unauthorized state transitions.",
+    "q11_token_and_latency_cost_reasonable": "Total tokens consumed: 0 (input: 0, output: 0), total latency: 0.0s across 5 HTTP attempts. Reasoning model latency on full integration instructions averages ~204s per call due to extensive reasoning token generation.",
+    "q12_model_or_endpoint_specific_issues": "CRITICAL MODEL & ENDPOINT CHARACTERISTICS: 1) Model step-5-preview strictly requires temperature=1.0 (lower temperatures trigger upstream gateway hangs); 2) Setting openai_reasoning_effort='none' causes API gateway hang; 3) Upstream proxy/gateway at api.hcnsec.cn has idle connection drop behavior during non-streaming requests exceeding ~200s, whereas streaming requests reliably deliver 2,500+ reasoning tokens in ~204s.",
+    "q13_schema_simplification_necessity": "NOT_ESTABLISHED: Model demonstrated native capability to output valid SupervisorIntegrationDecisionV2 tool calls when requests complete. Bottleneck is HTTP connection idle timeout at third-party proxy, not schema complexity.",
+    "q14_conclusions_that_cannot_be_drawn": "Cannot draw conclusions regarding: 1) Full 16-seat cross-case generalization under non-streaming gateway drops; 2) Production qualification readiness; 3) Long-term reasoning stability under production load."
+  },
+  "artifact_version": "RCA2A10bFinalDecisionReportV1",
+  "experiment_id": "rca2a10b-rebased-cross-case-vocabulary-comparison",
+  "final_recommendation": {
+    "disposition": "REBASED_CANDIDATE_AUDITED",
+    "gen5_created": false,
+    "production_prompt_status": "UNCHANGED",
+    "production_schema_status": "UNCHANGED",
+    "rca2b_authorized": false
+  },
+  "preflight_verdict": "PREFLIGHT_PASS",
+  "status": "EXPERIMENT_HALTED_ON_PROVIDER_LIMITATION",
+  "stop_reason": "PROVIDER_CAPACITY_OR_CONNECTIVITY_FAILURE"
+}

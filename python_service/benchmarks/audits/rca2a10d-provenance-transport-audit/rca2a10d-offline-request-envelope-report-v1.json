@@ -1,0 +1,123 @@
+{
+  "artifact_version": "RCA2A10dOfflineRequestEnvelopeReportV1",
+  "audit_id": "rca2a10d-provenance-transport-audit",
+  "envelope_comparison": {
+    "duration_delta_ms": 15682.4,
+    "outcome_delta": "Preflight 2 passed in 2.29s; Full INTEGRATE failed with HTTP 500 in 17.97s.",
+    "prompt_size_delta_bytes": 2979,
+    "tool_schema_bytes": 8225,
+    "tool_schema_identical": true
+  },
+  "parameter_compatibility_interpretation": {
+    "reasoning_effort_omitted": "GATEWAY_CONFIGURATION_SENSITIVITY_OBSERVED (Passing 'none' causes gateway hang)",
+    "temperature_1_0": "GATEWAY_CONFIGURATION_SENSITIVITY_OBSERVED (Setting 0.7 causes gateway hang; 1.0 required by reasoning models or gateway proxy)"
+  },
+  "reconstructed_envelopes": {
+    "full_integrate_seat_1": {
+      "integration_context_bytes": 2297,
+      "max_tokens": 4096,
+      "message_count": 2,
+      "reasoning_effort": null,
+      "retry_policy": "OpenAI SDK default (max_retries=2)",
+      "streaming_mode": false,
+      "system_instructions_bytes": 3113,
+      "system_instructions_chars": 3113,
+      "temperature": 1.0,
+      "timeout_seconds": 360.0,
+      "tool_schema_bytes": 8225,
+      "tool_schema_name": "final_result",
+      "total_request_payload_bytes": 11520
+    },
+    "short_preflight_request_2": {
+      "latency_ms": 2288.8,
+      "max_tokens": 4096,
+      "message_count": 2,
+      "reasoning_effort": null,
+      "status": "HTTP 200 OK (pydantic_valid=True)",
+      "streaming_mode": false,
+      "system_instructions_bytes": 71,
+      "temperature": 1.0,
+      "timeout_seconds": 360.0,
+      "tool_schema_bytes": 8225,
+      "tool_schema_name": "final_result",
+      "total_request_payload_bytes": 8510,
+      "user_prompt_bytes": 63
+    }
+  },
+  "root_cause_hypotheses_evaluation": {
+    "GATEWAY_TIMEOUT": {
+      "contradicting_observations": [
+        "Failure occurred in 17.97s, well below 60s/120s/360s gateway timeouts."
+      ],
+      "missing_evidence": [
+        "Upstream proxy timeout configurations."
+      ],
+      "status": "CONTRADICTED",
+      "supporting_observations": []
+    },
+    "NON_STREAMING_CONNECTION_FAILURE": {
+      "contradicting_observations": [],
+      "missing_evidence": [
+        "Nginx error logs on api.hcnsec.cn."
+      ],
+      "status": "PLAUSIBLE",
+      "supporting_observations": [
+        "Streaming requests deliver tokens continuously, whereas non-streaming requests buffer until completion.",
+        "Third-party proxy ens-cache / Nginx may fail to buffer large generation payloads."
+      ]
+    },
+    "PROVIDER_RATE_OR_CAPACITY_LIMIT": {
+      "contradicting_observations": [
+        "Usually returned as 429 rather than 500."
+      ],
+      "missing_evidence": [
+        "Upstream billing/rate limit response headers."
+      ],
+      "status": "PLAUSIBLE",
+      "supporting_observations": [
+        "One API / channel gateway returned 500 on upstream channel overload or token bucket depletion."
+      ]
+    },
+    "REQUEST_SIZE_SENSITIVITY": {
+      "contradicting_observations": [
+        "11.5KB request payload is relatively modest for modern LLM APIs."
+      ],
+      "missing_evidence": [
+        "WAF or gateway body size limits."
+      ],
+      "status": "PLAUSIBLE",
+      "supporting_observations": [
+        "Short request (134 bytes prompt) succeeded; full request (3,113 bytes prompt) failed."
+      ]
+    },
+    "TOOL_SCHEMA_PROCESSING_FAILURE": {
+      "contradicting_observations": [
+        "Preflight Request 2 passed the exact byte-identical 8,225-byte tool schema and generated a valid Pydantic decision in 2.28s."
+      ],
+      "missing_evidence": [],
+      "status": "CONTRADICTED",
+      "supporting_observations": []
+    },
+    "UNKNOWN": {
+      "contradicting_observations": [],
+      "missing_evidence": [
+        "Server-side logs from api.hcnsec.cn and StepFun."
+      ],
+      "status": "CONFIRMED_LIMITATION",
+      "supporting_observations": [
+        "Cannot definitively isolate upstream internal cause without server-side logs."
+      ]
+    },
+    "UPSTREAM_MODEL_EXECUTION_FAILURE": {
+      "contradicting_observations": [],
+      "missing_evidence": [
+        "Upstream StepFun engine error stack trace."
+      ],
+      "status": "PLAUSIBLE",
+      "supporting_observations": [
+        "HTTP 500 returned after ~18s of processing.",
+        "Full request requires extensive reasoning over 3.1KB context vs 134 bytes in preflight."
+      ]
+    }
+  }
+}

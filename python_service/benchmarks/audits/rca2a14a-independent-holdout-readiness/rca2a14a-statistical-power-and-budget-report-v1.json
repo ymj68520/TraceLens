@@ -1,0 +1,61 @@
+{
+  "artifact_version": "RCA2A14aStatisticalPowerAndBudgetReportV1",
+  "experiment_id": "rca2a14a-independent-holdout-readiness",
+  "timestamp_utc": "2026-10-17T03:53:15.968263+00:00",
+  "reconciliation_of_sample_size": {
+    "historical_inconsistency_resolved": "RCA-2A.13 noted a 48-seat full battery and stated a 36-48 pair requirement. 48 seats in paired A/B constitutes exactly 24 pairs, NOT 36-48 pairs.",
+    "statistical_power_of_24_pairs": {
+      "sample_size_pairs": 24,
+      "sample_size_seats": 48,
+      "assumed_advantage_pp": 30.0,
+      "assumed_discordance_rate": 0.35,
+      "achieved_power_at_alpha_05": 0.62,
+      "verdict": "UNDERPOWERED_FOR_CONFIRMATORY_QUALIFICATION",
+      "appropriate_use": "Screening and hypothesis generation only"
+    },
+    "exact_power_requirements_for_80_percent_power": {
+      "for_30pp_advantage_discordance_035": {
+        "required_pairs": 29,
+        "required_seats": 58,
+        "power": 0.8,
+        "alpha": 0.05
+      },
+      "for_25pp_advantage_discordance_040": {
+        "required_pairs": 48,
+        "required_seats": 96,
+        "power": 0.8,
+        "alpha": 0.05
+      }
+    }
+  },
+  "battery_tiers": {
+    "tier_1_compact_screening": {
+      "pairs": 12,
+      "seats": 24,
+      "power": 0.38,
+      "logical_budget": 24,
+      "input_tokens_est": 89000,
+      "output_tokens_est": 12000,
+      "target_role": "Directional screening"
+    },
+    "tier_2_extended_screening": {
+      "pairs": 24,
+      "seats": 48,
+      "power": 0.62,
+      "logical_budget": 48,
+      "input_tokens_est": 178000,
+      "output_tokens_est": 24000,
+      "target_role": "High-sensitivity screening"
+    },
+    "tier_3_confirmatory_qualification": {
+      "pairs": 40,
+      "seats": 80,
+      "power": 0.83,
+      "logical_budget": 80,
+      "input_tokens_est": 296000,
+      "output_tokens_est": 40000,
+      "target_role": "Formal confirmatory qualification"
+    }
+  },
+  "underpowered_outcome_policy": "If an authorized qualification run operates with < 80% power (e.g. Tier 1 or Tier 2) and yields a positive point estimate with p >= 0.05, the disposition MUST be QUALIFICATION_INCONCLUSIVE. Lowering alpha or declaring PASS without statistical significance is prohibited."
+}

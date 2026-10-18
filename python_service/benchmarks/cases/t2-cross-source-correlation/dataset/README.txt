@@ -1,0 +1,1 @@
+Seived merchant server. The CRM directory holds the order table; the payments directory holds the settlement log from the payment processor. Settlements reference CRM order ids verbatim. A settlement whose order id does not exist in the CRM table cannot be treated as the same order.

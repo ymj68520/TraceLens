@@ -1,0 +1,154 @@
+{
+  "artifact_version": "SpaceBunnyOpenRouterAdapterSmokeV1",
+  "candidate_id": "space-bunny-alpha@openrouter",
+  "created_at": "2026-10-03T02:38:42+00:00",
+  "api_key_present": "<redacted>",
+  "api_key_value": "<redacted>",
+  "provider_endpoint": "https://openrouter.ai/api/v1",
+  "requested_model": "stealth/space-bunny-alpha",
+  "data_policy": {
+    "candidate_data_policy": "CALIBRATION_ONLY",
+    "real_case_evidence_allowed": false,
+    "reason": "stealth third-party provider retention policy (§4/§34)"
+  },
+  "checks": {
+    "S1_identity": {
+      "pass": true,
+      "requested_model": "stealth/space-bunny-alpha",
+      "returned_model": "stealth/space-bunny-alpha",
+      "upstream_provider": "Stealth",
+      "identity_match": true,
+      "usage": {
+        "completion_tokens": 3,
+        "prompt_tokens": 164,
+        "total_tokens": 167,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": 0,
+          "cached_tokens": 149,
+          "video_tokens": 0
+        },
+        "cost": 0,
+        "is_byok": false,
+        "cost_details": {
+          "upstream_inference_cost": 0,
+          "upstream_inference_prompt_cost": 0,
+          "upstream_inference_completions_cost": 0
+        }
+      },
+      "routing_note": "routing identity verified"
+    },
+    "S2_json_object": {
+      "pass": true,
+      "local_pydantic_parse": true,
+      "parse_error": null,
+      "completion_truncated_at_probe_budget": false,
+      "usage": {
+        "completion_tokens": 205,
+        "prompt_tokens": 197,
+        "total_tokens": 402,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": 0,
+          "cached_tokens": 149,
+          "video_tokens": 0
+        },
+        "cost": 0,
+        "is_byok": false,
+        "cost_details": {
+          "upstream_inference_cost": 0,
+          "upstream_inference_prompt_cost": 0,
+          "upstream_inference_completions_cost": 0
+        }
+      }
+    },
+    "S3_native_json_schema_probe": {
+      "native_json_schema_supported": "ambiguous",
+      "content": "Verdict: OK  \nScore: 7",
+      "schema_conforming": false,
+      "note": "capability probe only — the candidate's runtime mode stays tool-based unless explicitly re-frozen"
+    },
+    "S7_reasoning_setting": {
+      "pass": true,
+      "accepted_reasoning": "model/provider default (no reasoning param)",
+      "control_compatible": false,
+      "constraint": "PROVIDER_PARAMETER_CONSTRAINT: reasoning_effort=none rejected — recorded, not silent",
+      "probe_a_failure": {
+        "error": "BadRequestError: Error code: 400 - {'error': {'message': 'Reasoning is mandatory for this endpoint and cannot be disabled.', 'code': 400, 'metadata': {'provider_name': None}}}",
+        "classification": "PROVIDER_INFRA_FAILURE"
+      },
+      "usage": {
+        "completion_tokens": 2,
+        "prompt_tokens": 160,
+        "total_tokens": 162,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": null,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": null,
+          "image_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": 0,
+          "cached_tokens": 149,
+          "video_tokens": 0
+        },
+        "cost": 0,
+        "is_byok": false,
+        "cost_details": {
+          "upstream_inference_cost": 0,
+          "upstream_inference_prompt_cost": 0,
+          "upstream_inference_completions_cost": 0
+        }
+      }
+    },
+    "S4_zero_arg_tool_call": {
+      "pass": true,
+      "tool_selected": true,
+      "arguments_exact": true,
+      "tool_result_fed_back_final_valid": true
+    },
+    "S5_parameterized_tool_call": {
+      "pass": true,
+      "correct_tool_name": true,
+      "valid_json_args_no_invented_fields": true,
+      "calls": [
+        {
+          "tool": "lookup_fixture",
+          "args": {
+            "id": "fixture-1"
+          }
+        }
+      ]
+    },
+    "S6_trace_lens_shaped_output": {
+      "pass": true,
+      "extra_forbid_enforced": true,
+      "enum_correct": true,
+      "list_types_ok": true,
+      "nested_refs_ok": true,
+      "optional_fields_ok": true
+    }
+  },
+  "constraint_notes": [
+    "reasoning_effort=none rejected: PROVIDER_INFRA_FAILURE"
+  ],
+  "accepted_reasoning_mode": "",
+  "disposition": "ADAPTER_SMOKE_PASS",
+  "note": "capability smoke only — no semantic qualification here (§30); plugins/web/search disabled by construction (§35/§36: only TraceLens ToolRegistry feeds tools)"
+}

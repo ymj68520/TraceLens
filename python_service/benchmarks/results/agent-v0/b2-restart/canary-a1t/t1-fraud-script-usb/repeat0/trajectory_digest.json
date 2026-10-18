@@ -1,0 +1,1 @@
+{"digest_version": 2, "rejection_codes": ["agent_output_invalid"], "supervisor_failures": [], "delegation_failures": [{"delegation_id": "del_14ebd8e3e7dc42beabbfc5184d6d0eb3", "failure_code": "agent_output_invalid", "message": ""}]}

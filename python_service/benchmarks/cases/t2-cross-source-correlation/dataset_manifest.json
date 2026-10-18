@@ -1,0 +1,26 @@
+{
+  "dataset_version": "benchmark-dataset:v1",
+  "dataset_id": "ds-t2-cross-source-correlation",
+  "files": [
+    {
+      "logical_id": "README",
+      "relative_path": "README.txt",
+      "size_bytes": 283,
+      "sha256": "e41b6b8a96cb6c8274210cb431cf0ecaca0be03383748cb7bef9f3ef3b40ebcb"
+    },
+    {
+      "logical_id": "orders",
+      "relative_path": "crm/orders.csv",
+      "size_bytes": 153,
+      "sha256": "d48fa64145784ad9aa88c0d2b4d4b605052fa010b64c12e1ae8ab7fb839e345d"
+    },
+    {
+      "logical_id": "settlements",
+      "relative_path": "payments/settlements.log",
+      "size_bytes": 263,
+      "sha256": "76fbd5f4dcb24db326e6e4329de6b9281d90c3218ee04ae6599c79f3a0f2a71c"
+    }
+  ],
+  "dataset_hash": "b9806f05d4ea62da701bac5a4f04c0b958653f9941b1373a99d43d04efe991e6",
+  "created_at": "2026-09-28T11:15:36.389684+00:00"
+}

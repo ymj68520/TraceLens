@@ -336,3 +336,83 @@ def test_analysis_input_hash_is_content_canonical():
     changed["analyst_note"] = "changed"
     assert compute_analysis_input_hash(base) != compute_analysis_input_hash(changed)
     assert "snapshot-id" not in compute_analysis_input_hash(base)
+
+
+# ---------------------------------------------------------------------------
+# durable content backing wiring (evidence content hydration contract v1)
+# ---------------------------------------------------------------------------
+
+
+async def test_bounded_content_uses_provider_when_configured(tmp_path):
+    from httpserver.services.evidence.content_store import (
+        ContentUnavailableError,
+        LocatedContent,
+    )
+
+    from httpserver.services.investigation_evidence import ResolvedEvidence
+
+    content_file = tmp_path / "blob.bin"
+    content_file.write_bytes("持久化内容".encode("utf-8"))
+    calls = []
+
+    async def provider(resolved):
+        calls.append(resolved.evidence_key)
+        return LocatedContent(
+            path=str(content_file), sha256="x", size=content_file.stat().st_size,
+            persisted=True, provenance="locator",
+        )
+
+    async def load(task_id):
+        return {}
+
+    resolver = EvidenceResolver(load, content_provider=provider)
+    resolved = ResolvedEvidence(
+        task_id="t", evidence_key="file:/a.txt", evidence_type="file",
+        content_path=None,
+    )
+    assert await resolver.bounded_content(resolved) == "持久化内容"
+    assert calls == ["file:/a.txt"]
+
+
+async def test_bounded_content_provider_error_propagates(tmp_path):
+    from httpserver.services.evidence.content_store import (
+        CONTENT_NOT_PERSISTED_LEGACY,
+        ContentUnavailableError,
+    )
+
+    from httpserver.services.investigation_evidence import ResolvedEvidence
+
+    async def provider(resolved):
+        raise ContentUnavailableError(CONTENT_NOT_PERSISTED_LEGACY, "gone")
+
+    async def load(task_id):
+        return {}
+
+    resolver = EvidenceResolver(load, content_provider=provider)
+    resolved = ResolvedEvidence(
+        task_id="t", evidence_key="file:/a.txt", evidence_type="file",
+        content_path=None,
+    )
+    with pytest.raises(ContentUnavailableError):
+        await resolver.bounded_content(resolved)
+
+
+async def test_bounded_content_legacy_fast_path_without_provider(tmp_path):
+    from httpserver.services.investigation_evidence import ResolvedEvidence
+
+    artifact = tmp_path / "leftover.txt"
+    artifact.write_text("legacy artifact", encoding="utf-8")
+    async def load(task_id):
+        return {}
+
+    resolver = EvidenceResolver(load)
+    resolved = ResolvedEvidence(
+        task_id="t", evidence_key="file:/a.txt", evidence_type="file",
+        content_path=str(artifact),
+    )
+    assert await resolver.bounded_content(resolved) == "legacy artifact"
+    missing = ResolvedEvidence(
+        task_id="t", evidence_key="file:/b.txt", evidence_type="file",
+        content_path=None,
+    )
+    assert await resolver.bounded_content(missing) == ""

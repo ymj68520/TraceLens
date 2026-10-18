@@ -1,0 +1,1 @@
+Seized NOC (network operations) laptop. The monitor directory holds the service latency alert log; the change directory holds the approved maintenance record; the mail directory holds the on-call handover note. Assess the records exactly as they are.

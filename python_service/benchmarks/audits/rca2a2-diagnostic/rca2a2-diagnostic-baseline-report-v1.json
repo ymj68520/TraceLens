@@ -1,0 +1,59 @@
+{
+ "artifact_version": "RCA2A2DiagnosticBaselineReportV1",
+ "created_at": "2026-10-13T13:52:35+00:00",
+ "verdict": "RCA-2A.2: DIAGNOSTIC BLOCKED (provider unreachable) — instrumentation itself is READY (gate passed)",
+ "baseline": {
+  "head": "4a4b5b6a",
+  "worktree_clean": true,
+  "frozen_profiles": {
+   "AcceptanceProfileV2": "c40f1adcad816e43… (re-verified)",
+   "RuntimeBaselineV3": "b7ef22d65f85c8dc… (re-verified)"
+  },
+  "prior_stage_artifacts": {
+   "RCA-1 closure": "6f768b25 report + ScreeningContractV1 (0d4b74e6…)",
+   "RCA-2A": "7382c562 report + runtime identity record (8925d75c…)",
+   "RCA-2A.1": "4a4b5b6a report + proposal draft (c0c995a1…) + info comparison (34d72f44…)"
+  }
+ },
+ "runtime_identity_note": "current runtime is the RCA-1-modified production runtime; no RuntimeBaselineV3 qualification conclusion is inherited (manifest records key-file hashes)",
+ "instrumentation_readiness": {
+  "gate": "test_rca2a2_diagnostic_readiness.py PASSED — directive §2 satisfied, NOT BLOCKED",
+  "observable_fields": [
+   "stage",
+   "exception type + module",
+   "normalized failure classification",
+   "validation error type",
+   "validation error location (union-member full paths, terminal field exact)",
+   "schema hash (of the actual failing output contract)",
+   "retry count (parsed budget metadata)",
+   "output-tool name (final_result)",
+   "run-id correlation (context.run_id == failed AgentRun)"
+  ],
+  "redaction": "ValidationError input values absent from sink output (asserted); boundary per RCA-1.8 OperationalBoundaryV1 (0600, absolute path, single-process, write-failure isolation)",
+  "conclusion": "the RCA-1 telemetry gap (F-3/F-10: no persisted output-tool params or field-level errors) is CLOSED at code level — future real-model INTEGRATE failures WILL be field-level attributable"
+ },
+ "model_selection": {
+  "candidate": "space-bunny-alpha@openrouter (historical 5/8 INTEGRATE-position retry exhaustions, capacity-clean at admission)",
+  "exact_frozen_config_reused": true,
+  "parameters_adjusted": "NONE"
+ },
+ "preregistered_samples": "4 cases frozen in the manifest before any model call (identity-trap as historical success contrast + three semantic failure types)",
+ "capacity_gate": {
+  "direct": "PROVIDER_CAPACITY_BLOCKED — 3/3 APIConnectionError (capacity-preflight.json)",
+  "proxy_correction_attempt": "ONE single corrected attempt (documented LAN proxy), NOT a watcher/loop: proxy TCP-unreachable + 3/3 APIConnectionError (capacity-preflight-proxy.json)",
+  "per_directive_6": "STOP; preflight requests are not part of the experiment measurement; no watcher, no window hunting, no model switch"
+ },
+ "execution": {
+  "runs_started": 0,
+  "scheduled": 4,
+  "structural_invariants": "not exercised (no runs); zero-tolerance rules remain armed for any resumption"
+ },
+ "interpretation": "INSUFFICIENT_DIAGNOSTIC_EVIDENCE for the historical failure attribution — stays SUSPECTED+INSUFFICIENT_TELEMETRY. The four preregistered samples were never consumed and the manifest can be re-executed verbatim when connectivity is restored (new manifest timestamp + fresh preflight required).",
+ "rca2b_value_assessment": "RCA-2B remains NOT AUTHORIZED and its value is UNCHANGED by this block: the instrumentation readiness result actually STRENGTHENS the case for a future diagnostic run (field-level evidence is now guaranteed attributable), but no real-model data exists yet.",
+ "deliverables": [
+  "rca2a2-diagnostic-experiment-manifest-v1.json",
+  "rca2a2-integration-failure-matrix-v1.json",
+  "capacity-preflight.json / capacity-preflight-proxy.json",
+  "this report"
+ ]
+}

@@ -1,0 +1,10 @@
+{
+  "artifact_version": "RCA2A10bEvidenceIntegrityReportV1",
+  "cross_task_evidence_leak": false,
+  "experiment_id": "rca2a10b-rebased-cross-case-vocabulary-comparison",
+  "fabricated_evidence_detected": false,
+  "pre_call_fixture_integrity": "PASS",
+  "production_evidence_mutations": 0,
+  "scratch_stores_unmutated": true,
+  "unauthorized_scratch_commits": 0
+}

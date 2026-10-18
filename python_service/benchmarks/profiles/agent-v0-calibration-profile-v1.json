@@ -1,0 +1,62 @@
+{
+  "artifact_version": "AgentV0CalibrationProfileV1",
+  "status": "FROZEN",
+  "frozen_at": "2026-09-30T00:00:00+00:00",
+  "decision": "ZERO_CHANGE_CALIBRATION",
+  "production_changes": [],
+  "bound_runtime_baseline": {
+    "profile_version": "precalibration-runtime-baseline:v4",
+    "file": "benchmarks/profiles/precalibration-runtime-baseline-v4.json",
+    "runtime_git_commit": "a426672765faca508b128ae3f2671bede9df69f8",
+    "production_runtime_commit": "f7b02af6 (A1-H freeze)"
+  },
+  "bound_model": {
+    "provider": "sensenova-cloud",
+    "model_id": "sensenova-6.8-flash-lite",
+    "api_reported_model_id": "sensenova-6.8-flash-lite",
+    "adapter_model_config_digest": "ba51d65eeb2c29022216b069572db333d999fcd887098bc49b6f1da6e15ab764",
+    "generation_params": {
+      "temperature": 0.7,
+      "max_tokens": 16384,
+      "thinking_mode": "disabled",
+      "reasoning_effort": "none",
+      "timeout_seconds": 120,
+      "context_window_tokens": 131072
+    }
+  },
+  "numeric_runtime_parameters": {
+    "max_output_retries": 2,
+    "max_provider_retries": 1,
+    "max_cycles_per_invocation": 1,
+    "max_cycles_per_run": 20,
+    "tool_budget": "frozen production defaults (unchanged)",
+    "final_review_mode": "best_effort"
+  },
+  "prompt_and_policy_hashes": {
+    "tool_registry_schema_hash": "2583c323521aff470ed0cd464ace102f15420a1114d9c24a004bd1893f643bcf",
+    "supervisor_module_sha16": "8621316a59b9c016",
+    "supervisor_integration_v2_module_sha16": "9be8946460d63993",
+    "specialist_result_module_sha16": "4f8b004d7bd8a1f1",
+    "specialist_executor_module_sha16": "211f0b25742946df",
+    "pydantic_bridge_module_sha16": "8a4bf62b7da084ff",
+    "policy_versions": "see precalibration-runtime-baseline-v4.json policy_versions (frozen)"
+  },
+  "corpus": {
+    "corpus_id": "corpus-agent-v0-calibration",
+    "corpus_hash": "52e70af32e1af861c85e03d03635147d528c39926d917af197f46dbf04170dc7"
+  },
+  "b2_run_set": {
+    "results_root": "benchmarks/results/agent-v0/b2-restart/b2-post-h",
+    "runs": 24,
+    "completed": 23,
+    "provider_failures": 1,
+    "measurement_report": "benchmarks/results/agent-v0/b2-restart/b2-post-h/measurement-report-v4.json",
+    "calibration_experiments": "none (zero-change decision; candidate review in calibration-candidate-review.v1.json)"
+  },
+  "known_model_limits_recorded": {
+    "specialist_structured_output": "7/24 (29%), case-concentrated (t1 3/3, misleading 2/3, temporal 2/3) — MODEL_RELIABILITY_LIMIT, never correctness-violating",
+    "question_closure_discipline": "2/24 REQUIRED_QUESTION_OPEN partials",
+    "provider_stability": "1/24 HTTP 429 tpm/rpm (SenseNova), recorded as baseline provider reliability"
+  },
+  "holdout": "SEALED / NEVER RUN (execution only after AcceptanceProfile frozen and an explicitly authorized B6)"
+}

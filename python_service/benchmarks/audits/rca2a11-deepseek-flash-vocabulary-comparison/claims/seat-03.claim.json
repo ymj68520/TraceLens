@@ -1,0 +1,13 @@
+{
+  "artifact_version": "RCA2A10SeatClaimV1",
+  "experiment_id": "rca2a11-deepseek-flash-vocabulary-comparison",
+  "global_seat": 3,
+  "scenario_id": "t2-temporal-trap",
+  "pair_label": "A",
+  "pair_id": 1,
+  "arm": "control",
+  "claimed_phase": "RESULT_RECORDED",
+  "claimed_at_monotonic": 2967696.480615086,
+  "status": "COMPLETED",
+  "finalized_at_monotonic": 2967702.143573634
+}

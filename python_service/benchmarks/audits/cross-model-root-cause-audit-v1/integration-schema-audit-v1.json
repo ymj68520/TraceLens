@@ -1,0 +1,683 @@
+{
+ "artifact_version": "IntegrationSchemaAuditV1",
+ "method": "schema generated from the CURRENT production models via pydantic model_json_schema + pydantic-ai InlineDefsJsonSchemaTransformer (the same transform the model-facing tool bridge applies); all figures derive from the generated schema",
+ "integrate_v2": {
+  "label": "integrate_v2",
+  "raw": {
+   "schema_bytes": 9833,
+   "defs": 19,
+   "def_names": [
+    "AddFindingReferenceActionV2",
+    "AddPendingProposalReferenceActionV2",
+    "ContradictionSeverity",
+    "ContradictionStatus",
+    "CoverageStatus",
+    "CreateContradictionActionV2",
+    "CreateHypothesisActionV2",
+    "CreateQuestionActionV2",
+    "EvidenceRelevanceStatus",
+    "HypothesisStatus",
+    "QuestionDisposition",
+    "QuestionPriority",
+    "QuestionSource",
+    "QuestionStatus",
+    "UpdateContradictionActionV2",
+    "UpdateCoverageActionV2",
+    "UpdateEvidenceRelevanceActionV2",
+    "UpdateHypothesisActionV2",
+    "UpdateQuestionActionV2"
+   ],
+   "top_level_fields": [
+    "actions",
+    "decision_version",
+    "integration_summary",
+    "limitations",
+    "warnings"
+   ],
+   "top_level_required": [],
+   "max_depth": 8,
+   "anyOf_branches": 48,
+   "enum_definitions": 9,
+   "enum_total_values": 43
+  },
+  "model_facing": {
+   "schema_bytes": 8494,
+   "defs_remaining": 0,
+   "max_depth": 11,
+   "anyOf_branches": 48,
+   "enum_definitions": 9,
+   "enum_total_values": 43
+  },
+  "actions_union": {
+   "add_finding_reference": {
+    "def_name": "AddFindingReferenceActionV2",
+    "field_count": 2,
+    "required_count": 1,
+    "fields": {
+     "action_type": {
+      "required": false,
+      "type": "string",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "finding_handle": {
+      "required": true,
+      "type": "string",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     }
+    }
+   },
+   "add_pending_proposal_reference": {
+    "def_name": "AddPendingProposalReferenceActionV2",
+    "field_count": 2,
+    "required_count": 1,
+    "fields": {
+     "action_type": {
+      "required": false,
+      "type": "string",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "proposal_handle": {
+      "required": true,
+      "type": "string",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     }
+    }
+   },
+   "create_contradiction": {
+    "def_name": "CreateContradictionActionV2",
+    "field_count": 6,
+    "required_count": 1,
+    "fields": {
+     "action_type": {
+      "required": false,
+      "type": "string",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "severity": {
+      "required": true,
+      "type": "$ref",
+      "enum_values": null,
+      "ref": "#/$defs/ContradictionSeverity",
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "refs_handles": {
+      "required": false,
+      "type": "array",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "attempted_resolution": {
+      "required": false,
+      "type": "anyOf",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [
+       "string",
+       "null"
+      ],
+      "min_items": null,
+      "max_length": null
+     },
+     "impact": {
+      "required": false,
+      "type": "anyOf",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [
+       "string",
+       "null"
+      ],
+      "min_items": null,
+      "max_length": null
+     },
+     "limitation": {
+      "required": false,
+      "type": "anyOf",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [
+       "string",
+       "null"
+      ],
+      "min_items": null,
+      "max_length": null
+     }
+    }
+   },
+   "create_hypothesis": {
+    "def_name": "CreateHypothesisActionV2",
+    "field_count": 3,
+    "required_count": 1,
+    "fields": {
+     "action_type": {
+      "required": false,
+      "type": "string",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "text": {
+      "required": true,
+      "type": "string",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "supporting_handles": {
+      "required": false,
+      "type": "array",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     }
+    }
+   },
+   "create_question": {
+    "def_name": "CreateQuestionActionV2",
+    "field_count": 5,
+    "required_count": 1,
+    "fields": {
+     "action_type": {
+      "required": false,
+      "type": "string",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "text": {
+      "required": true,
+      "type": "string",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "source": {
+      "required": false,
+      "type": "$ref",
+      "enum_values": null,
+      "ref": "#/$defs/QuestionSource",
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "priority": {
+      "required": false,
+      "type": "$ref",
+      "enum_values": null,
+      "ref": "#/$defs/QuestionPriority",
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "parent_question_handle": {
+      "required": false,
+      "type": "anyOf",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [
+       "string",
+       "null"
+      ],
+      "min_items": null,
+      "max_length": null
+     }
+    }
+   },
+   "update_contradiction": {
+    "def_name": "UpdateContradictionActionV2",
+    "field_count": 7,
+    "required_count": 2,
+    "fields": {
+     "action_type": {
+      "required": false,
+      "type": "string",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "contradiction_handle": {
+      "required": true,
+      "type": "string",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "to_status": {
+      "required": true,
+      "type": "$ref",
+      "enum_values": null,
+      "ref": "#/$defs/ContradictionStatus",
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "resolution_basis_handles": {
+      "required": false,
+      "type": "anyOf",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [
+       "array",
+       "null"
+      ],
+      "min_items": null,
+      "max_length": null
+     },
+     "attempted_resolution": {
+      "required": false,
+      "type": "anyOf",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [
+       "string",
+       "null"
+      ],
+      "min_items": null,
+      "max_length": null
+     },
+     "impact": {
+      "required": false,
+      "type": "anyOf",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [
+       "string",
+       "null"
+      ],
+      "min_items": null,
+      "max_length": null
+     },
+     "limitation": {
+      "required": false,
+      "type": "anyOf",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [
+       "string",
+       "null"
+      ],
+      "min_items": null,
+      "max_length": null
+     }
+    }
+   },
+   "update_coverage": {
+    "def_name": "UpdateCoverageActionV2",
+    "field_count": 7,
+    "required_count": 2,
+    "fields": {
+     "action_type": {
+      "required": false,
+      "type": "string",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "coverage_handle": {
+      "required": true,
+      "type": "string",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "to_status": {
+      "required": true,
+      "type": "$ref",
+      "enum_values": null,
+      "ref": "#/$defs/CoverageStatus",
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "basis_handles": {
+      "required": false,
+      "type": "anyOf",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [
+       "array",
+       "null"
+      ],
+      "min_items": null,
+      "max_length": null
+     },
+     "limitation": {
+      "required": false,
+      "type": "anyOf",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [
+       "string",
+       "null"
+      ],
+      "min_items": null,
+      "max_length": null
+     },
+     "capability_basis": {
+      "required": false,
+      "type": "anyOf",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [
+       "string",
+       "null"
+      ],
+      "min_items": null,
+      "max_length": null
+     },
+     "related_question_handles": {
+      "required": false,
+      "type": "anyOf",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [
+       "array",
+       "null"
+      ],
+      "min_items": null,
+      "max_length": null
+     }
+    }
+   },
+   "update_evidence_relevance": {
+    "def_name": "UpdateEvidenceRelevanceActionV2",
+    "field_count": 4,
+    "required_count": 2,
+    "fields": {
+     "action_type": {
+      "required": false,
+      "type": "string",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "evidence_handle": {
+      "required": true,
+      "type": "string",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "to_status": {
+      "required": true,
+      "type": "$ref",
+      "enum_values": null,
+      "ref": "#/$defs/EvidenceRelevanceStatus",
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "related_question_handles": {
+      "required": false,
+      "type": "anyOf",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [
+       "array",
+       "null"
+      ],
+      "min_items": null,
+      "max_length": null
+     }
+    }
+   },
+   "update_hypothesis": {
+    "def_name": "UpdateHypothesisActionV2",
+    "field_count": 3,
+    "required_count": 2,
+    "fields": {
+     "action_type": {
+      "required": false,
+      "type": "string",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "hypothesis_handle": {
+      "required": true,
+      "type": "string",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "to_status": {
+      "required": true,
+      "type": "$ref",
+      "enum_values": null,
+      "ref": "#/$defs/HypothesisStatus",
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     }
+    }
+   },
+   "update_question": {
+    "def_name": "UpdateQuestionActionV2",
+    "field_count": 9,
+    "required_count": 2,
+    "fields": {
+     "action_type": {
+      "required": false,
+      "type": "string",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "question_handle": {
+      "required": true,
+      "type": "string",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "to_status": {
+      "required": true,
+      "type": "$ref",
+      "enum_values": null,
+      "ref": "#/$defs/QuestionStatus",
+      "anyOf": [],
+      "min_items": null,
+      "max_length": null
+     },
+     "disposition": {
+      "required": false,
+      "type": "anyOf",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [
+       "#/$defs/QuestionDisposition",
+       "null"
+      ],
+      "min_items": null,
+      "max_length": null
+     },
+     "basis_handles": {
+      "required": false,
+      "type": "anyOf",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [
+       "array",
+       "null"
+      ],
+      "min_items": null,
+      "max_length": null
+     },
+     "limitations": {
+      "required": false,
+      "type": "anyOf",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [
+       "array",
+       "null"
+      ],
+      "min_items": null,
+      "max_length": null
+     },
+     "investigated_summary": {
+      "required": false,
+      "type": "anyOf",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [
+       "string",
+       "null"
+      ],
+      "min_items": null,
+      "max_length": null
+     },
+     "blocker": {
+      "required": false,
+      "type": "anyOf",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [
+       "string",
+       "null"
+      ],
+      "min_items": null,
+      "max_length": null
+     },
+     "superseded_by_handle": {
+      "required": false,
+      "type": "anyOf",
+      "enum_values": null,
+      "ref": null,
+      "anyOf": [
+       "string",
+       "null"
+      ],
+      "min_items": null,
+      "max_length": null
+     }
+    }
+   }
+  }
+ },
+ "plan_v2": {
+  "label": "plan_v2",
+  "raw": {
+   "schema_bytes": 2686,
+   "defs": 3,
+   "def_names": [
+    "DelegateInvestigationActionV2",
+    "NoPlanActionV2",
+    "RequestFinalizationActionV2"
+   ],
+   "top_level_fields": [
+    "actions",
+    "decision_version",
+    "limitations",
+    "summary",
+    "warnings"
+   ],
+   "top_level_required": [],
+   "max_depth": 7,
+   "anyOf_branches": 7,
+   "enum_definitions": 0,
+   "enum_total_values": 0
+  },
+  "model_facing": {
+   "schema_bytes": 2457,
+   "defs_remaining": 0,
+   "max_depth": 10,
+   "anyOf_branches": 7,
+   "enum_definitions": 0,
+   "enum_total_values": 0
+  },
+  "actions_union": {}
+ },
+ "proposal_v1_draft": {
+  "label": "proposal_v1_draft",
+  "raw": {
+   "schema_bytes": 5690,
+   "defs": 6,
+   "def_names": [
+    "AddFindingReferenceAction",
+    "AddPendingProposalReferenceAction",
+    "CreateContradictionAction",
+    "CreateHypothesisAction",
+    "CreateQuestionAction",
+    "UpdateAction"
+   ],
+   "top_level_fields": [
+    "actions",
+    "integration_summary",
+    "limitations",
+    "proposal_version",
+    "warnings"
+   ],
+   "top_level_required": [],
+   "max_depth": 7,
+   "anyOf_branches": 34,
+   "enum_definitions": 0,
+   "enum_total_values": 0
+  },
+  "model_facing": {
+   "schema_bytes": 5249,
+   "defs_remaining": 0,
+   "max_depth": 10,
+   "anyOf_branches": 34,
+   "enum_definitions": 0,
+   "enum_total_values": 0
+  },
+  "actions_union": {}
+ },
+ "complexity_comparison_note": "complexity reduction is DEMONSTRATED only; model reliability improvement is UNVERIFIED (no output-tool params or field-level errors exist for the 11 historical INTEGRATE retry exhaustions — RCA-1 audit finding F-3/F-10)"
+}

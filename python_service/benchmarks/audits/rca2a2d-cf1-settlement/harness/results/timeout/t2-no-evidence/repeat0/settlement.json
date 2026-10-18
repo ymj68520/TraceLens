@@ -1,0 +1,18 @@
+{
+  "action": "settled",
+  "task_id": "bench-brun:9acf41f72ad927b3e745aec3",
+  "investigation_id": "inv-brun:9acf41f72ad927b3e745aec3",
+  "execution_cancelled": false,
+  "runs": [
+    {
+      "run_id": "run_7f8383e6b7734f0cb5162af312322f98",
+      "before": "running",
+      "after": "failed",
+      "transition": "failed",
+      "stop_reason": "internal_failure",
+      "error_code": "agent_timeout"
+    }
+  ],
+  "investigation_finalized": false,
+  "settlement_events_appended": 1
+}

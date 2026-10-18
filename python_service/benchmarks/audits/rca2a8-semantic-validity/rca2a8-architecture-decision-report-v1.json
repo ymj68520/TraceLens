@@ -1,0 +1,46 @@
+{
+  "artifact_version": "RCA2A8ArchitectureDecisionReportV1",
+  "comparison_matrix": {
+    "dimensions": [
+      "Observed Reliability Evidence",
+      "Semantic Adequacy",
+      "Evidence Integrity",
+      "Validation Boundary",
+      "Retry Recoverability",
+      "Token/Latency Cost",
+      "Implementation Scope",
+      "Runtime Identity Impact",
+      "Qualification Cost"
+    ],
+    "leader": "Option B on reliability and low implementation scope; Option A on zero overhead."
+  },
+  "epistemic_classification": "POST_HOC_SEMANTIC_REVIEW_AND_ARCHITECTURE_ASSESSMENT",
+  "evaluated_options": {
+    "option_A": {
+      "description": "Retain production V2 instructions and schema without modifications.",
+      "name": "Keep Original V2",
+      "observed_reliability": "0/4 canonical valid on StepFun step-3.7-flash (fails union discriminator/enum).",
+      "qualification_cost": "Zero (current baseline).",
+      "risk": "Ongoing integration failures on StepFun without retry recoverability."
+    },
+    "option_B": {
+      "description": "Append frozen vocabulary guidance to prompt instructions; maintain all server validation.",
+      "name": "Vocabulary Guidance V1",
+      "observed_reliability": "4/4 canonical valid on StepFun step-3.7-flash (+100% win rate on tested sample).",
+      "qualification_cost": "Low (prompt-layer only; no schema drift; no server code modification).",
+      "risk": "Cross-case generalization not yet proven across multi-scenario suites.",
+      "token_overhead": "+351 input tokens/generation; +29.1% output tokens; +25.4% latency."
+    },
+    "option_C": {
+      "architectural_concern": "Certain disposition checks are shifted outside the Pydantic retry boundary, which may reduce model self-correction capability.",
+      "description": "Re-architect output schema to flat/typed actions, removing discriminated union cascade.",
+      "name": "Strict + CompactTyped (RCA-2B Proposal)",
+      "observed_reliability": "UNTESTED on live models.",
+      "qualification_cost": "High (major schema migration, supervisor rewrite, adapter update).",
+      "risk": "High qualification risk; unproven on StepFun live API."
+    }
+  },
+  "experiment_id": "rca2a8-semantic-validity",
+  "recommendation": "CONTINUE_PROMPT_ONLY_CROSS_CASE_VALIDATION",
+  "recommendation_justification": "RCA-2A.7c provides strong preliminary evidence (4/4 vs 0/4) that Option B (Vocabulary Guidance) resolves StepFun's retry failure mode without invasive schema modifications. However, because n=4 on a single no-evidence fixture cannot establish cross-case reliability, immediate production rollout is unjustified. We recommend proceeding to an authorized cross-case comparison across distinct scenarios (t2-no-evidence, t2-temporal-trap) before any production merge. Option C should remain uncommitted."
+}

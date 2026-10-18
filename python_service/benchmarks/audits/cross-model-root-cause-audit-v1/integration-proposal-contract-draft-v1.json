@@ -1,0 +1,38 @@
+{
+  "artifact_version": "IntegrationProposalContractDraftV1",
+  "created_at": "2026-10-13T00:00:00+00:00",
+  "status": "DRAFT — offline experimental only; NOT wired to any production path",
+  "isolation": {
+    "module": "python_service/benchmarks/contracts/experimental/integration_proposal_v1.py",
+    "guarantee": "lives outside the httpserver production package; the agent factory import graph cannot reach it; loaded only by explicit test/audit imports",
+    "verification": "httpserver sources contain no reference to benchmarks.contracts (grep-checked in RCA-2A closure)"
+  },
+  "design": {
+    "shape": "SupervisorIntegrationProposalV1 -> resolve_proposal_to_canonical -> SupervisorIntegrationDecisionV2 -> resolve_integration_proposal_v2 (UNCHANGED) -> IntegrationDecisionValidator (UNCHANGED) -> StateTransitionPolicy (UNCHANGED) -> FinalizationGate (UNCHANGED)",
+    "uniform_update_envelope": {
+      "motivation": "five per-entity update_* variants (question/evidence/hypothesis/contradiction/coverage) share the shape {handle, to_status, evidence operands, justification fields}; the entity KIND is exactly inferable from the handle prefix (COV/Q/E/H/X — bijective, no fuzzy matching)",
+      "effect": "10 action variants -> 6; 4 per-kind to_status enum-typed fields replaced by one string field validated at resolve time against the TARGET KIND's frozen enum (fail-closed, accepted set identical per kind)",
+      "question_only_fields": "disposition/investigated_summary/blocker/superseded_by_handle remain expressible; rejected (P_FIELD_NOT_VALID_FOR_KIND) when the target kind is not question",
+      "trade_off": "schema is less self-describing: the kind-field mapping must live in instructions (a prompt-side cost for any future RCA-2B implementation)"
+    },
+    "status_enums": "statuses become plain strings in the schema; membership in the target kind's frozen enum enforced by the resolver (enforcement point moved schema-parse -> server-side resolve; accepted set identical, verified by equivalence tests). Creation enums (QuestionSource/QuestionPriority/ContradictionSeverity) are enforced at resolve time the same way.",
+    "identity": "unchanged and structurally absent from the model surface (task/run/state identity injected from the frozen context exactly as the canonical path)",
+    "handles": "pass through VERBATIM; prefix inference is exact; the binding table still validates existence + kind; no fuzzy repair, no auto-creation"
+  },
+  "measured_complexity": {
+    "source": "integration-schema-audit-v1.json (generated schemas, same transformer as the model-facing bridge)",
+    "old_v2": {"raw_bytes": 9833, "facing_bytes": 8494, "defs": 19, "max_depth": 8, "anyOf": 48, "enum_defs": 9, "enum_values": 43, "action_variants": 10},
+    "proposal_draft": {"raw_bytes": 5690, "facing_bytes": 5249, "defs": 6, "max_depth": 7, "anyOf": 34, "enum_defs": 0, "enum_values": 0, "action_variants": 6},
+    "delta": {"facing_bytes_pct": -38, "defs": -13, "action_variants": -4}
+  },
+  "explicit_non_claims": [
+    "model reliability improvement is UNVERIFIED — the 11 historical INTEGRATE retry exhaustions have no persisted output-tool params or field-level errors (RCA-1 F-3/F-10), so nothing can claim the proposal would have prevented them",
+    "schema reduction does not imply reliability improvement (RCA-2A §7)",
+    "no production schema, prompt, policy or validator was modified"
+  ],
+  "semantic_equivalence": {
+    "report": "semantic-equivalence-test-report-v1.json",
+    "tests": "tests/unit/benchmarks/test_integration_proposal_equivalence.py — 16 passed",
+    "summary": "all ten canonical actions byte-equivalent through the unchanged canonical path; old-rejects imply new-rejects; one new rejection class (cross-kind fields) and two enforcement-point moves documented with identical accepted sets"
+  }
+}

@@ -32,6 +32,7 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 import sqlite3
 import uuid
 from contextlib import closing
@@ -106,14 +107,14 @@ class InvestigationMigrationRequiredError(EvidenceStoreError):
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_SCHEMA_VERSION = 8
-READABLE_SCHEMA_VERSIONS = frozenset({7, 8})
+SUPPORTED_SCHEMA_VERSION = 16
+READABLE_SCHEMA_VERSIONS = frozenset({7, 8, 9, 10, 11, 12, 13, 14, 15, 16})
 
 # ---------------------------------------------------------------------------
 # DDL: historical v1-v7 snapshot table and explicit v8 identity extension
 # ---------------------------------------------------------------------------
 
-_CREATE_EVIDENCE_SNAPSHOTS_SQL = """
+_CREATE_EVIDENCE_SNAPSHOTS_V7_SQL = """
 CREATE TABLE IF NOT EXISTS evidence_snapshots (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     task_id TEXT NOT NULL,
@@ -171,6 +172,7 @@ CREATE TABLE evidence_snapshots_v8 (
 _CREATE_EVIDENCE_SNAPSHOTS_FRESH_V8_SQL = _CREATE_EVIDENCE_SNAPSHOTS_V8_SQL.replace(
     "CREATE TABLE evidence_snapshots_v8", "CREATE TABLE IF NOT EXISTS evidence_snapshots"
 )
+_CREATE_EVIDENCE_SNAPSHOTS_SQL = _CREATE_EVIDENCE_SNAPSHOTS_FRESH_V8_SQL
 _INDEX_PATH_SQL = "CREATE INDEX IF NOT EXISTS idx_evsnap_path ON evidence_snapshots(normalized_path)"
 _INDEX_CLUSTER_SQL = "CREATE INDEX IF NOT EXISTS idx_evsnap_cluster ON evidence_snapshots(unix_minute, event_type)"
 _INDEX_TASK_SQL = "CREATE INDEX IF NOT EXISTS idx_evsnap_task ON evidence_snapshots(task_id)"
@@ -682,6 +684,1860 @@ _REQUIRED_REPORT_EVIDENCE_COLUMNS = {
     "created_at", "updated_at", "updated_by",
 }
 
+# ---------------------------------------------------------------------------
+# DDL: Agent runtime persistence (v8 addition, Agent Architecture v0 Phase 1)
+# ---------------------------------------------------------------------------
+#
+# P1 frozen semantics (docs/specs/agent-architecture-v0.md §15/§26; docs/
+# investigation/agent-v0-phase1-runtime-foundation.md):
+#   - the task-owned investigation.db stays the only runtime store; every
+#     agent row carries task_id and composite-FKs onto agent_investigations,
+#     so cross-task references fail at the DB level.
+#   - Investigation: ready/active/paused/completed/cancelled; completed and
+#     cancelled are terminal (no reopen; a follow-up investigation is a new
+#     row with future continuation provenance, not a status flip).
+#   - Agent Run: at most one queued/running run per investigation, enforced
+#     by a partial unique index (DB boundary, not an application check).
+#   - Delegation: queued/running/completed/failed/cancelled/stale. A
+#     completed row allows exactly one integrated_at/integrated_revision
+#     bookkeeping write; every other terminal mutation is rejected.
+#   - Working state revisions are strictly sequential, immutable and hash
+#     chained (DB triggers); trajectory events are INSERT-only.
+
+_CREATE_AGENT_INVESTIGATIONS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_investigations (
+    investigation_id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN
+        ('ready','active','paused','completed','cancelled')),
+    pause_reason TEXT CHECK(pause_reason IS NULL OR pause_reason IN
+        ('user_paused','runtime_restart','finalization_review_unavailable')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT,
+    cancelled_at TEXT,
+    UNIQUE(task_id, investigation_id)
+)
+"""
+
+_CREATE_AGENT_RUNS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_runs (
+    run_id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN
+        ('queued','running','completed','failed','cancelled')),
+    stop_reason TEXT CHECK(stop_reason IS NULL OR stop_reason IN
+        ('finalized','budget_exhausted','user_paused','no_progress',
+         'directive_replan','runtime_restart','cancelled','internal_failure')),
+    error_code TEXT,
+    error_message TEXT,
+    idempotency_key TEXT,
+    created_at TEXT NOT NULL,
+    started_at TEXT,
+    completed_at TEXT,
+    failed_at TEXT,
+    cancelled_at TEXT,
+    UNIQUE(task_id, run_id),
+    UNIQUE(task_id, idempotency_key),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+# One active (queued/running) run per investigation -- DB boundary (P1-E5).
+_INDEX_AGENT_RUN_ONE_ACTIVE_SQL = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_run_one_active_per_investigation
+ON agent_runs(task_id, investigation_id) WHERE status IN ('queued', 'running')
+"""
+
+_CREATE_AGENT_WORKING_STATE_REVISIONS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_working_state_revisions (
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    revision INTEGER NOT NULL CHECK(revision >= 1),
+    state_json TEXT NOT NULL,
+    state_hash TEXT NOT NULL,
+    previous_state_hash TEXT,
+    operation_key TEXT,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(task_id, investigation_id, revision),
+    UNIQUE(task_id, investigation_id, operation_key),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_CREATE_AGENT_DELEGATIONS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_delegations (
+    delegation_id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN
+        ('queued','running','completed','failed','cancelled','stale')),
+    question_ref TEXT,
+    based_on_state_revision INTEGER,
+    context_hash TEXT,
+    cancel_requested_at TEXT,
+    failure_code TEXT,
+    failure_message TEXT,
+    idempotency_key TEXT,
+    created_at TEXT NOT NULL,
+    started_at TEXT,
+    completed_at TEXT,
+    failed_at TEXT,
+    cancelled_at TEXT,
+    stale_at TEXT,
+    integrated_at TEXT,
+    integrated_revision INTEGER,
+    UNIQUE(task_id, delegation_id),
+    UNIQUE(task_id, idempotency_key),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, run_id)
+        REFERENCES agent_runs(task_id, run_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, investigation_id, integrated_revision)
+        REFERENCES agent_working_state_revisions(task_id, investigation_id, revision)
+        ON DELETE RESTRICT
+)
+"""
+
+_CREATE_AGENT_TRAJECTORY_EVENTS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_trajectory_events (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    run_id TEXT,
+    delegation_id TEXT,
+    event_type TEXT NOT NULL CHECK(event_type IN (
+        'investigation_created','run_admitted','run_started','run_completed',
+        'run_failed','run_cancelled','delegation_admitted','delegation_started',
+        'delegation_completed','delegation_failed','delegation_cancelled',
+        'delegation_stale','working_state_committed','runtime_recovered',
+        'investigation_paused','investigation_completed','investigation_cancelled',
+        'attention_compiled','transition_decision_validated',
+        'transition_decision_rejected','working_state_integrated',
+        'no_progress_detected','finalization_requested','finalization_denied',
+        'finalization_stale','finalization_completed',
+        'tool_observation_recorded',
+        'supervisor_plan_decided','supervisor_integration_committed',
+        'entity_occurrences_recorded','correlation_candidates_recorded',
+        'claim_grounding_recorded','claim_proposals_recorded',
+        'correlation_semantic_verified','claim_semantic_verified',
+        'claim_disposition_recorded','finding_review_pending_created',
+        'final_semantic_review_recorded',
+        'graph_candidate_recorded','graph_admission_decided',
+        'graph_episode_frozen','graph_materialization_queued',
+        'graph_materialization_invalidated',
+        'graph_materialization_started','graph_materialization_activated',
+        'graph_materialization_failed','graph_materialization_retry_queued')),
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, event_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, run_id)
+        REFERENCES agent_runs(task_id, run_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, delegation_id)
+        REFERENCES agent_delegations(task_id, delegation_id) ON DELETE RESTRICT
+)
+"""
+
+_CREATE_AGENT_TOOL_OBSERVATIONS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_tool_observations (
+    observation_id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    run_id TEXT,
+    delegation_id TEXT,
+    tool_id TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    evidence_refs_json TEXT NOT NULL,
+    result_count INTEGER NOT NULL,
+    truncated INTEGER NOT NULL CHECK(truncated IN (0,1)),
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, observation_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, run_id)
+        REFERENCES agent_runs(task_id, run_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, delegation_id)
+        REFERENCES agent_delegations(task_id, delegation_id) ON DELETE RESTRICT
+)
+"""
+
+# Lifecycle status-field consistency (insert + update variants, matching the
+# investigation_event_refreshes guard style).
+_TRIGGER_AGENT_INVESTIGATION_STATE_FIELDS_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_investigation_state_fields
+BEFORE UPDATE ON agent_investigations
+WHEN
+    (NEW.status IN ('ready','active') AND (
+        NEW.pause_reason IS NOT NULL OR NEW.completed_at IS NOT NULL
+        OR NEW.cancelled_at IS NOT NULL
+    ))
+ OR (NEW.status = 'paused' AND (
+        NEW.pause_reason IS NULL OR NEW.completed_at IS NOT NULL
+        OR NEW.cancelled_at IS NOT NULL
+    ))
+ OR (NEW.status = 'completed' AND (
+        NEW.completed_at IS NULL OR NEW.cancelled_at IS NOT NULL
+    ))
+ OR (NEW.status = 'cancelled' AND (
+        NEW.cancelled_at IS NULL OR NEW.completed_at IS NOT NULL
+    ))
+BEGIN
+    SELECT RAISE(ABORT, 'invalid agent investigation state fields');
+END
+"""
+_TRIGGER_AGENT_INVESTIGATION_STATE_FIELDS_INSERT_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_investigation_state_fields_insert
+BEFORE INSERT ON agent_investigations
+WHEN
+    (NEW.status IN ('ready','active') AND (
+        NEW.pause_reason IS NOT NULL OR NEW.completed_at IS NOT NULL
+        OR NEW.cancelled_at IS NOT NULL
+    ))
+ OR (NEW.status = 'paused' AND (
+        NEW.pause_reason IS NULL OR NEW.completed_at IS NOT NULL
+        OR NEW.cancelled_at IS NOT NULL
+    ))
+ OR (NEW.status = 'completed' AND (
+        NEW.completed_at IS NULL OR NEW.cancelled_at IS NOT NULL
+    ))
+ OR (NEW.status = 'cancelled' AND (
+        NEW.cancelled_at IS NULL OR NEW.completed_at IS NOT NULL
+    ))
+BEGIN
+    SELECT RAISE(ABORT, 'invalid agent investigation state fields');
+END
+"""
+_TRIGGER_AGENT_INVESTIGATION_LEGAL_TRANSITION_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_investigation_legal_transition
+BEFORE UPDATE OF status ON agent_investigations
+WHEN (OLD.status = 'ready' AND NEW.status NOT IN ('active', 'cancelled'))
+  OR (OLD.status = 'active' AND NEW.status NOT IN ('paused', 'completed', 'cancelled'))
+  OR (OLD.status = 'paused' AND NEW.status NOT IN ('active', 'cancelled'))
+  OR OLD.status IN ('completed', 'cancelled')
+BEGIN
+    SELECT RAISE(ABORT, 'illegal agent investigation status transition');
+END
+"""
+_TRIGGER_AGENT_INVESTIGATION_NO_IDENTITY_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_investigation_no_identity_update
+BEFORE UPDATE ON agent_investigations
+WHEN NEW.investigation_id != OLD.investigation_id
+  OR NEW.task_id != OLD.task_id
+  OR NEW.created_at != OLD.created_at
+BEGIN
+    SELECT RAISE(ABORT, 'agent investigation identity is immutable');
+END
+"""
+_TRIGGER_AGENT_INVESTIGATION_NO_DELETE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_investigation_no_delete
+BEFORE DELETE ON agent_investigations
+BEGIN
+    SELECT RAISE(ABORT, 'agent investigations are never deleted');
+END
+"""
+
+_TRIGGER_AGENT_RUN_STATE_FIELDS_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_run_state_fields
+BEFORE UPDATE ON agent_runs
+WHEN
+    (NEW.status = 'queued' AND (
+        NEW.started_at IS NOT NULL OR NEW.completed_at IS NOT NULL
+        OR NEW.failed_at IS NOT NULL OR NEW.cancelled_at IS NOT NULL
+        OR NEW.stop_reason IS NOT NULL OR NEW.error_code IS NOT NULL
+        OR NEW.error_message IS NOT NULL
+    ))
+ OR (NEW.status = 'running' AND (
+        NEW.started_at IS NULL OR NEW.completed_at IS NOT NULL
+        OR NEW.failed_at IS NOT NULL OR NEW.cancelled_at IS NOT NULL
+        OR NEW.stop_reason IS NOT NULL OR NEW.error_code IS NOT NULL
+        OR NEW.error_message IS NOT NULL
+    ))
+ OR (NEW.status = 'completed' AND (
+        NEW.started_at IS NULL OR NEW.completed_at IS NULL
+        OR NEW.stop_reason IS NULL OR NEW.failed_at IS NOT NULL
+        OR NEW.cancelled_at IS NOT NULL OR NEW.error_code IS NOT NULL
+        OR NEW.error_message IS NOT NULL
+    ))
+ OR (NEW.status = 'failed' AND (
+        NEW.failed_at IS NULL OR NEW.stop_reason IS NULL
+        OR NEW.error_code IS NULL OR NEW.error_message IS NULL
+        OR NEW.completed_at IS NOT NULL OR NEW.cancelled_at IS NOT NULL
+    ))
+ OR (NEW.status = 'cancelled' AND (
+        NEW.cancelled_at IS NULL OR NEW.stop_reason IS NULL
+        OR NEW.completed_at IS NOT NULL OR NEW.failed_at IS NOT NULL
+        OR NEW.error_code IS NOT NULL OR NEW.error_message IS NOT NULL
+    ))
+BEGIN
+    SELECT RAISE(ABORT, 'invalid agent run state fields');
+END
+"""
+_TRIGGER_AGENT_RUN_STATE_FIELDS_INSERT_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_run_state_fields_insert
+BEFORE INSERT ON agent_runs
+WHEN
+    (NEW.status = 'queued' AND (
+        NEW.started_at IS NOT NULL OR NEW.completed_at IS NOT NULL
+        OR NEW.failed_at IS NOT NULL OR NEW.cancelled_at IS NOT NULL
+        OR NEW.stop_reason IS NOT NULL OR NEW.error_code IS NOT NULL
+        OR NEW.error_message IS NOT NULL
+    ))
+ OR (NEW.status = 'running' AND (
+        NEW.started_at IS NULL OR NEW.completed_at IS NOT NULL
+        OR NEW.failed_at IS NOT NULL OR NEW.cancelled_at IS NOT NULL
+        OR NEW.stop_reason IS NOT NULL OR NEW.error_code IS NOT NULL
+        OR NEW.error_message IS NOT NULL
+    ))
+ OR (NEW.status = 'completed' AND (
+        NEW.started_at IS NULL OR NEW.completed_at IS NULL
+        OR NEW.stop_reason IS NULL OR NEW.failed_at IS NOT NULL
+        OR NEW.cancelled_at IS NOT NULL OR NEW.error_code IS NOT NULL
+        OR NEW.error_message IS NOT NULL
+    ))
+ OR (NEW.status = 'failed' AND (
+        NEW.failed_at IS NULL OR NEW.stop_reason IS NULL
+        OR NEW.error_code IS NULL OR NEW.error_message IS NULL
+        OR NEW.completed_at IS NOT NULL OR NEW.cancelled_at IS NOT NULL
+    ))
+ OR (NEW.status = 'cancelled' AND (
+        NEW.cancelled_at IS NULL OR NEW.stop_reason IS NULL
+        OR NEW.completed_at IS NOT NULL OR NEW.failed_at IS NOT NULL
+        OR NEW.error_code IS NOT NULL OR NEW.error_message IS NOT NULL
+    ))
+BEGIN
+    SELECT RAISE(ABORT, 'invalid agent run state fields');
+END
+"""
+_TRIGGER_AGENT_RUN_LEGAL_TRANSITION_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_run_legal_transition
+BEFORE UPDATE OF status ON agent_runs
+WHEN (OLD.status = 'queued' AND NEW.status NOT IN ('running', 'failed', 'cancelled'))
+  OR (OLD.status = 'running' AND NEW.status NOT IN ('completed', 'failed', 'cancelled'))
+  OR OLD.status IN ('completed', 'failed', 'cancelled')
+BEGIN
+    SELECT RAISE(ABORT, 'illegal agent run status transition');
+END
+"""
+_TRIGGER_AGENT_RUN_NO_IDENTITY_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_run_no_identity_update
+BEFORE UPDATE ON agent_runs
+WHEN NEW.run_id != OLD.run_id
+  OR NEW.task_id != OLD.task_id
+  OR NEW.investigation_id != OLD.investigation_id
+  OR NEW.created_at != OLD.created_at
+  OR NEW.idempotency_key IS NOT OLD.idempotency_key
+BEGIN
+    SELECT RAISE(ABORT, 'agent run identity is immutable');
+END
+"""
+_TRIGGER_AGENT_RUN_NO_DELETE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_run_no_delete
+BEFORE DELETE ON agent_runs
+BEGIN
+    SELECT RAISE(ABORT, 'agent runs are never deleted');
+END
+"""
+
+_TRIGGER_AGENT_DELEGATION_STATE_FIELDS_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_delegation_state_fields
+BEFORE UPDATE ON agent_delegations
+WHEN
+    (NEW.status = 'queued' AND (
+        NEW.started_at IS NOT NULL OR NEW.completed_at IS NOT NULL
+        OR NEW.failed_at IS NOT NULL OR NEW.cancelled_at IS NOT NULL
+        OR NEW.stale_at IS NOT NULL OR NEW.integrated_at IS NOT NULL
+        OR NEW.integrated_revision IS NOT NULL OR NEW.failure_code IS NOT NULL
+    ))
+ OR (NEW.status = 'running' AND (
+        NEW.started_at IS NULL OR NEW.completed_at IS NOT NULL
+        OR NEW.failed_at IS NOT NULL OR NEW.cancelled_at IS NOT NULL
+        OR NEW.stale_at IS NOT NULL OR NEW.integrated_at IS NOT NULL
+        OR NEW.integrated_revision IS NOT NULL OR NEW.failure_code IS NOT NULL
+    ))
+ OR (NEW.status = 'completed' AND (
+        NEW.started_at IS NULL OR NEW.completed_at IS NULL
+        OR NEW.failed_at IS NOT NULL OR NEW.cancelled_at IS NOT NULL
+        OR NEW.stale_at IS NOT NULL OR NEW.failure_code IS NOT NULL
+        OR (NEW.integrated_at IS NULL) != (NEW.integrated_revision IS NULL)
+    ))
+ OR (NEW.status = 'failed' AND (
+        NEW.failed_at IS NULL OR NEW.failure_code IS NULL
+        OR NEW.completed_at IS NOT NULL OR NEW.cancelled_at IS NOT NULL
+        OR NEW.stale_at IS NOT NULL OR NEW.integrated_at IS NOT NULL
+        OR NEW.integrated_revision IS NOT NULL
+    ))
+ OR (NEW.status = 'cancelled' AND (
+        NEW.cancelled_at IS NULL OR NEW.completed_at IS NOT NULL
+        OR NEW.failed_at IS NOT NULL OR NEW.stale_at IS NOT NULL
+        OR NEW.integrated_at IS NOT NULL OR NEW.integrated_revision IS NOT NULL
+        OR NEW.failure_code IS NOT NULL
+    ))
+ OR (NEW.status = 'stale' AND (
+        NEW.stale_at IS NULL
+        OR NEW.failed_at IS NOT NULL OR NEW.cancelled_at IS NOT NULL
+        OR NEW.integrated_at IS NOT NULL OR NEW.integrated_revision IS NOT NULL
+        OR NEW.failure_code IS NOT NULL
+        OR (OLD.status = 'completed' AND NEW.completed_at IS NULL)
+        OR (OLD.status <> 'completed' AND NEW.completed_at IS NOT NULL)
+    ))
+BEGIN
+    SELECT RAISE(ABORT, 'invalid agent delegation state fields');
+END
+"""
+_TRIGGER_AGENT_DELEGATION_STATE_FIELDS_INSERT_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_delegation_state_fields_insert
+BEFORE INSERT ON agent_delegations
+WHEN
+    (NEW.status = 'queued' AND (
+        NEW.started_at IS NOT NULL OR NEW.completed_at IS NOT NULL
+        OR NEW.failed_at IS NOT NULL OR NEW.cancelled_at IS NOT NULL
+        OR NEW.stale_at IS NOT NULL OR NEW.integrated_at IS NOT NULL
+        OR NEW.integrated_revision IS NOT NULL OR NEW.failure_code IS NOT NULL
+    ))
+ OR (NEW.status = 'running' AND (
+        NEW.started_at IS NULL OR NEW.completed_at IS NOT NULL
+        OR NEW.failed_at IS NOT NULL OR NEW.cancelled_at IS NOT NULL
+        OR NEW.stale_at IS NOT NULL OR NEW.integrated_at IS NOT NULL
+        OR NEW.integrated_revision IS NOT NULL OR NEW.failure_code IS NOT NULL
+    ))
+ OR (NEW.status = 'completed' AND (
+        NEW.started_at IS NULL OR NEW.completed_at IS NULL
+        OR NEW.failed_at IS NOT NULL OR NEW.cancelled_at IS NOT NULL
+        OR NEW.stale_at IS NOT NULL OR NEW.failure_code IS NOT NULL
+        OR (NEW.integrated_at IS NULL) != (NEW.integrated_revision IS NULL)
+    ))
+ OR (NEW.status = 'failed' AND (
+        NEW.failed_at IS NULL OR NEW.failure_code IS NULL
+        OR NEW.completed_at IS NOT NULL OR NEW.cancelled_at IS NOT NULL
+        OR NEW.stale_at IS NOT NULL OR NEW.integrated_at IS NOT NULL
+        OR NEW.integrated_revision IS NOT NULL
+    ))
+ OR (NEW.status = 'cancelled' AND (
+        NEW.cancelled_at IS NULL OR NEW.completed_at IS NOT NULL
+        OR NEW.failed_at IS NOT NULL OR NEW.stale_at IS NOT NULL
+        OR NEW.integrated_at IS NOT NULL OR NEW.integrated_revision IS NOT NULL
+        OR NEW.failure_code IS NOT NULL
+    ))
+ OR (NEW.status = 'stale' AND (
+        NEW.stale_at IS NULL OR NEW.completed_at IS NOT NULL
+        OR NEW.failed_at IS NOT NULL OR NEW.cancelled_at IS NOT NULL
+        OR NEW.integrated_at IS NOT NULL OR NEW.integrated_revision IS NOT NULL
+        OR NEW.failure_code IS NOT NULL
+    ))
+BEGIN
+    SELECT RAISE(ABORT, 'invalid agent delegation state fields');
+END
+"""
+_TRIGGER_AGENT_DELEGATION_LEGAL_TRANSITION_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_delegation_legal_transition
+BEFORE UPDATE OF status ON agent_delegations
+WHEN (OLD.status = 'queued' AND NEW.status NOT IN
+        ('running', 'failed', 'cancelled', 'stale'))
+  OR (OLD.status = 'running' AND NEW.status NOT IN
+        ('completed', 'failed', 'cancelled', 'stale'))
+  OR (OLD.status IN ('completed', 'failed', 'cancelled', 'stale')
+      AND NOT (OLD.status = 'completed' AND NEW.status = 'stale'))
+BEGIN
+    SELECT RAISE(ABORT, 'illegal agent delegation status transition');
+END
+"""
+_TRIGGER_AGENT_DELEGATION_NO_IDENTITY_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_delegation_no_identity_update
+BEFORE UPDATE ON agent_delegations
+WHEN NEW.delegation_id != OLD.delegation_id
+  OR NEW.task_id != OLD.task_id
+  OR NEW.investigation_id != OLD.investigation_id
+  OR NEW.run_id != OLD.run_id
+  OR NEW.question_ref IS NOT OLD.question_ref
+  OR NEW.based_on_state_revision IS NOT OLD.based_on_state_revision
+  OR NEW.context_hash IS NOT OLD.context_hash
+  OR NEW.idempotency_key IS NOT OLD.idempotency_key
+  OR NEW.created_at != OLD.created_at
+BEGIN
+    SELECT RAISE(ABORT, 'agent delegation identity is immutable');
+END
+"""
+# Terminal immutability with exactly one narrow exception: a completed
+# delegation may record its integration bookkeeping once (integrated_at +
+# integrated_revision), with every other column unchanged.
+_TRIGGER_AGENT_DELEGATION_NO_TERMINAL_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_delegation_no_terminal_update
+BEFORE UPDATE ON agent_delegations
+WHEN OLD.status IN ('completed', 'failed', 'cancelled', 'stale')
+  AND NOT (
+        OLD.status = 'completed' AND NEW.status = 'completed'
+        AND OLD.integrated_at IS NULL AND NEW.integrated_at IS NOT NULL
+        AND OLD.integrated_revision IS NULL AND NEW.integrated_revision IS NOT NULL
+        AND NEW.delegation_id IS OLD.delegation_id
+        AND NEW.task_id IS OLD.task_id
+        AND NEW.investigation_id IS OLD.investigation_id
+        AND NEW.run_id IS OLD.run_id
+        AND NEW.question_ref IS OLD.question_ref
+        AND NEW.based_on_state_revision IS OLD.based_on_state_revision
+        AND NEW.context_hash IS OLD.context_hash
+        AND NEW.cancel_requested_at IS OLD.cancel_requested_at
+        AND NEW.failure_code IS OLD.failure_code
+        AND NEW.failure_message IS OLD.failure_message
+        AND NEW.idempotency_key IS OLD.idempotency_key
+        AND NEW.created_at IS OLD.created_at
+        AND NEW.started_at IS OLD.started_at
+        AND NEW.completed_at IS OLD.completed_at
+        AND NEW.failed_at IS OLD.failed_at
+        AND NEW.cancelled_at IS OLD.cancelled_at
+        AND NEW.stale_at IS OLD.stale_at
+  )
+    AND NOT (
+        OLD.status = 'completed' AND NEW.status = 'stale'
+        AND OLD.integrated_at IS NULL AND NEW.integrated_at IS NULL
+        AND OLD.integrated_revision IS NULL AND NEW.integrated_revision IS NULL
+        AND NEW.stale_at IS NOT NULL
+        AND NEW.delegation_id IS OLD.delegation_id
+        AND NEW.task_id IS OLD.task_id
+        AND NEW.investigation_id IS OLD.investigation_id
+        AND NEW.run_id IS OLD.run_id
+        AND NEW.question_ref IS OLD.question_ref
+        AND NEW.based_on_state_revision IS OLD.based_on_state_revision
+        AND NEW.context_hash IS OLD.context_hash
+        AND NEW.cancel_requested_at IS OLD.cancel_requested_at
+        AND NEW.failure_code IS OLD.failure_code
+        AND NEW.failure_message IS OLD.failure_message
+        AND NEW.idempotency_key IS OLD.idempotency_key
+        AND NEW.created_at IS OLD.created_at
+        AND NEW.started_at IS OLD.started_at
+        AND NEW.completed_at IS OLD.completed_at
+        AND NEW.failed_at IS OLD.failed_at
+        AND NEW.cancelled_at IS OLD.cancelled_at
+  )
+BEGIN
+    SELECT RAISE(ABORT, 'terminal agent delegation is immutable');
+END
+"""
+_TRIGGER_AGENT_DELEGATION_NO_DELETE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_delegation_no_delete
+BEFORE DELETE ON agent_delegations
+BEGIN
+    SELECT RAISE(ABORT, 'agent delegations are never deleted');
+END
+"""
+
+# Working state revisions: strictly sequential, hash-chained, INSERT-only.
+_TRIGGER_AGENT_WSR_SEQUENTIAL_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_wsr_sequential
+BEFORE INSERT ON agent_working_state_revisions
+WHEN NEW.revision != (
+    SELECT COALESCE(MAX(revision), 0) + 1
+    FROM agent_working_state_revisions
+    WHERE task_id = NEW.task_id AND investigation_id = NEW.investigation_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'working state revisions must be sequential');
+END
+"""
+_TRIGGER_AGENT_WSR_CHAIN_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_wsr_hash_chain
+BEFORE INSERT ON agent_working_state_revisions
+WHEN (NEW.revision = 1 AND NEW.previous_state_hash IS NOT NULL)
+  OR (NEW.revision > 1 AND NOT EXISTS (
+        SELECT 1 FROM agent_working_state_revisions p
+        WHERE p.task_id = NEW.task_id
+          AND p.investigation_id = NEW.investigation_id
+          AND p.revision = NEW.revision - 1
+          AND p.state_hash = NEW.previous_state_hash
+     ))
+BEGIN
+    SELECT RAISE(ABORT, 'working state hash chain broken');
+END
+"""
+_TRIGGER_AGENT_WSR_NO_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_wsr_no_update
+BEFORE UPDATE ON agent_working_state_revisions
+BEGIN
+    SELECT RAISE(ABORT, 'working state revisions are immutable');
+END
+"""
+_TRIGGER_AGENT_WSR_NO_DELETE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_wsr_no_delete
+BEFORE DELETE ON agent_working_state_revisions
+BEGIN
+    SELECT RAISE(ABORT, 'working state revisions are immutable');
+END
+"""
+
+_TRIGGER_AGENT_TRAJECTORY_NO_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_trajectory_no_update
+BEFORE UPDATE ON agent_trajectory_events
+BEGIN
+    SELECT RAISE(ABORT, 'trajectory events are immutable');
+END
+"""
+_TRIGGER_AGENT_TRAJECTORY_NO_DELETE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_trajectory_no_delete
+BEFORE DELETE ON agent_trajectory_events
+BEGIN
+    SELECT RAISE(ABORT, 'trajectory events are immutable');
+END
+"""
+
+_TRIGGER_AGENT_OBSERVATION_NO_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_observation_no_update
+BEFORE UPDATE ON agent_tool_observations
+BEGIN
+    SELECT RAISE(ABORT, 'tool observations are immutable');
+END
+"""
+_TRIGGER_AGENT_OBSERVATION_NO_DELETE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_observation_no_delete
+BEFORE DELETE ON agent_tool_observations
+BEGIN
+    SELECT RAISE(ABORT, 'tool observations are immutable');
+END
+"""
+
+# ---------------------------------------------------------------------------
+# DDL: agent_finalizations (v9 addition, P2 FinalizationRecord)
+# ---------------------------------------------------------------------------
+#
+# FZ1: exactly one successful FinalizationRecord per Investigation
+#      (UNIQUE(task_id, investigation_id)) -- a completed investigation can
+#      never finalize again.
+# FZ2: immutable (no UPDATE / no DELETE triggers).
+# FZ3: composite FKs bind the record to the investigation, the finalized run
+#      and the exact committed Working State revision (state_revision +
+#      state_hash must match that revision; verified in-transaction by
+#      record_finalization).
+
+_CREATE_AGENT_FINALIZATIONS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_finalizations (
+    finalization_id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    run_id TEXT,
+    state_revision INTEGER NOT NULL,
+    state_hash TEXT NOT NULL,
+    completion_mode TEXT NOT NULL CHECK(completion_mode IN
+        ('complete','complete_with_limitations')),
+    question_dispositions_json TEXT NOT NULL,
+    coverage_dispositions_json TEXT NOT NULL,
+    unresolved_contradictions_json TEXT NOT NULL,
+    limitations_json TEXT NOT NULL,
+    remaining_nonblocking_questions_json TEXT NOT NULL,
+    pending_analyst_review_refs_json TEXT NOT NULL,
+    final_verification_status TEXT NOT NULL CHECK(final_verification_status IN
+        ('passed','unavailable')),
+    verifier_result_ref TEXT,
+    finalization_policy_version TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    completed_at TEXT NOT NULL,
+    UNIQUE(task_id, finalization_id),
+    UNIQUE(task_id, investigation_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, run_id)
+        REFERENCES agent_runs(task_id, run_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, investigation_id, state_revision)
+        REFERENCES agent_working_state_revisions(task_id, investigation_id, revision)
+        ON DELETE RESTRICT
+)
+"""
+_TRIGGER_AGENT_FINALIZATION_NO_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_finalization_no_update
+BEFORE UPDATE ON agent_finalizations
+BEGIN
+    SELECT RAISE(ABORT, 'finalization records are immutable');
+END
+"""
+_TRIGGER_AGENT_FINALIZATION_NO_DELETE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_finalization_no_delete
+BEFORE DELETE ON agent_finalizations
+BEGIN
+    SELECT RAISE(ABORT, 'finalization records are immutable');
+END
+"""
+
+_REQUIRED_AGENT_FINALIZATION_COLUMNS = {
+    "finalization_id", "task_id", "investigation_id", "run_id",
+    "state_revision", "state_hash", "completion_mode",
+    "question_dispositions_json", "coverage_dispositions_json",
+    "unresolved_contradictions_json", "limitations_json",
+    "remaining_nonblocking_questions_json", "pending_analyst_review_refs_json",
+    "final_verification_status", "verifier_result_ref",
+    "finalization_policy_version", "input_hash", "completed_at",
+}
+
+# v9 table rebuilds (SQLite CHECK constraints can only be changed by
+# rebuilding the table; run with PRAGMA foreign_keys=OFF inside one tx).
+_CREATE_AGENT_INVESTIGATIONS_V9_REBUILD_SQL = """
+CREATE TABLE agent_investigations_v9_rebuild (
+    investigation_id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN
+        ('ready','active','paused','completed','cancelled')),
+    pause_reason TEXT CHECK(pause_reason IS NULL OR pause_reason IN
+        ('user_paused','runtime_restart','finalization_review_unavailable')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT,
+    cancelled_at TEXT,
+    UNIQUE(task_id, investigation_id)
+)
+"""
+_CREATE_AGENT_TRAJECTORY_EVENTS_V9_REBUILD_SQL = """
+CREATE TABLE agent_trajectory_events_v9_rebuild (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    run_id TEXT,
+    delegation_id TEXT,
+    event_type TEXT NOT NULL CHECK(event_type IN (
+        'investigation_created','run_admitted','run_started','run_completed',
+        'run_failed','run_cancelled','delegation_admitted','delegation_started',
+        'delegation_completed','delegation_failed','delegation_cancelled',
+        'delegation_stale','working_state_committed','runtime_recovered',
+        'investigation_paused','investigation_completed','investigation_cancelled',
+        'attention_compiled','transition_decision_validated',
+        'transition_decision_rejected','working_state_integrated',
+        'no_progress_detected','finalization_requested','finalization_denied',
+        'finalization_stale','finalization_completed')),
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, event_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, run_id)
+        REFERENCES agent_runs(task_id, run_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, delegation_id)
+        REFERENCES agent_delegations(task_id, delegation_id) ON DELETE RESTRICT
+)
+"""
+
+_CREATE_AGENT_TRAJECTORY_EVENTS_V10_REBUILD_SQL = """
+CREATE TABLE agent_trajectory_events_v10_rebuild (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    run_id TEXT,
+    delegation_id TEXT,
+    event_type TEXT NOT NULL CHECK(event_type IN (
+        'investigation_created','run_admitted','run_started','run_completed',
+        'run_failed','run_cancelled','delegation_admitted','delegation_started',
+        'delegation_completed','delegation_failed','delegation_cancelled',
+        'delegation_stale','working_state_committed','runtime_recovered',
+        'investigation_paused','investigation_completed','investigation_cancelled',
+        'attention_compiled','transition_decision_validated',
+        'transition_decision_rejected','working_state_integrated',
+        'no_progress_detected','finalization_requested','finalization_denied',
+        'finalization_stale','finalization_completed',
+        'tool_observation_recorded')),
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, event_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, run_id)
+        REFERENCES agent_runs(task_id, run_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, delegation_id)
+        REFERENCES agent_delegations(task_id, delegation_id) ON DELETE RESTRICT
+)
+"""
+
+_CREATE_AGENT_DELEGATION_RESULTS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_delegation_results (
+    result_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    delegation_id TEXT NOT NULL,
+    result_version TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    result_hash TEXT NOT NULL,
+    context_hash TEXT,
+    tool_registry_hash TEXT,
+    model_name TEXT,
+    model_config_hash TEXT,
+    usage_json TEXT,
+    validation_status TEXT NOT NULL CHECK(validation_status IN ('valid','invalid')),
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, delegation_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, run_id)
+        REFERENCES agent_runs(task_id, run_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, delegation_id)
+        REFERENCES agent_delegations(task_id, delegation_id) ON DELETE RESTRICT)
+"""
+
+_TRIGGER_AGENT_RESULT_NO_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_delegation_result_no_update
+BEFORE UPDATE ON agent_delegation_results
+BEGIN
+    SELECT RAISE(ABORT, 'agent_delegation_results is append-only');
+END
+"""
+
+_TRIGGER_AGENT_RESULT_NO_DELETE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_delegation_result_no_delete
+BEFORE DELETE ON agent_delegation_results
+BEGIN
+    SELECT RAISE(ABORT, 'agent_delegation_results is append-only');
+END
+"""
+
+_CREATE_AGENT_TRAJECTORY_EVENTS_V12_REBUILD_SQL = """
+CREATE TABLE agent_trajectory_events_v12_rebuild (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    run_id TEXT,
+    delegation_id TEXT,
+    event_type TEXT NOT NULL CHECK(event_type IN (
+        'investigation_created','run_admitted','run_started','run_completed',
+        'run_failed','run_cancelled','delegation_admitted','delegation_started',
+        'delegation_completed','delegation_failed','delegation_cancelled',
+        'delegation_stale','working_state_committed','runtime_recovered',
+        'investigation_paused','investigation_completed','investigation_cancelled',
+        'attention_compiled','transition_decision_validated',
+        'transition_decision_rejected','working_state_integrated',
+        'no_progress_detected','finalization_requested','finalization_denied',
+        'finalization_stale','finalization_completed',
+        'tool_observation_recorded',
+        'supervisor_plan_decided','supervisor_integration_committed')),
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, event_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, run_id)
+        REFERENCES agent_runs(task_id, run_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, delegation_id)
+        REFERENCES agent_delegations(task_id, delegation_id) ON DELETE RESTRICT
+)
+"""
+
+# -------------------------------------------------------------------------
+# DDL: P5A grounding-foundation persistence (v13, append-only domain rows).
+#
+# Hard schema constraints (P5A §49): NO verifier result table, NO assertion
+# disposition table, NO review_pending Finding table, NO Graph table. Every
+# table below is INSERT-only with a composite FK back to agent_investigations
+# and a deterministic content-addressed natural id.
+# -------------------------------------------------------------------------
+
+_CREATE_AGENT_ENTITY_OCCURRENCES_SQL = """
+CREATE TABLE IF NOT EXISTS agent_entity_occurrences (
+    occurrence_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    occurrence_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    source_scope_id TEXT NOT NULL,
+    evidence_ref TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    raw_value TEXT NOT NULL,
+    normalized_value TEXT NOT NULL,
+    match_key TEXT NOT NULL,
+    namespace TEXT NOT NULL,
+    role TEXT NOT NULL,
+    temporal_json TEXT,
+    source_field TEXT NOT NULL,
+    extraction_method TEXT NOT NULL,
+    verification_status TEXT NOT NULL CHECK(verification_status IN ('verified')),
+    provenance_json TEXT,
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, occurrence_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_CREATE_AGENT_CORRELATION_CANDIDATES_SQL = """
+CREATE TABLE IF NOT EXISTS agent_correlation_candidates (
+    correlation_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    correlation_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    relation_family TEXT NOT NULL,
+    subject_ref TEXT NOT NULL,
+    object_ref TEXT NOT NULL,
+    derivation TEXT NOT NULL CHECK(derivation IN
+        ('artifact_explicit','deterministic_match')),
+    assertion_hint TEXT NOT NULL CHECK(assertion_hint IN
+        ('observed','inference','hypothesis')),
+    evidence_refs_json TEXT NOT NULL,
+    support_types_json TEXT NOT NULL,
+    temporal_relation_json TEXT,
+    limitations_json TEXT NOT NULL,
+    causal_status TEXT NOT NULL CHECK(causal_status IN
+        ('not_assessed','non_causal','causal_hypothesis')),
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, correlation_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_CREATE_AGENT_CLAIM_PROPOSALS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_claim_proposals (
+    proposal_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proposal_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    source_question_ids_json TEXT NOT NULL,
+    source_delegation_id TEXT,
+    source_result_hash TEXT,
+    source_candidate_id TEXT,
+    text TEXT NOT NULL,
+    assertion_class TEXT NOT NULL CHECK(assertion_class IN
+        ('FACT','INFERENCE','HYPOTHESIS')),
+    evidence_refs_json TEXT NOT NULL,
+    relationship_refs_json TEXT NOT NULL,
+    temporal_scope_json TEXT,
+    limitations_json TEXT NOT NULL,
+    normalization_warnings_json TEXT NOT NULL,
+    normalizer_version TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, proposal_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_CREATE_AGENT_GROUNDING_RESULTS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_grounding_results (
+    grounding_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    grounding_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    proposal_id TEXT NOT NULL,
+    grounding_version INTEGER NOT NULL,
+    input_assertion_class TEXT NOT NULL CHECK(input_assertion_class IN
+        ('FACT','INFERENCE','HYPOTHESIS')),
+    effective_assertion_class TEXT NOT NULL CHECK(effective_assertion_class IN
+        ('FACT','INFERENCE','HYPOTHESIS')),
+    status TEXT NOT NULL CHECK(status IN
+        ('grounded','partially_grounded','ungrounded','invalid')),
+    valid_evidence_refs_json TEXT NOT NULL,
+    invalid_evidence_refs_json TEXT NOT NULL,
+    invisible_evidence_refs_json TEXT NOT NULL,
+    disallowed_ref_types_json TEXT NOT NULL,
+    warnings_json TEXT NOT NULL,
+    limitations_json TEXT NOT NULL,
+    validator_version TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, grounding_id),
+    UNIQUE(task_id, investigation_id, proposal_id, grounding_version),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_CREATE_AGENT_EVIDENCE_SUPPORT_BUNDLES_SQL = """
+CREATE TABLE IF NOT EXISTS agent_evidence_support_bundles (
+    bundle_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bundle_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    proposal_id TEXT NOT NULL,
+    grounding_id TEXT NOT NULL,
+    grounding_status TEXT NOT NULL CHECK(grounding_status IN
+        ('grounded','partially_grounded','ungrounded','invalid')),
+    effective_assertion_class TEXT NOT NULL CHECK(effective_assertion_class IN
+        ('FACT','INFERENCE','HYPOTHESIS')),
+    claim_text TEXT NOT NULL,
+    evidence_items_json TEXT NOT NULL,
+    relationship_refs_json TEXT NOT NULL,
+    temporal_scope_json TEXT,
+    limitations_json TEXT NOT NULL,
+    warnings_json TEXT NOT NULL,
+    source_question_ids_json TEXT NOT NULL,
+    hydration_policy TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, bundle_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+# P5A §33: ContextPack initial evidence refs are part of the visibility
+# authority, so they must survive restarts. Only context_hash was durable
+# before v13; this row freezes one delegation's initial evidence scope once.
+_CREATE_AGENT_DELEGATION_EVIDENCE_SCOPES_SQL = """
+CREATE TABLE IF NOT EXISTS agent_delegation_evidence_scopes (
+    scope_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    delegation_id TEXT NOT NULL,
+    initial_evidence_refs_json TEXT NOT NULL,
+    allowed_refs_hash TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, delegation_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, delegation_id)
+        REFERENCES agent_delegations(task_id, delegation_id) ON DELETE RESTRICT
+)
+"""
+
+_P5A_APPEND_ONLY_TABLES = (
+    "agent_entity_occurrences",
+    "agent_correlation_candidates",
+    "agent_claim_proposals",
+    "agent_grounding_results",
+    "agent_evidence_support_bundles",
+    "agent_delegation_evidence_scopes",
+)
+
+
+def _append_only_trigger_sql(table: str) -> tuple[str, str]:
+    """Frozen append-only guard pair for one P5A domain table."""
+    return (
+        f"CREATE TRIGGER IF NOT EXISTS trg_{table}_no_update "
+        f"BEFORE UPDATE ON {table} "
+        f"BEGIN SELECT RAISE(ABORT, '{table} is append-only'); END",
+        f"CREATE TRIGGER IF NOT EXISTS trg_{table}_no_delete "
+        f"BEFORE DELETE ON {table} "
+        f"BEGIN SELECT RAISE(ABORT, '{table} is append-only'); END",
+    )
+
+
+_CREATE_AGENT_TRAJECTORY_EVENTS_V13_REBUILD_SQL = """
+CREATE TABLE agent_trajectory_events_v13_rebuild (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    run_id TEXT,
+    delegation_id TEXT,
+    event_type TEXT NOT NULL CHECK(event_type IN (
+        'investigation_created','run_admitted','run_started','run_completed',
+        'run_failed','run_cancelled','delegation_admitted','delegation_started',
+        'delegation_completed','delegation_failed','delegation_cancelled',
+        'delegation_stale','working_state_committed','runtime_recovered',
+        'investigation_paused','investigation_completed','investigation_cancelled',
+        'attention_compiled','transition_decision_validated',
+        'transition_decision_rejected','working_state_integrated',
+        'no_progress_detected','finalization_requested','finalization_denied',
+        'finalization_stale','finalization_completed',
+        'tool_observation_recorded',
+        'supervisor_plan_decided','supervisor_integration_committed',
+        'entity_occurrences_recorded','correlation_candidates_recorded',
+        'claim_grounding_recorded','claim_proposals_recorded')),
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, event_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, run_id)
+        REFERENCES agent_runs(task_id, run_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, delegation_id)
+        REFERENCES agent_delegations(task_id, delegation_id) ON DELETE RESTRICT
+)
+"""
+
+# -------------------------------------------------------------------------
+# DDL: P5B semantic-verification persistence (v14).
+#
+# Hard boundaries: verifier/disposition rows are INSERT-only with full
+# provenance; the canonical Finding is the ONLY state-machine table
+# (review_pending -> accepted/rejected, human-only outgoing edges); review
+# history is append-only. NO Graph tables, NO report tables.
+# -------------------------------------------------------------------------
+
+_CREATE_AGENT_SEMANTIC_VERIFICATIONS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_semantic_verifications (
+    verification_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    verification_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    mode TEXT NOT NULL CHECK(mode IN
+        ('claim_sufficiency','correlation_sufficiency',
+         'question_closure','finalization_review')),
+    proposal_id TEXT NOT NULL,
+    proposal_hash TEXT NOT NULL,
+    grounding_id TEXT,
+    support_bundle_id TEXT,
+    support_bundle_hash TEXT,
+    status TEXT NOT NULL CHECK(status IN
+        ('sufficient','partially_sufficient','insufficient',
+         'contradicted','indeterminate')),
+    result_json TEXT NOT NULL,
+    result_hash TEXT NOT NULL,
+    recommended_assertion_class TEXT CHECK(recommended_assertion_class IN
+        ('FACT','INFERENCE','HYPOTHESIS')),
+    model TEXT,
+    prompt_version TEXT,
+    model_config_hash TEXT,
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, verification_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_CREATE_AGENT_SEMANTIC_VERIFICATION_FAILURES_SQL = """
+CREATE TABLE IF NOT EXISTS agent_semantic_verification_failures (
+    failure_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    failure_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    mode TEXT NOT NULL CHECK(mode IN
+        ('claim_sufficiency','correlation_sufficiency',
+         'question_closure','finalization_review')),
+    proposal_id TEXT,
+    failure_code TEXT NOT NULL CHECK(failure_code IN
+        ('provider_unavailable','auth_failed','billing_unavailable',
+         'rate_limited','timeout','output_invalid','input_stale',
+         'internal_failure','runtime_restart')),
+    detail TEXT,
+    model TEXT,
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, failure_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_CREATE_AGENT_CLAIM_DISPOSITIONS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_claim_dispositions (
+    disposition_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    disposition_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    proposal_id TEXT NOT NULL,
+    proposal_hash TEXT NOT NULL,
+    grounding_id TEXT NOT NULL,
+    grounding_hash TEXT,
+    verification_id TEXT,
+    verification_hash TEXT,
+    requested_assertion_class TEXT NOT NULL CHECK(requested_assertion_class IN
+        ('FACT','INFERENCE','HYPOTHESIS')),
+    effective_assertion_class TEXT NOT NULL CHECK(effective_assertion_class IN
+        ('FACT','INFERENCE','HYPOTHESIS')),
+    semantic_type TEXT NOT NULL,
+    decision TEXT NOT NULL CHECK(decision IN
+        ('eligible_review_pending','downgrade_to_hypothesis',
+         'insufficient','contradicted','blocked_verification_required',
+         'invalid')),
+    reasons_json TEXT NOT NULL,
+    limitations_json TEXT NOT NULL,
+    policy_registry_hash TEXT NOT NULL,
+    policy_version TEXT NOT NULL,
+    rule_id TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, disposition_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_CREATE_INVESTIGATION_FINDINGS_SQL = """
+CREATE TABLE IF NOT EXISTS investigation_findings (
+    finding_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    finding_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    proposal_id TEXT NOT NULL,
+    disposition_id TEXT NOT NULL,
+    text TEXT NOT NULL,
+    assertion_class TEXT NOT NULL CHECK(assertion_class IN
+        ('FACT','INFERENCE','HYPOTHESIS')),
+    evidence_refs_json TEXT NOT NULL,
+    relationship_refs_json TEXT NOT NULL,
+    temporal_scope_json TEXT,
+    grounding_id TEXT NOT NULL,
+    semantic_verification_id TEXT,
+    limitations_json TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN
+        ('review_pending','accepted','rejected')),
+    created_at TEXT NOT NULL,
+    reviewed_at TEXT,
+    reviewer TEXT,
+    review_note TEXT,
+    review_id TEXT,
+    UNIQUE(task_id, investigation_id, finding_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_TRIGGER_FINDING_NO_IDENTITY_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_investigation_finding_no_identity_update
+BEFORE UPDATE ON investigation_findings
+WHEN OLD.finding_id IS NOT NEW.finding_id
+  OR OLD.task_id IS NOT NEW.task_id
+  OR OLD.investigation_id IS NOT NEW.investigation_id
+  OR OLD.proposal_id IS NOT NEW.proposal_id
+  OR OLD.disposition_id IS NOT NEW.disposition_id
+  OR OLD.text IS NOT NEW.text
+  OR OLD.assertion_class IS NOT NEW.assertion_class
+  OR OLD.evidence_refs_json IS NOT NEW.evidence_refs_json
+  OR OLD.relationship_refs_json IS NOT NEW.relationship_refs_json
+  OR OLD.grounding_id IS NOT NEW.grounding_id
+  OR OLD.semantic_verification_id IS NOT NEW.semantic_verification_id
+  OR OLD.created_at IS NOT NEW.created_at
+BEGIN
+    SELECT RAISE(ABORT, 'investigation_findings identity is immutable');
+END
+"""
+
+_TRIGGER_FINDING_LEGAL_TRANSITION_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_investigation_finding_legal_transition
+BEFORE UPDATE ON investigation_findings
+WHEN (OLD.status = 'review_pending'
+      AND NEW.status NOT IN ('accepted','rejected'))
+  OR (OLD.status IN ('accepted','rejected')
+      AND NEW.status IS NOT OLD.status)
+BEGIN
+    SELECT RAISE(ABORT,
+        'investigation_findings: only review_pending -> accepted/rejected');
+END
+"""
+
+_TRIGGER_FINDING_REVIEW_PROVENANCE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_investigation_finding_review_provenance
+BEFORE UPDATE ON investigation_findings
+WHEN OLD.status = 'review_pending'
+ AND NEW.status IN ('accepted','rejected')
+ AND (NEW.reviewed_at IS NULL OR NEW.reviewer IS NULL
+      OR NEW.review_id IS NULL)
+BEGIN
+    SELECT RAISE(ABORT, 'investigation_findings: review provenance required');
+END
+"""
+
+_CREATE_INVESTIGATION_FINDING_REVIEWS_SQL = """
+CREATE TABLE IF NOT EXISTS investigation_finding_reviews (
+    review_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    review_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    finding_id TEXT NOT NULL,
+    decision TEXT NOT NULL CHECK(decision IN ('accepted','rejected')),
+    reviewer TEXT NOT NULL,
+    note TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, review_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, investigation_id, finding_id)
+        REFERENCES investigation_findings(task_id, investigation_id, finding_id)
+        ON DELETE RESTRICT
+)
+"""
+
+_TRIGGER_FINDING_REVIEW_NO_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_investigation_finding_review_no_update
+BEFORE UPDATE ON investigation_finding_reviews
+BEGIN
+    SELECT RAISE(ABORT, 'investigation_finding_reviews is append-only');
+END
+"""
+
+_TRIGGER_FINDING_REVIEW_NO_DELETE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_investigation_finding_review_no_delete
+BEFORE DELETE ON investigation_finding_reviews
+BEGIN
+    SELECT RAISE(ABORT, 'investigation_finding_reviews is append-only');
+END
+"""
+
+# F1: durable mandatory-verification obligations. A STATE MACHINE (unlike
+# the append-only tables above): pending -> running -> satisfied /
+# failed / unavailable / safely_downgraded, with retriable edges back to
+# running. The Working State's pending_verifications stays the frozen P2
+# projection target; these rows are the durable source of truth that the
+# control plane projects from (never the reverse).
+_CREATE_AGENT_VERIFICATION_OBLIGATIONS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_verification_obligations (
+    obligation_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    obligation_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    proposal_id TEXT NOT NULL,
+    proposal_hash TEXT NOT NULL,
+    grounding_id TEXT,
+    semantic_type TEXT NOT NULL,
+    assertion_policy_version TEXT NOT NULL,
+    rule_id TEXT NOT NULL,
+    verification_mode TEXT NOT NULL CHECK(verification_mode IN
+        ('deterministic_only','semantic_required','semantic_on_demand')),
+    question_refs_json TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN
+        ('pending','running','satisfied','failed','unavailable',
+         'safely_downgraded')),
+    verification_id TEXT,
+    disposition_id TEXT,
+    failure_code TEXT,
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, obligation_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_TRIGGER_OBLIGATION_LEGAL_TRANSITION_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_verification_obligation_legal_transition
+BEFORE UPDATE ON agent_verification_obligations
+WHEN (OLD.status = 'pending'
+      AND NEW.status NOT IN ('running','satisfied','failed','unavailable',
+                             'safely_downgraded'))
+  OR (OLD.status = 'running'
+      AND NEW.status NOT IN ('satisfied','failed','unavailable'))
+  OR (OLD.status = 'failed' AND NEW.status NOT IN ('running'))
+  OR (OLD.status = 'unavailable'
+      AND NEW.status NOT IN ('running','safely_downgraded'))
+  OR (OLD.status IN ('satisfied','safely_downgraded')
+      AND NEW.status IS NOT OLD.status)
+BEGIN
+    SELECT RAISE(ABORT,
+        'agent_verification_obligations: illegal status transition');
+END
+"""
+
+_TRIGGER_OBLIGATION_NO_IDENTITY_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_verification_obligation_no_identity_update
+BEFORE UPDATE ON agent_verification_obligations
+WHEN OLD.obligation_id IS NOT NEW.obligation_id
+  OR OLD.task_id IS NOT NEW.task_id
+  OR OLD.investigation_id IS NOT NEW.investigation_id
+  OR OLD.proposal_id IS NOT NEW.proposal_id
+  OR OLD.proposal_hash IS NOT NEW.proposal_hash
+  OR OLD.grounding_id IS NOT NEW.grounding_id
+  OR OLD.semantic_type IS NOT NEW.semantic_type
+  OR OLD.assertion_policy_version IS NOT NEW.assertion_policy_version
+  OR OLD.rule_id IS NOT NEW.rule_id
+  OR OLD.verification_mode IS NOT NEW.verification_mode
+  OR OLD.created_at IS NOT NEW.created_at
+BEGIN
+    SELECT RAISE(ABORT,
+        'agent_verification_obligations identity is immutable');
+END
+"""
+
+_P5B_APPEND_ONLY_TABLES = (
+    "agent_semantic_verifications",
+    "agent_semantic_verification_failures",
+    "agent_claim_dispositions",
+    "investigation_finding_reviews",
+)
+
+_CREATE_AGENT_TRAJECTORY_EVENTS_V14_REBUILD_SQL = """
+CREATE TABLE agent_trajectory_events_v14_rebuild (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    run_id TEXT,
+    delegation_id TEXT,
+    event_type TEXT NOT NULL CHECK(event_type IN (
+        'investigation_created','run_admitted','run_started','run_completed',
+        'run_failed','run_cancelled','delegation_admitted','delegation_started',
+        'delegation_completed','delegation_failed','delegation_cancelled',
+        'delegation_stale','working_state_committed','runtime_recovered',
+        'investigation_paused','investigation_completed','investigation_cancelled',
+        'attention_compiled','transition_decision_validated',
+        'transition_decision_rejected','working_state_integrated',
+        'no_progress_detected','finalization_requested','finalization_denied',
+        'finalization_stale','finalization_completed',
+        'tool_observation_recorded',
+        'supervisor_plan_decided','supervisor_integration_committed',
+        'entity_occurrences_recorded','correlation_candidates_recorded',
+        'claim_grounding_recorded','claim_proposals_recorded',
+        'correlation_semantic_verified','claim_semantic_verified',
+        'claim_disposition_recorded','finding_review_pending_created',
+        'final_semantic_review_recorded')),
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, event_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, run_id)
+        REFERENCES agent_runs(task_id, run_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, delegation_id)
+        REFERENCES agent_delegations(task_id, delegation_id) ON DELETE RESTRICT
+)
+"""
+
+# -------------------------------------------------------------------------
+# DDL: P6A graph-admission persistence (v15).
+#
+# Candidates / admission decisions / episodes are INSERT-only frozen rows;
+# the materialization manifest is the ONLY state machine (SQLite is the
+# logical validity authority for graph content). No Graphiti/Neo4j writes
+# happen in P6A.
+# -------------------------------------------------------------------------
+
+_CREATE_AGENT_GRAPH_CANDIDATES_SQL = """
+CREATE TABLE IF NOT EXISTS agent_graph_candidates (
+    candidate_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    candidate_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    candidate_version TEXT NOT NULL,
+    candidate_kind TEXT NOT NULL,
+    subject_refs_json TEXT NOT NULL,
+    relation_refs_json TEXT NOT NULL,
+    object_refs_json TEXT NOT NULL,
+    evidence_refs_json TEXT NOT NULL,
+    finding_refs_json TEXT NOT NULL,
+    correlation_refs_json TEXT NOT NULL,
+    occurrence_refs_json TEXT NOT NULL,
+    semantic_summary TEXT NOT NULL,
+    review_status TEXT NOT NULL,
+    verification_refs_json TEXT NOT NULL,
+    source_reason TEXT,
+    source_component TEXT,
+    limitations_json TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, candidate_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_CREATE_AGENT_GRAPH_ADMISSION_DECISIONS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_graph_admission_decisions (
+    decision_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    decision_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    candidate_id TEXT NOT NULL,
+    candidate_hash TEXT NOT NULL,
+    decision TEXT NOT NULL CHECK(decision IN
+        ('admit','defer','not_admitted')),
+    reason_codes_json TEXT NOT NULL,
+    limitations_json TEXT NOT NULL,
+    policy_version TEXT NOT NULL,
+    policy_hash TEXT NOT NULL,
+    resolved_provenance_json TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, decision_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_CREATE_AGENT_GRAPH_EPISODES_SQL = """
+CREATE TABLE IF NOT EXISTS agent_graph_episodes (
+    episode_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    episode_id TEXT NOT NULL,
+    episode_version TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    candidate_ids_json TEXT NOT NULL,
+    admission_decision_ids_json TEXT NOT NULL,
+    semantic_units_json TEXT NOT NULL,
+    evidence_refs_json TEXT NOT NULL,
+    finding_refs_json TEXT NOT NULL,
+    correlation_refs_json TEXT NOT NULL,
+    occurrence_refs_json TEXT NOT NULL,
+    review_statuses_json TEXT NOT NULL,
+    provenance_manifest_json TEXT NOT NULL,
+    source_revision INTEGER,
+    source_state_hash TEXT,
+    policy_version TEXT NOT NULL,
+    policy_hash TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, episode_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_CREATE_AGENT_GRAPH_MATERIALIZATIONS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_graph_materializations (
+    materialization_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    materialization_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    episode_id TEXT NOT NULL,
+    episode_hash TEXT NOT NULL,
+    backend_kind TEXT NOT NULL,
+    backend_target_digest TEXT,
+    status TEXT NOT NULL CHECK(status IN
+        ('queued','running','active','failed','stale','invalidated',
+         'superseded')),
+    failure_code TEXT,
+    failure_summary TEXT,
+    supersedes_materialization_id TEXT,
+    attempt_no INTEGER NOT NULL DEFAULT 1,
+    retry_of_materialization_id TEXT,
+    queued_at TEXT NOT NULL,
+    started_at TEXT,
+    activated_at TEXT,
+    terminal_at TEXT,
+    input_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, materialization_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_TRIGGER_GRAPH_MANIFEST_LEGAL_TRANSITION_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_graph_manifest_legal_transition
+BEFORE UPDATE ON agent_graph_materializations
+WHEN NEW.status IS NOT OLD.status
+ AND ((OLD.status = 'queued'
+       AND NEW.status NOT IN ('running','invalidated'))
+   OR (OLD.status = 'running'
+       AND NEW.status NOT IN ('active','failed','invalidated','stale'))
+   OR (OLD.status = 'active'
+       AND NEW.status NOT IN ('stale','invalidated','superseded'))
+   OR (OLD.status = 'failed'
+       AND NEW.status NOT IN ('superseded'))
+   OR (OLD.status = 'stale'
+       AND NEW.status NOT IN ('superseded'))
+   OR (OLD.status IN ('invalidated','superseded')))
+BEGIN
+    SELECT RAISE(ABORT,
+        'agent_graph_materializations: illegal manifest transition');
+END
+"""
+
+_TRIGGER_GRAPH_MANIFEST_NO_IDENTITY_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_graph_manifest_no_identity_update
+BEFORE UPDATE ON agent_graph_materializations
+WHEN OLD.materialization_id IS NOT NEW.materialization_id
+  OR OLD.task_id IS NOT NEW.task_id
+  OR OLD.investigation_id IS NOT NEW.investigation_id
+  OR OLD.episode_id IS NOT NEW.episode_id
+  OR OLD.episode_hash IS NOT NEW.episode_hash
+  OR OLD.backend_kind IS NOT NEW.backend_kind
+  OR OLD.queued_at IS NOT NEW.queued_at
+  OR OLD.created_at IS NOT NEW.created_at
+BEGIN
+    SELECT RAISE(ABORT,
+        'agent_graph_materializations identity is immutable');
+END
+"""
+
+_P6A_APPEND_ONLY_TABLES = (
+    "agent_graph_candidates",
+    "agent_graph_admission_decisions",
+    "agent_graph_episodes",
+)
+
+_CREATE_AGENT_TRAJECTORY_EVENTS_V15_REBUILD_SQL = """
+CREATE TABLE agent_trajectory_events_v15_rebuild (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    run_id TEXT,
+    delegation_id TEXT,
+    event_type TEXT NOT NULL CHECK(event_type IN (
+        'investigation_created','run_admitted','run_started','run_completed',
+        'run_failed','run_cancelled','delegation_admitted','delegation_started',
+        'delegation_completed','delegation_failed','delegation_cancelled',
+        'delegation_stale','working_state_committed','runtime_recovered',
+        'investigation_paused','investigation_completed','investigation_cancelled',
+        'attention_compiled','transition_decision_validated',
+        'transition_decision_rejected','working_state_integrated',
+        'no_progress_detected','finalization_requested','finalization_denied',
+        'finalization_stale','finalization_completed',
+        'tool_observation_recorded',
+        'supervisor_plan_decided','supervisor_integration_committed',
+        'entity_occurrences_recorded','correlation_candidates_recorded',
+        'claim_grounding_recorded','claim_proposals_recorded',
+        'correlation_semantic_verified','claim_semantic_verified',
+        'claim_disposition_recorded','finding_review_pending_created',
+        'final_semantic_review_recorded',
+        'graph_candidate_recorded','graph_admission_decided',
+        'graph_episode_frozen','graph_materialization_queued',
+        'graph_materialization_invalidated')),
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, event_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, run_id)
+        REFERENCES agent_runs(task_id, run_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, delegation_id)
+        REFERENCES agent_delegations(task_id, delegation_id) ON DELETE RESTRICT
+)
+"""
+
+# ---------------------------------------------------------------------
+# DDL: P6B materialization-execution persistence (v16).
+#
+# Retry attempts: a manifest id is deterministic from episode+backend, so
+# a RETRY is a NEW row (attempt_no increments, retry_of binds the failed
+# predecessor; first attempt keeps attempt_no=1/retry_of NULL so the
+# replay idempotency is untouched). Backend bindings are the append-only
+# sidecar mapping backend objects to materialization provenance -
+# backend object ids are NEVER canonical identity.
+# ---------------------------------------------------------------------
+
+_CREATE_AGENT_GRAPH_BACKEND_BINDINGS_SQL = """
+CREATE TABLE IF NOT EXISTS agent_graph_backend_bindings (
+    binding_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    binding_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    materialization_id TEXT NOT NULL,
+    backend_kind TEXT NOT NULL,
+    backend_group_ref TEXT,
+    backend_episode_ref TEXT,
+    backend_episode_name TEXT,
+    backend_object_kind TEXT,
+    backend_object_ref TEXT,
+    semantic_unit_id TEXT,
+    provenance_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, investigation_id, binding_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT
+)
+"""
+
+_TRIGGER_GRAPH_BINDING_NO_UPDATE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_graph_binding_no_update
+BEFORE UPDATE ON agent_graph_backend_bindings
+BEGIN
+    SELECT RAISE(ABORT, 'agent_graph_backend_bindings is append-only');
+END
+"""
+
+_TRIGGER_GRAPH_BINDING_NO_DELETE_SQL = """
+CREATE TRIGGER IF NOT EXISTS trg_agent_graph_binding_no_delete
+BEFORE DELETE ON agent_graph_backend_bindings
+BEGIN
+    SELECT RAISE(ABORT, 'agent_graph_backend_bindings is append-only');
+END
+"""
+
+_CREATE_AGENT_TRAJECTORY_EVENTS_V16_REBUILD_SQL = """
+CREATE TABLE agent_trajectory_events_v16_rebuild (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    run_id TEXT,
+    delegation_id TEXT,
+    event_type TEXT NOT NULL CHECK(event_type IN (
+        'investigation_created','run_admitted','run_started','run_completed',
+        'run_failed','run_cancelled','delegation_admitted','delegation_started',
+        'delegation_completed','delegation_failed','delegation_cancelled',
+        'delegation_stale','working_state_committed','runtime_recovered',
+        'investigation_paused','investigation_completed','investigation_cancelled',
+        'attention_compiled','transition_decision_validated',
+        'transition_decision_rejected','working_state_integrated',
+        'no_progress_detected','finalization_requested','finalization_denied',
+        'finalization_stale','finalization_completed',
+        'tool_observation_recorded',
+        'supervisor_plan_decided','supervisor_integration_committed',
+        'entity_occurrences_recorded','correlation_candidates_recorded',
+        'claim_grounding_recorded','claim_proposals_recorded',
+        'correlation_semantic_verified','claim_semantic_verified',
+        'claim_disposition_recorded','finding_review_pending_created',
+        'final_semantic_review_recorded',
+        'graph_candidate_recorded','graph_admission_decided',
+        'graph_episode_frozen','graph_materialization_queued',
+        'graph_materialization_invalidated',
+        'graph_materialization_started','graph_materialization_activated',
+        'graph_materialization_failed','graph_materialization_retry_queued')),
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(task_id, event_id),
+    FOREIGN KEY(task_id, investigation_id)
+        REFERENCES agent_investigations(task_id, investigation_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, run_id)
+        REFERENCES agent_runs(task_id, run_id) ON DELETE RESTRICT,
+    FOREIGN KEY(task_id, delegation_id)
+        REFERENCES agent_delegations(task_id, delegation_id) ON DELETE RESTRICT
+)
+"""
+
+_REQUIRED_AGENT_INVESTIGATION_COLUMNS = {
+    "investigation_id", "task_id", "status", "pause_reason", "created_at",
+    "updated_at", "completed_at", "cancelled_at",
+}
+_REQUIRED_AGENT_RUN_COLUMNS = {
+    "run_id", "task_id", "investigation_id", "status", "stop_reason",
+    "error_code", "error_message", "idempotency_key", "created_at",
+    "started_at", "completed_at", "failed_at", "cancelled_at",
+}
+_REQUIRED_AGENT_DELEGATION_COLUMNS = {
+    "delegation_id", "task_id", "investigation_id", "run_id", "status",
+    "question_ref", "based_on_state_revision", "context_hash",
+    "cancel_requested_at", "failure_code", "failure_message",
+    "idempotency_key", "created_at", "started_at", "completed_at",
+    "failed_at", "cancelled_at", "stale_at", "integrated_at",
+    "integrated_revision",
+}
+_REQUIRED_AGENT_WSR_COLUMNS = {
+    "task_id", "investigation_id", "revision", "state_json", "state_hash",
+    "previous_state_hash", "operation_key", "created_at",
+}
+_REQUIRED_AGENT_TRAJECTORY_COLUMNS = {
+    "seq", "event_id", "task_id", "investigation_id", "run_id",
+    "delegation_id", "event_type", "payload_json", "created_at",
+}
+_REQUIRED_AGENT_DELEGATION_RESULT_COLUMNS = {
+    "result_id", "task_id", "investigation_id", "run_id", "delegation_id",
+    "result_version", "result_json", "result_hash", "context_hash",
+    "tool_registry_hash", "model_name", "model_config_hash", "usage_json",
+    "validation_status", "created_at",
+}
+
+_REQUIRED_AGENT_OBSERVATION_COLUMNS = {
+    "observation_id", "task_id", "investigation_id", "run_id",
+    "delegation_id", "tool_id", "summary", "result_json",
+    "evidence_refs_json", "result_count", "truncated", "created_at",
+}
+
+_REQUIRED_AGENT_ENTITY_OCCURRENCE_COLUMNS = {
+    "occurrence_row_id", "occurrence_id", "task_id", "investigation_id",
+    "source_scope_id", "evidence_ref", "entity_type", "raw_value",
+    "normalized_value", "match_key", "namespace", "role", "temporal_json",
+    "source_field", "extraction_method", "verification_status",
+    "provenance_json", "input_hash", "created_at",
+}
+
+_REQUIRED_AGENT_CORRELATION_CANDIDATE_COLUMNS = {
+    "correlation_row_id", "correlation_id", "task_id", "investigation_id",
+    "relation_family", "subject_ref", "object_ref", "derivation",
+    "assertion_hint", "evidence_refs_json", "support_types_json",
+    "temporal_relation_json", "limitations_json", "causal_status",
+    "input_hash", "created_at",
+}
+
+_REQUIRED_AGENT_CLAIM_PROPOSAL_COLUMNS = {
+    "proposal_row_id", "proposal_id", "task_id", "investigation_id",
+    "source_question_ids_json", "source_delegation_id", "source_result_hash",
+    "source_candidate_id", "text", "assertion_class", "evidence_refs_json",
+    "relationship_refs_json", "temporal_scope_json", "limitations_json",
+    "normalization_warnings_json", "normalizer_version", "input_hash",
+    "created_at",
+}
+
+_REQUIRED_AGENT_GROUNDING_RESULT_COLUMNS = {
+    "grounding_row_id", "grounding_id", "task_id", "investigation_id",
+    "proposal_id", "grounding_version", "input_assertion_class",
+    "effective_assertion_class", "status", "valid_evidence_refs_json",
+    "invalid_evidence_refs_json", "invisible_evidence_refs_json",
+    "disallowed_ref_types_json", "warnings_json", "limitations_json",
+    "validator_version", "input_hash", "created_at",
+}
+
+_REQUIRED_AGENT_SUPPORT_BUNDLE_COLUMNS = {
+    "bundle_row_id", "bundle_id", "task_id", "investigation_id",
+    "proposal_id", "grounding_id", "grounding_status",
+    "effective_assertion_class", "claim_text", "evidence_items_json",
+    "relationship_refs_json", "temporal_scope_json", "limitations_json",
+    "warnings_json", "source_question_ids_json", "hydration_policy",
+    "input_hash", "created_at",
+}
+
+_REQUIRED_AGENT_EVIDENCE_SCOPE_COLUMNS = {
+    "scope_row_id", "task_id", "investigation_id", "delegation_id",
+    "initial_evidence_refs_json", "allowed_refs_hash", "input_hash",
+    "created_at",
+}
+
+_REQUIRED_AGENT_SEMANTIC_VERIFICATION_COLUMNS = {
+    "verification_row_id", "verification_id", "task_id", "investigation_id",
+    "mode", "proposal_id", "proposal_hash", "grounding_id",
+    "support_bundle_id", "support_bundle_hash", "status", "result_json",
+    "result_hash", "recommended_assertion_class", "model", "prompt_version",
+    "model_config_hash", "input_hash", "created_at",
+}
+
+_REQUIRED_AGENT_VERIFICATION_FAILURE_COLUMNS = {
+    "failure_row_id", "failure_id", "task_id", "investigation_id", "mode",
+    "proposal_id", "failure_code", "detail", "model", "input_hash",
+    "created_at",
+}
+
+_REQUIRED_AGENT_CLAIM_DISPOSITION_COLUMNS = {
+    "disposition_row_id", "disposition_id", "task_id", "investigation_id",
+    "proposal_id", "proposal_hash", "grounding_id", "grounding_hash",
+    "verification_id", "verification_hash", "requested_assertion_class",
+    "effective_assertion_class", "semantic_type", "decision", "reasons_json",
+    "limitations_json", "policy_registry_hash", "policy_version", "rule_id",
+    "input_hash", "created_at",
+}
+
+_REQUIRED_INVESTIGATION_FINDING_COLUMNS = {
+    "finding_row_id", "finding_id", "task_id", "investigation_id",
+    "proposal_id", "disposition_id", "text", "assertion_class",
+    "evidence_refs_json", "relationship_refs_json", "temporal_scope_json",
+    "grounding_id", "semantic_verification_id", "limitations_json", "status",
+    "created_at", "reviewed_at", "reviewer", "review_note", "review_id",
+}
+
+_REQUIRED_INVESTIGATION_FINDING_REVIEW_COLUMNS = {
+    "review_row_id", "review_id", "task_id", "investigation_id",
+    "finding_id", "decision", "reviewer", "note", "created_at",
+}
+
+_REQUIRED_AGENT_GRAPH_CANDIDATE_COLUMNS = {
+    "candidate_row_id", "candidate_id", "task_id", "investigation_id",
+    "candidate_version", "candidate_kind", "subject_refs_json",
+    "relation_refs_json", "object_refs_json", "evidence_refs_json",
+    "finding_refs_json", "correlation_refs_json", "occurrence_refs_json",
+    "semantic_summary", "review_status", "verification_refs_json",
+    "source_reason", "source_component", "limitations_json", "input_hash",
+    "created_at",
+}
+
+_REQUIRED_AGENT_GRAPH_ADMISSION_DECISION_COLUMNS = {
+    "decision_row_id", "decision_id", "task_id", "investigation_id",
+    "candidate_id", "candidate_hash", "decision", "reason_codes_json",
+    "limitations_json", "policy_version", "policy_hash",
+    "resolved_provenance_json", "input_hash", "created_at",
+}
+
+_REQUIRED_AGENT_GRAPH_EPISODE_COLUMNS = {
+    "episode_row_id", "episode_id", "episode_version", "task_id",
+    "investigation_id", "candidate_ids_json", "admission_decision_ids_json",
+    "semantic_units_json", "evidence_refs_json", "finding_refs_json",
+    "correlation_refs_json", "occurrence_refs_json", "review_statuses_json",
+    "provenance_manifest_json", "source_revision", "source_state_hash",
+    "policy_version", "policy_hash", "input_hash", "created_at",
+}
+
+_REQUIRED_AGENT_GRAPH_MATERIALIZATION_COLUMNS = {
+    "materialization_row_id", "materialization_id", "task_id",
+    "investigation_id", "episode_id", "episode_hash", "backend_kind",
+    "backend_target_digest", "status", "failure_code", "failure_summary",
+    "supersedes_materialization_id", "queued_at", "started_at",
+    "activated_at", "terminal_at", "input_hash", "created_at", "updated_at",
+    "attempt_no", "retry_of_materialization_id",
+}
+
+_REQUIRED_AGENT_GRAPH_BACKEND_BINDING_COLUMNS = {
+    "binding_row_id", "binding_id", "task_id", "investigation_id",
+    "materialization_id", "backend_kind", "backend_group_ref",
+    "backend_episode_ref", "backend_episode_name", "backend_object_kind",
+    "backend_object_ref", "semantic_unit_id", "provenance_json",
+    "created_at",
+}
+
 _REQUIRED_SECONDARY_COLUMNS = {
     "analysis_id", "task_id", "evidence_key", "snapshot_id", "version", "status",
     "input_hash", "input_envelope_json", "prompt_version", "description", "summary",
@@ -781,7 +2637,7 @@ class InvestigationRepository:
                 f"(supported: {SUPPORTED_SCHEMA_VERSION})"
             )
         try:
-            repo._validate_v7_schema()
+            repo._validate_v16_schema()
             repo._validate_v8_snapshot_constraint()
         except (sqlite3.DatabaseError, ValueError, EvidenceStoreError) as exc:
             raise EvidenceStoreError("investigation store schema is invalid") from exc
@@ -807,59 +2663,178 @@ class InvestigationRepository:
         with self._connect() as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version == 0:
-            self._initialize_v8_atomically()
-            self._validate_v7_schema()
+            self._initialize_current_atomically()
+            self._validate_v16_schema()
             self._validate_v8_snapshot_constraint()
         elif version == 1:
             self._migrate_v1_to_v4()
             self._migrate_v4_to_v5()
             self._migrate_v5_to_v6()
             self._migrate_v6_to_v7()
-            self._validate_v7_schema()
+            self._migrate_v7_to_v8()
+            self._migrate_v8_to_v9()
+            self._migrate_v9_to_v10()
+            self._migrate_v10_to_v11()
+            self._migrate_v11_to_v12()
+            self._migrate_v12_to_v13()
+            self._migrate_v13_to_v14()
+            self._migrate_v14_to_v15()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
         elif version == 2:
             self._migrate_v2_to_v4()
             self._migrate_v4_to_v5()
             self._migrate_v5_to_v6()
             self._migrate_v6_to_v7()
-            self._validate_v7_schema()
+            self._migrate_v7_to_v8()
+            self._migrate_v8_to_v9()
+            self._migrate_v9_to_v10()
+            self._migrate_v10_to_v11()
+            self._migrate_v11_to_v12()
+            self._migrate_v12_to_v13()
+            self._migrate_v13_to_v14()
+            self._migrate_v14_to_v15()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
         elif version == 3:
             self._migrate_v3_to_v4()
             self._migrate_v4_to_v5()
             self._migrate_v5_to_v6()
             self._migrate_v6_to_v7()
-            self._validate_v7_schema()
+            self._migrate_v7_to_v8()
+            self._migrate_v8_to_v9()
+            self._migrate_v9_to_v10()
+            self._migrate_v10_to_v11()
+            self._migrate_v11_to_v12()
+            self._migrate_v12_to_v13()
+            self._migrate_v13_to_v14()
+            self._migrate_v14_to_v15()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
         elif version == 4:
             self._migrate_v4_to_v5()
             self._migrate_v5_to_v6()
             self._migrate_v6_to_v7()
-            self._validate_v7_schema()
+            self._migrate_v7_to_v8()
+            self._migrate_v8_to_v9()
+            self._migrate_v9_to_v10()
+            self._migrate_v10_to_v11()
+            self._migrate_v11_to_v12()
+            self._migrate_v12_to_v13()
+            self._migrate_v13_to_v14()
+            self._migrate_v14_to_v15()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
         elif version == 5:
             self._migrate_v5_to_v6()
             self._migrate_v6_to_v7()
-            self._validate_v7_schema()
+            self._migrate_v7_to_v8()
+            self._migrate_v8_to_v9()
+            self._migrate_v9_to_v10()
+            self._migrate_v10_to_v11()
+            self._migrate_v11_to_v12()
+            self._migrate_v12_to_v13()
+            self._migrate_v13_to_v14()
+            self._migrate_v14_to_v15()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
         elif version == 6:
             self._migrate_v6_to_v7()
-            self._validate_v7_schema()
-        elif version == SUPPORTED_SCHEMA_VERSION:
-            self._validate_v7_schema()
-            self._validate_v8_snapshot_constraint()
-            self._ensure_v7_auxiliary_objects()
+            self._migrate_v7_to_v8()
+            self._migrate_v8_to_v9()
+            self._migrate_v9_to_v10()
+            self._migrate_v10_to_v11()
+            self._migrate_v11_to_v12()
+            self._migrate_v12_to_v13()
+            self._migrate_v13_to_v14()
+            self._migrate_v14_to_v15()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
         elif version == 7:
             if not self.allow_v7_upgrade:
                 raise InvestigationMigrationRequiredError(
-                    "MIGRATION_REQUIRED: 历史 v7 调查库仅可读；请先备份并完成受控 v8 迁移")
+                    "MIGRATION_REQUIRED: 历史 v7 调查库仅可读；请先备份并完成受控迁移")
             self._migrate_v7_to_v8()
-            self._validate_v7_schema()
+            self._migrate_v8_to_v9()
+            self._migrate_v9_to_v10()
+            self._migrate_v10_to_v11()
+            self._migrate_v11_to_v12()
+            self._migrate_v12_to_v13()
+            self._migrate_v13_to_v14()
+            self._migrate_v14_to_v15()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
             self._validate_v8_snapshot_constraint()
+        elif version == 8:
+            with self._connect() as conn:
+                has_agent = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_investigations'"
+                ).fetchone() is not None
+                if not has_agent:
+                    conn.execute("BEGIN IMMEDIATE")
+                    self._build_all_agent_runtime_objects_v8(conn)
+                    conn.commit()
+            self._migrate_v8_to_v9()
+            self._migrate_v9_to_v10()
+            self._migrate_v10_to_v11()
+            self._migrate_v11_to_v12()
+            self._migrate_v12_to_v13()
+            self._migrate_v13_to_v14()
+            self._migrate_v14_to_v15()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
+            self._validate_v8_snapshot_constraint()
+        elif version == 9:
+            self._migrate_v9_to_v10()
+            self._migrate_v10_to_v11()
+            self._migrate_v11_to_v12()
+            self._migrate_v12_to_v13()
+            self._migrate_v13_to_v14()
+            self._migrate_v14_to_v15()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
+        elif version == 10:
+            self._migrate_v10_to_v11()
+            self._migrate_v11_to_v12()
+            self._migrate_v12_to_v13()
+            self._migrate_v13_to_v14()
+            self._migrate_v14_to_v15()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
+        elif version == 11:
+            self._migrate_v11_to_v12()
+            self._migrate_v12_to_v13()
+            self._migrate_v13_to_v14()
+            self._migrate_v14_to_v15()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
+        elif version == 12:
+            self._migrate_v12_to_v13()
+            self._migrate_v13_to_v14()
+            self._migrate_v14_to_v15()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
+        elif version == 13:
+            self._migrate_v13_to_v14()
+            self._migrate_v14_to_v15()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
+        elif version == 14:
+            self._migrate_v14_to_v15()
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
+        elif version == 15:
+            self._migrate_v15_to_v16()
+            self._validate_v16_schema()
+        elif version == SUPPORTED_SCHEMA_VERSION:
+            self._validate_v16_schema()
+            self._validate_v8_snapshot_constraint()
+            self._ensure_v11_auxiliary_objects()
         else:
             raise EvidenceStoreError(
                 f"unsupported investigation.db schema version: {version} "
                 f"(supported: {SUPPORTED_SCHEMA_VERSION})"
             )
-        if 1 <= version <= 6:
-            self._migrate_v7_to_v8()
-            self._validate_v7_schema()
-            self._validate_v8_snapshot_constraint()
 
     def _validate_v8_snapshot_constraint(self) -> None:
         with self._connect() as conn:
@@ -926,18 +2901,52 @@ class InvestigationRepository:
         conn.execute(_TRIGGER_REPORT_EVIDENCE_NO_IDENTITY_UPDATE_SQL)
         conn.execute(_TRIGGER_REPORT_EVIDENCE_NO_DELETE_SQL)
 
-    def _initialize_v7_atomically(self) -> None:
-        """Retained to construct historical v7 fixtures; not used for new Tasks."""
-        self._initialize_schema_atomically(_CREATE_EVIDENCE_SNAPSHOTS_SQL, 7)
+    def _build_all_agent_runtime_objects(self, conn: sqlite3.Connection) -> None:
+        """Create all agent runtime tables, indexes, and triggers (v8/v9)."""
+        conn.execute(_CREATE_AGENT_INVESTIGATIONS_SQL)
+        conn.execute(_CREATE_AGENT_RUNS_SQL)
+        conn.execute(_INDEX_AGENT_RUN_ONE_ACTIVE_SQL)
+        conn.execute(_CREATE_AGENT_WORKING_STATE_REVISIONS_SQL)
+        conn.execute(_CREATE_AGENT_DELEGATIONS_SQL)
+        conn.execute(_CREATE_AGENT_TRAJECTORY_EVENTS_SQL)
+        conn.execute(_CREATE_AGENT_TOOL_OBSERVATIONS_SQL)
+        self._build_all_agent_finalization_objects(conn)
+        conn.execute(_TRIGGER_AGENT_INVESTIGATION_STATE_FIELDS_SQL)
+        conn.execute(_TRIGGER_AGENT_INVESTIGATION_STATE_FIELDS_INSERT_SQL)
+        conn.execute(_TRIGGER_AGENT_INVESTIGATION_LEGAL_TRANSITION_SQL)
+        conn.execute(_TRIGGER_AGENT_INVESTIGATION_NO_IDENTITY_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_INVESTIGATION_NO_DELETE_SQL)
+        conn.execute(_TRIGGER_AGENT_RUN_STATE_FIELDS_SQL)
+        conn.execute(_TRIGGER_AGENT_RUN_STATE_FIELDS_INSERT_SQL)
+        conn.execute(_TRIGGER_AGENT_RUN_LEGAL_TRANSITION_SQL)
+        conn.execute(_TRIGGER_AGENT_RUN_NO_IDENTITY_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_RUN_NO_DELETE_SQL)
+        conn.execute(_TRIGGER_AGENT_DELEGATION_STATE_FIELDS_SQL)
+        conn.execute(_TRIGGER_AGENT_DELEGATION_STATE_FIELDS_INSERT_SQL)
+        conn.execute(_TRIGGER_AGENT_DELEGATION_LEGAL_TRANSITION_SQL)
+        conn.execute(_TRIGGER_AGENT_DELEGATION_NO_IDENTITY_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_DELEGATION_NO_TERMINAL_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_DELEGATION_NO_DELETE_SQL)
+        conn.execute(_TRIGGER_AGENT_WSR_SEQUENTIAL_SQL)
+        conn.execute(_TRIGGER_AGENT_WSR_CHAIN_SQL)
+        conn.execute(_TRIGGER_AGENT_WSR_NO_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_WSR_NO_DELETE_SQL)
+        conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_DELETE_SQL)
+        conn.execute(_TRIGGER_AGENT_OBSERVATION_NO_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_OBSERVATION_NO_DELETE_SQL)
 
-    def _initialize_v8_atomically(self) -> None:
-        self._initialize_schema_atomically(_CREATE_EVIDENCE_SNAPSHOTS_FRESH_V8_SQL, 8)
+    def _build_all_agent_finalization_objects(self, conn: sqlite3.Connection) -> None:
+        """Create the agent_finalizations table and its triggers (v9)."""
+        conn.execute(_CREATE_AGENT_FINALIZATIONS_SQL)
+        conn.execute(_TRIGGER_AGENT_FINALIZATION_NO_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_FINALIZATION_NO_DELETE_SQL)
 
-    def _initialize_schema_atomically(self, snapshot_sql: str, version: int) -> None:
-        """Fresh task schema is published with one atomic user_version bump."""
+    def _initialize_current_atomically(self) -> None:
+        """New database: build everything at SUPPORTED_SCHEMA_VERSION in one tx."""
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
-            conn.execute(snapshot_sql)
+            conn.execute(_CREATE_EVIDENCE_SNAPSHOTS_SQL)
             conn.execute(_INDEX_PATH_SQL)
             conn.execute(_INDEX_CLUSTER_SQL)
             conn.execute(_INDEX_TASK_SQL)
@@ -946,23 +2955,55 @@ class InvestigationRepository:
             self._build_all_event_objects(conn)
             self._build_all_refresh_objects(conn)
             self._build_all_report_evidence_objects(conn)
-            conn.execute(f"PRAGMA user_version = {version}")
+            self._build_all_agent_runtime_objects(conn)
+            self._build_all_agent_delegation_result_objects(conn)
+            self._build_all_p5a_persistence_objects(conn)
+            self._build_all_p5b_persistence_objects(conn)
+            self._build_all_p6a_persistence_objects(conn)
+            self._build_all_p6b_persistence_objects(conn)
+            conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
+            conn.commit()
+
+    def _initialize_v7_atomically(self) -> None:
+        """Retained to construct historical v7 fixtures; not used for new Tasks."""
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(_CREATE_EVIDENCE_SNAPSHOTS_V7_SQL)
+            conn.execute(_INDEX_PATH_SQL)
+            conn.execute(_INDEX_CLUSTER_SQL)
+            conn.execute(_INDEX_TASK_SQL)
+            conn.execute(_TRIGGER_EVSNAP_NO_UPDATE_SQL)
+            self._build_all_secondary_objects(conn)
+            self._build_all_event_objects(conn)
+            self._build_all_refresh_objects(conn)
+            self._build_all_report_evidence_objects(conn)
+            conn.execute("PRAGMA user_version = 7")
+            conn.commit()
+
+    def _initialize_v8_atomically(self) -> None:
+        """Retained to construct Dev v8 fixtures; not used for new Tasks."""
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(_CREATE_EVIDENCE_SNAPSHOTS_FRESH_V8_SQL)
+            conn.execute(_INDEX_PATH_SQL)
+            conn.execute(_INDEX_CLUSTER_SQL)
+            conn.execute(_INDEX_TASK_SQL)
+            conn.execute(_TRIGGER_EVSNAP_NO_UPDATE_SQL)
+            self._build_all_secondary_objects(conn)
+            self._build_all_event_objects(conn)
+            self._build_all_refresh_objects(conn)
+            self._build_all_report_evidence_objects(conn)
+            conn.execute("PRAGMA user_version = 8")
             conn.commit()
 
     def _migrate_v7_to_v8(self) -> None:
-        """Controlled identity-preserving extension of the snapshot CHECK.
-
-        The table is rebuilt without renaming the old parent: SQLite child FK
-        targets therefore continue to name ``evidence_snapshots``. Foreign-key
-        checks and exact row equality run before commit; a failure rolls back.
-        This method is reached by a writer only, never by read-only graph APIs.
-        """
+        """Controlled identity-preserving extension of the snapshot CHECK and agent tables."""
         conn = self._connect()
         try:
             conn.execute("PRAGMA foreign_keys = OFF")
             conn.execute("BEGIN IMMEDIATE")
             locked_version = conn.execute("PRAGMA user_version").fetchone()[0]
-            if locked_version == 8:
+            if locked_version >= 8:
                 conn.rollback()  # another writer completed the same migration
                 return
             if locked_version != 7:
@@ -980,13 +3021,19 @@ class InvestigationRepository:
             conn.execute(_INDEX_TASK_SQL)
             conn.execute(_TRIGGER_EVSNAP_NO_UPDATE_SQL)
             after = [tuple(row) for row in conn.execute(f"SELECT {columns} FROM evidence_snapshots ORDER BY id")]
-            if before != after or conn.execute("PRAGMA foreign_key_check").fetchone():
+            has_secondary = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='secondary_analyses'").fetchone()
+            if has_secondary:
+                conn.execute(_INDEX_SECONDARY_TASK_ANALYSIS_SQL)
+            if before != after or conn.execute("PRAGMA foreign_key_check(evidence_snapshots)").fetchone():
                 raise EvidenceStoreError("v8 migration integrity check failed")
+            self._build_all_agent_runtime_objects_v8(conn)
             conn.execute("PRAGMA user_version = 8")
             conn.commit()
-        except Exception:
+        except Exception as exc:
             conn.rollback()
-            raise
+            if isinstance(exc, EvidenceStoreError):
+                raise
+            raise EvidenceStoreError(f"v8 migration failed: {exc}") from exc
         finally:
             conn.execute("PRAGMA foreign_keys = ON")
             conn.close()
@@ -1086,10 +3133,721 @@ class InvestigationRepository:
             conn.execute("PRAGMA user_version = 7")
             conn.commit()
 
-    def _ensure_v7_auxiliary_objects(self) -> None:
-        """Self-heal v7 refresh indexes/triggers and execution metadata."""
+
+    def _migrate_v8_to_v9(self) -> None:
+        """v8 database: finalization record + trajectory/pause CHECK extension.
+
+        CHECK constraints can only change via table rebuild: both extended
+        tables are rebuilt preserving every row, inside ONE transaction on a
+        connection with ``PRAGMA foreign_keys=OFF`` (the documented SQLite
+        procedure for schema changes; FK clauses resolve again after the
+        rename and every guard trigger is recreated).
+        """
+        with self._connect() as conn:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.execute("BEGIN IMMEDIATE")
+            # agent_investigations: pause_reason += finalization_review_unavailable
+            conn.execute(_CREATE_AGENT_INVESTIGATIONS_V9_REBUILD_SQL)
+            conn.execute(
+                "INSERT INTO agent_investigations_v9_rebuild "
+                "(investigation_id, task_id, status, pause_reason, created_at, "
+                " updated_at, completed_at, cancelled_at) "
+                "SELECT investigation_id, task_id, status, pause_reason, "
+                "created_at, updated_at, completed_at, cancelled_at "
+                "FROM agent_investigations"
+            )
+            conn.execute("DROP TABLE agent_investigations")
+            conn.execute(
+                "ALTER TABLE agent_investigations_v9_rebuild "
+                "RENAME TO agent_investigations"
+            )
+            conn.execute(_TRIGGER_AGENT_INVESTIGATION_STATE_FIELDS_SQL)
+            conn.execute(_TRIGGER_AGENT_INVESTIGATION_STATE_FIELDS_INSERT_SQL)
+            conn.execute(_TRIGGER_AGENT_INVESTIGATION_LEGAL_TRANSITION_SQL)
+            conn.execute(_TRIGGER_AGENT_INVESTIGATION_NO_IDENTITY_UPDATE_SQL)
+            conn.execute(_TRIGGER_AGENT_INVESTIGATION_NO_DELETE_SQL)
+            # agent_trajectory_events: event_type += P2 control-plane events
+            conn.execute(_CREATE_AGENT_TRAJECTORY_EVENTS_V9_REBUILD_SQL)
+            conn.execute(
+                "INSERT INTO agent_trajectory_events_v9_rebuild "
+                "(seq, event_id, task_id, investigation_id, run_id, "
+                " delegation_id, event_type, payload_json, created_at) "
+                "SELECT seq, event_id, task_id, investigation_id, run_id, "
+                "delegation_id, event_type, payload_json, created_at "
+                "FROM agent_trajectory_events"
+            )
+            conn.execute("DROP TABLE agent_trajectory_events")
+            conn.execute(
+                "ALTER TABLE agent_trajectory_events_v9_rebuild "
+                "RENAME TO agent_trajectory_events"
+            )
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_UPDATE_SQL)
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_DELETE_SQL)
+            # finalization record storage (additive)
+            self._build_all_agent_finalization_objects(conn)
+            conn.execute("PRAGMA user_version = 9")
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = ON")
+
+    def _migrate_v9_to_v10(self) -> None:
+        """v9 database: trajectory event_type += tool action audit event (P3 F2).
+
+        Minimal v10: ONLY ``tool_observation_recorded`` is added to the
+        trajectory CHECK enum (single table rebuild, rows and AUTOINCREMENT
+        sequence preserved, guard triggers recreated). No other schema change.
+        """
+        with self._connect() as conn:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(_CREATE_AGENT_TRAJECTORY_EVENTS_V10_REBUILD_SQL)
+            conn.execute(
+                "INSERT INTO agent_trajectory_events_v10_rebuild "
+                "(seq, event_id, task_id, investigation_id, run_id, "
+                " delegation_id, event_type, payload_json, created_at) "
+                "SELECT seq, event_id, task_id, investigation_id, run_id, "
+                "delegation_id, event_type, payload_json, created_at "
+                "FROM agent_trajectory_events"
+            )
+            conn.execute("DROP TABLE agent_trajectory_events")
+            conn.execute(
+                "ALTER TABLE agent_trajectory_events_v10_rebuild "
+                "RENAME TO agent_trajectory_events"
+            )
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_UPDATE_SQL)
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_DELETE_SQL)
+            conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = ON")
+
+    def _migrate_v10_to_v11(self) -> None:
+        """v10 database: agent_delegation_results (P4A §17, additive).
+
+        One terminal result per delegation: UNIQUE(task_id, delegation_id),
+        INSERT-only (no UPDATE / no DELETE), composite FKs into the agent
+        runtime tables. No existing table changes.
+        """
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            self._build_all_agent_delegation_result_objects(conn)
+            conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
+            conn.commit()
+
+    def _build_all_agent_delegation_result_objects(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        conn.execute(_CREATE_AGENT_DELEGATION_RESULTS_SQL)
+        conn.execute(_TRIGGER_AGENT_RESULT_NO_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_RESULT_NO_DELETE_SQL)
+
+    def _validate_agent_delegation_results_table(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        cols = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(agent_delegation_results)")
+        }
+        missing = _REQUIRED_AGENT_DELEGATION_RESULT_COLUMNS - cols
+        if missing:
+            raise EvidenceStoreError(
+                "agent_delegation_results missing required columns: "
+                f"{sorted(missing)}"
+            )
+        found_unique = False
+        for idx in conn.execute("PRAGMA index_list(agent_delegation_results)"):
+            if not idx["unique"]:
+                continue
+            idx_cols = {
+                r["name"]
+                for r in conn.execute(f'PRAGMA index_info("{idx["name"]}")')
+            }
+            if idx_cols == {"task_id", "delegation_id"}:
+                found_unique = True
+                break
+        if not found_unique:
+            raise EvidenceStoreError(
+                "agent_delegation_results missing UNIQUE(task_id, delegation_id)"
+            )
+
+    def _migrate_v11_to_v12(self) -> None:
+        """v11 database: trajectory event_type += supervisor audit events
+        (P4B §35 minimal v12). Only two values are added —
+        ``supervisor_plan_decided`` and ``supervisor_integration_committed`` —
+        so PLAN decisions and integration decisions have their own immutable
+        Action Trace events. Nothing else changes."""
+        with self._connect() as conn:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(_CREATE_AGENT_TRAJECTORY_EVENTS_V12_REBUILD_SQL)
+            conn.execute(
+                "INSERT INTO agent_trajectory_events_v12_rebuild "
+                "(seq, event_id, task_id, investigation_id, run_id, "
+                " delegation_id, event_type, payload_json, created_at) "
+                "SELECT seq, event_id, task_id, investigation_id, run_id, "
+                "delegation_id, event_type, payload_json, created_at "
+                "FROM agent_trajectory_events"
+            )
+            conn.execute("DROP TABLE agent_trajectory_events")
+            conn.execute(
+                "ALTER TABLE agent_trajectory_events_v12_rebuild "
+                "RENAME TO agent_trajectory_events"
+            )
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_UPDATE_SQL)
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_DELETE_SQL)
+            # P4B §10.3: replace the delegation guards with the widened
+            # definitions (single sanctioned completed->stale edge;
+            # unintegrated rows only, other columns pinned to OLD).
+            # CREATE TRIGGER IF NOT EXISTS is a no-op on live triggers,
+            # so the v11-era definitions are dropped first.
+            conn.execute("DROP TRIGGER IF EXISTS trg_agent_delegation_no_terminal_update")
+            conn.execute("DROP TRIGGER IF EXISTS trg_agent_delegation_state_fields")
+            conn.execute("DROP TRIGGER IF EXISTS trg_agent_delegation_legal_transition")
+            conn.execute(_TRIGGER_AGENT_DELEGATION_NO_TERMINAL_UPDATE_SQL)
+            conn.execute(_TRIGGER_AGENT_DELEGATION_STATE_FIELDS_SQL)
+            conn.execute(_TRIGGER_AGENT_DELEGATION_LEGAL_TRANSITION_SQL)
+            conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = ON")
+
+    def _validate_trajectory_event_type_v12(self, conn: sqlite3.Connection) -> None:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master "
+            "WHERE type='table' AND name='agent_trajectory_events'"
+        ).fetchone()
+        sql = row["sql"] if row is not None else ""
+        for value in ("supervisor_plan_decided", "supervisor_integration_committed"):
+            if value not in (sql or ""):
+                raise EvidenceStoreError(
+                    f"agent_trajectory_events is missing the v12 {value!r} "
+                    "event type"
+                )
+
+    # -------------------------------------------------------------------
+    # P5A grounding-foundation persistence (v13)
+    # -------------------------------------------------------------------
+
+    def _build_all_p5a_persistence_objects(self, conn: sqlite3.Connection) -> None:
+        """Create the six P5A append-only domain tables + their guards."""
+        conn.execute(_CREATE_AGENT_ENTITY_OCCURRENCES_SQL)
+        conn.execute(_CREATE_AGENT_CORRELATION_CANDIDATES_SQL)
+        conn.execute(_CREATE_AGENT_CLAIM_PROPOSALS_SQL)
+        conn.execute(_CREATE_AGENT_GROUNDING_RESULTS_SQL)
+        conn.execute(_CREATE_AGENT_EVIDENCE_SUPPORT_BUNDLES_SQL)
+        conn.execute(_CREATE_AGENT_DELEGATION_EVIDENCE_SCOPES_SQL)
+        for table in _P5A_APPEND_ONLY_TABLES:
+            for statement in _append_only_trigger_sql(table):
+                conn.execute(statement)
+
+    def _migrate_v12_to_v13(self) -> None:
+        """v12 database: P5A grounding foundation (§49 minimal v13).
+
+        Two changes only: the trajectory event_type enum grows the three
+        P5A audit events (entity_occurrences_recorded,
+        correlation_candidates_recorded, claim_grounding_recorded), and the
+        six append-only P5A domain tables are added. No P4 table or guard is
+        rewritten; existing rows are copied verbatim by the rebuild."""
+        with self._connect() as conn:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(_CREATE_AGENT_TRAJECTORY_EVENTS_V13_REBUILD_SQL)
+            conn.execute(
+                "INSERT INTO agent_trajectory_events_v13_rebuild "
+                "(seq, event_id, task_id, investigation_id, run_id, "
+                " delegation_id, event_type, payload_json, created_at) "
+                "SELECT seq, event_id, task_id, investigation_id, run_id, "
+                "delegation_id, event_type, payload_json, created_at "
+                "FROM agent_trajectory_events"
+            )
+            conn.execute("DROP TABLE agent_trajectory_events")
+            conn.execute(
+                "ALTER TABLE agent_trajectory_events_v13_rebuild "
+                "RENAME TO agent_trajectory_events"
+            )
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_UPDATE_SQL)
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_DELETE_SQL)
+            self._build_all_p5a_persistence_objects(conn)
+            conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = ON")
+
+    def _validate_trajectory_event_type_v13(self, conn: sqlite3.Connection) -> None:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master "
+            "WHERE type='table' AND name='agent_trajectory_events'"
+        ).fetchone()
+        sql = row["sql"] if row is not None else ""
+        for value in (
+            "entity_occurrences_recorded",
+            "correlation_candidates_recorded",
+            "claim_grounding_recorded",
+            "claim_proposals_recorded",
+        ):
+            if value not in (sql or ""):
+                raise EvidenceStoreError(
+                    f"agent_trajectory_events is missing the v13 {value!r} "
+                    "event type"
+                )
+
+    def _validate_p5a_persistence_tables(self, conn: sqlite3.Connection) -> None:
+        """Validate the six P5A tables: columns, UNIQUE keys, append-only
+        guards. Fail closed on any missing piece."""
+        column_specs = (
+            ("agent_entity_occurrences", _REQUIRED_AGENT_ENTITY_OCCURRENCE_COLUMNS),
+            ("agent_correlation_candidates",
+             _REQUIRED_AGENT_CORRELATION_CANDIDATE_COLUMNS),
+            ("agent_claim_proposals", _REQUIRED_AGENT_CLAIM_PROPOSAL_COLUMNS),
+            ("agent_grounding_results", _REQUIRED_AGENT_GROUNDING_RESULT_COLUMNS),
+            ("agent_evidence_support_bundles",
+             _REQUIRED_AGENT_SUPPORT_BUNDLE_COLUMNS),
+            ("agent_delegation_evidence_scopes",
+             _REQUIRED_AGENT_EVIDENCE_SCOPE_COLUMNS),
+        )
+        for table, required in column_specs:
+            exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                [table],
+            ).fetchone()
+            if exists is None:
+                raise EvidenceStoreError(
+                    f"missing P5A persistence table: {table}"
+                )
+            cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+            missing = required - cols
+            if missing:
+                raise EvidenceStoreError(
+                    f"{table} missing required columns: {sorted(missing)}"
+                )
+        for table in _P5A_APPEND_ONLY_TABLES:
+            for suffix in ("no_update", "no_delete"):
+                trigger = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name=?",
+                    [f"trg_{table}_{suffix}"],
+                ).fetchone()
+                if trigger is None:
+                    raise EvidenceStoreError(
+                        f"{table} missing append-only guard trg_{table}_{suffix}"
+                    )
+
+    def _validate_v13_schema(self) -> None:
+        self._validate_v12_schema()
+        with self._connect() as conn:
+            self._validate_trajectory_event_type_v13(conn)
+            self._validate_p5a_persistence_tables(conn)
+
+    # -------------------------------------------------------------------
+    # P5B semantic-verification persistence (v14)
+    # -------------------------------------------------------------------
+
+    def _build_all_p5b_persistence_objects(self, conn: sqlite3.Connection) -> None:
+        """Create the five P5B tables + their guards."""
+        conn.execute(_CREATE_AGENT_SEMANTIC_VERIFICATIONS_SQL)
+        conn.execute(_CREATE_AGENT_SEMANTIC_VERIFICATION_FAILURES_SQL)
+        conn.execute(_CREATE_AGENT_CLAIM_DISPOSITIONS_SQL)
+        conn.execute(_CREATE_INVESTIGATION_FINDINGS_SQL)
+        for statement in (
+            _TRIGGER_FINDING_NO_IDENTITY_UPDATE_SQL,
+            _TRIGGER_FINDING_LEGAL_TRANSITION_SQL,
+            _TRIGGER_FINDING_REVIEW_PROVENANCE_SQL,
+        ):
+            conn.execute(statement)
+        conn.execute(_CREATE_INVESTIGATION_FINDING_REVIEWS_SQL)
+        conn.execute(_TRIGGER_FINDING_REVIEW_NO_UPDATE_SQL)
+        conn.execute(_TRIGGER_FINDING_REVIEW_NO_DELETE_SQL)
+        conn.execute(_CREATE_AGENT_VERIFICATION_OBLIGATIONS_SQL)
+        conn.execute(_TRIGGER_OBLIGATION_LEGAL_TRANSITION_SQL)
+        conn.execute(_TRIGGER_OBLIGATION_NO_IDENTITY_UPDATE_SQL)
+        for table in _P5B_APPEND_ONLY_TABLES:
+            for statement in _append_only_trigger_sql(table):
+                conn.execute(statement)
+
+    def _migrate_v13_to_v14(self) -> None:
+        """v13 database: P5B semantic verification (minimal v14).
+
+        Two changes only: the trajectory event_type enum grows the five
+        P5B audit events, and the five P5B tables (+ the canonical Finding
+        state-machine guards) are added. P1-P5A rows are copied verbatim
+        by the rebuild; nothing else is rewritten."""
+        with self._connect() as conn:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(_CREATE_AGENT_TRAJECTORY_EVENTS_V14_REBUILD_SQL)
+            conn.execute(
+                "INSERT INTO agent_trajectory_events_v14_rebuild "
+                "(seq, event_id, task_id, investigation_id, run_id, "
+                " delegation_id, event_type, payload_json, created_at) "
+                "SELECT seq, event_id, task_id, investigation_id, run_id, "
+                "delegation_id, event_type, payload_json, created_at "
+                "FROM agent_trajectory_events"
+            )
+            conn.execute("DROP TABLE agent_trajectory_events")
+            conn.execute(
+                "ALTER TABLE agent_trajectory_events_v14_rebuild "
+                "RENAME TO agent_trajectory_events"
+            )
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_UPDATE_SQL)
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_DELETE_SQL)
+            self._build_all_p5b_persistence_objects(conn)
+            conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = ON")
+
+    def _validate_trajectory_event_type_v14(self, conn: sqlite3.Connection) -> None:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master "
+            "WHERE type='table' AND name='agent_trajectory_events'"
+        ).fetchone()
+        sql = row["sql"] if row is not None else ""
+        for value in (
+            "correlation_semantic_verified",
+            "claim_semantic_verified",
+            "claim_disposition_recorded",
+            "finding_review_pending_created",
+            "final_semantic_review_recorded",
+        ):
+            if value not in (sql or ""):
+                raise EvidenceStoreError(
+                    f"agent_trajectory_events is missing the v14 {value!r} "
+                    "event type"
+                )
+
+    def _validate_p5b_persistence_tables(self, conn: sqlite3.Connection) -> None:
+        """Validate the five P5B tables: columns, guards, Finding status
+        machine and review provenance triggers. Fail closed."""
+        column_specs = (
+            ("agent_semantic_verifications",
+             _REQUIRED_AGENT_SEMANTIC_VERIFICATION_COLUMNS),
+            ("agent_semantic_verification_failures",
+             _REQUIRED_AGENT_VERIFICATION_FAILURE_COLUMNS),
+            ("agent_claim_dispositions",
+             _REQUIRED_AGENT_CLAIM_DISPOSITION_COLUMNS),
+            ("investigation_findings",
+             _REQUIRED_INVESTIGATION_FINDING_COLUMNS),
+            ("investigation_finding_reviews",
+             _REQUIRED_INVESTIGATION_FINDING_REVIEW_COLUMNS),
+        )
+        for table, required in column_specs:
+            exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                [table],
+            ).fetchone()
+            if exists is None:
+                raise EvidenceStoreError(
+                    f"missing P5B persistence table: {table}"
+                )
+            cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+            missing = required - cols
+            if missing:
+                raise EvidenceStoreError(
+                    f"{table} missing required columns: {sorted(missing)}"
+                )
+        for table in _P5B_APPEND_ONLY_TABLES:
+            for suffix in ("no_update", "no_delete"):
+                trigger = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name=?",
+                    [f"trg_{table}_{suffix}"],
+                ).fetchone()
+                if trigger is None:
+                    raise EvidenceStoreError(
+                        f"{table} missing append-only guard "
+                        f"trg_{table}_{suffix}"
+                    )
+        for trigger in (
+            "trg_investigation_finding_no_identity_update",
+            "trg_investigation_finding_legal_transition",
+            "trg_investigation_finding_review_provenance",
+        ):
+            found = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name=?",
+                [trigger],
+            ).fetchone()
+            if found is None:
+                raise EvidenceStoreError(
+                    f"investigation_findings missing guard {trigger}"
+                )
+        obligations_ok = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' "
+            "AND name='agent_verification_obligations'"
+        ).fetchone()
+        if obligations_ok is None:
+            raise EvidenceStoreError(
+                "missing P5B persistence table: "
+                "agent_verification_obligations"
+            )
+        for trigger in (
+            "trg_agent_verification_obligation_legal_transition",
+            "trg_agent_verification_obligation_no_identity_update",
+        ):
+            found = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name=?",
+                [trigger],
+            ).fetchone()
+            if found is None:
+                raise EvidenceStoreError(
+                    "agent_verification_obligations missing guard " + trigger
+                )
+
+    def _validate_v14_schema(self) -> None:
+        self._validate_v13_schema()
+        with self._connect() as conn:
+            self._validate_trajectory_event_type_v14(conn)
+            self._validate_p5b_persistence_tables(conn)
+
+    # -------------------------------------------------------------------
+    # P6A graph-admission persistence (v15)
+    # -------------------------------------------------------------------
+
+    def _build_all_p6a_persistence_objects(self, conn: sqlite3.Connection) -> None:
+        """Create the four P6A tables + guards (manifest = state machine)."""
+        conn.execute(_CREATE_AGENT_GRAPH_CANDIDATES_SQL)
+        conn.execute(_CREATE_AGENT_GRAPH_ADMISSION_DECISIONS_SQL)
+        conn.execute(_CREATE_AGENT_GRAPH_EPISODES_SQL)
+        conn.execute(_CREATE_AGENT_GRAPH_MATERIALIZATIONS_SQL)
+        conn.execute(_TRIGGER_GRAPH_MANIFEST_LEGAL_TRANSITION_SQL)
+        conn.execute(_TRIGGER_GRAPH_MANIFEST_NO_IDENTITY_UPDATE_SQL)
+        for table in _P6A_APPEND_ONLY_TABLES:
+            for statement in _append_only_trigger_sql(table):
+                conn.execute(statement)
+
+    def _migrate_v14_to_v15(self) -> None:
+        """v14 database: P6A graph admission foundation (minimal v15).
+
+        The trajectory enum grows the five graph audit events and the four
+        graph tables (+ manifest state-machine guards) are added. P1-P5
+        rows are copied verbatim; nothing else is rewritten."""
+        with self._connect() as conn:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(_CREATE_AGENT_TRAJECTORY_EVENTS_V15_REBUILD_SQL)
+            conn.execute(
+                "INSERT INTO agent_trajectory_events_v15_rebuild "
+                "(seq, event_id, task_id, investigation_id, run_id, "
+                " delegation_id, event_type, payload_json, created_at) "
+                "SELECT seq, event_id, task_id, investigation_id, run_id, "
+                "delegation_id, event_type, payload_json, created_at "
+                "FROM agent_trajectory_events"
+            )
+            conn.execute("DROP TABLE agent_trajectory_events")
+            conn.execute(
+                "ALTER TABLE agent_trajectory_events_v15_rebuild "
+                "RENAME TO agent_trajectory_events"
+            )
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_UPDATE_SQL)
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_DELETE_SQL)
+            self._build_all_p6a_persistence_objects(conn)
+            conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = ON")
+
+    def _validate_trajectory_event_type_v15(self, conn: sqlite3.Connection) -> None:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master "
+            "WHERE type='table' AND name='agent_trajectory_events'"
+        ).fetchone()
+        sql = row["sql"] if row is not None else ""
+        for value in (
+            "graph_candidate_recorded",
+            "graph_admission_decided",
+            "graph_episode_frozen",
+            "graph_materialization_queued",
+            "graph_materialization_invalidated",
+        ):
+            if value not in (sql or ""):
+                raise EvidenceStoreError(
+                    f"agent_trajectory_events is missing the v15 {value!r} "
+                    "event type"
+                )
+
+    def _validate_p6a_persistence_tables(self, conn: sqlite3.Connection) -> None:
+        column_specs = (
+            ("agent_graph_candidates",
+             _REQUIRED_AGENT_GRAPH_CANDIDATE_COLUMNS),
+            ("agent_graph_admission_decisions",
+             _REQUIRED_AGENT_GRAPH_ADMISSION_DECISION_COLUMNS),
+            ("agent_graph_episodes", _REQUIRED_AGENT_GRAPH_EPISODE_COLUMNS),
+            ("agent_graph_materializations",
+             _REQUIRED_AGENT_GRAPH_MATERIALIZATION_COLUMNS),
+        )
+        for table, required in column_specs:
+            exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                [table],
+            ).fetchone()
+            if exists is None:
+                raise EvidenceStoreError(
+                    f"missing P6A persistence table: {table}"
+                )
+            cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+            missing = required - cols
+            if missing:
+                raise EvidenceStoreError(
+                    f"{table} missing required columns: {sorted(missing)}"
+                )
+        for table in _P6A_APPEND_ONLY_TABLES:
+            for suffix in ("no_update", "no_delete"):
+                trigger = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name=?",
+                    [f"trg_{table}_{suffix}"],
+                ).fetchone()
+                if trigger is None:
+                    raise EvidenceStoreError(
+                        f"{table} missing append-only guard trg_{table}_{suffix}"
+                    )
+        for trigger in (
+            "trg_agent_graph_manifest_legal_transition",
+            "trg_agent_graph_manifest_no_identity_update",
+        ):
+            found = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name=?",
+                [trigger],
+            ).fetchone()
+            if found is None:
+                raise EvidenceStoreError(
+                    f"agent_graph_materializations missing guard {trigger}"
+                )
+
+    def _validate_v15_schema(self) -> None:
+        self._validate_v14_schema()
+        with self._connect() as conn:
+            self._validate_trajectory_event_type_v15(conn)
+            self._validate_p6a_persistence_tables(conn)
+
+    # -------------------------------------------------------------------
+    # P6B materialization-execution persistence (v16)
+    # -------------------------------------------------------------------
+
+    def _build_all_p6b_persistence_objects(self, conn: sqlite3.Connection) -> None:
+        """Create the backend-binding sidecar table + guards."""
+        conn.execute(_CREATE_AGENT_GRAPH_BACKEND_BINDINGS_SQL)
+        conn.execute(_TRIGGER_GRAPH_BINDING_NO_UPDATE_SQL)
+        conn.execute(_TRIGGER_GRAPH_BINDING_NO_DELETE_SQL)
+
+    def _migrate_v15_to_v16(self) -> None:
+        """v15 database: P6B execution persistence (minimal v16).
+
+        Adds the append-only backend-binding sidecar and grows the
+        trajectory enum by the four materialization lifecycle events.
+        P1-P6A rows are preserved verbatim; the v15 manifest state
+        machine is untouched."""
+        with self._connect() as conn:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(_CREATE_AGENT_TRAJECTORY_EVENTS_V16_REBUILD_SQL)
+            conn.execute(
+                "INSERT INTO agent_trajectory_events_v16_rebuild "
+                "(seq, event_id, task_id, investigation_id, run_id, "
+                " delegation_id, event_type, payload_json, created_at) "
+                "SELECT seq, event_id, task_id, investigation_id, run_id, "
+                "delegation_id, event_type, payload_json, created_at "
+                "FROM agent_trajectory_events"
+            )
+            conn.execute("DROP TABLE agent_trajectory_events")
+            conn.execute(
+                "ALTER TABLE agent_trajectory_events_v16_rebuild "
+                "RENAME TO agent_trajectory_events"
+            )
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_UPDATE_SQL)
+            conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_DELETE_SQL)
+            self._build_all_p6b_persistence_objects(conn)
+            conn.execute(f"PRAGMA user_version = {SUPPORTED_SCHEMA_VERSION}")
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys = ON")
+
+    def _validate_trajectory_event_type_v16(self, conn: sqlite3.Connection) -> None:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master "
+            "WHERE type='table' AND name='agent_trajectory_events'"
+        ).fetchone()
+        sql = row["sql"] if row is not None else ""
+        for value in (
+            "graph_materialization_started",
+            "graph_materialization_activated",
+            "graph_materialization_failed",
+            "graph_materialization_retry_queued",
+        ):
+            if value not in (sql or ""):
+                raise EvidenceStoreError(
+                    f"agent_trajectory_events is missing the v16 {value!r} "
+                    "event type"
+                )
+
+    def _validate_p6b_persistence_tables(self, conn: sqlite3.Connection) -> None:
+        exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' "
+            "AND name='agent_graph_backend_bindings'"
+        ).fetchone()
+        if exists is None:
+            raise EvidenceStoreError(
+                "missing P6B persistence table: "
+                "agent_graph_backend_bindings"
+            )
+        cols = {
+            row["name"]
+            for row in conn.execute(
+                "PRAGMA table_info(agent_graph_backend_bindings)"
+            )
+        }
+        missing = _REQUIRED_AGENT_GRAPH_BACKEND_BINDING_COLUMNS - cols
+        if missing:
+            raise EvidenceStoreError(
+                "agent_graph_backend_bindings missing required columns: "
+                f"{sorted(missing)}"
+            )
+        for suffix in ("no_update", "no_delete"):
+            trigger = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name=?",
+                [f"trg_agent_graph_binding_{suffix}"],
+            ).fetchone()
+            if trigger is None:
+                raise EvidenceStoreError(
+                    "agent_graph_backend_bindings missing guard "
+                    f"trg_agent_graph_binding_{suffix}"
+                )
+
+    def _validate_v16_schema(self) -> None:
+        self._validate_v15_schema()
+        with self._connect() as conn:
+            self._validate_trajectory_event_type_v16(conn)
+            self._validate_p6b_persistence_tables(conn)
+
+
+    def _build_all_agent_runtime_objects_v8(self, conn: sqlite3.Connection) -> None:
+        """v8-era builder (kept for the v7->v8 step of the frozen chain)."""
+        conn.execute(_CREATE_AGENT_INVESTIGATIONS_SQL)
+        conn.execute(_CREATE_AGENT_RUNS_SQL)
+        conn.execute(_INDEX_AGENT_RUN_ONE_ACTIVE_SQL)
+        conn.execute(_CREATE_AGENT_WORKING_STATE_REVISIONS_SQL)
+        conn.execute(_CREATE_AGENT_DELEGATIONS_SQL)
+        conn.execute(_CREATE_AGENT_TRAJECTORY_EVENTS_SQL)
+        conn.execute(_CREATE_AGENT_TOOL_OBSERVATIONS_SQL)
+        conn.execute(_TRIGGER_AGENT_INVESTIGATION_STATE_FIELDS_SQL)
+        conn.execute(_TRIGGER_AGENT_INVESTIGATION_STATE_FIELDS_INSERT_SQL)
+        conn.execute(_TRIGGER_AGENT_INVESTIGATION_LEGAL_TRANSITION_SQL)
+        conn.execute(_TRIGGER_AGENT_INVESTIGATION_NO_IDENTITY_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_INVESTIGATION_NO_DELETE_SQL)
+        conn.execute(_TRIGGER_AGENT_RUN_STATE_FIELDS_SQL)
+        conn.execute(_TRIGGER_AGENT_RUN_STATE_FIELDS_INSERT_SQL)
+        conn.execute(_TRIGGER_AGENT_RUN_LEGAL_TRANSITION_SQL)
+        conn.execute(_TRIGGER_AGENT_RUN_NO_IDENTITY_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_RUN_NO_DELETE_SQL)
+        conn.execute(_TRIGGER_AGENT_DELEGATION_STATE_FIELDS_SQL)
+        conn.execute(_TRIGGER_AGENT_DELEGATION_STATE_FIELDS_INSERT_SQL)
+        conn.execute(_TRIGGER_AGENT_DELEGATION_LEGAL_TRANSITION_SQL)
+        conn.execute(_TRIGGER_AGENT_DELEGATION_NO_IDENTITY_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_DELEGATION_NO_TERMINAL_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_DELEGATION_NO_DELETE_SQL)
+        conn.execute(_TRIGGER_AGENT_WSR_SEQUENTIAL_SQL)
+        conn.execute(_TRIGGER_AGENT_WSR_CHAIN_SQL)
+        conn.execute(_TRIGGER_AGENT_WSR_NO_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_WSR_NO_DELETE_SQL)
+        conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_TRAJECTORY_NO_DELETE_SQL)
+        conn.execute(_TRIGGER_AGENT_OBSERVATION_NO_UPDATE_SQL)
+        conn.execute(_TRIGGER_AGENT_OBSERVATION_NO_DELETE_SQL)
+
+    def _ensure_v11_auxiliary_objects(self) -> None:
+        """Self-heal current refresh/report/agent indexes and triggers."""
         self._ensure_v5_auxiliary_objects()
         with self._connect() as conn:
+            self._build_all_agent_delegation_result_objects(conn)
             columns = {
                 row["name"]
                 for row in conn.execute("PRAGMA table_info(investigation_event_refreshes)")
@@ -1100,9 +3858,14 @@ class InvestigationRepository:
                 )
             self._build_all_refresh_objects(conn)
             self._build_all_report_evidence_objects(conn)
+            self._build_all_agent_runtime_objects(conn)
+            self._build_all_p5a_persistence_objects(conn)
+            self._build_all_p5b_persistence_objects(conn)
+            self._build_all_p6a_persistence_objects(conn)
+            self._build_all_p6b_persistence_objects(conn)
             conn.commit()
 
-    def _validate_v7_schema(self) -> None:
+    def _validate_v12_schema(self) -> None:
         with self._connect() as conn:
             self._validate_evidence_snapshots(conn)
             self._validate_secondary_analyses(conn)
@@ -1122,6 +3885,79 @@ class InvestigationRepository:
                 conn.execute(_INDEX_SECONDARY_TASK_ANALYSIS_SQL)
                 self._repair_report_evidence_foreign_keys(conn)
                 self._validate_report_evidence_table(conn)
+            self._validate_agent_runtime_tables(conn)
+            self._validate_agent_finalizations_table(conn)
+            self._validate_trajectory_event_type_v10(conn)
+            self._validate_agent_delegation_results_table(conn)
+            self._validate_trajectory_event_type_v12(conn)
+
+    def _validate_trajectory_event_type_v10(self, conn: sqlite3.Connection) -> None:
+        """The trajectory CHECK enum must carry the P3 tool action event."""
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master "
+            "WHERE type='table' AND name='agent_trajectory_events'"
+        ).fetchone()
+        if row is None or "tool_observation_recorded" not in (row["sql"] or ""):
+            raise EvidenceStoreError(
+                "agent_trajectory_events is missing the v10 "
+                "'tool_observation_recorded' event type"
+            )
+
+    def _validate_agent_finalizations_table(self, conn: sqlite3.Connection) -> None:
+        """Validate the v9 FinalizationRecord extension (P2)."""
+        cols = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(agent_finalizations)")
+        }
+        missing = _REQUIRED_AGENT_FINALIZATION_COLUMNS - cols
+        if missing:
+            raise EvidenceStoreError(
+                f"agent_finalizations missing required columns: {sorted(missing)}"
+            )
+        found_investigation_unique = False
+        for idx in conn.execute("PRAGMA index_list(agent_finalizations)"):
+            if not idx["unique"]:
+                continue
+            idx_cols = {
+                r["name"]
+                for r in conn.execute(f'PRAGMA index_info("{idx["name"]}")')
+            }
+            if idx_cols == {"task_id", "investigation_id"}:
+                found_investigation_unique = True
+                break
+        if not found_investigation_unique:
+            raise EvidenceStoreError(
+                "agent_finalizations missing UNIQUE(task_id, investigation_id)"
+            )
+        investigation_fk = (
+            ("task_id", "task_id"), ("investigation_id", "investigation_id"),
+        )
+        run_fk = (("task_id", "task_id"), ("run_id", "run_id"))
+        revision_fk = (
+            ("task_id", "task_id"),
+            ("investigation_id", "investigation_id"),
+            ("state_revision", "revision"),
+        )
+        for parent, mapping in (
+            ("agent_investigations", investigation_fk),
+            ("agent_runs", run_fk),
+            ("agent_working_state_revisions", revision_fk),
+        ):
+            if not self._has_composite_fk(conn, "agent_finalizations", parent, mapping):
+                raise EvidenceStoreError(
+                    "agent_finalizations missing composite FK"
+                    f"{mapping} REFERENCES {parent}"
+                )
+        for trig_name in (
+            "trg_agent_finalization_no_update",
+            "trg_agent_finalization_no_delete",
+        ):
+            trig = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = ?",
+                [trig_name],
+            ).fetchone()
+            if trig is None:
+                raise EvidenceStoreError(f"missing {trig_name} trigger")
 
     def _repair_report_evidence_foreign_keys(self, conn: sqlite3.Connection) -> None:
         """Repair SQLite's renamed-parent FK after legacy table-rewrite migrations.
@@ -1532,6 +4368,132 @@ class InvestigationRepository:
         for trig_name in (
             "trg_report_evidence_no_identity_update",
             "trg_report_evidence_no_delete",
+        ):
+            trig = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = ?",
+                [trig_name],
+            ).fetchone()
+            if trig is None:
+                raise EvidenceStoreError(f"missing {trig_name} trigger")
+
+    def _validate_agent_runtime_tables(self, conn: sqlite3.Connection) -> None:
+        """Validate the v8 agent runtime extension (Phase 1)."""
+        column_specs = (
+            ("agent_investigations", _REQUIRED_AGENT_INVESTIGATION_COLUMNS),
+            ("agent_runs", _REQUIRED_AGENT_RUN_COLUMNS),
+            ("agent_working_state_revisions", _REQUIRED_AGENT_WSR_COLUMNS),
+            ("agent_delegations", _REQUIRED_AGENT_DELEGATION_COLUMNS),
+            ("agent_trajectory_events", _REQUIRED_AGENT_TRAJECTORY_COLUMNS),
+            ("agent_tool_observations", _REQUIRED_AGENT_OBSERVATION_COLUMNS),
+        )
+        for table, required in column_specs:
+            cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+            missing = required - cols
+            if missing:
+                raise EvidenceStoreError(
+                    f"{table} missing required columns: {sorted(missing)}"
+                )
+
+        unique_specs = (
+            ("agent_investigations", ("task_id", "investigation_id")),
+            ("agent_runs", ("task_id", "run_id")),
+            ("agent_working_state_revisions",
+             ("task_id", "investigation_id", "revision")),
+            ("agent_delegations", ("task_id", "delegation_id")),
+            ("agent_trajectory_events", ("task_id", "event_id")),
+            ("agent_tool_observations", ("task_id", "observation_id")),
+        )
+        for table, columns in unique_specs:
+            found = False
+            for idx in conn.execute(f"PRAGMA index_list({table})"):
+                if not idx["unique"]:
+                    continue
+                idx_cols = {
+                    r["name"]
+                    for r in conn.execute(f'PRAGMA index_info("{idx["name"]}")')
+                }
+                if idx_cols == set(columns):
+                    found = True
+                    break
+            if not found:
+                raise EvidenceStoreError(f"{table} missing UNIQUE{columns}")
+
+        # P1-E5: one active run per investigation must be a DB-level partial
+        # unique index, not an application check.
+        found_one_active = False
+        for idx in conn.execute("PRAGMA index_list(agent_runs)"):
+            if not idx["unique"] or not idx["partial"]:
+                continue
+            idx_cols = {
+                r["name"]
+                for r in conn.execute(f'PRAGMA index_info("{idx["name"]}")')
+            }
+            sql = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='index' AND name=?",
+                [idx["name"]],
+            ).fetchone()[0] or ""
+            if idx_cols == {"task_id", "investigation_id"} and \
+                    "status IN ('queued', 'running')" in sql:
+                found_one_active = True
+                break
+        if not found_one_active:
+            raise EvidenceStoreError(
+                "agent_runs missing partial unique index for one active run "
+                "per investigation"
+            )
+
+        inv_fk = (("task_id", "task_id"), ("investigation_id", "investigation_id"))
+        run_fk = (("task_id", "task_id"), ("run_id", "run_id"))
+        delegation_fk = (("task_id", "task_id"), ("delegation_id", "delegation_id"))
+        revision_fk = (
+            ("task_id", "task_id"),
+            ("investigation_id", "investigation_id"),
+            ("integrated_revision", "revision"),
+        )
+        fk_specs = (
+            ("agent_runs", "agent_investigations", inv_fk),
+            ("agent_working_state_revisions", "agent_investigations", inv_fk),
+            ("agent_delegations", "agent_investigations", inv_fk),
+            ("agent_delegations", "agent_runs", run_fk),
+            ("agent_delegations", "agent_working_state_revisions", revision_fk),
+            ("agent_trajectory_events", "agent_investigations", inv_fk),
+            ("agent_trajectory_events", "agent_runs", run_fk),
+            ("agent_trajectory_events", "agent_delegations", delegation_fk),
+            ("agent_tool_observations", "agent_investigations", inv_fk),
+            ("agent_tool_observations", "agent_runs", run_fk),
+            ("agent_tool_observations", "agent_delegations", delegation_fk),
+        )
+        for table, parent, mapping in fk_specs:
+            if not self._has_composite_fk(conn, table, parent, mapping):
+                raise EvidenceStoreError(
+                    f"{table} missing composite FK{mapping} REFERENCES {parent}"
+                )
+
+        for trig_name in (
+            "trg_agent_investigation_state_fields",
+            "trg_agent_investigation_state_fields_insert",
+            "trg_agent_investigation_legal_transition",
+            "trg_agent_investigation_no_identity_update",
+            "trg_agent_investigation_no_delete",
+            "trg_agent_run_state_fields",
+            "trg_agent_run_state_fields_insert",
+            "trg_agent_run_legal_transition",
+            "trg_agent_run_no_identity_update",
+            "trg_agent_run_no_delete",
+            "trg_agent_delegation_state_fields",
+            "trg_agent_delegation_state_fields_insert",
+            "trg_agent_delegation_legal_transition",
+            "trg_agent_delegation_no_identity_update",
+            "trg_agent_delegation_no_terminal_update",
+            "trg_agent_delegation_no_delete",
+            "trg_agent_wsr_sequential",
+            "trg_agent_wsr_hash_chain",
+            "trg_agent_wsr_no_update",
+            "trg_agent_wsr_no_delete",
+            "trg_agent_trajectory_no_update",
+            "trg_agent_trajectory_no_delete",
+            "trg_agent_observation_no_update",
+            "trg_agent_observation_no_delete",
         ):
             trig = conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = ?",

@@ -1,0 +1,54 @@
+{
+  "artifact_version": "HoldoutIndependenceAuditV1",
+  "created_at": "2026-10-01T22:43:41+00:00",
+  "gen4_case_ids": [
+    "gen4-layered-dispersion",
+    "gen4-departure-staging"
+  ],
+  "gen4_entity_register": [],
+  "checks": {
+    "gen3_filename_reuse": [],
+    "gen3_content_hash_overlap": [],
+    "gen3_entity_reuse": [],
+    "gen2_filename_reuse": [],
+    "gen2_content_hash_overlap": [],
+    "gen2_entity_reuse": [],
+    "gen1_filename_reuse": [],
+    "gen1_content_hash_overlap": [],
+    "gen1_entity_reuse": [],
+    "gen3_story_marker_reuse": [],
+    "gen2_story_marker_reuse": [],
+    "gen1_story_marker_reuse": []
+  },
+  "details": {
+    "gen3": {
+      "filename_overlap_incl_readme": [
+        "README.txt"
+      ],
+      "hash_set_sizes": {
+        "gen4": 13,
+        "gen3": 12
+      }
+    },
+    "gen2": {
+      "filename_overlap_incl_readme": [
+        "README.txt"
+      ],
+      "hash_set_sizes": {
+        "gen4": 13,
+        "gen2": 8
+      }
+    },
+    "gen1": {
+      "filename_overlap_incl_readme": [],
+      "hash_set_sizes": {
+        "gen4": 13,
+        "gen1": 47
+      }
+    }
+  },
+  "shared_structural_files": {
+    "README.txt": "generic inventory filename reused as a structural convention (content differs — hash overlap checked separately); allowed as capability type, not case instance"
+  },
+  "independence_confirmed": true
+}

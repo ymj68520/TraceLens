@@ -1,0 +1,74 @@
+{
+  "profile_version": "precalibration-runtime-baseline:v3",
+  "supersedes": "precalibration-runtime-baseline:v1 (946f325e, v1-supervisor-contract, pre-A1-T specialist output contract) and AgentV0RuntimeBaselineV2 (48e4bc5c…, contract freeze record)",
+  "purpose": "P8B B2 restart (frozen runtime v2 + A1-S + A1-T + SenseNova): frozen runtime identity for ALL 24 baseline runs. No prompt/instruction/tool-description/budget/temperature/model-parameter/schema/handle-protocol/S4/A1-T change is permitted for the duration of the B2 series; any production change invalidates the entire series (spec §27).",
+  "runtime_git_commit": "711e106a2ce537059f8c0ca86c507476b41889ba",
+  "production_runtime_commit": "0833e4f9 (A1-T implementation; 711e106a adds only docs/test/benchmark artifacts — production tree identical)",
+  "commit_lineage_note": "ed382cbb (v2 contract freeze, 2406 tests) + A1-T 0833e4f9 (SpecialistResultProposalV1 + deterministic finalizer; 3 production files: agent_specialist_result.py, agent_specialist_executor.py, agent_tools/pydantic_bridge.py). S4 boundary (f711851c) unchanged; supervisor v2 (ed382cbb default) unchanged; StateTransitionPolicy / FinalizationGate unchanged.",
+  "model_identity": {
+    "provider": "sensenova-cloud",
+    "requested_model_id": "sensenova-6.8-flash-lite",
+    "api_reported_model_id": "sensenova-6.8-flash-lite",
+    "endpoint_host_class": "token.sensenova.cn (openai-compatible /v1/chat/completions)",
+    "qualification": "QUALIFIED_FOR_P8B_B2 (A1-T canary, §26 Scenario A; qualification record in model_validation_record_file)",
+    "generation_params": {
+      "temperature": 0.7,
+      "max_tokens": 16384,
+      "thinking_mode": "disabled",
+      "reasoning_effort": "none (adapter mapping; provider-verified reasoning_tokens -> 0)",
+      "timeout_seconds": 120,
+      "context_window_tokens": 131072
+    },
+    "adapter_model_config_digest": "ba51d65eeb2c29022216b069572db333d999fcd887098bc49b6f1da6e15ab764"
+  },
+  "contract_identity": {
+    "supervisor_integration_contract": "v2 (FROZEN, production default; SupervisorContractReliabilityV1)",
+    "supervisor_module_sha16": "e501504e84081661",
+    "supervisor_integration_v2_module_sha16": "1f50fb5ac5111381",
+    "reference_bindings_module_sha16": "0a6fba6113ab7060",
+    "evidence_snapshot_admission": "S4 (FROZEN f711851c)",
+    "transitions_module_sha16": "77300b8d079fb218",
+    "agent_runtime_module_sha16": "8d0448e7f69ff03a",
+    "specialist_result_proposal": "specialist-result-proposal:v1 (A1-T FROZEN 546d0d2c)",
+    "specialist_canonical_result": "specialist-result:v1 (UNCHANGED)",
+    "specialist_result_module_sha16": "4f8b004d7bd8a1f1",
+    "specialist_executor_module_sha16": "211f0b25742946df",
+    "pydantic_bridge_module_sha16": "8a4bf62b7da084ff",
+    "tool_registry_schema_hash": "2583c323521aff470ed0cd464ace102f15420a1114d9c24a004bd1893f643bcf"
+  },
+  "prompt_versions": {
+    "supervisor-plan-decision-v2": "handle-based plan instructions (A1, frozen)",
+    "supervisor-integrate-decision-v2": "handle-based integrate instructions (A1, frozen)",
+    "specialist-instructions": "compiled from frozen SpecialistContextPack layers (A1-T: model-facing output contract only change)"
+  },
+  "policy_versions": {
+    "supervisor_cycle_policy": "SupervisorCyclePolicy defaults (max_cycles_per_invocation=1, max_cycles_per_run=20, final_review_mode=best_effort)",
+    "agent_run_policy": "AgentRunPolicy max_output_retries=2 (untouched by A1-T, spec §27)",
+    "correlation_bounds": "max_candidates=200, temporal_window_seconds=3600",
+    "graph_admission": "graph-admission:v15 (max_candidates_per_cycle=32, max_parallel_materializations=2)",
+    "report_retrieval": "RetrievalBudgetV1 max_evidence_items=24, max_detailed_items=4, max_context_chars=48000, max_graph_expansion=8",
+    "assertion_policy": "P5B AssertionPolicy frozen (semantic invariants NEVER calibratable)",
+    "finalization_policy": "FinalizationGate frozen (UNINTEGRATED_COMPLETED_DELEGATION hard blocker)"
+  },
+  "corpus": {
+    "corpus_id": "corpus-agent-v0-calibration",
+    "corpus_hash": "52e70af32e1af861c85e03d03635147d528c39926d917af197f46dbf04170dc7",
+    "calibration_cases": 8,
+    "holdout": "SEALED / NEVER RUN"
+  },
+  "artifacts": {
+    "model_validation_record": "benchmarks/results/agent-v0/b2-restart/model-validation-record.v2.json",
+    "model_config": "benchmarks/results/agent-v0/b2-restart/sensenova-6.8-flash-lite.model-config.json",
+    "qualification_canary": "benchmarks/results/agent-v0/b2-restart/canary-a1t-aggregate.v1.json",
+    "specialist_output_diagnosis": "benchmarks/results/agent-v0/b2-restart/specialist-output-diagnosis.v1.json",
+    "runtime_baseline_v2_record": "benchmarks/profiles/agent-v0-runtime-baseline-v2.json (sha256 48e4bc5c730bae022b72176fb7096923ffe2fa3e1158699b6f40bd235b65646b)"
+  },
+  "historical_benchmarks": "P8B v1 baseline, MiMo/DeepSeek/Kimi/GLM qualification, A1, A1-R, A1-S canary, R2, SenseNova pre-A1-T canary: all historical / pre-current-runtime epochs; descriptive comparisons only, NEVER pooled into this baseline distribution, calibration statistics or acceptance thresholds (spec §3/§29)",
+  "prohibitions_after_freeze": [
+    "no prompt edits", "no Agent instruction edits", "no tool description edits",
+    "no runtime budget edits", "no temperature edits", "no model parameter edits",
+    "no semantic policy edits", "no schema/handle-protocol/A1-T/S4 edits",
+    "no retry or cycle changes"
+  ],
+  "frozen_at": "2026-09-29T00:00:00+00:00"
+}

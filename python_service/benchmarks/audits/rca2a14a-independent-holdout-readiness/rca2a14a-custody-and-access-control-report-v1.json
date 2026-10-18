@@ -1,0 +1,80 @@
+{
+  "artifact_version": "RCA2A14aCustodyAndAccessControlReportV1",
+  "experiment_id": "rca2a14a-independent-holdout-readiness",
+  "timestamp_utc": "2026-10-17T03:52:46.142333+00:00",
+  "role_separation_matrix": {
+    "Prompt_Candidate_Owner": {
+      "permitted_access": [
+        "Frozen candidate prompt instructions",
+        "Frozen output schema",
+        "Public qualification capability dimensions (Q1-Q6)"
+      ],
+      "prohibited_access": [
+        "Sealed holdout evidence files",
+        "Sealed ground truth manifests",
+        "Unmasked holdout test cases"
+      ],
+      "conflict_policy": "Cannot author qualification holdouts; cannot adapt prompt to holdouts."
+    },
+    "Holdout_Fixture_Author": {
+      "permitted_access": [
+        "Public qualification capability contracts",
+        "Forensic trace generators",
+        "Independent ground truth authoring tools"
+      ],
+      "prohibited_access": [
+        "Candidate test execution outputs",
+        "Candidate model responses",
+        "Candidate developer feedback"
+      ],
+      "conflict_policy": "Cannot modify test cases in response to candidate failures."
+    },
+    "Holdout_Custodian": {
+      "permitted_access": [
+        "Sealed case bundles",
+        "Sealed truth manifests",
+        "Encryption keys and cryptographic commitment ledger"
+      ],
+      "prohibited_access": [
+        "Prompt development workflows"
+      ],
+      "conflict_policy": "Must maintain truth confidentiality until candidate responses are frozen."
+    },
+    "Qualification_Executor": {
+      "permitted_access": [
+        "Candidate prompt and model endpoints",
+        "Controlled case inputs (sanitized of truth)"
+      ],
+      "prohibited_access": [
+        "Sealed ground truth manifests",
+        "Arm labels during execution"
+      ],
+      "conflict_policy": "Must log append-only execution records before truth is revealed."
+    },
+    "Independent_Semantic_Adjudicator": {
+      "permitted_access": [
+        "Arm-blind candidate decisions",
+        "Evidence snapshots",
+        "Frozen truth manifests after execution freeze"
+      ],
+      "prohibited_access": [
+        "Arm labels (Control/Treatment)",
+        "Candidate model identity",
+        "Prior win/loss outcomes"
+      ],
+      "conflict_policy": "Must evaluate decisions blind to experimental arm."
+    }
+  },
+  "current_environment_assessment": {
+    "execution_context": "SINGLE_CODING_AGENT_SESSION",
+    "agent_role_overlap": "The active coding agent currently possesses read/write access to the repository, prompt contracts, and test fixtures.",
+    "independence_ruling": "INDEPENDENT_CUSTODY_NOT_ACHIEVED",
+    "mandatory_policy": "A single agent session cannot truthfully attest to independent holdout custody. Any claim of achieving sealed qualification in this session is formally prohibited.",
+    "custody_status": "PROTOCOL_READY_CUSTODY_BLOCKED"
+  },
+  "required_custody_remediation": [
+    "Holdout authoring must be performed in an external, isolated repository or by an independent human author.",
+    "Sealed truth manifests must be held by an independent third-party custodian with access tokens withheld from the executing agent.",
+    "Truth reveals must occur strictly post-execution via cryptographic commitment verification."
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "artifact_version": "Gen4ConstructionRecordV1",
+  "generation_id": "acceptance-generation-4",
+  "created_at": "2026-10-01T00:00:00+00:00",
+  "capability_selection_record": "capability-selection-record-v1.json (created BEFORE any case content, §8)",
+  "role_stages": [
+    {
+      "role": "Holdout Author",
+      "produced": [
+        "cases/*.public-case.json",
+        "cases/*/dataset/*"
+      ]
+    },
+    {
+      "role": "Truth Author",
+      "produced": [
+        "truth/*.truth.json",
+        "truth/*.reachability.json"
+      ]
+    },
+    {
+      "role": "Evidence Substrate Builder",
+      "produced": [
+        "images/*.img (per-case ext4, pinned inode times, contains EXACTLY the public asset set — no generic demo content)"
+      ]
+    },
+    {
+      "role": "Protocol Validator",
+      "produced": [
+        "substrates/*.evidence-manifest.json (per-file content sha256 sealed, §12)",
+        "substrates/*.substrate.json",
+        "substrates/*.evidence-world.json",
+        "evidence-world-validation-v1.json (real provisioning x2, zero model calls)"
+      ]
+    },
+    {
+      "role": "Hydration Preseal Validator",
+      "produced": [
+        "validate_gen4_hydration.py outputs (§14-§17, production content read path, restart proof) — separate step"
+      ]
+    },
+    {
+      "role": "Acceptance Executor",
+      "produced": [
+        "HoldoutSealV3 + admission audit (separate scripts); execution NOT in this phase"
+      ]
+    }
+  ],
+  "design_basis": "product capability families only (fund flow layering; bulk staging discrimination) per capability-selection-record-v1; new actors/filenames/timelines/hashes; not designed around any model's weaknesses nor from any consumed generation's answers"
+}

@@ -1,0 +1,57 @@
+{
+  "artifact_version": "CandidateConfigurationIdentityV2",
+  "candidate_id": "space-bunny-alpha@openrouter",
+  "wave": 2,
+  "provider": "openrouter",
+  "provider_endpoint": "https://openrouter.ai/api/v1",
+  "provider_model_id": "stealth/space-bunny-alpha",
+  "model_family": "space-bunny-alpha",
+  "routing_policy": {
+    "route": "exact stealth route",
+    "explicit_model_in_every_request": true,
+    "fallback_models": "none (§8: no fallback / no auto-router / no alternate model during candidate measurement)",
+    "identity_verification": "S1 returned_model == stealth/space-bunny-alpha, upstream_provider=Stealth (§8 telemetry)",
+    "identity_change_rule": "§37: if the stealth alias later routes elsewhere → new candidate_config_id + re-qualification"
+  },
+  "generation_params": {
+    "temperature": 0.7,
+    "max_tokens": 16384,
+    "reasoning": {
+      "requested": "LLM_THINKING_MODE=disabled → reasoning_effort=none (control-compatible)",
+      "endpoint_response": "400 'Reasoning is mandatory for this endpoint and cannot be disabled.'",
+      "constraint": "PROVIDER_PARAMETER_CONSTRAINT (recorded, not silent — §14)",
+      "frozen_value": "no reasoning parameter sent (model/provider default; reasoning is mandatory on this endpoint)",
+      "control_compatible": false
+    },
+    "parameter_mapping": "max_tokens rides the OpenAI-compatible max_tokens field (profile openai_chat_supports_max_completion_tokens=false)"
+  },
+  "timeout_seconds": 120,
+  "retry_policy": "LLM_MAX_RETRIES=3 (frozen; §17: no unlimited retry, provider failures recorded honestly)",
+  "structured_output_mode": {
+    "runtime_mode": "tool/function-based Pydantic output (§11 path A — unchanged production mechanism)",
+    "local_validation": "canonical Pydantic extra=forbid validation unchanged (S6 evidence)",
+    "native_json_schema_probe": "ambiguous — response_format=json_schema accepted with HTTP 200 but content did not conform (S3: param tolerated, enforcement absent; never assumed per §2)",
+    "native_json_schema_used_in_runtime": false
+  },
+  "tool_call_mode": "supported, non-strict definitions (S4 zero-arg + S5 parameterized, no invented fields)",
+  "context_limit": "1M (provider-advertised; not qualification-relevant)",
+  "data_policy": {
+    "candidate_data_policy": "CALIBRATION_ONLY",
+    "real_case_evidence_allowed": false,
+    "reason": "stealth third-party provider retention policy (§4/§34)"
+  },
+  "plugins_and_server_tools": "disabled by construction (§35/§36): no web plugin, no response-healing, no provider-side tools; TraceLens ToolRegistry is the only tool data plane; LLM never becomes an Evidence source",
+  "secret_handling": {
+    "api_key_env": "OPENROUTER_API_KEY (only source; untracked .env or process env)",
+    "optional_headers_env": [
+      "OPENROUTER_HTTP_REFERER",
+      "OPENROUTER_X_TITLE (unset)"
+    ],
+    "key_in_artifacts": "never — api_key_present boolean only (§3/§33; redaction tests in suite)"
+  },
+  "provider_error_taxonomy": "§18 mapping in adapter (classify_provider_http_error): 401/403→AUTH, 404→UNAVAILABLE, 429→QUOTA, 5xx→INFRA, timeout→TIMEOUT; never recorded as schema/semantic failure (unit-tested §29)",
+  "qualification_status_ref": "qualification-status.json",
+  "adapter_smoke_ref": "adapter-smoke.json (ADAPTER_SMOKE_PASS, S1-S8)",
+  "created_at": "2026-10-03T02:40:11+00:00",
+  "config_hash": "98820f206ed6a5399f0a4c007a6f4c97c93b73e7404c393e5611dc32d00f4010"
+}

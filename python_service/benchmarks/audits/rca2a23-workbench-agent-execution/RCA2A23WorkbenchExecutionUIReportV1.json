@@ -1,0 +1,21 @@
+{
+  "deliverable": "RCA2A23WorkbenchExecutionUIReportV1",
+  "schema_version": "rca2a23-workbench-execution-ui-report:v1",
+  "verified_at": "2026-10-17T11:09:56Z",
+  "component": "AgentExecutionControl.jsx",
+  "location": "web/src/pages/Investigation/components/AgentExecutionControl.jsx",
+  "docking": "AnalysisWorkspace Column 3 (above AgentReviewPanel)",
+  "three_column_layout_preserved": true,
+  "controls": {
+    "start_cycle_button": "btn-start-agent-cycle",
+    "refresh_state_button": "btn-refresh-agent-state",
+    "revision_badge": "agent-state-revision",
+    "status_badge": "agent-execution-status-badge",
+    "metrics_bar": "agent-state-metrics"
+  },
+  "signals": {
+    "refresh_signal_wired": true,
+    "on_cycle_completed_triggers_candidate_refresh": true
+  },
+  "status": "PASS"
+}

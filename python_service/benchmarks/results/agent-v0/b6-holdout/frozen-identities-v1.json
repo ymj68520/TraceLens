@@ -1,0 +1,129 @@
+{
+  "artifact_version": "B6FrozenIdentitiesV1",
+  "created_at": "2026-10-01T00:00:00+00:00",
+  "binding": "recorded BEFORE the first holdout model call; immutable for the entire B6 series (spec §1/§6)",
+  "git_head": "49e8172eea55abf45ddf13bda95715506da4b872",
+  "git_branch": "mvp/agent-v0-typed-handle-contract",
+  "git_clean": true,
+  "production_runtime": {
+    "code_commit": "49e8172eea55abf45ddf13bda95715506da4b872",
+    "httpserver_tree_hash": "60a54e19d7ca16929c5aa5f09c6f93fe19d48a99",
+    "note": "no production runtime changes in B6 (frozen since the calibration series; any change invalidates the series)"
+  },
+  "frozen_profiles": {
+    "acceptance_profile_v2": {
+      "path": "benchmarks/profiles/agent-v0-acceptance-profile-v2.json",
+      "sha256": "c40f1adcad816e433f7edfc6cbc0b56dc32c031bf1fcb31528523ffa62f0e98d"
+    },
+    "calibration_evidence_binding_v2": {
+      "path": "benchmarks/profiles/calibration-evidence-binding-v2.json",
+      "sha256": "e2c35c4e0fa744a5aa49a9b4b4ac1ec990999107ea1ac4eafa7e41645f94c038"
+    },
+    "admission_record_v2": {
+      "path": "benchmarks/profiles/agent-v0-acceptance-profile-admission-record.v2.json",
+      "sha256": "11bfe19686d8a2a6cbb3fa69a9d84019a6a1545a8166ecf352232fc45b5efded"
+    },
+    "measurement_baseline_v6": {
+      "path": "benchmarks/profiles/benchmark-measurement-baseline-v6.json",
+      "sha256": "2256268583b62bacfc42de244ed13d586bdcccf9eef5ca2999df09097ae8b970"
+    },
+    "acceptance_threshold_provenance_v1": {
+      "path": "benchmarks/profiles/acceptance-threshold-provenance-v1.json",
+      "sha256": "53c35b6bc9249e401e2d6681ab56ccfc65cb6ff8fe539f8483da3d7657267642"
+    }
+  },
+  "model_configuration": {
+    "path": "benchmarks/results/agent-v0/b2-restart/sensenova-6.8-flash-lite.model-config.json",
+    "sha256": "9cdcb1fde1cdf6ca25067c0436bbc83618fcf3708b3fd4cc49207ba4b2d130fb",
+    "candidate_id": "sensenova-6.8-flash-lite",
+    "overrides": {
+      "llm_text_model": "sensenova-6.8-flash-lite",
+      "llm_text_temperature": 0.7,
+      "llm_thinking_mode": "disabled"
+    },
+    "api_key_material": "none in artifact; key supplied via env at runtime only"
+  },
+  "corpus_v2": {
+    "path": "benchmarks/corpus/corpus-agent-v0-calibration.v2.json",
+    "sha256": "9b9eee734b231a204edd10b085dd5628e09b3ceb9f1ce1d97b5237e8307f9240",
+    "input_hash": "25c216e85acc32f22c5231924730956c24de6a04cc2c4f7173483c9b557916c4"
+  },
+  "public_case_inputs_v2": {
+    "t3-holdout-refund-fraud": {
+      "case_contract_file_sha256": "6f29b52dee389bd4eefe6ee8aa4b596be43fb3030b666c3ca885eba1ff22fdb3",
+      "case_contract_input_hash": "5d139609d06ebab8d237818a9cce8fd7134414766460279de52625dd9dda0f79",
+      "corpus_case_hash_binding": "5d139609d06ebab8d237818a9cce8fd7134414766460279de52625dd9dda0f79",
+      "sealed_truth_manifest_hash": "c938223cb8a3973d4d87c4817235f8915a9e7d3f34349604f81ee5ce7dc9c863",
+      "sealed_truth_manifest_file_sha256": "453eb43995de34b6d4cab4e524f741bc3db79ba7dd05652780e655493cf11a75",
+      "preflight_truth_untouched": true,
+      "public_case_input_v2": {
+        "case_id": "t3-holdout-refund-fraud",
+        "goal": "Determine how the refund records and the payout records on this device relate, and state exactly what can and cannot be attributed about who received the payouts.",
+        "case_context": "A seized bookkeeping server volume. The shop directory holds a refund table; the finance directory holds payout records. Assess the records exactly as recorded.",
+        "seed_questions": [
+          "How do the shop refund records relate to the finance payout records on this device, and can any specific individual be attributed as the payout recipient? State exactly what the evidence supports and what it cannot."
+        ],
+        "seed_coverage_dimensions": [
+          "payout-attribution"
+        ],
+        "source_scope_ids": [
+          "windows"
+        ]
+      },
+      "public_case_input_v2_canonical_hash": "ed8e540723db4c7dee72a77e54e18d2db1e82b2dfa53be382d92fe0d2a15473c"
+    },
+    "t3-holdout-vpn-causal": {
+      "case_contract_file_sha256": "b9957a8356fe54b79144333023fcf51ba474be99287e131167b58fa1ba65d408",
+      "case_contract_input_hash": "d09eb7139eb98fade007278edfaedecfc96cd4c47f20ff5c408819e68664bd8b",
+      "corpus_case_hash_binding": "d09eb7139eb98fade007278edfaedecfc96cd4c47f20ff5c408819e68664bd8b",
+      "sealed_truth_manifest_hash": "556b30159cb09672201672342d4f4e65e1e901571f36b0e0a0c9a97e3de7e275",
+      "sealed_truth_manifest_file_sha256": "ce515d55b3a138f5abf8261843febf4c0fee7312e2c15970dca88d1f5f5a3e8c",
+      "preflight_truth_untouched": true,
+      "public_case_input_v2": {
+        "case_id": "t3-holdout-vpn-causal",
+        "goal": "Determine whether the laptop owner's account and the recovered exchange account can be treated as the same person, and state exactly which identity and causal conclusions the session evidence supports and does not support.",
+        "case_context": "A seized laptop. The vpn directory holds the laptop's own VPN session log; the exchange directory holds an exchange record log recovered from the same volume. Assess the records exactly as recorded.",
+        "seed_questions": [
+          "Can the laptop owner's account and the recovered exchange account be treated as the same person given the shared VPN egress IP and the matching username, and does the session timeline establish any interaction or causal link between the two accounts? State exactly what the evidence supports and what it cannot."
+        ],
+        "seed_coverage_dimensions": [
+          "shared-egress-assessment"
+        ],
+        "source_scope_ids": [
+          "windows"
+        ]
+      },
+      "public_case_input_v2_canonical_hash": "c2948505ee33feabb614d82ee6bf185b9eaef16e0e1b16a7b65ec61e8e04e84d"
+    }
+  },
+  "evaluator": {
+    "path": "httpserver/services/benchmarks/case_outcome.py",
+    "sha256": "67b9a11752de62d7732e1a109b9217392ee39f5141e6d15a6a2a4936bb6739a4",
+    "case_outcome_version": "benchmark-case-outcome:v2",
+    "truth_access": "deterministic evaluator only (spec §27)"
+  },
+  "bootstrap_and_driver": {
+    "run_p8b_baseline.py": "80cecb5f3602e5b6dee766f6285cb4c82423d448dbb6586618aeb2538716a3db",
+    "run_b6_holdout.py": "fce9516b3f5f9ed21af2eeea250e991753769642425aa488902c99df384a256a",
+    "preflight_b6_holdout.py": "e4aa10b7a98bd8696995deb906b95913467ebf8d611447a8f5024074d930ecdd",
+    "b6_frozen_identities.py": "d5b6e6fff542b7ab87a1fc4a456ff009f740e4f717552ff44225c9b025dd3b3c",
+    "charter_artifact_sha256": "1b603925f44ff9f9a378080c409667d760c9064cfd19a98e499405fe8791e828",
+    "charter_input_hash": "34c888e4349bbdef7f786869740f0a38546087d2cc1a6b21bc1ed56fc4a443c0"
+  },
+  "holdout_entry_gates": {
+    "preflight_artifact": "benchmarks/results/agent-v0/b6-holdout/holdout-bootstrap-preflight-v1.json",
+    "preflight_input_hash": "e6dc4d0f77036df74edafa07ef0b0812312333104b191c8c76b89bdf58169213",
+    "preflight_all_passed": true,
+    "holdout_static_validation_ref": "benchmarks/results/agent-v0/b2-restart/b2-post-b55-final/holdout-static-validation-v1.json"
+  },
+  "population": {
+    "families": [
+      "t3-holdout-refund-fraud",
+      "t3-holdout-vpn-causal"
+    ],
+    "repetitions_per_family": 3,
+    "scheduled_runs": 6,
+    "acceptance_rule": "AgentV0AcceptanceProfileV2 (all six axes; truth floor = ALL families x >=2/3 reps at {success, success_with_limitations})"
+  },
+  "input_hash": "bec05939768d0504f9f07e7187651f631feeb90cdbd272561df798d218636620"
+}

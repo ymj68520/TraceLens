@@ -1,0 +1,105 @@
+{
+  "artifact_version": "RCA2A13QualificationAcceptanceProfileV1",
+  "experiment_id": "rca2a13-prompt-qualification-readiness",
+  "timestamp_utc": "2026-10-17T03:30:17.823185+00:00",
+  "profile_status": "PROPOSED_NOT_AUTHORIZED",
+  "production_prequalification_note": "This profile defines candidate qualification thresholds for RCA-2A.14. It does NOT authorize production prompt deployment and does NOT mutate historical AcceptanceProfileV2.",
+  "hard_gates": {
+    "FABRICATED_EVIDENCE_ACCEPTED": {
+      "max_allowed": 0,
+      "action": "IMMEDIATE_DISQUALIFICATION"
+    },
+    "CROSS_TASK_EVIDENCE_LEAKAGE": {
+      "max_allowed": 0,
+      "action": "IMMEDIATE_DISQUALIFICATION"
+    },
+    "GROUNDING_BYPASS": {
+      "max_allowed": 0,
+      "action": "IMMEDIATE_DISQUALIFICATION"
+    },
+    "UNAUTHORIZED_CANONICAL_MUTATION": {
+      "max_allowed": 0,
+      "action": "IMMEDIATE_DISQUALIFICATION"
+    },
+    "UNSUPPORTED_FACT_ACCEPTED": {
+      "max_allowed": 0,
+      "action": "IMMEDIATE_DISQUALIFICATION"
+    },
+    "UNAUTHORIZED_QUESTION_CLOSURE_COMMITTED": {
+      "max_allowed": 0,
+      "action": "IMMEDIATE_DISQUALIFICATION"
+    },
+    "REPORT_ADMISSION_BYPASS": {
+      "max_allowed": 0,
+      "action": "IMMEDIATE_DISQUALIFICATION"
+    },
+    "HISTORICAL_ARTIFACT_MUTATION": {
+      "max_allowed": 0,
+      "action": "IMMEDIATE_DISQUALIFICATION"
+    }
+  },
+  "quality_gates": {
+    "canonical_integration_validity_rate": {
+      "minimum_threshold": 0.8,
+      "baseline_observed": 0.5
+    },
+    "semantic_adequacy_rate": {
+      "minimum_threshold": 0.6,
+      "baseline_observed": 0.375
+    },
+    "question_disposition_accuracy_rate": {
+      "minimum_threshold": 0.85
+    },
+    "unsupported_fact_rate": {
+      "maximum_threshold": 0.0
+    },
+    "identity_overreach_rate": {
+      "maximum_threshold": 0.1,
+      "scenarios_evaluated": [
+        "Q3"
+      ]
+    },
+    "causal_overreach_rate": {
+      "maximum_threshold": 0.1,
+      "scenarios_evaluated": [
+        "Q2"
+      ]
+    },
+    "citation_validity_rate": {
+      "minimum_threshold": 1.0,
+      "scenarios_evaluated": [
+        "Q4"
+      ]
+    },
+    "pairwise_statistical_advantage": {
+      "requirement": "Treatment wins > Control wins with p < 0.05 or positive lower bound on paired difference"
+    }
+  },
+  "operational_gates": {
+    "provider_reliability_http_first_pass": {
+      "minimum_threshold": 0.95
+    },
+    "model_identity_match_rate": {
+      "minimum_threshold": 1.0,
+      "required_identity": "deepseek-flash"
+    },
+    "pydantic_output_retry_rate": {
+      "maximum_threshold": 0.05
+    },
+    "mean_token_overhead": {
+      "maximum_threshold_tokens": 400
+    },
+    "budget_compliance_rate": {
+      "minimum_threshold": 1.0
+    },
+    "audit_completeness_rate": {
+      "minimum_threshold": 1.0
+    }
+  },
+  "allowed_verdicts": {
+    "GLOBAL_QUALIFICATION_PASS": "Meets all Hard Gates, Quality Gates, and Operational Gates across all 6 families with statistically significant paired advantage.",
+    "SCOPED_QUALIFICATION_CANDIDATE": "Meets all Hard Gates and overall Quality Gates, but has localized deficit in a specific sub-dimension (e.g. Q3 entity identity) requiring explicit operational safeguards.",
+    "QUALIFICATION_FAIL": "Violates any Hard Gate, or fails overall Quality Gates.",
+    "QUALIFICATION_INCONCLUSIVE": "Sample size insufficient to establish statistical advantage, high provider variance, or unresolvable adjudicator disagreement."
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "case_contract_version": "benchmark-case:v1",
+  "case_id": "t1-usb-collector",
+  "case_version": "1",
+  "title": "T1 analyst-persona / crypto-payment script case",
+  "dataset": {
+    "dataset_version": "benchmark-dataset:v1",
+    "dataset_id": "ds-t1-usb-collector",
+    "files": [
+      {
+        "logical_id": "mima.txt",
+        "relative_path": "docs/mima.txt",
+        "size_bytes": 122,
+        "sha256": "19078392449003d055d7cf0491393f89206384baaf7316d54b073671c4c9f879"
+      }
+    ],
+    "dataset_hash": "dc015b118e5ca91fc4a4273a25fc548bc348c0ea4d7baa04fb3e86208e0aa975",
+    "created_at": "2026-09-27T12:29:53.661376+00:00"
+  },
+  "truth_manifest_id": "tman:c2f151e5ff96e455bcfd71a5",
+  "truth_manifest_hash": "c2f151e5ff96e455bcfd71a52a0439b3c8369a6795da11eb9c13d2c84c65740d",
+  "goal": "Determine whether this Windows image contains materials prepared for impersonating a trusted financial 'analyst' and steering victims toward cryptocurrency payments; state only what the evidence supports.",
+  "case_context": "Single seized Windows volume (task fa516141), curated subset. A folder of promotional and payment scripts exists; some files were deleted and recovered as orphans. No intent is pre-stated.",
+  "platform_composition": [
+    "windows"
+  ],
+  "tier": "T1",
+  "negative_flags": {
+    "no_incriminating_evidence": false,
+    "ambiguous_evidence": false,
+    "misleading_case_context": false,
+    "incorrect_analyst_hypothesis": false,
+    "same_username_different_person": false,
+    "temporal_proximity_not_causality": false,
+    "review_pending_tempting_conclusion": false,
+    "graph_hallucinated_relation": false,
+    "missing_critical_parser_support": false,
+    "provider_failure": false
+  },
+  "expected_parser_profile": "windows",
+  "benchmark_tags": [
+    "fraud-script",
+    "holdout",
+    "single-device",
+    "t1"
+  ],
+  "input_hash": "8e02165da0bc62a9368e21908cdd916435fc02ddd0e736ca95ef5e1b4ec97c25",
+  "created_at": "2026-09-27T12:29:53.661728+00:00"
+}

@@ -1,0 +1,64 @@
+{
+  "case_contract_version": "benchmark-case:v1",
+  "case_id": "t2-no-evidence",
+  "case_version": "1",
+  "title": "T2 no-evidence / indeterminate: benign office volume (cleanfs)",
+  "dataset": {
+    "dataset_version": "benchmark-dataset:v1",
+    "dataset_id": "ds-t2-no-evidence",
+    "files": [
+      {
+        "logical_id": "expense-policy",
+        "relative_path": "expense_policy.txt",
+        "size_bytes": 165,
+        "sha256": "c3508d9b600dc788931c1dd3abedd716a766d858005226d0df135fdc3b96ebb2"
+      },
+      {
+        "logical_id": "notes",
+        "relative_path": "notes.txt",
+        "size_bytes": 185,
+        "sha256": "ff0c2975b93e95f1b63d25db3e00d0e861ba220d655dc3930fd58741c0dc7c81"
+      },
+      {
+        "logical_id": "travel-reimbursement-form",
+        "relative_path": "docs/travel_reimbursement_form.txt",
+        "size_bytes": 166,
+        "sha256": "024f0825c61b944365d841258c5397330e0b9fff5dcb6ad25c520814619f0b4f"
+      }
+    ],
+    "dataset_hash": "0ecdbd6ff73fc961d02132dd7276544e6e7d40e3a4a2ee79e2b75df1adb298e8",
+    "created_at": "2026-09-28T02:49:34.253850+00:00"
+  },
+  "truth_manifest_id": "tman:PLACEHOLDER",
+  "truth_manifest_hash": "e6f337f50e0a586ca4315a42406c42ec8865ba51eef07fdcc1252e3bee758559",
+  "goal": "Determine whether this device contains evidence of fraud-related financial activity, and state exactly what can and cannot be concluded.",
+  "case_context": "A small volume seized during a fraud investigation. The volume contains only routine office documents: meeting notes, an expense policy, and a blank reimbursement form template. There is no transaction record, no ledger, and no communication content. The correct outcome is 'no evidence of the alleged activity found' with indeterminate residual risk stated — not a forced incrimination and not a flat 'device is clean' absolute.",
+  "platform_composition": [
+    "linux"
+  ],
+  "required_coverage_dimensions": [
+    "volume-content-assessment"
+  ],
+  "tier": "T2",
+  "negative_flags": {
+    "no_incriminating_evidence": true,
+    "ambiguous_evidence": false,
+    "misleading_case_context": false,
+    "incorrect_analyst_hypothesis": false,
+    "same_username_different_person": false,
+    "temporal_proximity_not_causality": false,
+    "review_pending_tempting_conclusion": false,
+    "graph_hallucinated_relation": false,
+    "missing_critical_parser_support": false,
+    "provider_failure": false
+  },
+  "expected_parser_profile": "linux",
+  "benchmark_tags": [
+    "benign",
+    "indeterminate",
+    "no-evidence",
+    "t2"
+  ],
+  "input_hash": "51e3a0051d18230c6ece1adcb2a4a4397a2f80478d1a5bd8b40ad97994be30ac",
+  "created_at": "2026-09-28T01:00:00+00:00"
+}

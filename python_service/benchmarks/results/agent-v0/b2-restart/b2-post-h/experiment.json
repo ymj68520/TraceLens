@@ -1,0 +1,57 @@
+{
+  "experiment_id": "bexp-agent-v0-sensenova-6.8-flash-lite",
+  "code_commit": "9e600f42d854d0a5dc43e574191640247357bd97",
+  "production_runtime_commit": "9e600f42d854d0a5dc43e574191640247357bd97",
+  "pre_calibration_profile_hash": "6dd38a0e0f68704fb881e7e1f78031d58dc54368b6188826a3262660d86b218c",
+  "runtime_baseline_file": "benchmarks/profiles/precalibration-runtime-baseline.v1.json",
+  "model_config_file": "benchmarks/results/agent-v0/b2-restart/sensenova-6.8-flash-lite.model-config.json",
+  "corpus_id": "corpus-agent-v0-calibration",
+  "corpus_hash": "52e70af32e1af861c85e03d03635147d528c39926d917af197f46dbf04170dc7",
+  "repeat_policy": "3 fresh repeats per calibration case (Flash-class model; expand to 5 only on high variance)",
+  "cache_policy": "cold",
+  "graph_mode": "none",
+  "report_mode": "disabled",
+  "started_at": "2026-09-30T12:25:41+00:00",
+  "fresh_task_ids": {
+    "t1-fraud-script-usb": {
+      "repeat0": "1a1e7946-d94f-4cab-96c7-b03032d69a1a",
+      "repeat1": "a1dc8710-ce69-4b26-a99e-06a16e64c9c6",
+      "repeat2": "ba78e725-bdaf-424e-9a79-6e463975af67"
+    },
+    "t2-cross-source-correlation": {
+      "repeat0": "567a9fcb-6903-4d26-9f98-93bb4c4029fc",
+      "repeat1": "75276d60-a875-4ccc-a1b6-3a4704382b62",
+      "repeat2": "970e0fa3-e8b5-422a-9c43-065b2c7c7b29"
+    },
+    "t2-identity-trap": {
+      "repeat0": "288848a1-0a78-493f-8cc9-b10a615759f3",
+      "repeat1": "9377f945-6c12-496a-80e4-c7f35a78b9c6",
+      "repeat2": "b2d154dd-90ca-45d9-a692-804c683db046"
+    },
+    "t2-misleading-note": {
+      "repeat0": "86b3ef58-8705-43d9-81df-a12a7814bf0e",
+      "repeat1": "cc996958-8003-44e0-bc36-5552d9fc8d3b",
+      "repeat2": "36dd3dd3-1720-414e-ae74-e4446fa1df6f"
+    },
+    "t2-no-evidence": {
+      "repeat0": "a47bd361-60f8-419f-8e67-2ad6290f152e",
+      "repeat1": "bb03bfae-e157-4992-a6ea-7ba5b100ff8b",
+      "repeat2": "125d10ea-c20c-485c-85c6-1ec59122ef90"
+    },
+    "t2-report-citation": {
+      "repeat0": "4fc5d536-a7ba-4291-828c-9e599fbe39dc",
+      "repeat1": "4dd16226-f218-4884-b89a-745acc79c3a8",
+      "repeat2": "006a8d44-34d8-4f78-a56b-4cf6dc5b330e"
+    },
+    "t2-temporal-trap": {
+      "repeat0": "f21b9ac0-4ecc-4e3c-be12-a416f029fa3c",
+      "repeat1": "a0845ec4-e13b-4f69-8e37-9e0e7202c1ad",
+      "repeat2": "dd8ce898-7a16-4434-b9f0-94fc7afaebcf"
+    },
+    "t2-verification-temptation": {
+      "repeat0": "44b6bcf1-b916-48e6-9086-10868568f47e",
+      "repeat1": "1c4751a6-9789-4ca9-9a1f-2d2487520e59",
+      "repeat2": "cc3f7e88-9140-46a1-b10e-bc87237bd0e7"
+    }
+  }
+}

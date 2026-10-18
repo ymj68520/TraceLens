@@ -1,0 +1,177 @@
+{
+  "report_version": "consolidated-v5-baseline:v1",
+  "production_runtime_commit": "946f325eeb6add1072466aed96e5e2e7e38748ed",
+  "model": {
+    "provider": "hcnsec-cloud",
+    "model_id": "MiMo-V2.6-Flash"
+  },
+  "corpus_v5": {
+    "corpus_id": "corpus-agent-v0-calibration",
+    "version": "5",
+    "hash": "52e70af32e1af861c85e03d03635147d528c39926d917af197f46dbf04170dc7",
+    "calibration_cases": [
+      "t1-fraud-script-usb",
+      "t2-cross-source-correlation",
+      "t2-identity-trap",
+      "t2-misleading-note",
+      "t2-no-evidence",
+      "t2-report-citation",
+      "t2-temporal-trap",
+      "t2-verification-temptation"
+    ],
+    "holdout_sealed": [
+      "t1-usb-collector",
+      "t3-holdout-refund-fraud",
+      "t3-holdout-vpn-causal"
+    ]
+  },
+  "run_inventory": {
+    "reused_v4_run_ids": [
+      "brun:afe79967d77a244d6e163039",
+      "brun:e240e8238d8e0a983ed116dc",
+      "brun:bb5a208d5c73a743ac163d21",
+      "brun:f25fddad90f7fdfed9734271",
+      "brun:a0ae9ea206d2dd9ea7d22e0e",
+      "brun:702cde6a2812d215b2cb2ad5",
+      "brun:e061d298239c90ea1393264e",
+      "brun:db3303b6e2befc844ab38b6f",
+      "brun:b73222c6ca3a96511ef9f2c9",
+      "brun:3643e83d7074d0ddd1808757",
+      "brun:6d2c1895915482c088bd49e7",
+      "brun:bd49fcba0d482cd8081acc41"
+    ],
+    "new_v5_run_ids": [
+      "brun:7276624be00c150bf1cb2d50",
+      "brun:bb9bad3a7eb68293b28d4396",
+      "brun:d61c632a65db19b000b00818",
+      "brun:de529cfe0960ef1d29d410c8",
+      "brun:cba589d25b48c97c4e64604d",
+      "brun:56209ac11752d38c02175a5f",
+      "brun:d8e35b3a0e245bfb8c930860",
+      "brun:ce823810216167d3a7b2a3e3",
+      "brun:50a9ea3ce9c625560479cf6d",
+      "brun:e9196274aced37b899859987",
+      "brun:13b2ee7768ceb07009e680ef",
+      "brun:dce64cbf94f74c6d474264aa"
+    ],
+    "total": 24
+  },
+  "aggregate": {
+    "finalization_pass_rate": 0.292,
+    "case_success_rate": 0.0,
+    "case_outcome_distribution": {
+      "incomplete": 24
+    },
+    "supervisor_integration_invalid_count_level": "17/24",
+    "tokens": {
+      "input": 461522,
+      "output": 13682
+    },
+    "hard_gate_violations": 0
+  },
+  "per_case": {
+    "t1-fraud-script-usb": {
+      "runs": {
+        "incomplete": 3
+      },
+      "finalization_pass": 1,
+      "discovered_all_repeats": [
+        7,
+        7,
+        7
+      ]
+    },
+    "t2-identity-trap": {
+      "runs": {
+        "incomplete": 3
+      },
+      "finalization_pass": 1,
+      "discovered_all_repeats": [
+        0,
+        4,
+        4
+      ]
+    },
+    "t2-no-evidence": {
+      "runs": {
+        "incomplete": 3
+      },
+      "finalization_pass": 0,
+      "discovered_all_repeats": [
+        4,
+        4,
+        4
+      ]
+    },
+    "t2-temporal-trap": {
+      "runs": {
+        "incomplete": 3
+      },
+      "finalization_pass": 1,
+      "discovered_all_repeats": [
+        4,
+        4,
+        4
+      ]
+    },
+    "t2-misleading-note": {
+      "runs": {
+        "incomplete": 3
+      },
+      "finalization_pass": 1,
+      "discovered_all_repeats": [
+        4,
+        0,
+        4
+      ]
+    },
+    "t2-cross-source-correlation": {
+      "runs": {
+        "incomplete": 3
+      },
+      "finalization_pass": 0,
+      "discovered_all_repeats": [
+        3,
+        3,
+        3
+      ]
+    },
+    "t2-verification-temptation": {
+      "runs": {
+        "incomplete": 3
+      },
+      "finalization_pass": 1,
+      "discovered_all_repeats": [
+        3,
+        3,
+        0
+      ]
+    },
+    "t2-report-citation": {
+      "runs": {
+        "incomplete": 3
+      },
+      "finalization_pass": 2,
+      "discovered_all_repeats": [
+        5,
+        0,
+        0
+      ]
+    }
+  },
+  "path_exercise_status": {
+    "correlation": "NOT TRIGGERED in 24 runs (0 correlation candidates): the loop never reached a state where the supervisor proposed delegate_correlation because INTEGRATE fails upstream — §15 coverage/routing observation",
+    "semantic_verifier": "RUNNER INJECTED (harness wiring to the production FinalSemanticReviewRunner) but NOT EXECUTED: no supervisor-proposed finalization with content occurred; driver-requested finalization carries best_effort+unavailable by benchmark contract — §15 observation",
+    "report_runtime": "NOT WIRED into the agent benchmark flow (P7 report runtime is a downstream service); C9 measures citation discipline at the investigation-output level — §15 observation",
+    "graph": "ablation NOT_SEPARABLY_RUNNABLE; environment AVAILABLE (Neo4j reachable); utility INSUFFICIENT_MEASURED_DATA (§16)"
+  },
+  "model_capability_assessment": {
+    "model_id": "MiMo-V2.6-Flash",
+    "verdict": "MODEL_CAPABILITY_LIMIT for Agent Supervisor integration",
+    "evidence": "17/24 runs fail at INTEGRATE/proposal stage; reason codes are semantic-contract failures (§33 class); zero self-corrections observed; evidence discovery itself succeeds (critical recall 100% on critical-bearing cases)",
+    "consequence": "per §25/§26: legal qualification result; Agent v0 with this model is PROVISIONAL/unsupported for the validated profile unless a ModelQualificationExperiment selects a capable model (§27/§28, calibration corpus only, §29 forbids holdout-based selection)"
+  },
+  "measurement_gap": "v5 new-case run stores were deleted by §18 post_snapshot_cleanup before reason-level trajectory extraction; v5 runs carry count-level integration-invalid data only. Driver fixed for future rounds: extract trajectory_digest.json BEFORE cleanup (pre-cleanup hook).",
+  "benchmark_task_cleanup": "12/12 v5 runs: source_task_deleted_after_snapshot=true with evaluate-only hash verification; §20 never deletes incomplete runs",
+  "holdout": "SEALED / NOT RUN (§42)"
+}

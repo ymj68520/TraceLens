@@ -1,0 +1,205 @@
+{
+  "artifact_version": "RCA2A13PairedResultVerificationV1",
+  "experiment_id": "rca2a13-prompt-qualification-readiness",
+  "timestamp_utc": "2026-10-17T03:28:44.490973+00:00",
+  "reconstructed_pairs": [
+    {
+      "pair_id": "t2-identity-trap_A",
+      "scenario_id": "t2-identity-trap",
+      "pair_label": "A",
+      "control_seat": 5,
+      "treatment_seat": 6,
+      "control_canonical_valid": true,
+      "treatment_canonical_valid": true,
+      "canonical_outcome": "BOTH_VALID",
+      "control_semantic_adequate": true,
+      "treatment_semantic_adequate": false,
+      "semantic_outcome": "CONTROL_SEMANTIC_WIN",
+      "control_information_value": "POSITIVE_DISCOVERY",
+      "treatment_information_value": "DEGRADED"
+    },
+    {
+      "pair_id": "t2-identity-trap_B",
+      "scenario_id": "t2-identity-trap",
+      "pair_label": "B",
+      "control_seat": 14,
+      "treatment_seat": 13,
+      "control_canonical_valid": true,
+      "treatment_canonical_valid": true,
+      "canonical_outcome": "BOTH_VALID",
+      "control_semantic_adequate": false,
+      "treatment_semantic_adequate": false,
+      "semantic_outcome": "BOTH_SEMANTICALLY_INADEQUATE",
+      "control_information_value": "DEGRADED",
+      "treatment_information_value": "DEGRADED"
+    },
+    {
+      "pair_id": "t2-no-evidence_A",
+      "scenario_id": "t2-no-evidence",
+      "pair_label": "A",
+      "control_seat": 1,
+      "treatment_seat": 2,
+      "control_canonical_valid": false,
+      "treatment_canonical_valid": true,
+      "canonical_outcome": "TREATMENT_WIN",
+      "control_semantic_adequate": false,
+      "treatment_semantic_adequate": true,
+      "semantic_outcome": "TREATMENT_SEMANTIC_WIN",
+      "control_information_value": "DEGRADED",
+      "treatment_information_value": "INFORMATION_NEUTRAL"
+    },
+    {
+      "pair_id": "t2-no-evidence_B",
+      "scenario_id": "t2-no-evidence",
+      "pair_label": "B",
+      "control_seat": 10,
+      "treatment_seat": 9,
+      "control_canonical_valid": false,
+      "treatment_canonical_valid": true,
+      "canonical_outcome": "TREATMENT_WIN",
+      "control_semantic_adequate": false,
+      "treatment_semantic_adequate": true,
+      "semantic_outcome": "TREATMENT_SEMANTIC_WIN",
+      "control_information_value": "DEGRADED",
+      "treatment_information_value": "INFORMATION_NEUTRAL"
+    },
+    {
+      "pair_id": "t2-report-citation_A",
+      "scenario_id": "t2-report-citation",
+      "pair_label": "A",
+      "control_seat": 7,
+      "treatment_seat": 8,
+      "control_canonical_valid": false,
+      "treatment_canonical_valid": true,
+      "canonical_outcome": "TREATMENT_WIN",
+      "control_semantic_adequate": false,
+      "treatment_semantic_adequate": true,
+      "semantic_outcome": "TREATMENT_SEMANTIC_WIN",
+      "control_information_value": "DEGRADED",
+      "treatment_information_value": "POSITIVE_DISCOVERY"
+    },
+    {
+      "pair_id": "t2-report-citation_B",
+      "scenario_id": "t2-report-citation",
+      "pair_label": "B",
+      "control_seat": 16,
+      "treatment_seat": 15,
+      "control_canonical_valid": true,
+      "treatment_canonical_valid": false,
+      "canonical_outcome": "CONTROL_WIN",
+      "control_semantic_adequate": true,
+      "treatment_semantic_adequate": false,
+      "semantic_outcome": "CONTROL_SEMANTIC_WIN",
+      "control_information_value": "POSITIVE_DISCOVERY",
+      "treatment_information_value": "DEGRADED"
+    },
+    {
+      "pair_id": "t2-temporal-trap_A",
+      "scenario_id": "t2-temporal-trap",
+      "pair_label": "A",
+      "control_seat": 3,
+      "treatment_seat": 4,
+      "control_canonical_valid": false,
+      "treatment_canonical_valid": true,
+      "canonical_outcome": "TREATMENT_WIN",
+      "control_semantic_adequate": false,
+      "treatment_semantic_adequate": true,
+      "semantic_outcome": "TREATMENT_SEMANTIC_WIN",
+      "control_information_value": "DEGRADED",
+      "treatment_information_value": "POSITIVE_DISCOVERY"
+    },
+    {
+      "pair_id": "t2-temporal-trap_B",
+      "scenario_id": "t2-temporal-trap",
+      "pair_label": "B",
+      "control_seat": 12,
+      "treatment_seat": 11,
+      "control_canonical_valid": true,
+      "treatment_canonical_valid": true,
+      "canonical_outcome": "BOTH_VALID",
+      "control_semantic_adequate": true,
+      "treatment_semantic_adequate": true,
+      "semantic_outcome": "BOTH_SEMANTICALLY_ADEQUATE",
+      "control_information_value": "POSITIVE_DISCOVERY",
+      "treatment_information_value": "POSITIVE_DISCOVERY"
+    }
+  ],
+  "summary_metrics": {
+    "total_pairs": 8,
+    "canonical_integration": {
+      "control_valid_count": 4,
+      "control_valid_rate": 0.5,
+      "treatment_valid_count": 7,
+      "treatment_valid_rate": 0.875,
+      "absolute_advantage_pp": 37.5,
+      "treatment_wins": 4,
+      "control_wins": 1,
+      "both_valid": 3,
+      "both_invalid": 0,
+      "mcnemar_exact_p_value": 0.375,
+      "statistically_significant_at_05": false
+    },
+    "semantic_adequacy": {
+      "control_adequate_count": 3,
+      "control_adequate_rate": 0.375,
+      "treatment_adequate_count": 5,
+      "treatment_adequate_rate": 0.625,
+      "absolute_advantage_pp": 25.0,
+      "treatment_wins": 4,
+      "control_wins": 2,
+      "both_adequate": 1,
+      "both_inadequate": 1,
+      "mcnemar_exact_p_value": 0.6875,
+      "statistically_significant_at_05": false
+    }
+  },
+  "mandatory_checks": {
+    "check_01_unique_durable_claims": {
+      "pass": true,
+      "evidence": "16/16 unique durable claims identified across all executed seats"
+    },
+    "check_02_fixture_hash_arm_parity": {
+      "pass": true,
+      "evidence": "G14_FIXTURE_PARITY_PASS confirmed across all 8 pairs in precall gates"
+    },
+    "check_03_frozen_guidance_diff_only": {
+      "pass": true,
+      "evidence": "Token usage delta matches GUIDANCE_TEXT static length (+312.0 tokens), prompt instructions suffix verified"
+    },
+    "check_04_structured_output_schema_identical": {
+      "pass": true,
+      "evidence": "All 16 seats conformed to SupervisorIntegrationDecisionV2 schema hash a214ec4f5e81fcbb"
+    },
+    "check_05_canonical_validity_from_genuine_checks": {
+      "pass": true,
+      "evidence": "Canonical validity strictly derived from genuine StateTransitionPolicy and EvidenceResolver validation"
+    },
+    "check_06_l4_l5_consistent_with_evidence_and_diff": {
+      "pass": true,
+      "evidence": "L4 and L5 evaluated via arm-blind semantic oracle against frozen ground truth manifests"
+    },
+    "check_07_no_missing_duplicated_or_replayed_seats": {
+      "pass": true,
+      "evidence": "All seats 1 through 16 executed exactly once in balanced sequence"
+    },
+    "check_08_stoppolicy_v2_active_and_enforced": {
+      "pass": true,
+      "evidence": "StopPolicyV2 active; 0 safety containment aborts triggered; global abort reason null"
+    },
+    "check_09_zero_unauthorized_canonical_mutations": {
+      "pass": true,
+      "evidence": "0 unauthorized promotions committed; invalid decisions blocked at scratch boundary"
+    },
+    "check_10_production_database_certified_immutable": {
+      "pass": true,
+      "evidence": "Evidence integrity report certifies 0 production DB mutations"
+    }
+  },
+  "statistical_interpretation": {
+    "status": "EXPLORATORY_OBSERVATION_ONLY",
+    "canonical_advantage_interpretation": "Observed +37.5pp advantage (4 wins vs 1 win, exact p=0.375) reflects strong exploratory directional signal but lacks statistical power to reject null hypothesis at alpha=0.05 due to small sample (N=8 pairs).",
+    "semantic_advantage_interpretation": "Observed +25.0pp advantage (4 wins vs 2 wins, exact p=0.6875) is directionally positive but similarly underpowered.",
+    "sample_size_limitation": "N=8 pairs is an exploratory sample, not a production qualification standard. Power to detect a +30pp effect with alpha=0.05 and beta=0.20 requires approximately 36 to 48 pairs.",
+    "production_qualification_implication": "DOES_NOT_CONSTITUTE_PRODUCTION_QUALIFICATION"
+  }
+}

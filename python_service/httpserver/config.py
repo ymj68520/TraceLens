@@ -136,6 +136,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        populate_by_name=True,
     )
     
     # Server Settings
@@ -169,6 +170,33 @@ class Settings(BaseSettings):
     llm_endpoint: str = Field(default="/v1/chat/completions", alias="LLM_ENDPOINT")
     llm_api_key: str = Field(default="", alias="LLM_API_KEY")
 
+    # Provider selection (add-provider track): empty = legacy single-provider
+    # path (LLM_TEXT_BASE_URL + LLM_ENDPOINT + LLM_API_KEY). "openrouter"
+    # switches the chat adapter to the OpenRouter OpenAI-compatible endpoint;
+    # its credential lives ONLY in OPENROUTER_API_KEY (never in code or
+    # tracked files) and its base_url defaults to the frozen external
+    # contract. Selecting a provider changes nothing else in production
+    # semantics — same adapter, same profile, same settings surface.
+    llm_provider: str = Field(default="", alias="LLM_PROVIDER")
+
+    @field_validator("llm_provider", mode="before")
+    @classmethod
+    def normalize_llm_provider(cls, value: str) -> str:
+        provider = str(value or "").strip().lower()
+        if provider and provider != "openrouter":
+            raise ValueError(f"LLM_PROVIDER must be 'openrouter' or empty, got {value!r}")
+        return provider
+
+    openrouter_api_key: str = Field(default="", alias="OPENROUTER_API_KEY")
+    openrouter_base_url: str = Field(
+        default="https://openrouter.ai/api/v1", alias="OPENROUTER_BASE_URL"
+    )
+    # Optional OpenRouter attribution headers (not required to run); empty
+    # means "do not send". Never hardcode site values here.
+    openrouter_http_referer: str = Field(default="", alias="OPENROUTER_HTTP_REFERER")
+    openrouter_x_title: str = Field(default="", alias="OPENROUTER_X_TITLE")
+
+
     @field_validator("llm_endpoint", mode="before")
     @classmethod
     def normalize_llm_endpoint(cls, value: str) -> str:
@@ -197,6 +225,65 @@ class Settings(BaseSettings):
         if not self.llm_thinking_mode:
             return {}
         return {"thinking": {"type": self.llm_thinking_mode}}
+
+    # A1 supervisor/model interface contract version: "v1" = canonical echo
+    # contract (historical P8B baseline semantics); "v2" = handle-based
+    # trusted reference binding contract.  A1 R2 froze v2 as the
+    # architecture contract (V2_FREEZE_RECOMMENDED, 24-run series: P/H/S/G
+    # all zero, integration reproducible 2/3 reps on two independent cases)
+    # and flipped the production default — an explicit freeze decision, not
+    # an assumption.  Only the model-facing interface changes; the
+    # deterministic gates (IntegrationDecisionValidator,
+    # StateTransitionPolicy, FinalizationGate) are identical for both.
+    agent_supervisor_contract_version: str = Field(
+        default="v2", alias="AGENT_SUPERVISOR_CONTRACT_VERSION"
+    )
+
+    @field_validator("agent_supervisor_contract_version", mode="before")
+    @classmethod
+    def normalize_agent_supervisor_contract_version(cls, value: str) -> str:
+        version = str(value or "").strip().lower()
+        if version not in {"v1", "v2"}:
+            raise ValueError(
+                "AGENT_SUPERVISOR_CONTRACT_VERSION must be 'v1' or 'v2', "
+                f"got {value!r}"
+            )
+        return version
+
+    # RCA-2A.16: explicit feature gate for executing Agent v0 cycles via HTTP.
+    # Default False (disabled) — execution requires explicit opt-in configuration.
+    agent_execution_enabled: bool = Field(
+        default=False, alias="AGENT_EXECUTION_ENABLED"
+    )
+
+    # RCA-2A.16: explicit developer-only opt-in for experimental Vocabulary
+    # Guidance V1 in Supervisor instructions. Default False (disabled) —
+    # production prompt is strictly unmodified when False.
+    agent_experimental_guidance_enabled: bool = Field(
+        default=False, alias="AGENT_EXPERIMENTAL_GUIDANCE_ENABLED"
+    )
+
+    # RCA-2A.22: Local development review mutation security gate.
+    # When True (default), POST /agent/review is restricted to trusted local
+    # callers (127.0.0.1, ::1, localhost, testclient) preventing unauthorized
+    # remote network callers from mutating review decisions in single-user mode.
+    agent_review_local_only: bool = Field(
+        default=True, alias="AGENT_REVIEW_LOCAL_ONLY"
+    )
+
+
+    # RCA-1.3: optional structured failure diagnostics. DEFAULT OFF — when
+    # disabled every agent failure path is byte-identical to pre-RCA-1
+    # behaviour. When enabled, sanitized failure entries (stage, normalized
+    # code, exception class chain, validation-error type/location, schema
+    # hash) are appended as JSONL; prompts, responses, evidence bodies,
+    # reasoning content and validation input values are never recorded.
+    llm_failure_diagnostics: bool = Field(
+        default=False, alias="LLM_FAILURE_DIAGNOSTICS"
+    )
+    llm_failure_diagnostics_path: str = Field(
+        default="", alias="LLM_FAILURE_DIAGNOSTICS_PATH"
+    )
 
     llm_text_base_url: str = Field(default="http://192.168.31.170:1234", alias="LLM_TEXT_BASE_URL")
     llm_text_model: str = Field(default="openai/gpt-oss-20b", alias="LLM_TEXT_MODEL")

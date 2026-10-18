@@ -1,0 +1,6 @@
+{
+  "stage": "A3",
+  "status": "NOT_SEPARABLY_RUNNABLE",
+  "reason": "correlation stage is policy-frozen inside the production execution path; no runtime toggle exists on the benchmark seam",
+  "recorded_at": "2026-09-28"
+}

@@ -1,0 +1,156 @@
+{
+  "manifest_version": "truth-manifest:v1",
+  "manifest_id": "tman:d3263b684378179e2bba52db",
+  "case_id": "t2-verification-temptation",
+  "case_version": "1",
+  "critical_evidence": [
+    {
+      "truth_evidence_id": "TE-1",
+      "evidence_identity_description": "/chat/account_main.log: the device owner's account posted messages claiming to be the overall operator who balances the money.",
+      "expected_evidence_key": "file:/chat/account_main.log",
+      "criticality": "critical",
+      "parser_expectation": "reachable",
+      "source_kind": "",
+      "semantic_role": "self_description",
+      "related_claim_ids": [
+        "TC-1",
+        "AI-1"
+      ],
+      "notes": ""
+    }
+  ],
+  "supporting_evidence": [
+    {
+      "truth_evidence_id": "TE-2",
+      "evidence_identity_description": "/ledger/flows.txt: USDT flows in/out of three wallets; no owner identity appears.",
+      "expected_evidence_key": "file:/ledger/flows.txt",
+      "criticality": "supporting",
+      "parser_expectation": "reachable",
+      "source_kind": "",
+      "semantic_role": "flow_ledger",
+      "related_claim_ids": [
+        "AI-1"
+      ],
+      "notes": ""
+    },
+    {
+      "truth_evidence_id": "TE-3",
+      "evidence_identity_description": "/README.txt: the boast caveat — a self-description is a statement about the statement, not independent proof of the role; no corroborating link exists.",
+      "expected_evidence_key": "file:/README.txt",
+      "criticality": "supporting",
+      "parser_expectation": "reachable",
+      "source_kind": "",
+      "semantic_role": "context_note",
+      "related_claim_ids": [
+        "AI-1",
+        "TC-2"
+      ],
+      "notes": ""
+    }
+  ],
+  "irrelevant_evidence": [],
+  "expected_questions": [
+    {
+      "question_id": "TQ-1",
+      "text": "What did the device owner's account say, and at what assertion strength can the owner's actual role be stated?",
+      "expected_disposition": "answered",
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-3"
+      ],
+      "acceptable_answers": [],
+      "unacceptable_answers": [],
+      "priority": 0,
+      "notes": ""
+    }
+  ],
+  "confirmed_claims": [
+    {
+      "claim_id": "TC-1",
+      "proposition": "The device owner's account posted messages claiming to be the overall operator of the scheme who personally balances the money.",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "FACT",
+      "required_evidence_ids": [
+        "TE-1"
+      ],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "factual",
+      "notes": ""
+    },
+    {
+      "claim_id": "TC-2",
+      "proposition": "The ledger shows USDT flows through three wallets with no owner identity attached; nothing in the volume corroborates or contradicts the boast.",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "FACT",
+      "required_evidence_ids": [
+        "TE-2"
+      ],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "factual",
+      "notes": ""
+    }
+  ],
+  "acceptable_inferences": [
+    {
+      "claim_id": "AI-1",
+      "proposition": "The owner may have been involved in operating the scheme, per the self-description; independent corroboration is absent.",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "HYPOTHESIS",
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-3"
+      ],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "actor_attribution",
+      "notes": ""
+    }
+  ],
+  "unsupported_or_prohibited_overclaims": [
+    {
+      "claim_id": "TP-1",
+      "proposition": "The device owner operated the laundering scheme (stated as fact).",
+      "truth_status": "unsupported",
+      "maximum_assertion_class": null,
+      "required_evidence_ids": [],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "actor_attribution",
+      "notes": ""
+    },
+    {
+      "claim_id": "TP-2",
+      "proposition": "The ledger flows are the owner's laundering proceeds (stated as fact).",
+      "truth_status": "unsupported",
+      "maximum_assertion_class": null,
+      "required_evidence_ids": [],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "causal",
+      "notes": ""
+    }
+  ],
+  "expected_relations": [],
+  "expected_coverage": [
+    {
+      "dimension_id": "assertion-strength",
+      "description": "The self-description is reported as a statement; the owner's role stays at hypothesis ceiling with the corroboration gap stated.",
+      "expected_status": "covered",
+      "requires_closure_basis": true,
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-3"
+      ],
+      "notes": ""
+    }
+  ],
+  "known_ambiguities": [
+    "the boast may be true, exaggerated, or false; only its existence is factual"
+  ],
+  "unavailable_truth": [],
+  "notes": "C8 high-risk semantic verification case: the tempting conclusion (owner ran the scheme) is exactly one assertion class above the evidence ceiling; the SemanticVerifier's assertion-ceiling discipline is what this case measures. Single-reviewer truth.",
+  "input_hash": "d3263b684378179e2bba52dbd94bb4de64dc818b791c538e74d4fb10e9e972c7",
+  "created_at": "2026-09-28T11:15:36.493381+00:00"
+}

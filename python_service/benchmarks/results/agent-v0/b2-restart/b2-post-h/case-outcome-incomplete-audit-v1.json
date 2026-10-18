@@ -1,0 +1,829 @@
+{
+  "artifact_version": "CaseOutcomeIncompleteAuditV1",
+  "round": "p8b-b55-acceptance-semantics-closure",
+  "created_at": "2026-09-30T14:03:33+00:00",
+  "scope": "23 incomplete + 1 unavailable runs of b2-post-h",
+  "root_cause_totals": {
+    "D_MODEL_SEMANTIC_FAILURE": 21,
+    "A_BENCHMARK_SEMANTICS_DEFECT": 30,
+    "B_BENCHMARK_HARNESS_DEFECT": 29
+  },
+  "runs": [
+    {
+      "case_id": "t1-fraud-script-usb",
+      "repeat": "repeat0",
+      "outcome": "incomplete",
+      "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+      "failed_requirements": [
+        {
+          "requirement": "integrated semantic output",
+          "expected": ">=1 integrated delegation or findings",
+          "observed": "integrated_delegations=0 findings=0",
+          "requirement_source": "evaluator §14/§40",
+          "root_cause": "D_MODEL_SEMANTIC_FAILURE",
+          "basis": "specialist delegation failed output validation before any semantic output existed (7 runs) or the run never completed (provider 429) — genuine model/infra result, correctly incomplete; not fixable by benchmark revision."
+        },
+        {
+          "requirement": "answered-type terminal question",
+          "expected": "truth expected_disposition=answered; production terminal = QuestionStatus=answered with a recorded QuestionDisposition",
+          "observed": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=1",
+          "requirement_source": "TruthManifest expected_questions + evaluator §4.3",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "evaluator counts terminal rows with disposition=='answered', but the frozen production contract expresses answered as QuestionStatus=answered with QuestionDisposition in {supported, not_supported, inconclusive, unavailable, not_applicable} — the literal disposition 'answered' does not exist in the production enum, so the requirement is unsatisfiable by any conforming run. Truth/evaluator vocabulary defect, not a model or runtime defect."
+        },
+        {
+          "requirement": "unresolved-type terminal disposition for the truth's distinct sub-question",
+          "expected": "a terminal row in {unresolved, blocked, deferred} or an answered row with disposition {not_supported, inconclusive}",
+          "observed": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=1",
+          "requirement_source": "TruthManifest expected_questions (notes mark unresolved as the correct terminal)",
+          "root_cause": "D_MODEL_SEMANTIC_FAILURE",
+          "basis": "truth expects an unresolved-type terminal for a distinct sub-question; the production contract can express it (QuestionStatus=unresolved or answered with disposition not_supported/inconclusive, and create_question is available), but the model answered the compound seed question without splitting the unresolved sub-question. Satisfiable, not done — retained as a genuine quality result."
+        },
+        {
+          "requirement": "any terminal question disposition",
+          "observed": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=1",
+          "requirement_source": "evaluator §4.3",
+          "root_cause": "D_MODEL_SEMANTIC_FAILURE",
+          "basis": "specialist delegation failed output validation before any semantic output existed (7 runs) or the run never completed (provider 429) — genuine model/infra result, correctly incomplete; not fixable by benchmark revision."
+        },
+        {
+          "requirement": "required coverage dimension fraud-operation-materials terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "prohibited overclaim observability",
+          "expected": "integrated claim/finding texts exposed on the snapshot findings channel",
+          "observed": "no findings produced; overclaim behavior unobserved",
+          "requirement_source": "evaluator §4.5",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "overclaim is measured over snapshot.findings, a channel the frozen production flow never populates in benchmark runs (P5 findings require the unexercised verifier path; integrated semantics live in claim candidates). Component structurally unobservable — evaluator/snapshot shape mismatch, not model behaviour. Digest v4 carries the integrated claim texts for a v2 evaluator."
+        }
+      ]
+    },
+    {
+      "case_id": "t1-fraud-script-usb",
+      "repeat": "repeat1",
+      "outcome": "incomplete",
+      "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+      "failed_requirements": [
+        {
+          "requirement": "integrated semantic output",
+          "expected": ">=1 integrated delegation or findings",
+          "observed": "integrated_delegations=0 findings=0",
+          "requirement_source": "evaluator §14/§40",
+          "root_cause": "D_MODEL_SEMANTIC_FAILURE",
+          "basis": "specialist delegation failed output validation before any semantic output existed (7 runs) or the run never completed (provider 429) — genuine model/infra result, correctly incomplete; not fixable by benchmark revision."
+        },
+        {
+          "requirement": "answered-type terminal question",
+          "expected": "truth expected_disposition=answered; production terminal = QuestionStatus=answered with a recorded QuestionDisposition",
+          "observed": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=1",
+          "requirement_source": "TruthManifest expected_questions + evaluator §4.3",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "evaluator counts terminal rows with disposition=='answered', but the frozen production contract expresses answered as QuestionStatus=answered with QuestionDisposition in {supported, not_supported, inconclusive, unavailable, not_applicable} — the literal disposition 'answered' does not exist in the production enum, so the requirement is unsatisfiable by any conforming run. Truth/evaluator vocabulary defect, not a model or runtime defect."
+        },
+        {
+          "requirement": "unresolved-type terminal disposition for the truth's distinct sub-question",
+          "expected": "a terminal row in {unresolved, blocked, deferred} or an answered row with disposition {not_supported, inconclusive}",
+          "observed": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=1",
+          "requirement_source": "TruthManifest expected_questions (notes mark unresolved as the correct terminal)",
+          "root_cause": "D_MODEL_SEMANTIC_FAILURE",
+          "basis": "truth expects an unresolved-type terminal for a distinct sub-question; the production contract can express it (QuestionStatus=unresolved or answered with disposition not_supported/inconclusive, and create_question is available), but the model answered the compound seed question without splitting the unresolved sub-question. Satisfiable, not done — retained as a genuine quality result."
+        },
+        {
+          "requirement": "any terminal question disposition",
+          "observed": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=1",
+          "requirement_source": "evaluator §4.3",
+          "root_cause": "D_MODEL_SEMANTIC_FAILURE",
+          "basis": "specialist delegation failed output validation before any semantic output existed (7 runs) or the run never completed (provider 429) — genuine model/infra result, correctly incomplete; not fixable by benchmark revision."
+        },
+        {
+          "requirement": "required coverage dimension fraud-operation-materials terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "prohibited overclaim observability",
+          "expected": "integrated claim/finding texts exposed on the snapshot findings channel",
+          "observed": "no findings produced; overclaim behavior unobserved",
+          "requirement_source": "evaluator §4.5",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "overclaim is measured over snapshot.findings, a channel the frozen production flow never populates in benchmark runs (P5 findings require the unexercised verifier path; integrated semantics live in claim candidates). Component structurally unobservable — evaluator/snapshot shape mismatch, not model behaviour. Digest v4 carries the integrated claim texts for a v2 evaluator."
+        }
+      ]
+    },
+    {
+      "case_id": "t1-fraud-script-usb",
+      "repeat": "repeat2",
+      "outcome": "incomplete",
+      "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+      "failed_requirements": [
+        {
+          "requirement": "integrated semantic output",
+          "expected": ">=1 integrated delegation or findings",
+          "observed": "integrated_delegations=0 findings=0",
+          "requirement_source": "evaluator §14/§40",
+          "root_cause": "D_MODEL_SEMANTIC_FAILURE",
+          "basis": "specialist delegation failed output validation before any semantic output existed (7 runs) or the run never completed (provider 429) — genuine model/infra result, correctly incomplete; not fixable by benchmark revision."
+        },
+        {
+          "requirement": "answered-type terminal question",
+          "expected": "truth expected_disposition=answered; production terminal = QuestionStatus=answered with a recorded QuestionDisposition",
+          "observed": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=1",
+          "requirement_source": "TruthManifest expected_questions + evaluator §4.3",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "evaluator counts terminal rows with disposition=='answered', but the frozen production contract expresses answered as QuestionStatus=answered with QuestionDisposition in {supported, not_supported, inconclusive, unavailable, not_applicable} — the literal disposition 'answered' does not exist in the production enum, so the requirement is unsatisfiable by any conforming run. Truth/evaluator vocabulary defect, not a model or runtime defect."
+        },
+        {
+          "requirement": "unresolved-type terminal disposition for the truth's distinct sub-question",
+          "expected": "a terminal row in {unresolved, blocked, deferred} or an answered row with disposition {not_supported, inconclusive}",
+          "observed": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=1",
+          "requirement_source": "TruthManifest expected_questions (notes mark unresolved as the correct terminal)",
+          "root_cause": "D_MODEL_SEMANTIC_FAILURE",
+          "basis": "truth expects an unresolved-type terminal for a distinct sub-question; the production contract can express it (QuestionStatus=unresolved or answered with disposition not_supported/inconclusive, and create_question is available), but the model answered the compound seed question without splitting the unresolved sub-question. Satisfiable, not done — retained as a genuine quality result."
+        },
+        {
+          "requirement": "any terminal question disposition",
+          "observed": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=1",
+          "requirement_source": "evaluator §4.3",
+          "root_cause": "D_MODEL_SEMANTIC_FAILURE",
+          "basis": "specialist delegation failed output validation before any semantic output existed (7 runs) or the run never completed (provider 429) — genuine model/infra result, correctly incomplete; not fixable by benchmark revision."
+        },
+        {
+          "requirement": "required coverage dimension fraud-operation-materials terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "prohibited overclaim observability",
+          "expected": "integrated claim/finding texts exposed on the snapshot findings channel",
+          "observed": "no findings produced; overclaim behavior unobserved",
+          "requirement_source": "evaluator §4.5",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "overclaim is measured over snapshot.findings, a channel the frozen production flow never populates in benchmark runs (P5 findings require the unexercised verifier path; integrated semantics live in claim candidates). Component structurally unobservable — evaluator/snapshot shape mismatch, not model behaviour. Digest v4 carries the integrated claim texts for a v2 evaluator."
+        }
+      ]
+    },
+    {
+      "case_id": "t2-cross-source-correlation",
+      "repeat": "repeat0",
+      "outcome": "incomplete",
+      "rationale": "truth expects an answered question; none terminal-answered; truth expects an unresolved disposition; none recorded; coverage cross-source-settlement not recorded",
+      "failed_requirements": [
+        {
+          "requirement": "required coverage dimension cross-source-settlement terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "prohibited overclaim observability",
+          "expected": "integrated claim/finding texts exposed on the snapshot findings channel",
+          "observed": "no findings produced; overclaim behavior unobserved",
+          "requirement_source": "evaluator §4.5",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "overclaim is measured over snapshot.findings, a channel the frozen production flow never populates in benchmark runs (P5 findings require the unexercised verifier path; integrated semantics live in claim candidates). Component structurally unobservable — evaluator/snapshot shape mismatch, not model behaviour. Digest v4 carries the integrated claim texts for a v2 evaluator."
+        }
+      ]
+    },
+    {
+      "case_id": "t2-cross-source-correlation",
+      "repeat": "repeat2",
+      "outcome": "incomplete",
+      "rationale": "truth expects an answered question; none terminal-answered; truth expects an unresolved disposition; none recorded; coverage cross-source-settlement not recorded",
+      "failed_requirements": [
+        {
+          "requirement": "required coverage dimension cross-source-settlement terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "prohibited overclaim observability",
+          "expected": "integrated claim/finding texts exposed on the snapshot findings channel",
+          "observed": "no findings produced; overclaim behavior unobserved",
+          "requirement_source": "evaluator §4.5",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "overclaim is measured over snapshot.findings, a channel the frozen production flow never populates in benchmark runs (P5 findings require the unexercised verifier path; integrated semantics live in claim candidates). Component structurally unobservable — evaluator/snapshot shape mismatch, not model behaviour. Digest v4 carries the integrated claim texts for a v2 evaluator."
+        }
+      ]
+    },
+    {
+      "case_id": "t2-identity-trap",
+      "repeat": "repeat0",
+      "outcome": "incomplete",
+      "rationale": "truth expects an answered question; none terminal-answered; truth expects an unresolved disposition; none recorded; coverage identity-assessment not recorded; coverage transfer-activity not recorded",
+      "failed_requirements": [
+        {
+          "requirement": "required coverage dimension identity-assessment terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "required coverage dimension transfer-activity terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "prohibited overclaim observability",
+          "expected": "integrated claim/finding texts exposed on the snapshot findings channel",
+          "observed": "no findings produced; overclaim behavior unobserved",
+          "requirement_source": "evaluator §4.5",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "overclaim is measured over snapshot.findings, a channel the frozen production flow never populates in benchmark runs (P5 findings require the unexercised verifier path; integrated semantics live in claim candidates). Component structurally unobservable — evaluator/snapshot shape mismatch, not model behaviour. Digest v4 carries the integrated claim texts for a v2 evaluator."
+        }
+      ]
+    },
+    {
+      "case_id": "t2-identity-trap",
+      "repeat": "repeat1",
+      "outcome": "incomplete",
+      "rationale": "truth expects an answered question; none terminal-answered; truth expects an unresolved disposition; none recorded; coverage identity-assessment not recorded; coverage transfer-activity not recorded",
+      "failed_requirements": [
+        {
+          "requirement": "required coverage dimension identity-assessment terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "required coverage dimension transfer-activity terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "prohibited overclaim observability",
+          "expected": "integrated claim/finding texts exposed on the snapshot findings channel",
+          "observed": "no findings produced; overclaim behavior unobserved",
+          "requirement_source": "evaluator §4.5",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "overclaim is measured over snapshot.findings, a channel the frozen production flow never populates in benchmark runs (P5 findings require the unexercised verifier path; integrated semantics live in claim candidates). Component structurally unobservable — evaluator/snapshot shape mismatch, not model behaviour. Digest v4 carries the integrated claim texts for a v2 evaluator."
+        }
+      ]
+    },
+    {
+      "case_id": "t2-identity-trap",
+      "repeat": "repeat2",
+      "outcome": "incomplete",
+      "rationale": "truth expects an answered question; none terminal-answered; truth expects an unresolved disposition; none recorded; coverage identity-assessment not recorded; coverage transfer-activity not recorded",
+      "failed_requirements": [
+        {
+          "requirement": "required coverage dimension identity-assessment terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "required coverage dimension transfer-activity terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "prohibited overclaim observability",
+          "expected": "integrated claim/finding texts exposed on the snapshot findings channel",
+          "observed": "no findings produced; overclaim behavior unobserved",
+          "requirement_source": "evaluator §4.5",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "overclaim is measured over snapshot.findings, a channel the frozen production flow never populates in benchmark runs (P5 findings require the unexercised verifier path; integrated semantics live in claim candidates). Component structurally unobservable — evaluator/snapshot shape mismatch, not model behaviour. Digest v4 carries the integrated claim texts for a v2 evaluator."
+        }
+      ]
+    },
+    {
+      "case_id": "t2-misleading-note",
+      "repeat": "repeat0",
+      "outcome": "incomplete",
+      "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+      "failed_requirements": [
+        {
+          "requirement": "integrated semantic output",
+          "expected": ">=1 integrated delegation or findings",
+          "observed": "integrated_delegations=0 findings=0",
+          "requirement_source": "evaluator §14/§40",
+          "root_cause": "D_MODEL_SEMANTIC_FAILURE",
+          "basis": "specialist delegation failed output validation before any semantic output existed (7 runs) or the run never completed (provider 429) — genuine model/infra result, correctly incomplete; not fixable by benchmark revision."
+        },
+        {
+          "requirement": "answered-type terminal question",
+          "expected": "truth expected_disposition=answered; production terminal = QuestionStatus=answered with a recorded QuestionDisposition",
+          "observed": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=0",
+          "requirement_source": "TruthManifest expected_questions + evaluator §4.3",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "evaluator counts terminal rows with disposition=='answered', but the frozen production contract expresses answered as QuestionStatus=answered with QuestionDisposition in {supported, not_supported, inconclusive, unavailable, not_applicable} — the literal disposition 'answered' does not exist in the production enum, so the requirement is unsatisfiable by any conforming run. Truth/evaluator vocabulary defect, not a model or runtime defect."
+        },
+        {
+          "requirement": "any terminal question disposition",
+          "observed": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=0",
+          "requirement_source": "evaluator §4.3",
+          "root_cause": "D_MODEL_SEMANTIC_FAILURE",
+          "basis": "specialist delegation failed output validation before any semantic output existed (7 runs) or the run never completed (provider 429) — genuine model/infra result, correctly incomplete; not fixable by benchmark revision."
+        },
+        {
+          "requirement": "required coverage dimension export-attribution terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "prohibited overclaim observability",
+          "expected": "integrated claim/finding texts exposed on the snapshot findings channel",
+          "observed": "no findings produced; overclaim behavior unobserved",
+          "requirement_source": "evaluator §4.5",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "overclaim is measured over snapshot.findings, a channel the frozen production flow never populates in benchmark runs (P5 findings require the unexercised verifier path; integrated semantics live in claim candidates). Component structurally unobservable — evaluator/snapshot shape mismatch, not model behaviour. Digest v4 carries the integrated claim texts for a v2 evaluator."
+        }
+      ]
+    },
+    {
+      "case_id": "t2-misleading-note",
+      "repeat": "repeat1",
+      "outcome": "incomplete",
+      "rationale": "truth expects an answered question; none terminal-answered; coverage export-attribution not recorded",
+      "failed_requirements": [
+        {
+          "requirement": "required coverage dimension export-attribution terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "prohibited overclaim observability",
+          "expected": "integrated claim/finding texts exposed on the snapshot findings channel",
+          "observed": "no findings produced; overclaim behavior unobserved",
+          "requirement_source": "evaluator §4.5",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "overclaim is measured over snapshot.findings, a channel the frozen production flow never populates in benchmark runs (P5 findings require the unexercised verifier path; integrated semantics live in claim candidates). Component structurally unobservable — evaluator/snapshot shape mismatch, not model behaviour. Digest v4 carries the integrated claim texts for a v2 evaluator."
+        }
+      ]
+    },
+    {
+      "case_id": "t2-misleading-note",
+      "repeat": "repeat2",
+      "outcome": "incomplete",
+      "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+      "failed_requirements": [
+        {
+          "requirement": "integrated semantic output",
+          "expected": ">=1 integrated delegation or findings",
+          "observed": "integrated_delegations=0 findings=0",
+          "requirement_source": "evaluator §14/§40",
+          "root_cause": "D_MODEL_SEMANTIC_FAILURE",
+          "basis": "specialist delegation failed output validation before any semantic output existed (7 runs) or the run never completed (provider 429) — genuine model/infra result, correctly incomplete; not fixable by benchmark revision."
+        },
+        {
+          "requirement": "answered-type terminal question",
+          "expected": "truth expected_disposition=answered; production terminal = QuestionStatus=answered with a recorded QuestionDisposition",
+          "observed": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=0",
+          "requirement_source": "TruthManifest expected_questions + evaluator §4.3",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "evaluator counts terminal rows with disposition=='answered', but the frozen production contract expresses answered as QuestionStatus=answered with QuestionDisposition in {supported, not_supported, inconclusive, unavailable, not_applicable} — the literal disposition 'answered' does not exist in the production enum, so the requirement is unsatisfiable by any conforming run. Truth/evaluator vocabulary defect, not a model or runtime defect."
+        },
+        {
+          "requirement": "any terminal question disposition",
+          "observed": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=0",
+          "requirement_source": "evaluator §4.3",
+          "root_cause": "D_MODEL_SEMANTIC_FAILURE",
+          "basis": "specialist delegation failed output validation before any semantic output existed (7 runs) or the run never completed (provider 429) — genuine model/infra result, correctly incomplete; not fixable by benchmark revision."
+        },
+        {
+          "requirement": "required coverage dimension export-attribution terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "prohibited overclaim observability",
+          "expected": "integrated claim/finding texts exposed on the snapshot findings channel",
+          "observed": "no findings produced; overclaim behavior unobserved",
+          "requirement_source": "evaluator §4.5",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "overclaim is measured over snapshot.findings, a channel the frozen production flow never populates in benchmark runs (P5 findings require the unexercised verifier path; integrated semantics live in claim candidates). Component structurally unobservable — evaluator/snapshot shape mismatch, not model behaviour. Digest v4 carries the integrated claim texts for a v2 evaluator."
+        }
+      ]
+    },
+    {
+      "case_id": "t2-no-evidence",
+      "repeat": "repeat0",
+      "outcome": "incomplete",
+      "rationale": "no terminal question dispositions recorded; coverage volume-content-assessment not recorded",
+      "failed_requirements": [
+        {
+          "requirement": "unresolved-type terminal disposition for the truth's distinct sub-question",
+          "expected": "a terminal row in {unresolved, blocked, deferred} or an answered row with disposition {not_supported, inconclusive}",
+          "observed": "terminal=0 answered=0 unresolved=0; truth expects answered=0 unresolved=1",
+          "requirement_source": "TruthManifest expected_questions (notes mark unresolved as the correct terminal)",
+          "root_cause": "D_MODEL_SEMANTIC_FAILURE",
+          "basis": "truth expects an unresolved-type terminal for a distinct sub-question; the production contract can express it (QuestionStatus=unresolved or answered with disposition not_supported/inconclusive, and create_question is available), but the model answered the compound seed question without splitting the unresolved sub-question. Satisfiable, not done — retained as a genuine quality result."
+        },
+        {
+          "requirement": "any terminal question disposition",
+          "observed": "terminal=0 answered=0 unresolved=0; truth expects answered=0 unresolved=1",
+          "requirement_source": "evaluator §4.3",
+          "root_cause": "D_MODEL_SEMANTIC_FAILURE",
+          "basis": "specialist delegation failed output validation before any semantic output existed (7 runs) or the run never completed (provider 429) — genuine model/infra result, correctly incomplete; not fixable by benchmark revision."
+        },
+        {
+          "requirement": "required coverage dimension volume-content-assessment terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "prohibited overclaim observability",
+          "expected": "integrated claim/finding texts exposed on the snapshot findings channel",
+          "observed": "no findings produced; overclaim behavior unobserved",
+          "requirement_source": "evaluator §4.5",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "overclaim is measured over snapshot.findings, a channel the frozen production flow never populates in benchmark runs (P5 findings require the unexercised verifier path; integrated semantics live in claim candidates). Component structurally unobservable — evaluator/snapshot shape mismatch, not model behaviour. Digest v4 carries the integrated claim texts for a v2 evaluator."
+        }
+      ]
+    },
+    {
+      "case_id": "t2-no-evidence",
+      "repeat": "repeat1",
+      "outcome": "incomplete",
+      "rationale": "truth expects an unresolved disposition; none recorded; coverage volume-content-assessment not recorded",
+      "failed_requirements": [
+        {
+          "requirement": "required coverage dimension volume-content-assessment terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "prohibited overclaim observability",
+          "expected": "integrated claim/finding texts exposed on the snapshot findings channel",
+          "observed": "no findings produced; overclaim behavior unobserved",
+          "requirement_source": "evaluator §4.5",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "overclaim is measured over snapshot.findings, a channel the frozen production flow never populates in benchmark runs (P5 findings require the unexercised verifier path; integrated semantics live in claim candidates). Component structurally unobservable — evaluator/snapshot shape mismatch, not model behaviour. Digest v4 carries the integrated claim texts for a v2 evaluator."
+        }
+      ]
+    },
+    {
+      "case_id": "t2-no-evidence",
+      "repeat": "repeat2",
+      "outcome": "incomplete",
+      "rationale": "truth expects an unresolved disposition; none recorded; coverage volume-content-assessment not recorded",
+      "failed_requirements": [
+        {
+          "requirement": "required coverage dimension volume-content-assessment terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "prohibited overclaim observability",
+          "expected": "integrated claim/finding texts exposed on the snapshot findings channel",
+          "observed": "no findings produced; overclaim behavior unobserved",
+          "requirement_source": "evaluator §4.5",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "overclaim is measured over snapshot.findings, a channel the frozen production flow never populates in benchmark runs (P5 findings require the unexercised verifier path; integrated semantics live in claim candidates). Component structurally unobservable — evaluator/snapshot shape mismatch, not model behaviour. Digest v4 carries the integrated claim texts for a v2 evaluator."
+        }
+      ]
+    },
+    {
+      "case_id": "t2-report-citation",
+      "repeat": "repeat0",
+      "outcome": "incomplete",
+      "rationale": "truth expects an answered question; none terminal-answered; coverage citation-discipline not recorded",
+      "failed_requirements": [
+        {
+          "requirement": "required coverage dimension citation-discipline terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "prohibited overclaim observability",
+          "expected": "integrated claim/finding texts exposed on the snapshot findings channel",
+          "observed": "no findings produced; overclaim behavior unobserved",
+          "requirement_source": "evaluator §4.5",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "overclaim is measured over snapshot.findings, a channel the frozen production flow never populates in benchmark runs (P5 findings require the unexercised verifier path; integrated semantics live in claim candidates). Component structurally unobservable — evaluator/snapshot shape mismatch, not model behaviour. Digest v4 carries the integrated claim texts for a v2 evaluator."
+        }
+      ]
+    },
+    {
+      "case_id": "t2-report-citation",
+      "repeat": "repeat1",
+      "outcome": "incomplete",
+      "rationale": "truth expects an answered question; none terminal-answered; coverage citation-discipline not recorded",
+      "failed_requirements": [
+        {
+          "requirement": "required coverage dimension citation-discipline terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "prohibited overclaim observability",
+          "expected": "integrated claim/finding texts exposed on the snapshot findings channel",
+          "observed": "no findings produced; overclaim behavior unobserved",
+          "requirement_source": "evaluator §4.5",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "overclaim is measured over snapshot.findings, a channel the frozen production flow never populates in benchmark runs (P5 findings require the unexercised verifier path; integrated semantics live in claim candidates). Component structurally unobservable — evaluator/snapshot shape mismatch, not model behaviour. Digest v4 carries the integrated claim texts for a v2 evaluator."
+        }
+      ]
+    },
+    {
+      "case_id": "t2-report-citation",
+      "repeat": "repeat2",
+      "outcome": "incomplete",
+      "rationale": "truth expects an answered question; none terminal-answered; coverage citation-discipline not recorded",
+      "failed_requirements": [
+        {
+          "requirement": "required coverage dimension citation-discipline terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "prohibited overclaim observability",
+          "expected": "integrated claim/finding texts exposed on the snapshot findings channel",
+          "observed": "no findings produced; overclaim behavior unobserved",
+          "requirement_source": "evaluator §4.5",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "overclaim is measured over snapshot.findings, a channel the frozen production flow never populates in benchmark runs (P5 findings require the unexercised verifier path; integrated semantics live in claim candidates). Component structurally unobservable — evaluator/snapshot shape mismatch, not model behaviour. Digest v4 carries the integrated claim texts for a v2 evaluator."
+        }
+      ]
+    },
+    {
+      "case_id": "t2-temporal-trap",
+      "repeat": "repeat0",
+      "outcome": "incomplete",
+      "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+      "failed_requirements": [
+        {
+          "requirement": "integrated semantic output",
+          "expected": ">=1 integrated delegation or findings",
+          "observed": "integrated_delegations=0 findings=0",
+          "requirement_source": "evaluator §14/§40",
+          "root_cause": "D_MODEL_SEMANTIC_FAILURE",
+          "basis": "specialist delegation failed output validation before any semantic output existed (7 runs) or the run never completed (provider 429) — genuine model/infra result, correctly incomplete; not fixable by benchmark revision."
+        },
+        {
+          "requirement": "answered-type terminal question",
+          "expected": "truth expected_disposition=answered; production terminal = QuestionStatus=answered with a recorded QuestionDisposition",
+          "observed": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=1",
+          "requirement_source": "TruthManifest expected_questions + evaluator §4.3",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "evaluator counts terminal rows with disposition=='answered', but the frozen production contract expresses answered as QuestionStatus=answered with QuestionDisposition in {supported, not_supported, inconclusive, unavailable, not_applicable} — the literal disposition 'answered' does not exist in the production enum, so the requirement is unsatisfiable by any conforming run. Truth/evaluator vocabulary defect, not a model or runtime defect."
+        },
+        {
+          "requirement": "unresolved-type terminal disposition for the truth's distinct sub-question",
+          "expected": "a terminal row in {unresolved, blocked, deferred} or an answered row with disposition {not_supported, inconclusive}",
+          "observed": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=1",
+          "requirement_source": "TruthManifest expected_questions (notes mark unresolved as the correct terminal)",
+          "root_cause": "D_MODEL_SEMANTIC_FAILURE",
+          "basis": "truth expects an unresolved-type terminal for a distinct sub-question; the production contract can express it (QuestionStatus=unresolved or answered with disposition not_supported/inconclusive, and create_question is available), but the model answered the compound seed question without splitting the unresolved sub-question. Satisfiable, not done — retained as a genuine quality result."
+        },
+        {
+          "requirement": "any terminal question disposition",
+          "observed": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=1",
+          "requirement_source": "evaluator §4.3",
+          "root_cause": "D_MODEL_SEMANTIC_FAILURE",
+          "basis": "specialist delegation failed output validation before any semantic output existed (7 runs) or the run never completed (provider 429) — genuine model/infra result, correctly incomplete; not fixable by benchmark revision."
+        },
+        {
+          "requirement": "required coverage dimension owner-activity terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "required coverage dimension recovered-log-assessment terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "prohibited overclaim observability",
+          "expected": "integrated claim/finding texts exposed on the snapshot findings channel",
+          "observed": "no findings produced; overclaim behavior unobserved",
+          "requirement_source": "evaluator §4.5",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "overclaim is measured over snapshot.findings, a channel the frozen production flow never populates in benchmark runs (P5 findings require the unexercised verifier path; integrated semantics live in claim candidates). Component structurally unobservable — evaluator/snapshot shape mismatch, not model behaviour. Digest v4 carries the integrated claim texts for a v2 evaluator."
+        }
+      ]
+    },
+    {
+      "case_id": "t2-temporal-trap",
+      "repeat": "repeat1",
+      "outcome": "incomplete",
+      "rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+      "failed_requirements": [
+        {
+          "requirement": "integrated semantic output",
+          "expected": ">=1 integrated delegation or findings",
+          "observed": "integrated_delegations=0 findings=0",
+          "requirement_source": "evaluator §14/§40",
+          "root_cause": "D_MODEL_SEMANTIC_FAILURE",
+          "basis": "specialist delegation failed output validation before any semantic output existed (7 runs) or the run never completed (provider 429) — genuine model/infra result, correctly incomplete; not fixable by benchmark revision."
+        },
+        {
+          "requirement": "answered-type terminal question",
+          "expected": "truth expected_disposition=answered; production terminal = QuestionStatus=answered with a recorded QuestionDisposition",
+          "observed": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=1",
+          "requirement_source": "TruthManifest expected_questions + evaluator §4.3",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "evaluator counts terminal rows with disposition=='answered', but the frozen production contract expresses answered as QuestionStatus=answered with QuestionDisposition in {supported, not_supported, inconclusive, unavailable, not_applicable} — the literal disposition 'answered' does not exist in the production enum, so the requirement is unsatisfiable by any conforming run. Truth/evaluator vocabulary defect, not a model or runtime defect."
+        },
+        {
+          "requirement": "unresolved-type terminal disposition for the truth's distinct sub-question",
+          "expected": "a terminal row in {unresolved, blocked, deferred} or an answered row with disposition {not_supported, inconclusive}",
+          "observed": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=1",
+          "requirement_source": "TruthManifest expected_questions (notes mark unresolved as the correct terminal)",
+          "root_cause": "D_MODEL_SEMANTIC_FAILURE",
+          "basis": "truth expects an unresolved-type terminal for a distinct sub-question; the production contract can express it (QuestionStatus=unresolved or answered with disposition not_supported/inconclusive, and create_question is available), but the model answered the compound seed question without splitting the unresolved sub-question. Satisfiable, not done — retained as a genuine quality result."
+        },
+        {
+          "requirement": "any terminal question disposition",
+          "observed": "terminal=0 answered=0 unresolved=0; truth expects answered=1 unresolved=1",
+          "requirement_source": "evaluator §4.3",
+          "root_cause": "D_MODEL_SEMANTIC_FAILURE",
+          "basis": "specialist delegation failed output validation before any semantic output existed (7 runs) or the run never completed (provider 429) — genuine model/infra result, correctly incomplete; not fixable by benchmark revision."
+        },
+        {
+          "requirement": "required coverage dimension owner-activity terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "required coverage dimension recovered-log-assessment terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "prohibited overclaim observability",
+          "expected": "integrated claim/finding texts exposed on the snapshot findings channel",
+          "observed": "no findings produced; overclaim behavior unobserved",
+          "requirement_source": "evaluator §4.5",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "overclaim is measured over snapshot.findings, a channel the frozen production flow never populates in benchmark runs (P5 findings require the unexercised verifier path; integrated semantics live in claim candidates). Component structurally unobservable — evaluator/snapshot shape mismatch, not model behaviour. Digest v4 carries the integrated claim texts for a v2 evaluator."
+        }
+      ]
+    },
+    {
+      "case_id": "t2-temporal-trap",
+      "repeat": "repeat2",
+      "outcome": "incomplete",
+      "rationale": "truth expects an answered question; none terminal-answered; truth expects an unresolved disposition; none recorded; coverage owner-activity not recorded; coverage recovered-log-assessment not recorded",
+      "failed_requirements": [
+        {
+          "requirement": "required coverage dimension owner-activity terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "required coverage dimension recovered-log-assessment terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "prohibited overclaim observability",
+          "expected": "integrated claim/finding texts exposed on the snapshot findings channel",
+          "observed": "no findings produced; overclaim behavior unobserved",
+          "requirement_source": "evaluator §4.5",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "overclaim is measured over snapshot.findings, a channel the frozen production flow never populates in benchmark runs (P5 findings require the unexercised verifier path; integrated semantics live in claim candidates). Component structurally unobservable — evaluator/snapshot shape mismatch, not model behaviour. Digest v4 carries the integrated claim texts for a v2 evaluator."
+        }
+      ]
+    },
+    {
+      "case_id": "t2-verification-temptation",
+      "repeat": "repeat0",
+      "outcome": "incomplete",
+      "rationale": "truth expects an answered question; none terminal-answered; coverage assertion-strength not recorded",
+      "failed_requirements": [
+        {
+          "requirement": "required coverage dimension assertion-strength terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "prohibited overclaim observability",
+          "expected": "integrated claim/finding texts exposed on the snapshot findings channel",
+          "observed": "no findings produced; overclaim behavior unobserved",
+          "requirement_source": "evaluator §4.5",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "overclaim is measured over snapshot.findings, a channel the frozen production flow never populates in benchmark runs (P5 findings require the unexercised verifier path; integrated semantics live in claim candidates). Component structurally unobservable — evaluator/snapshot shape mismatch, not model behaviour. Digest v4 carries the integrated claim texts for a v2 evaluator."
+        }
+      ]
+    },
+    {
+      "case_id": "t2-verification-temptation",
+      "repeat": "repeat1",
+      "outcome": "incomplete",
+      "rationale": "truth expects an answered question; none terminal-answered; coverage assertion-strength not recorded",
+      "failed_requirements": [
+        {
+          "requirement": "required coverage dimension assertion-strength terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "prohibited overclaim observability",
+          "expected": "integrated claim/finding texts exposed on the snapshot findings channel",
+          "observed": "no findings produced; overclaim behavior unobserved",
+          "requirement_source": "evaluator §4.5",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "overclaim is measured over snapshot.findings, a channel the frozen production flow never populates in benchmark runs (P5 findings require the unexercised verifier path; integrated semantics live in claim candidates). Component structurally unobservable — evaluator/snapshot shape mismatch, not model behaviour. Digest v4 carries the integrated claim texts for a v2 evaluator."
+        }
+      ]
+    },
+    {
+      "case_id": "t2-verification-temptation",
+      "repeat": "repeat2",
+      "outcome": "incomplete",
+      "rationale": "truth expects an answered question; none terminal-answered; coverage assertion-strength not recorded",
+      "failed_requirements": [
+        {
+          "requirement": "required coverage dimension assertion-strength terminal in {covered, partial}",
+          "expected": "dimension seeded at investigation bootstrap and closed with basis by integration",
+          "observed": "dimension absent from snapshot coverage",
+          "requirement_source": "TruthManifest expected_coverage + evaluator §4.4",
+          "root_cause": "B_BENCHMARK_HARNESS_DEFECT",
+          "basis": "Q1-Q4: coverage dimensions are charter-level Required Coverage; the production contract is update-only (CoverageTransition -> COVERAGE_DIMENSION_NOT_FOUND; no reachable CreateCoverage), creation belongs to investigation bootstrap. The benchmark public surface PublicCaseInputV1.seed_coverage_dimensions exists exactly for this, but the driver never populated it and case.json never declared the dimensions. Production is not incapable; the harness failed to initialize required state."
+        },
+        {
+          "requirement": "prohibited overclaim observability",
+          "expected": "integrated claim/finding texts exposed on the snapshot findings channel",
+          "observed": "no findings produced; overclaim behavior unobserved",
+          "requirement_source": "evaluator §4.5",
+          "root_cause": "A_BENCHMARK_SEMANTICS_DEFECT",
+          "basis": "overclaim is measured over snapshot.findings, a channel the frozen production flow never populates in benchmark runs (P5 findings require the unexercised verifier path; integrated semantics live in claim candidates). Component structurally unobservable — evaluator/snapshot shape mismatch, not model behaviour. Digest v4 carries the integrated claim texts for a v2 evaluator."
+        }
+      ]
+    }
+  ]
+}

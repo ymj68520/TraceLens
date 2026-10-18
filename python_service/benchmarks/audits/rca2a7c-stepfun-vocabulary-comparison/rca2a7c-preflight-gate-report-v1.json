@@ -1,0 +1,38 @@
+{
+  "artifact_version": "RCA2A7cPreflightGateReportV1",
+  "attempts": [
+    {
+      "attempt": 1,
+      "latency_ms": 2384.3,
+      "model_identity_match": true,
+      "requested_model": "step-3.7-flash",
+      "returned_model": "step-3.7-flash",
+      "status": "SUCCESS",
+      "status_code": 200
+    },
+    {
+      "attempt": 2,
+      "latency_ms": 2415.1,
+      "model_identity_match": true,
+      "requested_model": "step-3.7-flash",
+      "returned_model": "step-3.7-flash",
+      "status": "SUCCESS",
+      "status_code": 200
+    },
+    {
+      "attempt": 3,
+      "latency_ms": 1430.7,
+      "model_identity_match": true,
+      "requested_model": "step-3.7-flash",
+      "returned_model": "step-3.7-flash",
+      "status": "SUCCESS",
+      "status_code": 200
+    }
+  ],
+  "attempts_executed": 3,
+  "endpoint": "https://api.stepfun.com/step_plan/v1",
+  "experiment_id": "rca2a7c-stepfun-vocabulary-comparison",
+  "preflight_verdict": "PREFLIGHT_PASS",
+  "requested_model": "step-3.7-flash",
+  "stop_reason": null
+}

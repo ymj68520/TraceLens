@@ -1,0 +1,94 @@
+{
+  "artifact_version": "RCA2A3IsolatedIntegrationFeasibilityReportV1",
+  "created_at": "2026-10-14T00:00:00+00:00",
+  "baseline_commit": "7d94dfe96568010d61e5006ab8a1d51580031796",
+  "verdict": "RCA-2A.3: ISOLATED_INTEGRATION_FEASIBLE",
+  "model_calls": 0,
+
+  "s1_production_call_chain_as_verified": {
+    "chain": "Completed Delegations (durable) -> Frozen Working State (latest revision) -> Fresh Result Selection (MergeGuard in the orchestrator; envelope hash + scope + directive checks) -> IntegrationContextPack (build_integration_context) -> Typed Handle Binding Table (build_integration_binding_table, deterministic fn of context+state) -> Supervisor INTEGRATE Agent (SupervisorAgentFactory.build_integration_agent_v2(projection)) -> Pydantic Output Validation (Agent output_type=SupervisorIntegrationDecisionV2, default retry=1) -> Canonical Integration Resolution (resolve_integration_proposal_v2) -> State Transition Validation (IntegrationDecisionValidator -> StateTransitionPolicy) -> SQLite Commit (commit_agent_integration, one BEGIN IMMEDIATE revalidating revision+hash+result hashes)",
+    "q1_agent_construction": "SupervisorAgentFactory.build_integration_agent_v2(projection) (agent_supervisor.py:607-618), invoked by InvestigationSupervisor.integrate_v2",
+    "q2_output_type": "SupervisorIntegrationDecisionV2 (INTEGRATION_DECISION_VERSION = supervisor-integration-decision:v3 epoch value)",
+    "q3_instructions": "_integration_instructions_v2(render_integration_context_v2(context, state, table)) (agent_supervisor.py:688-721)",
+    "q4_context": "build_integration_context(...) from durable facts (agent_integration.py:639+)",
+    "q5_server_injected": "task_id/investigation_id/run_id/based_on_state_revision/based_on_state_hash/source_result_ids/source_result_hashes — injected by resolve_integration_proposal_v2 into the canonical V1 decision; structurally absent from the model face",
+    "q6_fresh_selection": "MergeGuard evaluation over dispatch summaries (orchestrator execute_cycle); envelopes carry the REAL executor's result objects",
+    "q7_stale_exclusion": "MergeGuard verdict (state revision movement, directive digests, scope) -> mark_completed_delegation_stale; at commit layer a second revalidation refuses revision/hash/result-hash mismatch",
+    "q8_binding_table": "build_integration_binding_table(context, state) — deterministic; binding_table_id = rbt:<digest> over (version, identity, revision, context_hash, bindings)",
+    "q9_plan_memory_dependency": "NO — every INTEGRATE input is derivable from durable facts; proven by Path B reconstructing a byte-identical input from the store alone (parity gate)",
+    "q10_standalone_invocation": "YES — all INTEGRATE capabilities are independently callable production functions; the harness composes them without modifying the orchestrator (no INTEGRATION_STAGE_EXTRACTION_BLOCKED)",
+    "q11_post_call_chain": "canonical resolver -> IntegrationDecisionValidator -> StateTransitionPolicy -> commit",
+    "q12_commit_and_containment": "commit: AgentRuntimeRepository.commit_agent_integration; containment: the orchestrator's _integrate_failure_outcome (RCA-1.1) on the normal path, the harness's contained StageResult on the stage path"
+  },
+
+  "s2_added_modified_reused": {
+    "added": [
+      "benchmarks/isolated_integration/harness.py (stage harness + IsolatedIntegrationInputV1 contract)",
+      "benchmarks/isolated_integration/fixtures.py (Path A store builder + synthetic specialist dispatcher, A/B fixtures)",
+      "tests/unit/benchmarks/test_rca2a3_isolated_integration.py (13 tests)",
+      "benchmarks/audits/rca2a3-isolated-integration/ (deliverables + parity evidence)"
+    ],
+    "modified": [],
+    "reused": [
+      "build_integration_context / IntegrationDecisionValidator / FreshResultEnvelope (agent_integration.py)",
+      "build_integration_binding_table / ReferenceBindingTableV1 (agent_reference_bindings.py)",
+      "render_integration_context_v2 / resolve_integration_proposal_v2 / SupervisorIntegrationDecisionV2 (agent_integration_v2.py)",
+      "SupervisorAgentFactory + _integration_instructions_v2 (agent_supervisor.py) — unchanged production factory",
+      "StateTransitionPolicy / TransitionBatch (agent_transitions.py)",
+      "AgentRuntimeRepository primitives (commit_agent_integration, working-state reads)",
+      "AgentOrchestrator._evidence_ref_resolver / _finding_ref_validator (called, not copied)",
+      "build_failure_entry / schema_hash_of / classify_failure / JsonlFailureDiagnosticSink (RCA-1 diagnostics)",
+      "offline test facilities: FakeCppBackend/_build_env (loop tests), TestModel, FunctionModel, REAL SpecialistDelegationExecutor"
+    ]
+  },
+
+  "s3_harness_structure": "Path A builds the post-delegation store through the REAL orchestrator and captures the production input at the INTEGRATE boundary (capture-then-raise; RCA-1.1 containment makes the run terminal). Path B (the harness) re-derives the input from durable facts only, builds the SAME production agent with an injected FunctionModel, and runs the production validation/resolution/policy/commit chain inside the controlled test store. The harness records its lifecycle ownership explicitly (no AgentRun created; finalization NOT_EXERCISED).",
+
+  "s4_fixtures_and_evidence_binding": {
+    "fixture_a": "no-evidence (t2-no-evidence semantics): honest SYNTHETIC_SPECIALIST_RESULT with ZERO evidence refs; the empty fresh-result set is legal; no evidence key fabricated",
+    "fixture_b": "evidence-backed (t2-temporal-trap semantics): result references file:C/logon_4624.doc — the REAL visible evidence of the test task's files store; the completion transaction resolves it through the production EvidenceResolver and establishes the immutable snapshot; the binding table's E-handle points at legally acquired evidence",
+    "result_kind": "all specialist results are SYNTHETIC_SPECIALIST_RESULT (TestModel through the REAL executor, production structure validation); no REAL_MODEL_SPECIALIST_RESULT exists in this stage; no fabricated evidence ids anywhere"
+  },
+
+  "s5_parity_result": "INTEGRATION_INPUT_PARITY_PASS on both fixtures — every stable field strictly equal (output tool schema, full instructions incl. embedded projection, available_actions, typed handle domains, source result references, model settings, tool names); identity fields identical because Path B operates on the same frozen store; NO normalization applied and none needed. The gate caught one real derivation defect during development (envelope context_hash must come from the completion row, source scope from the durable plan payload) — fixed by durable-fact derivation, not by loosening the comparison.",
+
+  "s6_v2_schema_identity": "output contract = SupervisorIntegrationDecisionV2 captured live from info.output_tools on BOTH paths; schema_hash of the production model = the value recorded in the parity evidence and in every T9 sink entry; no new proposal schema introduced; the Strict+CompactTyped proposal remains OUT of production (untouched)",
+
+  "s7_retry_and_error_diagnostics": "frozen retry budget identical to production (agent built by the unchanged factory with the default retry=1; T4 observed exactly initial+1 retry); one Union payload = ONE recorded failure even after in-band retries (T2); field-level type+loc recorded, input values never recorded (T3); provider failures typed (provider_request_timeout / provider_connection_error), never misreported as schema failures (T8)",
+
+  "s8_state_sqlite_evidence_integrity": "all writes go through production primitives inside single BEGIN IMMEDIATE transactions; T6 refuses stale revision/hash/result-hash; T7 proves all-or-nothing with evidence payload unchanged; no real investigation.db touched — every store is a controlled test task under tmp_path",
+
+  "s9_cf1_compatibility": "the harness creates NO AgentRun, so there is nothing for one-shot settlement to settle; the bound run is Path A's own run, terminal before the stage (Path A containment) and verified terminal after (T10 store_lifecycle_snapshot: non_terminal_runs=[], finalization NOT_EXERCISED). execution/settled/finalization facts are recorded independently. Live Supervisor recoverable semantics untouched (orchestrator byte-identical).",
+
+  "s10_tests_and_regressions": "13/13 stage tests PASS; full suite 2644 passed / 1 skipped / 0 failed (2631 baseline + 13 new; zero regressions; no test removed or skipped)",
+
+  "s11_limits_and_residual_risks": [
+    "fresh-result STALENESS SELECTION (MergeGuard) is orchestrator-owned and is NOT re-implemented in the harness: the stage consumes the fresh set of a frozen post-delegation state; T6 covers the commit-layer refusal for moved state, but scenario-level MergeGuard behavior remains covered by the orchestrator's own tests, not by this harness",
+    "the harness binds to a run that Path A already made terminal; a future harness variant that runs against a live run must integrate with one-shot settlement explicitly",
+    "parity is proven for the t2-no-evidence and t2-temporal-trap-shaped stores (single question, single delegation); richer multi-action states follow the same production functions but have not been separately parity-captured",
+    "the diagnostics emission on the harness path reuses the same builders as the orchestrator but is a harness-side call site (the orchestrator's own emission remains covered by RCA-1/RCA-2A.2 tests)"
+  ],
+
+  "s12_conditions_for_the_future_real_model_diagnostic": [
+    "explicit authorization (RCA-2B remains NOT AUTHORIZED; this stage creates no manifest freeze and no API call)",
+    "the harness + parity gates must be re-run at the then-current HEAD and re-verify INTEGRATION_INPUT_PARITY_PASS",
+    "a preregistered diagnostic manifest with fresh experiment identity via benchmark_output_guard (no overwrite of any historical artifact)",
+    "provider connectivity preflight (the RCA-2A.2 pattern) with explicit --out",
+    "identity freeze: a new RuntimeIdentityRecord naming the exact commit + harness hashes; the modified benchmark tooling carries no historical measurement identity",
+    "Real-model runs must drive the REAL CLI/ServiceManager wiring (the RCA-2A.2b pattern), not the pytest harness, for any field-level evidence to be production-attributable"
+  ],
+
+  "final_state": {
+    "RCA-1": "CLOSED / TESTED",
+    "RCA-2A": "AUDITED",
+    "RCA-2A.1": "OFFLINE VALIDATED",
+    "RCA-2A.2c": "AUDITED",
+    "CF-1": "REMEDIATED / TESTED",
+    "RCA-2A.3": "ISOLATED_INTEGRATION_FEASIBLE",
+    "RCA-2B": "NOT AUTHORIZED",
+    "Historical Gen-4": "CLOSED_REJECTED / UNCHANGED",
+    "AcceptanceProfileV2": "UNCHANGED (c40f1adc...)",
+    "Model calls": 0,
+    "Gen-5": "NOT CREATED"
+  }
+}

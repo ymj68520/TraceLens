@@ -1,0 +1,114 @@
+{
+  "artifact_version": "RCA2A5FailureExplanationReportV1",
+  "baseline_commit": "69e5bdc78e4280464b8a087d9e797f9ab66078e0",
+  "disposition": "DETERMINISTIC_REPLAY_CONFIRMED",
+  "evidence_class_markers": {
+    "counterfactual_simulation": [
+      "single-field status replacements (separate report)"
+    ],
+    "deterministic_replay": [
+      "both payloads re-validated against the byte-identical frozen schema (schema hash continuity proven)"
+    ],
+    "hypothesis": [
+      "retry-prompt effective content class (not persisted verbatim)"
+    ],
+    "observed_real_model_behavior": [
+      "raw args of both attempts (2A.4 recording proxy)",
+      "terminal sink entry (attempt 2, type+loc)"
+    ],
+    "unverified_model_reliability": [
+      "no failure-rate or compatibility claim is made from one sample"
+    ]
+  },
+  "experiment_id": "rca2a5-failure-explanation",
+  "headline": "DETERMINISTIC REPLAY CONFIRMS the 2A.4 field-level narrative: attempt 2's payload is one QuestionStatus enum violation away from parse-valid; the failure layer is a status-vocabulary error, not identity, not grounding, not provider",
+  "payload_count_vs_error_count": {
+    "independent_output_payloads": 2,
+    "model_output_failure_count": 1,
+    "note": "one logical stage invocation failed once; its two raw payloads produced 72+46 raw validation errors across the union — error multiplication is a union-cascade property, not evidence of many model attempts"
+  },
+  "replay": {
+    "attempt_1": {
+      "blocking_errors_in_intended_branch": [
+        {
+          "field": "question_handle",
+          "type": "missing"
+        },
+        {
+          "field": "to_status",
+          "type": "missing"
+        },
+        {
+          "field": "disposition",
+          "type": "enum"
+        },
+        {
+          "field": "handle",
+          "type": "extra_forbidden"
+        },
+        {
+          "field": "status",
+          "type": "extra_forbidden"
+        }
+      ],
+      "explanation": "three genuine defects, all in the intended branch: abbreviated operand name 'handle' (extra_forbidden + missing question_handle), abbreviated status name 'status' (extra_forbidden + missing to_status), and illegal disposition 'no_evidence_found' (enum). The remaining 67 raw errors are cascade from the OTHER union branches (non-discriminated union tries every branch; branch errors do not imply the model attempted those actions)",
+      "intended_branch": "UpdateQuestionActionV2",
+      "pydantic_valid": false,
+      "raw_error_count": 72,
+      "union_branches_reporting": [
+        "AddFindingReferenceActionV2",
+        "AddPendingProposalReferenceActionV2",
+        "CreateContradictionActionV2",
+        "CreateHypothesisActionV2",
+        "CreateQuestionActionV2",
+        "UpdateContradictionActionV2",
+        "UpdateCoverageActionV2",
+        "UpdateEvidenceRelevanceActionV2",
+        "UpdateHypothesisActionV2",
+        "UpdateQuestionActionV2"
+      ]
+    },
+    "attempt_2": {
+      "blocking_errors_in_intended_branch": [
+        {
+          "field": "to_status",
+          "type": "enum"
+        }
+      ],
+      "explanation": "exactly ONE genuine defect remains: to_status='completed' is not a member of the frozen QuestionStatus enum. Every field name is legal, the handle is format-correct, disposition 'not_supported' is legal. The remaining 45 raw errors are union cascade",
+      "intended_branch": "UpdateQuestionActionV2",
+      "pydantic_valid": false,
+      "raw_error_count": 46,
+      "union_branches_reporting": [
+        "AddFindingReferenceActionV2",
+        "AddPendingProposalReferenceActionV2",
+        "CreateContradictionActionV2",
+        "CreateHypothesisActionV2",
+        "CreateQuestionActionV2",
+        "UpdateContradictionActionV2",
+        "UpdateCoverageActionV2",
+        "UpdateEvidenceRelevanceActionV2",
+        "UpdateHypothesisActionV2",
+        "UpdateQuestionActionV2"
+      ]
+    }
+  },
+  "retry_feedback_effectiveness": {
+    "class": "HYPOTHESIS (feedback text not persisted verbatim)",
+    "mechanism_note": "attempt 1's wrong field NAME meant no enum-value feedback for the status VALUE could fire (extra_forbidden/missing, not enum); the first enum-value feedback would have been attempt 2's validation error, but the frozen budget (1) was exhausted — the model never received the legal QuestionStatus value list",
+    "not_corrected": [
+      "to_status value 'completed'"
+    ],
+    "observed_self_correction": [
+      "handle -> question_handle",
+      "status -> to_status",
+      "dropped non-schema fields (investigated_summary inside the action was legal; dropped anyway)",
+      "disposition no_evidence_found -> not_supported (legal member chosen)"
+    ]
+  },
+  "sink_cross_check": {
+    "normalization": "the RCA-1 sink stringifies loc indexes (redaction-safe JSON); replay pairs are normalized to strings before comparison",
+    "persisted_pair_count": 8,
+    "persisted_terminal_pairs_reproduced_by_replay": true
+  }
+}

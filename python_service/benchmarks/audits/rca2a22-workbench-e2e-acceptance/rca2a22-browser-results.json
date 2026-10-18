@@ -1,0 +1,147 @@
+[
+  {
+    "testId": "T01",
+    "name": "Real browser loads Investigation Workbench",
+    "pass": true,
+    "detail": {
+      "url": "http://127.0.0.1:3100/investigation?taskId=synthetic-rca2a22-workbench-001"
+    }
+  },
+  {
+    "testId": "T02",
+    "name": "Three-column layout preserved with Review Panel docked in Column 3",
+    "pass": true,
+    "detail": {
+      "col1": true,
+      "col2": true,
+      "col3": true,
+      "reviewPanel": true
+    }
+  },
+  {
+    "testId": "T03",
+    "name": "Task context correctly propagated",
+    "pass": true,
+    "detail": {
+      "expected": "synthetic-rca2a22-workbench-001",
+      "actual": "synthetic-rca2a22-workbench-001"
+    }
+  },
+  {
+    "testId": "T04",
+    "name": "Review queue fetched from real API",
+    "pass": true,
+    "detail": {
+      "candidateIds": [
+        "finding:disp_rca2a22_cand_a",
+        "hyp_rca2a22_cand_b"
+      ]
+    }
+  },
+  {
+    "testId": "T05",
+    "name": "Candidate detail fetched from real API",
+    "pass": true,
+    "detail": {
+      "contentPreview": "Security Account Manager registry hive accessed via suspicio"
+    }
+  },
+  {
+    "testId": "T06",
+    "name": "Evidence reference navigates correctly",
+    "pass": true,
+    "detail": {
+      "ref": "file:C/Windows/System32/config/SAM"
+    }
+  },
+  {
+    "testId": "T07",
+    "name": "Assertion class and grounding badges correctly displayed",
+    "pass": true,
+    "detail": {}
+  },
+  {
+    "testId": "T08",
+    "name": "Accept requires explicit user confirmation",
+    "pass": true,
+    "detail": {
+      "modalTitle": "确认显式审核决策：接受候选"
+    }
+  },
+  {
+    "testId": "T09",
+    "name": "Accept creates durable review decision",
+    "pass": true,
+    "detail": {
+      "status": 200,
+      "decision": "accepted",
+      "review_id": "freview:c39257759004c6366d53",
+      "reviewer": "analyst"
+    }
+  },
+  {
+    "testId": "T10",
+    "name": "Browser refresh preserves accepted status",
+    "pass": true,
+    "detail": {}
+  },
+  {
+    "testId": "T11",
+    "name": "Reject creates durable review decision",
+    "pass": true,
+    "detail": {
+      "status": 200,
+      "decision": "rejected",
+      "review_id": "freview:3427ce6d6ad0e830c10d",
+      "epistemic_warning": true
+    }
+  },
+  {
+    "testId": "T12",
+    "name": "Browser refresh preserves rejected status",
+    "pass": true,
+    "detail": {}
+  },
+  {
+    "testId": "T13",
+    "name": "Review history originates from SQLite",
+    "pass": true,
+    "detail": {
+      "textSample": "Authoritative Review History"
+    }
+  },
+  {
+    "testId": "T14",
+    "name": "Task switch prevents stale response rendering",
+    "pass": true,
+    "detail": {
+      "renderedCandidates": 0
+    }
+  },
+  {
+    "testId": "T21",
+    "name": "Reviewer identity is caller-declared, limitation disclosed",
+    "pass": true,
+    "detail": {
+      "noticeText": "Reviewer: analyst[REVIEWER_AUTHENTICATION_LIMITATION: caller-declared identity in local mode]"
+    }
+  },
+  {
+    "testId": "T28",
+    "name": "Existing Event Analysis remains usable",
+    "pass": true,
+    "detail": {}
+  },
+  {
+    "testId": "T29",
+    "name": "Existing Evidence Analysis remains usable",
+    "pass": true,
+    "detail": {}
+  },
+  {
+    "testId": "T30",
+    "name": "Review Panel remains within Analysis Workspace Column 3",
+    "pass": true,
+    "detail": {}
+  }
+]

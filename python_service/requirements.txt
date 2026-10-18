@@ -34,3 +34,11 @@ python-louvain>=0.16
 
 # QQ NT (NTQQ) database decryption (SQLCipher). Uses the prebuilt binary wheel.
 sqlcipher3-binary>=0.5.4
+
+# Agent substrate (P3): PydanticAI thin adapter. Exact pin, not a range: the
+# [openai] extra must accept the already-installed openai 2.x line and the
+# core must accept the installed pydantic 2.13.x / httpx 0.28.x without
+# forcing any upgrade of the existing runtime.
+# 2.30.0 is the newest release satisfying: openai>=2.45,<3, pydantic>=2.12,
+# httpx>=0.27 (2.35+ forces openai 3.x, 2.40+ forces httpx2 as a hard core dep).
+pydantic-ai-slim[openai]==2.30.0

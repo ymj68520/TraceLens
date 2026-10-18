@@ -1,0 +1,23 @@
+{
+  "artifact_version": "RCA2A11HistoricalInterpretationAmendmentV1",
+  "experiment_id": "rca2a11-deepseek-flash-vocabulary-comparison",
+  "created_at_utc": "2026-10-17T01:45:39.872846+00:00",
+  "request_envelope_size_reconciliation": {
+    "serialized_request_body_bytes": 11257,
+    "httpx_request_content_bytes": 10939,
+    "reconciliation_explanation": "11257 bytes represents the offline synthetic request envelope calculated by calculate_request_envelope() including synthetic user message and separators. 10939 bytes is the actual byte count transmitted over the wire by Stainless/httpx for chat.completions.create(). Both measurements are accurate for their respective capture boundaries.",
+    "request_body_sha256": "136316d6bd17138ffcb2c65d57c0aa03b4f3f89a2c04a4146f8ec77febd7b505"
+  },
+  "historical_gateway_timing_reconciliation": {
+    "rca2a10e_d3_non_streaming_wall_clock_ms": 186934.1,
+    "rca2a10e_d4_streaming_wall_clock_ms": 108515.86,
+    "rca2a10f_d3_non_streaming_wall_clock_ms": 870.08,
+    "rca2a10g_d3_non_streaming_wall_clock_ms": 7655.16,
+    "timing_clarification": "RCA-2A.10e experienced HTTP 500 timeouts of 186.93s and 108.52s on api.hcnsec.cn. Historical RCA-2A.10b seat 1 failed in ~14.5s. RCA-2A.10g on chat.cordapp.org completed with HTTP 200 in 7.66s."
+  },
+  "freeze_boundary_reconciliation": {
+    "rca2a10g_qualification": "ONE_FULL_INTEGRATE_REQUEST_PASS",
+    "production_qualification_status": "NOT_AUTHORIZED",
+    "boundary_enforcement": "RCA-2A.10g proved gateway transport compatibility for a single request. It did not qualify the model for production or prove long-term reliability. Formal 16-seat A/B comparison in RCA-2A.11 evaluates exploratory guidance effects."
+  }
+}

@@ -1,0 +1,60 @@
+{
+ "artifact_version": "RCA1RuntimeIdentityScopeAddendumV1",
+ "created_at": "2026-10-13T12:55:17+00:00",
+ "extends": "RCA1RuntimeIdentityRecordV1 (append-only; the original 13-file manifest is NOT superseded)",
+ "purpose": "RCA-2A §1: widen the identity surface beyond the original manifest — RCA-1 new modules, the service wiring point, config entries, and the actual dependency edges — so no consumer mistakes the 13-file comparison for a complete runtime identity.",
+ "files": {
+  "python_service/httpserver/services/investigation/agent_failure_taxonomy.py": {
+   "sha256": "c293d4773b0d7defd84b754f81343c2e42445156fda3b10e545268edf4ddbe5a",
+   "note": "RCA-1.2 new module"
+  },
+  "python_service/httpserver/services/investigation/agent_failure_diagnostics.py": {
+   "sha256": "8367b96a60d4bbdfc23bf10af71cf6dd6e510a13f2cbe1ca4ef9153769038838",
+   "note": "RCA-1.3 new module"
+  },
+  "python_service/httpserver/services/investigation/agent_retry_timeout_facts.py": {
+   "sha256": "b3d4742bab9ec3fd853193f21ae03de1f134a173cc551e5c0c350aebb594fbe1",
+   "note": "RCA-1.4 new module"
+  },
+  "python_service/httpserver/services/service_manager.py": {
+   "sha256": "88677442af25a2aaa21e39d671c6c171ebdb8c37413a8d129390292a7130face",
+   "note": "RCA-1.3 sink wiring (supervisor + specialist construction points)"
+  },
+  "python_service/httpserver/config.py": {
+   "sha256": "126cda581d67ccad2382506417b1b6e85aba76690cdeb6fc7c61c80101935efa",
+   "note": "RCA-1.3 llm_failure_diagnostics(+_path) config entries; legacy llm_max_retries documented dead"
+  },
+  "python_service/httpserver/services/benchmarks/runner.py": {
+   "sha256": "6cefad3b7311661a62e8b745a76badfd7566204df3f8bf3d533c64b686b7fc14",
+   "note": "RCA-1.2 failure record classification fields"
+  },
+  "python_service/scripts/disposition_openrouter_8x1.py": {
+   "sha256": "2718ec7ed44478e3fcbe52105035af045d058e9dde8ae0f9c58c695ca3144525",
+   "note": "RCA-1.5 corrected screening disposition"
+  }
+ },
+ "dependency_edges": {
+  "agent_orchestrator": [
+   "agent_failure_taxonomy (classify_failure — containment path)",
+   "agent_failure_diagnostics (optional sink emission; None=default off)",
+   "agent_specialist_executor (DelegationFailureCode.SUPERVISOR_INTEGRATION_FAILED, safe_failure_message)",
+   "service_manager (constructs orchestrator; passes failure_diagnostics_sink resolved from settings)"
+  ],
+  "agent_specialist_executor": [
+   "agent_failure_taxonomy (map_provider_exception type-first branches)",
+   "agent_failure_diagnostics (specialist-stage emission)",
+   "service_manager (constructs executor; passes failure_diagnostics_sink)"
+  ],
+  "config": [
+   "llm_failure_diagnostics / llm_failure_diagnostics_path (default False/'') — consumed by agent_failure_diagnostics.failure_diagnostics_sink",
+   "llm_max_retries — DEAD on the agent path (zero consumers), semantics unchanged per RCA-1.4"
+  ],
+  "benchmarks_runner": [
+   "agent_failure_taxonomy (classify_failure in the failed-run catch; FailedRunRecordV1 optional fields)"
+  ],
+  "disposition_openrouter_8x1": [
+   "agent_failure_taxonomy codes; disposition_wave2_final OPEN_STATUSES/ceiling; wave2_screening QUOTA_CODES/_walk_runs"
+  ]
+ },
+ "non_identity_note": "File hashes bind THIS commit's content; they are not a semantic equivalence claim. The historical RuntimeBaselineV3 qualification identity does not transfer to any post-RCA-1 tree (see the declaration in RCA1RuntimeIdentityRecordV1)."
+}

@@ -1,0 +1,50 @@
+{
+  "artifact_version": "RCA2A15AgentV0CriticalPathReportV1",
+  "experiment_id": "rca2a15-solo-engineering-validation",
+  "timestamp_utc": "2026-10-17T05:10:00.000000+00:00",
+  "priority_ranking": [
+    {"rank": 1, "domain": "Evidence Integrity", "status": "VERIFIED_PROTECTED"},
+    {"rank": 2, "domain": "End-to-End Execution Correctness", "status": "CRITICAL_PATH_CURRENT_BOTTLENECK"},
+    {"rank": 3, "domain": "State / Persistence Correctness", "status": "VERIFIED_PROTECTED"},
+    {"rank": 4, "domain": "Grounding & Verification", "status": "IMPLEMENTED_FUNCTIONAL"},
+    {"rank": 5, "domain": "Analyst Review", "status": "IMPLEMENTED_FUNCTIONAL"},
+    {"rank": 6, "domain": "Finalization", "status": "IMPLEMENTED_FUNCTIONAL"},
+    {"rank": 7, "domain": "Operational Reliability", "status": "IN_PROGRESS"},
+    {"rank": 8, "domain": "UI Integration", "status": "PENDING_API_EXPOSURE"}
+  ],
+  "next_engineering_task": {
+    "priority": "P1 (Top Critical Path)",
+    "task_name": "Agent v0 End-to-End Orchestrator Wiring and HTTP Control API",
+    "problem": "All primary agent subsystems (Supervisor, SpecialistExecutor, ToolRegistry, WorkingState, StateTransitionPolicy, FinalizationGate) are implemented and unit-tested in isolation, but ServiceManager initializes AgentOrchestrator with supervisor=None and delegation_dispatcher=None. Additionally, zero HTTP routes exist in routes/ to trigger or monitor agent execution. The agent cannot be run end-to-end outside isolated unit tests.",
+    "affected_components": [
+      "python_service/httpserver/services/service_manager.py",
+      "python_service/httpserver/routes/investigation_agent.py (new minimal router)"
+    ],
+    "existing_reusable_code": [
+      "AgentOrchestrator.execute_cycle() and run_loop() in agent_orchestrator.py",
+      "InvestigationSupervisor in agent_supervisor.py",
+      "SourceSpecialistExecutor in agent_specialist_executor.py",
+      "ForensicToolRegistry in agent_tools/registry.py",
+      "StateTransitionPolicy in agent_transitions.py",
+      "AgentRuntimeRepository in agent_runtime.py"
+    ],
+    "minimal_modification": [
+      "1. Update ServiceManager._create_agent_orchestrator() to wire real/configured InvestigationSupervisor and SourceSpecialistExecutor delegation dispatcher.",
+      "2. Add minimal FastAPI router (investigation_agent.py) exposing: POST /api/investigation/agent/cycle, POST /api/investigation/agent/runs, GET /api/investigation/agent/state."
+    ],
+    "required_tests": [
+      "ServiceManager wiring test confirming supervisor and dispatcher are non-null when agent runtime is initialized.",
+      "End-to-end cycle integration test over an isolated task database verifying plan -> delegation -> integration -> working state revision transition."
+    ],
+    "risk": "Low. Guarded by P2 StateTransitionPolicy, MergeGuard, and fail-closed validators. If model or provider fails, cycle halts safely with zero state mutation.",
+    "acceptance_criteria": [
+      "ServiceManager.agent_orchestrator has non-null supervisor and delegation_dispatcher.",
+      "A client can invoke an agent investigation cycle via service call or HTTP route.",
+      "Cycle execution deterministically updates working state and trajectory logs in SQLite."
+    ]
+  },
+  "retirements": {
+    "prompt_benchmark_expansion": "FROZEN_DEFERRED (no further mock benchmark iterations prior to end-to-end execution)",
+    "external_custodian_audits": "RETIRED_FOR_SOLO_DEV (independent qualification deferred until Agent v0 is functionally runnable)"
+  }
+}

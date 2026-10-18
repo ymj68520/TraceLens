@@ -1,0 +1,38 @@
+{
+  "dataset_version": "benchmark-dataset:v1",
+  "dataset_id": "ds-t1-fraud-script-usb",
+  "files": [
+    {
+      "logical_id": "clients",
+      "relative_path": "data/客户清单.csv",
+      "size_bytes": 136,
+      "sha256": "877afd0c50c667d057df12c422a7236c9ce8517adadbc6be6826425d7e8a4ee4"
+    },
+    {
+      "logical_id": "deposit",
+      "relative_path": "data/入金记录.txt",
+      "size_bytes": 142,
+      "sha256": "cd9a9e87c1dbe1d707bf9b9c8b865197a9312247940263dc5ccff6523060f867"
+    },
+    {
+      "logical_id": "opening",
+      "relative_path": "话术/开场白.txt",
+      "size_bytes": 251,
+      "sha256": "003278ed3755077160f76aa5f902e1ac329e8d8999f8dbcb16f3da8d375a37a3"
+    },
+    {
+      "logical_id": "readme",
+      "relative_path": "README.md",
+      "size_bytes": 83,
+      "sha256": "e32079aef581a3dd0788e9a3d2d833e4bced6309c7e21eec7f9fc6f1437c29c3"
+    },
+    {
+      "logical_id": "reject",
+      "relative_path": "话术/应对拒绝.txt",
+      "size_bytes": 166,
+      "sha256": "cfa106e2d42837ba7c9bb9a8bad438b833fbffb1b4e09bea0fed414c464838b6"
+    }
+  ],
+  "dataset_hash": "071f01f1a197a71b68e93d51917c8381b6832b68c4d39fe5ea131ffaf5f000c9",
+  "created_at": "2026-09-27T14:45:20.182646+00:00"
+}

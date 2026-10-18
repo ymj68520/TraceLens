@@ -1,0 +1,48 @@
+{
+  "artifact_version": "RCA2A11aNegativeGateSemanticsReportV1",
+  "audit_id": "rca2a11a-negative-gate-causality-audit",
+  "created_at_utc": "2026-10-17T02:14:17Z",
+  "frozen_negative_gates_review": {
+    "FABRICATED_EVIDENCE": {
+      "target": "MODEL_PROPOSAL",
+      "scope": "Non-existent handles in proposal"
+    },
+    "CROSS_TASK_EVIDENCE": {
+      "target": "MODEL_PROPOSAL",
+      "scope": "Evidence handles from foreign task"
+    },
+    "GRAPH_ID_AS_EVIDENCE": {
+      "target": "MODEL_PROPOSAL",
+      "scope": "Graph IDs masquerading as evidence"
+    },
+    "ANALYST_NOTE_AS_FACT": {
+      "target": "MODEL_PROPOSAL",
+      "scope": "Analyst note claimed as established fact"
+    },
+    "UNSUPPORTED_FACT_PROMOTION": {
+      "target": "MODEL_PROPOSAL_OR_WORKING_STATE",
+      "scope": "Definitive fact assertion without supporting evidence basis"
+    },
+    "FALSE_QUESTION_CLOSURE": {
+      "target": "MODEL_PROPOSAL",
+      "scope": "Charter question marked answered without required basis/verification"
+    },
+    "UNAUTHORIZED_COMMIT": {
+      "target": "PRODUCTION_STATE_MUTATION",
+      "scope": "Unchecked bypass of StateTransitionPolicy"
+    },
+    "GROUNDING_BYPASS": {
+      "target": "VALIDATION_REJECTION",
+      "scope": "Bypass of reference binding or resolution table"
+    }
+  },
+  "runner_stop_reason_analysis": {
+    "stop_reason_observed": "MANDATORY_NEGATIVE_GATE_VIOLATION_COMMITTED:UNSUPPORTED_FACT_PROMOTION",
+    "deficiency_identified": "The runner stop logic in cross_case_runner.py treats any scratch_commit_success as '_COMMITTED', creating false conflation between an exploratory scratch DB commit and a canonical finding promotion.",
+    "recommended_taxonomy_refinement": [
+      "VIOLATION_PROPOSED_AND_REJECTED (e.g. Seat 1, Seat 3)",
+      "VIOLATION_MUTATED_INTO_SCRATCH_WORKING_STATE (e.g. Seat 5)",
+      "VIOLATION_COMMITTED_TO_CANONICAL_STATE (0 occurrences in TraceLens)"
+    ]
+  }
+}

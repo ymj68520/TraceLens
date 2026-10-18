@@ -1,0 +1,31 @@
+{
+  "artifact_version": "RCA2A19EvidenceIntegrityReportV1",
+  "experiment_id": "rca2a19-real-delegation-integration-e2e",
+  "timestamp_utc": "2026-10-17T08:30:11Z",
+  "database_hash_verification": {
+    "raw_db": {
+      "pre": "b6ad1b86e7c88c2bcdb65ea1ed4edc3ff51fe40d0570768d6c4f0cff4c2d3350",
+      "post": "b6ad1b86e7c88c2bcdb65ea1ed4edc3ff51fe40d0570768d6c4f0cff4c2d3350",
+      "mutated": false
+    },
+    "events_db": {
+      "pre": "73e938bed46400ebc0abc657dc1efc8f6c45e26e48a9d1bc4fdded1bdba4dc52",
+      "post": "73e938bed46400ebc0abc657dc1efc8f6c45e26e48a9d1bc4fdded1bdba4dc52",
+      "mutated": false
+    },
+    "files_db": {
+      "pre": "aab0cfd4f5c8eaf0e75a43fe3bf7cc70d3d51d27980cda09d9f86ca5846acf93",
+      "post": "aab0cfd4f5c8eaf0e75a43fe3bf7cc70d3d51d27980cda09d9f86ca5846acf93",
+      "mutated": false
+    }
+  },
+  "evidence_invariants": {
+    "raw_evidence_untouched": true,
+    "analyst_notes_as_evidence": false,
+    "cross_task_evidence_introduced": false,
+    "report_evidence_admissions": 0,
+    "finalization_gate_triggered": false,
+    "unsupported_fact_promotions": 0
+  },
+  "verdict": "EVIDENCE_INTEGRITY_STRICTLY_MAINTAINED"
+}

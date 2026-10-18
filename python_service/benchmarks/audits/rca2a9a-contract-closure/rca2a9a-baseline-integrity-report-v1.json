@@ -1,0 +1,87 @@
+{
+  "artifact_version": "RCA2A9aBaselineIntegrityReportV1",
+  "baseline_commit": "325fa4eb8a86bc347484eea22d9116f22f2d1977",
+  "generated_at": "2026-10-16T00:56:49.679533+00:00",
+  "historical_artifacts": {
+    "rca2a7c_manifest": {
+      "path": "benchmarks/audits/rca2a7c-stepfun-vocabulary-comparison/rca2a7c-experiment-manifest-v1.json",
+      "sha256": "104d274fef6d6891eeaff76757d641669990ead40db96d9e1439bfaa66be9271"
+    },
+    "rca2a8_architecture_decision": {
+      "path": "benchmarks/audits/rca2a8-semantic-validity/rca2a8-architecture-decision-report-v1.json",
+      "sha256": "1b959ae3c39456d264b1f4d5c82f6978668829d95ac2d2d874f32f8f8450ece0"
+    },
+    "rca2a8_interpretation_amendment": {
+      "path": "benchmarks/audits/rca2a9-cross-case-readiness/rca2a8-interpretation-amendment-v1.json",
+      "sha256": "441d3aa14b26efa4cd9b28e70e2ef43713364b21c5388393a6c019ebd6914c27"
+    },
+    "rca2a9_capability_matrix": {
+      "path": "benchmarks/audits/rca2a9-cross-case-readiness/rca2a9-scenario-capability-matrix-v1.json",
+      "sha256": "ff0a12acf6269e902d25b3d01d81fd23d9e139194d1b505513663ecad27b8596"
+    },
+    "rca2a9_cross_arm_parity": {
+      "path": "benchmarks/audits/rca2a9-cross-case-readiness/rca2a9-cross-arm-parity-report-v1.json",
+      "sha256": "0570a609776155937b1366715146f6ac853b772e08a8627c71e5bc83257bb84d"
+    },
+    "rca2a9_cross_case_protocol_v1": {
+      "path": "benchmarks/audits/rca2a9-cross-case-readiness/rca2a9-cross-case-comparison-protocol-v1.json",
+      "sha256": "7c14455ea9c74201bd41f1644116617e640dffebb168600aa165a4076f6304b3"
+    },
+    "rca2a9_fixture_integrity": {
+      "path": "benchmarks/audits/rca2a9-cross-case-readiness/rca2a9-fixture-integrity-report-v1.json",
+      "sha256": "650b5df6ebba3dfbdb22afa69420e5863ca95138555e07c1c728fda6b024298b"
+    },
+    "rca2a9_oracle_calibration": {
+      "path": "benchmarks/audits/rca2a9-cross-case-readiness/rca2a9-oracle-calibration-report-v1.json",
+      "sha256": "96620ecec153b6156e72f7e0f0cc399d38dd6d5828dde82f88fb36c2165aeccb"
+    },
+    "rca2a9_production_stage_parity": {
+      "path": "benchmarks/audits/rca2a9-cross-case-readiness/rca2a9-production-stage-parity-report-v1.json",
+      "sha256": "c499cb0735ffcf6f6359e4959f2ccf00edd939ccb853436ef40c1355277d554d"
+    },
+    "rca2a9_readiness_decision": {
+      "path": "benchmarks/audits/rca2a9-cross-case-readiness/rca2a9-readiness-decision-report-v1.json",
+      "sha256": "fb1a178b0ec4a31e7005c811c7bc70a8ab5d696f266d59352ae83774b1105222"
+    },
+    "rca2a9_runtime_identity": {
+      "path": "benchmarks/audits/rca2a9-cross-case-readiness/rca2a9-runtime-identity-record-v1.json",
+      "sha256": "881227385edc70015635ee2c96f59cd27a5ead8d806a68e4ccdd69486b39c9e7"
+    },
+    "rca2a9_semantic_oracle": {
+      "path": "benchmarks/audits/rca2a9-cross-case-readiness/rca2a9-semantic-oracle-v1.json",
+      "sha256": "b3487f210f5d565582b90be638d3ea2d8317dc2b7ca43bcbcb5b520d971dcdff"
+    }
+  },
+  "source_code_identities": {
+    "agent_finalization_py": {
+      "file": "httpserver/services/investigation/agent_finalization.py",
+      "sha256": "505b0f566b2bd91822c8f150fc093fafcff4634b994b4bc2fda469df8caaaf4a"
+    },
+    "agent_integration_v2_py": {
+      "file": "httpserver/services/investigation/agent_integration_v2.py",
+      "sha256": "9be8946460d63993192c2abb58391bc6aa5af2617412ee27377f3275846439a0"
+    },
+    "cross_case_fixtures_py": {
+      "file": "benchmarks/isolated_integration/cross_case_fixtures.py",
+      "sha256": "fd7c620a7b83dc4b1c7b57174d5d1a5da199db20de23bc17e39156491b4a8a4d"
+    },
+    "report_evidence_py": {
+      "file": "httpserver/services/investigation/report_evidence.py",
+      "sha256": "6a36daa8f3fae208acd3c378e4667d19170f5f3d41f41bcca460ec2ffcdf4348"
+    },
+    "runner_py": {
+      "file": "benchmarks/audits/rca2a7b-runner-hardening/runner.py",
+      "sha256": "ce433704050b1ee0a560cfa6d1d10af1227857c1df39b701d922391dc5ba75c9"
+    },
+    "semantic_oracle_extension_py": {
+      "file": "benchmarks/isolated_integration/semantic_oracle_extension.py",
+      "sha256": "922db5e943ca2c980e8227743555a845d4452b0a6f9c0d9e7d0154fdc4b28348"
+    },
+    "semantic_oracle_py": {
+      "file": "benchmarks/isolated_integration/semantic_oracle.py",
+      "sha256": "52e3a57d5116c3fb290158d26eaaff1a69f95fa92efd6e06434a72c454f91a55"
+    }
+  },
+  "verdict": "BASELINE_INTEGRITY_PASS",
+  "worktree_status": "clean_at_baseline"
+}

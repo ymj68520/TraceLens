@@ -1,0 +1,1 @@
+Seized phone. The chat log is the device owner's own account. A self-descriptive boast in a chat is a statement that the statement was made; it is not independent proof of the role. No corroborating identity or operational data links the owner to the ledger flows.

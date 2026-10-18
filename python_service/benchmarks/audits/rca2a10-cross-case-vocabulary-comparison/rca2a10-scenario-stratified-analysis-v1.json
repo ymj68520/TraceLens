@@ -1,0 +1,93 @@
+{
+  "artifact_version": "RCA2A10ScenarioStratifiedAnalysisV1",
+  "contract_summary": {
+    "both_invalid": 0,
+    "both_valid": 0,
+    "control_win": 0,
+    "incomplete_pair": 8,
+    "treatment_win": 0
+  },
+  "experiment_id": "rca2a10-cross-case-vocabulary-comparison",
+  "scenarios": {
+    "t2-identity-trap": {
+      "both_invalid": 0,
+      "both_semantically_adequate": 0,
+      "both_valid": 0,
+      "contract_outcomes": [
+        "INCOMPLETE_PAIR",
+        "INCOMPLETE_PAIR"
+      ],
+      "control_contract_wins": 0,
+      "control_semantic_wins": 0,
+      "pairs_count": 2,
+      "semantic_outcomes": [
+        "SEMANTIC_COMPARISON_UNAVAILABLE",
+        "SEMANTIC_COMPARISON_UNAVAILABLE"
+      ],
+      "treatment_contract_wins": 0,
+      "treatment_semantic_wins": 0
+    },
+    "t2-no-evidence": {
+      "both_invalid": 0,
+      "both_semantically_adequate": 0,
+      "both_valid": 0,
+      "contract_outcomes": [
+        "INCOMPLETE_PAIR",
+        "INCOMPLETE_PAIR"
+      ],
+      "control_contract_wins": 0,
+      "control_semantic_wins": 0,
+      "pairs_count": 2,
+      "semantic_outcomes": [
+        "SEMANTIC_COMPARISON_UNAVAILABLE",
+        "SEMANTIC_COMPARISON_UNAVAILABLE"
+      ],
+      "treatment_contract_wins": 0,
+      "treatment_semantic_wins": 0
+    },
+    "t2-report-citation": {
+      "both_invalid": 0,
+      "both_semantically_adequate": 0,
+      "both_valid": 0,
+      "contract_outcomes": [
+        "INCOMPLETE_PAIR",
+        "INCOMPLETE_PAIR"
+      ],
+      "control_contract_wins": 0,
+      "control_semantic_wins": 0,
+      "pairs_count": 2,
+      "semantic_outcomes": [
+        "SEMANTIC_COMPARISON_UNAVAILABLE",
+        "SEMANTIC_COMPARISON_UNAVAILABLE"
+      ],
+      "treatment_contract_wins": 0,
+      "treatment_semantic_wins": 0
+    },
+    "t2-temporal-trap": {
+      "both_invalid": 0,
+      "both_semantically_adequate": 0,
+      "both_valid": 0,
+      "contract_outcomes": [
+        "INCOMPLETE_PAIR",
+        "INCOMPLETE_PAIR"
+      ],
+      "control_contract_wins": 0,
+      "control_semantic_wins": 0,
+      "pairs_count": 2,
+      "semantic_outcomes": [
+        "SEMANTIC_COMPARISON_UNAVAILABLE",
+        "SEMANTIC_COMPARISON_UNAVAILABLE"
+      ],
+      "treatment_contract_wins": 0,
+      "treatment_semantic_wins": 0
+    }
+  },
+  "semantic_summary": {
+    "both_semantically_adequate": 0,
+    "both_semantically_inadequate": 0,
+    "control_semantic_win": 0,
+    "semantic_comparison_unavailable": 8,
+    "treatment_semantic_win": 0
+  },
+  "total_pairs": 8
+}

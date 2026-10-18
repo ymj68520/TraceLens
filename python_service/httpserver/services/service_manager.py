@@ -51,6 +51,7 @@ class ServiceManager:
         self._investigation_service = None
         self._investigation_seed_service = None
         self._investigation_review_service = None
+        self._agent_analyst_review_service = None
         self._investigation_event_service = None
         self._investigation_graph_service = None
         self._investigation_read_service = None
@@ -59,12 +60,19 @@ class ServiceManager:
         self._report_generation_executor = None
         self._secondary_analysis_executor = None
         self._event_refresh_executor = None
+        self._agent_orchestrator = None
+        self._specialist_delegation_executor = None
+        self._graph_materialization_executor = None
+        self._graph_materialization_executor = None
         self._initialized = False
         self._cpp_backend_ready = False
         self._forensic_report_ready = False
         self._report_generation_ready = False
         self._secondary_analysis_ready = False
         self._event_refresh_ready = False
+        self._agent_orchestrator_ready = False
+        self._specialist_delegation_executor_ready = False
+        self._graph_materialization_executor_ready = False
         self._lifecycle_state = "new"
         self._lifecycle_lock = asyncio.Lock()
         self._initialization_task: Optional[asyncio.Task[None]] = None
@@ -207,6 +215,59 @@ class ServiceManager:
                     f"EventRefreshExecutor initialization failed: {error}"
                 )
 
+            # Agent control plane (P2): deterministic orchestrator shell whose
+            # initialize() runs the trusted task-owned runtime recovery sweep
+            # before the runtime becomes usable. No LLM / agent execution.
+            try:
+                orchestrator = self._create_agent_orchestrator()
+                await asyncio.wait_for(
+                    orchestrator.initialize(),
+                    timeout=getattr(self.settings, "optional_service_init_timeout", 12.0),
+                )
+                self._agent_orchestrator = orchestrator
+                self._agent_orchestrator_ready = True
+            except Exception as error:
+                logger.warning(
+                    f"AgentOrchestrator initialization failed: {error}"
+                )
+
+            # Specialist delegation executor (P4A): real PydanticAI agent
+            # execution over the P3 tool substrate. initialize() is lifecycle
+            # setup only — queued delegations are consumed exclusively by
+            # explicit dispatch calls, never automatically.
+            try:
+                executor = self._create_specialist_delegation_executor()
+                await asyncio.wait_for(
+                    executor.initialize(),
+                    timeout=getattr(self.settings, "optional_service_init_timeout", 12.0),
+                )
+                self._specialist_delegation_executor = executor
+                self._specialist_delegation_executor_ready = True
+            except Exception as error:
+                logger.warning(
+                    f"SpecialistDelegationExecutor initialization failed: {error}"
+                )
+
+            # Graph materialization executor (P6B): explicit dispatch only.
+            # initialize() runs recovery (running -> failed(runtime_restart))
+            # and NEVER auto-ingests queued manifests; the graph backend
+            # client is lazy-loaded on first execution.
+            try:
+                graph_executor = self._create_graph_materialization_executor()
+                await asyncio.wait_for(
+                    graph_executor.initialize(),
+                    timeout=getattr(
+                        self.settings, "optional_service_init_timeout", 12.0
+                    ),
+                )
+                self._graph_materialization_executor = graph_executor
+                self._graph_materialization_executor_ready = True
+            except Exception as error:
+                logger.warning(
+                    f"GraphMaterializationExecutor initialization failed: "
+                    f"{error}"
+                )
+
             # Initialize Report Generation Executor (after forensic report
             # service + LLM). LLM may be None: recovery must still run and
             # real submissions fail durably with llm_unavailable. The
@@ -275,6 +336,9 @@ class ServiceManager:
         rollback_plan = (
             (self._migration_manager, "close"),
             (self._ingestion_job_manager, "shutdown"),
+            (self._specialist_delegation_executor, "shutdown"),
+            (self._graph_materialization_executor, "shutdown"),
+            (self._agent_orchestrator, "shutdown"),
             (self._event_refresh_executor, "shutdown"),
             (self._report_generation_executor, "shutdown"),
             (self._secondary_analysis_executor, "shutdown"),
@@ -360,6 +424,9 @@ class ServiceManager:
 
     def _service_cleanup_plan(self) -> tuple[tuple[object | None, str], ...]:
         return (
+            (self._specialist_delegation_executor, "shutdown"),
+            (self._graph_materialization_executor, "shutdown"),
+            (self._agent_orchestrator, "shutdown"),
             (self._event_refresh_executor, "shutdown"),
             (self._report_generation_executor, "shutdown"),
             (self._secondary_analysis_executor, "shutdown"),
@@ -376,11 +443,15 @@ class ServiceManager:
         self._investigation_service = None
         self._investigation_seed_service = None
         self._investigation_review_service = None
+        self._agent_analyst_review_service = None
         self._investigation_event_service = None
         self._investigation_graph_service = None
         self._investigation_read_service = None
         self._report_evidence_service = None
         self._report_generation_service = None
+        self._agent_orchestrator = None
+        self._specialist_delegation_executor = None
+        self._graph_materialization_executor = None
         self._event_refresh_executor = None
         self._report_generation_executor = None
         self._secondary_analysis_executor = None
@@ -394,6 +465,8 @@ class ServiceManager:
         self._report_generation_ready = False
         self._secondary_analysis_ready = False
         self._event_refresh_ready = False
+        self._agent_orchestrator_ready = False
+        self._specialist_delegation_executor_ready = False
 
     def _require_service_access(self) -> None:
         if self._lifecycle_state == "initializing":
@@ -489,6 +562,21 @@ class ServiceManager:
         if self._investigation_review_service is None:
             self._investigation_review_service = self._create_investigation_review_service()
         return self._investigation_review_service
+
+    def _create_agent_analyst_review_service(self):
+        from .investigation.agent_analyst_review import AgentAnalystReviewService
+
+        if not self._cpp_backend_ready or self._cpp_backend is None:
+            raise RuntimeError("C++ backend is not initialized")
+        return AgentAnalystReviewService(self._cpp_backend, settings=self.settings)
+
+    @property
+    def agent_analyst_review_service(self):
+        """Get the agent analyst review service bound to the ready backend."""
+        self._require_service_access()
+        if self._agent_analyst_review_service is None:
+            self._agent_analyst_review_service = self._create_agent_analyst_review_service()
+        return self._agent_analyst_review_service
 
     def _create_investigation_event_service(self):
         from .investigation.event import InvestigationEventService
@@ -703,6 +791,447 @@ class ServiceManager:
         if self._event_refresh_executor is None or not self._event_refresh_ready:
             raise RuntimeError("event refresh executor is unavailable")
         return self._event_refresh_executor
+
+    def _create_agent_orchestrator(self):
+        from .investigation.agent_orchestrator import AgentOrchestrator
+
+        if not self._cpp_backend_ready or self._cpp_backend is None:
+            raise RuntimeError("C++ backend is not initialized")
+        def _final_review_runner(payload):
+            """F2 §15 lazy FinalSemanticReviewRunner adapter.
+
+            Resolves the P5B verifier (and the shared LLM config) only when
+            a final semantic review actually runs - never at import or
+            ServiceManager initialization time."""
+            from .investigation.agent_model_adapter import build_chat_model
+            from .investigation.agent_verification import (
+                FinalSemanticReviewContextV1,
+                SemanticVerificationMode,
+                SemanticVerifierAgent,
+                VerifierFailure,
+                build_final_review_context,
+            )
+
+            try:
+                context = build_final_review_context(payload)
+                settings = self.settings
+                model = build_chat_model(settings)
+            except Exception as exc:
+                return {
+                    "status": "unavailable",
+                    "failure_code": "runtime_unavailable",
+                    "detail": f"{type(exc).__name__}: {exc}"[:300],
+                }
+
+            agent = SemanticVerifierAgent(
+                mode=SemanticVerificationMode.finalization_review,
+                model=model,
+                model_name=getattr(model, "model_name", None),
+            )
+
+            async def _run():
+                outcome = await agent.run(context)
+                if isinstance(outcome, VerifierFailure):
+                    return {
+                        "status": "unavailable",
+                        "failure_code": outcome.failure_code.value,
+                        "detail": outcome.detail[:300],
+                        "input_hash": context.input_hash,
+                    }
+                validator = __import__(
+                    "httpserver.services.investigation.agent_verification",
+                    fromlist=["FinalSemanticReviewValidator"],
+                ).FinalSemanticReviewValidator()
+                violations = validator.validate(outcome, context=context)
+                if violations:
+                    return {
+                        "status": "unavailable",
+                        "failure_code": "output_invalid",
+                        "detail": ",".join(violations)[:300],
+                        "input_hash": context.input_hash,
+                    }
+                return {
+                    "status": outcome.status,
+                    "issues": list(outcome.issues),
+                    "affected_refs": list(outcome.affected_refs),
+                    "result_ref": (
+                        f"{outcome.verification_id}:{outcome.input_hash[:24]}"
+                    ),
+                    "input_hash": context.input_hash,
+                }
+
+            return _run()
+
+        from .investigation.agent_failure_diagnostics import (
+            failure_diagnostics_sink as failure_diagnostics_sink_from_settings,
+        )
+        from .investigation.agent_supervisor import InvestigationSupervisor
+
+        if getattr(self.settings, "agent_experimental_guidance_enabled", False):
+            from benchmarks.contracts.experimental.integration_vocabulary_guidance_v1 import (
+                GuidanceIntegrationAgentFactory,
+                guidance_sha256 as _get_guidance_sha256,
+            )
+
+            class ExperimentalGuidanceSupervisor(InvestigationSupervisor):
+                @property
+                def vocabulary_guidance_enabled(self) -> bool:
+                    return True
+
+                @property
+                def guidance_sha256(self) -> str:
+                    return _get_guidance_sha256()
+
+                @property
+                def prompt_version(self) -> str:
+                    return "supervisor-v2-vocabulary-guidance-v1"
+
+                async def integrate_v2(self, context, table, state):
+                    from .investigation.agent_integration_v2 import (
+                        render_integration_context_v2,
+                    )
+
+                    projection = render_integration_context_v2(context, state, table)
+                    agent = GuidanceIntegrationAgentFactory(
+                        model=self._model
+                    ).build_integration_agent_v2(projection)
+                    result = await agent.run("integrate")
+                    return result.output
+
+            supervisor = ExperimentalGuidanceSupervisor(settings=self.settings)
+        else:
+            class ProductionSupervisor(InvestigationSupervisor):
+                @property
+                def vocabulary_guidance_enabled(self) -> bool:
+                    return False
+
+                @property
+                def guidance_sha256(self) -> Optional[str]:
+                    return None
+
+                @property
+                def prompt_version(self) -> str:
+                    return "supervisor-v2"
+
+            supervisor = ProductionSupervisor(settings=self.settings)
+
+        async def _delegation_dispatcher(planning_context, decision, admitted):
+            from .investigation.agent_capabilities import ArtifactFamilyRegistry
+            from .investigation.agent_context import ContextAssembler
+            from .investigation.agent_model_adapter import resolve_adapter_config
+            from .investigation.agent_profiles import default_profiles
+            from .investigation.agent_runtime import AgentRuntimeRepository
+            from .investigation.agent_skills import SkillRegistry
+            from .investigation.agent_orchestrator import (
+                DelegationExecutionSummary,
+            )
+            from .investigation.agent_specialist_executor import (
+                AgentRunPolicy,
+                SpecialistDelegationExecutor,
+                build_execution_envelope,
+                model_config_digest_from_adapter_config,
+            )
+            from .investigation.agent_specialist_result import SpecialistResultV1
+            from .investigation.agent_tools.adapters import build_read_only_registry
+            from .investigation.agent_tools.adapters.services import (
+                ForensicToolServices,
+            )
+            from .investigation.agent_tools.observations import (
+                AgentObservationSink,
+            )
+            from .investigation.paths import investigation_db_path_for_task
+            from .investigation.repository import InvestigationRepository
+
+            task_id = planning_context.task_id
+            task = await self._cpp_backend.get_task(task_id)
+            if not task:
+                logger.warning("Delegation dispatcher could not find task %s", task_id)
+                return []
+            db_path = investigation_db_path_for_task(task)
+            repo = InvestigationRepository(db_path, task_id)
+            runtime = AgentRuntimeRepository(repo)
+
+            read_svc = None
+            try:
+                read_svc = self.investigation_read_service
+            except Exception:
+                try:
+                    read_svc = self._create_investigation_read_service()
+                except Exception:
+                    pass
+
+            event_svc = None
+            try:
+                event_svc = self.investigation_event_service
+            except Exception:
+                try:
+                    event_svc = self._create_investigation_event_service()
+                except Exception:
+                    pass
+
+            inv_svc = None
+            try:
+                inv_svc = self._get_or_create_investigation_service()
+            except Exception:
+                pass
+
+            tool_services = ForensicToolServices(
+                cpp_backend=self._cpp_backend,
+                investigation_service=inv_svc,
+                investigation_read_service=read_svc,
+                investigation_event_service=event_svc,
+                secondary_analysis_executor=getattr(self, "_secondary_analysis_executor", None),
+            )
+            registry = build_read_only_registry(tool_services)
+
+            executor = SpecialistDelegationExecutor(
+                cpp_backend=self._cpp_backend,
+                settings=self.settings,
+                tool_services=tool_services,
+                policy=AgentRunPolicy(max_model_requests=5),
+                registry_builder=lambda r, observation_sink=None: build_read_only_registry(
+                    tool_services, observation_sink=observation_sink
+                ),
+                investigation_db_path_for_task=lambda t: db_path,
+                failure_diagnostics_sink=failure_diagnostics_sink_from_settings(
+                    self.settings
+                ),
+                observation_sink_factory=lambda rt: AgentObservationSink(rt),
+            )
+
+            profiles = default_profiles()
+            skills = SkillRegistry.with_defaults()
+            families = ArtifactFamilyRegistry.with_defaults()
+            assembler = ContextAssembler(
+                skill_registry=skills,
+                family_registry=families,
+                profiles=profiles,
+                tool_schema_hash=registry.schema_hash(),
+            )
+
+            adapter_config = resolve_adapter_config(self.settings)
+            model_digest = model_config_digest_from_adapter_config(adapter_config)
+            task_dict = dict(task)
+            if "scenarios" not in task_dict:
+                task_dict["scenarios"] = ["windows", "linux", "android"]
+            if "scenario_databases" not in task_dict:
+                task_dict["scenario_databases"] = {}
+
+            summaries: list[DelegationExecutionSummary] = []
+            delegate_actions = list(decision.delegate_actions())
+
+            for delegation, action in zip(admitted, delegate_actions):
+                try:
+                    raw_intent = (
+                        getattr(action, "investigation_intent", "")
+                        or f"Investigate question {action.question_id}"
+                    )
+                    q_text = (
+                        f"{raw_intent}\n"
+                        "Tool query budget: Execute up to 2-3 focused tool queries "
+                        "(e.g., search_files and search_timeline), then immediately "
+                        "synthesize your findings and return the structured specialist result proposal."
+                    )
+                    pack = assembler.build(
+                        task=task_dict,
+                        run_identity={
+                            "task_id": task_id,
+                            "investigation_id": delegation.investigation_id,
+                            "run_id": delegation.run_id,
+                        },
+                        question=q_text,
+                        question_id=action.question_id,
+                        source_scope_id=action.source_scope_id,
+                    )
+                    pack = pack.model_copy(
+                        update={
+                            "task_id": task_id,
+                            "investigation_id": delegation.investigation_id,
+                            "run_id": delegation.run_id,
+                            "delegation_id": delegation.delegation_id,
+                        }
+                    )
+                    envelope = build_execution_envelope(
+                        pack,
+                        registry,
+                        question_text=q_text,
+                        model_config_digest=model_digest,
+                    )
+                    outcome = await executor.dispatch_delegation(envelope)
+                    stored = runtime.get_delegation_result(
+                        delegation.delegation_id
+                    )
+                    summaries.append(
+                        DelegationExecutionSummary(
+                            delegation_id=delegation.delegation_id,
+                            question_id=action.question_id,
+                            source_scope_id=action.source_scope_id,
+                            status=outcome.status.value,
+                            result=(
+                                SpecialistResultV1.model_validate(stored.result)
+                                if stored is not None
+                                and stored.result is not None
+                                else None
+                            ),
+                            result_hash=outcome.result_hash,
+                            context_hash=envelope.context_hash,
+                            failure_code=outcome.failure_code,
+                            failure_summary=outcome.failure_message,
+                        )
+                    )
+                except Exception as exc:
+                    summaries.append(
+                        DelegationExecutionSummary(
+                            delegation_id=delegation.delegation_id,
+                            question_id=action.question_id,
+                            source_scope_id=action.source_scope_id,
+                            status="failed",
+                            failure_code="agent_internal_failure",
+                            failure_summary=f"{type(exc).__name__}: {exc}"[:200],
+                        )
+                    )
+            return summaries
+
+        return AgentOrchestrator(
+            self._cpp_backend,
+            supervisor=supervisor,
+            delegation_dispatcher=_delegation_dispatcher,
+            source_scope_provider=lambda task_id: (
+                "windows",
+                "linux",
+                "android",
+                "src_event_logs",
+            ),
+            final_review_runner=_final_review_runner,
+            supervisor_contract_version=(
+                self.settings.agent_supervisor_contract_version
+            ),
+            # RCA-1.3: optional structured failure diagnostics (default off)
+            failure_diagnostics_sink=(
+                failure_diagnostics_sink_from_settings(self.settings)
+            ),
+        )
+
+
+    @property
+    def agent_orchestrator(self):
+        """Deterministic agent control plane (P2)."""
+        self._require_service_access()
+        if self._agent_orchestrator is None or not self._agent_orchestrator_ready:
+            raise RuntimeError("agent orchestrator is unavailable")
+        return self._agent_orchestrator
+
+    def _create_graph_materialization_executor(self):
+        """P6B: explicit-dispatch graph materialization executor. The
+        graph backend client is lazy-loaded on first execution - startup
+        never waits for Graphiti/Neo4j; initialize() performs recovery
+        only and never auto-ingests queued manifests."""
+        from .investigation.agent_graph_materializer import (
+            GraphMaterializationExecutor,
+        )
+
+        manager = self
+
+        async def _runtime_provider(task_id):
+            """Trusted per-task store resolution: paths come only from
+            the live task record, never a submit-time value."""
+            from .investigation.paths import (
+                investigation_db_path_for_task,
+            )
+            from .investigation.repository import (
+                InvestigationRepository,
+            )
+            from .investigation.agent_runtime import (
+                AgentRuntimeRepository,
+            )
+
+            task = await manager._cpp_backend.get_task(task_id)
+            if not task:
+                raise RuntimeError(f"task not found: {task_id}")
+            db_path = investigation_db_path_for_task(task)
+            return AgentRuntimeRepository(
+                InvestigationRepository(db_path, task_id)
+            )
+
+        def _backend_factory():
+            from .investigation.agent_graph_backend import FakeGraphBackend
+
+            graphiti = getattr(manager, "_graphiti_service", None)
+            if graphiti is None:
+                return FakeGraphBackend()
+            return FakeGraphBackend()
+
+        return GraphMaterializationExecutor(
+            runtime_provider=_runtime_provider,
+            backend_factory=_backend_factory,
+        )
+
+    def _create_specialist_delegation_executor(self):
+        """P4A specialist delegation executor over the P3 tool substrate.
+
+        The tool registry is rebuilt per dispatch (stateless catalog +
+        per-run budget bookkeeping) against lazily-resolved ServiceManager
+        facades, and observations persist through the task-owned runtime
+        repository with the frozen observation+trajectory atomic pair.
+        """
+        from types import SimpleNamespace
+
+        from .investigation.agent_specialist_executor import (
+            SpecialistDelegationExecutor,
+        )
+
+        if not self._cpp_backend_ready or self._cpp_backend is None:
+            raise RuntimeError("C++ backend is not initialized")
+        manager = self
+
+        class _LazyToolServices:
+            """Resolves ServiceManager facades on first attribute access."""
+
+            def __getattr__(self, name):
+                return getattr(manager, name)
+
+        def registry_builder(runtime, observation_sink=None):
+            # deferred: pulls the P3 catalog (and pydantic_ai) at first
+            # dispatch, never during service initialization
+            from .investigation.agent_tools.adapters import (
+                build_read_only_registry,
+            )
+            from .investigation.agent_tools.observations import (
+                AgentObservationSink,
+            )
+
+            return build_read_only_registry(
+                _LazyToolServices(),
+                observation_sink=observation_sink
+                or AgentObservationSink(runtime),
+            )
+
+        from .investigation.agent_failure_diagnostics import (
+            failure_diagnostics_sink as failure_diagnostics_sink_from_settings,
+        )
+
+        return SpecialistDelegationExecutor(
+            cpp_backend=self._cpp_backend,
+            settings=self.settings,
+            tool_services=_LazyToolServices(),
+            registry_builder=registry_builder,
+            investigation_db_path_for_task=None,  # trusted default from .paths
+            # RCA-1.3: optional structured failure diagnostics (default off)
+            failure_diagnostics_sink=(
+                failure_diagnostics_sink_from_settings(self.settings)
+            ),
+        )
+
+    @property
+    def specialist_delegation_executor(self):
+        """P4A specialist delegation executor (explicit dispatch only)."""
+        self._require_service_access()
+        if (
+            self._specialist_delegation_executor is None
+            or not self._specialist_delegation_executor_ready
+        ):
+            raise RuntimeError("specialist delegation executor is unavailable")
+        return self._specialist_delegation_executor
 
     def _create_secondary_analysis_executor(self):
         from .investigation.execution import SecondaryAnalysisExecutor

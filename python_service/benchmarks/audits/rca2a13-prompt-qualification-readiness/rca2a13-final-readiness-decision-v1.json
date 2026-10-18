@@ -1,0 +1,35 @@
+{
+  "artifact_version": "RCA2A13FinalReadinessDecisionV1",
+  "experiment_id": "rca2a13-prompt-qualification-readiness",
+  "timestamp_utc": "2026-10-17T03:45:14.778635+00:00",
+  "final_disposition": "QUALIFICATION_PROTOCOL_READY_WITH_LIMITATIONS",
+  "readiness_summary": {
+    "rca2a12_result_reconstruction": "PASS (8/8 pairs independently reconciled; +37.5pp canonical, +25pp semantic)",
+    "semantic_verdict_reconciliation": "PASS (F1 absence, F2 temporal, F3 identity, F4 citation boundaries confirmed)",
+    "candidate_freeze": "PASS (supervisor-v2-vocabulary-guidance-v1 frozen, SHA-256 e00c15... confirmed)",
+    "holdout_contamination_assessment": "EXPOSED_FOR_DEVELOPMENT (F1-F4 are contaminated; 0 clean holdouts currently exist)",
+    "qualification_battery_design": "PASS (Q1-Q6 capability families and contracts frozen)",
+    "acceptance_criteria_pre_registration": "PASS (Three-tier Hard/Quality/Operational gates frozen as PROPOSED_NOT_AUTHORIZED)",
+    "adjudication_and_statistical_plan": "PASS (Arm-blind protocol, McNemar exact tests, power analysis pre-registered)",
+    "harness_readiness": "PASS (22/22 offline simulation tests passed with 0 network calls)"
+  },
+  "limitations_and_prerequisites": [
+    "Repository currently lacks clean qualification holdout datasets (all 4 existing fixtures were exposed in exploratory iterations).",
+    "Adjudication independence is currently limited to internal automated and single-auditor processes; independent referee panel recommended for production qualification.",
+    "A sealed dataset of at least 24 (or 48) novel forensic cases covering Q1-Q6 must be authored and cryptographically sealed prior to live dispatch."
+  ],
+  "future_stage_boundary": {
+    "proposed_phase": "RCA-2A.14 \u2014 Sealed Prompt Qualification Execution",
+    "authorization_status": "PROPOSED_NOT_AUTHORIZED",
+    "prerequisites_for_authorization": [
+      "Candidate frozen (CONFIRMED)",
+      "Acceptance criteria frozen (CONFIRMED)",
+      "Statistical plan frozen (CONFIRMED)",
+      "Harness readiness verified (CONFIRMED)",
+      "Independent sealed holdout authored and validated (PENDING)",
+      "Double-blind adjudication panel staffed (PENDING)",
+      "Formal user directive and authorization received (PENDING)"
+    ]
+  },
+  "architectural_decision": "MANDATORY_STOP_ENFORCED"
+}

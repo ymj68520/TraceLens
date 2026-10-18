@@ -1,0 +1,227 @@
+{
+  "manifest_version": "truth-manifest:v1",
+  "manifest_id": "tman:fd3d504c10ba9bd137820b38",
+  "case_id": "t1-fraud-script-usb",
+  "case_version": "2",
+  "critical_evidence": [
+    {
+      "truth_evidence_id": "TE-1",
+      "evidence_identity_description": "/data/入金记录.txt: a deposit ledger recording victim names with USDT transfer amounts and a bank card number / wallet address (e.g. 王芳 50000 USDT, 李强 120000 USDT).",
+      "expected_evidence_key": "file:/data/入金记录.txt",
+      "criticality": "critical",
+      "parser_expectation": "reachable",
+      "source_kind": "file",
+      "semantic_role": "deposit_ledger",
+      "related_claim_ids": [
+        "TC-1",
+        "TC-3"
+      ],
+      "notes": ""
+    },
+    {
+      "truth_evidence_id": "TE-2",
+      "evidence_identity_description": "/README.md: internal notes naming the platform 金玉满堂 and an internal admin backend at 172.16.8.66:9090, marked 内部资料，严禁外传.",
+      "expected_evidence_key": "file:/README.md",
+      "criticality": "critical",
+      "parser_expectation": "reachable",
+      "source_kind": "file",
+      "semantic_role": "platform_operations_note",
+      "related_claim_ids": [
+        "TC-2"
+      ],
+      "notes": ""
+    }
+  ],
+  "supporting_evidence": [
+    {
+      "truth_evidence_id": "TE-3",
+      "evidence_identity_description": "/data/客户清单.csv: a victim/customer list with names, phone numbers, invested amounts and statuses (已入金/追单中/观望).",
+      "expected_evidence_key": "file:/data/客户清单.csv",
+      "criticality": "supporting",
+      "parser_expectation": "reachable",
+      "source_kind": "file",
+      "semantic_role": "victim_list",
+      "related_claim_ids": [
+        "TC-3"
+      ],
+      "notes": ""
+    },
+    {
+      "truth_evidence_id": "TE-4",
+      "evidence_identity_description": "/话术/开场白.txt: a cold-contact opening script posing as an assistant of a 'chief analyst' of 金玉财经, promising historical annualized returns above 30% and a 888-yuan newcomer bonus.",
+      "expected_evidence_key": "file:/话术/开场白.txt",
+      "criticality": "supporting",
+      "parser_expectation": "reachable",
+      "source_kind": "file",
+      "semantic_role": "solicitation_script",
+      "related_claim_ids": [
+        "TC-3"
+      ],
+      "notes": ""
+    },
+    {
+      "truth_evidence_id": "TE-5",
+      "evidence_identity_description": "/话术/应对拒绝.txt: objection-handling scripts for victims who hesitate ('机会稍纵即逝', claims of overseas regulation and instant withdrawal).",
+      "expected_evidence_key": "file:/话术/应对拒绝.txt",
+      "criticality": "supporting",
+      "parser_expectation": "reachable",
+      "source_kind": "file",
+      "semantic_role": "objection_handling_script",
+      "related_claim_ids": [
+        "TC-3"
+      ],
+      "notes": ""
+    }
+  ],
+  "irrelevant_evidence": [],
+  "expected_questions": [
+    {
+      "question_id": "TQ-1",
+      "text": "Does this device contain evidence of an organized investment-fraud operation (scripts, victim records, platform operation notes)?",
+      "expected_disposition": "answered",
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-2",
+        "TE-3"
+      ],
+      "acceptable_answers": [],
+      "unacceptable_answers": [],
+      "priority": 0,
+      "notes": ""
+    },
+    {
+      "question_id": "TQ-2",
+      "text": "Can the actual operators behind the platform be identified from this device?",
+      "expected_disposition": "unresolved",
+      "required_evidence_ids": [
+        "TE-2"
+      ],
+      "acceptable_answers": [],
+      "unacceptable_answers": [],
+      "priority": 0,
+      "notes": "No artifact attributes the operation to a real person; 'unresolved' with a closure basis is the correct terminal state and must not be forced to an answer."
+    }
+  ],
+  "confirmed_claims": [
+    {
+      "claim_id": "TC-1",
+      "proposition": "The device holds a deposit ledger recording USDT transfers by named individuals with amounts and a bank card / wallet destination.",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "FACT",
+      "required_evidence_ids": [
+        "TE-1"
+      ],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "factual",
+      "notes": ""
+    },
+    {
+      "claim_id": "TC-2",
+      "proposition": "The device holds internal notes naming the platform 金玉满堂 and listing an internal admin backend address.",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "FACT",
+      "required_evidence_ids": [
+        "TE-2"
+      ],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "factual",
+      "notes": ""
+    },
+    {
+      "claim_id": "TC-3",
+      "proposition": "The combination of solicitation scripts, objection-handling scripts, a victim list with deposit statuses and the deposit ledger is consistent with a coordinated investment-fraud ('杀猪盘') operation run from this device.",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "INFERENCE",
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-3",
+        "TE-4",
+        "TE-5"
+      ],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "factual",
+      "notes": ""
+    }
+  ],
+  "acceptable_inferences": [],
+  "unsupported_or_prohibited_overclaims": [
+    {
+      "claim_id": "TP-1",
+      "proposition": "The persons listed in the victim list are confirmed victims who lost money.",
+      "truth_status": "unsupported",
+      "maximum_assertion_class": null,
+      "required_evidence_ids": [],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "causal",
+      "notes": "The list records statuses (已入金/追单中/观望) but the ledger alone cannot prove completed loss events; state as recorded fact, not confirmed victimization."
+    },
+    {
+      "claim_id": "TP-2",
+      "proposition": "The operator of this device has been identified as the person responsible for the fraud.",
+      "truth_status": "unsupported",
+      "maximum_assertion_class": null,
+      "required_evidence_ids": [],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "actor_attribution",
+      "notes": "No attribution evidence exists on this device; actor attribution is prohibited."
+    },
+    {
+      "claim_id": "TP-3",
+      "proposition": "The admin backend at 172.16.8.66:9090 was actively used to defraud victims.",
+      "truth_status": "unsupported",
+      "maximum_assertion_class": null,
+      "required_evidence_ids": [],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "causal",
+      "notes": "The address is recorded in a note; its actual use is not evidenced by this dataset."
+    }
+  ],
+  "expected_relations": [
+    {
+      "relation_id": "TR-1",
+      "subject_entity": "入金记录.txt (deposit ledger)",
+      "relation_family": "correlation",
+      "object_entity": "客户清单.csv (victim list)",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "INFERENCE",
+      "expected_evidence_ids": [
+        "TE-1",
+        "TE-3"
+      ],
+      "identity_merge_allowed": false,
+      "notes": "The same names appear in the ledger and the list — a record correlation, NOT an identity merge of persons."
+    }
+  ],
+  "expected_coverage": [
+    {
+      "dimension_id": "fraud-operation-materials",
+      "description": "Scripts, victim records and platform notes are discovered and covered.",
+      "expected_status": "covered",
+      "requires_closure_basis": false,
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-2",
+        "TE-3",
+        "TE-4",
+        "TE-5"
+      ],
+      "notes": ""
+    }
+  ],
+  "known_ambiguities": [
+    "Timestamps on this volume reflect imaging/copy time; they do not prove when the scripts were last used."
+  ],
+  "unavailable_truth": [
+    "Real-world identity of the operator.",
+    "Blockchain or bank confirmation of the recorded transfers."
+  ],
+  "notes": "T1 canary case v2: re-authored against the actual ingested content of the minimal verification image (task dd09c083): five small text files. Single-reviewer.",
+  "input_hash": "fd3d504c10ba9bd137820b38824b14c1b77bb29f016459c196dcbc60ff69e5a9",
+  "created_at": "2026-09-27T14:43:57.770237+00:00"
+}

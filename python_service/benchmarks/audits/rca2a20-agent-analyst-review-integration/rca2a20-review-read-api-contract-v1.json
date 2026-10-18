@@ -1,0 +1,38 @@
+{
+  "contract_version": "rca2a20-review-read-api:v1",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/api/investigation/agent/review-candidates",
+      "params": [
+        "task_id",
+        "investigation_id?"
+      ],
+      "response": "List[ReviewCandidateProjection]",
+      "invariants": "0 LLM calls, 0 SQLite writes, 0 state transitions, 0 report admissions"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/agent/review-candidates/{candidate_id}",
+      "params": [
+        "candidate_id",
+        "task_id",
+        "investigation_id?"
+      ],
+      "response": "ReviewCandidateProjection",
+      "invariants": "0 LLM calls, 0 SQLite writes, 404 if not found"
+    },
+    {
+      "method": "GET",
+      "path": "/api/investigation/agent/reviews/history",
+      "params": [
+        "task_id",
+        "candidate_id?",
+        "investigation_id?"
+      ],
+      "response": "List[ReviewHistoryItem]",
+      "invariants": "Reads append-only review history from SQLite"
+    }
+  ],
+  "status": "PASS"
+}

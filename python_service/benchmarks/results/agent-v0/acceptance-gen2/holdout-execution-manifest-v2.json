@@ -1,0 +1,55 @@
+{
+  "artifact_version": "HoldoutExecutionManifestV2",
+  "generation_id": "acceptance-generation-2",
+  "authorization": "Generation-2 B6 FINAL SEALED HOLDOUT EXECUTION (explicit user directive)",
+  "acceptance_profile": "benchmarks/profiles/agent-v0-acceptance-profile-v2.json",
+  "preflight_input_hash": "0daa01720dc7256e52431bd10506e6c2ff6c861ecad7e1cb802fbf5891da854c",
+  "seal_hash": "a7b9d1ea92166d0ab56d4ab65cd5a40b530638eaec5a7954dc565801c59773e0",
+  "model_config_file": "benchmarks/results/agent-v0/b2-restart/sensenova-6.8-flash-lite.model-config.json",
+  "population": {
+    "families": [
+      "gen2-analyst-refutation",
+      "gen2-attribution-contradiction"
+    ],
+    "repetitions_per_family": 3,
+    "scheduled_runs": 6,
+    "fresh_state_per_attempt": true
+  },
+  "no_best_of_policy": "no retry-until-success, no replacement of a terminal attempt, no discard of 429/structured-output/semantic failures; frozen provider-internal retry only",
+  "agent_visible_input_source": "SEALED PublicHoldoutCaseV2 only — the driver loads, validates, hash-checks and projects; it never authors",
+  "b6_started_at": "2026-10-01T05:21:28+00:00",
+  "attempt_log": [
+    {
+      "case_id": "gen2-analyst-refutation",
+      "repeat": "repeat0",
+      "task_id": "414f61a3-0042-41c2-8891-7a228c499b6e",
+      "provisioned_at": "2026-10-01T05:21:28+00:00"
+    },
+    {
+      "case_id": "gen2-analyst-refutation",
+      "repeat": "repeat2",
+      "task_id": "b73ee7c6-7207-4247-922b-247fa7dee5a3",
+      "provisioned_at": "2026-10-01T05:29:50+00:00"
+    },
+    {
+      "case_id": "gen2-attribution-contradiction",
+      "repeat": "repeat0",
+      "task_id": "a9a89b13-04c8-478c-8af2-dc4d9de4d67e",
+      "provisioned_at": "2026-10-01T05:32:58+00:00"
+    },
+    {
+      "case_id": "gen2-attribution-contradiction",
+      "repeat": "repeat1",
+      "task_id": "05b74c77-d118-4c0a-ba8e-16b042576989",
+      "provisioned_at": "2026-10-01T05:36:26+00:00"
+    },
+    {
+      "case_id": "gen2-attribution-contradiction",
+      "repeat": "repeat2",
+      "task_id": "06464f9e-35fb-45b5-bf67-c22575708cb4",
+      "provisioned_at": "2026-10-01T05:39:13+00:00"
+    }
+  ],
+  "corrected_history": "premature b6_started (2026-10-01T05:17:37+00:00) and six phantom attempt entries from the pre-model infra incident (gen2-b6-infra-incident-v1.json) removed; b6_started_at now records the CURRENT series' first provisioning — the first actual model request follows seconds later. Zero model requests occurred before this boundary.",
+  "b6_started": true
+}

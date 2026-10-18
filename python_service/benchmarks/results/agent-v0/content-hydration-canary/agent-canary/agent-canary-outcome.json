@@ -1,0 +1,20 @@
+{
+  "phase": "agent",
+  "case_id": "t2-no-evidence",
+  "task_id": "94077753-86db-4c51-9e1e-d485c91eeace",
+  "run_status": "completed",
+  "hydration_markers_found": {
+    "Q2 budget review": [
+      "delegation_result",
+      "trajectory"
+    ],
+    "wangfang": [
+      "delegation_result"
+    ],
+    "expense reimbursement": [
+      "delegation_result"
+    ]
+  },
+  "content_hydration_exercised": true,
+  "integration": null
+}

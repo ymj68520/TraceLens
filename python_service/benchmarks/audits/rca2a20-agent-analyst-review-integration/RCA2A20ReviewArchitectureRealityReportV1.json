@@ -1,0 +1,18 @@
+{
+  "report_version": "rca2a20-review-architecture-reality:v1",
+  "answers": {
+    "q1_prior_analyst_review_concept": "Concept documented in RCA-2A.15 audit; backend logic lived in agent_findings.py (FindingReviewService) and agent_runtime.py (commit_finding_review), but lacked an application service facade and HTTP routes.",
+    "q2_reusable_review_services": "FindingReviewService and AgentRuntimeRepository.commit_finding_review provide canonical human-only review mutation primitives.",
+    "q3_accepted_finding_data_model": "InvestigationFindingV1 and SQLite table investigation_findings (columns: finding_id, proposal_id, disposition_id, text, assertion_class, evidence_refs_json, status, reviewed_at, reviewer, review_note, review_id).",
+    "q4_hypothesis_stable_identity": "_server_assigned_id('h', {'text': action.text}) producing IDs such as h-448201.",
+    "q5_working_state_storage": "hypotheses (tuple of Hypothesis with supporting_refs), finding_refs, and pending_proposal_refs in AgentWorkingStateV1.",
+    "q6_claim_provenance": "agent_claim_proposals -> agent_grounding_results -> agent_claim_dispositions -> finding_from_disposition.",
+    "q7_review_decision_states": "accepted and rejected explicitly enforced by SQLite trigger trg_investigation_finding_legal_transition.",
+    "q8_review_history_and_immutability": "investigation_finding_reviews is strictly append-only, enforced by triggers trg_investigation_finding_review_no_update and trg_investigation_finding_review_no_delete.",
+    "q9_report_evidence_linkage": "report_evidence table links (task_id, evidence_key, analysis_id); finding acceptance does not auto-admit report evidence.",
+    "q10_workbench_review_status": "InvestigationReadService and investigation_workbench.py read finding and claim statuses from investigation.db.",
+    "q11_unconnected_responsibilities": "HTTP routes for querying candidates and submitting analyst reviews, plus ServiceManager property wiring.",
+    "q12_reviewer_identity_handling": "Caller-supplied reviewer string recorded on finding and review history rows; documented as REVIEWER_AUTHENTICATION_LIMITATION without mock auth."
+  },
+  "status": "PASS"
+}

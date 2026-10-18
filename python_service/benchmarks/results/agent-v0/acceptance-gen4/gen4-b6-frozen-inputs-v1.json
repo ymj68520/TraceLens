@@ -1,0 +1,58 @@
+{
+  "artifact_version": "Gen4B6FrozenInputsV1",
+  "generation_id": "acceptance-generation-4",
+  "recorded_before_first_model_request": true,
+  "git_head": "253cfac62274fc5d0876ef1686639903e3aebac5",
+  "head_matches_authorized": true,
+  "worktree_clean": true,
+  "runtime_investigation_subtree_hash": "2913506cb862f868a079b7dc9c57dd1e3d2d386a",
+  "runtime_superseding_record_sha256": "cae8c2831cfcbdc21f7183ae2c7589a6a35b03b3c9ffe72710368c8187d497b8",
+  "runtime_identity_closure_sha256": "dfdda2191222a6a02ca9d76e4718e27586dc15e55ff62349fa71aa6c45da64e7",
+  "capability_selection_sha256": "73deaa4b9c42ef026f6e7ce15413f463b0207ba7251d31705b59a06a8875fa5a",
+  "independence_audit_sha256": "062dcb426eee615b19efbd5f246c19a563a5b0db6e89ca364dc12e6541d041a4",
+  "admission_audit_sha256": "c98cef8cb3a7efb9a87695bd29de9ba0820695ca0f60a58adfda6e10d73408e5",
+  "model": {
+    "provider": "sensenova-cloud",
+    "model_id": "sensenova-6.8-flash-lite",
+    "config_sha256": "a980cafab34bb2c76dfec47edf2604c112a1d7211402ae18cb1760f7e253d8dd"
+  },
+  "acceptance_profile_sha256": "c40f1adcad816e433f7edfc6cbc0b56dc32c031bf1fcb31528523ffa62f0e98d",
+  "acceptance_runtime_binding_sha256": "0c177782f430ae487bfaf9ee301d897826b9d7b8883f07238fe34e7143e579ef",
+  "calibration_binding_sha256": "4c0235eaa80b8450cc879ebb568aa6c8bafc233c1a6683ad3897323e72cc3823",
+  "generation_binding_sha256": "8d2e3162febd1fa3ee70358b6043037ff1b25ffdfc29a6b5670e25f5ed9d2ad7",
+  "content_store_sha256": "a85048ba1cb8e50764e462f2fc815d3e5228afc350c02e053dee5b06867fc809",
+  "hydration_contract_doc_sha256": "8dfd55ab959263781af22be11dfc8bf8c5038c70818df9ce3fe46f9944090363",
+  "seal_hash": "1c0f685e7a3f4e4079b0a0ca22c72e3ae9e4d276c9937a53b8fdecda3e7906ed",
+  "parser_config_hash": "a45695aae0930bb81c56f5a533b028340f6da141b186a12abfe5423c71ce9961",
+  "bootstrap_transform_sha256": "d965d90be852f09a438f9de4c303a4d9ad0caa14993ab7b4fa1d97c1d51cc31a",
+  "evaluator_sha256": "67b9a11752de62d7732e1a109b9217392ee39f5141e6d15a6a2a4936bb6739a4",
+  "public_case_hashes": {
+    "gen4-departure-staging": "d02fb63c688b0b141c2cd1353ce4737acc13902e5b98d42d234fdef1bcb2e092",
+    "gen4-layered-dispersion": "33bbb0aca7455e1a01d9827692a034e9ba5ffbff843fc44f8e05208c002bf326"
+  },
+  "truth_hashes": {
+    "gen4-departure-staging": "3221fe5314f7b95c1c41f4fdcf12609bc2c4ec488c40b0115500992301b6af95",
+    "gen4-layered-dispersion": "36a62f65c0b8f59d07943c84fe4f4e59b15293ccc79f4cd65e30aa804421cd33"
+  },
+  "substrate_image_hashes": {
+    "gen4-departure-staging": "302435a5d9512cc2415f3ba81ee413ee6551539f375fdfb34cc468b42affcf8c",
+    "gen4-layered-dispersion": "847dd6ed16d829161a40989fbc520c65a7d103e0fbb811f6f2e15ab6d2116a91"
+  },
+  "evidence_manifest_hashes": {
+    "gen4-departure-staging": "16d5561c61a4632a648a8adcb3e86b9cc84afa04b5c42cd4330118420656de21",
+    "gen4-layered-dispersion": "13032d2e85955d2db2fa5223dd6f81007f50c84d931ab012bad2998a18cf5929"
+  },
+  "evidence_world_digests": {
+    "gen4-departure-staging": "42b5ffbb52cb4ab7b81f9df14f817db88b9f4dfea47a131d40b080edcc16b9a1",
+    "gen4-layered-dispersion": "82145b5cfb682925025aa767c21c97a6fb3d7907f580fc0dc7780bb5ac9500fa"
+  },
+  "population": {
+    "families": [
+      "gen4-departure-staging",
+      "gen4-layered-dispersion"
+    ],
+    "repetitions_per_family": 3,
+    "scheduled_runs": 6
+  },
+  "input_hash": "89c015ed06a6e2e570f4c5a6455fda65093b443dd776b34e2b34bdfb3b46dd29"
+}

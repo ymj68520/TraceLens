@@ -1,0 +1,36 @@
+{
+  "artifact_version": "RCA2A3IntegrationInputParityReportV1",
+  "created_at": "2026-10-14T00:00:00+00:00",
+  "baseline_commit": "7d94dfe96568010d61e5006ab8a1d51580031796",
+  "verdict": "INTEGRATION_INPUT_PARITY_PASS",
+  "method": {
+    "path_a": "the REAL AgentOrchestrator.execute_cycle drives PLAN (v2 FunctionModel) -> EXECUTE (REAL SpecialistDelegationExecutor with a deterministic TestModel result) -> INTEGRATE, where a capture FunctionModel records the production model-visible input (instructions via AgentInfo.instructions, output tool schemas via AgentInfo.output_tools, model_settings) and then raises; the orchestrator's RCA-1.1 INTEGRATE containment stops the cycle BEFORE any integration commit",
+    "path_b": "IsolatedIntegrationHarness re-derives the SAME frozen integration input from DURABLE facts only (latest working state, completed-unintegrated delegations, stored results + execution-envelope context hashes, the durable supervisor_plan_decided payload for source scopes and attention refs) and builds the agent through the UNCHANGED production factory",
+    "store": "both paths operate on the SAME controlled test store — so identity fields (task_id, investigation_id, run_id, binding_table_id) are byte-identical and NO normalization is needed; none was applied"
+  },
+  "fields_compared_strictly_equal": [
+    "output_tool_schema (SupervisorIntegrationDecisionV2, captured live from info.output_tools on both paths)",
+    "model instructions (full text including the embedded projection JSON)",
+    "integration context (the projection: fresh_results with handles+digests, questions, handle_kinds, directive digests, phase capabilities)",
+    "available_actions (availability projection)",
+    "typed handle domains (handle_kinds incl. D-handles for fresh results and E-handles for real bound evidence)",
+    "source result references (D-handle bindings + fresh result digests)",
+    "model_settings",
+    "output tool names (final_result)"
+  ],
+  "state_revision_hash_checks": "the v2 projection is identity-free by design; state revision/hash binding is carried by the IntegrationContextPack and revalidated at commit_agent_integration (expected_revision + expected_state_hash + exact stored result hashes inside one BEGIN IMMEDIATE) — exercised by T6",
+  "result": {
+    "fixture_a_no_evidence": "all stable fields strictly equal",
+    "fixture_b_evidence_backed": "all stable fields strictly equal; E-handle for file:C/logon_4624.doc present on both paths"
+  },
+  "notable_derivation_findings": [
+    "FreshResultEnvelope.context_hash must come from the completion-transaction row (agent_delegation_results.context_hash = the execution envelope hash), NOT from the admission-time delegation row (null) — the parity gate caught exactly this on the first attempt",
+    "source_scope_id must come from the durable supervisor_plan_decided decision payload; both fixes are durable-fact derivations, not copies of orchestrator memory"
+  ],
+  "evidence_artifact": "rca2a3-integration-input-parity-evidence-v1.json (generated from a live harness run, not from the test suite)",
+  "test_bindings": [
+    "tests/unit/benchmarks/test_rca2a3_isolated_integration.py::test_integration_input_parity_path_a_vs_path_b",
+    "tests/unit/benchmarks/test_rca2a3_isolated_integration.py::test_parity_also_holds_on_no_evidence_fixture"
+  ],
+  "per_directive": "parity is reproducible at any time by re-running the two tests; a FAIL blocks any future real-model diagnostic on this harness"
+}

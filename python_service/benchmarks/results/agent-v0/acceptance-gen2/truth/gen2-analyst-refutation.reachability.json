@@ -1,0 +1,38 @@
+{
+ "reachability_version": "reachability-manifest:v1",
+ "case_id": "gen2-analyst-refutation",
+ "records": [
+  {
+   "truth_evidence_id": "TE-1",
+   "resolved_evidence_keys": [
+    "file:/usb/mount.log"
+   ],
+   "parser_reachable": true,
+   "agent_discoverable": true,
+   "status": "resolved",
+   "unavailable_reason": ""
+  },
+  {
+   "truth_evidence_id": "TE-2",
+   "resolved_evidence_keys": [
+    "file:/print/print-queue.log"
+   ],
+   "parser_reachable": true,
+   "agent_discoverable": true,
+   "status": "resolved",
+   "unavailable_reason": ""
+  },
+  {
+   "truth_evidence_id": "TE-3",
+   "resolved_evidence_keys": [
+    "file:/README.txt"
+   ],
+   "parser_reachable": true,
+   "agent_discoverable": true,
+   "status": "resolved",
+   "unavailable_reason": ""
+  }
+ ],
+ "input_hash": "c3d41b8f40630350479310eaaa72108fe0f4827acb29f776c5132dde554941f7",
+ "created_at": "2026-10-01T00:00:00+00:00"
+}

@@ -1,0 +1,23 @@
+{
+  "artifact_version": "RCA2A11aRuntimeIdentityRecordV1",
+  "audit_id": "rca2a11a-negative-gate-causality-audit",
+  "created_at_utc": "2026-10-17T02:14:17Z",
+  "git_state": {
+    "baseline_commit": "dbdda63fdf4ba4d7f4d412291cdc162da47e895c",
+    "runtime_commit": "afbeb55bf76388d98a58cbbbb44bc4c8e1db10c0",
+    "artifact_commit": "7707279c353be6aff41b26b165f278792613d9c0",
+    "audit_commit": "7707279c353be6aff41b26b165f278792613d9c0"
+  },
+  "python_environment": {
+    "python_version": "git version 2.43.0",
+    "pytest_available": true,
+    "network_proxy_disabled": true
+  },
+  "boundaries_enforced": {
+    "real_model_calls_made": 0,
+    "production_prompts_modified": false,
+    "production_schemas_modified": false,
+    "rca2b_authorized": false,
+    "gen5_created": false
+  }
+}

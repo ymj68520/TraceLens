@@ -1,0 +1,34 @@
+{
+  "report_version": "rca2a22:v1",
+  "task_id": "TASK-INVESTIGATION-WORKBENCH-REVIEW-E2E-ACCEPTANCE",
+  "evidence_stores_integrity": {
+    "raw_db": {
+      "initial_sha256": "ff3b24666ea8351c35fbf519a8b59fe537ed9d1209af8be9a0e6e076bcee70f2",
+      "final_sha256": "ff3b24666ea8351c35fbf519a8b59fe537ed9d1209af8be9a0e6e076bcee70f2",
+      "byte_identical": true
+    },
+    "files_db": {
+      "initial_sha256": "f6ee9ed15cd3a27beafdf8f1e99544cc93262fffff30dba41ae6abcd0105ffe9",
+      "final_sha256": "f6ee9ed15cd3a27beafdf8f1e99544cc93262fffff30dba41ae6abcd0105ffe9",
+      "byte_identical": true
+    },
+    "events_db": {
+      "initial_sha256": "52b259f4f2879716873b40e14ce7b6918c8d564202366735a44a2b4c0745b818",
+      "final_sha256": "52b259f4f2879716873b40e14ce7b6918c8d564202366735a44a2b4c0745b818",
+      "byte_identical": true
+    }
+  },
+  "investigation_store": {
+    "initial_sha256": "be9a325b54ebc62a0e30727766e4965c7df1980036a40d3da1181bf1362a0fba",
+    "final_sha256": "028b2b20f422a4e4469b08aedc320f2a8d456c6dc5d306ce264b14165c9d7cc2",
+    "authoritatively_mutated": true,
+    "persisted_review_records": 2,
+    "persisted_finding_records": 2
+  },
+  "downstream_isolation": {
+    "finalization_count": 0,
+    "report_evidence_count": 0,
+    "real_provider_requests": 0
+  },
+  "disposition": "EVIDENCE_INTEGRITY_VERIFIED"
+}

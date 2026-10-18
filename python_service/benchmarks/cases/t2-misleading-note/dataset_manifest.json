@@ -1,0 +1,26 @@
+{
+  "dataset_version": "benchmark-dataset:v1",
+  "dataset_id": "ds-t2-misleading-note",
+  "files": [
+    {
+      "logical_id": "README",
+      "relative_path": "README.txt",
+      "size_bytes": 206,
+      "sha256": "b5701aa7227a0aac8637234b3cb7d05b9256e04b3cc80949d81f6f598296cf45"
+    },
+    {
+      "logical_id": "app",
+      "relative_path": "export/app.log",
+      "size_bytes": 440,
+      "sha256": "2b465ddc03ffd3dfd826d49b08b9fe7a147ec105104a8c7441c19c71102eb695"
+    },
+    {
+      "logical_id": "jobs",
+      "relative_path": "scheduler/jobs.conf",
+      "size_bytes": 116,
+      "sha256": "13a172b9790bb2fd5fb60297c7bbe3fb53a06a102370947fccf3f0c0d449af28"
+    }
+  ],
+  "dataset_hash": "c3f3f1f8d89f49d5c54c116dde54cd852ccb418198faf23a91fb2a60e83bcd18",
+  "created_at": "2026-09-28T11:15:36.286069+00:00"
+}

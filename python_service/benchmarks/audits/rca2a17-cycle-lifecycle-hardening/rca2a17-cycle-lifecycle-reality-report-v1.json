@@ -1,0 +1,52 @@
+{
+  "artifact_version": "RCA2A17CycleLifecycleRealityReportV1",
+  "experiment_id": "rca2a17-cycle-lifecycle-hardening",
+  "timestamp_utc": "2026-10-17T06:36:00.000000+00:00",
+  "runtime_architecture_inspection": {
+    "q1_execution_synchrony": {
+      "mode": "SYNCHRONOUS_HTTP_HANDLER",
+      "mechanism": "HTTP client awaits POST /agent/cycle; handler coordinates claim, orchestrator cycle execution, and returns AgentCycleResponse directly in HTTP response."
+    },
+    "q2_cycle_granularity": {
+      "granularity": "EXACTLY_ONE_CYCLE",
+      "mechanism": "A single call to POST /agent/cycle drives exactly one supervisor integration and delegation phase, incrementing revision by at most 1."
+    },
+    "q3_client_disconnect_behavior": {
+      "behavior": "TRANSACTION_BOUNDED_CANCELLATION",
+      "mechanism": "Cancellation during HTTP connection drop interrupts Python execution; SQLite atomic transactions ensure no half-committed working state or unlinked delegation records survive."
+    },
+    "q4_duplicate_execution_prevention": {
+      "mechanism": "DURABLE_IDEMPOTENT_CYCLE_STORE",
+      "table": "agent_cycle_executions",
+      "unique_constraint": "UNIQUE(task_id, request_id)",
+      "replay_policy": "EXACT_REPLAY_FROM_CACHE_ON_IDENTICAL_FINGERPRINT_409_ON_FINGERPRINT_MISMATCH"
+    },
+    "q5_concurrency_across_workers": {
+      "mechanism": "DB_LEVEL_ATOMIC_CLAIM_AND_IN_MEMORY_LOCK",
+      "boundary": "BEGIN IMMEDIATE transaction in SQLite guarantees mutual exclusion across multiple processes/workers; asyncio.Lock serializes requests within worker."
+    },
+    "q6_revision_concurrency_check": {
+      "mechanism": "OPTIMISTIC_LOCKING_ON_EXPECTED_REVISION",
+      "mismatch_handling": "Returns HTTP 409 Conflict with current authoritative revision when expected_working_state_revision != latest_working_state.revision."
+    },
+    "q7_restart_recovery_behavior": {
+      "mechanism": "SWEEP_ON_STARTUP",
+      "action": "recover_interrupted_agent_runtime marks claimed/running cycle executions as interrupted, marks active runs as failed(runtime_restart), pauses active investigations, and emits runtime_recovered trajectory event."
+    },
+    "q8_task_deletion_safety": {
+      "mechanism": "DOUBLE_CHECKED_TASK_VALIDATION",
+      "pre_execution_check": "cpp_backend.get_task(task_id) before DB claim; returns 404 if deleted",
+      "post_execution_check": "cpp_backend.get_task(task_id) before outcome commit; returns 404 and suppresses state persistence if task was deleted during cycle."
+    },
+    "q9_grounding_and_hypothesis_boundary": {
+      "status": "UNCOMPROMISED",
+      "grounding_validator": "Strict handle resolution prevents raw keys, analyst notes, or ungrounded hypotheses from being accepted as evidence handles."
+    },
+    "q10_finalization_and_report_isolation": {
+      "status": "STRICTLY_ISOLATED",
+      "finalization": "Zero automatic finalization; gate remains closed unless explicitly triggered.",
+      "report_admission": "Zero report evidence admissions or analyst acceptances performed by agent cycle."
+    }
+  },
+  "verdict": "LIFECYCLE_REALITY_FULLY_ACCOUNTED_FOR"
+}

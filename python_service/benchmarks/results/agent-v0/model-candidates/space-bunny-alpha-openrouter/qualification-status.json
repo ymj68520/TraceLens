@@ -1,0 +1,65 @@
+{
+  "artifact_version": "ModelCandidateQualificationV1",
+  "candidate_id": "space-bunny-alpha@openrouter",
+  "provider": "openrouter",
+  "provider_model_id": "stealth/space-bunny-alpha",
+  "config_hash": "98820f206ed6a5399f0a4c007a6f4c97c93b73e7404c393e5611dc32d00f4010",
+  "created_at": "2026-10-03T02:40:11+00:00",
+  "stages": {
+    "repository_audit": {
+      "result": "PASS",
+      "note": "generic OpenAI-compatible adapter reused; zero new HTTP stack; Added/Modified/Reused recorded in the integration report"
+    },
+    "provider_config": {
+      "result": "PASS",
+      "note": "LLM_PROVIDER=openrouter thin selection; OPENROUTER_API_KEY env-scoped; 19 new/extended offline tests, full suite 2523 green"
+    },
+    "adapter_smoke": {
+      "result": "ADAPTER_SMOKE_PASS",
+      "evidence": "adapter-smoke.json (S1-S8)",
+      "notes": [
+        "S1 identity: returned_model == stealth/space-bunny-alpha, upstream 'Stealth', usage telemetry complete",
+        "S2 response_format json_object: accepted, local Pydantic parse PASS",
+        "S3 strict json_schema probe: AMBIGUOUS (param tolerated, content not schema-conforming) — runtime stays tool-based (§11 path A)",
+        "S4 zero-arg tool call: PASS (selected, exact args, result fed back, valid final)",
+        "S5 parameterized tool call: PASS (valid JSON args, no invented fields)",
+        "S6 SpecialistResultProposal-like output: PASS (extra=forbid, enum, lists, optional, nested — production local validation)",
+        "S7 reasoning: reasoning_effort=none REJECTED ('Reasoning is mandatory for this endpoint') → PROVIDER_PARAMETER_CONSTRAINT recorded; frozen candidate value = no reasoning param (model default); NOT control-compatible (§14)",
+        "S8 provider error separation: unit-tested (§29 invariant)"
+      ]
+    },
+    "screening_8x1": {
+      "result": "NOT_QUALIFIED_SCREENING",
+      "evidence": "qual-8x1/screening-report.json",
+      "created_at": "2026-10-03T03:27:00+00:00",
+      "summary": {
+        "scheduled_runs": 8,
+        "terminal_runs": 3,
+        "run_level_output_schema_failures": 5,
+        "provider_quota_events": 0,
+        "routing_identity_mismatch": false,
+        "hydration_integrity_failures": 0,
+        "structural_gates": "clean on all terminal snapshots",
+        "negative_gates": "clean",
+        "supervisor_failures": 0,
+        "question_terminalization": "1/8 (t2-identity-trap answered not_supported)",
+        "case_outcomes": {
+          "incomplete": 3
+        },
+        "disposition_reason": "systemic structured-output failure: 5/8 runs lost to MODEL_OUTPUT_SCHEMA_FAILURE (62.5% > frozen 0.5 ceiling); not provider capacity (zero 429/quota)"
+      },
+      "status": "NOT_QUALIFIED_SCREENING (8x1)",
+      "note": "candidate identity/config unchanged and NOT retried; any parameter change requires a new candidate_config_id (§14)"
+    }
+  },
+  "status": "NOT_QUALIFIED_SCREENING (8x1)",
+  "next_gate": "8x1 screening ONLY on an explicit user authorization AND a capacity-clean window (§5 of the recovery directive: provider recovery / reliable quota telemetry / human authorization) — no automatic 8x1/8x3",
+  "never_done_here": [
+    "8x1",
+    "8x3",
+    "promotion",
+    "CalibrationEvidenceBindingV4",
+    "Gen-5"
+  ],
+  "frozen_axes_untouched": "RuntimeBaselineV3 / hydration / Supervisor / Specialist contracts / ToolRegistry / StateTransitionPolicy / FinalizationGate / EvidenceResolver / Snapshot admission / Prompt / AcceptanceProfileV2 / calibration corpus / Gen-1-4 holdouts — zero changes"
+}

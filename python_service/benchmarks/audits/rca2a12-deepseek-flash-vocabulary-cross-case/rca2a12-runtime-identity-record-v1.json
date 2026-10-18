@@ -1,0 +1,152 @@
+{
+  "artifact_version": "RCA2A12RuntimeIdentityRecordV1",
+  "experiment_id": "rca2a12-deepseek-flash-vocabulary-cross-case",
+  "timestamp_utc": "2026-10-17T03:10:05.126340+00:00",
+  "identities": [
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "upstream_provider": null
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash"
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "upstream_provider": null
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash"
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "upstream_provider": null
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash"
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "upstream_provider": null
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash"
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "upstream_provider": null
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash"
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "upstream_provider": null
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash"
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "upstream_provider": null
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash"
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "upstream_provider": null
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash"
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "upstream_provider": null
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash"
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "upstream_provider": null
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash"
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "upstream_provider": null
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash"
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "upstream_provider": null
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash"
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "upstream_provider": null
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash"
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "upstream_provider": null
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash"
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "upstream_provider": null
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash"
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "upstream_provider": null
+    },
+    {
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash"
+    }
+  ],
+  "exact_matches": true
+}

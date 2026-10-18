@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from httpserver.services.investigation.repository import SUPPORTED_SCHEMA_VERSION
+
 from httpserver.services.evidence import (
     EvidenceNotFoundError,
     EvidenceStoreError,
@@ -87,11 +89,11 @@ def _strip_to_v5(idb: str) -> None:
 # migration / schema
 # ---------------------------------------------------------------------------
 
-def test_new_db_is_v8(tmp_path):
+def test_new_db_is_current_schema_version(tmp_path):
     idb = str(tmp_path / "investigation.db")
     InvestigationRepository(idb, "A")
     conn = sqlite3.connect(idb)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 8
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == SUPPORTED_SCHEMA_VERSION
     conn.close()
 
 
@@ -103,7 +105,7 @@ def test_v5_migration_to_current_preserves_existing_data(tmp_path):
 
     reopened = InvestigationRepository(idb, "A")
     conn = sqlite3.connect(idb)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 8
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == SUPPORTED_SCHEMA_VERSION
     assert conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='investigation_event_refreshes'"
     ).fetchone() is not None

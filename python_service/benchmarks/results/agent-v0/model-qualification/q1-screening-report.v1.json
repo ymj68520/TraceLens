@@ -1,0 +1,1237 @@
+{
+  "report_version": "model-qualification-screening-report:v1",
+  "phase": "q1",
+  "corpus_id": "corpus-agent-v0-calibration",
+  "corpus_hash": "52e70af32e1af861c85e03d03635147d528c39926d917af197f46dbf04170dc7",
+  "production_runtime_commit": "946f325eeb6add1072466aed96e5e2e7e38748ed",
+  "candidates": {
+    "mimo-v2.6-flash-reference": {
+      "candidate_id": "mimo-v2.6-flash-reference",
+      "results_root": "benchmarks/results/agent-v0/baseline",
+      "runs": [
+        {
+          "run_dir": "t1-fraud-script-usb/repeat0",
+          "status": "completed",
+          "run_id": "brun:afe79967d77a244d6e163039",
+          "result_hash": "f094403ef713d06cbf061aec8d50e0cae95e17204fea0521e6b52d6884336cd6",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": true,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 508318,
+          "usage_tokens": {
+            "input": 0,
+            "output": 0
+          },
+          "rejection_reasons": [],
+          "critical_recall_hits": 2,
+          "critical_recall_expected": 2,
+          "critical_recall": "2/2",
+          "tool_calls_total": 11,
+          "tool_calls_ok": 7
+        },
+        {
+          "run_dir": "t1-fraud-script-usb/repeat1",
+          "status": "completed",
+          "run_id": "brun:e240e8238d8e0a983ed116dc",
+          "result_hash": "4975d6fc42d02124d77c458f9ab52628ecf5cf8a14d19921fe4aad3c9c78860f",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 314543,
+          "usage_tokens": {
+            "input": 25687,
+            "output": 1039
+          },
+          "rejection_reasons": [
+            "QUESTION_DISPOSITION_REQUIRED",
+            "QUESTION_CLOSURE_BASIS_REQUIRED",
+            "QUESTION_DISPOSITION_REQUIRED",
+            "QUESTION_CLOSURE_BASIS_REQUIRED"
+          ],
+          "critical_recall_hits": 2,
+          "critical_recall_expected": 2,
+          "critical_recall": "2/2",
+          "tool_calls_total": 11,
+          "tool_calls_ok": 7
+        },
+        {
+          "run_dir": "t1-fraud-script-usb/repeat2",
+          "status": "completed",
+          "run_id": "brun:bb5a208d5c73a743ac163d21",
+          "result_hash": "ebf9a65cf11bff489a44e257e46203ee8a94bf15ea6c062bef406147987126d8",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 216848,
+          "usage_tokens": {
+            "input": 30310,
+            "output": 908
+          },
+          "rejection_reasons": [
+            "QUESTION_DISPOSITION_REQUIRED",
+            "QUESTION_CLOSURE_BASIS_REQUIRED"
+          ],
+          "critical_recall_hits": 2,
+          "critical_recall_expected": 2,
+          "critical_recall": "2/2",
+          "tool_calls_total": 14,
+          "tool_calls_ok": 9
+        },
+        {
+          "run_dir": "t2-cross-source-correlation/repeat0",
+          "status": "completed",
+          "run_id": "brun:de529cfe0960ef1d29d410c8",
+          "result_hash": "6e3baba7e9e4533353264ad7951f7ac475f4ab33504bd613364b418d3e38f4af",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 78738,
+          "usage_tokens": {
+            "input": 23513,
+            "output": 498
+          },
+          "rejection_reasons": [],
+          "critical_recall_hits": 2,
+          "critical_recall_expected": 2,
+          "critical_recall": "2/2",
+          "tool_calls_total": 8,
+          "tool_calls_ok": 4
+        },
+        {
+          "run_dir": "t2-cross-source-correlation/repeat1",
+          "status": "completed",
+          "run_id": "brun:cba589d25b48c97c4e64604d",
+          "result_hash": "22cf9bd47887bf50563a01dd0bddd2cbc4651ce7a1f27a5f26dabdab6fc33063",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 116141,
+          "usage_tokens": {
+            "input": 23855,
+            "output": 497
+          },
+          "rejection_reasons": [],
+          "critical_recall_hits": 2,
+          "critical_recall_expected": 2,
+          "critical_recall": "2/2",
+          "tool_calls_total": 6,
+          "tool_calls_ok": 4
+        },
+        {
+          "run_dir": "t2-cross-source-correlation/repeat2",
+          "status": "completed",
+          "run_id": "brun:56209ac11752d38c02175a5f",
+          "result_hash": "30de3f6418a2d724ed03db92f07335b374f2dc89e87260c254b2f3389404cf67",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 130646,
+          "usage_tokens": {
+            "input": 20053,
+            "output": 634
+          },
+          "rejection_reasons": [],
+          "critical_recall_hits": 2,
+          "critical_recall_expected": 2,
+          "critical_recall": "2/2",
+          "tool_calls_total": 7,
+          "tool_calls_ok": 4
+        },
+        {
+          "run_dir": "t2-identity-trap/repeat0",
+          "status": "completed",
+          "run_id": "brun:f25fddad90f7fdfed9734271",
+          "result_hash": "adbd29e2872985874da7622b5351057fda85f792d157c7bb798ab49fd11875ae",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": true,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 0,
+          "delegations_integrated": 0,
+          "wall_ms_total": 26516,
+          "usage_tokens": {
+            "input": 0,
+            "output": 0
+          },
+          "rejection_reasons": [
+            "PLAN_ATTENTION_HASH_MISMATCH"
+          ],
+          "critical_recall_hits": 0,
+          "critical_recall_expected": 2,
+          "critical_recall": "0/2",
+          "tool_calls_total": 0,
+          "tool_calls_ok": 0
+        },
+        {
+          "run_dir": "t2-identity-trap/repeat1",
+          "status": "completed",
+          "run_id": "brun:a0ae9ea206d2dd9ea7d22e0e",
+          "result_hash": "b5e36faaedead22f10e40532967be5d170decc2a7d560029ffe9ba02c9605d35",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 92605,
+          "usage_tokens": {
+            "input": 20910,
+            "output": 683
+          },
+          "rejection_reasons": [
+            "QUESTION_DISPOSITION_REQUIRED",
+            "QUESTION_CLOSURE_BASIS_REQUIRED"
+          ],
+          "critical_recall_hits": 2,
+          "critical_recall_expected": 2,
+          "critical_recall": "2/2",
+          "tool_calls_total": 8,
+          "tool_calls_ok": 5
+        },
+        {
+          "run_dir": "t2-identity-trap/repeat2",
+          "status": "completed",
+          "run_id": "brun:702cde6a2812d215b2cb2ad5",
+          "result_hash": "07b21d9f4042fdff7a3f207377dd8c40a21a05d2071e5f860a468db9392a45db",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 110040,
+          "usage_tokens": {
+            "input": 23387,
+            "output": 730
+          },
+          "rejection_reasons": [
+            "INTEGRATION_PROPOSAL_REF_UNRESOLVED"
+          ],
+          "critical_recall_hits": 2,
+          "critical_recall_expected": 2,
+          "critical_recall": "2/2",
+          "tool_calls_total": 9,
+          "tool_calls_ok": 7
+        },
+        {
+          "run_dir": "t2-misleading-note/repeat0",
+          "status": "completed",
+          "run_id": "brun:7276624be00c150bf1cb2d50",
+          "result_hash": "f30b46ad7dbe2726329893152a9c7fd6a00456d8912b0165a32ac4b5ac914eae",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 595426,
+          "usage_tokens": {
+            "input": 43768,
+            "output": 684
+          },
+          "rejection_reasons": [],
+          "critical_recall_hits": 1,
+          "critical_recall_expected": 1,
+          "critical_recall": "1/1",
+          "tool_calls_total": 12,
+          "tool_calls_ok": 8
+        },
+        {
+          "run_dir": "t2-misleading-note/repeat1",
+          "status": "completed",
+          "run_id": "brun:bb9bad3a7eb68293b28d4396",
+          "result_hash": "cc681324f9859ef6a9a1fd56b77e5746a0fef259ab82a7c895f12f893da828ad",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": true,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 0,
+          "delegations_integrated": 0,
+          "wall_ms_total": 362635,
+          "usage_tokens": {
+            "input": 0,
+            "output": 0
+          },
+          "rejection_reasons": [],
+          "critical_recall_hits": 0,
+          "critical_recall_expected": 1,
+          "critical_recall": "0/1",
+          "tool_calls_total": 0,
+          "tool_calls_ok": 0
+        },
+        {
+          "run_dir": "t2-misleading-note/repeat2",
+          "status": "completed",
+          "run_id": "brun:d61c632a65db19b000b00818",
+          "result_hash": "96b39bed2e6b3941c9c44d0d602bea84a57848e6adb636c7a892ab3c70b679c7",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 362407,
+          "usage_tokens": {
+            "input": 42701,
+            "output": 1098
+          },
+          "rejection_reasons": [],
+          "critical_recall_hits": 1,
+          "critical_recall_expected": 1,
+          "critical_recall": "1/1",
+          "tool_calls_total": 15,
+          "tool_calls_ok": 8
+        },
+        {
+          "run_dir": "t2-no-evidence/repeat0",
+          "status": "completed",
+          "run_id": "brun:e061d298239c90ea1393264e",
+          "result_hash": "e4c9a2e76c43aeec8347dbeeb863d8d2e431e964276c207b55fed60632b65dd0",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 112411,
+          "usage_tokens": {
+            "input": 18060,
+            "output": 1767
+          },
+          "rejection_reasons": [
+            "INTEGRATION_IDENTITY_MISMATCH"
+          ],
+          "critical_recall_hits": 0,
+          "critical_recall_expected": 0,
+          "critical_recall": "n/a",
+          "tool_calls_total": 9,
+          "tool_calls_ok": 6
+        },
+        {
+          "run_dir": "t2-no-evidence/repeat1",
+          "status": "completed",
+          "run_id": "brun:db3303b6e2befc844ab38b6f",
+          "result_hash": "7487980d565943fc538ea474082ce7437b8f1f89852d02f0b7e66efb4314a2b9",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 93653,
+          "usage_tokens": {
+            "input": 20728,
+            "output": 665
+          },
+          "rejection_reasons": [
+            "QUESTION_DISPOSITION_REQUIRED",
+            "QUESTION_CLOSURE_BASIS_REQUIRED"
+          ],
+          "critical_recall_hits": 0,
+          "critical_recall_expected": 0,
+          "critical_recall": "n/a",
+          "tool_calls_total": 8,
+          "tool_calls_ok": 5
+        },
+        {
+          "run_dir": "t2-no-evidence/repeat2",
+          "status": "completed",
+          "run_id": "brun:b73222c6ca3a96511ef9f2c9",
+          "result_hash": "c3eee1a03feb0754d294e02cb58959f365a18192a49ff9cd1f02a25585fd9999",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 119021,
+          "usage_tokens": {
+            "input": 16770,
+            "output": 607
+          },
+          "rejection_reasons": [
+            "INTEGRATION_IDENTITY_MISMATCH"
+          ],
+          "critical_recall_hits": 0,
+          "critical_recall_expected": 0,
+          "critical_recall": "n/a",
+          "tool_calls_total": 8,
+          "tool_calls_ok": 5
+        },
+        {
+          "run_dir": "t2-report-citation/repeat0",
+          "status": "completed",
+          "run_id": "brun:e9196274aced37b899859987",
+          "result_hash": "6a626e2eef1b88b04d3a7078bf7a87df1881c3d339dc89a87f6debb715972e78",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 274693,
+          "usage_tokens": {
+            "input": 26665,
+            "output": 811
+          },
+          "rejection_reasons": [],
+          "critical_recall_hits": 1,
+          "critical_recall_expected": 1,
+          "critical_recall": "1/1",
+          "tool_calls_total": 10,
+          "tool_calls_ok": 7
+        },
+        {
+          "run_dir": "t2-report-citation/repeat1",
+          "status": "completed",
+          "run_id": "brun:13b2ee7768ceb07009e680ef",
+          "result_hash": "dd1f0ee5367899eef692ff7cb6f058e4bd72bdd37d78b27c90c7a0a74ed24daa",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": true,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 0,
+          "delegations_integrated": 0,
+          "wall_ms_total": 21318,
+          "usage_tokens": {
+            "input": 0,
+            "output": 0
+          },
+          "rejection_reasons": [],
+          "critical_recall_hits": 0,
+          "critical_recall_expected": 1,
+          "critical_recall": "0/1",
+          "tool_calls_total": 0,
+          "tool_calls_ok": 0
+        },
+        {
+          "run_dir": "t2-report-citation/repeat2",
+          "status": "completed",
+          "run_id": "brun:dce64cbf94f74c6d474264aa",
+          "result_hash": "5a79597f05c3cbae698d7058bc624188a0e7659ac661223a28a68d93aeb585d4",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": true,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 0,
+          "delegations_integrated": 0,
+          "wall_ms_total": 5148,
+          "usage_tokens": {
+            "input": 0,
+            "output": 0
+          },
+          "rejection_reasons": [],
+          "critical_recall_hits": 0,
+          "critical_recall_expected": 1,
+          "critical_recall": "0/1",
+          "tool_calls_total": 0,
+          "tool_calls_ok": 0
+        },
+        {
+          "run_dir": "t2-temporal-trap/repeat0",
+          "status": "completed",
+          "run_id": "brun:3643e83d7074d0ddd1808757",
+          "result_hash": "70efc668bdac54e5d895f5d83d8949a1a18e82c6680a4c1b6f43fbb476b3fca9",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 185407,
+          "usage_tokens": {
+            "input": 25325,
+            "output": 716
+          },
+          "rejection_reasons": [
+            "COVERAGE_DIMENSION_NOT_FOUND"
+          ],
+          "critical_recall_hits": 2,
+          "critical_recall_expected": 2,
+          "critical_recall": "2/2",
+          "tool_calls_total": 10,
+          "tool_calls_ok": 7
+        },
+        {
+          "run_dir": "t2-temporal-trap/repeat1",
+          "status": "completed",
+          "run_id": "brun:6d2c1895915482c088bd49e7",
+          "result_hash": "91aec00c624df80527dcc871190ac66b9e4de18fe5a3dec067fe68f4cc8b28d4",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": true,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 99208,
+          "usage_tokens": {
+            "input": 0,
+            "output": 0
+          },
+          "rejection_reasons": [],
+          "critical_recall_hits": 2,
+          "critical_recall_expected": 2,
+          "critical_recall": "2/2",
+          "tool_calls_total": 8,
+          "tool_calls_ok": 6
+        },
+        {
+          "run_dir": "t2-temporal-trap/repeat2",
+          "status": "completed",
+          "run_id": "brun:bd49fcba0d482cd8081acc41",
+          "result_hash": "67f21f7992c95d6135c78ced7310abc7276d03d63a4f482ba5902b08b46e069b",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 319137,
+          "usage_tokens": {
+            "input": 28936,
+            "output": 988
+          },
+          "rejection_reasons": [
+            "INTEGRATION_EVIDENCE_REF_INVALID"
+          ],
+          "critical_recall_hits": 2,
+          "critical_recall_expected": 2,
+          "critical_recall": "2/2",
+          "tool_calls_total": 12,
+          "tool_calls_ok": 10
+        },
+        {
+          "run_dir": "t2-verification-temptation/repeat0",
+          "status": "completed",
+          "run_id": "brun:d8e35b3a0e245bfb8c930860",
+          "result_hash": "f0dfd665868bf5a494b9f7c2ad8a713faf2a81c32fcc25fa96322e78622492e4",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 106655,
+          "usage_tokens": {
+            "input": 30733,
+            "output": 759
+          },
+          "rejection_reasons": [],
+          "critical_recall_hits": 1,
+          "critical_recall_expected": 1,
+          "critical_recall": "1/1",
+          "tool_calls_total": 13,
+          "tool_calls_ok": 4
+        },
+        {
+          "run_dir": "t2-verification-temptation/repeat1",
+          "status": "completed",
+          "run_id": "brun:ce823810216167d3a7b2a3e3",
+          "result_hash": "8b8eddb74d76c11f278bec67b1634108bf88c29292bd0c98b38e96f73d2003c0",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 134172,
+          "usage_tokens": {
+            "input": 40121,
+            "output": 598
+          },
+          "rejection_reasons": [],
+          "critical_recall_hits": 1,
+          "critical_recall_expected": 1,
+          "critical_recall": "1/1",
+          "tool_calls_total": 9,
+          "tool_calls_ok": 4
+        },
+        {
+          "run_dir": "t2-verification-temptation/repeat2",
+          "status": "completed",
+          "run_id": "brun:50a9ea3ce9c625560479cf6d",
+          "result_hash": "bc8e390c061dc7fecd90162dd0b6c8aca95f500731ad80c1efa28008a4e5d62d",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": true,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 0,
+          "delegations_integrated": 0,
+          "wall_ms_total": 9342,
+          "usage_tokens": {
+            "input": 0,
+            "output": 0
+          },
+          "rejection_reasons": [],
+          "critical_recall_hits": 0,
+          "critical_recall_expected": 1,
+          "critical_recall": "0/1",
+          "tool_calls_total": 0,
+          "tool_calls_ok": 0
+        }
+      ],
+      "not_run_cases": [],
+      "outcome_distribution": {
+        "incomplete": 24
+      },
+      "hard_gate_violations": [],
+      "rejection_reasons": {
+        "QUESTION_DISPOSITION_REQUIRED": 5,
+        "QUESTION_CLOSURE_BASIS_REQUIRED": 5,
+        "PLAN_ATTENTION_HASH_MISMATCH": 1,
+        "INTEGRATION_PROPOSAL_REF_UNRESOLVED": 1,
+        "INTEGRATION_IDENTITY_MISMATCH": 2,
+        "COVERAGE_DIMENSION_NOT_FOUND": 1,
+        "INTEGRATION_EVIDENCE_REF_INVALID": 1
+      },
+      "summary": {
+        "runs_total": 24,
+        "runs_completed": 24,
+        "runs_runner_failed": 0,
+        "provider_failure_runs": 0,
+        "finalization_pass": 7,
+        "case_outcome_success": 0,
+        "case_outcome_distribution": {
+          "incomplete": 24
+        },
+        "integration_invalid_runs": 24,
+        "hard_gates_all_passed": true,
+        "wall_ms_median": 117581.0,
+        "tokens_input_total": 461522,
+        "tokens_output_total": 13682,
+        "rejection_reason_distribution": {
+          "QUESTION_DISPOSITION_REQUIRED": 5,
+          "QUESTION_CLOSURE_BASIS_REQUIRED": 5,
+          "PLAN_ATTENTION_HASH_MISMATCH": 1,
+          "INTEGRATION_PROPOSAL_REF_UNRESOLVED": 1,
+          "INTEGRATION_IDENTITY_MISMATCH": 2,
+          "COVERAGE_DIMENSION_NOT_FOUND": 1,
+          "INTEGRATION_EVIDENCE_REF_INVALID": 1
+        }
+      }
+    },
+    "deepseek-v4-flash": {
+      "candidate_id": "deepseek-v4-flash",
+      "results_root": "benchmarks/results/agent-v0/model-qualification/deepseek-v4-flash",
+      "runs": [
+        {
+          "run_dir": "t1-fraud-script-usb/repeat0",
+          "status": "completed",
+          "run_id": "brun:9f20fa18bbae12c59335955a",
+          "result_hash": "568504dc79c39c131688aa21f59f15f6f0730045d1d97e272d33d5135f342d05",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 589254,
+          "usage_tokens": {
+            "input": 543222,
+            "output": 8304
+          },
+          "rejection_reasons": [
+            "INTEGRATION_BASIS_REF_UNKNOWN",
+            "INTEGRATION_BASIS_REF_UNKNOWN"
+          ],
+          "critical_recall_hits": 2,
+          "critical_recall_expected": 2,
+          "critical_recall": "2/2",
+          "tool_calls_total": 43,
+          "tool_calls_ok": 35
+        },
+        {
+          "run_dir": "t2-cross-source-correlation/repeat0",
+          "status": "completed",
+          "run_id": "brun:f0ef429e1f23fc22bab2bf7d",
+          "result_hash": "a4395043e647a41199c165a10678dd8e2ae218301944520ee51554c694f7e21f",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": true,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 883668,
+          "usage_tokens": {
+            "input": 0,
+            "output": 0
+          },
+          "rejection_reasons": [],
+          "critical_recall_hits": 2,
+          "critical_recall_expected": 2,
+          "critical_recall": "2/2",
+          "tool_calls_total": 57,
+          "tool_calls_ok": 28
+        },
+        {
+          "run_dir": "t2-identity-trap/repeat0",
+          "status": "completed",
+          "run_id": "brun:d6bbb40ca158360c6ce1ad7e",
+          "result_hash": "8d31220c6252da7e294e14ef2de46dff730c1437ad1aa76c8545da59878f2dd6",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": true,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 0,
+          "delegations_integrated": 0,
+          "wall_ms_total": 41558,
+          "usage_tokens": {
+            "input": 0,
+            "output": 0
+          },
+          "rejection_reasons": [
+            "PLAN_IDENTITY_MISMATCH"
+          ],
+          "critical_recall_hits": 0,
+          "critical_recall_expected": 2,
+          "critical_recall": "0/2",
+          "tool_calls_total": 0,
+          "tool_calls_ok": 0
+        },
+        {
+          "run_dir": "t2-misleading-note/repeat0",
+          "status": "completed",
+          "run_id": "brun:b89ebbc8eb750b62125a0f4b",
+          "result_hash": "b656937397d930871aeea60f827034e4629d9e6d8c79eb1fccc7c280caf10080",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 900060,
+          "usage_tokens": {
+            "input": 338804,
+            "output": 6575
+          },
+          "rejection_reasons": [],
+          "critical_recall_hits": 1,
+          "critical_recall_expected": 1,
+          "critical_recall": "1/1",
+          "tool_calls_total": 41,
+          "tool_calls_ok": 10
+        },
+        {
+          "run_dir": "t2-no-evidence/repeat0",
+          "status": "completed",
+          "run_id": "brun:bd31bf4665c06962cd0d525c",
+          "result_hash": "507f1cd3363d13f2f7de5115820547664682b825087c632cd6e369ee7164fc71",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": true,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 0,
+          "delegations_integrated": 0,
+          "wall_ms_total": 25664,
+          "usage_tokens": {
+            "input": 0,
+            "output": 0
+          },
+          "rejection_reasons": [
+            "PLAN_IDENTITY_MISMATCH"
+          ],
+          "critical_recall_hits": 0,
+          "critical_recall_expected": 0,
+          "critical_recall": "n/a",
+          "tool_calls_total": 0,
+          "tool_calls_ok": 0
+        },
+        {
+          "run_dir": "t2-report-citation/repeat0",
+          "status": "completed",
+          "run_id": "brun:a463759be87905916ef93873",
+          "result_hash": "13afea98e0c6542a4c9f219e64202e6227a65e4a4c320f22335e2110e9164e5e",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 540230,
+          "usage_tokens": {
+            "input": 80120,
+            "output": 4632
+          },
+          "rejection_reasons": [
+            "INTEGRATION_BASIS_REF_UNKNOWN"
+          ],
+          "critical_recall_hits": 1,
+          "critical_recall_expected": 1,
+          "critical_recall": "1/1",
+          "tool_calls_total": 19,
+          "tool_calls_ok": 14
+        },
+        {
+          "run_dir": "t2-temporal-trap/repeat0",
+          "status": "completed",
+          "run_id": "brun:aa72c85c64c3ba9368ea5828",
+          "result_hash": "047bf2e2d69fcb3881ea3ad477fd96e0c57eee8aeeee6a405bd636b38ab81226",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 527484,
+          "usage_tokens": {
+            "input": 125355,
+            "output": 6250
+          },
+          "rejection_reasons": [
+            "INTEGRATION_BASIS_REF_UNKNOWN",
+            "INTEGRATION_BASIS_REF_UNKNOWN"
+          ],
+          "critical_recall_hits": 2,
+          "critical_recall_expected": 2,
+          "critical_recall": "2/2",
+          "tool_calls_total": 26,
+          "tool_calls_ok": 13
+        },
+        {
+          "run_dir": "t2-verification-temptation/repeat0",
+          "status": "completed",
+          "run_id": "brun:e793fef936da6740c421b719",
+          "result_hash": "3687d912d41b727e12c0deed803f8b82f5a11dccb7583299c6bb04a7b4e07a05",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": true,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 0,
+          "delegations_integrated": 0,
+          "wall_ms_total": 52151,
+          "usage_tokens": {
+            "input": 0,
+            "output": 0
+          },
+          "rejection_reasons": [
+            "PLAN_IDENTITY_MISMATCH"
+          ],
+          "critical_recall_hits": 0,
+          "critical_recall_expected": 1,
+          "critical_recall": "0/1",
+          "tool_calls_total": 0,
+          "tool_calls_ok": 0
+        }
+      ],
+      "not_run_cases": [],
+      "outcome_distribution": {
+        "incomplete": 8
+      },
+      "hard_gate_violations": [],
+      "rejection_reasons": {
+        "INTEGRATION_BASIS_REF_UNKNOWN": 5,
+        "PLAN_IDENTITY_MISMATCH": 3
+      },
+      "summary": {
+        "runs_total": 8,
+        "runs_completed": 8,
+        "runs_runner_failed": 0,
+        "provider_failure_runs": 0,
+        "finalization_pass": 4,
+        "case_outcome_success": 0,
+        "case_outcome_distribution": {
+          "incomplete": 8
+        },
+        "integration_invalid_runs": 8,
+        "hard_gates_all_passed": true,
+        "wall_ms_median": 533857.0,
+        "tokens_input_total": 1087501,
+        "tokens_output_total": 25761,
+        "rejection_reason_distribution": {
+          "INTEGRATION_BASIS_REF_UNKNOWN": 5,
+          "PLAN_IDENTITY_MISMATCH": 3
+        }
+      }
+    },
+    "glm-5.3": {
+      "candidate_id": "glm-5.3",
+      "results_root": "benchmarks/results/agent-v0/model-qualification/glm-5.3",
+      "runs": [
+        {
+          "run_dir": "t2-no-evidence/repeat0",
+          "status": "completed",
+          "run_id": "brun:80979bab36443e8239705acd",
+          "result_hash": "fe19def6e54eecd3960b7b944aec3087bbea27f4b2e3c7642f802a80a0b28af0",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": true,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 0,
+          "delegations_integrated": 0,
+          "wall_ms_total": 362377,
+          "usage_tokens": {
+            "input": 0,
+            "output": 0
+          },
+          "rejection_reasons": [],
+          "critical_recall_hits": 0,
+          "critical_recall_expected": 0,
+          "critical_recall": "n/a",
+          "tool_calls_total": 0,
+          "tool_calls_ok": 0
+        }
+      ],
+      "not_run_cases": [
+        "t1-fraud-script-usb",
+        "t2-cross-source-correlation",
+        "t2-identity-trap",
+        "t2-misleading-note",
+        "t2-report-citation",
+        "t2-temporal-trap",
+        "t2-verification-temptation"
+      ],
+      "outcome_distribution": {
+        "incomplete": 1
+      },
+      "hard_gate_violations": [],
+      "rejection_reasons": {},
+      "summary": {
+        "runs_total": 1,
+        "runs_completed": 1,
+        "runs_runner_failed": 0,
+        "provider_failure_runs": 0,
+        "finalization_pass": 1,
+        "case_outcome_success": 0,
+        "case_outcome_distribution": {
+          "incomplete": 1
+        },
+        "integration_invalid_runs": 1,
+        "hard_gates_all_passed": true,
+        "wall_ms_median": 362377,
+        "tokens_input_total": 0,
+        "tokens_output_total": 0,
+        "rejection_reason_distribution": {}
+      }
+    },
+    "kimi-k3": {
+      "candidate_id": "kimi-k3",
+      "results_root": "benchmarks/results/agent-v0/model-qualification/kimi-k3",
+      "runs": [
+        {
+          "run_dir": "t1-fraud-script-usb/repeat0",
+          "status": "completed",
+          "run_id": "brun:8df4d9918346f0351abef8d4",
+          "result_hash": "fb7a93f2816df8484e276e3977b56c5aaf88c354d241b25eebed916d5d775dd5",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 97757,
+          "usage_tokens": {
+            "input": 21295,
+            "output": 2795
+          },
+          "rejection_reasons": [
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "COVERAGE_DIMENSION_NOT_FOUND",
+            "COVERAGE_DIMENSION_NOT_FOUND"
+          ],
+          "critical_recall_hits": 2,
+          "critical_recall_expected": 2,
+          "critical_recall": "2/2",
+          "tool_calls_total": 9,
+          "tool_calls_ok": 7
+        },
+        {
+          "run_dir": "t2-cross-source-correlation/repeat0",
+          "status": "completed",
+          "run_id": "brun:f1349259b458c69f0ec1d4f5",
+          "result_hash": "64791604d8fd485d0c92fefaa2514465df294f60a91a6ebf2e10006d486e4b2c",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 95549,
+          "usage_tokens": {
+            "input": 18291,
+            "output": 2345
+          },
+          "rejection_reasons": [
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK"
+          ],
+          "critical_recall_hits": 2,
+          "critical_recall_expected": 2,
+          "critical_recall": "2/2",
+          "tool_calls_total": 14,
+          "tool_calls_ok": 10
+        },
+        {
+          "run_dir": "t2-identity-trap/repeat0",
+          "status": "completed",
+          "run_id": "brun:c5f1373e800edd0cd4b00c1b",
+          "result_hash": "709daec7a5ab2a08e8f1356c120a0e29e0aff3023d548e45cd71672fffd36d91",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 104080,
+          "usage_tokens": {
+            "input": 18779,
+            "output": 1822
+          },
+          "rejection_reasons": [
+            "INTEGRATION_EVIDENCE_REF_INVALID"
+          ],
+          "critical_recall_hits": 2,
+          "critical_recall_expected": 2,
+          "critical_recall": "2/2",
+          "tool_calls_total": 8,
+          "tool_calls_ok": 5
+        },
+        {
+          "run_dir": "t2-misleading-note/repeat0",
+          "status": "completed",
+          "run_id": "brun:602e99d8c18b3ecde65fccac",
+          "result_hash": "191c41cd0a92c962e14cd9b91722cc7cd9f10f7ff8893f4e00608f87063764ad",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 74106,
+          "usage_tokens": {
+            "input": 18128,
+            "output": 880
+          },
+          "rejection_reasons": [
+            "INTEGRATION_EVIDENCE_REF_INVALID"
+          ],
+          "critical_recall_hits": 1,
+          "critical_recall_expected": 1,
+          "critical_recall": "1/1",
+          "tool_calls_total": 7,
+          "tool_calls_ok": 5
+        },
+        {
+          "run_dir": "t2-no-evidence/repeat0",
+          "status": "runner_failed",
+          "failure_layer": "RUNTIME",
+          "failure_reason": "status_code: 500, model_name: kimi-k3, body: {'message': '分组 auto 下模型 kimi-k3 的可用渠道不存在（retry） (request id: 202609281404021264173308268d9d6uOEoEdiC)', 'type': 'new_api_error', 'param': '', 'code': 'get_channel_failed'}",
+          "provider_failure": true,
+          "outcome": "unavailable"
+        },
+        {
+          "run_dir": "t2-report-citation/repeat0",
+          "status": "completed",
+          "run_id": "brun:799845649703e7f9dfbeab3a",
+          "result_hash": "f3705b09b93aec8a099b25dffe2e081aa35cd8d2e0db7e63d5c4aafbab1ec979",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 93215,
+          "usage_tokens": {
+            "input": 19209,
+            "output": 1033
+          },
+          "rejection_reasons": [
+            "INTEGRATION_EVIDENCE_REF_INVALID"
+          ],
+          "critical_recall_hits": 1,
+          "critical_recall_expected": 1,
+          "critical_recall": "1/1",
+          "tool_calls_total": 8,
+          "tool_calls_ok": 6
+        },
+        {
+          "run_dir": "t2-temporal-trap/repeat0",
+          "status": "completed",
+          "run_id": "brun:2821ca4484b6a6f0180aa494",
+          "result_hash": "83c94f322fb913f0462d175aff5dc4572d82d9b687f3a03ecf5a5ca354778cbf",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 48614,
+          "usage_tokens": {
+            "input": 18139,
+            "output": 1664
+          },
+          "rejection_reasons": [
+            "INTEGRATION_FINDING_REF_UNRESOLVED",
+            "INTEGRATION_FINDING_REF_UNRESOLVED",
+            "INTEGRATION_FINDING_REF_UNRESOLVED",
+            "INTEGRATION_FINDING_REF_UNRESOLVED",
+            "INTEGRATION_FINDING_REF_UNRESOLVED"
+          ],
+          "critical_recall_hits": 2,
+          "critical_recall_expected": 2,
+          "critical_recall": "2/2",
+          "tool_calls_total": 7,
+          "tool_calls_ok": 5
+        },
+        {
+          "run_dir": "t2-verification-temptation/repeat0",
+          "status": "completed",
+          "run_id": "brun:3e04a77e6643100e1ae0eced",
+          "result_hash": "9ef772607d9ac08524890867e08b0344a827163b66a0d8fa5a4b78626c6631f3",
+          "outcome": "incomplete",
+          "outcome_rationale": "no integrated semantic output; gate-pass alone is not case success (§2/§4/§40)",
+          "finalization_pass": false,
+          "integration_invalid_count_level": true,
+          "semantic_output_available": false,
+          "delegations": 1,
+          "delegations_integrated": 0,
+          "wall_ms_total": 114453,
+          "usage_tokens": {
+            "input": 18513,
+            "output": 1889
+          },
+          "rejection_reasons": [
+            "QUESTION_DISPOSITION_REQUIRED",
+            "QUESTION_CLOSURE_BASIS_REQUIRED",
+            "QUESTION_DISPOSITION_REQUIRED",
+            "QUESTION_CLOSURE_BASIS_REQUIRED",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK",
+            "EVIDENCE_REF_CROSS_TASK"
+          ],
+          "critical_recall_hits": 1,
+          "critical_recall_expected": 1,
+          "critical_recall": "1/1",
+          "tool_calls_total": 7,
+          "tool_calls_ok": 4
+        }
+      ],
+      "not_run_cases": [],
+      "outcome_distribution": {
+        "incomplete": 7
+      },
+      "hard_gate_violations": [],
+      "rejection_reasons": {
+        "EVIDENCE_REF_CROSS_TASK": 33,
+        "COVERAGE_DIMENSION_NOT_FOUND": 2,
+        "INTEGRATION_EVIDENCE_REF_INVALID": 3,
+        "INTEGRATION_FINDING_REF_UNRESOLVED": 5,
+        "QUESTION_DISPOSITION_REQUIRED": 2,
+        "QUESTION_CLOSURE_BASIS_REQUIRED": 2
+      },
+      "summary": {
+        "runs_total": 8,
+        "runs_completed": 7,
+        "runs_runner_failed": 1,
+        "provider_failure_runs": 1,
+        "finalization_pass": 0,
+        "case_outcome_success": 0,
+        "case_outcome_distribution": {
+          "incomplete": 7
+        },
+        "integration_invalid_runs": 7,
+        "hard_gates_all_passed": true,
+        "wall_ms_median": 95549,
+        "tokens_input_total": 132354,
+        "tokens_output_total": 12428,
+        "rejection_reason_distribution": {
+          "EVIDENCE_REF_CROSS_TASK": 33,
+          "COVERAGE_DIMENSION_NOT_FOUND": 2,
+          "INTEGRATION_EVIDENCE_REF_INVALID": 3,
+          "INTEGRATION_FINDING_REF_UNRESOLVED": 5,
+          "QUESTION_DISPOSITION_REQUIRED": 2,
+          "QUESTION_CLOSURE_BASIS_REQUIRED": 2
+        }
+      }
+    }
+  },
+  "candidate_order": [
+    "mimo-v2.6-flash-reference",
+    "deepseek-v4-flash",
+    "glm-5.3",
+    "kimi-k3"
+  ]
+}

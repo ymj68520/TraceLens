@@ -1,0 +1,1662 @@
+{
+  "artifact_version": "RCA2A11SeatExecutionMatrixV1",
+  "experiment_id": "rca2a11-deepseek-flash-vocabulary-comparison",
+  "created_at_utc": "2026-10-17T01:45:39.872846+00:00",
+  "matrix": {
+    "artifact_version": "RCA2A10PairedExecutionMatrixV1",
+    "experiment_id": "rca2a11-deepseek-flash-vocabulary-comparison",
+    "run_order": [
+      {
+        "global_seat": 1,
+        "scenario_id": "t2-no-evidence",
+        "pair_label": "A",
+        "arm": "control",
+        "pair_id": 1
+      },
+      {
+        "global_seat": 2,
+        "scenario_id": "t2-no-evidence",
+        "pair_label": "A",
+        "arm": "treatment",
+        "pair_id": 1
+      },
+      {
+        "global_seat": 3,
+        "scenario_id": "t2-temporal-trap",
+        "pair_label": "A",
+        "arm": "control",
+        "pair_id": 1
+      },
+      {
+        "global_seat": 4,
+        "scenario_id": "t2-temporal-trap",
+        "pair_label": "A",
+        "arm": "treatment",
+        "pair_id": 1
+      },
+      {
+        "global_seat": 5,
+        "scenario_id": "t2-identity-trap",
+        "pair_label": "A",
+        "arm": "control",
+        "pair_id": 1
+      },
+      {
+        "global_seat": 6,
+        "scenario_id": "t2-identity-trap",
+        "pair_label": "A",
+        "arm": "treatment",
+        "pair_id": 1
+      },
+      {
+        "global_seat": 7,
+        "scenario_id": "t2-report-citation",
+        "pair_label": "A",
+        "arm": "control",
+        "pair_id": 1
+      },
+      {
+        "global_seat": 8,
+        "scenario_id": "t2-report-citation",
+        "pair_label": "A",
+        "arm": "treatment",
+        "pair_id": 1
+      },
+      {
+        "global_seat": 9,
+        "scenario_id": "t2-no-evidence",
+        "pair_label": "B",
+        "arm": "treatment",
+        "pair_id": 2
+      },
+      {
+        "global_seat": 10,
+        "scenario_id": "t2-no-evidence",
+        "pair_label": "B",
+        "arm": "control",
+        "pair_id": 2
+      },
+      {
+        "global_seat": 11,
+        "scenario_id": "t2-temporal-trap",
+        "pair_label": "B",
+        "arm": "treatment",
+        "pair_id": 2
+      },
+      {
+        "global_seat": 12,
+        "scenario_id": "t2-temporal-trap",
+        "pair_label": "B",
+        "arm": "control",
+        "pair_id": 2
+      },
+      {
+        "global_seat": 13,
+        "scenario_id": "t2-identity-trap",
+        "pair_label": "B",
+        "arm": "treatment",
+        "pair_id": 2
+      },
+      {
+        "global_seat": 14,
+        "scenario_id": "t2-identity-trap",
+        "pair_label": "B",
+        "arm": "control",
+        "pair_id": 2
+      },
+      {
+        "global_seat": 15,
+        "scenario_id": "t2-report-citation",
+        "pair_label": "B",
+        "arm": "treatment",
+        "pair_id": 2
+      },
+      {
+        "global_seat": 16,
+        "scenario_id": "t2-report-citation",
+        "pair_label": "B",
+        "arm": "control",
+        "pair_id": 2
+      }
+    ],
+    "stage_invocations_scheduled": 16,
+    "stage_invocations_started": 5,
+    "stage_invocations_finished": 5,
+    "stage_invocations_executed": 5,
+    "logical_model_generations": 5,
+    "logical_model_generations_budget": 32,
+    "preflight_logical_requests": 0,
+    "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+    "stop_reason": "MANDATORY_NEGATIVE_GATE_VIOLATION_COMMITTED:UNSUPPORTED_FACT_PROMOTION",
+    "seats": [
+      {
+        "global_seat": 1,
+        "scenario_id": "t2-no-evidence",
+        "pair_label": "A",
+        "pair_id": 1,
+        "arm": "control",
+        "status": "EXECUTED",
+        "phase": "RESULT_RECORDED",
+        "durable_claim": {
+          "artifact_version": "RCA2A10SeatClaimV1",
+          "experiment_id": "rca2a11-deepseek-flash-vocabulary-comparison",
+          "global_seat": 1,
+          "scenario_id": "t2-no-evidence",
+          "pair_label": "A",
+          "pair_id": 1,
+          "arm": "control",
+          "claimed_phase": "RESULT_RECORDED",
+          "claimed_at_monotonic": 2967685.305077606,
+          "status": "COMPLETED",
+          "finalized_at_monotonic": 2967690.964118129
+        },
+        "logical_model_generations": 1,
+        "provider_error_classes": [],
+        "provider_error_classifications": [],
+        "pydantic_output_retries": 0,
+        "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+        "http_attempt_upper_bound": 3,
+        "initial_attempt_error": [],
+        "final_attempt_error": [],
+        "initial_attempt_pydantic_pass": true,
+        "final_attempt_pydantic_pass": true,
+        "validation_payload_count": 1,
+        "retry_self_correction": false,
+        "field_scan_totals": {
+          "to_status_completed": 0,
+          "invalid_disposition": 0,
+          "wrong_action_field_name": 0,
+          "invalid_union": 0,
+          "missing_required_field": 0,
+          "extra_forbidden": 0,
+          "unknown_handle": 0,
+          "invalid_question_status": 0,
+          "fabricated_evidence_like_identifier": 0
+        },
+        "diagnostic_sink_entries": [],
+        "stage_layers": {
+          "stage_invocation_success": true,
+          "output_tool_received": true,
+          "pydantic_parse_success": true,
+          "canonical_resolution_success": true,
+          "integration_decision_validator_success": true,
+          "transition_validation_success": false,
+          "scratch_commit_success": false,
+          "canonical_integration_valid": false,
+          "resolution_violations": [],
+          "exception_class": null
+        },
+        "semantic_oracle_evaluation": {
+          "verdict": "FAIL",
+          "adequacy": "SEMANTICALLY_INADEQUATE",
+          "information_value": "DEGRADED",
+          "triggered_negative_gates": [
+            "FALSE_QUESTION_CLOSURE"
+          ],
+          "evaluation_notes": [
+            "Negative Gate: Required question marked answered without evidence basis",
+            "L3: Policy rejection: QUESTION_CLOSURE_BASIS_REQUIRED",
+            "L3: Policy rejection: QUESTION_CLOSURE_VERIFICATION_REQUIRED"
+          ],
+          "layers": {
+            "L1_SCHEMA_VALIDITY": true,
+            "L2_CANONICAL_RESOLUTION": true,
+            "L3_TRANSITION_INTEGRITY": false,
+            "L4_SEMANTIC_ADEQUACY": "SEMANTICALLY_INADEQUATE",
+            "L5_INFORMATION_VALUE": "DEGRADED"
+          }
+        },
+        "response_models": [
+          "deepseek-flash"
+        ],
+        "identity_sink_records": [
+          {
+            "requested_model": "deepseek-flash",
+            "returned_model": "deepseek-flash",
+            "upstream_provider": null
+          },
+          {
+            "requested_model": "deepseek-flash",
+            "returned_model": "deepseek-flash"
+          }
+        ],
+        "returned_identity_exact": true,
+        "token_usage": {
+          "input_tokens": 3347,
+          "output_tokens": 408
+        },
+        "latency_ms": [
+          5146.2
+        ],
+        "fixture_identity": {
+          "scenario_id": "t2-no-evidence",
+          "pair_label": "A",
+          "pair_id": 1,
+          "arm": "control",
+          "task_id": "t2-no-evidence",
+          "investigation_id": "inv-t2-no-evidence-001",
+          "run_id": "run_dfa2c8d5d92d4651b4fda862858ed465"
+        },
+        "citation_boundary_discipline": {
+          "scenario_id": "t2-no-evidence",
+          "stage_applicability": "INTEGRATE_REPRESENTABLE",
+          "calls_report_admission": false,
+          "report_admission_status": "NOT_EXERCISED",
+          "report_publication_status": "NOT_EXERCISED",
+          "analyst_acceptance_status": "NOT_EXERCISED"
+        }
+      },
+      {
+        "global_seat": 2,
+        "scenario_id": "t2-no-evidence",
+        "pair_label": "A",
+        "pair_id": 1,
+        "arm": "treatment",
+        "status": "EXECUTED",
+        "phase": "RESULT_RECORDED",
+        "durable_claim": {
+          "artifact_version": "RCA2A10SeatClaimV1",
+          "experiment_id": "rca2a11-deepseek-flash-vocabulary-comparison",
+          "global_seat": 2,
+          "scenario_id": "t2-no-evidence",
+          "pair_label": "A",
+          "pair_id": 1,
+          "arm": "treatment",
+          "claimed_phase": "RESULT_RECORDED",
+          "claimed_at_monotonic": 2967690.978384632,
+          "status": "COMPLETED",
+          "finalized_at_monotonic": 2967696.466719703
+        },
+        "logical_model_generations": 1,
+        "provider_error_classes": [],
+        "provider_error_classifications": [],
+        "pydantic_output_retries": 0,
+        "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+        "http_attempt_upper_bound": 3,
+        "initial_attempt_error": [],
+        "final_attempt_error": [],
+        "initial_attempt_pydantic_pass": true,
+        "final_attempt_pydantic_pass": true,
+        "validation_payload_count": 1,
+        "retry_self_correction": false,
+        "field_scan_totals": {
+          "to_status_completed": 0,
+          "invalid_disposition": 0,
+          "wrong_action_field_name": 0,
+          "invalid_union": 0,
+          "missing_required_field": 0,
+          "extra_forbidden": 0,
+          "unknown_handle": 0,
+          "invalid_question_status": 0,
+          "fabricated_evidence_like_identifier": 0
+        },
+        "diagnostic_sink_entries": [],
+        "stage_layers": {
+          "stage_invocation_success": true,
+          "output_tool_received": true,
+          "pydantic_parse_success": true,
+          "canonical_resolution_success": true,
+          "integration_decision_validator_success": true,
+          "transition_validation_success": false,
+          "scratch_commit_success": false,
+          "canonical_integration_valid": false,
+          "resolution_violations": [],
+          "exception_class": null
+        },
+        "semantic_oracle_evaluation": {
+          "verdict": "FAIL",
+          "adequacy": "SEMANTICALLY_INADEQUATE",
+          "information_value": "DEGRADED",
+          "triggered_negative_gates": [],
+          "evaluation_notes": [
+            "L3: Policy rejection: QUESTION_CLOSURE_BASIS_REQUIRED"
+          ],
+          "layers": {
+            "L1_SCHEMA_VALIDITY": true,
+            "L2_CANONICAL_RESOLUTION": true,
+            "L3_TRANSITION_INTEGRITY": false,
+            "L4_SEMANTIC_ADEQUACY": "SEMANTICALLY_INADEQUATE",
+            "L5_INFORMATION_VALUE": "DEGRADED"
+          }
+        },
+        "response_models": [
+          "deepseek-flash"
+        ],
+        "identity_sink_records": [
+          {
+            "requested_model": "deepseek-flash",
+            "returned_model": "deepseek-flash",
+            "upstream_provider": null
+          },
+          {
+            "requested_model": "deepseek-flash",
+            "returned_model": "deepseek-flash"
+          }
+        ],
+        "returned_identity_exact": true,
+        "token_usage": {
+          "input_tokens": 3659,
+          "output_tokens": 432
+        },
+        "latency_ms": [
+          5424.9
+        ],
+        "fixture_identity": {
+          "scenario_id": "t2-no-evidence",
+          "pair_label": "A",
+          "pair_id": 1,
+          "arm": "treatment",
+          "task_id": "t2-no-evidence",
+          "investigation_id": "inv-t2-no-evidence-001",
+          "run_id": "run_dfa2c8d5d92d4651b4fda862858ed465"
+        },
+        "citation_boundary_discipline": {
+          "scenario_id": "t2-no-evidence",
+          "stage_applicability": "INTEGRATE_REPRESENTABLE",
+          "calls_report_admission": false,
+          "report_admission_status": "NOT_EXERCISED",
+          "report_publication_status": "NOT_EXERCISED",
+          "analyst_acceptance_status": "NOT_EXERCISED"
+        }
+      },
+      {
+        "global_seat": 3,
+        "scenario_id": "t2-temporal-trap",
+        "pair_label": "A",
+        "pair_id": 1,
+        "arm": "control",
+        "status": "EXECUTED",
+        "phase": "RESULT_RECORDED",
+        "durable_claim": {
+          "artifact_version": "RCA2A10SeatClaimV1",
+          "experiment_id": "rca2a11-deepseek-flash-vocabulary-comparison",
+          "global_seat": 3,
+          "scenario_id": "t2-temporal-trap",
+          "pair_label": "A",
+          "pair_id": 1,
+          "arm": "control",
+          "claimed_phase": "RESULT_RECORDED",
+          "claimed_at_monotonic": 2967696.480615086,
+          "status": "COMPLETED",
+          "finalized_at_monotonic": 2967702.143573634
+        },
+        "logical_model_generations": 1,
+        "provider_error_classes": [],
+        "provider_error_classifications": [],
+        "pydantic_output_retries": 0,
+        "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+        "http_attempt_upper_bound": 3,
+        "initial_attempt_error": [],
+        "final_attempt_error": [],
+        "initial_attempt_pydantic_pass": true,
+        "final_attempt_pydantic_pass": true,
+        "validation_payload_count": 1,
+        "retry_self_correction": false,
+        "field_scan_totals": {
+          "to_status_completed": 0,
+          "invalid_disposition": 0,
+          "wrong_action_field_name": 0,
+          "invalid_union": 0,
+          "missing_required_field": 0,
+          "extra_forbidden": 0,
+          "unknown_handle": 0,
+          "invalid_question_status": 2,
+          "fabricated_evidence_like_identifier": 0
+        },
+        "diagnostic_sink_entries": [],
+        "stage_layers": {
+          "stage_invocation_success": true,
+          "output_tool_received": true,
+          "pydantic_parse_success": true,
+          "canonical_resolution_success": true,
+          "integration_decision_validator_success": true,
+          "transition_validation_success": false,
+          "scratch_commit_success": false,
+          "canonical_integration_valid": false,
+          "resolution_violations": [],
+          "exception_class": null
+        },
+        "semantic_oracle_evaluation": {
+          "verdict": "FAIL",
+          "adequacy": "SEMANTICALLY_INADEQUATE",
+          "information_value": "DEGRADED",
+          "triggered_negative_gates": [],
+          "evaluation_notes": [
+            "L3: Policy rejection: QUESTION_CLOSURE_VERIFICATION_REQUIRED"
+          ],
+          "layers": {
+            "L1_SCHEMA_VALIDITY": true,
+            "L2_CANONICAL_RESOLUTION": true,
+            "L3_TRANSITION_INTEGRITY": false,
+            "L4_SEMANTIC_ADEQUACY": "SEMANTICALLY_INADEQUATE",
+            "L5_INFORMATION_VALUE": "DEGRADED"
+          }
+        },
+        "response_models": [
+          "deepseek-flash"
+        ],
+        "identity_sink_records": [
+          {
+            "requested_model": "deepseek-flash",
+            "returned_model": "deepseek-flash",
+            "upstream_provider": null
+          },
+          {
+            "requested_model": "deepseek-flash",
+            "returned_model": "deepseek-flash"
+          }
+        ],
+        "returned_identity_exact": true,
+        "token_usage": {
+          "input_tokens": 3434,
+          "output_tokens": 697
+        },
+        "latency_ms": [
+          5588.6
+        ],
+        "fixture_identity": {
+          "scenario_id": "t2-temporal-trap",
+          "pair_label": "A",
+          "pair_id": 1,
+          "arm": "control",
+          "task_id": "t2-temporal-trap",
+          "investigation_id": "inv-t2-temporal-trap-001",
+          "run_id": "run_5bb47c6fc98d43f2a2387c1fd608dffb"
+        },
+        "citation_boundary_discipline": {
+          "scenario_id": "t2-temporal-trap",
+          "stage_applicability": "INTEGRATE_REPRESENTABLE",
+          "calls_report_admission": false,
+          "report_admission_status": "NOT_EXERCISED",
+          "report_publication_status": "NOT_EXERCISED",
+          "analyst_acceptance_status": "NOT_EXERCISED"
+        }
+      },
+      {
+        "global_seat": 4,
+        "scenario_id": "t2-temporal-trap",
+        "pair_label": "A",
+        "pair_id": 1,
+        "arm": "treatment",
+        "status": "EXECUTED",
+        "phase": "RESULT_RECORDED",
+        "durable_claim": {
+          "artifact_version": "RCA2A10SeatClaimV1",
+          "experiment_id": "rca2a11-deepseek-flash-vocabulary-comparison",
+          "global_seat": 4,
+          "scenario_id": "t2-temporal-trap",
+          "pair_label": "A",
+          "pair_id": 1,
+          "arm": "treatment",
+          "claimed_phase": "RESULT_RECORDED",
+          "claimed_at_monotonic": 2967702.158917915,
+          "status": "COMPLETED",
+          "finalized_at_monotonic": 2967707.062213511
+        },
+        "logical_model_generations": 1,
+        "provider_error_classes": [],
+        "provider_error_classifications": [],
+        "pydantic_output_retries": 0,
+        "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+        "http_attempt_upper_bound": 3,
+        "initial_attempt_error": [],
+        "final_attempt_error": [],
+        "initial_attempt_pydantic_pass": true,
+        "final_attempt_pydantic_pass": true,
+        "validation_payload_count": 1,
+        "retry_self_correction": false,
+        "field_scan_totals": {
+          "to_status_completed": 0,
+          "invalid_disposition": 0,
+          "wrong_action_field_name": 0,
+          "invalid_union": 0,
+          "missing_required_field": 0,
+          "extra_forbidden": 0,
+          "unknown_handle": 0,
+          "invalid_question_status": 2,
+          "fabricated_evidence_like_identifier": 0
+        },
+        "diagnostic_sink_entries": [],
+        "stage_layers": {
+          "stage_invocation_success": true,
+          "output_tool_received": true,
+          "pydantic_parse_success": true,
+          "canonical_resolution_success": true,
+          "integration_decision_validator_success": true,
+          "transition_validation_success": true,
+          "scratch_commit_success": true,
+          "canonical_integration_valid": true,
+          "resolution_violations": [],
+          "exception_class": null
+        },
+        "semantic_oracle_evaluation": {
+          "verdict": "PASS",
+          "adequacy": "SEMANTICALLY_ADEQUATE",
+          "information_value": "POSITIVE_DISCOVERY",
+          "triggered_negative_gates": [],
+          "evaluation_notes": [],
+          "layers": {
+            "L1_SCHEMA_VALIDITY": true,
+            "L2_CANONICAL_RESOLUTION": true,
+            "L3_TRANSITION_INTEGRITY": true,
+            "L4_SEMANTIC_ADEQUACY": "SEMANTICALLY_ADEQUATE",
+            "L5_INFORMATION_VALUE": "POSITIVE_DISCOVERY"
+          }
+        },
+        "response_models": [
+          "deepseek-flash"
+        ],
+        "identity_sink_records": [
+          {
+            "requested_model": "deepseek-flash",
+            "returned_model": "deepseek-flash",
+            "upstream_provider": null
+          },
+          {
+            "requested_model": "deepseek-flash",
+            "returned_model": "deepseek-flash"
+          }
+        ],
+        "returned_identity_exact": true,
+        "token_usage": {
+          "input_tokens": 3746,
+          "output_tokens": 588
+        },
+        "latency_ms": [
+          4813.4
+        ],
+        "fixture_identity": {
+          "scenario_id": "t2-temporal-trap",
+          "pair_label": "A",
+          "pair_id": 1,
+          "arm": "treatment",
+          "task_id": "t2-temporal-trap",
+          "investigation_id": "inv-t2-temporal-trap-001",
+          "run_id": "run_5bb47c6fc98d43f2a2387c1fd608dffb"
+        },
+        "citation_boundary_discipline": {
+          "scenario_id": "t2-temporal-trap",
+          "stage_applicability": "INTEGRATE_REPRESENTABLE",
+          "calls_report_admission": false,
+          "report_admission_status": "NOT_EXERCISED",
+          "report_publication_status": "NOT_EXERCISED",
+          "analyst_acceptance_status": "NOT_EXERCISED"
+        }
+      },
+      {
+        "global_seat": 5,
+        "scenario_id": "t2-identity-trap",
+        "pair_label": "A",
+        "pair_id": 1,
+        "arm": "control",
+        "status": "EXECUTED",
+        "phase": "RESULT_RECORDED",
+        "durable_claim": {
+          "artifact_version": "RCA2A10SeatClaimV1",
+          "experiment_id": "rca2a11-deepseek-flash-vocabulary-comparison",
+          "global_seat": 5,
+          "scenario_id": "t2-identity-trap",
+          "pair_label": "A",
+          "pair_id": 1,
+          "arm": "control",
+          "claimed_phase": "RESULT_RECORDED",
+          "claimed_at_monotonic": 2967707.078666791,
+          "status": "COMPLETED",
+          "finalized_at_monotonic": 2967712.713513293
+        },
+        "logical_model_generations": 1,
+        "provider_error_classes": [],
+        "provider_error_classifications": [],
+        "pydantic_output_retries": 0,
+        "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+        "http_attempt_upper_bound": 3,
+        "initial_attempt_error": [],
+        "final_attempt_error": [],
+        "initial_attempt_pydantic_pass": true,
+        "final_attempt_pydantic_pass": true,
+        "validation_payload_count": 1,
+        "retry_self_correction": false,
+        "field_scan_totals": {
+          "to_status_completed": 0,
+          "invalid_disposition": 0,
+          "wrong_action_field_name": 0,
+          "invalid_union": 0,
+          "missing_required_field": 0,
+          "extra_forbidden": 0,
+          "unknown_handle": 0,
+          "invalid_question_status": 1,
+          "fabricated_evidence_like_identifier": 0
+        },
+        "diagnostic_sink_entries": [],
+        "stage_layers": {
+          "stage_invocation_success": true,
+          "output_tool_received": true,
+          "pydantic_parse_success": true,
+          "canonical_resolution_success": true,
+          "integration_decision_validator_success": true,
+          "transition_validation_success": true,
+          "scratch_commit_success": true,
+          "canonical_integration_valid": true,
+          "resolution_violations": [],
+          "exception_class": null
+        },
+        "semantic_oracle_evaluation": {
+          "verdict": "FAIL",
+          "adequacy": "SEMANTICALLY_INADEQUATE",
+          "information_value": "DEGRADED",
+          "triggered_negative_gates": [
+            "UNSUPPORTED_FACT_PROMOTION"
+          ],
+          "evaluation_notes": [
+            "t2-identity-trap: Identity merge asserted across systems without cross-system proof"
+          ],
+          "layers": {
+            "L1_SCHEMA_VALIDITY": true,
+            "L2_CANONICAL_RESOLUTION": true,
+            "L3_TRANSITION_INTEGRITY": true,
+            "L4_SEMANTIC_ADEQUACY": "SEMANTICALLY_INADEQUATE",
+            "L5_INFORMATION_VALUE": "DEGRADED"
+          }
+        },
+        "response_models": [
+          "deepseek-flash"
+        ],
+        "identity_sink_records": [
+          {
+            "requested_model": "deepseek-flash",
+            "returned_model": "deepseek-flash",
+            "upstream_provider": null
+          },
+          {
+            "requested_model": "deepseek-flash",
+            "returned_model": "deepseek-flash"
+          }
+        ],
+        "returned_identity_exact": true,
+        "token_usage": {
+          "input_tokens": 3416,
+          "output_tokens": 697
+        },
+        "latency_ms": [
+          5556.1
+        ],
+        "fixture_identity": {
+          "scenario_id": "t2-identity-trap",
+          "pair_label": "A",
+          "pair_id": 1,
+          "arm": "control",
+          "task_id": "t2-identity-trap",
+          "investigation_id": "inv-t2-identity-trap-001",
+          "run_id": "run_28a9969f465d460da999efbbcbfa1602"
+        },
+        "citation_boundary_discipline": {
+          "scenario_id": "t2-identity-trap",
+          "stage_applicability": "INTEGRATE_REPRESENTABLE",
+          "calls_report_admission": false,
+          "report_admission_status": "NOT_EXERCISED",
+          "report_publication_status": "NOT_EXERCISED",
+          "analyst_acceptance_status": "NOT_EXERCISED"
+        }
+      },
+      {
+        "global_seat": 6,
+        "scenario_id": "t2-identity-trap",
+        "pair_label": "A",
+        "pair_id": 1,
+        "arm": "treatment",
+        "status": "NOT_STARTED",
+        "phase": "NOT_STARTED",
+        "durable_claim": null,
+        "logical_model_generations": 0,
+        "provider_error_classes": [],
+        "provider_error_classifications": [],
+        "pydantic_output_retries": 0,
+        "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+        "http_attempt_upper_bound": 0,
+        "initial_attempt_error": [],
+        "final_attempt_error": [],
+        "initial_attempt_pydantic_pass": null,
+        "final_attempt_pydantic_pass": null,
+        "validation_payload_count": 0,
+        "retry_self_correction": false,
+        "field_scan_totals": {
+          "to_status_completed": 0,
+          "invalid_disposition": 0,
+          "wrong_action_field_name": 0,
+          "invalid_union": 0,
+          "missing_required_field": 0,
+          "extra_forbidden": 0,
+          "unknown_handle": 0,
+          "invalid_question_status": 0,
+          "fabricated_evidence_like_identifier": 0
+        },
+        "diagnostic_sink_entries": [],
+        "stage_layers": {
+          "stage_invocation_success": false,
+          "output_tool_received": false,
+          "pydantic_parse_success": false,
+          "canonical_resolution_success": false,
+          "integration_decision_validator_success": false,
+          "transition_validation_success": false,
+          "scratch_commit_success": false,
+          "canonical_integration_valid": false,
+          "resolution_violations": [],
+          "exception_class": "MANDATORY_NEGATIVE_GATE_VIOLATION_COMMITTED:UNSUPPORTED_FACT_PROMOTION"
+        },
+        "semantic_oracle_evaluation": {
+          "verdict": "NOT_EVALUATED",
+          "adequacy": "UNOBSERVABLE",
+          "information_value": "UNOBSERVABLE",
+          "triggered_negative_gates": [],
+          "evaluation_notes": [
+            "PROVIDER_ERROR_NO_MODEL_DECISION"
+          ],
+          "layers": {
+            "L1_SCHEMA_VALIDITY": false,
+            "L2_CANONICAL_RESOLUTION": false,
+            "L3_TRANSITION_INTEGRITY": false,
+            "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+            "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+          }
+        },
+        "response_models": [],
+        "identity_sink_records": [],
+        "returned_identity_exact": false,
+        "token_usage": {
+          "input_tokens": 0,
+          "output_tokens": 0
+        },
+        "latency_ms": [],
+        "fixture_identity": {
+          "scenario_id": "t2-identity-trap",
+          "pair_label": "A",
+          "pair_id": 1,
+          "arm": "treatment",
+          "task_id": "t2-identity-trap",
+          "investigation_id": "inv-t2-identity-trap-001",
+          "run_id": "run_28a9969f465d460da999efbbcbfa1602"
+        },
+        "citation_boundary_discipline": {
+          "scenario_id": "t2-identity-trap",
+          "stage_applicability": "INTEGRATE_REPRESENTABLE",
+          "calls_report_admission": false,
+          "report_admission_status": "NOT_EXERCISED",
+          "report_publication_status": "NOT_EXERCISED",
+          "analyst_acceptance_status": "NOT_EXERCISED"
+        }
+      },
+      {
+        "global_seat": 7,
+        "scenario_id": "t2-report-citation",
+        "pair_label": "A",
+        "pair_id": 1,
+        "arm": "control",
+        "status": "NOT_STARTED",
+        "phase": "NOT_STARTED",
+        "durable_claim": null,
+        "logical_model_generations": 0,
+        "provider_error_classes": [],
+        "provider_error_classifications": [],
+        "pydantic_output_retries": 0,
+        "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+        "http_attempt_upper_bound": 0,
+        "initial_attempt_error": [],
+        "final_attempt_error": [],
+        "initial_attempt_pydantic_pass": null,
+        "final_attempt_pydantic_pass": null,
+        "validation_payload_count": 0,
+        "retry_self_correction": false,
+        "field_scan_totals": {
+          "to_status_completed": 0,
+          "invalid_disposition": 0,
+          "wrong_action_field_name": 0,
+          "invalid_union": 0,
+          "missing_required_field": 0,
+          "extra_forbidden": 0,
+          "unknown_handle": 0,
+          "invalid_question_status": 0,
+          "fabricated_evidence_like_identifier": 0
+        },
+        "diagnostic_sink_entries": [],
+        "stage_layers": {
+          "stage_invocation_success": false,
+          "output_tool_received": false,
+          "pydantic_parse_success": false,
+          "canonical_resolution_success": false,
+          "integration_decision_validator_success": false,
+          "transition_validation_success": false,
+          "scratch_commit_success": false,
+          "canonical_integration_valid": false,
+          "resolution_violations": [],
+          "exception_class": "MANDATORY_NEGATIVE_GATE_VIOLATION_COMMITTED:UNSUPPORTED_FACT_PROMOTION"
+        },
+        "semantic_oracle_evaluation": {
+          "verdict": "NOT_EVALUATED",
+          "adequacy": "UNOBSERVABLE",
+          "information_value": "UNOBSERVABLE",
+          "triggered_negative_gates": [],
+          "evaluation_notes": [
+            "PROVIDER_ERROR_NO_MODEL_DECISION"
+          ],
+          "layers": {
+            "L1_SCHEMA_VALIDITY": false,
+            "L2_CANONICAL_RESOLUTION": false,
+            "L3_TRANSITION_INTEGRITY": false,
+            "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+            "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+          }
+        },
+        "response_models": [],
+        "identity_sink_records": [],
+        "returned_identity_exact": false,
+        "token_usage": {
+          "input_tokens": 0,
+          "output_tokens": 0
+        },
+        "latency_ms": [],
+        "fixture_identity": {
+          "scenario_id": "t2-report-citation",
+          "pair_label": "A",
+          "pair_id": 1,
+          "arm": "control",
+          "task_id": "t2-report-citation",
+          "investigation_id": "inv-t2-report-citation-001",
+          "run_id": "run_3e3661a8325a4d4d915a6f2f52b436a6"
+        },
+        "citation_boundary_discipline": {
+          "scenario_id": "t2-report-citation",
+          "stage_applicability": "REQUIRES_ADAPTER",
+          "calls_report_admission": false,
+          "report_admission_status": "NOT_EXERCISED",
+          "report_publication_status": "NOT_EXERCISED",
+          "analyst_acceptance_status": "NOT_EXERCISED"
+        }
+      },
+      {
+        "global_seat": 8,
+        "scenario_id": "t2-report-citation",
+        "pair_label": "A",
+        "pair_id": 1,
+        "arm": "treatment",
+        "status": "NOT_STARTED",
+        "phase": "NOT_STARTED",
+        "durable_claim": null,
+        "logical_model_generations": 0,
+        "provider_error_classes": [],
+        "provider_error_classifications": [],
+        "pydantic_output_retries": 0,
+        "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+        "http_attempt_upper_bound": 0,
+        "initial_attempt_error": [],
+        "final_attempt_error": [],
+        "initial_attempt_pydantic_pass": null,
+        "final_attempt_pydantic_pass": null,
+        "validation_payload_count": 0,
+        "retry_self_correction": false,
+        "field_scan_totals": {
+          "to_status_completed": 0,
+          "invalid_disposition": 0,
+          "wrong_action_field_name": 0,
+          "invalid_union": 0,
+          "missing_required_field": 0,
+          "extra_forbidden": 0,
+          "unknown_handle": 0,
+          "invalid_question_status": 0,
+          "fabricated_evidence_like_identifier": 0
+        },
+        "diagnostic_sink_entries": [],
+        "stage_layers": {
+          "stage_invocation_success": false,
+          "output_tool_received": false,
+          "pydantic_parse_success": false,
+          "canonical_resolution_success": false,
+          "integration_decision_validator_success": false,
+          "transition_validation_success": false,
+          "scratch_commit_success": false,
+          "canonical_integration_valid": false,
+          "resolution_violations": [],
+          "exception_class": "MANDATORY_NEGATIVE_GATE_VIOLATION_COMMITTED:UNSUPPORTED_FACT_PROMOTION"
+        },
+        "semantic_oracle_evaluation": {
+          "verdict": "NOT_EVALUATED",
+          "adequacy": "UNOBSERVABLE",
+          "information_value": "UNOBSERVABLE",
+          "triggered_negative_gates": [],
+          "evaluation_notes": [
+            "PROVIDER_ERROR_NO_MODEL_DECISION"
+          ],
+          "layers": {
+            "L1_SCHEMA_VALIDITY": false,
+            "L2_CANONICAL_RESOLUTION": false,
+            "L3_TRANSITION_INTEGRITY": false,
+            "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+            "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+          }
+        },
+        "response_models": [],
+        "identity_sink_records": [],
+        "returned_identity_exact": false,
+        "token_usage": {
+          "input_tokens": 0,
+          "output_tokens": 0
+        },
+        "latency_ms": [],
+        "fixture_identity": {
+          "scenario_id": "t2-report-citation",
+          "pair_label": "A",
+          "pair_id": 1,
+          "arm": "treatment",
+          "task_id": "t2-report-citation",
+          "investigation_id": "inv-t2-report-citation-001",
+          "run_id": "run_3e3661a8325a4d4d915a6f2f52b436a6"
+        },
+        "citation_boundary_discipline": {
+          "scenario_id": "t2-report-citation",
+          "stage_applicability": "REQUIRES_ADAPTER",
+          "calls_report_admission": false,
+          "report_admission_status": "NOT_EXERCISED",
+          "report_publication_status": "NOT_EXERCISED",
+          "analyst_acceptance_status": "NOT_EXERCISED"
+        }
+      },
+      {
+        "global_seat": 9,
+        "scenario_id": "t2-no-evidence",
+        "pair_label": "B",
+        "pair_id": 2,
+        "arm": "treatment",
+        "status": "NOT_STARTED",
+        "phase": "NOT_STARTED",
+        "durable_claim": null,
+        "logical_model_generations": 0,
+        "provider_error_classes": [],
+        "provider_error_classifications": [],
+        "pydantic_output_retries": 0,
+        "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+        "http_attempt_upper_bound": 0,
+        "initial_attempt_error": [],
+        "final_attempt_error": [],
+        "initial_attempt_pydantic_pass": null,
+        "final_attempt_pydantic_pass": null,
+        "validation_payload_count": 0,
+        "retry_self_correction": false,
+        "field_scan_totals": {
+          "to_status_completed": 0,
+          "invalid_disposition": 0,
+          "wrong_action_field_name": 0,
+          "invalid_union": 0,
+          "missing_required_field": 0,
+          "extra_forbidden": 0,
+          "unknown_handle": 0,
+          "invalid_question_status": 0,
+          "fabricated_evidence_like_identifier": 0
+        },
+        "diagnostic_sink_entries": [],
+        "stage_layers": {
+          "stage_invocation_success": false,
+          "output_tool_received": false,
+          "pydantic_parse_success": false,
+          "canonical_resolution_success": false,
+          "integration_decision_validator_success": false,
+          "transition_validation_success": false,
+          "scratch_commit_success": false,
+          "canonical_integration_valid": false,
+          "resolution_violations": [],
+          "exception_class": "MANDATORY_NEGATIVE_GATE_VIOLATION_COMMITTED:UNSUPPORTED_FACT_PROMOTION"
+        },
+        "semantic_oracle_evaluation": {
+          "verdict": "NOT_EVALUATED",
+          "adequacy": "UNOBSERVABLE",
+          "information_value": "UNOBSERVABLE",
+          "triggered_negative_gates": [],
+          "evaluation_notes": [
+            "PROVIDER_ERROR_NO_MODEL_DECISION"
+          ],
+          "layers": {
+            "L1_SCHEMA_VALIDITY": false,
+            "L2_CANONICAL_RESOLUTION": false,
+            "L3_TRANSITION_INTEGRITY": false,
+            "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+            "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+          }
+        },
+        "response_models": [],
+        "identity_sink_records": [],
+        "returned_identity_exact": false,
+        "token_usage": {
+          "input_tokens": 0,
+          "output_tokens": 0
+        },
+        "latency_ms": [],
+        "fixture_identity": {
+          "scenario_id": "t2-no-evidence",
+          "pair_label": "B",
+          "pair_id": 2,
+          "arm": "treatment",
+          "task_id": "t2-no-evidence",
+          "investigation_id": "inv-t2-no-evidence-001",
+          "run_id": "run_5e52e2150615471e93886c6c304fe047"
+        },
+        "citation_boundary_discipline": {
+          "scenario_id": "t2-no-evidence",
+          "stage_applicability": "INTEGRATE_REPRESENTABLE",
+          "calls_report_admission": false,
+          "report_admission_status": "NOT_EXERCISED",
+          "report_publication_status": "NOT_EXERCISED",
+          "analyst_acceptance_status": "NOT_EXERCISED"
+        }
+      },
+      {
+        "global_seat": 10,
+        "scenario_id": "t2-no-evidence",
+        "pair_label": "B",
+        "pair_id": 2,
+        "arm": "control",
+        "status": "NOT_STARTED",
+        "phase": "NOT_STARTED",
+        "durable_claim": null,
+        "logical_model_generations": 0,
+        "provider_error_classes": [],
+        "provider_error_classifications": [],
+        "pydantic_output_retries": 0,
+        "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+        "http_attempt_upper_bound": 0,
+        "initial_attempt_error": [],
+        "final_attempt_error": [],
+        "initial_attempt_pydantic_pass": null,
+        "final_attempt_pydantic_pass": null,
+        "validation_payload_count": 0,
+        "retry_self_correction": false,
+        "field_scan_totals": {
+          "to_status_completed": 0,
+          "invalid_disposition": 0,
+          "wrong_action_field_name": 0,
+          "invalid_union": 0,
+          "missing_required_field": 0,
+          "extra_forbidden": 0,
+          "unknown_handle": 0,
+          "invalid_question_status": 0,
+          "fabricated_evidence_like_identifier": 0
+        },
+        "diagnostic_sink_entries": [],
+        "stage_layers": {
+          "stage_invocation_success": false,
+          "output_tool_received": false,
+          "pydantic_parse_success": false,
+          "canonical_resolution_success": false,
+          "integration_decision_validator_success": false,
+          "transition_validation_success": false,
+          "scratch_commit_success": false,
+          "canonical_integration_valid": false,
+          "resolution_violations": [],
+          "exception_class": "MANDATORY_NEGATIVE_GATE_VIOLATION_COMMITTED:UNSUPPORTED_FACT_PROMOTION"
+        },
+        "semantic_oracle_evaluation": {
+          "verdict": "NOT_EVALUATED",
+          "adequacy": "UNOBSERVABLE",
+          "information_value": "UNOBSERVABLE",
+          "triggered_negative_gates": [],
+          "evaluation_notes": [
+            "PROVIDER_ERROR_NO_MODEL_DECISION"
+          ],
+          "layers": {
+            "L1_SCHEMA_VALIDITY": false,
+            "L2_CANONICAL_RESOLUTION": false,
+            "L3_TRANSITION_INTEGRITY": false,
+            "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+            "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+          }
+        },
+        "response_models": [],
+        "identity_sink_records": [],
+        "returned_identity_exact": false,
+        "token_usage": {
+          "input_tokens": 0,
+          "output_tokens": 0
+        },
+        "latency_ms": [],
+        "fixture_identity": {
+          "scenario_id": "t2-no-evidence",
+          "pair_label": "B",
+          "pair_id": 2,
+          "arm": "control",
+          "task_id": "t2-no-evidence",
+          "investigation_id": "inv-t2-no-evidence-001",
+          "run_id": "run_5e52e2150615471e93886c6c304fe047"
+        },
+        "citation_boundary_discipline": {
+          "scenario_id": "t2-no-evidence",
+          "stage_applicability": "INTEGRATE_REPRESENTABLE",
+          "calls_report_admission": false,
+          "report_admission_status": "NOT_EXERCISED",
+          "report_publication_status": "NOT_EXERCISED",
+          "analyst_acceptance_status": "NOT_EXERCISED"
+        }
+      },
+      {
+        "global_seat": 11,
+        "scenario_id": "t2-temporal-trap",
+        "pair_label": "B",
+        "pair_id": 2,
+        "arm": "treatment",
+        "status": "NOT_STARTED",
+        "phase": "NOT_STARTED",
+        "durable_claim": null,
+        "logical_model_generations": 0,
+        "provider_error_classes": [],
+        "provider_error_classifications": [],
+        "pydantic_output_retries": 0,
+        "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+        "http_attempt_upper_bound": 0,
+        "initial_attempt_error": [],
+        "final_attempt_error": [],
+        "initial_attempt_pydantic_pass": null,
+        "final_attempt_pydantic_pass": null,
+        "validation_payload_count": 0,
+        "retry_self_correction": false,
+        "field_scan_totals": {
+          "to_status_completed": 0,
+          "invalid_disposition": 0,
+          "wrong_action_field_name": 0,
+          "invalid_union": 0,
+          "missing_required_field": 0,
+          "extra_forbidden": 0,
+          "unknown_handle": 0,
+          "invalid_question_status": 0,
+          "fabricated_evidence_like_identifier": 0
+        },
+        "diagnostic_sink_entries": [],
+        "stage_layers": {
+          "stage_invocation_success": false,
+          "output_tool_received": false,
+          "pydantic_parse_success": false,
+          "canonical_resolution_success": false,
+          "integration_decision_validator_success": false,
+          "transition_validation_success": false,
+          "scratch_commit_success": false,
+          "canonical_integration_valid": false,
+          "resolution_violations": [],
+          "exception_class": "MANDATORY_NEGATIVE_GATE_VIOLATION_COMMITTED:UNSUPPORTED_FACT_PROMOTION"
+        },
+        "semantic_oracle_evaluation": {
+          "verdict": "NOT_EVALUATED",
+          "adequacy": "UNOBSERVABLE",
+          "information_value": "UNOBSERVABLE",
+          "triggered_negative_gates": [],
+          "evaluation_notes": [
+            "PROVIDER_ERROR_NO_MODEL_DECISION"
+          ],
+          "layers": {
+            "L1_SCHEMA_VALIDITY": false,
+            "L2_CANONICAL_RESOLUTION": false,
+            "L3_TRANSITION_INTEGRITY": false,
+            "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+            "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+          }
+        },
+        "response_models": [],
+        "identity_sink_records": [],
+        "returned_identity_exact": false,
+        "token_usage": {
+          "input_tokens": 0,
+          "output_tokens": 0
+        },
+        "latency_ms": [],
+        "fixture_identity": {
+          "scenario_id": "t2-temporal-trap",
+          "pair_label": "B",
+          "pair_id": 2,
+          "arm": "treatment",
+          "task_id": "t2-temporal-trap",
+          "investigation_id": "inv-t2-temporal-trap-001",
+          "run_id": "run_91fa9765fd614dbb90bf78bcf92e7b6c"
+        },
+        "citation_boundary_discipline": {
+          "scenario_id": "t2-temporal-trap",
+          "stage_applicability": "INTEGRATE_REPRESENTABLE",
+          "calls_report_admission": false,
+          "report_admission_status": "NOT_EXERCISED",
+          "report_publication_status": "NOT_EXERCISED",
+          "analyst_acceptance_status": "NOT_EXERCISED"
+        }
+      },
+      {
+        "global_seat": 12,
+        "scenario_id": "t2-temporal-trap",
+        "pair_label": "B",
+        "pair_id": 2,
+        "arm": "control",
+        "status": "NOT_STARTED",
+        "phase": "NOT_STARTED",
+        "durable_claim": null,
+        "logical_model_generations": 0,
+        "provider_error_classes": [],
+        "provider_error_classifications": [],
+        "pydantic_output_retries": 0,
+        "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+        "http_attempt_upper_bound": 0,
+        "initial_attempt_error": [],
+        "final_attempt_error": [],
+        "initial_attempt_pydantic_pass": null,
+        "final_attempt_pydantic_pass": null,
+        "validation_payload_count": 0,
+        "retry_self_correction": false,
+        "field_scan_totals": {
+          "to_status_completed": 0,
+          "invalid_disposition": 0,
+          "wrong_action_field_name": 0,
+          "invalid_union": 0,
+          "missing_required_field": 0,
+          "extra_forbidden": 0,
+          "unknown_handle": 0,
+          "invalid_question_status": 0,
+          "fabricated_evidence_like_identifier": 0
+        },
+        "diagnostic_sink_entries": [],
+        "stage_layers": {
+          "stage_invocation_success": false,
+          "output_tool_received": false,
+          "pydantic_parse_success": false,
+          "canonical_resolution_success": false,
+          "integration_decision_validator_success": false,
+          "transition_validation_success": false,
+          "scratch_commit_success": false,
+          "canonical_integration_valid": false,
+          "resolution_violations": [],
+          "exception_class": "MANDATORY_NEGATIVE_GATE_VIOLATION_COMMITTED:UNSUPPORTED_FACT_PROMOTION"
+        },
+        "semantic_oracle_evaluation": {
+          "verdict": "NOT_EVALUATED",
+          "adequacy": "UNOBSERVABLE",
+          "information_value": "UNOBSERVABLE",
+          "triggered_negative_gates": [],
+          "evaluation_notes": [
+            "PROVIDER_ERROR_NO_MODEL_DECISION"
+          ],
+          "layers": {
+            "L1_SCHEMA_VALIDITY": false,
+            "L2_CANONICAL_RESOLUTION": false,
+            "L3_TRANSITION_INTEGRITY": false,
+            "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+            "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+          }
+        },
+        "response_models": [],
+        "identity_sink_records": [],
+        "returned_identity_exact": false,
+        "token_usage": {
+          "input_tokens": 0,
+          "output_tokens": 0
+        },
+        "latency_ms": [],
+        "fixture_identity": {
+          "scenario_id": "t2-temporal-trap",
+          "pair_label": "B",
+          "pair_id": 2,
+          "arm": "control",
+          "task_id": "t2-temporal-trap",
+          "investigation_id": "inv-t2-temporal-trap-001",
+          "run_id": "run_91fa9765fd614dbb90bf78bcf92e7b6c"
+        },
+        "citation_boundary_discipline": {
+          "scenario_id": "t2-temporal-trap",
+          "stage_applicability": "INTEGRATE_REPRESENTABLE",
+          "calls_report_admission": false,
+          "report_admission_status": "NOT_EXERCISED",
+          "report_publication_status": "NOT_EXERCISED",
+          "analyst_acceptance_status": "NOT_EXERCISED"
+        }
+      },
+      {
+        "global_seat": 13,
+        "scenario_id": "t2-identity-trap",
+        "pair_label": "B",
+        "pair_id": 2,
+        "arm": "treatment",
+        "status": "NOT_STARTED",
+        "phase": "NOT_STARTED",
+        "durable_claim": null,
+        "logical_model_generations": 0,
+        "provider_error_classes": [],
+        "provider_error_classifications": [],
+        "pydantic_output_retries": 0,
+        "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+        "http_attempt_upper_bound": 0,
+        "initial_attempt_error": [],
+        "final_attempt_error": [],
+        "initial_attempt_pydantic_pass": null,
+        "final_attempt_pydantic_pass": null,
+        "validation_payload_count": 0,
+        "retry_self_correction": false,
+        "field_scan_totals": {
+          "to_status_completed": 0,
+          "invalid_disposition": 0,
+          "wrong_action_field_name": 0,
+          "invalid_union": 0,
+          "missing_required_field": 0,
+          "extra_forbidden": 0,
+          "unknown_handle": 0,
+          "invalid_question_status": 0,
+          "fabricated_evidence_like_identifier": 0
+        },
+        "diagnostic_sink_entries": [],
+        "stage_layers": {
+          "stage_invocation_success": false,
+          "output_tool_received": false,
+          "pydantic_parse_success": false,
+          "canonical_resolution_success": false,
+          "integration_decision_validator_success": false,
+          "transition_validation_success": false,
+          "scratch_commit_success": false,
+          "canonical_integration_valid": false,
+          "resolution_violations": [],
+          "exception_class": "MANDATORY_NEGATIVE_GATE_VIOLATION_COMMITTED:UNSUPPORTED_FACT_PROMOTION"
+        },
+        "semantic_oracle_evaluation": {
+          "verdict": "NOT_EVALUATED",
+          "adequacy": "UNOBSERVABLE",
+          "information_value": "UNOBSERVABLE",
+          "triggered_negative_gates": [],
+          "evaluation_notes": [
+            "PROVIDER_ERROR_NO_MODEL_DECISION"
+          ],
+          "layers": {
+            "L1_SCHEMA_VALIDITY": false,
+            "L2_CANONICAL_RESOLUTION": false,
+            "L3_TRANSITION_INTEGRITY": false,
+            "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+            "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+          }
+        },
+        "response_models": [],
+        "identity_sink_records": [],
+        "returned_identity_exact": false,
+        "token_usage": {
+          "input_tokens": 0,
+          "output_tokens": 0
+        },
+        "latency_ms": [],
+        "fixture_identity": {
+          "scenario_id": "t2-identity-trap",
+          "pair_label": "B",
+          "pair_id": 2,
+          "arm": "treatment",
+          "task_id": "t2-identity-trap",
+          "investigation_id": "inv-t2-identity-trap-001",
+          "run_id": "run_8fdc5f79c1094127919262caad74c3fb"
+        },
+        "citation_boundary_discipline": {
+          "scenario_id": "t2-identity-trap",
+          "stage_applicability": "INTEGRATE_REPRESENTABLE",
+          "calls_report_admission": false,
+          "report_admission_status": "NOT_EXERCISED",
+          "report_publication_status": "NOT_EXERCISED",
+          "analyst_acceptance_status": "NOT_EXERCISED"
+        }
+      },
+      {
+        "global_seat": 14,
+        "scenario_id": "t2-identity-trap",
+        "pair_label": "B",
+        "pair_id": 2,
+        "arm": "control",
+        "status": "NOT_STARTED",
+        "phase": "NOT_STARTED",
+        "durable_claim": null,
+        "logical_model_generations": 0,
+        "provider_error_classes": [],
+        "provider_error_classifications": [],
+        "pydantic_output_retries": 0,
+        "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+        "http_attempt_upper_bound": 0,
+        "initial_attempt_error": [],
+        "final_attempt_error": [],
+        "initial_attempt_pydantic_pass": null,
+        "final_attempt_pydantic_pass": null,
+        "validation_payload_count": 0,
+        "retry_self_correction": false,
+        "field_scan_totals": {
+          "to_status_completed": 0,
+          "invalid_disposition": 0,
+          "wrong_action_field_name": 0,
+          "invalid_union": 0,
+          "missing_required_field": 0,
+          "extra_forbidden": 0,
+          "unknown_handle": 0,
+          "invalid_question_status": 0,
+          "fabricated_evidence_like_identifier": 0
+        },
+        "diagnostic_sink_entries": [],
+        "stage_layers": {
+          "stage_invocation_success": false,
+          "output_tool_received": false,
+          "pydantic_parse_success": false,
+          "canonical_resolution_success": false,
+          "integration_decision_validator_success": false,
+          "transition_validation_success": false,
+          "scratch_commit_success": false,
+          "canonical_integration_valid": false,
+          "resolution_violations": [],
+          "exception_class": "MANDATORY_NEGATIVE_GATE_VIOLATION_COMMITTED:UNSUPPORTED_FACT_PROMOTION"
+        },
+        "semantic_oracle_evaluation": {
+          "verdict": "NOT_EVALUATED",
+          "adequacy": "UNOBSERVABLE",
+          "information_value": "UNOBSERVABLE",
+          "triggered_negative_gates": [],
+          "evaluation_notes": [
+            "PROVIDER_ERROR_NO_MODEL_DECISION"
+          ],
+          "layers": {
+            "L1_SCHEMA_VALIDITY": false,
+            "L2_CANONICAL_RESOLUTION": false,
+            "L3_TRANSITION_INTEGRITY": false,
+            "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+            "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+          }
+        },
+        "response_models": [],
+        "identity_sink_records": [],
+        "returned_identity_exact": false,
+        "token_usage": {
+          "input_tokens": 0,
+          "output_tokens": 0
+        },
+        "latency_ms": [],
+        "fixture_identity": {
+          "scenario_id": "t2-identity-trap",
+          "pair_label": "B",
+          "pair_id": 2,
+          "arm": "control",
+          "task_id": "t2-identity-trap",
+          "investigation_id": "inv-t2-identity-trap-001",
+          "run_id": "run_8fdc5f79c1094127919262caad74c3fb"
+        },
+        "citation_boundary_discipline": {
+          "scenario_id": "t2-identity-trap",
+          "stage_applicability": "INTEGRATE_REPRESENTABLE",
+          "calls_report_admission": false,
+          "report_admission_status": "NOT_EXERCISED",
+          "report_publication_status": "NOT_EXERCISED",
+          "analyst_acceptance_status": "NOT_EXERCISED"
+        }
+      },
+      {
+        "global_seat": 15,
+        "scenario_id": "t2-report-citation",
+        "pair_label": "B",
+        "pair_id": 2,
+        "arm": "treatment",
+        "status": "NOT_STARTED",
+        "phase": "NOT_STARTED",
+        "durable_claim": null,
+        "logical_model_generations": 0,
+        "provider_error_classes": [],
+        "provider_error_classifications": [],
+        "pydantic_output_retries": 0,
+        "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+        "http_attempt_upper_bound": 0,
+        "initial_attempt_error": [],
+        "final_attempt_error": [],
+        "initial_attempt_pydantic_pass": null,
+        "final_attempt_pydantic_pass": null,
+        "validation_payload_count": 0,
+        "retry_self_correction": false,
+        "field_scan_totals": {
+          "to_status_completed": 0,
+          "invalid_disposition": 0,
+          "wrong_action_field_name": 0,
+          "invalid_union": 0,
+          "missing_required_field": 0,
+          "extra_forbidden": 0,
+          "unknown_handle": 0,
+          "invalid_question_status": 0,
+          "fabricated_evidence_like_identifier": 0
+        },
+        "diagnostic_sink_entries": [],
+        "stage_layers": {
+          "stage_invocation_success": false,
+          "output_tool_received": false,
+          "pydantic_parse_success": false,
+          "canonical_resolution_success": false,
+          "integration_decision_validator_success": false,
+          "transition_validation_success": false,
+          "scratch_commit_success": false,
+          "canonical_integration_valid": false,
+          "resolution_violations": [],
+          "exception_class": "MANDATORY_NEGATIVE_GATE_VIOLATION_COMMITTED:UNSUPPORTED_FACT_PROMOTION"
+        },
+        "semantic_oracle_evaluation": {
+          "verdict": "NOT_EVALUATED",
+          "adequacy": "UNOBSERVABLE",
+          "information_value": "UNOBSERVABLE",
+          "triggered_negative_gates": [],
+          "evaluation_notes": [
+            "PROVIDER_ERROR_NO_MODEL_DECISION"
+          ],
+          "layers": {
+            "L1_SCHEMA_VALIDITY": false,
+            "L2_CANONICAL_RESOLUTION": false,
+            "L3_TRANSITION_INTEGRITY": false,
+            "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+            "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+          }
+        },
+        "response_models": [],
+        "identity_sink_records": [],
+        "returned_identity_exact": false,
+        "token_usage": {
+          "input_tokens": 0,
+          "output_tokens": 0
+        },
+        "latency_ms": [],
+        "fixture_identity": {
+          "scenario_id": "t2-report-citation",
+          "pair_label": "B",
+          "pair_id": 2,
+          "arm": "treatment",
+          "task_id": "t2-report-citation",
+          "investigation_id": "inv-t2-report-citation-001",
+          "run_id": "run_c2b3a568141243f48c1430ab3f2279c5"
+        },
+        "citation_boundary_discipline": {
+          "scenario_id": "t2-report-citation",
+          "stage_applicability": "REQUIRES_ADAPTER",
+          "calls_report_admission": false,
+          "report_admission_status": "NOT_EXERCISED",
+          "report_publication_status": "NOT_EXERCISED",
+          "analyst_acceptance_status": "NOT_EXERCISED"
+        }
+      },
+      {
+        "global_seat": 16,
+        "scenario_id": "t2-report-citation",
+        "pair_label": "B",
+        "pair_id": 2,
+        "arm": "control",
+        "status": "NOT_STARTED",
+        "phase": "NOT_STARTED",
+        "durable_claim": null,
+        "logical_model_generations": 0,
+        "provider_error_classes": [],
+        "provider_error_classifications": [],
+        "pydantic_output_retries": 0,
+        "http_attempts": "HTTP_ATTEMPTS_UNOBSERVABLE",
+        "http_attempt_upper_bound": 0,
+        "initial_attempt_error": [],
+        "final_attempt_error": [],
+        "initial_attempt_pydantic_pass": null,
+        "final_attempt_pydantic_pass": null,
+        "validation_payload_count": 0,
+        "retry_self_correction": false,
+        "field_scan_totals": {
+          "to_status_completed": 0,
+          "invalid_disposition": 0,
+          "wrong_action_field_name": 0,
+          "invalid_union": 0,
+          "missing_required_field": 0,
+          "extra_forbidden": 0,
+          "unknown_handle": 0,
+          "invalid_question_status": 0,
+          "fabricated_evidence_like_identifier": 0
+        },
+        "diagnostic_sink_entries": [],
+        "stage_layers": {
+          "stage_invocation_success": false,
+          "output_tool_received": false,
+          "pydantic_parse_success": false,
+          "canonical_resolution_success": false,
+          "integration_decision_validator_success": false,
+          "transition_validation_success": false,
+          "scratch_commit_success": false,
+          "canonical_integration_valid": false,
+          "resolution_violations": [],
+          "exception_class": "MANDATORY_NEGATIVE_GATE_VIOLATION_COMMITTED:UNSUPPORTED_FACT_PROMOTION"
+        },
+        "semantic_oracle_evaluation": {
+          "verdict": "NOT_EVALUATED",
+          "adequacy": "UNOBSERVABLE",
+          "information_value": "UNOBSERVABLE",
+          "triggered_negative_gates": [],
+          "evaluation_notes": [
+            "PROVIDER_ERROR_NO_MODEL_DECISION"
+          ],
+          "layers": {
+            "L1_SCHEMA_VALIDITY": false,
+            "L2_CANONICAL_RESOLUTION": false,
+            "L3_TRANSITION_INTEGRITY": false,
+            "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+            "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+          }
+        },
+        "response_models": [],
+        "identity_sink_records": [],
+        "returned_identity_exact": false,
+        "token_usage": {
+          "input_tokens": 0,
+          "output_tokens": 0
+        },
+        "latency_ms": [],
+        "fixture_identity": {
+          "scenario_id": "t2-report-citation",
+          "pair_label": "B",
+          "pair_id": 2,
+          "arm": "control",
+          "task_id": "t2-report-citation",
+          "investigation_id": "inv-t2-report-citation-001",
+          "run_id": "run_c2b3a568141243f48c1430ab3f2279c5"
+        },
+        "citation_boundary_discipline": {
+          "scenario_id": "t2-report-citation",
+          "stage_applicability": "REQUIRES_ADAPTER",
+          "calls_report_admission": false,
+          "report_admission_status": "NOT_EXERCISED",
+          "report_publication_status": "NOT_EXERCISED",
+          "analyst_acceptance_status": "NOT_EXERCISED"
+        }
+      }
+    ],
+    "real_model_requests": 0,
+    "observation_tag": "CROSS_CASE_OBSERVATIONS"
+  }
+}

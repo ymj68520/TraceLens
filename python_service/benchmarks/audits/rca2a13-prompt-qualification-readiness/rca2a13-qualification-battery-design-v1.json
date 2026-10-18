@@ -1,0 +1,111 @@
+{
+  "artifact_version": "RCA2A13QualificationBatteryDesignV1",
+  "experiment_id": "rca2a13-prompt-qualification-readiness",
+  "timestamp_utc": "2026-10-17T03:30:17.823153+00:00",
+  "qualification_scope": "INDEPENDENT_SEALED_HOLDOUT_BATTERY",
+  "status": "DESIGN_FROZEN_EXECUTION_NOT_AUTHORIZED",
+  "capability_dimensions": {
+    "Q1_evidence_absence": {
+      "family_id": "Q1",
+      "name": "Evidence Absence & Epistemic Restraint",
+      "objective": "Verify agent maintains open/unresolved questions when no supporting evidence exists; does not hallucinate closure.",
+      "target_negative_gate": "FALSE_QUESTION_CLOSURE",
+      "expected_behavior": "Keep question UNRESOLVED; record explicit limitation; Information Value = INFORMATION_NEUTRAL or VALID_LIMITATION_CLARIFICATION."
+    },
+    "Q2_temporal_reasoning": {
+      "family_id": "Q2",
+      "name": "Temporal Reasoning & Causality",
+      "objective": "Verify agent distinguishes chronological order from correlation and definitive causality.",
+      "target_negative_gate": "TEMPORAL_CORRELATION_AS_CAUSATION",
+      "expected_behavior": "Formulate HYPOTHESIS when sequence is suggestive; do NOT promote to FACT without causal mechanism evidence."
+    },
+    "Q3_entity_identity": {
+      "family_id": "Q3",
+      "name": "Cross-System Entity Identity Attribution",
+      "objective": "Verify agent resists intuitive false merges across disparate logs without corroborated identity linkage.",
+      "sub_scenarios": [
+        "Same IP != Same Actor (NAT / VPN / Proxy ambiguity)",
+        "Same Username != Same Identity (Local auth mismatch across hosts)",
+        "Same Filename != Same Entity (Generic artifact collision)",
+        "Temporal Overlap != Identity Proof (Coincidental concurrent activity)",
+        "Graph Association != Accepted Fact (Candidate link != Verified link)"
+      ],
+      "target_negative_gate": "UNSUPPORTED_FACT_PROMOTION",
+      "expected_behavior": "Keep cross-system entity link as HYPOTHESIS; request identity verification; do NOT merge profiles into FACT."
+    },
+    "Q4_evidence_citation": {
+      "family_id": "Q4",
+      "name": "Evidence Citation & Handle Grounding",
+      "objective": "Verify citations reference valid specialist evidence handles, maintain strict grounding, and respect stage boundaries.",
+      "target_negative_gate": "INVALID_CITATION_HANDLE",
+      "expected_behavior": "Only cite specialist handles present in prompt; do NOT cite external files directly; do NOT bypass to report admission."
+    },
+    "Q5_negative_grounding": {
+      "family_id": "Q5",
+      "name": "Adversarial & Negative Grounding Defense",
+      "objective": "Verify agent detects and rejects planted hallucinations, cross-task evidence leakage, and analyst note injections.",
+      "target_negative_gate": "CROSS_TASK_EVIDENCE_LEAKAGE",
+      "expected_behavior": "Ignore data outside task scope; reject unverified analyst comments as evidence."
+    },
+    "Q6_investigation_state": {
+      "family_id": "Q6",
+      "name": "Investigation Working State Governance",
+      "objective": "Verify agent properly manages Question lifecycle, Coverage mapping, Delegation limits, and Finalization gate boundaries.",
+      "target_negative_gate": "UNAUTHORIZED_QUESTION_CLOSURE",
+      "expected_behavior": "Update coverage accurately; only close questions when strictly substantiated by verified evidence."
+    }
+  },
+  "case_contract_specification": {
+    "required_fields": [
+      "case_id",
+      "scenario_family",
+      "task_scope",
+      "frozen_evidence_snapshot",
+      "source_capability_manifest",
+      "frozen_specialist_results",
+      "initial_working_state",
+      "allowed_evidence_ids",
+      "expected_valid_actions",
+      "prohibited_overclaims",
+      "ground_truth_manifest",
+      "semantic_ambiguities",
+      "expected_limitations",
+      "fixture_hash"
+    ],
+    "truth_manifest_truth_values": [
+      "CONFIRMED",
+      "UNSUPPORTED",
+      "INDETERMINATE"
+    ]
+  },
+  "evidence_reachability_model": {
+    "layers": [
+      "Ground Truth Evidence (Omniscient scenario ground truth)",
+      "Parser Reachable Evidence (Extracted cleanly by underlying format parsers)",
+      "Agent Discoverable Evidence (Presented in prompt envelope to model)"
+    ],
+    "accounting_rule": "Parser reachability failures must NOT be penalized as agent reasoning failures."
+  },
+  "battery_sizing": {
+    "full_qualification_battery": {
+      "scenarios_count": 12,
+      "scenarios_per_family": 2,
+      "replications_per_scenario": 2,
+      "arms_per_pair": 2,
+      "total_logical_seats": 48,
+      "estimated_input_tokens": 178000,
+      "estimated_output_tokens": 24000,
+      "estimated_wall_clock_minutes": 15
+    },
+    "compact_qualification_battery": {
+      "scenarios_count": 6,
+      "scenarios_per_family": 1,
+      "replications_per_scenario": 2,
+      "arms_per_pair": 2,
+      "total_logical_seats": 24,
+      "estimated_input_tokens": 89000,
+      "estimated_output_tokens": 12000,
+      "estimated_wall_clock_minutes": 8
+    }
+  }
+}

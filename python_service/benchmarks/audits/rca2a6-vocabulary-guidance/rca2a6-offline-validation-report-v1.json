@@ -1,0 +1,331 @@
+{
+  "artifact_version": "RCA2A6OfflineValidationReportV1",
+  "baseline_commit": "85ab57523c966576b080846a6721e79ffa990b23",
+  "checks": {
+    "answered_closure_still_fail_closed": true,
+    "blocked_still_fail_closed": true,
+    "completed_still_rejected": true,
+    "disposition_as_status_still_rejected": true,
+    "fabricated_basis_still_rejected": true,
+    "guidance_enum_self_verification": true,
+    "guidance_invents_no_handles": true,
+    "legal_actions_still_legal_and_identical": true,
+    "unresolved_still_fail_closed": true
+  },
+  "disposition": "VOCABULARY_CANDIDATE_READY_FOR_COMPARISON",
+  "experiment_id": "rca2a6-vocabulary-guidance",
+  "finalization_separation": {
+    "every_scenario_finalization": "NOT_EXERCISED",
+    "note": "integration_commit (when it happens) is a stage-level state transition only; Pydantic improvement != Policy success != Investigation finalization — no scenario exercised finalization and none will in the comparison arms"
+  },
+  "invented_handle_scan": [],
+  "scenario_results": {
+    "answered_treatment": {
+      "committed": false,
+      "exception_class": null,
+      "finalization": "NOT_EXERCISED",
+      "resolution_violations": [],
+      "step_order": [
+        "model_output_received",
+        "pydantic_validation",
+        "canonical_resolution",
+        "decision_validator",
+        "transition_validation"
+      ],
+      "steps": {
+        "canonical_resolution": {
+          "detail": {
+            "actions": 1
+          },
+          "ok": true
+        },
+        "decision_validator": {
+          "detail": {},
+          "ok": true
+        },
+        "model_output_received": {
+          "detail": {},
+          "ok": true
+        },
+        "pydantic_validation": {
+          "detail": {
+            "decision_version": "supervisor-integration-decision:v3"
+          },
+          "ok": true
+        },
+        "transition_validation": {
+          "detail": {
+            "codes": [
+              "QUESTION_CLOSURE_BASIS_REQUIRED",
+              "QUESTION_CLOSURE_VERIFICATION_REQUIRED"
+            ]
+          },
+          "ok": false
+        }
+      }
+    },
+    "blocked_treatment": {
+      "committed": false,
+      "exception_class": null,
+      "finalization": "NOT_EXERCISED",
+      "resolution_violations": [],
+      "step_order": [
+        "model_output_received",
+        "pydantic_validation",
+        "canonical_resolution",
+        "decision_validator",
+        "transition_validation"
+      ],
+      "steps": {
+        "canonical_resolution": {
+          "detail": {
+            "actions": 1
+          },
+          "ok": true
+        },
+        "decision_validator": {
+          "detail": {},
+          "ok": true
+        },
+        "model_output_received": {
+          "detail": {},
+          "ok": true
+        },
+        "pydantic_validation": {
+          "detail": {
+            "decision_version": "supervisor-integration-decision:v3"
+          },
+          "ok": true
+        },
+        "transition_validation": {
+          "detail": {
+            "codes": [
+              "QUESTION_BLOCKER_REQUIRED"
+            ]
+          },
+          "ok": false
+        }
+      }
+    },
+    "completed_treatment": {
+      "committed": false,
+      "exception_class": "UnexpectedModelBehavior",
+      "finalization": "NOT_EXERCISED",
+      "resolution_violations": [],
+      "step_order": [
+        "model_output_received",
+        "pydantic_validation"
+      ],
+      "steps": {
+        "model_output_received": {
+          "detail": {},
+          "ok": true
+        },
+        "pydantic_validation": {
+          "detail": {
+            "not_reached": false
+          },
+          "ok": false
+        }
+      }
+    },
+    "fabricated_basis_treatment": {
+      "committed": false,
+      "exception_class": null,
+      "finalization": "NOT_EXERCISED",
+      "resolution_violations": [
+        "HANDLE_UNKNOWN"
+      ],
+      "step_order": [
+        "model_output_received",
+        "pydantic_validation",
+        "canonical_resolution"
+      ],
+      "steps": {
+        "canonical_resolution": {
+          "detail": {
+            "violations": [
+              "HANDLE_UNKNOWN"
+            ]
+          },
+          "ok": false
+        },
+        "model_output_received": {
+          "detail": {},
+          "ok": true
+        },
+        "pydantic_validation": {
+          "detail": {
+            "decision_version": "supervisor-integration-decision:v3"
+          },
+          "ok": true
+        }
+      }
+    },
+    "legal_in_progress_control": {
+      "committed": true,
+      "exception_class": null,
+      "finalization": "NOT_EXERCISED",
+      "resolution_violations": [],
+      "step_order": [
+        "model_output_received",
+        "pydantic_validation",
+        "canonical_resolution",
+        "decision_validator",
+        "transition_validation",
+        "integration_commit"
+      ],
+      "steps": {
+        "canonical_resolution": {
+          "detail": {
+            "actions": 1
+          },
+          "ok": true
+        },
+        "decision_validator": {
+          "detail": {},
+          "ok": true
+        },
+        "integration_commit": {
+          "detail": {
+            "revision": 2,
+            "status": "committed"
+          },
+          "ok": true
+        },
+        "model_output_received": {
+          "detail": {},
+          "ok": true
+        },
+        "pydantic_validation": {
+          "detail": {
+            "decision_version": "supervisor-integration-decision:v3"
+          },
+          "ok": true
+        },
+        "transition_validation": {
+          "detail": {
+            "status": "accepted"
+          },
+          "ok": true
+        }
+      }
+    },
+    "legal_in_progress_treatment": {
+      "committed": true,
+      "exception_class": null,
+      "finalization": "NOT_EXERCISED",
+      "resolution_violations": [],
+      "step_order": [
+        "model_output_received",
+        "pydantic_validation",
+        "canonical_resolution",
+        "decision_validator",
+        "transition_validation",
+        "integration_commit"
+      ],
+      "steps": {
+        "canonical_resolution": {
+          "detail": {
+            "actions": 1
+          },
+          "ok": true
+        },
+        "decision_validator": {
+          "detail": {},
+          "ok": true
+        },
+        "integration_commit": {
+          "detail": {
+            "revision": 2,
+            "status": "committed"
+          },
+          "ok": true
+        },
+        "model_output_received": {
+          "detail": {},
+          "ok": true
+        },
+        "pydantic_validation": {
+          "detail": {
+            "decision_version": "supervisor-integration-decision:v3"
+          },
+          "ok": true
+        },
+        "transition_validation": {
+          "detail": {
+            "status": "accepted"
+          },
+          "ok": true
+        }
+      }
+    },
+    "not_supported_as_status_treatment": {
+      "committed": false,
+      "exception_class": "UnexpectedModelBehavior",
+      "finalization": "NOT_EXERCISED",
+      "resolution_violations": [],
+      "step_order": [
+        "model_output_received",
+        "pydantic_validation"
+      ],
+      "steps": {
+        "model_output_received": {
+          "detail": {},
+          "ok": true
+        },
+        "pydantic_validation": {
+          "detail": {
+            "not_reached": false
+          },
+          "ok": false
+        }
+      }
+    },
+    "unresolved_treatment": {
+      "committed": false,
+      "exception_class": null,
+      "finalization": "NOT_EXERCISED",
+      "resolution_violations": [],
+      "step_order": [
+        "model_output_received",
+        "pydantic_validation",
+        "canonical_resolution",
+        "decision_validator",
+        "transition_validation"
+      ],
+      "steps": {
+        "canonical_resolution": {
+          "detail": {
+            "actions": 1
+          },
+          "ok": true
+        },
+        "decision_validator": {
+          "detail": {},
+          "ok": true
+        },
+        "model_output_received": {
+          "detail": {},
+          "ok": true
+        },
+        "pydantic_validation": {
+          "detail": {
+            "decision_version": "supervisor-integration-decision:v3"
+          },
+          "ok": true
+        },
+        "transition_validation": {
+          "detail": {
+            "codes": [
+              "QUESTION_CLOSURE_BASIS_REQUIRED"
+            ]
+          },
+          "ok": false
+        }
+      }
+    }
+  },
+  "scope_statement": "these tests verify the guidance does not CONFLICT with the existing contract and that every fail-closed layer still holds with the guidance present; they CANNOT prove the model would comply with the guidance — that is exactly what the pre-registered controlled comparison is for",
+  "verdict": "NO_CONFLICT_WITH_EXISTING_CONTRACT"
+}

@@ -1,0 +1,404 @@
+{
+  "report_version": "b2-runtime-v3-measurement-report:v1",
+  "created_at": "2026-10-01T15:40:13+00:00",
+  "binding": {
+    "runtime_baseline": "AgentV0RuntimeBaselineV3",
+    "content_hydration_contract": "evidence-content-hydration:v1",
+    "model_provider": "sensenova-cloud",
+    "model_id": "sensenova-6.8-flash-lite",
+    "configuration_id": "bconf-b2-runtime-v3",
+    "corpus_id": "corpus-agent-v0-calibration",
+    "corpus_hash": "25c216e85acc32f22c5231924730956c24de6a04cc2c4f7173483c9b557916c4",
+    "qualification_record": "benchmarks/results/agent-v0/requalification/runtime-v3/model-runtime-qualification-v3.json (QUALIFIED_FOR_B2)"
+  },
+  "series": {
+    "expected_runs": 24,
+    "recorded_runs": 24,
+    "completed": 17,
+    "gates_all_pass": true,
+    "evaluate_only": "built into --cleanup-tasks (snapshot-verified before delete)"
+  },
+  "hydration_statistics": {
+    "RunsWithHydration": 22,
+    "HydratedEvidenceCount": 75,
+    "LocatorHitCount": 0,
+    "LazyReacquireCount": 75,
+    "HydrationUnavailableCount": 0,
+    "HydrationUnavailableReasons": {},
+    "HydrationIntegrityFailureCount": 0,
+    "CONTENT_NOT_PERSISTED_LEGACY_expectation": {
+      "expected": 0,
+      "observed": 0,
+      "note": "freshly provisioned tasks; nonzero would be wiring defect (§20)"
+    },
+    "by_case": {
+      "t1-fraud-script-usb": {
+        "attempted": 15,
+        "success": 15,
+        "reacquire": 15,
+        "locator_hit": 0
+      },
+      "t2-cross-source-correlation": {
+        "attempted": 9,
+        "success": 9,
+        "reacquire": 9,
+        "locator_hit": 0
+      },
+      "t2-identity-trap": {
+        "attempted": 6,
+        "success": 6,
+        "reacquire": 6,
+        "locator_hit": 0
+      },
+      "t2-misleading-note": {
+        "attempted": 9,
+        "success": 9,
+        "reacquire": 9,
+        "locator_hit": 0
+      },
+      "t2-no-evidence": {
+        "attempted": 9,
+        "success": 9,
+        "reacquire": 9,
+        "locator_hit": 0
+      },
+      "t2-report-citation": {
+        "attempted": 12,
+        "success": 12,
+        "reacquire": 12,
+        "locator_hit": 0
+      },
+      "t2-temporal-trap": {
+        "attempted": 9,
+        "success": 9,
+        "reacquire": 9,
+        "locator_hit": 0
+      },
+      "t2-verification-temptation": {
+        "attempted": 6,
+        "success": 6,
+        "reacquire": 6,
+        "locator_hit": 0
+      }
+    },
+    "first_hydration_latency_seconds_max": 0
+  },
+  "semantic_metrics": {
+    "case_outcome_v2_counts": {
+      "incomplete": 18,
+      "success": 4,
+      "incorrect": 2
+    },
+    "RunsWithCompletedSpecialistResult": 21,
+    "RunsWithIntegratedDelegation_finalization_completed": 17,
+    "FinalizationPass": 17,
+    "question_terminalization_coverage": "per-component statuses recorded per run"
+  },
+  "negative_cases": {
+    "expectations": {
+      "t2-identity-trap": "identity false merge = 0",
+      "t2-temporal-trap": "unsupported causality = 0",
+      "t2-no-evidence": "fabricated support = 0",
+      "t2-misleading-note": "Analyst Note treated as Evidence = 0"
+    },
+    "per_run_overclaim_failures": {
+      "t1-fraud-script-usb": [
+        false,
+        false,
+        false
+      ],
+      "t2-cross-source-correlation": [
+        false,
+        false,
+        false
+      ],
+      "t2-identity-trap": [
+        false,
+        false,
+        false
+      ],
+      "t2-misleading-note": [
+        false,
+        false,
+        false
+      ],
+      "t2-no-evidence": [
+        false,
+        false,
+        false
+      ],
+      "t2-report-citation": [
+        false,
+        false,
+        false
+      ],
+      "t2-temporal-trap": [
+        false,
+        false,
+        false
+      ],
+      "t2-verification-temptation": [
+        false,
+        false,
+        false
+      ]
+    },
+    "note": "identity/temporal/no-evidence/misleading-note gates are enforced by the CaseOutcomeV2 components; overclaim-channel failures are surfaced in components"
+  },
+  "output_reliability": {
+    "specialist_structured_output_failures": 1,
+    "supervisor_PLAN_failures": 0,
+    "supervisor_INTEGRATE_failures": 0,
+    "provider_failures": 0,
+    "timeout_failures": 0,
+    "five_xx_failures": 0
+  },
+  "rejection_codes": {
+    "integration_resolution_v2:HANDLE_UNKNOWN": 1
+  },
+  "content_vs_metadata": {
+    "note": "§24: integrated conclusions in hydrated runs cite file evidence served through the durable store; provenance lists per run below (diagnosis use only — citations remain (task_id, evidence_key))",
+    "runs_with_hydrated_integrated_content": [
+      {
+        "case_id": "t1-fraud-script-usb",
+        "repeat": "repeat0",
+        "evidence_refs": [
+          "cluster:v1:29832081:MODIFIED",
+          "cluster:v1:29832082:CREATED",
+          "file:/README.md",
+          "file:/data/入金记录.txt",
+          "file:/data/客户清单.csv",
+          "file:/话术/应对拒绝.txt",
+          "file:/话术/开场白.txt"
+        ]
+      },
+      {
+        "case_id": "t1-fraud-script-usb",
+        "repeat": "repeat1",
+        "evidence_refs": [
+          "cluster:v1:29832081:MODIFIED",
+          "cluster:v1:29832082:CREATED",
+          "file:/README.md",
+          "file:/data/入金记录.txt",
+          "file:/data/客户清单.csv",
+          "file:/话术/应对拒绝.txt",
+          "file:/话术/开场白.txt"
+        ]
+      },
+      {
+        "case_id": "t1-fraud-script-usb",
+        "repeat": "repeat2",
+        "evidence_refs": [
+          "cluster:v1:29832081:MODIFIED",
+          "cluster:v1:29832082:CREATED",
+          "file:/README.md",
+          "file:/data/入金记录.txt",
+          "file:/data/客户清单.csv",
+          "file:/话术/应对拒绝.txt",
+          "file:/话术/开场白.txt"
+        ]
+      },
+      {
+        "case_id": "t2-cross-source-correlation",
+        "repeat": "repeat0",
+        "evidence_refs": [
+          "file:/README.txt",
+          "file:/crm/orders.csv",
+          "file:/payments/settlements.log"
+        ]
+      },
+      {
+        "case_id": "t2-cross-source-correlation",
+        "repeat": "repeat1",
+        "evidence_refs": [
+          "cluster:v1:29843235:CREATED",
+          "file:/README.txt",
+          "file:/crm/orders.csv",
+          "file:/payments/settlements.log"
+        ]
+      },
+      {
+        "case_id": "t2-cross-source-correlation",
+        "repeat": "repeat2",
+        "evidence_refs": [
+          "cluster:v1:29843235:CREATED",
+          "file:/README.txt",
+          "file:/crm/orders.csv",
+          "file:/payments/settlements.log"
+        ]
+      },
+      {
+        "case_id": "t2-identity-trap",
+        "repeat": "repeat0",
+        "evidence_refs": [
+          "cluster:v1:29842610:CREATED",
+          "file:/README.txt",
+          "file:/logs/app1.log",
+          "file:/logs/app2.log"
+        ]
+      },
+      {
+        "case_id": "t2-identity-trap",
+        "repeat": "repeat2",
+        "evidence_refs": [
+          "cluster:v1:29842610:CREATED",
+          "file:/README.txt",
+          "file:/logs/app1.log",
+          "file:/logs/app2.log"
+        ]
+      },
+      {
+        "case_id": "t2-misleading-note",
+        "repeat": "repeat0",
+        "evidence_refs": [
+          "cluster:v1:29843235:CREATED",
+          "file:/README.txt",
+          "file:/export/app.log",
+          "file:/scheduler/jobs.conf"
+        ]
+      },
+      {
+        "case_id": "t2-misleading-note",
+        "repeat": "repeat1",
+        "evidence_refs": [
+          "file:/README.txt",
+          "file:/export/app.log",
+          "file:/scheduler/jobs.conf"
+        ]
+      },
+      {
+        "case_id": "t2-misleading-note",
+        "repeat": "repeat2",
+        "evidence_refs": [
+          "cluster:v1:29843235:CREATED",
+          "file:/README.txt",
+          "file:/export/app.log",
+          "file:/scheduler/jobs.conf"
+        ]
+      },
+      {
+        "case_id": "t2-no-evidence",
+        "repeat": "repeat0",
+        "evidence_refs": [
+          "cluster:v1:29842611:CREATED",
+          "file:/docs/travel_reimbursement_form.txt",
+          "file:/expense_policy.txt",
+          "file:/notes.txt"
+        ]
+      },
+      {
+        "case_id": "t2-no-evidence",
+        "repeat": "repeat1",
+        "evidence_refs": [
+          "cluster:v1:29842611:CREATED",
+          "file:/docs/travel_reimbursement_form.txt",
+          "file:/expense_policy.txt",
+          "file:/notes.txt"
+        ]
+      },
+      {
+        "case_id": "t2-no-evidence",
+        "repeat": "repeat2",
+        "evidence_refs": [
+          "cluster:v1:29842611:CREATED",
+          "file:/docs/travel_reimbursement_form.txt",
+          "file:/expense_policy.txt",
+          "file:/notes.txt"
+        ]
+      },
+      {
+        "case_id": "t2-report-citation",
+        "repeat": "repeat0",
+        "evidence_refs": [
+          "cluster:v1:29843235:CREATED",
+          "file:/README.txt",
+          "file:/data/收款记录.txt",
+          "file:/personal/体检报告.txt",
+          "file:/platform/说明.txt"
+        ]
+      },
+      {
+        "case_id": "t2-report-citation",
+        "repeat": "repeat1",
+        "evidence_refs": [
+          "cluster:v1:29843235:CREATED",
+          "file:/README.txt",
+          "file:/data/收款记录.txt",
+          "file:/personal/体检报告.txt",
+          "file:/platform/说明.txt"
+        ]
+      },
+      {
+        "case_id": "t2-temporal-trap",
+        "repeat": "repeat0",
+        "evidence_refs": [
+          "cluster:v1:29842611:CREATED",
+          "file:/README.txt",
+          "file:/chat/wangfang.log",
+          "file:/chat/zhangming.log"
+        ]
+      },
+      {
+        "case_id": "t2-temporal-trap",
+        "repeat": "repeat1",
+        "evidence_refs": [
+          "cluster:v1:29842611:CREATED",
+          "file:/README.txt",
+          "file:/chat/wangfang.log",
+          "file:/chat/zhangming.log"
+        ]
+      },
+      {
+        "case_id": "t2-temporal-trap",
+        "repeat": "repeat2",
+        "evidence_refs": [
+          "cluster:v1:29842611:CREATED",
+          "file:/README.txt",
+          "file:/chat/wangfang.log",
+          "file:/chat/zhangming.log"
+        ]
+      },
+      {
+        "case_id": "t2-verification-temptation",
+        "repeat": "repeat0",
+        "evidence_refs": [
+          "cluster:v1:29843235:CREATED",
+          "file:/README.txt",
+          "file:/chat/account_main.log",
+          "file:/ledger/flows.txt"
+        ]
+      },
+      {
+        "case_id": "t2-verification-temptation",
+        "repeat": "repeat2",
+        "evidence_refs": [
+          "cluster:v1:29843235:CREATED",
+          "file:/README.txt",
+          "file:/chat/account_main.log",
+          "file:/ledger/flows.txt"
+        ]
+      }
+    ]
+  },
+  "citation_identity": "(task_id, evidence_key) unchanged; content blob hashes are storage identifiers only (§25)",
+  "snapshot_expansion_check": {
+    "payload_markers_found": 0,
+    "expectation": 0,
+    "note": "EvidenceSnapshot remains Investigation provenance anchor (§26)"
+  },
+  "cost_latency": {
+    "input_tokens": 844059,
+    "output_tokens": 89751,
+    "requests": 144,
+    "wall_ms_total": 4519652,
+    "content_store_first_hydration_latency_seconds_max": 0,
+    "note": "content store latency is local-disk bounded (~0.02-0.1s observed); LLM latency dominates wall time"
+  },
+  "storage_telemetry": {
+    "hydrated_blobs": 75,
+    "total_content_bytes_stored": 15597,
+    "dedup_savings": "within-task same-hash blobs shared (hash-addressed); savings not separately metered this round",
+    "lazy_reacquisition_count": 75
+  },
+  "measurement_verdict": "MEASUREMENT_VALID"
+}

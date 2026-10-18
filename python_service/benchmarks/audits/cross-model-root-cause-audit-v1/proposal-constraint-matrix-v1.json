@@ -1,0 +1,75 @@
+{
+ "artifact_version": "ProposalConstraintMatrixV1",
+ "method": "FULL ENUMERATION of the finite (kind, to_status) domain (5 kinds x own+cross+invalid statuses) plus field matrices in test_rca2a1_hardening.py \u2014 no sampling",
+ "kinds": {
+  "question": {
+   "legal_statuses": [
+    "open",
+    "in_progress",
+    "answered",
+    "unresolved",
+    "blocked",
+    "deferred",
+    "superseded"
+   ],
+   "handle": "Q1"
+  },
+  "evidence": {
+   "legal_statuses": [
+    "candidate",
+    "relevant",
+    "high_value",
+    "irrelevant"
+   ],
+   "handle": "E1"
+  },
+  "hypothesis": {
+   "legal_statuses": [
+    "active",
+    "supported",
+    "weakened",
+    "rejected",
+    "retired"
+   ],
+   "handle": "H1"
+  },
+  "contradiction": {
+   "legal_statuses": [
+    "open",
+    "resolved",
+    "explained",
+    "unresolved"
+   ],
+   "handle": "X1"
+  },
+  "coverage": {
+   "legal_statuses": [
+    "not_started",
+    "in_progress",
+    "covered",
+    "partial",
+    "unavailable",
+    "not_applicable"
+   ],
+   "handle": "COV1"
+  }
+ },
+ "invalid_status_probes": [
+  "Answered",
+  "bogus",
+  "",
+  "COVERED",
+  "in progress"
+ ],
+ "dimensions": {
+  "ACCEPTANCE_SET_EQUIVALENCE": {
+   "verified_combos": 26
+  },
+  "REJECTION_SET_EQUIVALENCE": {
+   "verified_combos": 25
+  },
+  "EXECUTION_BEHAVIOR_EQUIVALENCE": {
+   "verified_combos": 26
+  }
+ }
+}

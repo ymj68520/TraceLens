@@ -1,0 +1,39 @@
+{
+  "accounting": {
+    "bytes": 1427,
+    "chars": 1427,
+    "tokens": {
+      "estimated": true,
+      "tokenizer": "cl100k_base (approximation)",
+      "tokens": 302
+    }
+  },
+  "artifact_version": "RCA2A6VocabularyGuidanceDraftV1",
+  "baseline_commit": "85ab57523c966576b080846a6721e79ffa990b23",
+  "confusions_addressed": [
+    "delegation status 'completed' means the delegation finished, not that the question was answered",
+    "to_status must come from the frozen QuestionStatus enum; 'completed' is not a member",
+    "to_status and disposition are different semantic fields",
+    "'not_supported' is a disposition value, never a to_status",
+    "absence of evidence does not by itself make a question closable as answered/unresolved",
+    "required-question closure still needs basis, a passed verification and the existing StateTransitionPolicy",
+    "never fabricate evidence, basis handles or implied verification results"
+  ],
+  "experiment_id": "rca2a6-vocabulary-guidance",
+  "forbidden_and_respected": {
+    "adds_no_status_or_disposition_value": true,
+    "changes_no_pydantic_enum": true,
+    "changes_no_server_validation_resolver_policy": true,
+    "no_auto_mapping_completed_to_answered": true,
+    "no_auto_mapping_no_evidence_found_to_fact": true,
+    "suggests_no_fabricated_evidence": true
+  },
+  "generation": "rendered programmatically from the production QuestionStatus/QuestionDisposition enums; guidance_violations() re-extracts every enumerated value from the text and requires exact enum membership",
+  "guidance_version": "integration-vocabulary-guidance:v1",
+  "module": "benchmarks/contracts/experimental/integration_vocabulary_guidance_v1.py",
+  "scope": "INTEGRATE-only (GuidanceIntegrationAgentFactory builds no PLAN/Specialist agent)",
+  "self_verification_violations": [],
+  "sha256": "e00c1549284cd4c5b98a24e0a7c064377a4aabcaaa74d9d344412c6247af5f29",
+  "status": "DRAFT candidate bound into RCA2A6ControlledComparisonProtocolV1",
+  "text": "Vocabulary guidance (clarifies the EXISTING contract; introduces no new values and changes no rule):\n1. A fresh D* result shown with \"status\": \"completed\" means the specialist DELEGATION finished executing. It says nothing about the state of the Question it investigated. Delegation lifecycle status and Question status are DIFFERENT state machines.\n2. A question's to_status must be one of the frozen QuestionStatus values: 'open', 'in_progress', 'answered', 'unresolved', 'blocked', 'deferred', 'superseded'. \"completed\" is NOT a Question status and will be rejected.\n3. to_status (where the question stands) and disposition (what the investigation concluded) are DIFFERENT semantic fields; one never substitutes for the other.\n4. \"not_supported\" is a QuestionDisposition value ('supported', 'not_supported', 'inconclusive', 'unavailable', 'not_applicable'), not a QuestionStatus; never emit it as a to_status.\n5. Absence of evidence does NOT by itself make a question closable: \"answered\" and \"unresolved\" remain subject to the existing closure policy (basis refs, limitations/summary, and for required questions a passed closure verification). Never fabricate evidence, never invent basis handles, and never imply verification results that do not exist.\n6. Every existing validation, binding and StateTransitionPolicy rule is unchanged by this note; this guidance only explains vocabulary that already exists in the schema."
+}

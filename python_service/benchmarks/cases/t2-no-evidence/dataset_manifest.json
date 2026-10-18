@@ -1,0 +1,26 @@
+{
+  "dataset_version": "benchmark-dataset:v1",
+  "dataset_id": "ds-t2-no-evidence",
+  "files": [
+    {
+      "logical_id": "expense-policy",
+      "relative_path": "expense_policy.txt",
+      "size_bytes": 165,
+      "sha256": "c3508d9b600dc788931c1dd3abedd716a766d858005226d0df135fdc3b96ebb2"
+    },
+    {
+      "logical_id": "notes",
+      "relative_path": "notes.txt",
+      "size_bytes": 185,
+      "sha256": "ff0c2975b93e95f1b63d25db3e00d0e861ba220d655dc3930fd58741c0dc7c81"
+    },
+    {
+      "logical_id": "travel-reimbursement-form",
+      "relative_path": "docs/travel_reimbursement_form.txt",
+      "size_bytes": 166,
+      "sha256": "024f0825c61b944365d841258c5397330e0b9fff5dcb6ad25c520814619f0b4f"
+    }
+  ],
+  "dataset_hash": "0ecdbd6ff73fc961d02132dd7276544e6e7d40e3a4a2ee79e2b75df1adb298e8",
+  "created_at": "2026-09-28T02:49:34.253850+00:00"
+}

@@ -1,0 +1,48 @@
+{
+ "reachability_version": "reachability-manifest:v1",
+ "case_id": "gen3-failover-causality",
+ "records": [
+  {
+   "truth_evidence_id": "TE-1",
+   "resolved_evidence_keys": [
+    "file:/monitor/latency-alerts.log"
+   ],
+   "parser_reachable": true,
+   "agent_discoverable": true,
+   "status": "resolved",
+   "unavailable_reason": ""
+  },
+  {
+   "truth_evidence_id": "TE-2",
+   "resolved_evidence_keys": [
+    "file:/change/maintenance-record.txt"
+   ],
+   "parser_reachable": true,
+   "agent_discoverable": true,
+   "status": "resolved",
+   "unavailable_reason": ""
+  },
+  {
+   "truth_evidence_id": "TE-3",
+   "resolved_evidence_keys": [
+    "file:/mail/oncall-handover.txt"
+   ],
+   "parser_reachable": true,
+   "agent_discoverable": true,
+   "status": "resolved",
+   "unavailable_reason": ""
+  },
+  {
+   "truth_evidence_id": "TE-4",
+   "resolved_evidence_keys": [
+    "file:/README.txt"
+   ],
+   "parser_reachable": true,
+   "agent_discoverable": true,
+   "status": "resolved",
+   "unavailable_reason": ""
+  }
+ ],
+ "input_hash": "aaa4a2b7e0ccc531edb54078cc51d394a91150c2707dceb76a5ac3d1d4e06bfa",
+ "created_at": "2026-10-01T00:00:00+00:00"
+}

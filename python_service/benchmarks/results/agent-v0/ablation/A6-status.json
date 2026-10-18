@@ -1,0 +1,6 @@
+{
+  "stage": "A6",
+  "status": "NOT_SEPARABLY_RUNNABLE",
+  "reason": "report stage requires runtime wiring changes (prohibited by the \u00a70 freeze)",
+  "recorded_at": "2026-09-28"
+}

@@ -1,0 +1,49 @@
+{
+  "artifact_version": "RCA2A8RetryMechanismAttributionV1",
+  "attribution_verdict": "CONTRACT_ADHERENCE_IMPROVEMENT_OBSERVED",
+  "control_attempts": {
+    "attempt_1_common_errors": [
+      "ACTION_DISCRIMINATOR_ERROR",
+      "FIELD_NAME_ERROR (handle/type)",
+      "MISSING_REQUIRED_FIELD (question_handle)",
+      "INVALID_QUESTION_STATUS (to_status=completed)"
+    ],
+    "attempt_1_pydantic_pass": 0,
+    "attempt_2_common_errors": [
+      "INVALID_QUESTION_STATUS (to_status enum)",
+      "ACTION_DISCRIMINATOR_ERROR",
+      "UNION_VARIANT_MISMATCH"
+    ],
+    "attempt_2_pydantic_pass": 0,
+    "retry_recovery_rate": "0/4 (0.0%)"
+  },
+  "eight_key_attribution_questions": {
+    "1_treatment_primarily_fixed_field_names": "Yes. On retry 1, Treatment corrected 'handle' -> 'question_handle' and 'type' -> 'action_type'.",
+    "2_primarily_fixed_enum_values": "Yes. In addition to field names, Treatment strictly adhered to QuestionStatus enum values ('open'/'in_progress') and avoided 'completed'.",
+    "3_changed_action_intent": "No. The action intent across both attempts was to integrate specialist findings for q-1; the structure changed from malformed to conformant.",
+    "4_changed_illegal_closure_to_legal_non_terminal": "Yes. Any potential completion intent was converted to valid non-terminal update.",
+    "5_control_remaining_blocking_errors": "Control repeated invalid to_status enums ('completed' or other unrecognized strings) and invalid union discriminator payloads, exhausting retries.",
+    "6_both_arms_received_identical_validation_feedback": "Yes. Both arms received standard Pydantic ValidationError payloads detailing loc and error type.",
+    "7_guidance_text_literally_provided_field_names": "NO. The Guidance text explicitly explains status vocabulary, delegation vs question state machines, and closure rules. It does NOT literally contain the string 'question_handle'.",
+    "8_instructions_altered_epistemic_judgment": "Yes. Guidance reinforced that absence of evidence does not justify closure, preventing hallucinated basis handles."
+  },
+  "epistemic_classification": "REAL_MODEL_OBSERVATION_AND_POST_HOC_REVIEW",
+  "experiment_id": "rca2a8-semantic-validity",
+  "rigorous_causal_boundary": {
+    "claim_verified": "CONTRACT_ADHERENCE_IMPROVEMENT_OBSERVED",
+    "mechanism_explanation": "Guidance provided conceptual and contract boundaries (status enums, state machines) that enabled the model to correctly interpret Pydantic retry feedback without entering degenerative discriminator loops. However, n=4 on a single fixture cannot prove any individual sentence was the sole causal driver.",
+    "ungrounded_claim_rejected": "Guidance 让模型正确修复字段名称与状态词汇 (in the literal sense of listing 'question_handle')"
+  },
+  "total_logical_generations": 16,
+  "treatment_attempts": {
+    "attempt_1_common_errors": [
+      "ACTION_DISCRIMINATOR_ERROR",
+      "FIELD_NAME_ERROR (handle/type)",
+      "MISSING_REQUIRED_FIELD (question_handle)"
+    ],
+    "attempt_1_pydantic_pass": 0,
+    "attempt_2_common_errors": [],
+    "attempt_2_pydantic_pass": 4,
+    "retry_recovery_rate": "4/4 (100.0%)"
+  }
+}

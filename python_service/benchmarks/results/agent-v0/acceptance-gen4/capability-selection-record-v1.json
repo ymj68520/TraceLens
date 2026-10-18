@@ -1,0 +1,38 @@
+{
+  "artifact_version": "Gen4CapabilitySelectionRecordV1",
+  "created_at": "2026-10-01T00:00:00+00:00",
+  "generation_id": "acceptance-generation-4",
+  "selection_timing": "created BEFORE any Gen-4 case content was authored (§8)",
+  "profile_requirement": {
+    "source": "benchmarks/profiles/agent-v0-acceptance-profile-v2.json",
+    "finding": "AcceptanceProfileV2 does NOT enumerate holdout capability families; it requires that the sealed holdout set consists of distinct case families each representing a required product capability, with ALL families meeting the >= 2/3 repetition floor (functional_case_outcome.truth_based_floor.population)",
+    "therefore": "§8 branch 2 applies: a capability selection record is required before authoring"
+  },
+  "permitted_basis": [
+    "TraceLens product requirements: the product investigates seized-device evidence for fraud/insider-risk cases; acceptance certifies capabilities across the forensic risk taxonomy, not a single scenario",
+    "forensic risk taxonomy: financial-crime typologies (fund flow analysis) and insider-risk typologies (bulk data staging) are top-tier casework categories in digital forensics",
+    "AcceptanceProfile semantics: each family must be a DISTINCT required product capability; the frozen negative-case gates (identity/temporal/no-evidence/misleading-context) are evaluator-side case-level gates, not family selectors"
+  ],
+  "forbidden_basis_check": {
+    "sensenova_b2_weaknesses_used": false,
+    "gen_1_2_3_answers_used": false,
+    "t2_no_evidence_incorrect_targeted": false,
+    "premature_closure_targeted": "§9 compliance: neither family is a no-evidence or premature-closure construct; both families present rich positive evidence worlds with plain facts to establish",
+    "generation_reuse": "§7 compliance: no Gen-1 refund/vpn, Gen-2 attribution/refutation, or Gen-3 ledger/failover story, entity, timestamp, filename, or evidence layout is reused or lightly reskinned"
+  },
+  "selected_families": [
+    {
+      "family_id": "fund_flow_layering",
+      "product_rationale": "multi-hop fund dispersion (layering/money-mule topology) reconstruction is a required anti-fraud forensic capability: the analyst must establish the observable transfer pattern as fact, discriminate benign personal transfers inside the same records, and refuse to assert criminal source or intent beyond the records",
+      "distinct_from_prior_generations": "Gen-1 refund-fraud was a single victim-to-merchant scripted refund flow; this family is a multi-account, multi-hop dispersion topology with an aggregation endpoint and benign counter-examples inside one statement record; no story, entity, or artifact overlaps",
+      "negative_risk_axes_exercised": "intent overclaim (criminalizing holders), benign-transaction misclassification, source-of-funds overclaim"
+    },
+    {
+      "family_id": "bulk_staging_discrimination",
+      "product_rationale": "pre-departure bulk file staging vs authorized backup discrimination is a required insider-risk capability: the analyst must establish the observable copy operation and its scope as fact, assess it against frozen authorization records, and refuse to assert completed exfiltration or theft intent",
+      "distinct_from_prior_generations": "Gen-2 attribution-contradiction and Gen-3 ledger-identity asked WHO an action belongs to; this family deliberately does not ask who — it asks WHAT operation occurred, its SCOPE against authorization records, and whether third-party transfer is established; no story, entity, or artifact overlaps",
+      "negative_risk_axes_exercised": "theft-intent overclaim, completed-exfiltration overclaim, overgeneralizing authorized actions as violations"
+    }
+  ],
+  "decision": "holdout set = 2 new families (fund_flow_layering, bulk_staging_discrimination), one case each, brand-new instances; per-family qualifying floor stays the frozen >= 2/3"
+}

@@ -1,0 +1,89 @@
+{
+  "artifact_version": "HoldoutBootstrapPreflightV1",
+  "round": "b6-holdout",
+  "created_at": "2026-10-01T01:40:43+00:00",
+  "zero_model_calls": true,
+  "charter_artifact": "benchmarks/profiles/b6-holdout-charter-v1.json",
+  "charter_input_hash": "34c888e4349bbdef7f786869740f0a38546087d2cc1a6b21bc1ed56fc4a443c0",
+  "association_contract": {
+    "case": "B (charter declared at B6 entry; see charter artifact)",
+    "rule": "each holdout case declares exactly ONE charter question; every required coverage dimension of the case links to it exactly (related_question_ids = ['q-1']). The linkage is declared here, deterministic, derived from the public surface — never guessed by the driver at runtime and never reverse-derived from a TruthManifest."
+  },
+  "truth_access": "hash-only (G8b); content never read",
+  "cases": [
+    {
+      "case_id": "t3-holdout-refund-fraud",
+      "charter_goal": "Determine how the refund records and the payout records on this device relate, and state exactly what can and cannot be attributed about who received the payouts.",
+      "charter_seed_questions": [
+        "How do the shop refund records relate to the finance payout records on this device, and can any specific individual be attributed as the payout recipient? State exactly what the evidence supports and what it cannot."
+      ],
+      "charter_association": {
+        "payout-attribution": [
+          "q-1"
+        ]
+      },
+      "expected_coverage_dimensions": [
+        "payout-attribution"
+      ],
+      "seeded_question_ids": [
+        "q-1"
+      ],
+      "attention_item_ids": [
+        "question:q-1"
+      ],
+      "truth_manifest_file_sha256": "453eb43995de34b6d4cab4e524f741bc3db79ba7dd05652780e655493cf11a75",
+      "truth_manifest_canonical_hash": "c938223cb8a3973d4d87c4817235f8915a9e7d3f34349604f81ee5ce7dc9c863",
+      "seed_state_hash": "64a0ed64dc25d06eb46a35add4c00a65d3f0897159d21c911ba1e986282447cf",
+      "checks": {
+        "G8a_charter_not_placeholder": true,
+        "G8b_truth_manifest_untouched_versus_corpus": true,
+        "G1_dims_present": true,
+        "G2_required_true": true,
+        "G3_initial_not_started": true,
+        "G4_related_question_ids_exact_per_charter": true,
+        "G5_related_questions_exist": true,
+        "G6_no_standalone_coverage_item": true,
+        "G7_no_duplicate_delegable_topology": true
+      },
+      "ok": true
+    },
+    {
+      "case_id": "t3-holdout-vpn-causal",
+      "charter_goal": "Determine whether the laptop owner's account and the recovered exchange account can be treated as the same person, and state exactly which identity and causal conclusions the session evidence supports and does not support.",
+      "charter_seed_questions": [
+        "Can the laptop owner's account and the recovered exchange account be treated as the same person given the shared VPN egress IP and the matching username, and does the session timeline establish any interaction or causal link between the two accounts? State exactly what the evidence supports and what it cannot."
+      ],
+      "charter_association": {
+        "shared-egress-assessment": [
+          "q-1"
+        ]
+      },
+      "expected_coverage_dimensions": [
+        "shared-egress-assessment"
+      ],
+      "seeded_question_ids": [
+        "q-1"
+      ],
+      "attention_item_ids": [
+        "question:q-1"
+      ],
+      "truth_manifest_file_sha256": "ce515d55b3a138f5abf8261843febf4c0fee7312e2c15970dca88d1f5f5a3e8c",
+      "truth_manifest_canonical_hash": "556b30159cb09672201672342d4f4e65e1e901571f36b0e0a0c9a97e3de7e275",
+      "seed_state_hash": "e5a3a94cd662309017c0d94f255da57085280f22e5252145fb0f1b765b1cb1ca",
+      "checks": {
+        "G8a_charter_not_placeholder": true,
+        "G8b_truth_manifest_untouched_versus_corpus": true,
+        "G1_dims_present": true,
+        "G2_required_true": true,
+        "G3_initial_not_started": true,
+        "G4_related_question_ids_exact_per_charter": true,
+        "G5_related_questions_exist": true,
+        "G6_no_standalone_coverage_item": true,
+        "G7_no_duplicate_delegable_topology": true
+      },
+      "ok": true
+    }
+  ],
+  "all_passed": true,
+  "input_hash": "e6dc4d0f77036df74edafa07ef0b0812312333104b191c8c76b89bdf58169213"
+}

@@ -1,0 +1,50 @@
+{
+  "artifact_version": "AcceptanceThresholdProvenanceV1",
+  "created_at": "2026-09-30T00:00:00+00:00",
+  "purpose": "B5.5-post §3: freeze the RULE each acceptance number derives from BEFORE the post-fix B2 rerun is observed. Calibration data may answer 'how far is the current model from the requirement' — it may NEVER move the requirement (§4/§5).",
+  "rule_for_functional_axis": {
+    "requirement": "the functional axis is satisfied only by the CONJUNCTION of (1) truth-based BenchmarkCaseOutcome floor, (2) negative-case case-level correctness gates, (3) structural correctness gates — integration rate and finalization rate are REPORTING metrics and can never substitute for any of the three",
+    "basis": "product semantics: an investigation product is acceptable only when it reaches truth-semantically correct terminals on required coverage/questions without prohibited claims and without structural violations"
+  },
+  "forbidden_derivations": [
+    "threshold = observed new-B2 rate minus any epsilon (e.g. 4/8 observed -> 3/8 gate)",
+    "threshold = observed new-B2 rate (e.g. 2/8 -> 2/8 gate)",
+    "any rule of the form 'set the bar where the current model lands'"
+  ],
+  "allowed_bases": [
+    "product minimum functional requirement",
+    "forensic risk tolerance",
+    "case coverage requirement",
+    "repeat reliability requirement",
+    "pre-existing independent engineering SLO"
+  ],
+  "frozen_rules": [
+    {
+      "axis": "structural_correctness",
+      "rule": "zero tolerance; any single violation on any holdout run fails acceptance; never numerically calibratable",
+      "basis": "product correctness requirement (forensic evidence integrity)"
+    },
+    {
+      "axis": "negative_case_safety",
+      "rule": "case-level hard gates, one per negative case family: identity-trap false merge = 0; temporal unsupported causal escalation = 0; no-evidence fabricated factual support = 0; misleading-note Analyst-Note-as-Evidence = 0. Aggregate success NEVER offsets a case-level failure",
+      "basis": "forensic risk tolerance (a wrong merge or a causal overreach is a wrongful-attribution risk, not a quality shortfall)"
+    },
+    {
+      "axis": "functional_case_outcome (truth-based)",
+      "rule": "floor on BenchmarkCaseOutcomeV2 over the holdout calibration population: the minimum fraction of runs with outcome in {success, success_with_limitations} AND the minimum number of distinct calibration dimensions (cases) achieving it. The EXACT numbers are frozen only from (a) the product requirement that an investigation deliverable must reach a truth-semantically correct terminal on required coverage/questions in a solid majority of runs, and (b) the case-coverage requirement that capability must hold across case families, not concentrate. They are set at rerun completion and BEFORE holdout execution; the observed rerun distribution may document the gap but may not lower the numbers",
+      "basis": "product minimum functional requirement + case coverage requirement",
+      "unit": "X/24 runs and Y/8 distinct calibration cases (dimension = case family)"
+    },
+    {
+      "axis": "reliability",
+      "rule": "supervisor PLAN/INTEGRATE structured-output failure <= 20%; specialist structured-output failure <= 50% (collapse ceiling — independent of the observed 29%, which remains a recorded MODEL_RELIABILITY_LIMIT); provider-terminal runs <= 20% (availability SLO, else INFRA_BLOCKED)",
+      "basis": "engineering SLO + risk tolerance; the 50% ceiling marks systematic failure, not the observed level"
+    },
+    {
+      "axis": "repeat_reliability",
+      "rule": "per-case success count / 3 is RECORDED as reliability evidence; a 3/3 on one case never compensates a required high-risk case at 0/3 — case-level gates stand independently",
+      "basis": "repeat reliability requirement"
+    }
+  ],
+  "sealing": "this rule set is fixed before the post-fix B2 rerun starts; any later change requires a new version of this artifact with a recorded reason and is invalid if authored after holdout results are known"
+}

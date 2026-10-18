@@ -1,0 +1,62 @@
+{
+  "case_contract_version": "benchmark-case:v1",
+  "case_id": "t3-holdout-vpn-causal",
+  "case_version": "1",
+  "title": "HOLDOUT SEALED t3-holdout-vpn-causal",
+  "dataset": {
+    "dataset_version": "benchmark-dataset:v1",
+    "dataset_id": "ds-t3-holdout-vpn-causal",
+    "files": [
+      {
+        "logical_id": "README",
+        "relative_path": "README.txt",
+        "size_bytes": 293,
+        "sha256": "e3930444d1cd41e684170066bcac85e7f1d6b304c90d9dbf5f810daa864d0919"
+      },
+      {
+        "logical_id": "api",
+        "relative_path": "exchange/api.log",
+        "size_bytes": 80,
+        "sha256": "1e0af5c28052f3c7eb81e035a8070af1f53ee9b8cdcd7fcf1021e86024edfd12"
+      },
+      {
+        "logical_id": "sessions",
+        "relative_path": "vpn/sessions.log",
+        "size_bytes": 133,
+        "sha256": "bb1d52e9ff712f8973c14b1cd2b3bac90f1483965c36260e2b61044ad791e837"
+      }
+    ],
+    "dataset_hash": "f677f49de3db11b35083dcb922f7a8cdd23bfcc5caaf9396832da51e97974992",
+    "created_at": "2026-09-28T11:15:36.705389+00:00"
+  },
+  "truth_manifest_id": "tman:556b30159cb0967220167234",
+  "truth_manifest_hash": "556b30159cb09672201672342d4f4e65e1e901571f36b0e0a0c9a97e3de7e275",
+  "goal": "[SEALED HOLDOUT] t3-holdout-vpn-causal",
+  "case_context": "[SEALED HOLDOUT]",
+  "platform_composition": [
+    "linux"
+  ],
+  "required_coverage_dimensions": [
+    "shared-egress-assessment"
+  ],
+  "tier": "T3",
+  "negative_flags": {
+    "no_incriminating_evidence": false,
+    "ambiguous_evidence": true,
+    "misleading_case_context": false,
+    "incorrect_analyst_hypothesis": false,
+    "same_username_different_person": true,
+    "temporal_proximity_not_causality": true,
+    "review_pending_tempting_conclusion": false,
+    "graph_hallucinated_relation": false,
+    "missing_critical_parser_support": false,
+    "provider_failure": false
+  },
+  "expected_parser_profile": "linux",
+  "benchmark_tags": [
+    "holdout",
+    "sealed"
+  ],
+  "input_hash": "d09eb7139eb98fade007278edfaedecfc96cd4c47f20ff5c408819e68664bd8b",
+  "created_at": "2026-09-28T11:15:36.705356+00:00"
+}

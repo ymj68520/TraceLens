@@ -1,0 +1,37 @@
+{
+  "artifact_version": "RCA2A17TaskLifecycleSafetyReportV1",
+  "experiment_id": "rca2a17-cycle-lifecycle-hardening",
+  "timestamp_utc": "2026-10-17T06:40:00.000000+00:00",
+  "task_lifecycle_protections": {
+    "pre_execution_validation": {
+      "check": "ServiceManager.cpp_backend.get_task(task_id)",
+      "timing": "Before cycle claim or database interaction",
+      "behavior": "Raises HTTPException(status_code=404, detail='Task not found') immediately"
+    },
+    "during_execution_interruption_guard": {
+      "check": "ServiceManager.cpp_backend.get_task(task_id)",
+      "timing": "Immediately after orchestrator execute_cycle completes, before completing cycle execution record",
+      "behavior": "Detects task deletion during long cycle execution; suppresses state mutation and returns HTTP 404"
+    },
+    "path_traversal_and_invalid_identifiers": {
+      "sanitization": "cpp_backend validates task identifiers; invalid formats or missing directories fail closed with HTTP 404"
+    },
+    "read_side_safety": {
+      "endpoint": "GET /api/investigation/agent/state",
+      "properties": [
+        "Read-only SQLite connection",
+        "0 database writes / mutations",
+        "0 LLM / Provider calls",
+        "Fails closed with 404 if task or store does not exist"
+      ]
+    }
+  },
+  "verified_test_cases": [
+    "T19_deleted_task_before_execution_rejected",
+    "T20_deleted_task_during_execution_cannot_commit",
+    "T21_invalid_task_path_rejected",
+    "T22_get_state_is_read_only",
+    "T23_get_state_causes_zero_llm_calls"
+  ],
+  "verdict": "TASK_LIFECYCLE_SAFETY_CONFIRMED"
+}

@@ -1,0 +1,94 @@
+{
+  "manifest_version": "benchmark-corpus-manifest:v1",
+  "corpus_id": "corpus-agent-v0-b2",
+  "version": "4",
+  "development_cases": [],
+  "calibration_cases": [
+    {
+      "case_id": "t1-fraud-script-usb",
+      "case_hash": "877b171b12b9f06d8c2ba68551e702461b3d33b3251a47d5b18b0e069ea22f39",
+      "truth_manifest_id": "tman:fd3d504c10ba9bd137820b38",
+      "truth_manifest_hash": "fd3d504c10ba9bd137820b38824b14c1b77bb29f016459c196dcbc60ff69e5a9",
+      "dataset_hash": "071f01f1a197a71b68e93d51917c8381b6832b68c4d39fe5ea131ffaf5f000c9",
+      "tier": "T1",
+      "negative_dimensions": []
+    },
+    {
+      "case_id": "t2-identity-trap",
+      "case_hash": "10276402b9829d9e73a1e2a3e31c98b679f6243716f67b6312b8fe686dfc5ce9",
+      "truth_manifest_id": "tman:PLACEHOLDER",
+      "truth_manifest_hash": "34b1db2600918e4196eded9b3faa7a7abdceca337e7955465d09a5625b42e4e2",
+      "dataset_hash": "e20d1369ff21d35affaa02b2a879677208bda616e5d91ebea6800c6a99b02eed",
+      "tier": "T2",
+      "negative_dimensions": [
+        "ambiguous_evidence",
+        "same_username_different_person"
+      ]
+    },
+    {
+      "case_id": "t2-no-evidence",
+      "case_hash": "18cacc41f87bc70639561ad6efb1099ec798c57cd62f6986ba65833b51a99ae7",
+      "truth_manifest_id": "tman:PLACEHOLDER",
+      "truth_manifest_hash": "e6f337f50e0a586ca4315a42406c42ec8865ba51eef07fdcc1252e3bee758559",
+      "dataset_hash": "0ecdbd6ff73fc961d02132dd7276544e6e7d40e3a4a2ee79e2b75df1adb298e8",
+      "tier": "T2",
+      "negative_dimensions": [
+        "no_incriminating_evidence"
+      ]
+    },
+    {
+      "case_id": "t2-temporal-trap",
+      "case_hash": "41362f57fa21d926601f7670ee6a015bbfc39134501e6900b50bd4e84f488d0f",
+      "truth_manifest_id": "tman:PLACEHOLDER",
+      "truth_manifest_hash": "77694d90d115fb512888b1393bee7f8162e187d9d0d41b7331f8e3c6a8317d22",
+      "dataset_hash": "95816de840e121b307dca0c68da0b242c2f57593e45281123ca5fc0484cf4c7d",
+      "tier": "T2",
+      "negative_dimensions": [
+        "ambiguous_evidence",
+        "temporal_proximity_not_causality"
+      ]
+    }
+  ],
+  "acceptance_cases": [
+    {
+      "case_id": "t1-usb-collector",
+      "case_hash": "8e02165da0bc62a9368e21908cdd916435fc02ddd0e736ca95ef5e1b4ec97c25",
+      "truth_manifest_id": "tman:c2f151e5ff96e455bcfd71a5",
+      "truth_manifest_hash": "c2f151e5ff96e455bcfd71a52a0439b3c8369a6795da11eb9c13d2c84c65740d",
+      "dataset_hash": "dc015b118e5ca91fc4a4273a25fc548bc348c0ea4d7baa04fb3e86208e0aa975",
+      "tier": "T1",
+      "negative_dimensions": []
+    }
+  ],
+  "stress_cases": [],
+  "freeze_commit": "9e6c511c",
+  "selection_rationale": "B2 measured-baseline corpus v4: rebinds the three T2 case hashes after adding their Parser Reachability manifests (case_version 2). The canary calibration case t1-fraud-script-usb is unchanged; holdout t1-usb-collector remains sealed. Supersedes v3, whose T2 refs pointed at cases without reachability records.",
+  "coverage_matrix": {
+    "single_device_clear": true,
+    "single_device_noisy": true,
+    "multi_source_correlation": false,
+    "cross_device_relation": false,
+    "evidence_absent_indeterminate": true,
+    "analyst_note_misleading": false,
+    "case_context_misleading": false,
+    "same_username_identity_trap": true,
+    "same_ip_identity_trap": true,
+    "temporal_causality_trap": true,
+    "malicious_intent_trap": false,
+    "review_pending_vs_accepted": false,
+    "graph_optional_failure": false,
+    "report_citation_ceiling": false,
+    "provider_tool_failure": false
+  },
+  "known_exclusions": [
+    "multi-source correlation cases (C7): no second source image available this round — CALIBRATION_EVIDENCE_LIMITED",
+    "dedicated misleading Case Context / Analyst Note case (C4): trap context covered via README notes only — CALIBRATION_EVIDENCE_LIMITED",
+    "review_pending temptation (C8) and report/citation path (C9): not exercised this round — CALIBRATION_EVIDENCE_LIMITED",
+    "provider/tool recoverable failure case (C10): observed opportunistically — CALIBRATION_EVIDENCE_LIMITED",
+    "T4 large-volume stress cases"
+  ],
+  "truth_review_status": "single-reviewer",
+  "calibration_profile_hash": null,
+  "input_hash": "41ccf87855495190da7db8b3a7732fe4a144eced63c5c0393eec1c97c4fb2a89",
+  "created_at": "2026-09-28T02:49:58.850952+00:00"
+}

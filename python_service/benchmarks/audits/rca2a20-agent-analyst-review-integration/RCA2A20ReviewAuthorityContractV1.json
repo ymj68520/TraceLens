@@ -1,0 +1,17 @@
+{
+  "contract_version": "rca2a20-review-authority-contract:v1",
+  "rules": [
+    "Human analyst is the sole authority for accepted and rejected status transitions.",
+    "Zero agent components (supervisor, specialist, orchestrator, verifier) can write accepted/rejected status.",
+    "Agent pipeline execution ceiling is strictly review_pending.",
+    "Epistemic type preservation: HYPOTHESIS never becomes FACT upon review acceptance.",
+    "Human note != Evidence: analyst notes cannot be cited as grounded evidence.",
+    "0 auto-finalizations of investigations on review decision.",
+    "0 auto report admissions on review decision."
+  ],
+  "enforcement": {
+    "code_level": "AgentAnalystReviewService validates authority, epistemic immutability, and evidence provenance fail-closed.",
+    "database_level": "SQLite triggers trg_investigation_finding_legal_transition and trg_investigation_finding_no_identity_update prevent illegal updates."
+  },
+  "status": "PASS"
+}

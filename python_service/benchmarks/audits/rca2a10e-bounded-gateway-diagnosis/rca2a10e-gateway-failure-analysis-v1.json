@@ -1,0 +1,27 @@
+{
+  "artifact_version": "RCA2A10eGatewayFailureAnalysisV1",
+  "experiment_id": "rca2a10e-bounded-gateway-diagnosis",
+  "created_at_utc": "2026-10-16T06:04:46.170794+00:00",
+  "d3_status": "D3_PROVIDER_INFRA_FAILURE",
+  "d4_status": "D4_OUTCOME_UNKNOWN",
+  "dimensions": {
+    "BASIC_CHAT_COMPATIBILITY": "SUPPORTED_BY_HISTORICAL_PREFLIGHT",
+    "V2_TOOL_COMPATIBILITY": "SUPPORTED_BY_HISTORICAL_PREFLIGHT_2",
+    "FULL_INTEGRATE_COMPATIBILITY": "FAILED",
+    "STREAMING_COMPATIBILITY": "FAILED",
+    "GATEWAY_TRANSPORT_RELIABILITY": "UNRELIABLE"
+  },
+  "ten_questions_answers": [
+    "1. 同一 Gateway 能否完成完整 INTEGRATE？NO",
+    "2. 完整请求序列化字节数：11257 bytes",
+    "3. HTTP 500 是否再次出现？YES",
+    "4. 真实失败耗时：186934.10 ms",
+    "5. Non-Streaming 是否可用？NO",
+    "6. Streaming 是否可用？NO",
+    "7. 模型别名变化：观察到返回 N/A",
+    "8. 是否具备足够证据确认根因？SUPPORTED_BUT_NOT_PROVEN（需结合 Gateway 内部日志）",
+    "9. 该 Gateway 是否适合后续 A/B？QUESTIONABLE_DUE_TO_UNRELIABILITY",
+    "10. 是否需要改变 Gateway 而不是修改 Agent？YES，TraceLens Agent 契约正确，无需降级 Schema。"
+  ],
+  "root_cause_verdict": "UPSTREAM_PROVIDER_OR_GATEWAY_INFRA_INCOMPATIBILITY"
+}

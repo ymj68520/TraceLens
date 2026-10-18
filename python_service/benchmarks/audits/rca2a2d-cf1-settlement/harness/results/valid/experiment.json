@@ -1,0 +1,20 @@
+{
+  "experiment_id": "bexp-agent-v0-b2-baseline",
+  "code_commit": "7766319603d0f50a6fe5fcb59cdb9382d9341693",
+  "production_runtime_commit": "7766319603d0f50a6fe5fcb59cdb9382d9341693",
+  "pre_calibration_profile_hash": "6dd38a0e0f68704fb881e7e1f78031d58dc54368b6188826a3262660d86b218c",
+  "runtime_baseline_file": "benchmarks/profiles/precalibration-runtime-baseline.v1.json",
+  "model_config_file": null,
+  "corpus_id": "corpus-agent-v0-b2",
+  "corpus_hash": "41ccf87855495190da7db8b3a7732fe4a144eced63c5c0393eec1c97c4fb2a89",
+  "repeat_policy": "3 fresh repeats per calibration case (Flash-class model; expand to 5 only on high variance)",
+  "cache_policy": "cold",
+  "graph_mode": "none",
+  "report_mode": "disabled",
+  "started_at": "2026-10-14T05:35:12+00:00",
+  "fresh_task_ids": {
+    "t2-no-evidence": {
+      "repeat0": "034ac726-60cb-4691-b8c1-0c9a4186b72a"
+    }
+  }
+}

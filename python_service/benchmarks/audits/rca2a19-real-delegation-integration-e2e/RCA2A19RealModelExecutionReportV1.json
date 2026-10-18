@@ -1,0 +1,175 @@
+{
+  "artifact_version": "RCA2A19RealModelExecutionReportV1",
+  "experiment_id": "rca2a19-real-delegation-integration-e2e",
+  "timestamp_utc": "2026-10-17T08:30:11Z",
+  "execution_summary": {
+    "total_logical_generations": 10,
+    "total_physical_http_attempts": 10,
+    "budget_limits": {
+      "max_logical_generations": 10,
+      "max_physical_attempts": 30
+    },
+    "budget_status": "WITHIN_BUDGET"
+  },
+  "invocations": [
+    {
+      "request_sequence": 1,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 3042.43,
+      "input_tokens": 1216,
+      "output_tokens": 298,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    },
+    {
+      "request_sequence": 2,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 3102.31,
+      "input_tokens": 2554,
+      "output_tokens": 82,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    },
+    {
+      "request_sequence": 3,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 2410.68,
+      "input_tokens": 3062,
+      "output_tokens": 40,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    },
+    {
+      "request_sequence": 4,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 10544.59,
+      "input_tokens": 3352,
+      "output_tokens": 2125,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    },
+    {
+      "request_sequence": 5,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 8386.91,
+      "input_tokens": 4852,
+      "output_tokens": 1281,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    },
+    {
+      "request_sequence": 6,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 4416.03,
+      "input_tokens": 1609,
+      "output_tokens": 590,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    },
+    {
+      "request_sequence": 7,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 2662.31,
+      "input_tokens": 2550,
+      "output_tokens": 64,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    },
+    {
+      "request_sequence": 8,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 2402.22,
+      "input_tokens": 3040,
+      "output_tokens": 133,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    },
+    {
+      "request_sequence": 9,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 2905.29,
+      "input_tokens": 3254,
+      "output_tokens": 104,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    },
+    {
+      "request_sequence": 10,
+      "provider": "generic",
+      "requested_model": "deepseek-flash",
+      "returned_model": "deepseek-flash",
+      "http_status": 200,
+      "latency_ms": 10903.77,
+      "input_tokens": 3645,
+      "output_tokens": 2385,
+      "retry_count": 0,
+      "physical_http_attempts": 1
+    }
+  ],
+  "cycle_a_response": {
+    "cycle_id": "cycle_97944d7add05",
+    "task_id": "synthetic-rca2a19-smoke-001",
+    "investigation_id": "inv_synthetic_001",
+    "run_id": "run_aaa1149d261d4f9fa827057b9386fe10",
+    "starting_revision": 1,
+    "ending_revision": 2,
+    "integration_status": "committed",
+    "integration_revision": 2,
+    "delegation_ids": [
+      "del_1daa582e766542708e081925122b2ad7"
+    ],
+    "run_stop_reason": null,
+    "warnings": [],
+    "limitations": []
+  },
+  "cycle_b_response": {
+    "cycle_id": "cycle_a576c6097c4b",
+    "task_id": "synthetic-rca2a19-smoke-001",
+    "investigation_id": "inv_synthetic_001",
+    "run_id": "run_aaa1149d261d4f9fa827057b9386fe10",
+    "starting_revision": 2,
+    "ending_revision": 2,
+    "integration_status": "failed",
+    "integration_revision": null,
+    "delegation_ids": [
+      "del_f16414ca05a2439c8e8b5c8f642cbe70",
+      "del_25ff5b4be345401488703f92ba6d7ee7",
+      "del_6fa25a246fc548659d58ac464d905ccc",
+      "del_09201db1315c4a19a41fc36c2aa08e57"
+    ],
+    "run_stop_reason": "internal_failure",
+    "warnings": [
+      "supervisor integration failed: benchmark_runtime_failure",
+      "run failed closed; no integration decision committed"
+    ],
+    "limitations": []
+  },
+  "status": "REAL_MODEL_EXECUTION_COMPLETED"
+}

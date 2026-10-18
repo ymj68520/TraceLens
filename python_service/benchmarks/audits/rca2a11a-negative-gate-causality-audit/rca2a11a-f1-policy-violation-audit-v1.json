@@ -1,0 +1,33 @@
+{
+  "artifact_version": "RCA2A11aF1PolicyViolationAuditV1",
+  "audit_id": "rca2a11a-negative-gate-causality-audit",
+  "created_at_utc": "2026-10-17T02:14:17Z",
+  "scenario_id": "t2-no-evidence",
+  "pair_id": 1,
+  "pair_label": "A",
+  "pair_outcome": "BOTH_INVALID",
+  "seat_1_control": {
+    "proposed_action": "UpdateQuestionActionV2 (attempting question closure/advancement without evidence basis)",
+    "policy_verdict": "rejected",
+    "policy_violation_codes": [
+      "QUESTION_CLOSURE_BASIS_REQUIRED",
+      "QUESTION_CLOSURE_VERIFICATION_REQUIRED"
+    ],
+    "oracle_triggered_negative_gates": [
+      "FALSE_QUESTION_CLOSURE"
+    ],
+    "oracle_evaluation": "SEMANTICALLY_INADEQUATE / DEGRADED",
+    "commit_status": "INVALID_PROPOSAL_REJECTED_BEFORE_COMMIT"
+  },
+  "seat_2_treatment": {
+    "proposed_action": "UpdateQuestionActionV2 (attempting question update without basis refs)",
+    "policy_verdict": "rejected",
+    "policy_violation_codes": [
+      "QUESTION_CLOSURE_BASIS_REQUIRED"
+    ],
+    "oracle_triggered_negative_gates": [],
+    "oracle_evaluation": "SEMANTICALLY_INADEQUATE / DEGRADED",
+    "commit_status": "INVALID_PROPOSAL_REJECTED_BEFORE_COMMIT"
+  },
+  "comparative_analysis": "Both Control and Treatment failed L3 StateTransitionPolicy before commit. However, Treatment exhibited finer discipline: it did not trigger the FALSE_QUESTION_CLOSURE negative gate. Per protocol rules, because both failed canonical integration, the pair outcome remains strictly BOTH_INVALID."
+}

@@ -1,0 +1,54 @@
+{
+  "deliverable": "RCA2A24aTestAccountingAmendmentV1",
+  "schema_version": "rca2a24a-test-accounting-amendment:v1",
+  "verified_at": "2026-10-17T14:22:00Z",
+  "verdict": "TEST_ACCOUNTING_RECONCILED",
+  "discrepancy_explanation": "In RCA-2A.24 reports, references to '28 Test Cases', '16 Browser Sub-verifications', and '34 Verifications Passed' caused ambiguity between verification checks and pytest test functions. This amendment provides authoritative accounting based on actual execution logs.",
+  "accounting_breakdown": {
+    "suite_runner_checks": {
+      "runner_script": "run_full_rca2a24_rc_suite.py",
+      "verification_checks_count": 18,
+      "check_identifiers": [
+        "T01", "T02", "T03", "T04", "T05", "T06", "T07", "T08",
+        "T09", "T10", "T11", "T12", "T13", "T14", "T15", "T16",
+        "T17", "T18"
+      ],
+      "scope": "Preflight git/DB, HTTP feature gates, security headers, budget/idempotency, restart recovery, evidence integrity, provider zero"
+    },
+    "browser_e2e_checks": {
+      "e2e_script": "playwright_workbench_rc_readiness_e2e.cjs",
+      "verification_checks_count": 16,
+      "check_identifiers": [
+        "RC-B01", "RC-B02", "RC-B03", "RC-B04", "RC-B05", "RC-B06",
+        "RC-B07", "RC-B08", "RC-B09", "RC-B10", "RC-B11", "RC-B12",
+        "RC-B13", "RC-B14", "RC-B15", "RC-B16"
+      ],
+      "scope": "Chromium UI layout, cycle 1 execution, candidate inspection, explicit accept, reload 1, cycle 2 execution, malware candidate inspection, explicit reject, reload 2, disclosure notice"
+    },
+    "total_acceptance_suite_checks": 34,
+    "historical_28_cases_origin": "Informal shorthand counting 12 HTTP/security checks (T04-T15) plus 16 browser checks (RC-B01-RC-B16), omitting baseline checks (T01-T03) and post-flight checks (T16-T18). The actual acceptance suite executed exactly 34 verification assertions (18 runner + 16 browser)."
+  },
+  "unit_test_function_accounting": {
+    "python_agent_review_unit_tests": {
+      "test_file": "python_service/tests/unit/investigation/test_agent_analyst_review_integration.py",
+      "test_functions_count": 45,
+      "passed": 45,
+      "failed": 0,
+      "scope": "T01-T45 covering candidate resolution, hash verification, review submission, idempotency, provenance, epistemic preservation, and T35-T45 security boundaries"
+    },
+    "python_full_unit_suite": {
+      "test_scope": "python_service/tests/unit",
+      "collected_functions": 3132,
+      "passed": 3131,
+      "skipped": 1,
+      "failed": 0,
+      "errors": 0
+    },
+    "frontend_vitest_suite": {
+      "test_files": 52,
+      "test_assertions": 264,
+      "passed": 264,
+      "failed": 0
+    }
+  }
+}

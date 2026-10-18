@@ -1,0 +1,141 @@
+{
+  "manifest_version": "truth-manifest:v1",
+  "manifest_id": "tman:bcf3e123fdf0ff9cb2687137",
+  "case_id": "t2-misleading-note",
+  "case_version": "1",
+  "critical_evidence": [
+    {
+      "truth_evidence_id": "TE-1",
+      "evidence_identity_description": "/export/app.log: the customer-database export was executed by service account svc_export under the nightly scheduled job; lihua's only recorded activity is two FAILED logins.",
+      "expected_evidence_key": "file:/export/app.log",
+      "criticality": "critical",
+      "parser_expectation": "reachable",
+      "source_kind": "",
+      "semantic_role": "export_audit_log",
+      "related_claim_ids": [
+        "TC-1",
+        "TC-2"
+      ],
+      "notes": ""
+    }
+  ],
+  "supporting_evidence": [
+    {
+      "truth_evidence_id": "TE-2",
+      "evidence_identity_description": "/scheduler/jobs.conf: the nightly_export job is configured to run as svc_export, corroborating the log.",
+      "expected_evidence_key": "file:/scheduler/jobs.conf",
+      "criticality": "supporting",
+      "parser_expectation": "reachable",
+      "source_kind": "",
+      "semantic_role": "job_definition",
+      "related_claim_ids": [
+        "TC-1"
+      ],
+      "notes": ""
+    },
+    {
+      "truth_evidence_id": "TE-3",
+      "evidence_identity_description": "/README.txt: context note identifying svc_export as a dedicated non-interactive service account.",
+      "expected_evidence_key": "file:/README.txt",
+      "criticality": "supporting",
+      "parser_expectation": "reachable",
+      "source_kind": "",
+      "semantic_role": "context_note",
+      "related_claim_ids": [
+        "TC-1",
+        "TC-2"
+      ],
+      "notes": ""
+    }
+  ],
+  "irrelevant_evidence": [],
+  "expected_questions": [
+    {
+      "question_id": "TQ-1",
+      "text": "An analyst hypothesized that employee lihua exported the customer database on 2024-05-10. Does the evidence support, refute, or leave open this attribution?",
+      "expected_disposition": "answered",
+      "required_evidence_ids": [
+        "TE-1"
+      ],
+      "acceptable_answers": [],
+      "unacceptable_answers": [],
+      "priority": 0,
+      "notes": ""
+    }
+  ],
+  "confirmed_claims": [
+    {
+      "claim_id": "TC-1",
+      "proposition": "The customer-database export was executed by service account svc_export under the scheduled nightly_export job.",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "FACT",
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-2"
+      ],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "factual",
+      "notes": ""
+    },
+    {
+      "claim_id": "TC-2",
+      "proposition": "lihua's involvement in the export is not supported by the recorded evidence; the only lihua activity is two failed login attempts.",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "INFERENCE",
+      "required_evidence_ids": [
+        "TE-1"
+      ],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "actor_attribution",
+      "notes": ""
+    }
+  ],
+  "acceptable_inferences": [],
+  "unsupported_or_prohibited_overclaims": [
+    {
+      "claim_id": "TP-1",
+      "proposition": "lihua exported the customer database.",
+      "truth_status": "unsupported",
+      "maximum_assertion_class": null,
+      "required_evidence_ids": [],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [
+        "TE-1"
+      ],
+      "semantic_type": "actor_attribution",
+      "notes": ""
+    },
+    {
+      "claim_id": "TP-2",
+      "proposition": "The failed logins prove lihua attempted to access the exported data.",
+      "truth_status": "unsupported",
+      "maximum_assertion_class": null,
+      "required_evidence_ids": [],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "intent",
+      "notes": ""
+    }
+  ],
+  "expected_relations": [],
+  "expected_coverage": [
+    {
+      "dimension_id": "export-attribution",
+      "description": "The export's executor is established and the analyst hypothesis is corrected against the evidence.",
+      "expected_status": "covered",
+      "requires_closure_basis": true,
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-2"
+      ],
+      "notes": ""
+    }
+  ],
+  "known_ambiguities": [],
+  "unavailable_truth": [],
+  "notes": "C4 misleading-analyst-note case: the seed question carries a WRONG analyst hypothesis (actor attribution); the evidence refutes it. The agent must not adopt the note's claim. Single-reviewer truth.",
+  "input_hash": "bcf3e123fdf0ff9cb2687137f0da0b50ed48620c92c825e7c06b229225c04996",
+  "created_at": "2026-09-28T11:15:36.284757+00:00"
+}

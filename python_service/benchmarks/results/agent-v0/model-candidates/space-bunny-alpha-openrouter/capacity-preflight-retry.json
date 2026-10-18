@@ -1,0 +1,43 @@
+{
+  "artifact_version": "OpenRouterCapacityPreflightV1",
+  "candidate_id": "space-bunny-alpha@openrouter",
+  "created_at": "2026-10-13T08:49:32+00:00",
+  "api_key_present": true,
+  "probe_spec": {
+    "probe_count": 3,
+    "max_tokens_per_probe": 256,
+    "note": "lightweight synthetic echo requests; budget sized to absorb endpoint-side hidden reasoning so truncation is never misread as a capacity signal (§4/§5)"
+  },
+  "probes": [
+    {
+      "probe": 1,
+      "requested_model": "stealth/space-bunny-alpha",
+      "error": "APIConnectionError: Connection error.",
+      "classification": "PROVIDER_INFRA_FAILURE",
+      "rate_limit_headers": {}
+    },
+    {
+      "probe": 2,
+      "requested_model": "stealth/space-bunny-alpha",
+      "error": "APIConnectionError: Connection error.",
+      "classification": "PROVIDER_INFRA_FAILURE",
+      "rate_limit_headers": {}
+    },
+    {
+      "probe": 3,
+      "requested_model": "stealth/space-bunny-alpha",
+      "error": "APIConnectionError: Connection error.",
+      "classification": "PROVIDER_INFRA_FAILURE",
+      "rate_limit_headers": {}
+    }
+  ],
+  "probe_count": 3,
+  "consecutive_success_required": 3,
+  "gate": {
+    "all_succeeded": false,
+    "no_429_or_quota": true,
+    "routing_identity_exact_every_probe": false
+  },
+  "disposition": "PROVIDER_CAPACITY_BLOCKED",
+  "note": "§5: preflight is NOT part of 8x1 or any semantic measurement; one-shot entry check only — no watchdog, no retry loop (§4)"
+}

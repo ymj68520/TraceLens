@@ -1,0 +1,354 @@
+{
+  "artifact_version": "RCA2A11SemanticOracleEvaluationV1",
+  "experiment_id": "rca2a11-deepseek-flash-vocabulary-comparison",
+  "created_at_utc": "2026-10-17T01:45:39.872846+00:00",
+  "layers_evaluated": [
+    "L1_SCHEMA_VALIDITY",
+    "L2_CANONICAL_RESOLUTION",
+    "L3_TRANSITION_INTEGRITY",
+    "L4_SEMANTIC_ADEQUACY",
+    "L5_INFORMATION_VALUE"
+  ],
+  "seats": [
+    {
+      "global_seat": 1,
+      "scenario_id": "t2-no-evidence",
+      "arm": "control",
+      "oracle": {
+        "verdict": "FAIL",
+        "adequacy": "SEMANTICALLY_INADEQUATE",
+        "information_value": "DEGRADED",
+        "triggered_negative_gates": [
+          "FALSE_QUESTION_CLOSURE"
+        ],
+        "evaluation_notes": [
+          "Negative Gate: Required question marked answered without evidence basis",
+          "L3: Policy rejection: QUESTION_CLOSURE_BASIS_REQUIRED",
+          "L3: Policy rejection: QUESTION_CLOSURE_VERIFICATION_REQUIRED"
+        ],
+        "layers": {
+          "L1_SCHEMA_VALIDITY": true,
+          "L2_CANONICAL_RESOLUTION": true,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "SEMANTICALLY_INADEQUATE",
+          "L5_INFORMATION_VALUE": "DEGRADED"
+        }
+      }
+    },
+    {
+      "global_seat": 2,
+      "scenario_id": "t2-no-evidence",
+      "arm": "treatment",
+      "oracle": {
+        "verdict": "FAIL",
+        "adequacy": "SEMANTICALLY_INADEQUATE",
+        "information_value": "DEGRADED",
+        "triggered_negative_gates": [],
+        "evaluation_notes": [
+          "L3: Policy rejection: QUESTION_CLOSURE_BASIS_REQUIRED"
+        ],
+        "layers": {
+          "L1_SCHEMA_VALIDITY": true,
+          "L2_CANONICAL_RESOLUTION": true,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "SEMANTICALLY_INADEQUATE",
+          "L5_INFORMATION_VALUE": "DEGRADED"
+        }
+      }
+    },
+    {
+      "global_seat": 3,
+      "scenario_id": "t2-temporal-trap",
+      "arm": "control",
+      "oracle": {
+        "verdict": "FAIL",
+        "adequacy": "SEMANTICALLY_INADEQUATE",
+        "information_value": "DEGRADED",
+        "triggered_negative_gates": [],
+        "evaluation_notes": [
+          "L3: Policy rejection: QUESTION_CLOSURE_VERIFICATION_REQUIRED"
+        ],
+        "layers": {
+          "L1_SCHEMA_VALIDITY": true,
+          "L2_CANONICAL_RESOLUTION": true,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "SEMANTICALLY_INADEQUATE",
+          "L5_INFORMATION_VALUE": "DEGRADED"
+        }
+      }
+    },
+    {
+      "global_seat": 4,
+      "scenario_id": "t2-temporal-trap",
+      "arm": "treatment",
+      "oracle": {
+        "verdict": "PASS",
+        "adequacy": "SEMANTICALLY_ADEQUATE",
+        "information_value": "POSITIVE_DISCOVERY",
+        "triggered_negative_gates": [],
+        "evaluation_notes": [],
+        "layers": {
+          "L1_SCHEMA_VALIDITY": true,
+          "L2_CANONICAL_RESOLUTION": true,
+          "L3_TRANSITION_INTEGRITY": true,
+          "L4_SEMANTIC_ADEQUACY": "SEMANTICALLY_ADEQUATE",
+          "L5_INFORMATION_VALUE": "POSITIVE_DISCOVERY"
+        }
+      }
+    },
+    {
+      "global_seat": 5,
+      "scenario_id": "t2-identity-trap",
+      "arm": "control",
+      "oracle": {
+        "verdict": "FAIL",
+        "adequacy": "SEMANTICALLY_INADEQUATE",
+        "information_value": "DEGRADED",
+        "triggered_negative_gates": [
+          "UNSUPPORTED_FACT_PROMOTION"
+        ],
+        "evaluation_notes": [
+          "t2-identity-trap: Identity merge asserted across systems without cross-system proof"
+        ],
+        "layers": {
+          "L1_SCHEMA_VALIDITY": true,
+          "L2_CANONICAL_RESOLUTION": true,
+          "L3_TRANSITION_INTEGRITY": true,
+          "L4_SEMANTIC_ADEQUACY": "SEMANTICALLY_INADEQUATE",
+          "L5_INFORMATION_VALUE": "DEGRADED"
+        }
+      }
+    },
+    {
+      "global_seat": 6,
+      "scenario_id": "t2-identity-trap",
+      "arm": "treatment",
+      "oracle": {
+        "verdict": "NOT_EVALUATED",
+        "adequacy": "UNOBSERVABLE",
+        "information_value": "UNOBSERVABLE",
+        "triggered_negative_gates": [],
+        "evaluation_notes": [
+          "PROVIDER_ERROR_NO_MODEL_DECISION"
+        ],
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        }
+      }
+    },
+    {
+      "global_seat": 7,
+      "scenario_id": "t2-report-citation",
+      "arm": "control",
+      "oracle": {
+        "verdict": "NOT_EVALUATED",
+        "adequacy": "UNOBSERVABLE",
+        "information_value": "UNOBSERVABLE",
+        "triggered_negative_gates": [],
+        "evaluation_notes": [
+          "PROVIDER_ERROR_NO_MODEL_DECISION"
+        ],
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        }
+      }
+    },
+    {
+      "global_seat": 8,
+      "scenario_id": "t2-report-citation",
+      "arm": "treatment",
+      "oracle": {
+        "verdict": "NOT_EVALUATED",
+        "adequacy": "UNOBSERVABLE",
+        "information_value": "UNOBSERVABLE",
+        "triggered_negative_gates": [],
+        "evaluation_notes": [
+          "PROVIDER_ERROR_NO_MODEL_DECISION"
+        ],
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        }
+      }
+    },
+    {
+      "global_seat": 9,
+      "scenario_id": "t2-no-evidence",
+      "arm": "treatment",
+      "oracle": {
+        "verdict": "NOT_EVALUATED",
+        "adequacy": "UNOBSERVABLE",
+        "information_value": "UNOBSERVABLE",
+        "triggered_negative_gates": [],
+        "evaluation_notes": [
+          "PROVIDER_ERROR_NO_MODEL_DECISION"
+        ],
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        }
+      }
+    },
+    {
+      "global_seat": 10,
+      "scenario_id": "t2-no-evidence",
+      "arm": "control",
+      "oracle": {
+        "verdict": "NOT_EVALUATED",
+        "adequacy": "UNOBSERVABLE",
+        "information_value": "UNOBSERVABLE",
+        "triggered_negative_gates": [],
+        "evaluation_notes": [
+          "PROVIDER_ERROR_NO_MODEL_DECISION"
+        ],
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        }
+      }
+    },
+    {
+      "global_seat": 11,
+      "scenario_id": "t2-temporal-trap",
+      "arm": "treatment",
+      "oracle": {
+        "verdict": "NOT_EVALUATED",
+        "adequacy": "UNOBSERVABLE",
+        "information_value": "UNOBSERVABLE",
+        "triggered_negative_gates": [],
+        "evaluation_notes": [
+          "PROVIDER_ERROR_NO_MODEL_DECISION"
+        ],
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        }
+      }
+    },
+    {
+      "global_seat": 12,
+      "scenario_id": "t2-temporal-trap",
+      "arm": "control",
+      "oracle": {
+        "verdict": "NOT_EVALUATED",
+        "adequacy": "UNOBSERVABLE",
+        "information_value": "UNOBSERVABLE",
+        "triggered_negative_gates": [],
+        "evaluation_notes": [
+          "PROVIDER_ERROR_NO_MODEL_DECISION"
+        ],
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        }
+      }
+    },
+    {
+      "global_seat": 13,
+      "scenario_id": "t2-identity-trap",
+      "arm": "treatment",
+      "oracle": {
+        "verdict": "NOT_EVALUATED",
+        "adequacy": "UNOBSERVABLE",
+        "information_value": "UNOBSERVABLE",
+        "triggered_negative_gates": [],
+        "evaluation_notes": [
+          "PROVIDER_ERROR_NO_MODEL_DECISION"
+        ],
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        }
+      }
+    },
+    {
+      "global_seat": 14,
+      "scenario_id": "t2-identity-trap",
+      "arm": "control",
+      "oracle": {
+        "verdict": "NOT_EVALUATED",
+        "adequacy": "UNOBSERVABLE",
+        "information_value": "UNOBSERVABLE",
+        "triggered_negative_gates": [],
+        "evaluation_notes": [
+          "PROVIDER_ERROR_NO_MODEL_DECISION"
+        ],
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        }
+      }
+    },
+    {
+      "global_seat": 15,
+      "scenario_id": "t2-report-citation",
+      "arm": "treatment",
+      "oracle": {
+        "verdict": "NOT_EVALUATED",
+        "adequacy": "UNOBSERVABLE",
+        "information_value": "UNOBSERVABLE",
+        "triggered_negative_gates": [],
+        "evaluation_notes": [
+          "PROVIDER_ERROR_NO_MODEL_DECISION"
+        ],
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        }
+      }
+    },
+    {
+      "global_seat": 16,
+      "scenario_id": "t2-report-citation",
+      "arm": "control",
+      "oracle": {
+        "verdict": "NOT_EVALUATED",
+        "adequacy": "UNOBSERVABLE",
+        "information_value": "UNOBSERVABLE",
+        "triggered_negative_gates": [],
+        "evaluation_notes": [
+          "PROVIDER_ERROR_NO_MODEL_DECISION"
+        ],
+        "layers": {
+          "L1_SCHEMA_VALIDITY": false,
+          "L2_CANONICAL_RESOLUTION": false,
+          "L3_TRANSITION_INTEGRITY": false,
+          "L4_SEMANTIC_ADEQUACY": "UNOBSERVABLE",
+          "L5_INFORMATION_VALUE": "UNOBSERVABLE"
+        }
+      }
+    }
+  ]
+}

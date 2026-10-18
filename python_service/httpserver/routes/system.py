@@ -50,6 +50,7 @@ async def get_feature_flags(settings: Settings = Depends(get_settings)):
         "secondary_analysis_enabled": settings.secondary_analysis_active,
         "memory_forensics_enabled": settings.memory_forensics_enabled,
         "oss_analysis_enabled": settings.oss_analysis_enabled,
+        "agent_execution_enabled": settings.agent_execution_enabled,
     }
 
 

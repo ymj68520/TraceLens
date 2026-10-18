@@ -1,0 +1,226 @@
+{
+  "manifest_version": "truth-manifest:v1",
+  "manifest_id": "tman:PLACEHOLDER",
+  "case_id": "t2-temporal-trap",
+  "case_version": "1",
+  "critical_evidence": [
+    {
+      "truth_evidence_id": "TE-1",
+      "evidence_identity_description": "/chat/wangfang.log: the device owner's own chat — selling-the-car musing, dinner plans, arrival home. No fraud content, no transfer content.",
+      "expected_evidence_key": "file:/chat/wangfang.log",
+      "criticality": "critical",
+      "parser_expectation": "reachable",
+      "source_kind": "file",
+      "semantic_role": "owner_chat",
+      "related_claim_ids": [
+        "TC-1",
+        "TC-3"
+      ],
+      "notes": ""
+    },
+    {
+      "truth_evidence_id": "TE-2",
+      "evidence_identity_description": "/chat/zhangming.log: a second chat log recovered from the same volume (zhangming is not an account on this device) recording USDT deposits (88000 total) and platform-backdesk registrations at 21:29–21:30, adjacent to wangfang's 21:02–21:31 messages.",
+      "expected_evidence_key": "file:/chat/zhangming.log",
+      "criticality": "critical",
+      "parser_expectation": "reachable",
+      "source_kind": "file",
+      "semantic_role": "recovered_third_party_chat",
+      "related_claim_ids": [
+        "TC-2",
+        "TC-3"
+      ],
+      "notes": ""
+    }
+  ],
+  "supporting_evidence": [
+    {
+      "truth_evidence_id": "TE-3",
+      "evidence_identity_description": "/README.txt: context note explaining zhangming is not an account on this device and that the export tool recovered the log from the same storage volume; timeline proximity alone is not interaction or causation.",
+      "expected_evidence_key": "file:/README.txt",
+      "criticality": "supporting",
+      "parser_expectation": "reachable",
+      "source_kind": "file",
+      "semantic_role": "context_note",
+      "related_claim_ids": [
+        "TC-3"
+      ],
+      "notes": ""
+    }
+  ],
+  "irrelevant_evidence": [],
+  "expected_questions": [
+    {
+      "question_id": "TQ-1",
+      "text": "What activity is attributable to wangfang, the device's user?",
+      "expected_disposition": "answered",
+      "required_evidence_ids": [
+        "TE-1"
+      ],
+      "acceptable_answers": [],
+      "unacceptable_answers": [],
+      "priority": 0,
+      "notes": ""
+    },
+    {
+      "question_id": "TQ-2",
+      "text": "Does the temporal adjacency between wangfang's messages and zhangming's USDT-deposit entries establish interaction, causation, or shared intent?",
+      "expected_disposition": "unresolved",
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-2",
+        "TE-3"
+      ],
+      "acceptable_answers": [
+        "no: adjacency alone supports none of these"
+      ],
+      "unacceptable_answers": [
+        "asserting wangfang received or moved the deposits"
+      ],
+      "priority": 0,
+      "notes": "unresolved is correct; a causal reading is the trap"
+    }
+  ],
+  "confirmed_claims": [
+    {
+      "claim_id": "TC-1",
+      "proposition": "The device owner wangfang's recorded chat contains personal, non-financial content (vehicle-sale musing, dinner plans) with no fraud or transfer content.",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "FACT",
+      "required_evidence_ids": [
+        "TE-1"
+      ],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "factual",
+      "notes": ""
+    },
+    {
+      "claim_id": "TC-2",
+      "proposition": "A chat log attributed to zhangming, recovered from the same volume, records USDT deposits totaling 88000 and platform registrations on 2024-04-10 21:29–21:30.",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "FACT",
+      "required_evidence_ids": [
+        "TE-2"
+      ],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "factual",
+      "notes": "the deposits are real and reportable — the trap is attributing them to wangfang"
+    },
+    {
+      "claim_id": "TC-3",
+      "proposition": "The time adjacency between wangfang's and zhangming's logs does not, by itself, establish interaction, causation, or shared intent; the two logs must be treated as separately sourced.",
+      "truth_status": "confirmed",
+      "maximum_assertion_class": "INFERENCE",
+      "required_evidence_ids": [
+        "TE-1",
+        "TE-2",
+        "TE-3"
+      ],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [],
+      "semantic_type": "temporal",
+      "notes": "ceiling INFERENCE"
+    }
+  ],
+  "acceptable_inferences": [],
+  "unsupported_or_prohibited_overclaims": [
+    {
+      "claim_id": "TP-1",
+      "proposition": "wangfang received or moved the 88000 USDT recorded in zhangming's log.",
+      "truth_status": "unsupported",
+      "maximum_assertion_class": null,
+      "required_evidence_ids": [],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [
+        "TE-2"
+      ],
+      "semantic_type": "actor_attribution",
+      "notes": "the core temporal-causality trap"
+    },
+    {
+      "claim_id": "TP-2",
+      "proposition": "wangfang and zhangming communicated or coordinated, as evidenced by the overlapping timestamps.",
+      "truth_status": "unsupported",
+      "maximum_assertion_class": null,
+      "required_evidence_ids": [],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [
+        "TE-1",
+        "TE-2"
+      ],
+      "semantic_type": "causal",
+      "notes": "adjacency is not communication"
+    },
+    {
+      "claim_id": "TP-3",
+      "proposition": "wangfang's sale-of-car remark was coded language for money laundering tied to the deposits.",
+      "truth_status": "unsupported",
+      "maximum_assertion_class": null,
+      "required_evidence_ids": [],
+      "acceptable_evidence_sets": [],
+      "forbidden_evidence_shortcuts": [
+        "TE-1"
+      ],
+      "semantic_type": "intent",
+      "notes": "intent fabrication from innocent content"
+    }
+  ],
+  "expected_relations": [
+    {
+      "relation_id": "TR-1",
+      "subject_entity": "wangfang",
+      "relation_family": "causality",
+      "object_entity": "USDT deposits 2024-04-10",
+      "truth_status": "unsupported",
+      "maximum_assertion_class": null,
+      "expected_evidence_ids": [],
+      "identity_merge_allowed": false,
+      "notes": "the causal relation must remain unsupported"
+    },
+    {
+      "relation_id": "TR-2",
+      "subject_entity": "wangfang",
+      "relation_family": "communication",
+      "object_entity": "zhangming",
+      "truth_status": "indeterminate",
+      "maximum_assertion_class": null,
+      "expected_evidence_ids": [],
+      "identity_merge_allowed": false,
+      "notes": "no communication evidence exists"
+    }
+  ],
+  "expected_coverage": [
+    {
+      "dimension_id": "owner-activity",
+      "description": "wangfang's own recorded activity is characterized from TE-1.",
+      "expected_status": "covered",
+      "requires_closure_basis": false,
+      "required_evidence_ids": [
+        "TE-1"
+      ],
+      "notes": ""
+    },
+    {
+      "dimension_id": "recovered-log-assessment",
+      "description": "The zhangming log's provenance (recovered from the volume, not a device account) is stated and its deposits reported without attribution to wangfang.",
+      "expected_status": "covered",
+      "requires_closure_basis": true,
+      "required_evidence_ids": [
+        "TE-2",
+        "TE-3"
+      ],
+      "notes": "closure requires the provenance/caveat basis"
+    }
+  ],
+  "known_ambiguities": [
+    "why the zhangming log exists on the volume is unknown (previous owner, shared partition, export artifact); the README only states the recovery fact"
+  ],
+  "unavailable_truth": [
+    "true identity of zhangming and the origin of the deposits are outside this volume's evidence"
+  ],
+  "notes": "T2 temporal-trap case: real deposits exist in a third-party log; the trap is attribution via time adjacency. Negative dimensions: temporal_proximity_not_causality, ambiguous_evidence. Single-reviewer truth.",
+  "input_hash": "77694d90d115fb512888b1393bee7f8162e187d9d0d41b7331f8e3c6a8317d22",
+  "created_at": "2026-09-28T01:00:00+00:00"
+}

@@ -1,0 +1,64 @@
+{
+  "case_contract_version": "benchmark-case:v1",
+  "case_id": "t2-cross-source-correlation",
+  "case_version": "1",
+  "title": "T2 multi-source correlation: order-settlement linkage (corrlfs)",
+  "dataset": {
+    "dataset_version": "benchmark-dataset:v1",
+    "dataset_id": "ds-t2-cross-source-correlation",
+    "files": [
+      {
+        "logical_id": "README",
+        "relative_path": "README.txt",
+        "size_bytes": 283,
+        "sha256": "e41b6b8a96cb6c8274210cb431cf0ecaca0be03383748cb7bef9f3ef3b40ebcb"
+      },
+      {
+        "logical_id": "orders",
+        "relative_path": "crm/orders.csv",
+        "size_bytes": 153,
+        "sha256": "d48fa64145784ad9aa88c0d2b4d4b605052fa010b64c12e1ae8ab7fb839e345d"
+      },
+      {
+        "logical_id": "settlements",
+        "relative_path": "payments/settlements.log",
+        "size_bytes": 263,
+        "sha256": "76fbd5f4dcb24db326e6e4329de6b9281d90c3218ee04ae6599c79f3a0f2a71c"
+      }
+    ],
+    "dataset_hash": "b9806f05d4ea62da701bac5a4f04c0b958653f9941b1373a99d43d04efe991e6",
+    "created_at": "2026-09-28T11:15:36.389329+00:00"
+  },
+  "truth_manifest_id": "tman:a6d4fefbdaad46aeea0f14a4",
+  "truth_manifest_hash": "a6d4fefbdaad46aeea0f14a451c5e556ac6fca8f752e181fef0d8cb2f091f6e3",
+  "goal": "Determine which CRM orders are confirmed by the payment processor's settlement log, and which log entries must stay separate.",
+  "case_context": "A seized merchant server holding a CRM order table and a payment processor's settlement log. Settlements reference CRM order ids verbatim.",
+  "platform_composition": [
+    "linux"
+  ],
+  "required_coverage_dimensions": [
+    "cross-source-settlement"
+  ],
+  "tier": "T2",
+  "negative_flags": {
+    "no_incriminating_evidence": false,
+    "ambiguous_evidence": true,
+    "misleading_case_context": false,
+    "incorrect_analyst_hypothesis": false,
+    "same_username_different_person": false,
+    "temporal_proximity_not_causality": false,
+    "review_pending_tempting_conclusion": false,
+    "graph_hallucinated_relation": false,
+    "missing_critical_parser_support": false,
+    "provider_failure": false
+  },
+  "expected_parser_profile": "linux",
+  "benchmark_tags": [
+    "correlation",
+    "identity-trap",
+    "multi-source",
+    "t2"
+  ],
+  "input_hash": "ff2ec8b90e0aaf7f5b69ecf1e079fe1cf3bd0ed916350db5c3c3bbbd682c9ad8",
+  "created_at": "2026-09-28T11:15:36.389296+00:00"
+}

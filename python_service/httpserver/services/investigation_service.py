@@ -22,12 +22,17 @@ import logging
 import os
 import re
 import sqlite3
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, Field, field_validator
 
 from .claim_provenance_reader import ClaimProvenanceReader
+from .evidence.content_store import (
+    ContentUnavailableError,
+    TaskContentStore,
+)
 from .evidence.exceptions import EvidenceStoreError
 from .investigation_errors import ClaimProvenanceNotFound, PublicationReadError
 from .investigation_evidence import (
@@ -185,6 +190,27 @@ def extract_json_payload(text: str) -> str:
 # Service
 # ============================================================================
 
+@dataclass
+class _ResolvedContentRef:
+    """Minimal file-evidence view consumed by the durable content store."""
+
+    task_id: str
+    evidence_type: str
+    metadata: Dict[str, Any]
+    source_files_db: Optional[str]
+    content_path: Optional[str]
+
+    @classmethod
+    def from_dict(cls, resolved: Dict[str, Any]) -> "_ResolvedContentRef":
+        return cls(
+            task_id=str(resolved.get("task_id") or ""),
+            evidence_type=str(resolved.get("evidence_type") or "file"),
+            metadata=dict(resolved.get("metadata") or {}),
+            source_files_db=resolved.get("source_files_db"),
+            content_path=resolved.get("content_path"),
+        )
+
+
 class InvestigationService:
     """Business logic for the investigation workbench."""
 
@@ -202,8 +228,20 @@ class InvestigationService:
         self._persistence_cache: Dict[str, InvestigationPersistence] = {}
         self._recoveries: set[str] = set()
         self._bootstrap_locks: Dict[str, asyncio.Lock] = {}
+        # Durable content backing (evidence content hydration contract v1):
+        # lazy verified adoption / deterministic reacquisition for parsed
+        # File Evidence whose bytes are not already on disk.
+        self._content_store = (
+            TaskContentStore(cpp_backend) if cpp_backend is not None else None
+        )
         self._evidence_resolver = EvidenceResolver(
-            self._get_task_info, content_reader=self._extract_file_text
+            self._get_task_info,
+            content_reader=self._extract_file_text,
+            content_provider=(
+                self._content_store.locate_for_resolved
+                if self._content_store is not None
+                else None
+            ),
         )
         self._report_dataset_builder = ReportDatasetBuilder(
             self._get_task_info, self._evidence_resolver
@@ -254,20 +292,28 @@ class InvestigationService:
         being destroyed.
         """
         import os
-        from .investigation.repository import InvestigationMigrationRequiredError, InvestigationRepository
+        from .investigation.repository import (
+            SUPPORTED_SCHEMA_VERSION,
+            InvestigationMigrationRequiredError,
+            InvestigationRepository,
+        )
 
         if not os.path.exists(db_path):
-            InvestigationRepository(db_path, task_id)  # builds v7 atomically
+            InvestigationRepository(db_path, task_id)  # builds current schema atomically
             return
         conn = sqlite3.connect(db_path)
         try:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
         finally:
             conn.close()
-        if version == 7 or (os.environ.get("TRACELENS_REQUIRE_RELEASE_LAYOUT") == "1" and version != 8):
+        if version == 7 and os.environ.get("TRACELENS_REQUIRE_RELEASE_LAYOUT") == "1":
             raise InvestigationMigrationRequiredError(
-                "MIGRATION_REQUIRED: 历史调查库仅可读；请先备份并完成受控 v8 迁移")
-        if version == 8:
+                "MIGRATION_REQUIRED: 历史调查库仅可读；请先备份并完成受控迁移")
+        if version in (7, 8, 9, 10, 11, 12, 13, 14, 15):
+            # Additive repository migration (v7..v15 -> current), then re-check.
+            InvestigationRepository(db_path, task_id, allow_v7_upgrade=True)
+            version = SUPPORTED_SCHEMA_VERSION
+        if version == SUPPORTED_SCHEMA_VERSION:
             self._create_recovery_aux_table(db_path)
             return
         if version != 3:
@@ -964,7 +1010,12 @@ class InvestigationService:
             return ""
 
     async def _extract_file_text(self, file_path: str) -> str:
-        """Extract readable text via document extractor, fallback raw read."""
+        """Extract readable text via document extractor, fallback raw read.
+
+        The raw fallback uses the audited deterministic decode chain
+        (UTF-8 → GB18030 → replacement) with an explicit binary refusal —
+        never a silent lossy decode (content hydration contract §19/§20).
+        """
         try:
             from .document_extractor import get_document_extractor_locator
             locator = get_document_extractor_locator()
@@ -974,9 +1025,15 @@ class InvestigationService:
                 return content[:MAX_CONTENT_CHARS]
         except Exception as exc:
             logger.warning("[Investigation] extractor failed for %s: %s", file_path, exc)
+        from .evidence.content_store import ContentUnavailableError, decode_bounded_text
+
         try:
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as fh:
-                return fh.read(MAX_CONTENT_CHARS)
+            text, _encoding = decode_bounded_text(file_path, MAX_CONTENT_CHARS)
+            return text
+        except ContentUnavailableError as exc:
+            if exc.reason == "CONTENT_UNSUPPORTED_TYPE":
+                return ""
+            raise RuntimeError(f"无法读取证据文件内容: {exc}") from exc
         except OSError as exc:
             raise RuntimeError(f"无法读取证据文件内容: {exc}") from exc
 
@@ -1008,6 +1065,21 @@ class InvestigationService:
             content = ""
             if resolved.get("evidence_type") == "event_cluster":
                 content = str(resolved.get("content") or "")[:MAX_CONTENT_CHARS]
+            elif self._content_store is not None:
+                # durable backing: verified adoption / deterministic
+                # reacquisition (evidence content hydration contract v1)
+                try:
+                    located = await self._content_store.locate_for_resolved(
+                        _ResolvedContentRef.from_dict(resolved)
+                    )
+                    content = await self._extract_file_text(located.path)
+                except ContentUnavailableError as exc:
+                    logger.warning(
+                        "[Investigation] evidence content unavailable (%s): %s "
+                        "(continuing with metadata and snapshot)",
+                        exc.reason,
+                        file_path,
+                    )
             elif content_path and os.path.exists(content_path):
                 content = await self._extract_file_text(content_path)
             else:

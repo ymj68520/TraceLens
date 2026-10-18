@@ -1,0 +1,8 @@
+[14:52:53] watch0: 14:52:54 probe0: HTTP 429 {"error":{"message":"inference exceeds tpm/rpm limit","type":"rate_limit_error","code":"RateLimitExceeded.EndpointTPMExceeded"}}
+[14:57:54] watch1: 14:57:54 probe0: HTTP 429 {"error":{"message":"inference exceeds tpm/rpm limit","type":"rate_limit_error","code":"RateLimitExceeded.EndpointTPMExceeded"}}
+[15:02:54] watch2: 15:02:55 probe0: HTTP 429 {"error":{"message":"inference exceeds tpm/rpm limit","type":"rate_limit_error","code":"RateLimitExceeded.EndpointTPMExceeded"}}
+[15:07:55] watch3: 15:07:55 probe0: HTTP 429 {"error":{"message":"inference exceeds tpm/rpm limit","type":"rate_limit_error","code":"RateLimitExceeded.EndpointTPMExceeded"}}
+[15:12:55] watch4: 15:12:56 probe0: OK (1.0s) model=deepseek-flash
+[15:17:56] watch5: 15:17:56 probe0: HTTP 429 {"error":{"message":"inference exceeds tpm/rpm limit","type":"rate_limit_error","code":"RateLimitExceeded.EndpointRPMExceeded"}}
+[15:22:56] watch6: 15:22:57 probe0: OK (1.0s) model=deepseek-flash
+[15:27:57] watch7: 15:27:58 probe0: HTTP 429 {"error":{"message":"inference exceeds tpm/rpm limit","type":"rate_limit_error","code":"RateLimitExceeded.EndpointTPMExceeded"}}

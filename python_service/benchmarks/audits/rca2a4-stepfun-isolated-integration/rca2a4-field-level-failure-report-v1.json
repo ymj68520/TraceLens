@@ -1,0 +1,111 @@
+{
+  "artifact_version": "RCA2A4FieldLevelFailureReportV1",
+  "created_at": "2026-10-15T03:10:00+00:00",
+  "experiment_id": "rca2a4-stepfun-isolated-integration",
+  "baseline_commit": "3ad0dcf531975a4133f0e75b9d93f118967e4842",
+  "provider_and_identity": {
+    "provider": "stepfun (historical frozen official endpoint)",
+    "requested_model": "step-3.7-flash",
+    "returned_model_per_response": "step-3.7-flash (2/2 responses, identity sink)",
+    "identity_exact": true,
+    "openrouter_routing": "disabled/not used",
+    "function_model_injection": "none (original production factory verified; no harness sitecustomize; PYTHONPATH clean)"
+  },
+  "disposition": "INTEGRATE_FIELD_LEVEL_FAILURE_IDENTIFIED",
+  "headline": "FIRST INTEGRATE-position field-level evidence of the whole RCA-2A track: on this sample the historical INTEGRATE output-validation failure layer is a STATUS-VOCABULARY error. Attempt 2's raw output-tool payload differs from a fully legal SupervisorIntegrationDecisionV2 by exactly ONE field value — to_status='completed' (not in the frozen QuestionStatus enum). Deterministic minimal-repair witness: substituting the legal value 'unresolved' (or 'answered') makes the whole payload VALID.",
+
+  "invocation_accounting": {
+    "scheduled_stage_invocations": 1,
+    "executed_stage_invocations": 1,
+    "reexecuted": false,
+    "plan_model_calls": 0,
+    "specialist_model_calls": 0,
+    "model_request_count": 2,
+    "attempt_breakdown": "attempt 1 (initial) + attempt 2 (one in-band output retry, frozen budget) — both outputs RECEIVED and recorded",
+    "model_output_failure_count": 1,
+    "raw_validation_error_counts": {"attempt_1": 72, "attempt_2": 46},
+    "union_branch_error_groups": {
+      "explanation": "one payload -> cascading errors across ALL 10 union branches (non-discriminated union); branch errors do NOT imply the model attempted those actions",
+      "attempt_1_union_branches_reporting": 10,
+      "attempt_2_union_branches_reporting": 10,
+      "genuinely_attempted_action": "update_question (proven by RAW args on both attempts, not inferred from branch errors)"
+    },
+    "token_usage": {
+      "attempt_1": {"input_tokens": 1346, "output_tokens": 1104},
+      "attempt_2": {"input_tokens": 8425, "output_tokens": 1485},
+      "total_input_tokens": 9771,
+      "total_output_tokens": 2589
+    },
+    "timeouts": 0
+  },
+
+  "attempt_1_raw_output_tool_payload": {
+    "tool_name": "final_result",
+    "action": {
+      "action_type": "update_question",
+      "handle": "Q1",
+      "status": "completed",
+      "investigated_summary": "Specialist investigation completed with no analyzable evidence of unauthorized logons found; no fraud-related activity detected.",
+      "limitations": ["no analyzable evidence of the queried activity"],
+      "disposition": "no_evidence_found"
+    },
+    "genuine_defects_in_model_output": [
+      {"defect": "WRONG_FIELD_NAME: 'handle' instead of 'question_handle'", "schema_consequence": "extra_forbidden(handle) + missing(question_handle) in the update_question branch"},
+      {"defect": "WRONG_FIELD_NAME: 'status' instead of 'to_status'", "schema_consequence": "extra_forbidden(status) + missing(to_status)"},
+      {"defect": "INVALID_ENUM: disposition='no_evidence_found' not in QuestionDisposition {supported,not_supported,inconclusive,unavailable,not_applicable}", "schema_consequence": "enum error"}
+    ],
+    "legal_fields": ["action_type", "investigated_summary", "limitations"]
+  },
+
+  "attempt_2_raw_output_tool_payload": {
+    "tool_name": "final_result",
+    "action": {
+      "action_type": "update_question",
+      "question_handle": "Q1",
+      "to_status": "completed",
+      "disposition": "not_supported"
+    },
+    "genuine_defects_in_model_output": [
+      {"defect": "INVALID_ENUM: to_status='completed' not in QuestionStatus {open,in_progress,answered,unresolved,blocked,deferred,superseded}", "schema_consequence": "enum error — the ONLY genuine defect of attempt 2"}
+    ],
+    "legal_fields": ["action_type", "question_handle", "disposition"],
+    "minimal_repair_witness": "replacing to_status with 'unresolved' (or 'answered') validates the ENTIRE payload — deterministic, reproduced offline against the frozen schema"
+  },
+
+  "terminal_validation_note": "the production sink records only the terminal (retry-exhausted) validation errors; the recording model proxy additionally captured EVERY attempt's raw output-tool args — TERMINAL_VALIDATION_ERROR_ONLY does NOT apply to this experiment (full per-attempt observability achieved)",
+
+  "q1_action_union": {
+    "attempted_action": "update_question — proven by raw args on BOTH attempts (action_type='update_question' in the emitted payload)",
+    "branch_errors_are_not_intent": "72/46 raw errors span all 10 branches purely from non-discriminated-union cascading; no inference of other actions was made"
+  },
+  "q2_enum": {
+    "observed": ["enum on to_status (attempt 2, value 'completed')", "enum on disposition (attempt 1, value 'no_evidence_found')"],
+    "fields": ["to_status (QuestionStatus)", "disposition (QuestionDisposition)"]
+  },
+  "q3_extra_fields": {
+    "observed": ["'handle'", "'status' (attempt 1 only)"],
+    "classification": "wrong-variant/abbreviated field names invented by the model — NOT server-owned identity, NOT cross-variant contamination",
+    "confidence": "DIRECT (raw args), not UNKNOWN"
+  },
+  "q4_missing_fields": {
+    "attempt_1": "question_handle + to_status missing BECAUSE the model used abbreviated names — a naming error, not an omission of intent",
+    "attempt_2": "none — all required operands present"
+  },
+  "q5_handle": {
+    "format": "'Q1' is format-correct (^Q\\d+$) on both attempts — no INVALID_HANDLE_SHAPE",
+    "binding": "Q1 resolves in the frozen binding table; the resolver was never reached (pydantic layer failed first) but the handle would have bound",
+    "no_auto_repair": "nothing was repaired or substituted"
+  },
+  "q6_retry": {
+    "exhausted": true,
+    "feedback_effectiveness": "PARTIAL SELF-CORRECTION OBSERVED — attempt 2 fixed both abbreviated field names (handle->question_handle, status->to_status) and dropped noisy fields, proving the retry feedback carries usable field-level information; the model still could not produce the legal QuestionStatus vocabulary",
+    "budget_unchanged": "frozen output_retry_budget=1; exactly 2 model requests"
+  },
+  "q7_rca2a1_proposal_relevance": [
+    {"defect": "to_status INVALID_ENUM ('completed')", "rating": "NOT_ADDRESSED_BY_PROPOSAL", "basis": "the Strict+CompactTyped unified envelope freezes per-kind status enums at the resolver with the SAME accepted values; schema narrowing does not change the value vocabulary the model must produce"},
+    {"defect": "abbreviated operand name 'handle' (attempt 1)", "rating": "LIKELY_ADDRESSED_BY_PROPOSAL", "basis": "the unified update envelope names its operand field 'handle' with the kind inferred from the handle prefix — that exact field name becomes legal"},
+    {"defect": "abbreviated status name 'status' (attempt 1)", "rating": "UNKNOWN", "basis": "the unified envelope still names the status field to_status; whether the model would abbreviate it again cannot be established from one sample"},
+    {"defect": "disposition INVALID_ENUM ('no_evidence_found')", "rating": "NOT_ADDRESSED_BY_PROPOSAL", "basis": "same vocabulary argument as to_status"}
+  ],
+  "explicitly_not_claimed": "no failure-rate reduction estimate is made; one sample cannot establish model compatibility or incompatibility in general; the historical StepFun NOT_QUALIFIED_SCREENING artifacts remain the authoritative qualification record and are unchanged"
+}

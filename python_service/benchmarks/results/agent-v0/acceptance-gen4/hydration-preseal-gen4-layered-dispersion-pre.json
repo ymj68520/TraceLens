@@ -1,0 +1,290 @@
+{
+  "case_id": "gen4-layered-dispersion",
+  "task_id": "8662620d-c6fa-4166-9831-d6d299958435",
+  "world_digest": "82145b5cfb682925025aa767c21c97a6fb3d7907f580fc0dc7780bb5ac9500fa",
+  "sealed_world_digest": "82145b5cfb682925025aa767c21c97a6fb3d7907f580fc0dc7780bb5ac9500fa",
+  "parsed_world": {
+    "files_rows": [
+      {
+        "path": "/README.txt",
+        "name": "README.txt",
+        "size": 339,
+        "category": "Log Files",
+        "mtime": 1740787200,
+        "ctime": 1740787200,
+        "is_deleted": 0,
+        "md5": "",
+        "inode": 16
+      },
+      {
+        "path": "/bank/transfer-records.csv",
+        "name": "transfer-records.csv",
+        "size": 831,
+        "category": "Documents",
+        "mtime": 1740787200,
+        "ctime": 1740787200,
+        "is_deleted": 0,
+        "md5": "",
+        "inode": 17
+      },
+      {
+        "path": "/chat/group-instructions.txt",
+        "name": "group-instructions.txt",
+        "size": 448,
+        "category": "OS Config Files",
+        "mtime": 1740787200,
+        "ctime": 1740787200,
+        "is_deleted": 0,
+        "md5": "",
+        "inode": 18
+      },
+      {
+        "path": "/docs/rental-agreement.txt",
+        "name": "rental-agreement.txt",
+        "size": 156,
+        "category": "Log Files",
+        "mtime": 1740787200,
+        "ctime": 1740787200,
+        "is_deleted": 0,
+        "md5": "",
+        "inode": 20
+      },
+      {
+        "path": "/notes/card-worksheet.txt",
+        "name": "card-worksheet.txt",
+        "size": 280,
+        "category": "Log Files",
+        "mtime": 1740787200,
+        "ctime": 1740787200,
+        "is_deleted": 0,
+        "md5": "",
+        "inode": 19
+      }
+    ],
+    "events_rows": [
+      {
+        "timestamp": 1740787200,
+        "event_type": "MODIFIED",
+        "file_path": "/README.txt",
+        "inode": 16,
+        "event_source": "FILE_SYSTEM",
+        "system_context": ""
+      },
+      {
+        "timestamp": 1740787200,
+        "event_type": "MODIFIED",
+        "file_path": "/bank/transfer-records.csv",
+        "inode": 17,
+        "event_source": "FILE_SYSTEM",
+        "system_context": ""
+      },
+      {
+        "timestamp": 1740787200,
+        "event_type": "MODIFIED",
+        "file_path": "/chat/group-instructions.txt",
+        "inode": 18,
+        "event_source": "FILE_SYSTEM",
+        "system_context": ""
+      },
+      {
+        "timestamp": 1740787200,
+        "event_type": "MODIFIED",
+        "file_path": "/docs/rental-agreement.txt",
+        "inode": 20,
+        "event_source": "FILE_SYSTEM",
+        "system_context": ""
+      },
+      {
+        "timestamp": 1740787200,
+        "event_type": "MODIFIED",
+        "file_path": "/notes/card-worksheet.txt",
+        "inode": 19,
+        "event_source": "FILE_SYSTEM",
+        "system_context": ""
+      },
+      {
+        "timestamp": 1790893917,
+        "event_type": "CREATED",
+        "file_path": "/README.txt",
+        "inode": 16,
+        "event_source": "FILE_SYSTEM",
+        "system_context": ""
+      },
+      {
+        "timestamp": 1790893917,
+        "event_type": "CREATED",
+        "file_path": "/bank/transfer-records.csv",
+        "inode": 17,
+        "event_source": "FILE_SYSTEM",
+        "system_context": ""
+      },
+      {
+        "timestamp": 1790893917,
+        "event_type": "CREATED",
+        "file_path": "/chat/group-instructions.txt",
+        "inode": 18,
+        "event_source": "FILE_SYSTEM",
+        "system_context": ""
+      },
+      {
+        "timestamp": 1790893917,
+        "event_type": "CREATED",
+        "file_path": "/docs/rental-agreement.txt",
+        "inode": 20,
+        "event_source": "FILE_SYSTEM",
+        "system_context": ""
+      },
+      {
+        "timestamp": 1790893917,
+        "event_type": "CREATED",
+        "file_path": "/notes/card-worksheet.txt",
+        "inode": 19,
+        "event_source": "FILE_SYSTEM",
+        "system_context": ""
+      }
+    ],
+    "evidence_keys": [
+      "file:/README.txt",
+      "file:/bank/transfer-records.csv",
+      "file:/chat/group-instructions.txt",
+      "file:/docs/rental-agreement.txt",
+      "file:/notes/card-worksheet.txt"
+    ],
+    "indexed_paths": [
+      "/README.txt",
+      "/bank/transfer-records.csv",
+      "/chat/group-instructions.txt",
+      "/docs/rental-agreement.txt",
+      "/notes/card-worksheet.txt"
+    ]
+  },
+  "first_read": {
+    "task_id": "8662620d-c6fa-4166-9831-d6d299958435",
+    "items": [
+      {
+        "evidence_key": "file:/README.txt",
+        "resolved": true,
+        "provenance": "reacquired",
+        "persisted": true,
+        "sha256": "75b36722788a5de9f9fe49a789158f2ce808fe6e3f584aaea007737a915fd525",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 339
+      },
+      {
+        "evidence_key": "file:/bank/transfer-records.csv",
+        "resolved": true,
+        "provenance": "reacquired",
+        "persisted": true,
+        "sha256": "3fc04d419451978aba673bf909f830168e6cbbda4fb1a9df6a0eabf4c4e99767",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 715
+      },
+      {
+        "evidence_key": "file:/chat/group-instructions.txt",
+        "resolved": true,
+        "provenance": "reacquired",
+        "persisted": true,
+        "sha256": "426ffa0ba679401aa7b0bdd8f2282db95b1e7fdf660d2a3c7ddd185346d81ccd",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 226
+      },
+      {
+        "evidence_key": "file:/docs/rental-agreement.txt",
+        "resolved": true,
+        "provenance": "reacquired",
+        "persisted": true,
+        "sha256": "b198535b2efd145f0ffd1ccd842f412c74d28692de945fb072c8ce9e067bae24",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 82
+      },
+      {
+        "evidence_key": "file:/notes/card-worksheet.txt",
+        "resolved": true,
+        "provenance": "reacquired",
+        "persisted": true,
+        "sha256": "9e96d007ce9f8615788a9a23640e74055a97516f3eac9278b6bcd4b6dc93e723",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 170
+      }
+    ]
+  },
+  "second_read": {
+    "task_id": "8662620d-c6fa-4166-9831-d6d299958435",
+    "items": [
+      {
+        "evidence_key": "file:/README.txt",
+        "resolved": true,
+        "provenance": "locator",
+        "persisted": true,
+        "sha256": "75b36722788a5de9f9fe49a789158f2ce808fe6e3f584aaea007737a915fd525",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 339
+      },
+      {
+        "evidence_key": "file:/bank/transfer-records.csv",
+        "resolved": true,
+        "provenance": "locator",
+        "persisted": true,
+        "sha256": "3fc04d419451978aba673bf909f830168e6cbbda4fb1a9df6a0eabf4c4e99767",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 715
+      },
+      {
+        "evidence_key": "file:/chat/group-instructions.txt",
+        "resolved": true,
+        "provenance": "locator",
+        "persisted": true,
+        "sha256": "426ffa0ba679401aa7b0bdd8f2282db95b1e7fdf660d2a3c7ddd185346d81ccd",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 226
+      },
+      {
+        "evidence_key": "file:/docs/rental-agreement.txt",
+        "resolved": true,
+        "provenance": "locator",
+        "persisted": true,
+        "sha256": "b198535b2efd145f0ffd1ccd842f412c74d28692de945fb072c8ce9e067bae24",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 82
+      },
+      {
+        "evidence_key": "file:/notes/card-worksheet.txt",
+        "resolved": true,
+        "provenance": "locator",
+        "persisted": true,
+        "sha256": "9e96d007ce9f8615788a9a23640e74055a97516f3eac9278b6bcd4b6dc93e723",
+        "matches_sealed": true,
+        "content_available": true,
+        "content_unavailable_reason": null,
+        "preview_chars": 170
+      }
+    ]
+  },
+  "checks": {
+    "world_digest_matches_sealed": true,
+    "all_resolved": true,
+    "first_read_reacquired": true,
+    "second_read_locator": true,
+    "all_sha256_match_sealed": true,
+    "content_available_explicit": true
+  },
+  "pre_status": "PASS"
+}

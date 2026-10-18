@@ -1,0 +1,30 @@
+{
+  "record_version": "model-validation-record:v1",
+  "endpoint_class": "cloud",
+  "api": "OpenAI-compatible chat completions",
+  "provider_base_url": "https://api.hcnsec.cn",
+  "model_id": "MiMo-V2.6-Flash",
+  "api_reported_model": "self-dploy/MiMo-V2.6-Flash",
+  "qualified_at": "2026-09-27T12:31:56.431295+00:00",
+  "text_smoke": {
+    "plain_text": "pass",
+    "tool_calling": "pass (2-request round trip, tool result honored)",
+    "structured_output_json_object": "pass (pydantic-ai output_type validated)",
+    "usage_metadata": "available (requests/input_tokens/output_tokens)"
+  },
+  "vision_smoke": {
+    "image_input": "pass (HTTP 200, response produced)",
+    "note": "vision endpoint shares the chat-completions path with the text model; NO vision case exists in the current corpus, so vision is NOT_USED_BY_CURRENT_ACCEPTANCE_CORPUS"
+  },
+  "adapter_notes": "LLM_THINKING_MODE=disabled maps to openai_reasoning_effort=none on the pydantic-ai chat path (thinking body field rejected by this endpoint with 400 unsupported_parameter; fixed in dbb1cb30).",
+  "settings_snapshot": {
+    "llm_text_model": "MiMo-V2.6-Flash",
+    "llm_text_base_url": "https://api.hcnsec.cn",
+    "llm_endpoint": "/v1/chat/completions",
+    "llm_text_max_tokens": 16384,
+    "llm_text_temperature": 0.7,
+    "llm_timeout_seconds": 120,
+    "llm_thinking_mode": "disabled",
+    "llm_api_key": "<redacted>"
+  }
+}

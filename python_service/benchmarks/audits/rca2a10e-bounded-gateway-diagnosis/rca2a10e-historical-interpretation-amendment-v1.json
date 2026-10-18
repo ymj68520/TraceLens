@@ -1,0 +1,20 @@
+{
+  "artifact_version": "RCA2A10eHistoricalInterpretationAmendmentV1",
+  "experiment_id": "rca2a10e-bounded-gateway-diagnosis",
+  "created_at_utc": "2026-10-16T06:04:46.170794+00:00",
+  "actual_request_size_breakdown": {
+    "instructions_chars": 3113,
+    "instructions_utf8_bytes": 3117,
+    "tool_schema_chars": 7616,
+    "tool_schema_utf8_bytes": 7616,
+    "serialized_http_body_bytes": 11257,
+    "reconciliation_note": "Previous report stated ~11.5 KB by summing mismatched components. Actual serialized HTTP body length is exactly 11257 bytes."
+  },
+  "root_cause_classification_amendment": {
+    "General_V2_Tool_Incompatibility": "NOT_SUPPORTED_BY_EXISTING_PREFLIGHT",
+    "Schema_Plus_Full_Context_Interaction_Failure": "NOT_EXCLUDED",
+    "Client_Side_Configured_Timeout": "NOT_SUPPORTED_BY_17.97S_FAILURE",
+    "Gateway_Internal_Timeout": "NOT_EXCLUDED",
+    "Underlying_Root_Cause": "UNKNOWN"
+  }
+}

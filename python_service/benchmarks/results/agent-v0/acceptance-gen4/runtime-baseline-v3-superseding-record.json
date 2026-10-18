@@ -1,0 +1,38 @@
+{
+  "artifact_version": "AgentV0RuntimeBaselineV3SupersedingRecord",
+  "created_at": "2026-10-01T22:21:15+00:00",
+  "supersedes_hash_of": "agent-v0-runtime-baseline-v3.json frozen_at_commit 09c74e96 (baseline artifact itself unchanged and still current)",
+  "measured_runtime_commit": "1b6c0a88",
+  "measured_runtime_head_at_series": {
+    "qualification_canary": "1b6c0a88 tree (commit landed before canary launch)",
+    "b2_24_run_series": "985f09e1 tree (production files identical to 1b6c0a88 — verified by empty diff 1b6c0a88..d591a3ff on httpserver/src/config)"
+  },
+  "changed_components": [
+    "content_store",
+    "hydration_contract_doc",
+    "runtime_baseline_v3"
+  ],
+  "production_code_deltas": [
+    "content_store"
+  ],
+  "freeze_artifacts_not_production": [
+    "hydration_contract_doc",
+    "runtime_baseline_v3"
+  ],
+  "change_classification": {
+    "e021ee04": "§2 Case B measurement instrumentation: additive in-memory hydration telemetry (read-only observability) + driver --no-dataset-staging flag; no Agent-visible input, decision, tool, or hydration semantics change; covered by the 75-test evidence unit suite",
+    "1b6c0a88": "§2 Case C production defect fix in content_store.py: locator-column migration race (duplicate ALTER) and shared blob .tmp staging race; both defects were loss-causing concurrency bugs whose fix is required for the frozen §48 hydration invariant to hold under concurrent hydration; committed BEFORE the qualification canary AND before all 24 B2 runs; every measurement artifact (preflight hashes, run manifests, result hashes) was produced on this exact content_store content"
+  },
+  "timing_proof": {
+    "race_fix_committed_before_qualification": true,
+    "race_fix_committed_before_b2": true,
+    "production_delta_after_race_fix_through_head": "none (git diff 1b6c0a88..HEAD on httpserver/src/config is empty)",
+    "conclusion": "qualification canary and the full B2 series exercised the superseded (measured) runtime; no mid-series change; B2 remains MEASUREMENT_VALID"
+  },
+  "binding": {
+    "runtime_baseline": "AgentV0RuntimeBaselineV3 (artifact unchanged)",
+    "measured_content_store_sha256": "sha256:a85048ba1cb8e50764e462f2fc815d3e5228afc350c02e053dee5b06867fc809",
+    "measured_investigation_subtree": "2913506cb862f868a079b7dc9c57dd1e3d2d386a",
+    "head_investigation_subtree": "2913506cb862f868a079b7dc9c57dd1e3d2d386a"
+  }
+}

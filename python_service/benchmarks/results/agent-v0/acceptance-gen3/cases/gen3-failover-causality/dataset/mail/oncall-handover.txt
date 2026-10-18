@@ -1,0 +1,1 @@
+03:12 handover note: failover drill finished; EDGE-GW latency back under threshold at 03:09:48. Note for the morning review: the first latency alert (02:41) fired BEFORE the drill window opened (02:55). Root cause review is scheduled separately.

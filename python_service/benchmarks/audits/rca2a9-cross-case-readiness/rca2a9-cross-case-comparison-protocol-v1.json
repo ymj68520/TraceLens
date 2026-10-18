@@ -1,0 +1,54 @@
+{
+  "artifact_version": "RCA2A9CrossCaseComparisonProtocolV1",
+  "baseline_commit": "7ea26f627e6197216bffdee3ead12ddc1cd78062",
+  "experimental_scope": {
+    "candidate_pairs_per_scenario": 1,
+    "eligible_scenarios": [
+      "t2-no-evidence",
+      "t2-temporal-trap",
+      "t2-identity-trap"
+    ],
+    "max_diagnostic_http_attempts": 48,
+    "max_logical_model_generations": 16,
+    "preflight_http_attempts_upper_bound": 9,
+    "preflight_logical_requests": 3,
+    "pydantic_output_retry_budget_per_invocation": 1,
+    "stage_invocations_budget": 8,
+    "stage_limited_scenarios": [
+      {
+        "classification": "REPORT_CITATION_STAGE_LIMITED",
+        "reason": "Report Evidence Admission and Publication occur in EVALUATE / Finalization, outside INTEGRATE stage scope.",
+        "scenario_id": "t2-report-citation"
+      }
+    ]
+  },
+  "generated_at": "2026-10-15T14:32:08Z",
+  "order_and_balance": {
+    "strategy": "Pre-registered balanced sequence; independent physical SQLite stores per arm; zero live LLM requests permitted until explicit authorization."
+  },
+  "pre_registered_outcomes": {
+    "dual_primary_metrics": [
+      "canonical_integration_valid",
+      "semantic_adequacy"
+    ],
+    "paired_classification": [
+      "TREATMENT_WIN",
+      "CONTROL_WIN",
+      "BOTH_VALID",
+      "BOTH_INVALID",
+      "INCOMPLETE_PAIR"
+    ],
+    "secondary_metrics": [
+      "pydantic_parse_success",
+      "state_transition_valid",
+      "grounding_validity",
+      "question_closure_correctness",
+      "unsupported_claims",
+      "investigative_information_value",
+      "token_usage",
+      "latency",
+      "output_retry_exhaustion"
+    ]
+  },
+  "status": "PROPOSED_NOT_AUTHORIZED"
+}

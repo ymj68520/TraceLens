@@ -1,0 +1,7 @@
+{
+ "substrate_id": "sub-gen3-ledger-identity",
+ "image_sha256": "5202a1513e3b6c55d68a9226817f3f51e2073720d1b46ce7a366a85d65f565a0",
+ "actual_parsed_evidence_world_digest": "6faa0265df5ddccde7de4cb1ce6994e64eba4ba96c8672373d48568736216d15",
+ "expected_sealed_evidence_world_digest": "6faa0265df5ddccde7de4cb1ce6994e64eba4ba96c8672373d48568736216d15",
+ "match": true
+}

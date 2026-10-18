@@ -1,0 +1,37 @@
+{
+ "manifest_version": "sealed-evidence-manifest:v1",
+ "case_id": "gen3-failover-causality",
+ "entries": [
+  {
+   "normalized_path": "/README.txt",
+   "size_bytes": 251,
+   "sha256": "dc27c0ef479ee8762285a14a09f9f790805b7eb013d882e76d90242dd72dd97e",
+   "expected_evidence_key": "file:/README.txt",
+   "category": "Log Files"
+  },
+  {
+   "normalized_path": "/change/maintenance-record.txt",
+   "size_bytes": 165,
+   "sha256": "e6dcdf4eaca5447c004981506f63719b73bd52182c4e229573736fccf6a842ad",
+   "expected_evidence_key": "file:/change/maintenance-record.txt",
+   "category": "Log Files"
+  },
+  {
+   "normalized_path": "/mail/oncall-handover.txt",
+   "size_bytes": 246,
+   "sha256": "0dfafb5888b97a3a49eecd301e389dc7df0fd5897c39f2e61388d93ef1d62a73",
+   "expected_evidence_key": "file:/mail/oncall-handover.txt",
+   "category": "Log Files"
+  },
+  {
+   "normalized_path": "/monitor/latency-alerts.log",
+   "size_bytes": 270,
+   "sha256": "34629b40507e385c0651d1f34fa06e7465e0defa48cecf29f458707d342cb52e",
+   "expected_evidence_key": "file:/monitor/latency-alerts.log",
+   "category": "Log Files"
+  }
+ ],
+ "extra_evidence_policy": "fail_unless_allowlisted",
+ "allowlisted_non_semantic_patterns": [],
+ "input_hash": "d55475d0caa783307605cf3b4761faa7186d165337b3c6d0aa9969de3149c5ab"
+}

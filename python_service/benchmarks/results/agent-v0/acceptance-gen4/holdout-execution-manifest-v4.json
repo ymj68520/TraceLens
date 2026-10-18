@@ -1,0 +1,80 @@
+{
+  "artifact_version": "HoldoutExecutionManifestV4",
+  "generation_id": "acceptance-generation-4",
+  "authorization": "Gen-4 B6 FINAL SEALED HOLDOUT EXECUTION (explicit user directive; generation ADMITTED_FOR_B6 with execution_count = 0)",
+  "acceptance_profile": "benchmarks/profiles/agent-v0-acceptance-profile-v2.json",
+  "preflight_input_hash": "be9d5a940439045158157e3ca0c9534dbb8a0f7c295c7949495e73c071f079e9",
+  "seal_hash": "1c0f685e7a3f4e4079b0a0ca22c72e3ae9e4d276c9937a53b8fdecda3e7906ed",
+  "frozen_inputs_ref": "gen4-b6-frozen-inputs-v1.json",
+  "frozen_inputs_input_hash": "89c015ed06a6e2e570f4c5a6455fda65093b443dd776b34e2b34bdfb3b46dd29",
+  "model_config_file": "benchmarks/results/agent-v0/acceptance-gen4/gen4-model-config.json",
+  "population": {
+    "families": [
+      "gen4-departure-staging",
+      "gen4-layered-dispersion"
+    ],
+    "repetitions_per_family": 3,
+    "scheduled_runs": 6,
+    "fresh_state_per_attempt": true
+  },
+  "no_best_of_policy": "no retry-until-success, no replacement of a terminal attempt; frozen provider-internal retry only",
+  "no_late_injection": "tasks are provisioned directly from the sealed per-case substrate images; nothing is copied into extracted_files at any time; content reaches the agent only through the production durable content path",
+  "b6_started": true,
+  "b6_started_at": "2026-10-02T03:47:14+00:00",
+  "attempt_log": [
+    {
+      "case_id": "gen4-departure-staging",
+      "repeat": "repeat0",
+      "task_id": "6446b2ae-ce52-4486-8658-b0770a806037",
+      "substrate_id": "sub-gen4-departure-staging",
+      "provisioned_at": "2026-10-02T03:47:14+00:00"
+    },
+    {
+      "case_id": "gen4-departure-staging",
+      "repeat": "repeat1",
+      "task_id": "3f06b9bd-f378-45a8-b124-4b56c3666fba",
+      "substrate_id": "sub-gen4-departure-staging",
+      "provisioned_at": "2026-10-02T03:56:13+00:00"
+    },
+    {
+      "case_id": "gen4-departure-staging",
+      "repeat": "repeat2",
+      "task_id": "c20d29d0-f5e6-45ac-8d2e-875a23438da3",
+      "substrate_id": "sub-gen4-departure-staging",
+      "provisioned_at": "2026-10-02T04:07:27+00:00"
+    },
+    {
+      "case_id": "gen4-layered-dispersion",
+      "repeat": "repeat0",
+      "task_id": "1a00f118-df58-4af8-b18f-0380d5f9ac1f",
+      "substrate_id": "sub-gen4-layered-dispersion",
+      "provisioned_at": "2026-10-02T04:10:19+00:00"
+    },
+    {
+      "case_id": "gen4-layered-dispersion",
+      "repeat": "repeat1",
+      "task_id": "640faf3f-3911-4f73-a1c1-94eed86a78b1",
+      "substrate_id": "sub-gen4-layered-dispersion",
+      "provisioned_at": "2026-10-02T04:13:57+00:00"
+    },
+    {
+      "case_id": "gen4-layered-dispersion",
+      "repeat": "repeat2",
+      "task_id": "35f18410-edcf-461b-8bf0-5756f1227f4b",
+      "substrate_id": "sub-gen4-layered-dispersion",
+      "provisioned_at": "2026-10-02T04:18:14+00:00"
+    }
+  ],
+  "driver_incidents": [
+    {
+      "incident": "driver proof-generation defect (dict-vs-attr access in _hydration_audit) crashed AFTER result/snapshot/trajectory/telemetry persistence and BEFORE proof writing + cleanup; attempt itself ran under the full frozen gate and is valid; proofs recovered from the still-alive task via --recover-proof; same class as the gen-3 984e8291 pre-model driver defect record",
+      "attempt": "gen4-departure-staging/repeat0",
+      "recorded_at": "2026-10-02T04:05:00+00:00"
+    },
+    {
+      "incident": "second driver proof-generation defect (stale sealed_digest reference in the proof dict) crashed AFTER full artifact persistence and BEFORE proof writing + cleanup; recovered via --recover-proof with DIRECT parsed-world proof (task alive); both incidents are post-persist proof-layer defects, zero model-facing impact, attempts valid under the frozen gate",
+      "attempt": "gen4-departure-staging/repeat1",
+      "recorded_at": "2026-10-02T04:08:00+00:00"
+    }
+  ]
+}

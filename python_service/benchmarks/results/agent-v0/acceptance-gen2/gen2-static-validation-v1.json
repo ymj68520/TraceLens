@@ -1,0 +1,86 @@
+{
+  "artifact_version": "Gen2StaticValidationV1",
+  "generation_id": "acceptance-generation-2",
+  "created_at": "2026-10-01T00:00:00+00:00",
+  "zero_model_calls": true,
+  "cases": [
+    {
+      "case_id": "gen2-analyst-refutation",
+      "case_family": "misleading_analyst_context",
+      "public_input_hash": "e7d31f6aef7c79394f806666a606a447681a91368d1edf5c5c8f0c0a9c1f31e0",
+      "truth_manifest_input_hash": "6f7fe2861bd5185741b418920816d81c2526a2f96e4813354b1811f3391f6dcf",
+      "charter_question_ids": [
+        "q-1"
+      ],
+      "coverage_links": [
+        {
+          "dimension_id": "analyst-claim-verification",
+          "related_question_ids": [
+            "q-1"
+          ]
+        }
+      ],
+      "attention_item_ids": [
+        "question:q-1"
+      ],
+      "seed_state_hash": "dbb3da6306aa5238f76d602a1eec2d2fad2ab99628e57232240799e864f5af86",
+      "checks": {
+        "public_schema_valid": true,
+        "charter_complete": true,
+        "coverage_question_links_valid": true,
+        "public_assets_exist_and_match": true,
+        "bootstrap_deterministic": true,
+        "attention_preflight_deterministic": true,
+        "no_standalone_coverage_item": true,
+        "no_duplicate_question_scope_topology": true,
+        "truth_schema_valid": true,
+        "truth_public_separation_valid": true
+      },
+      "ok": true
+    },
+    {
+      "case_id": "gen2-attribution-contradiction",
+      "case_family": "cross_source_attribution_contradiction",
+      "public_input_hash": "416ed6ccf90e3cfa38742b04ef488f0d65c0d739f02d1fcb4ae9d5352a829e4b",
+      "truth_manifest_input_hash": "5ce81bdc557bfc885f57624c1e712a2b4b7417a7563de67e82c14ed0ab9c7996",
+      "charter_question_ids": [
+        "q-1",
+        "q-2"
+      ],
+      "coverage_links": [
+        {
+          "dimension_id": "route-export-attribution",
+          "related_question_ids": [
+            "q-1"
+          ]
+        },
+        {
+          "dimension_id": "door-record-consistency",
+          "related_question_ids": [
+            "q-2"
+          ]
+        }
+      ],
+      "attention_item_ids": [
+        "question:q-1",
+        "question:q-2"
+      ],
+      "seed_state_hash": "5ebed3dc0e6d212354d1e9e3dc4c6e70812711a36019daf255f90af2f6ea592e",
+      "checks": {
+        "public_schema_valid": true,
+        "charter_complete": true,
+        "coverage_question_links_valid": true,
+        "public_assets_exist_and_match": true,
+        "bootstrap_deterministic": true,
+        "attention_preflight_deterministic": true,
+        "no_standalone_coverage_item": true,
+        "no_duplicate_question_scope_topology": true,
+        "truth_schema_valid": true,
+        "truth_public_separation_valid": true
+      },
+      "ok": true
+    }
+  ],
+  "all_passed": true,
+  "input_hash": "6a74796bd4bffba2a598a50fbd7b6cc43d68c49acf3fcec3af8a825ac482b208"
+}

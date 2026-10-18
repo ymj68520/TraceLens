@@ -1,0 +1,395 @@
+{
+  "analysis": {
+    "q1_where_is_completed_legal": {
+      "legal_state_machines": [
+        "AgentRunStatus",
+        "DelegationStatus"
+      ],
+      "near_miss": "CompletionMode uses 'complete' (no 'd') — a third, distinct spelling in the same runtime",
+      "not_member_of": [
+        "QuestionStatus",
+        "CoverageStatus",
+        "EvidenceRelevanceStatus",
+        "HypothesisStatus",
+        "ContradictionStatus",
+        "CompletionMode"
+      ]
+    },
+    "q2_did_the_model_see_completed": {
+      "answer": "YES — verbatim, in the model-visible projection",
+      "evidence": {
+        "field_name_collision": "the D* envelope field carrying 'completed' is named 'status' — the SAME field name attempt 1 used for the question update, whose legal value vocabulary (QuestionStatus) excludes 'completed'",
+        "projection_exact_hits": [
+          {
+            "path": "fresh_results[0].status",
+            "state_machine": "DelegationStatus (render hardcodes fresh D* envelope status as 'completed')"
+          }
+        ]
+      }
+    },
+    "q3_question_legal_status_presented": {
+      "answer": "YES — in the output-tool schema enum (['open', 'in_progress', 'answered', 'unresolved', 'blocked', 'deferred', 'superseded']); the frozen instructions never enumerate them; the projection shows only each question's CURRENT status value",
+      "schema_enum_branch": {
+        "branch": "output_tool[0]#QuestionStatus",
+        "members": [
+          "open",
+          "in_progress",
+          "answered",
+          "unresolved",
+          "blocked",
+          "deferred",
+          "superseded"
+        ],
+        "trail": ""
+      }
+    },
+    "q4_status_disposition_mapping_presented": {
+      "answer": "NO explicit mapping is presented anywhere in the model-visible input; instructions only say 'Dispositions, statuses and closure semantics remain your responsibility and are validated strictly'; the policy-layer rules (answered requires basis refs, unresolved requires basis+limitations+summary, blocked requires blocker) are NOT in the model-visible input",
+      "basis_rule_visibility": "only the explicit-empty-list rule ('basis_handles: [] means no basis and will be rejected wherever basis is required') hints that some closures need basis"
+    },
+    "q5_confusion_prone_phrasing": {
+      "assessment": "the D* fresh-result envelope ('status': 'completed') is the single strongest confusion surface: the model is closing a question ABOUT a completed delegation and the input names both with the same field name 'status'. 'completed' reaches the model ONLY through that embedded envelope (never in the rules prose; the prose 'complete' hit is 'Never emit a complete working state', an unrelated prohibition). This is an input-level COLLISION FACT; whether it caused the model's choice is NOT provable from one sample",
+      "instruction_hits": {
+        "complete": [
+          {
+            "excerpt": "related found\",\"warnings\":[]},\"status\":\"completed\"}],\"handle_counts_by_kind\":{\"COV\":0,\"D",
+            "line_class": "embedded_projection_json"
+          },
+          {
+            "excerpt": "nd are validated strictly. Never emit a complete working state, JSON patch, SQL, canonic",
+            "line_class": "rules_prose"
+          }
+        ],
+        "completed": [
+          {
+            "excerpt": "related found\",\"warnings\":[]},\"status\":\"completed\"}],\"handle_counts_by_kind\":{\"COV\":0,\"D\"",
+            "line_class": "embedded_projection_json"
+          }
+        ]
+      }
+    },
+    "q6_schema_sufficiency": {
+      "answer": "the schema DOES express the distinction (per-kind enums in each action branch; to_status is enum-typed per branch), but the non-discriminated union means a wrong branch guess cascades; the schema presents the legal VALUES yet nothing in the input contrasts the run/delegation lifecycle vocabulary with the question vocabulary",
+      "disposition_schema": {
+        "branch": "output_tool[0]#QuestionDisposition",
+        "members": [
+          "supported",
+          "not_supported",
+          "inconclusive",
+          "unavailable",
+          "not_applicable"
+        ],
+        "trail": ""
+      }
+    }
+  },
+  "artifact_version": "RCA2A5StateVocabularyMatrixV1",
+  "baseline_commit": "69e5bdc78e4280464b8a087d9e797f9ab66078e0",
+  "causality_statement": "HYPOTHESIS ONLY: the input collision plausibly primed the value choice, but one sample cannot establish causation; the schema presented the legal values and the model still chose an illegal one",
+  "disposition": "VOCABULARY_COLLISION_CONFIRMED__AND__MODEL_INVALID_STATUS_CHOICE_OBSERVED",
+  "evidence_class_markers": {
+    "counterfactual_simulation": [],
+    "deterministic_replay": [
+      "model-visible input re-derived READ-ONLY from the frozen store; input hashes equal the frozen manifest"
+    ],
+    "hypothesis": [
+      "that the input collision CONTRIBUTED to the model's value choice (causality unprovable from one sample)"
+    ],
+    "observed_real_model_behavior": [
+      "attempt 1 emitted status='completed' (wrong field name side) and attempt 2 emitted to_status='completed'"
+    ],
+    "unverified_model_reliability": [
+      "no claim about how often any model makes this choice"
+    ]
+  },
+  "experiment_id": "rca2a5-failure-explanation",
+  "fixture_question_facts": [
+    {
+      "basis_refs_count": 0,
+      "disposition": null,
+      "handle": "Q1",
+      "has_blocker": false,
+      "has_investigated_summary": false,
+      "limitations_count": 0,
+      "priority": "required",
+      "status": "open"
+    }
+  ],
+  "input_identity": {
+    "equals_frozen_manifest": true,
+    "integration_context_hash": "18602d862446b491ef4945938b4b278167e23942e91e8d8680112cd4cc238e64",
+    "model_visible_instructions_hash": "d35dad367c17c5914c38d0a4c951a9cc47a350a9e72c5f0f3fc1a77c585763b7",
+    "output_schema_hash": "a214ec4f5e81fcbb",
+    "reference_binding_table_hash": "735daa6d2145996829b4292a533967f5950cd5ef1cc8f6da4efbbf8abd583fa8"
+  },
+  "question_disposition_schema_enum": {
+    "branch": "output_tool[0]#QuestionDisposition",
+    "members": [
+      "supported",
+      "not_supported",
+      "inconclusive",
+      "unavailable",
+      "not_applicable"
+    ],
+    "trail": ""
+  },
+  "question_status_schema_enum": {
+    "branch": "output_tool[0]#QuestionStatus",
+    "members": [
+      "open",
+      "in_progress",
+      "answered",
+      "unresolved",
+      "blocked",
+      "deferred",
+      "superseded"
+    ],
+    "trail": ""
+  },
+  "schema_enum_inventory_branch_count": 9,
+  "state_vocabulary_matrix": [
+    {
+      "completed_is_member": true,
+      "enum": "AgentRunStatus",
+      "members": [
+        "queued",
+        "running",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "module": "agent_runtime",
+      "owner": "run lifecycle (server-owned)"
+    },
+    {
+      "completed_is_member": false,
+      "enum": "RunStopReason",
+      "members": [
+        "finalized",
+        "budget_exhausted",
+        "user_paused",
+        "no_progress",
+        "directive_replan",
+        "runtime_restart",
+        "cancelled",
+        "internal_failure"
+      ],
+      "module": "agent_runtime",
+      "owner": "run terminal reason (server-owned)"
+    },
+    {
+      "completed_is_member": true,
+      "enum": "DelegationStatus",
+      "members": [
+        "queued",
+        "running",
+        "completed",
+        "failed",
+        "cancelled",
+        "stale"
+      ],
+      "module": "agent_runtime",
+      "owner": "delegation lifecycle (server-owned)"
+    },
+    {
+      "completed_is_member": false,
+      "enum": "InvestigationPauseReason",
+      "members": [
+        "user_paused",
+        "runtime_restart",
+        "finalization_review_unavailable"
+      ],
+      "module": "agent_runtime",
+      "owner": "investigation pause (server-owned)"
+    },
+    {
+      "completed_is_member": false,
+      "enum": "QuestionStatus",
+      "members": [
+        "open",
+        "in_progress",
+        "answered",
+        "unresolved",
+        "blocked",
+        "deferred",
+        "superseded"
+      ],
+      "module": "agent_working_state",
+      "owner": "question state machine (model updates via to_status)"
+    },
+    {
+      "completed_is_member": false,
+      "enum": "QuestionDisposition",
+      "members": [
+        "supported",
+        "not_supported",
+        "inconclusive",
+        "unavailable",
+        "not_applicable"
+      ],
+      "module": "agent_working_state",
+      "owner": "question disposition (model chooses)"
+    },
+    {
+      "completed_is_member": false,
+      "enum": "CoverageStatus",
+      "members": [
+        "not_started",
+        "in_progress",
+        "covered",
+        "partial",
+        "unavailable",
+        "not_applicable"
+      ],
+      "module": "agent_working_state",
+      "owner": "coverage dimension state machine"
+    },
+    {
+      "completed_is_member": false,
+      "enum": "EvidenceRelevanceStatus",
+      "members": [
+        "candidate",
+        "relevant",
+        "high_value",
+        "irrelevant"
+      ],
+      "module": "agent_working_state",
+      "owner": "evidence relevance state machine"
+    },
+    {
+      "completed_is_member": false,
+      "enum": "HypothesisStatus",
+      "members": [
+        "active",
+        "supported",
+        "weakened",
+        "rejected",
+        "retired"
+      ],
+      "module": "agent_working_state",
+      "owner": "hypothesis state machine"
+    },
+    {
+      "completed_is_member": false,
+      "enum": "ContradictionStatus",
+      "members": [
+        "open",
+        "resolved",
+        "explained",
+        "unresolved"
+      ],
+      "module": "agent_working_state",
+      "owner": "contradiction state machine"
+    },
+    {
+      "completed_is_member": false,
+      "enum": "ContradictionSeverity",
+      "members": [
+        "low",
+        "material",
+        "critical"
+      ],
+      "module": "agent_working_state",
+      "owner": "contradiction severity (model chooses)"
+    },
+    {
+      "completed_is_member": false,
+      "enum": "QuestionSource",
+      "members": [
+        "charter",
+        "user_directive",
+        "playbook",
+        "supervisor_discovery",
+        "specialist_discovery"
+      ],
+      "module": "agent_working_state",
+      "owner": "question provenance (model chooses on create)"
+    },
+    {
+      "completed_is_member": false,
+      "enum": "QuestionPriority",
+      "members": [
+        "required",
+        "high",
+        "normal",
+        "exploratory"
+      ],
+      "module": "agent_working_state",
+      "owner": "question priority (model chooses on create)"
+    },
+    {
+      "completed_is_member": false,
+      "enum": "CompletionMode",
+      "members": [
+        "complete",
+        "complete_with_limitations"
+      ],
+      "module": "agent_finalization",
+      "owner": "finalization completion mode (server/review-side input)"
+    },
+    {
+      "completed_is_member": false,
+      "enum": "FinalReviewMode",
+      "members": [
+        "best_effort",
+        "required"
+      ],
+      "module": "agent_finalization",
+      "owner": "final review mode (server-side)"
+    },
+    {
+      "completed_is_member": false,
+      "enum": "FinalSemanticReviewStatus",
+      "members": [
+        "passed",
+        "issues_found",
+        "unavailable"
+      ],
+      "module": "agent_finalization",
+      "owner": "external review status (server-side)"
+    }
+  ],
+  "token_scan": {
+    "instruction_hits": {
+      "complete": [
+        {
+          "excerpt": "related found\",\"warnings\":[]},\"status\":\"completed\"}],\"handle_counts_by_kind\":{\"COV\":0,\"D",
+          "line_class": "embedded_projection_json"
+        },
+        {
+          "excerpt": "nd are validated strictly. Never emit a complete working state, JSON patch, SQL, canonic",
+          "line_class": "rules_prose"
+        }
+      ],
+      "completed": [
+        {
+          "excerpt": "related found\",\"warnings\":[]},\"status\":\"completed\"}],\"handle_counts_by_kind\":{\"COV\":0,\"D\"",
+          "line_class": "embedded_projection_json"
+        }
+      ]
+    },
+    "note": "instruction hits quote matched production rule lines only; the full prompt is never reproduced",
+    "projection_hits": {
+      "complete": [
+        {
+          "match": "contains",
+          "path": "fresh_results[0].status",
+          "value": "completed"
+        }
+      ],
+      "completed": [
+        {
+          "match": "exact",
+          "path": "fresh_results[0].status",
+          "value": "completed"
+        }
+      ]
+    }
+  },
+  "verdicts": {
+    "INSUFFICIENT_EVIDENCE": "NOT the case for the collision fact itself; INSUFFICIENT for causal attribution (one sample) and for any general model-reliability claim",
+    "MODEL_INVALID_STATUS_CHOICE_OBSERVED": "OBSERVED: the legal QuestionStatus vocabulary WAS model-visible in the output-tool schema enum, yet both attempts emitted 'completed' for to_status/status — the model-side value choice was invalid and is not explained away by schema absence",
+    "PROMPT_SCHEMA_MISMATCH_CONFIRMED": "NOT CONFIRMED: no instruction text states or implies 'completed' is legal for questions; instructions and schema are mutually consistent on the tested domain",
+    "VOCABULARY_COLLISION_CONFIRMED": "CONFIRMED as an INPUT-LEVEL FACT: 'completed' (legal only in AgentRunStatus/DelegationStatus) appears verbatim in the model-visible projection as the D* envelope's 'status' value, adjacent to the question the model must update; the field NAME 'status' is also shared with attempt 1's illegal field choice"
+  }
+}

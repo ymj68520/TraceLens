@@ -1,0 +1,38 @@
+{
+  "artifact_version": "RCA2A14bFinalReadinessDecisionV1",
+  "experiment_id": "rca2a14b-external-holdout-custody",
+  "timestamp_utc": "2026-10-17T04:21:00.000000+00:00",
+  "mandatory_readiness_metrics": {
+    "actual_holdout_case_count": 0,
+    "actual_sealed_case_count": 0,
+    "actual_custodian_status": "NOT_ASSIGNED",
+    "actual_adjudicator_status": "NOT_ASSIGNED",
+    "actual_access_isolation": "UNVERIFIED",
+    "actual_model_request_count": 0
+  },
+  "readiness_gate_evaluations": {
+    "independent_custodian_verified": false,
+    "actual_novel_cases_present": false,
+    "truth_sealed": false,
+    "access_isolation_verified": false,
+    "case_truth_hash_validated": false,
+    "candidate_frozen": true,
+    "sample_size_policy_resolved": true,
+    "adjudication_arrangement_verified": false,
+    "runner_intake_tests_passed": true
+  },
+  "final_decision": "EXTERNAL_CUSTODY_NOT_AVAILABLE",
+  "justification": "While all intake contracts, cryptographic sealing specifications, statistical hierarchies, and anti-leakage negative gates passed 100% offline simulation testing, authentic external custody has not been assigned in reality. The coding agent cannot act as its own custodian. Official sealed holdout case count is strictly 0. Formal qualification remains firmly blocked.",
+  "target_next_phase": {
+    "phase": "RCA-2A.14",
+    "status": "NOT_AUTHORIZED"
+  },
+  "architectural_disposition": {
+    "production_prompt": "UNCHANGED",
+    "production_schema": "UNCHANGED",
+    "candidate_vocabulary_guidance_v1": "FROZEN_UNCHANGED",
+    "gen5_creation": "NOT_CREATED",
+    "rca2b_implementation": "NOT_AUTHORIZED",
+    "hard_stop_enforced": true
+  }
+}

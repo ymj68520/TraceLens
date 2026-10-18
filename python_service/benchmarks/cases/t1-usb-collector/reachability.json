@@ -1,0 +1,38 @@
+{
+  "reachability_version": "reachability-manifest:v1",
+  "case_id": "t1-usb-collector",
+  "records": [
+    {
+      "truth_evidence_id": "HC-1",
+      "resolved_evidence_keys": [
+        "file:/话术/老师包装.txt"
+      ],
+      "parser_reachable": true,
+      "agent_discoverable": true,
+      "status": "resolved",
+      "unavailable_reason": ""
+    },
+    {
+      "truth_evidence_id": "HC-2",
+      "resolved_evidence_keys": [
+        "file:/话术/使用usdt的原因.txt"
+      ],
+      "parser_reachable": true,
+      "agent_discoverable": true,
+      "status": "resolved",
+      "unavailable_reason": ""
+    },
+    {
+      "truth_evidence_id": "HC-3",
+      "resolved_evidence_keys": [
+        "file:/$OrphanFiles/mima.txt"
+      ],
+      "parser_reachable": true,
+      "agent_discoverable": true,
+      "status": "resolved",
+      "unavailable_reason": ""
+    }
+  ],
+  "input_hash": "88c731c078a666e1db72bdbf1d0dca4da4180b992801cca779b568147d512427",
+  "created_at": "2026-09-27T12:29:53.661050+00:00"
+}
