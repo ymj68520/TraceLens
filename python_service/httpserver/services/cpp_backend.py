@@ -46,7 +46,8 @@ class CppBackendService:
         field_policy = load_policy()
         self._headers = ({"X-TraceLens-Service-Token": field_policy.python_to_cpp}
                          if field_policy.enabled else {})
-        self._trust_env = not field_policy.enabled
+        # Internal loopback communication with local C++ backend must never route through external proxies
+        self._trust_env = False
         self._client: Optional[httpx.AsyncClient] = None
         self._initialized = False
         self._request_timeout_override: Optional[float] = None

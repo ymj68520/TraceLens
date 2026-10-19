@@ -21,6 +21,24 @@ set -e
 
 # ── 路径与默认值 ──────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INTEGRATION_DIR="/home/ymj68520/projects/TraceLens-agent-v0-integration"
+
+# 如果在未合入的 Dev 基线运行，自动委托至 Agent 集成工作树
+if [ "$SCRIPT_DIR" != "$INTEGRATION_DIR" ] && [ -d "$INTEGRATION_DIR" ] && [ "${RUN_DEV_BASELINE:-0}" != "1" ]; then
+    CURRENT_BRANCH="$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    if [ "$CURRENT_BRANCH" = "Dev" ] || [ -z "$CURRENT_BRANCH" ]; then
+        echo -e "\033[1;33m════════════════════════════════════════════════════════════\033[0m"
+        echo -e "\033[0;36m➤ 检测到 Agent v0 独立验收集成工作树：\033[0m"
+        echo -e "  \033[1m${INTEGRATION_DIR}\033[0m"
+        echo -e "  当前工作区处于 Dev 基线（尚未合入 Agent v0 功能）。"
+        echo -e "  为了确保前端展示包含 Agent 独立工作台的最新界面，并提供完整后端支持，"
+        echo -e "  自动转由集成工作树执行！"
+        echo -e "  （若确需仅运行旧版 Dev 基线，可指定环境变量: RUN_DEV_BASELINE=1 ./run.sh）"
+        echo -e "\033[1;33m════════════════════════════════════════════════════════════\033[0m\n"
+        exec "$INTEGRATION_DIR/run.sh" "$@"
+    fi
+fi
+
 PROJECT_ROOT="$SCRIPT_DIR"
 BUILD_DIR="$PROJECT_ROOT/build"
 WEB_DIR="$PROJECT_ROOT/web"
@@ -95,7 +113,8 @@ check_service() {
     local url=$1 name=$2 max_attempts=${3:-30} attempt=1
     echo -ne "${CYAN}等待 ${name} 启动...${NC}"
     while [ $attempt -le $max_attempts ]; do
-        if curl -s -o /dev/null -w "%{http_code}" "$url" 2>/dev/null | grep -qE "200|404"; then
+        if env -u http_proxy -u https_proxy -u all_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY \
+            curl --noproxy "*" -s -o /dev/null -w "%{http_code}" "$url" 2>/dev/null | grep -qE "200|404"; then
             echo -e " ${GREEN}✓ 就绪${NC}"
             return 0
         fi
@@ -119,8 +138,8 @@ if [ "$DO_BUILD" = "1" ]; then
 
     mkdir -p "$BUILD_DIR"
     cd "$BUILD_DIR"
-    if [ ! -f CMakeCache.txt ]; then
-        echo -e "${YELLOW}  首次配置，运行 cmake ..${NC}"
+    if [ ! -f CMakeCache.txt ] || [ ! -f Makefile ]; then
+        echo -e "${YELLOW}  首次配置或 Makefile 缺失，运行 cmake ..${NC}"
         cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_WEB_FRONTEND=OFF
     fi
     # BUILD_WEB_FRONTEND=OFF：前端由本脚本用 npm 单独构建，
@@ -195,6 +214,27 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# ── 确保 Web 前端资源同步到 build/web/dist ────────────────────────────────────
+if [ "$RUN_CPP" = "1" ]; then
+    mkdir -p "$BUILD_DIR/web/dist"
+    # 如果 web/dist/index.html 不存在，且允许构建 web，则构建前端
+    if [ ! -f "$WEB_DIR/dist/index.html" ] && [ "$BUILD_WEB" = "1" ]; then
+        echo -e "${YELLOW}➤ 未检测到 Web 前端 dist，正在自动构建...${NC}"
+        (cd "$WEB_DIR" && [ ! -d node_modules ] && nice -n 19 npm install || true)
+        (cd "$WEB_DIR" && nice -n 19 npm run build)
+    fi
+
+    # 只要 web/dist/index.html 存在，确保 build/web/dist 与之完全同步（即使使用了 --no-build）
+    if [ -f "$WEB_DIR/dist/index.html" ]; then
+        if [ ! -f "$BUILD_DIR/web/dist/index.html" ] || ! cmp -s "$WEB_DIR/dist/index.html" "$BUILD_DIR/web/dist/index.html"; then
+            echo -e "${YELLOW}➤ 同步 Web dist → build/web/dist...${NC}"
+            rm -rf "$BUILD_DIR/web/dist"
+            mkdir -p "$BUILD_DIR/web/dist"
+            cp -r "$WEB_DIR/dist/." "$BUILD_DIR/web/dist/"
+        fi
+    fi
+fi
+
 # ── 启动 C++ 服务 ─────────────────────────────────────────────────────────────
 if [ "$RUN_CPP" = "1" ]; then
     echo -e "${BLUE}➤ 启动 C++ HTTP 服务（端口 ${CPP_PORT}）${NC}"
@@ -255,17 +295,23 @@ if [ "$RUN_PYTHON" = "1" ]; then
 fi
 
 # ── 总结 ──────────────────────────────────────────────────────────────────────
+LAN_IP="$(ip route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}' || true)"
+[ -z "$LAN_IP" ] && LAN_IP="$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")"
+
 echo -e "${GREEN}${BOLD}╔════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}${BOLD}║              全部服务启动成功                               ║${NC}"
 echo -e "${GREEN}${BOLD}╚════════════════════════════════════════════════════════════╝${NC}"
 echo
 echo -e "  ${BOLD}📍 访问地址:${NC}"
-echo -e "    Web 界面    ${BLUE}http://localhost:${CPP_PORT}/${NC}"
-echo -e "    C++ API 文档 ${BLUE}http://localhost:${CPP_PORT}/api/docs${NC}"
-echo -e "    健康检查     ${BLUE}http://localhost:${CPP_PORT}/api/system/health${NC}"
+echo -e "    Web 界面 (本机)    ${BLUE}http://localhost:${CPP_PORT}/${NC}"
+echo -e "    Web 界面 (局域网)  ${BLUE}http://${LAN_IP}:${CPP_PORT}/${NC}"
+echo -e "    Agent 研判工作台   ${BLUE}http://${LAN_IP}:${CPP_PORT}/agent${NC}"
+echo -e "    任务列表 (含Agent) ${BLUE}http://${LAN_IP}:${CPP_PORT}/tasks${NC}"
+echo -e "    C++ API 文档       ${BLUE}http://localhost:${CPP_PORT}/api/docs${NC}"
+echo -e "    健康检查           ${BLUE}http://localhost:${CPP_PORT}/api/system/health${NC}"
 [ "$RUN_PYTHON" = "1" ] && {
-    echo -e "    Python API   ${BLUE}http://localhost:${PYTHON_PORT}/docs${NC}"
-    echo -e "    C/S API      ${BLUE}http://localhost:${CS_PORT}/docs${NC}"
+    echo -e "    Python API         ${BLUE}http://${LAN_IP}:${PYTHON_PORT}/docs${NC}"
+    echo -e "    C/S API            ${BLUE}http://${LAN_IP}:${CS_PORT}/docs${NC}"
 }
 echo
 echo -e "  ${BOLD}🔧 进程:${NC}"
