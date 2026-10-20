@@ -143,25 +143,76 @@ def test_android_record_remains_a_record_and_not_original_database_text():
 
 
 @pytest.mark.asyncio
-async def test_batches_keep_every_item_even_when_model_rejects_one_batch(tmp_path):
+async def test_failed_batch_is_retried_once_with_the_validation_error(tmp_path):
     class LLM:
         calls = 0
         async def chat_completion(self, system, user, **kwargs):
             self.calls += 1
-            materials = json.loads(user)["materials"]
-            if self.calls == 1:
-                return {"content": "not JSON"}
-            return {"model": "m", "content": json.dumps({"classifications": [
-                suggestion(v["evidence_key"]) for v in materials]})}
+            body = json.loads(user)
+            if "correction" not in body:
+                return {"content": "not JSON", "finish_reason": "stop"}
+            assert body["correction"].startswith("上一次输出未通过协议校验")
+            return {"model": "m", "finish_reason": "stop", "content": json.dumps({"classifications": [
+                suggestion(v["evidence_key"]) for v in body["materials"]]})}
     llm = LLM()
     executor = ReportGenerationExecutor(repository=ReportRepository(tmp_path / "reports.db"),
         writer=GenerationReportWriter(tmp_path / "reports"), llm_service=llm)
     values = [item(f"/file-{i}") for i in range(7)] + [item("/empty", text="")]
     result = await executor._classify_evidence(envelope(values))
-    assert llm.calls == 2 and len(result.items) == 8
-    assert sum(c.assessment_status == "failed" for c in result.items) == 6
-    assert sum(c.assessment_status == "classified" for c in result.items) == 1
+    assert llm.calls == 4 and len(result.items) == 8
+    assert sum(c.assessment_status == "failed" for c in result.items) == 0
+    assert sum(c.assessment_status == "classified" for c in result.items) == 7
     assert sum(c.assessment_status == "insufficient" for c in result.items) == 1
+
+
+@pytest.mark.asyncio
+async def test_batch_rejected_twice_keeps_its_items_failed_and_visible(tmp_path):
+    class LLM:
+        calls = 0
+        async def chat_completion(self, system, user, **kwargs):
+            self.calls += 1
+            return {"content": "not JSON", "finish_reason": "stop"}
+    llm = LLM()
+    executor = ReportGenerationExecutor(repository=ReportRepository(tmp_path / "reports.db"),
+        writer=GenerationReportWriter(tmp_path / "reports"), llm_service=llm)
+    values = [item(f"/file-{i}") for i in range(7)] + [item("/empty", text="")]
+    result = await executor._classify_evidence(envelope(values))
+    assert llm.calls == 4 and len(result.items) == 8
+    assert sum(c.assessment_status == "failed" for c in result.items) == 7
+    assert all(c.priority == "unassessed" for c in result.items)
+
+
+def test_quote_survives_whitespace_artifacts_but_not_foreign_text():
+    value = item()
+    wrapped = dict(suggestion(value.evidence_key), basis_quote="聊天中约定\n付款安排")
+    result = parse_classifications(json.dumps({"classifications": [wrapped]}),
+                                   [classification_input(value)],
+                                   classification_questions(BACKGROUND), "m")[0]
+    assert result.basis_quote == "聊天中约定\n付款安排"
+    with pytest.raises(ValueError):
+        parse_classifications(json.dumps({"classifications": [
+            dict(suggestion(value.evidence_key), basis_quote="真实资金\t已到账")]}),
+            [classification_input(value)], classification_questions(BACKGROUND), "m")
+
+
+def test_prompt_pins_enum_spelling_and_android_guard():
+    from httpserver.services.forensic_report.generation_prompts import CLASSIFICATION_SYSTEM_V1
+    assert '"funds"(资金活动)' in CLASSIFICATION_SYSTEM_V1
+    assert "值只能输出英文枚举本身" in CLASSIFICATION_SYSTEM_V1
+    assert "普通文件永远不得输出该值" in CLASSIFICATION_SYSTEM_V1
+
+
+@pytest.mark.asyncio
+async def test_batches_keep_every_item_even_when_provider_stays_unavailable(tmp_path):
+    class LLM:
+        calls = 0
+        async def chat_completion(self, system, user, **kwargs):
+            self.calls += 1
+            raise RuntimeError("network down")  # non-HTTPError must not be swallowed
+    executor = ReportGenerationExecutor(repository=ReportRepository(tmp_path / "reports.db"),
+        writer=GenerationReportWriter(tmp_path / "reports"), llm_service=LLM())
+    with pytest.raises(RuntimeError):
+        await executor._classify_evidence(envelope([item("/a")]))
 
 
 @pytest.mark.asyncio

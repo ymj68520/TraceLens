@@ -568,13 +568,14 @@ class ReportGenerationExecutor:
         """Bounded classification within the existing generation job.
 
         No writes to source/investigation databases, no new worker or endpoint.
-        Invalid output keeps every affected item visible as unassessed.
+        Invalid output keeps every affected item visible as unassessed; a
+        protocol-failing batch is retried once with the validation error, so a
+        single malformed field does not silently discard five valid materials.
         """
         from .generation_classification import (
             BATCH_SIZE, classification_input, classification_questions,
-            parse_classifications, unassessed_classification,
+            classification_user_payload, parse_classifications, unassessed_classification,
         )
-        import json
 
         questions = classification_questions(envelope.case_description)
         inputs = [classification_input(item) for item in
@@ -586,26 +587,35 @@ class ReportGenerationExecutor:
             batch = readable[start:start + BATCH_SIZE]
             values = [unassessed_classification(v, failed=True) for v in batch]
             if not unavailable:
-                try:
-                    response = await self._llm_service.chat_completion(
-                        CLASSIFICATION_SYSTEM_V1,
-                        json.dumps({
-                            "questions": [q.model_dump(mode="json") for q in questions],
-                            "materials": [{k: v[k] for k in (
-                                "evidence_key", "material_type", "basis_type",
-                                "basis_text", "basis_truncated",
-                            )} for v in batch],
-                        }, ensure_ascii=False),
-                        max_tokens=4096, temperature=0.0,
-                    )
-                    values = parse_classifications(
-                        response.get("content", ""), batch, questions, response.get("model"),
-                    )
-                except httpx.HTTPError:
-                    unavailable = True
-                    logger.warning("Report classification provider unavailable; keeping unassessed items")
-                except (ValueError, KeyError, TypeError):
-                    logger.warning("Report classification rejected; keeping unassessed items")
+                correction = None
+                for attempt in (1, 2):
+                    try:
+                        response = await self._llm_service.chat_completion(
+                            CLASSIFICATION_SYSTEM_V1,
+                            classification_user_payload(questions, batch, correction),
+                            max_tokens=4096 if attempt == 1 else 8192, temperature=0.0,
+                        )
+                        if response.get("finish_reason") == "length":
+                            logger.warning("Report classification output truncated at max_tokens")
+                        values = parse_classifications(
+                            response.get("content", ""), batch, questions, response.get("model"),
+                        )
+                        break
+                    except httpx.HTTPError as exc:
+                        unavailable = True
+                        logger.warning("Report classification provider unavailable (%s); "
+                                       "keeping unassessed items", exc)
+                        break
+                    except (ValueError, KeyError, TypeError) as exc:
+                        values = [unassessed_classification(v, failed=True) for v in batch]
+                        if attempt == 1:
+                            correction = ("上一次输出未通过协议校验：" + str(exc)[:400]
+                                          + "。请修正该问题后按规则重新输出全部材料的分类。")
+                            logger.warning("Report classification rejected (%s); retrying once",
+                                           str(exc)[:200])
+                        else:
+                            logger.warning("Report classification rejected again (%s); "
+                                           "keeping unassessed items", str(exc)[:200])
             results.update((v.evidence_key, v) for v in values)
         return ReportClassifications(
             questions=questions,

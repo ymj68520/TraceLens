@@ -520,6 +520,7 @@ class LLMService:
             "content": result["choices"][0]["message"]["content"],
             "model": result.get("model", ""),
             "tokens_used": result.get("usage", {}).get("total_tokens", 0),
+            "finish_reason": result["choices"][0].get("finish_reason"),
         }
 
     async def start_batch_analysis(

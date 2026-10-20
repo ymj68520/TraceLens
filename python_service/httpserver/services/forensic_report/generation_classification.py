@@ -89,6 +89,24 @@ def classification_input(item):
     }
 
 
+def _squeeze(text):
+    return re.sub(r"\s+", "", text)
+
+
+def classification_user_payload(questions, materials, correction=None):
+    """One batch input; `correction` carries the previous validation error on retry."""
+    payload = {
+        "questions": [q.model_dump(mode="json") for q in questions],
+        "materials": [{k: v[k] for k in (
+            "evidence_key", "material_type", "basis_type",
+            "basis_text", "basis_truncated",
+        )} for v in materials],
+    }
+    if correction:
+        payload["correction"] = correction
+    return json.dumps(payload, ensure_ascii=False)
+
+
 def unassessed_classification(value, *, failed=False):
     return ReportEvidenceClassification(
         evidence_key=value["evidence_key"], material_type=value["material_type"],
@@ -109,7 +127,11 @@ def parse_classifications(content, inputs, questions, model):
     results = []
     for suggestion in batch.classifications:
         value = by_key[suggestion.evidence_key]
-        if not suggestion.basis_quote.strip() or suggestion.basis_quote not in value["basis_text"]:
+        # Copy artifacts (line wrapping by the model) must not fail a quote that
+        # is verbatim in content; foreign text still cannot pass either check.
+        quote = suggestion.basis_quote.strip()
+        if not quote or (quote not in value["basis_text"]
+                         and _squeeze(quote) not in _squeeze(value["basis_text"])):
             raise ValueError("classification basis does not belong to this input")
         if any(r.question_id not in question_ids for r in suggestion.relations):
             raise ValueError("classification question is outside frozen case context")
