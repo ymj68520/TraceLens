@@ -95,6 +95,7 @@ def summarize(source: TimelineSource, filters: SummaryFilters, *, selection: Rec
     scanned_hashes = []
     with closing(source.connect()) as conn:
         tables, missing_tables = source.tables(conn)
+        semantic_before = source.semantic_revision(conn)
         remaining = scan_limit
         # Each table is counted even after the budget is exhausted; partial
         # coverage is always exposed, including a skipped second QQ table.
@@ -159,8 +160,8 @@ def summarize(source: TimelineSource, filters: SummaryFilters, *, selection: Rec
                         detail_rows.append(source.present(row))
                     detail_total += 1
         conn.rollback()
-    if before != source.revision():
-        raise SourceChanged("统计期间来源发生变化，请重试")
+        if semantic_before != source.semantic_revision(conn):
+            raise SourceChanged("统计期间来源发生变化，请重试")
     for name in ("scanned", "valid", "missing", "invalid", "inferred", "processing", "duplicate",
                  "identity_conflict", "outside_time", "outside_direction"):
         counts.setdefault(f"{name}_records", 0)

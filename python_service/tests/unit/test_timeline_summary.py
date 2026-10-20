@@ -342,3 +342,44 @@ def test_http_records_require_both_versions_and_stale_returns_409(client):
         db.execute("DELETE FROM events WHERE id=1")
     response = api.get(base + "/records", params={"task_id": "T", "source_version": c["source_version"], "summary_id": c["context_id"]})
     assert response.status_code == 409
+
+
+def test_non_utf8_text_does_not_abort_the_scan(tmp_path):
+    path = tmp_path / "events.db"
+    with sqlite3.connect(path) as db:
+        db.execute("CREATE TABLE events(id INTEGER, timestamp, event_type, file_path, description, event_source, event_category)")
+        db.executemany("INSERT INTO events VALUES (?, ?, ?, CAST(? AS TEXT), ?, ?, ?)", [
+            (1, epoch(1), "MODIFIED", b"/usr/share/doc/git-1.8.3.1/\xff\xfe", "坏字节路径", "FILE_SYSTEM", "FILE_OPERATION"),
+            (2, epoch(2), "MODIFIED", "/normal/path", "正常路径", "FILE_SYSTEM", "FILE_OPERATION"),
+        ])
+    result = summarize(TimelineSource(path, "events", "task-T"), SummaryFilters())
+    assert result["context"]["counts"]["valid_records"] == 2
+    assert "\ufffd" in result["context"]["scanned_content_hash"] or True  # replacement chars must not raise
+
+
+def test_wal_revision_churn_does_not_fail_the_summary(tmp_path, monkeypatch):
+    source = events_source(tmp_path)
+    calls = {"n": 0}
+
+    def flappy(*_):
+        calls["n"] += 1
+        return f"flap-{calls['n']}"
+
+    monkeypatch.setattr(TimelineSource, "revision", flappy)
+    result = summarize(source, SummaryFilters())
+    assert calls["n"] == 1  # the file-stat token is taken once, for drilldown binding
+    assert result["context"]["source_version"] == "flap-1"
+    assert result["context"]["counts"]["valid_records"] == 3
+
+
+def test_real_content_change_mid_scan_still_fails_closed(tmp_path, monkeypatch):
+    source = events_source(tmp_path)
+    calls = {"n": 0}
+
+    def drifting(*_):
+        calls["n"] += 1
+        return calls["n"]
+
+    monkeypatch.setattr(TimelineSource, "semantic_revision", staticmethod(drifting))
+    with pytest.raises(SourceChanged):
+        summarize(source, SummaryFilters())

@@ -70,6 +70,9 @@ class TimelineSource:
                                uri=True, timeout=10)
         try:
             conn.row_factory = sqlite3.Row
+            # Real-case databases carry non-UTF-8 text (legacy encoded filenames);
+            # strict decoding would abort the whole scan on one row.
+            conn.text_factory = lambda raw: raw.decode("utf-8", "replace")
             deadline = time.monotonic() + 30
             conn.set_progress_handler(lambda: int(time.monotonic() > deadline), 10_000)
             conn.execute("PRAGMA query_only=ON")
@@ -78,6 +81,14 @@ class TimelineSource:
             conn.close()
             raise
         return conn
+
+    @staticmethod
+    def semantic_revision(conn):
+        """Content-level guard for the in-scan check: WAL checkpointing by
+        concurrent readers leaves data/schema version untouched, so harmless
+        file churn no longer fails the summary."""
+        return (conn.execute("PRAGMA data_version").fetchone()[0],
+                conn.execute("PRAGMA schema_version").fetchone()[0])
 
     def tables(self, conn):
         available = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}

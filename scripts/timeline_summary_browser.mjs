@@ -167,7 +167,7 @@ try {
   origin = `http://127.0.0.1:${server.httpServer.address().port}`;
   browser = await puppeteer.launch({ executablePath: process.env.CHROME_BIN || (process.platform === 'win32' ?
     'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe' : undefined), headless: true,
-    args: ['--disable-background-networking', '--disable-component-update', '--disable-sync', '--no-first-run'] });
+    args: ['--disable-background-networking', '--disable-component-update', '--disable-sync', '--no-first-run', ...(process.env.CHROME_EXTRA_ARGS ? process.env.CHROME_EXTRA_ARGS.split(' ') : [])] });
   results.browser = await browser.version();
   await test('actual timeline preserves parent filters and does not call a model', '/timeline?task_id=synthetic-T&view=summary&type=MODIFIED&start=1767200000&end=1767500000', async (page, state) => {
     assert.equal(state.summaries.length, 0);
