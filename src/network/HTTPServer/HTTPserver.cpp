@@ -253,6 +253,11 @@ namespace forensics {
         cli.set_connection_timeout(10);
         cli.set_read_timeout(600);
         cli.set_write_timeout(600);
+        // path+query come from req.raw_url and are already percent-encoded by
+        // the client; httplib's default re-encoding rewrites '+' in the query
+        // (axios encodes spaces as '+') to '%2B', changing the decoded value
+        // on the Python side. Forward the request target verbatim.
+        cli.set_url_encode(false);
 
         httplib::Headers headers;
         const std::string authorization = req.get_header_value("Authorization");
