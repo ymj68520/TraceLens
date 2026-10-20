@@ -106,10 +106,16 @@ def test_generate_admits_and_submits_exact_id(monkeypatch):
     })
 
     assert response.status_code == 202
-    assert service.stage_options == ("evidence_only", None, None)
+    assert service.stage_options == (None, None, None)  # default = narrative contract
     assert response.json()["generation_id"] == "rg_1"
     assert service.calls == [("A", "analyst-x")]
     assert executor.submitted == ["rg_1"]
+
+    explicit = client.post("/api/reports/generate", json={
+        "task_id": "A", "requested_by": "analyst-x", "analysis_mode": "evidence_only",
+    })
+    assert explicit.status_code == 202
+    assert service.stage_options == ("evidence_only", None, None)
 
 
 def test_generate_rejects_client_controlled_fields(monkeypatch):

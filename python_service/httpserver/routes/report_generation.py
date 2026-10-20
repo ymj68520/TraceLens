@@ -62,12 +62,16 @@ class GenerateReportRequest(BaseModel):
 
     task_id: str = Field(min_length=1, max_length=256)
     requested_by: str = Field(min_length=1, max_length=256)
-    analysis_mode: Literal["evidence_only", "case_guided"] = "evidence_only"
+    # None = the default narrative contract (final-report:v4 classification
+    # report); explicit modes opt into the two-stage investigation flow.
+    analysis_mode: Literal["evidence_only", "case_guided"] | None = None
     base_report_id: str | None = Field(default=None, min_length=1, max_length=128)
     case_description: str | None = Field(default=None, max_length=8000)
 
     @model_validator(mode="after")
     def _stage_request(self):
+        if self.analysis_mode is None and (self.base_report_id or self.case_description):
+            raise ValueError("narrative reports cannot receive a baseline or case context")
         if self.analysis_mode == "evidence_only" and (self.base_report_id or self.case_description):
             raise ValueError("first stage cannot receive a baseline or case description")
         if self.analysis_mode == "case_guided" and not self.base_report_id:

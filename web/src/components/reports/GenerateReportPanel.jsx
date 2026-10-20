@@ -79,7 +79,7 @@ const GenerateReportPanel = ({
     const admissionRequestRef = useRef(null);
     const completedNotifiedRef = useRef(null);
     const taskIdRef = useRef(taskId);
-    const [analysisMode, setAnalysisMode] = useState('evidence_only');
+    const [analysisMode, setAnalysisMode] = useState('narrative');
     const [caseDescription, setCaseDescription] = useState('');
     const [baseline, setBaseline] = useState(null);
     const [baselineLoading, setBaselineLoading] = useState(false);
@@ -87,7 +87,7 @@ const GenerateReportPanel = ({
 
     useEffect(() => {
         let active = true;
-        setAnalysisMode('evidence_only'); setCaseDescription(''); setBaseline(null);
+        setAnalysisMode('narrative'); setCaseDescription(''); setBaseline(null);
         contextEdited.current = false;
         taskLoader(taskId).then(task => {
             if (active && !contextEdited.current) setCaseDescription(String(task?.case_description || ''));
@@ -206,13 +206,16 @@ const GenerateReportPanel = ({
         >
             <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
                 <Sparkles size={14} />
-                两阶段报告研判
+                报告生成与两阶段研判
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-                首次研判在当前入报材料范围内独立阅读，不使用案情或历史 AI 摘要。
-                二次研判复用首次报告的冻结材料，仅加入本次案情；两份报告分别保存。
+                综合取证报告基于冻结入报材料生成，含逐份证据分类。
+                首次研判在当前入报材料范围内独立阅读，不使用案情或历史 AI 摘要；
+                二次研判复用首次报告的冻结材料，仅加入本次案情。三类报告分别保存版本，互不覆盖。
             </p>
             <div className="flex flex-wrap gap-4 text-sm text-slate-700 dark:text-slate-200" role="group" aria-label="报告分析阶段">
+                <label><input type="radio" name={`analysis-mode-${taskId}`} value="narrative" checked={analysisMode === 'narrative'} disabled={busy}
+                    onChange={() => setAnalysisMode('narrative')} /> 综合取证报告</label>
                 <label><input type="radio" name={`analysis-mode-${taskId}`} value="evidence_only" checked={analysisMode === 'evidence_only'} disabled={busy}
                     onChange={() => setAnalysisMode('evidence_only')} /> 首次：材料自主研判</label>
                 <label><input type="radio" name={`analysis-mode-${taskId}`} value="case_guided" checked={analysisMode === 'case_guided'} disabled={busy}
@@ -236,7 +239,7 @@ const GenerateReportPanel = ({
                     无法读取当前 Report Evidence 绑定（HTTP {summaryError?.status || '错误'}）。
                 </p>
             )}
-            {summary && analysisMode === 'evidence_only' && (
+            {summary && analysisMode !== 'case_guided' && (
                 <div className="text-xs text-slate-600 dark:text-slate-300 space-y-1" data-testid="generate-source-summary">
                     <div className="flex flex-wrap gap-3">
                         <span data-testid="summary-main">Main Evidence: {summary.main}</span>
@@ -282,7 +285,10 @@ const GenerateReportPanel = ({
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-500/90 text-white hover:bg-primary-500 disabled:opacity-50"
                     >
                         {submitting && <Loader2 size={12} className="animate-spin" />}
-                        {durableFailed ? '重新发起本阶段研判' : analysisMode === 'evidence_only' ? '生成材料自主研判报告' : '生成案情对照研判报告'}
+                        {durableFailed
+                            ? (analysisMode === 'narrative' ? '重新发起生成' : '重新发起本阶段研判')
+                            : analysisMode === 'narrative' ? '生成综合取证报告'
+                                : analysisMode === 'evidence_only' ? '生成材料自主研判报告' : '生成案情对照研判报告'}
                     </button>
                 )}
             </div>

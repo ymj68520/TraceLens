@@ -16,15 +16,20 @@ import { pythonApi } from './api';
 /**
  * 发起一次 frozen generation admission（202）。
  * 返回的 exact generation_id 是唯一轮询身份。
+ * analysisMode：'narrative'（默认，综合取证报告·含证据分类，请求不带阶段字段）
+ * 或 'evidence_only' / 'case_guided'（两阶段研判）。
  */
-export const generateReport = async (taskId, { requestedBy, analysisMode = 'evidence_only', baseReportId, caseDescription }) => {
+export const generateReport = async (taskId, { requestedBy, analysisMode = 'narrative', baseReportId, caseDescription }) => {
+    const stage = analysisMode === 'evidence_only' || analysisMode === 'case_guided';
     return await pythonApi.post('/api/reports/generate', {
         task_id: taskId,
         requested_by: requestedBy,
-        analysis_mode: analysisMode,
-        ...(analysisMode === 'case_guided' ? {
-            base_report_id: baseReportId,
-            case_description: caseDescription,
+        ...(stage ? {
+            analysis_mode: analysisMode,
+            ...(analysisMode === 'case_guided' ? {
+                base_report_id: baseReportId,
+                case_description: caseDescription,
+            } : {}),
         } : {}),
     });
 };

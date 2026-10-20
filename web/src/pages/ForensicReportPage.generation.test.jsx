@@ -5,7 +5,6 @@
 //   → citation CITA → exact A1 / exact C1
 //   → A2 accepted + rebind 之后重开 V1 仍是 A1/C1
 //   → Generate G2 → V2 才显示 A2。
-import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -190,7 +189,7 @@ describe('ForensicReportPage generation chain (§28)', () => {
         getReportGeneration.mockImplementation(async () => ({ ...genState }));
 
         await startGeneration();
-        expect(generateReport).toHaveBeenCalledWith(TASK, { requestedBy: 'analyst-x', analysisMode: 'evidence_only' });
+        expect(generateReport).toHaveBeenCalledWith(TASK, { requestedBy: 'analyst-x', analysisMode: 'narrative' });
         expect(await screen.findByTestId('generate-status')).toHaveTextContent('排队中');
 
         await advanceGeneration(genState, { status: 'running' });

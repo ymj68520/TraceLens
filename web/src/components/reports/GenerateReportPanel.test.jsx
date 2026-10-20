@@ -67,11 +67,28 @@ describe('GenerateReportPanel', () => {
         expect(screen.getByText(/仍绑定历史版本/)).toBeInTheDocument();
     });
 
-    test('first-stage request carries only actor and mode, never case text or an evidence list', async () => {
+    test('default request is the narrative report and carries only actor and mode', async () => {
         const { generate } = makePanel();
         await submit();
         await waitFor(() => expect(generate).toHaveBeenCalledTimes(1));
+        expect(generate).toHaveBeenCalledWith('t1', { requestedBy: 'analyst-x', analysisMode: 'narrative' });
+    });
+
+    test('first-stage radio emits the explicit evidence_only mode', async () => {
+        const { generate } = makePanel();
+        fireEvent.click(screen.getByRole('radio', { name: /首次：材料自主研判/ }));
+        await submit();
+        await waitFor(() => expect(generate).toHaveBeenCalledTimes(1));
         expect(generate).toHaveBeenCalledWith('t1', { requestedBy: 'analyst-x', analysisMode: 'evidence_only' });
+    });
+
+    test('switching back to the narrative radio restores the default payload', async () => {
+        const { generate } = makePanel();
+        fireEvent.click(screen.getByRole('radio', { name: /首次：材料自主研判/ }));
+        fireEvent.click(screen.getByRole('radio', { name: /综合取证报告/ }));
+        await submit();
+        await waitFor(() => expect(generate).toHaveBeenCalledTimes(1));
+        expect(generate).toHaveBeenCalledWith('t1', { requestedBy: 'analyst-x', analysisMode: 'narrative' });
     });
 
     test('rapid double-click produces exactly one admission (§26-3)', async () => {

@@ -386,3 +386,25 @@ def test_application_registration_exposes_report_routes_and_preserves_legacy_rou
 def test_vite_proxy_routes_reports_before_broad_api() -> None:
     vite_source = (ROOT.parent / "web" / "vite.config.js").read_text(encoding="utf-8")
     assert vite_source.index("'/api/reports'") < vite_source.index("'/api'")
+
+
+def test_generate_request_defaults_to_narrative_and_guards_stage_context() -> None:
+    from httpserver.routes.report_generation import GenerateReportRequest
+
+    plain = GenerateReportRequest(task_id="T", requested_by="tester")
+    assert plain.analysis_mode is None  # default = classification narrative contract
+
+    assert GenerateReportRequest(task_id="T", requested_by="t",
+                                 analysis_mode="evidence_only").analysis_mode == "evidence_only"
+    assert GenerateReportRequest(task_id="T", requested_by="t", analysis_mode="case_guided",
+                                 base_report_id="r1", case_description="案情").base_report_id == "r1"
+
+    with pytest.raises(ValueError):
+        GenerateReportRequest(task_id="T", requested_by="t", base_report_id="r1")
+    with pytest.raises(ValueError):
+        GenerateReportRequest(task_id="T", requested_by="t", case_description="案情")
+    with pytest.raises(ValueError):
+        GenerateReportRequest(task_id="T", requested_by="t", analysis_mode="evidence_only",
+                              case_description="案情")
+    with pytest.raises(ValueError):
+        GenerateReportRequest(task_id="T", requested_by="t", analysis_mode="case_guided")
