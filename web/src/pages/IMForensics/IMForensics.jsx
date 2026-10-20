@@ -1,11 +1,11 @@
 // 即时通讯取证（IMForensics）—— 2026-09-15 由 微信取证 / QQ 取证 / 微信关系分析
-// 三页合并而来。平台（微信/QQ）切换 + 六个 Tab（概览/会话/消息/联系人/群聊/关系分析）。
+// 三页合并而来。平台（微信/QQ）切换，现有页签内增加时间规律总结。
 // platform / tab / import_id / task_id（图谱数据源覆盖）都落在 URL 上，旧路由
 // （/wechat-forensics、/qq-forensics、/wechat-graph）经 IMForensicsRedirect 映射进来。
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Database, FileText, MessageSquare, Plus, RefreshCw, Trash2, User, Users, Network,
+  Database, FileText, MessageSquare, Plus, RefreshCw, Trash2, User, Users, Network, Clock,
 } from 'lucide-react';
 import Card from '../../components/common/Card';
 import Spinner from '../../components/common/Spinner';
@@ -25,6 +25,7 @@ import {
   QQMessagesTab, QQContactsTab, QQChatroomsTab,
 } from './QQPanels';
 import GraphTab from './GraphTab';
+import TimelineSummaryPanel from '../../components/timeline/TimelineSummaryPanel';
 
 // ---------------------------------------------------------------------------
 
@@ -35,6 +36,7 @@ const TABS = [
   { id: 'contacts', label: '联系人', icon: User },
   { id: 'chatrooms', label: '群聊', icon: Users },
   { id: 'graph', label: '关系分析', icon: Network },
+  { id: 'timeline', label: '时间规律', icon: Clock },
 ];
 
 const TAB_IDS = new Set(TABS.map((t) => t.id));
@@ -198,7 +200,7 @@ export default function IMForensics() {
 
   if (loadingList) return <div className="flex items-center justify-center h-full"><Spinner /></div>;
 
-  const graphOnly = activeTab === 'graph' && !!graphTaskOverride;
+  const graphOnly = ['graph', 'timeline'].includes(activeTab) && !!graphTaskOverride;
   const P = platform.panels;
 
   return (
@@ -290,6 +292,11 @@ export default function IMForensics() {
               onClearOverride={() => updateParams((p) => p.delete('task_id'))}
             />
           )}
+          {activeTab === 'timeline' && (graphTaskOverride
+            ? <TimelineSummaryPanel key={`task:${graphTaskOverride}`} title="通讯时间规律"
+                endpoint="/api/associations/timeline-summary" scopeParams={{ task_id: graphTaskOverride, source: 'wechat' }} communication />
+            : current?.status === 'ready' && <TimelineSummaryPanel key={`${platformKey}:${current.import_id}`} title="通讯时间规律"
+                endpoint={`/api/${platformKey}/forensics/imports/${current.import_id}/timeline-summary`} communication />)}
         </>
       )}
 

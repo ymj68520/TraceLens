@@ -25,9 +25,11 @@ from fastapi import APIRouter, Body, HTTPException, Path, Query
 from fastapi.responses import FileResponse
 
 from ..services.wechat_import_service import get_wechat_import_service
+from .timeline_summary import wechat_router as timeline_summary_router
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+router.include_router(timeline_summary_router)
 
 
 def _svc():

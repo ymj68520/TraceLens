@@ -98,6 +98,16 @@
       "permission": "read"
     },
     {
+      "method": "GET",
+      "path": "/api/associations/timeline-summary",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/associations/timeline-summary/records",
+      "permission": "read"
+    },
+    {
       "method": "POST",
       "path": "/api/audio-analysis/transcribe",
       "permission": "write"
@@ -909,6 +919,16 @@
     },
     {
       "method": "GET",
+      "path": "/api/qq/forensics/imports/{import_id}/timeline-summary",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/qq/forensics/imports/{import_id}/timeline-summary/records",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
       "path": "/api/reports",
       "permission": "read"
     },
@@ -1075,6 +1095,16 @@
     {
       "method": "GET",
       "path": "/api/wechat/forensics/imports/{import_id}/sessions",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wechat/forensics/imports/{import_id}/timeline-summary",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/wechat/forensics/imports/{import_id}/timeline-summary/records",
       "permission": "read"
     },
     {

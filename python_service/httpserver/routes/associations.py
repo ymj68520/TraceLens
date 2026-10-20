@@ -21,9 +21,11 @@ from pydantic import BaseModel, Field
 
 from ..config import Settings, get_settings
 from ..path_utils import normalize_evidence_path
+from .timeline_summary import task_router as timeline_summary_router
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+router.include_router(timeline_summary_router)
 
 
 # Request/Response Models

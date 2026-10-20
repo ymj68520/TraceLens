@@ -25,9 +25,11 @@ from typing import Optional
 from fastapi import APIRouter, Body, HTTPException, Path, Query
 
 from ..services.qq_import_service import get_qq_import_service
+from .timeline_summary import qq_router as timeline_summary_router
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+router.include_router(timeline_summary_router)
 
 
 def _svc():

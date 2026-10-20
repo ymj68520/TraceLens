@@ -14,6 +14,7 @@ import { Calendar, Filter, X, ChevronLeft, ChevronRight, FileText, Clock, Layers
 
 // Cluster investigation drawer (split for maintainability)
 import ClusterInvestigationDrawer from '../components/timeline/ClusterInvestigationDrawer';
+import TimelineSummaryPanel from '../components/timeline/TimelineSummaryPanel';
 import { useFeatures } from '../hooks/useFeatures';
 
 // --- Helper Functions ---
@@ -568,10 +569,21 @@ const Timeline = () => {
     return Math.ceil(totalCount / pageSize);
   }, [totalCount, pageSize]);
 
+  // Match the existing list's inclusive epoch-second filter exactly. Local
+  // calendar filters inside the summary are explicit, additional constraints.
+  const summaryScope = { task_id: taskId, source: 'events', ...(eventType ? { event_type: eventType } : {}) };
+  if (customStart || customEnd) {
+    if (customStart) summaryScope.start_time = customStart;
+    if (customEnd) summaryScope.end_time = customEnd;
+  } else if (selectedDate) {
+    summaryScope.start_time = Math.floor(new Date(selectedDate).getTime() / 1000);
+    summaryScope.end_time = summaryScope.start_time + 86400;
+  }
+
   if (!taskId) return <div className="p-8 text-center text-slate-500">Please select a task...</div>;
 
   return (
-    <div className="h-[calc(100vh-140px)] flex flex-col space-y-4 overflow-hidden relative">
+    <div className={`flex flex-col space-y-4 relative ${viewMode === 'summary' ? 'lg:h-[calc(100vh-140px)] lg:overflow-hidden' : 'h-[calc(100vh-140px)] overflow-hidden'}`}>
       {/* Investigation Drawer */}
       <ClusterInvestigationDrawer
         selectedCluster={selectedCluster}
@@ -596,12 +608,13 @@ const Timeline = () => {
         <div className="flex items-center space-x-2 bg-slate-100 p-1 rounded-xl">
            <Button variant={viewMode === 'timeline' ? 'primary' : 'ghost'} size="sm" onClick={() => updateParams({ view: 'timeline' })} icon={Clock}>{t('timeline.view.list')}</Button>
            <Button variant={viewMode === 'table' ? 'primary' : 'ghost'} size="sm" onClick={() => updateParams({ view: 'table' })} icon={FileText}>{t('timeline.view.table')}</Button>
+           <Button variant={viewMode === 'summary' ? 'primary' : 'ghost'} size="sm" onClick={() => updateParams({ view: 'summary' })} icon={Gauge}>时间规律</Button>
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0 overflow-hidden">
+      <div className={`flex-1 flex flex-col lg:flex-row gap-6 min-h-0 ${viewMode === 'summary' ? 'lg:overflow-hidden' : 'overflow-hidden'}`}>
         {/* Sidebar */}
-        <aside className="w-full lg:w-80 flex flex-col min-h-0 space-y-4 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-200">
+        <aside className={`w-full lg:w-80 flex flex-col min-h-0 space-y-4 pr-2 scrollbar-thin scrollbar-thumb-slate-200 ${viewMode === 'summary' ? 'lg:overflow-y-auto lg:shrink-0' : 'overflow-y-auto'}`}>
           <div className="flex-shrink-0 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
             <div className="p-3 border-b border-slate-50 flex justify-between items-center bg-slate-50/30">
                 <span className="text-[11px] font-bold text-slate-600 flex items-center uppercase tracking-wider"><Calendar className="w-3.5 h-3.5 mr-1.5 text-primary-500"/> {t('timeline.stats.distribution')}</span>
@@ -762,21 +775,23 @@ const Timeline = () => {
         </aside>
 
         {/* Main Content Area */}
-        <main className="flex-1 flex flex-col min-h-0 bg-white rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden">
-          {error && (
+        <main className={`flex-1 flex flex-col min-h-0 min-w-0 bg-white rounded-2xl border border-slate-100 shadow-sm relative ${viewMode === 'summary' ? 'lg:overflow-hidden' : 'overflow-hidden'}`}>
+          {error && viewMode !== 'summary' && (
             <div role="alert" className="mx-4 mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
               {error}
             </div>
           )}
-          {loading && (
+          {loading && viewMode !== 'summary' && (
             <div className="absolute inset-0 bg-white/80 z-50 flex flex-col items-center justify-center backdrop-blur-sm">
                 <Spinner size="lg" />
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-3">{t('timeline.status.loading')}</span>
             </div>
           )}
           
-          <div className="flex-1 min-h-0 overflow-hidden">
-            {events.length === 0 && !loading ? (
+          <div className={`flex-1 min-h-0 ${viewMode === 'summary' ? 'lg:overflow-y-auto p-3' : 'overflow-hidden'}`}>
+            {viewMode === 'summary' ? (
+                <TimelineSummaryPanel key={taskId} endpoint="/api/associations/timeline-summary" scopeParams={summaryScope} />
+            ) : events.length === 0 && !loading ? (
                 <div className="h-full flex items-center justify-center text-slate-400 italic text-sm">{t('timeline.status.empty')}</div>
             ) : viewMode === 'timeline' ? (
                 <Virtuoso
@@ -962,13 +977,13 @@ const Timeline = () => {
           </div>
 
           {/* Sticky Footer Pagination */}
-          <footer className="flex-shrink-0 flex items-center justify-between border-t border-slate-100 p-3 bg-slate-50/80 backdrop-blur-sm">
+          {viewMode !== 'summary' && <footer className="flex-shrink-0 flex items-center justify-between border-t border-slate-100 p-3 bg-slate-50/80 backdrop-blur-sm">
                 <Button variant="ghost" size="sm" disabled={currentPage === 1} onClick={() => updateParams({ page: currentPage - 1 })} icon={ChevronLeft} className="hover:bg-white shadow-sm">PREV</Button>
                 <div className="text-[10px] text-slate-500 font-black bg-white px-4 py-1.5 rounded-full border border-slate-200 shadow-sm tracking-widest uppercase">
                     {t('timeline.stats.navigator')} {currentPage} / {totalPages || 1}
                 </div>
                 <Button variant="ghost" size="sm" disabled={currentPage === totalPages || totalPages === 0} onClick={() => updateParams({ page: currentPage + 1 })} icon={ChevronRight} iconPosition="right" className="hover:bg-white shadow-sm">NEXT</Button>
-          </footer>
+          </footer>}
         </main>
       </div>
     </div>
