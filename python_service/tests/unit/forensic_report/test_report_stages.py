@@ -368,3 +368,23 @@ async def test_direction_contract_rejects_unowned_or_case_contaminated_output(tm
     with pytest.raises(ValueError):
         parse_directions(json.dumps({"directions": [value]}), {source.material_id: source.text},
                          {source.material_id: source}, envelope, set())
+
+
+def test_direction_and_comparison_accept_scalar_for_array_fields():
+    from httpserver.services.forensic_report.models import ComparisonSuggestion, DirectionSuggestion
+    value = DirectionSuggestion.model_validate({
+        "title": "方向", "description": "描述", "finding_kind": "hypothesis",
+        "supporting_refs": {"material_id": "m0001", "quote": "片段"},
+        "counter_refs": [], "missing_information": "来源与使用人未证实",
+        "alternative_explanations": "运维远程管理", "baseline_direction_ids": "d_1",
+        "case_context_quote": ""})
+    assert value.missing_information == ("来源与使用人未证实",)
+    assert value.alternative_explanations == ("运维远程管理",)
+    assert value.baseline_direction_ids == ("d_1",)
+    assert len(value.supporting_refs) == 1
+    assert ComparisonSuggestion.model_validate({
+        "baseline_direction_id": "d_1", "status": "insufficient", "reason": "材料不足以判断",
+        "supporting_refs": [], "counter_refs": None, "missing_information": "缺转写",
+        "case_context_quote": ""}).counter_refs == ()
+    assert "必须是数组" in STAGE_DISCOVERY_SYSTEM_V1
+    assert "必须是数组" in STAGE_COMPARE_SYSTEM_V1

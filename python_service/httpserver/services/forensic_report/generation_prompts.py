@@ -225,6 +225,8 @@ android_record是派生解析记录，均不能声称原文/实际行为已核�
 counter_refs、missing_information、alternative_explanations、baseline_direction_ids、case_context_quote。
 supporting_refs/counter_refs每条为{"material_id":"输入中的ID","quote":"该材料中逐字摘录"}，各至多2条。
 description使用简体中文，200字以内。hypothesis要写明缺失证明或其他解释。
+missing_information、alternative_explanations、supporting_refs、counter_refs、
+baseline_direction_ids必须是数组，单项也要写成单元素数组，空则输出[]。
 baseline_direction_ids仅可来自提供的基线列表。没有相关基线时为空。
 所有观察必须有材料引文。没有材料支持、仅案情提出的方向只能为hypothesis，
 必须逐字填写case_context_quote，并明确材料不足，不使用定论。
@@ -236,6 +238,7 @@ current_directions_not_evidence也是本轮待核解释，支持或反驳只能�
 材料集合与第一轮相同，本轮没有新增证据，不得声称补充证据已经证实某事。
 只返回严格JSON对象，字段：baseline_direction_id、status、reason、supporting_refs、
 counter_refs、missing_information、case_context_quote。
+supporting_refs、counter_refs、missing_information必须是数组，单项也写成单元素数组，空则输出[]。
 status取supported/revised/weakened/contradicted/insufficient/case_only。
 supported/revised须有材料支持；weakened/contradicted须有相反材料。
 未提及、不完整不等于反证；仅案情提出而材料未支持时用case_only并逐字引用案情。

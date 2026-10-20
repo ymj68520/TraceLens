@@ -468,6 +468,18 @@ class DirectionSuggestion(BaseModel):
     baseline_direction_ids: tuple[str, ...] = Field(default=(), max_length=8)
     case_context_quote: str = Field(default="", max_length=500)
 
+    @field_validator("supporting_refs", "counter_refs", "missing_information",
+                     "alternative_explanations", "baseline_direction_ids", mode="before")
+    @classmethod
+    def _accept_scalar_as_single_item(cls, v):
+        # Models intermittently emit a bare string/object for these array
+        # fields; one item is one item, so normalize before strict validation.
+        if v is None:
+            return ()
+        if isinstance(v, (list, tuple)):
+            return v
+        return [v]
+
 
 class DirectionBatch(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -490,6 +502,15 @@ class ComparisonSuggestion(BaseModel):
     counter_refs: tuple[MaterialQuote, ...] = Field(default=(), max_length=6)
     missing_information: tuple[str, ...] = Field(default=(), max_length=8)
     case_context_quote: str = Field(default="", max_length=500)
+
+    @field_validator("supporting_refs", "counter_refs", "missing_information", mode="before")
+    @classmethod
+    def _accept_scalar_as_single_item(cls, v):
+        if v is None:
+            return ()
+        if isinstance(v, (list, tuple)):
+            return v
+        return [v]
 
 
 class DirectionComparison(ComparisonSuggestion):
