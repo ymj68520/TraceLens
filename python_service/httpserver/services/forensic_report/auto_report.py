@@ -37,7 +37,7 @@ async def auto_generate_pipeline_report(
 
     Returns a small summary dict for logging; raises on failure.
     """
-    if executor.has_report_version(task_id):
+    if executor.has_report_version(task_id, analysis_mode="evidence_only"):
         logger.info(
             "Task %s already has a report version; auto generation skipped",
             task_id,
@@ -48,7 +48,7 @@ async def auto_generate_pipeline_report(
         task_id, added_by=AUTO_REPORT_REQUESTER
     )
     generation = await admission.admit(
-        task_id, requested_by=AUTO_REPORT_REQUESTER
+        task_id, requested_by=AUTO_REPORT_REQUESTER, analysis_mode="evidence_only",
     )
     await executor.submit(generation.generation_id)
     logger.info(

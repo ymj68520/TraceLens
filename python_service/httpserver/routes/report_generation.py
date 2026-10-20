@@ -1,8 +1,8 @@
 """Public report generation API (Phase R2c).
 
-Exact-ID admission and polling only. The request may carry nothing but
-``task_id`` and ``requested_by`` -- the server builds the whole frozen
-input from R1 bindings; clients can never submit evidence lists, analysis
+Exact-ID admission and polling. The caller selects a stage, an optional exact
+baseline report and the second-stage case context; the server builds the frozen
+input from trusted bindings or the baseline. Clients cannot submit evidence lists, analysis
 IDs, citations, prompt versions, models, or envelopes. Polling is by exact
 ``generation_id``; there is no "latest generation" fallback.
 """
@@ -10,11 +10,11 @@ IDs, citations, prompt versions, models, or envelopes. Polling is by exact
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from ..services.field_security import audit_actor
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..config import get_project_root, get_settings
 from ..services.evidence.exceptions import (
@@ -62,6 +62,17 @@ class GenerateReportRequest(BaseModel):
 
     task_id: str = Field(min_length=1, max_length=256)
     requested_by: str = Field(min_length=1, max_length=256)
+    analysis_mode: Literal["evidence_only", "case_guided"] = "evidence_only"
+    base_report_id: str | None = Field(default=None, min_length=1, max_length=128)
+    case_description: str | None = Field(default=None, max_length=8000)
+
+    @model_validator(mode="after")
+    def _stage_request(self):
+        if self.analysis_mode == "evidence_only" and (self.base_report_id or self.case_description):
+            raise ValueError("first stage cannot receive a baseline or case description")
+        if self.analysis_mode == "case_guided" and not self.base_report_id:
+            raise ValueError("second stage requires base_report_id")
+        return self
 
 
 class GenerationStatusResponse(BaseModel):
@@ -105,13 +116,17 @@ async def generate_report(
     """Admit one frozen generation from the task's Report Evidence (202)."""
     try:
         row = await service.admit(
-            request.task_id, requested_by=audit_actor(http_request, request.requested_by)
+            request.task_id, requested_by=audit_actor(http_request, request.requested_by),
+            analysis_mode=request.analysis_mode, base_report_id=request.base_report_id,
+            case_description=request.case_description,
         )
     except ReportGenerationInputError as exc:
         if exc.code == "no_report_evidence":
             raise HTTPException(
                 status_code=409, detail="task has no report evidence"
             ) from exc
+        if exc.code in ("case_context_required", "baseline_required", "invalid_baseline", "invalid_stage_context", "invalid_analysis_mode"):
+            raise HTTPException(status_code=409, detail={"code": exc.code, "message": str(exc)}) from exc
         raise HTTPException(
             status_code=409, detail="report evidence binding is invalid"
         ) from exc

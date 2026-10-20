@@ -481,10 +481,16 @@ async def workbench_start_analysis(
             detail="Workbench LLM analysis is disabled in this build (MVP)",
         )
     try:
+        case_context = request.case_context
+        if request.include_case_context and case_context is None:
+            task = await manager.cpp_backend.get_task(task_id)
+            if not isinstance(task, dict) or task.get("id") != task_id:
+                raise EvidenceNotFoundError("task not found")
+            case_context = str(task.get("case_description") or "")
         analysis = await manager.secondary_analysis_executor.submit(
             task_id, request.evidence_key,
             analyst_note=request.analyst_note,
-            case_context=request.case_context if request.include_case_context else None,
+            case_context=case_context if request.include_case_context else None,
             related_evidence=tuple(request.related_evidence) if request.include_related_evidence else (),
         )
         return {"success": True, "job_id": analysis.analysis_id, "analysis_id": analysis.analysis_id, "version": analysis.version}

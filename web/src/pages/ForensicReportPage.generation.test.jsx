@@ -10,6 +10,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import ForensicReportPage from './ForensicReportPage';
+vi.mock('../services/taskService', () => ({ fetchTaskById: vi.fn().mockResolvedValue({ case_description: '' }) }));
 
 vi.mock('../services/reportGenerationService', () => ({
     generateReport: vi.fn(),
@@ -189,7 +190,7 @@ describe('ForensicReportPage generation chain (§28)', () => {
         getReportGeneration.mockImplementation(async () => ({ ...genState }));
 
         await startGeneration();
-        expect(generateReport).toHaveBeenCalledWith(TASK, { requestedBy: 'analyst-x' });
+        expect(generateReport).toHaveBeenCalledWith(TASK, { requestedBy: 'analyst-x', analysisMode: 'evidence_only' });
         expect(await screen.findByTestId('generate-status')).toHaveTextContent('排队中');
 
         await advanceGeneration(genState, { status: 'running' });

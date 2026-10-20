@@ -25,7 +25,8 @@ class _FakeAdmission:
     def __init__(self):
         self.calls: list[tuple[str, str]] = []
 
-    async def admit(self, task_id: str, *, requested_by: str):
+    async def admit(self, task_id: str, *, requested_by: str, analysis_mode: str):
+        assert analysis_mode == "evidence_only"
         self.calls.append((task_id, requested_by))
         return SimpleNamespace(generation_id="gen-1")
 
@@ -35,7 +36,8 @@ class _FakeExecutor:
         self._has_version = has_version
         self.submitted: list[str] = []
 
-    def has_report_version(self, task_id: str) -> bool:
+    def has_report_version(self, task_id: str, *, analysis_mode: str) -> bool:
+        assert analysis_mode == "evidence_only"
         return self._has_version
 
     async def submit(self, generation_id: str) -> None:

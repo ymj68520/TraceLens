@@ -1,13 +1,14 @@
 // GenerateReportPanel.jsx
 // R2d Generate 入口（唯一 generation UI，位于 Report 页面）。
-// 请求体只允许 {task_id, requested_by}——evidence 集合、analysis 绑定、
+// 请求体仅含任务、操作人、阶段及二次研判的基线/案情——evidence 集合、analysis 绑定、
 // prompt 版本、模型、envelope 全部由服务端冻结；这里展示的 source
 // summary 只是只读投影（R1 GET /api/reports/evidence），不参与提交。
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, Sparkles } from 'lucide-react';
 import { useReportGenerationPolling } from '../../hooks/useReportGenerationPolling';
 import { listReportEvidence } from '../../services/investigationService';
-import { generateReport, getReportGeneration } from '../../services/reportGenerationService';
+import { generateReport, getReportGeneration, getNarrativeReport } from '../../services/reportGenerationService';
+import { fetchTaskById } from '../../services/taskService';
 
 const ERROR_HINTS = {
     citation_invalid: '模型输出引用了报告证据边界之外的来源，生成已整体作废。',
@@ -23,12 +24,17 @@ const ERROR_HINTS = {
     publication_error: '报告发布失败，未产生可见版本，可重新发起生成。',
     execution_schedule_failed: '生成任务调度失败，可重新发起生成。',
     execution_error: '生成执行失败，可重新发起生成。',
+    neutral_sources_unavailable: '没有可用的中立材料。请检查已提取原文件或派生记录；不会回退使用历史 AI 摘要。',
+    no_validated_neutral_analysis: '本轮研判未通过来源校验，未生成报告。原材料和历史报告保持不变。',
 };
 
 // admission 阶段的 HTTP 错误（409/404 等）没有 error_code，按 detail 映射成
 // 可操作的指引；未命中的 detail 原样透出。
 const ADMISSION_HINTS = {
     'task has no report evidence': '当前任务没有可生成的报告证据：请先在调查工作台打开某个证据，将其标记为"正文证据"或"附件证据"（事件簇证据不参与报告），再回到本页生成。',
+    invalid_baseline: '请选择本任务已完成的“材料自主研判报告”作为基线；历史案情报告不能冒充中立基线。',
+    baseline_required: '请先选择一份材料自主研判报告。',
+    case_context_required: '请填写本次用于对照的案情描述，最多8000字。',
 };
 
 const STATUS_TEXT = {
@@ -52,12 +58,16 @@ function summarize(rows) {
 
 const GenerateReportPanel = ({
     taskId,
+    onSubmitStart,
     onAdmitted,
     onComplete,
     pollIntervalMs = 2000,
     evidenceLoader = listReportEvidence,
     generate = generateReport,
     fetchGeneration = getReportGeneration,
+    selectedReportId = null,
+    narrativeLoader = getNarrativeReport,
+    taskLoader = fetchTaskById,
 }) => {
     const [summary, setSummary] = useState(null);
     const [summaryError, setSummaryError] = useState(null);
@@ -66,12 +76,47 @@ const GenerateReportPanel = ({
     const [admissionError, setAdmissionError] = useState(null);
     const [submission, setSubmission] = useState(null);
     const submittingRef = useRef(false);
+    const admissionRequestRef = useRef(null);
     const completedNotifiedRef = useRef(null);
     const taskIdRef = useRef(taskId);
+    const [analysisMode, setAnalysisMode] = useState('evidence_only');
+    const [caseDescription, setCaseDescription] = useState('');
+    const [baseline, setBaseline] = useState(null);
+    const [baselineLoading, setBaselineLoading] = useState(false);
+    const contextEdited = useRef(false);
+
+    useEffect(() => {
+        let active = true;
+        setAnalysisMode('evidence_only'); setCaseDescription(''); setBaseline(null);
+        contextEdited.current = false;
+        taskLoader(taskId).then(task => {
+            if (active && !contextEdited.current) setCaseDescription(String(task?.case_description || ''));
+        }).catch(() => {});
+        return () => { active = false; };
+    }, [taskId, taskLoader]);
+
+    useEffect(() => {
+        let active = true;
+        setBaseline(null);
+        setBaselineLoading(Boolean(selectedReportId));
+        if (!selectedReportId) return () => { active = false; };
+        narrativeLoader(taskId, selectedReportId).then(report => {
+            if (!active) return;
+            const stage = report.stage_analysis;
+            if (stage) setBaseline({
+                reportId: stage.analysis_mode === 'evidence_only' ? selectedReportId : stage.baseline_report_id,
+                count: stage.materials?.length || 0,
+            });
+        }).catch(() => {}).finally(() => { if (active) setBaselineLoading(false); });
+        return () => { active = false; };
+    }, [taskId, selectedReportId, narrativeLoader]);
 
     // task 切换：丢弃旧 task 的 source summary 与 generation 状态（§23）。
     useEffect(() => {
         taskIdRef.current = taskId;
+        admissionRequestRef.current = null;
+        submittingRef.current = false;
+        setSubmitting(false);
         setSummary(null);
         setSummaryError(null);
         setSubmission(null);
@@ -87,7 +132,7 @@ const GenerateReportPanel = ({
         return () => { cancelled = true; };
     }, [taskId, evidenceLoader]);
 
-    const polling = useReportGenerationPolling(submission ? {
+    const polling = useReportGenerationPolling(submission?.taskId === taskId ? {
         taskId: submission.taskId,
         generationId: submission.generationId,
     } : null, { intervalMs: pollIntervalMs, fetchGeneration });
@@ -96,6 +141,8 @@ const GenerateReportPanel = ({
     useEffect(() => {
         const generation = polling.generation;
         if (
+            submission?.taskId === taskId
+            &&
             generation?.status === 'completed'
             && generation.report_id
             && completedNotifiedRef.current !== generation.generation_id
@@ -103,34 +150,53 @@ const GenerateReportPanel = ({
             completedNotifiedRef.current = generation.generation_id;
             onComplete?.(generation);
         }
-    }, [polling.generation, onComplete]);
+    }, [polling.generation, onComplete, submission, taskId]);
 
     const submit = useCallback(async () => {
         // 同步 ref 防抖：rapid double-click 只产生一个 admission（§5）。
-        if (submittingRef.current || !taskId || !actor.trim()) return;
+        if (submittingRef.current || !taskId || !actor.trim()
+            || (analysisMode === 'case_guided' && (!baseline?.reportId || !caseDescription.trim() || caseDescription.length > 8000))) return;
         submittingRef.current = true;
+        const request = {};
+        admissionRequestRef.current = request;
+        // Capture navigation intent at the click, before an admission response
+        // can arrive after the analyst has selected a different report.
+        const submissionContext = onSubmitStart?.();
         setSubmitting(true);
         setAdmissionError(null);
         try {
-            const admitted = await generate(taskId, { requestedBy: actor.trim() });
-            if (taskIdRef.current !== taskId) return;
+            const admitted = await generate(taskId, {
+                requestedBy: actor.trim(), analysisMode,
+                ...(analysisMode === 'case_guided' ? {
+                    baseReportId: baseline.reportId, caseDescription,
+                } : {}),
+            });
+            if (admissionRequestRef.current !== request || taskIdRef.current !== taskId) return;
             // admission 成功即记录（父级用它判定 completed 时是否允许
             // 自动打开 exact 产物版本）；HTTP admission 失败不算。
-            onAdmitted?.();
+            onAdmitted?.(submissionContext);
             setSubmission({ taskId, generationId: admitted.generation_id });
         } catch (error) {
-            if (taskIdRef.current === taskId) setAdmissionError(error);
+            if (admissionRequestRef.current === request && taskIdRef.current === taskId) setAdmissionError(error);
         } finally {
-            submittingRef.current = false;
-            setSubmitting(false);
+            if (admissionRequestRef.current === request) {
+                admissionRequestRef.current = null;
+                submittingRef.current = false;
+                setSubmitting(false);
+            }
         }
-    }, [actor, generate, onAdmitted, taskId]);
+    }, [actor, generate, onSubmitStart, onAdmitted, taskId, analysisMode, baseline, caseDescription]);
 
     const generation = polling.generation;
     const durableFailed = generation?.status === 'failed';
     // completed / failed 都是终态：允许 analyst 显式再发起（新的
     // generation_id）；绝不自动 retry（§9）。
     const terminal = Boolean(generation) && !polling.active;
+    const busy = submitting || (Boolean(submission) && !terminal);
+    const admissionDetail = admissionError?.data?.detail;
+    const admissionText = typeof admissionDetail === 'object' && admissionDetail !== null
+        ? (ADMISSION_HINTS[admissionDetail.code] || admissionDetail.message || '请检查分析阶段与案情输入。')
+        : (ADMISSION_HINTS[admissionDetail] || admissionDetail || admissionError?.message || '请稍后重试');
 
     return (
         <section
@@ -140,19 +206,37 @@ const GenerateReportPanel = ({
         >
             <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
                 <Sparkles size={14} />
-                生成叙事报告（Narrative Report）
+                两阶段报告研判
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-                将基于当前显式 Report Evidence 集合生成报告；Evidence 集合与
-                Analysis 绑定在生成时冻结，之后的变更不影响本次生成。
+                首次研判在当前入报材料范围内独立阅读，不使用案情或历史 AI 摘要。
+                二次研判复用首次报告的冻结材料，仅加入本次案情；两份报告分别保存。
             </p>
+            <div className="flex flex-wrap gap-4 text-sm text-slate-700 dark:text-slate-200" role="group" aria-label="报告分析阶段">
+                <label><input type="radio" name={`analysis-mode-${taskId}`} value="evidence_only" checked={analysisMode === 'evidence_only'} disabled={busy}
+                    onChange={() => setAnalysisMode('evidence_only')} /> 首次：材料自主研判</label>
+                <label><input type="radio" name={`analysis-mode-${taskId}`} value="case_guided" checked={analysisMode === 'case_guided'} disabled={busy}
+                    onChange={() => setAnalysisMode('case_guided')} /> 二次：案情对照研判</label>
+            </div>
+            {analysisMode === 'case_guided' && <div className="space-y-3 rounded-xl border border-blue-200 p-3 dark:border-blue-800">
+                <p className="text-xs text-slate-600 dark:text-slate-300">{baselineLoading ? '正在核对基线报告…' : baseline?.reportId
+                    ? `基于首次报告 ${baseline.reportId} · 沿用 ${baseline.count} 份冻结材料`
+                    : '请在下方版本历史中选择一份材料自主研判报告。历史案情报告不能作为中立基线。'}</p>
+                <label className="block text-xs text-slate-600 dark:text-slate-300">本次案情描述（调查语境，不作为已证实事实）
+                    <textarea aria-label="本次案情描述" value={caseDescription} maxLength={8000} disabled={busy}
+                        onChange={event => { contextEdited.current = true; setCaseDescription(event.target.value); }}
+                        className="mt-2 min-h-32 w-full rounded-lg border border-slate-300 bg-white p-3 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
+                </label>
+                <p className="text-xs text-slate-500">{caseDescription.length}/8000 字 · 仅冻结到本次研判，不覆盖任务案情或首次报告。</p>
+                {caseDescription.length > 8000 && <p role="alert" className="text-xs text-amber-700 dark:text-amber-300">已保存案情超过本轮8000字限制，请明确缩减后提交；不会自动截断。</p>}
+            </div>}
 
             {summaryError && (
                 <p className="text-xs text-amber-600 dark:text-amber-400" data-testid="generate-source-error">
                     无法读取当前 Report Evidence 绑定（HTTP {summaryError?.status || '错误'}）。
                 </p>
             )}
-            {summary && (
+            {summary && analysisMode === 'evidence_only' && (
                 <div className="text-xs text-slate-600 dark:text-slate-300 space-y-1" data-testid="generate-source-summary">
                     <div className="flex flex-wrap gap-3">
                         <span data-testid="summary-main">Main Evidence: {summary.main}</span>
@@ -194,11 +278,11 @@ const GenerateReportPanel = ({
                         type="button"
                         data-testid="generate-submit"
                         onClick={() => { void submit(); }}
-                        disabled={submitting || !actor.trim()}
+                        disabled={submitting || !actor.trim() || (analysisMode === 'case_guided' && (!baseline?.reportId || baselineLoading || !caseDescription.trim() || caseDescription.length > 8000))}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-500/90 text-white hover:bg-primary-500 disabled:opacity-50"
                     >
                         {submitting && <Loader2 size={12} className="animate-spin" />}
-                        {durableFailed ? 'Generate Again' : (submission ? '生成新版本' : 'Generate Report')}
+                        {durableFailed ? '重新发起本阶段研判' : analysisMode === 'evidence_only' ? '生成材料自主研判报告' : '生成案情对照研判报告'}
                     </button>
                 )}
             </div>
@@ -206,10 +290,7 @@ const GenerateReportPanel = ({
             {admissionError && (
                 <div role="alert" className="text-xs text-rose-600 dark:text-rose-400" data-testid="generate-admission-error">
                     生成请求失败（HTTP {admissionError?.status || '错误'}）：
-                    {ADMISSION_HINTS[admissionError?.data?.detail]
-                        || admissionError?.data?.detail
-                        || admissionError?.message
-                        || '请稍后重试'}
+                    {admissionText}
                 </div>
             )}
 

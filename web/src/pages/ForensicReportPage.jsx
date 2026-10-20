@@ -61,32 +61,46 @@ export default function ForensicReportPage({
   const selectionRef = useRef(null);
   selectionRef.current = state.selectedVersion;
   const scopeRef = useRef(null);
-  const selectionWhenAdmittedRef = useRef(undefined);
+  const navigationRevisionRef = useRef(0);
+  const generationIntentRef = useRef(null);
 
-  const handleGenerationAdmitted = useCallback(() => {
-    // 记录 admission 时刻的 selection；completed 时只有"selection 未被
-    // 用户改变"才允许自动打开 exact 产物版本。
-    selectionWhenAdmittedRef.current = selectionRef.current?.report_id ?? null;
+  const handleGenerationSubmitStart = useCallback(() => ({
+    scopeKey: scopeRef.current,
+    reportId: selectionRef.current?.report_id ?? null,
+    navigationRevision: navigationRevisionRef.current,
+  }), []);
+
+  const handleGenerationAdmitted = useCallback((intent) => {
+    generationIntentRef.current = intent;
   }, []);
 
   const handleGenerationComplete = useCallback((generation) => {
     if (!generation?.report_id || !generation?.produced_version) return;
     const scopeKey = `${scopeType}:${resolvedScopeId}`;
     if (scopeRef.current !== scopeKey) return;
-    const selectionStillAtAdmission = selectionRef.current?.report_id
-      === selectionWhenAdmittedRef.current;
+    const intent = generationIntentRef.current;
+    const selectionStillAtSubmission = intent?.scopeKey === scopeKey
+      && navigationRevisionRef.current === intent.navigationRevision
+      && (selectionRef.current?.report_id ?? null) === intent.reportId;
     void state.refresh().then(() => {
       if (scopeRef.current !== scopeKey) return;
       // 用户已主动查看历史版本：只刷新列表，绝不劫持 Viewer。
-      if (!selectionStillAtAdmission) return;
+      if (!selectionStillAtSubmission || generationIntentRef.current !== intent
+          || navigationRevisionRef.current !== intent.navigationRevision) return;
       // §8：只使用 completed 返回的 exact identity（绝不 GET latest）。
-      void state.selectByReportId(generation.report_id);
+      void state.selectByReportId(generation.report_id).then((selected) => {
+        if (selected && scopeRef.current === scopeKey && generationIntentRef.current === intent
+            && navigationRevisionRef.current === intent.navigationRevision) {
+          onVersionChange?.(generation.report_id);
+        }
+      });
     });
-  }, [resolvedScopeId, scopeType, state]);
+  }, [onVersionChange, resolvedScopeId, scopeType, state]);
 
   useEffect(() => {
     scopeRef.current = `${scopeType}:${resolvedScopeId}`;
-    selectionWhenAdmittedRef.current = undefined;
+    navigationRevisionRef.current += 1;
+    generationIntentRef.current = null;
     requestedSelectionRef.current = null;
   }, [scopeType, resolvedScopeId]);
 
@@ -106,6 +120,7 @@ export default function ForensicReportPage({
     const requestKey = `${scopeType}:${resolvedScopeId}:${requestedReportId}`;
     if (requestedSelectionRef.current === requestKey) return;
     requestedSelectionRef.current = requestKey;
+    navigationRevisionRef.current += 1;
     void selectByReportId(requestedReportId);
   }, [requestedReportId, resolvedScopeId, scopeType, selectedReportId, selectByReportId, state.versions]);
 
@@ -136,8 +151,11 @@ export default function ForensicReportPage({
         <GenerateReportPanel
           taskId={resolvedScopeId}
           pollIntervalMs={generationPollIntervalMs}
+          onSubmitStart={handleGenerationSubmitStart}
           onAdmitted={handleGenerationAdmitted}
           onComplete={handleGenerationComplete}
+          selectedReportId={selectedIsNarrative ? reportId : null}
+          narrativeLoader={narrativeLoader}
         />
       )}
       <ReportStatusPanel
@@ -155,7 +173,11 @@ export default function ForensicReportPage({
         <VersionHistory
           versions={state.versions}
           selectedVersion={state.selectedVersion}
-          onSelect={(version) => { onVersionChange?.(version.report_id); void state.selectVersion(version); }}
+          onSelect={(version) => {
+            navigationRevisionRef.current += 1;
+            onVersionChange?.(version.report_id);
+            void state.selectVersion(version);
+          }}
         />
       )}
       {!requestedVersionMissing && !awaitingRequestedVersion && selectedIsNarrative && resolvedScopeId ? (

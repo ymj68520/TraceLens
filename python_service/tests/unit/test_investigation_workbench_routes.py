@@ -289,3 +289,23 @@ def test_event_evidence_returns_derived_card_views():
     assert body["evidence"][0]["evidence_type"] == "event_cluster"
     assert body["evidence"][0]["timestamp"] == 1700000000
     assert body["evidence"][0]["role"] == "primary"
+
+
+def test_secondary_analysis_includes_saved_context_only_when_requested():
+    from types import SimpleNamespace
+    manager = _manager()
+    manager.cpp_backend.get_task.return_value = {"id": "T1", "case_description": "任务中保存的案情"}
+    manager.secondary_analysis_executor.submit = AsyncMock(
+        return_value=SimpleNamespace(analysis_id="analysis-1", version=1))
+    client = _client(manager)
+    client.app.dependency_overrides[investigation_workbench.get_settings] = lambda: SimpleNamespace(secondary_analysis_active=True)
+    url = "/api/investigation/workbench/T1/evidence/analyze"
+    assert client.post(url, json={"evidence_key": "file:/a", "include_case_context": True}).status_code == 200
+    assert manager.secondary_analysis_executor.submit.call_args.kwargs["case_context"] == "任务中保存的案情"
+    manager.cpp_backend.get_task.reset_mock()
+    assert client.post(url, json={"evidence_key": "file:/a", "include_case_context": False}).status_code == 200
+    assert manager.secondary_analysis_executor.submit.call_args.kwargs["case_context"] is None
+    manager.cpp_backend.get_task.assert_not_called()
+    assert client.post(url, json={"evidence_key": "file:/a", "case_context": "明确提交的案情"}).status_code == 200
+    assert manager.secondary_analysis_executor.submit.call_args.kwargs["case_context"] == "明确提交的案情"
+    manager.cpp_backend.get_task.assert_not_called()

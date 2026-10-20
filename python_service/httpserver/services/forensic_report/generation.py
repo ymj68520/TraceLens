@@ -48,6 +48,10 @@ from .models import (
     ReportGenerationEnvelopeV2,
     ReportGenerationEnvelopeV3,
     ReportGenerationEnvelopeV4,
+    ReportGenerationEnvelopeV5,
+    BaselineContext,
+    material_scope_hash,
+    parse_generation_envelope,
     ReportGenerationInput,
 )
 from .repository import ReportRepository
@@ -368,10 +372,19 @@ class ReportGenerationAdmissionService:
         *,
         requested_by: str,
         prompt_version: str = REPORT_GENERATION_PROMPT_VERSION,
+        analysis_mode: str | None = None,
+        base_report_id: str | None = None,
+        case_description: str | None = None,
     ) -> ReportGenerationInput:
         task = await self._cpp_backend.get_task(task_id)
         if not isinstance(task, dict) or task.get("id") != task_id:
             raise EvidenceNotFoundError("task not found")
+        if analysis_mode is not None:
+            try:
+                envelope = await self._stage_envelope(task, analysis_mode, base_report_id, case_description)
+            except ValueError as exc:
+                raise ReportGenerationInputError("invalid_stage_context", "stage input or baseline integrity check failed") from exc
+            return await self._persist_envelope(task_id, requested_by, envelope)
         try:
             db_path = investigation_db_path_for_task(task)
         except EvidenceStoreError:
@@ -394,6 +407,9 @@ class ReportGenerationAdmissionService:
             raise ReportGenerationInputError(
                 "no_report_evidence", "task has no report evidence"
             )
+        return await self._persist_envelope(task_id, requested_by, envelope)
+
+    async def _persist_envelope(self, task_id, requested_by, envelope):
         envelope_json = canonical_json(envelope)
         input_hash = hashlib.sha256(envelope_json.encode("utf-8")).hexdigest()
         try:
@@ -410,6 +426,74 @@ class ReportGenerationAdmissionService:
             raise EvidenceStoreError(
                 "report generation store is unavailable"
             ) from exc
+
+    async def _stage_envelope(self, task, mode, base_report_id, case_description):
+        from .generation_sources import digest, freeze_materials, sanitize_items
+        if mode not in ("evidence_only", "case_guided"):
+            raise ReportGenerationInputError("invalid_analysis_mode", "unknown report analysis mode")
+        if mode == "evidence_only":
+            if base_report_id or case_description:
+                raise ReportGenerationInputError("invalid_stage_context", "first stage cannot receive case context")
+            db_path = investigation_db_path_for_task(task)
+            if not db_path.is_file():
+                raise ReportGenerationInputError("no_report_evidence", "task has no report evidence")
+            current = await asyncio.to_thread(ReportGenerationInputBuilder(db_path, task["id"]).assemble,
+                                             "final-report:v4", case_description="")
+            if not current.allowed_report_evidence_ids:
+                raise ReportGenerationInputError("no_report_evidence", "task has no report evidence")
+            main, appendix = sanitize_items(current.main_evidence), sanitize_items(current.appendix_evidence)
+            materials = await freeze_materials(task, (*main, *appendix))
+            return ReportGenerationEnvelopeV5(
+                task_id=task["id"], prompt_version="final-report:evidence-only:v1",
+                analysis_mode=mode, case_description="", main_evidence=main, appendix_evidence=appendix,
+                allowed_report_evidence_ids=current.allowed_report_evidence_ids,
+                neutral_materials=materials, evidence_scope_hash=material_scope_hash(materials),
+            )
+        context = case_description if case_description is not None else str(task.get("case_description") or "")
+        if not context.strip() or len(context) > CASE_DESCRIPTION_MAX_CHARS:
+            raise ReportGenerationInputError("case_context_required", "case context is required (maximum 8000 characters)")
+        if not base_report_id:
+            raise ReportGenerationInputError("baseline_required", "select an evidence-only baseline report")
+        from .narrative_reader import read_narrative_version_strict
+        root = self._repository.db_path.parent
+        result = await asyncio.to_thread(read_narrative_version_strict,
+            self._repository.db_path, root, task["id"], base_report_id)
+        if result is None:
+            raise ReportGenerationInputError("invalid_baseline", "baseline report is not available for this task")
+        version, manifest = result
+        stage = manifest.stage_analysis
+        if version.status != "ready" or stage is None or stage.analysis_mode != "evidence_only":
+            raise ReportGenerationInputError("invalid_baseline", "baseline must be a completed evidence-only report")
+        original = await asyncio.to_thread(self._repository.get_generation_input, manifest.generation_id)
+        if original is None or original.task_id != task["id"] or original.report_id != base_report_id or original.status != "completed":
+            raise ReportGenerationInputError("invalid_baseline", "baseline generation is unavailable")
+        frozen = parse_generation_envelope(original.input_envelope_json)
+        if (not isinstance(frozen, ReportGenerationEnvelopeV5) or frozen.analysis_mode != "evidence_only"
+                or hashlib.sha256(canonical_json(frozen).encode("utf-8")).hexdigest() != original.input_hash
+                or manifest.input_hash != original.input_hash
+                or stage.evidence_scope_hash != frozen.evidence_scope_hash):
+            raise ReportGenerationInputError("invalid_baseline", "baseline integrity check failed")
+        from .generation_stages import validate_materialized_sources
+        validate_materialized_sources(frozen.neutral_materials, stage.materials)
+        from .generation_writer import GenerationReportWriter
+        from .models import GenerationReportManifest
+        raw_baseline = await asyncio.to_thread(GenerationReportWriter(root).read_manifest, task["id"], base_report_id)
+        if GenerationReportManifest.model_validate(raw_baseline) != manifest:
+            raise ReportGenerationInputError("invalid_baseline", "baseline changed while freezing input")
+        baseline = BaselineContext(
+            report_id=base_report_id, report_sha256=digest(raw_baseline),
+            input_hash=original.input_hash, evidence_scope_hash=stage.evidence_scope_hash,
+            materials=stage.materials, directions=stage.directions,
+            priorities={c.evidence_key: c.priority for c in manifest.evidence_classifications.items},
+            text_models=stage.text_models,
+        )
+        return ReportGenerationEnvelopeV5(
+            task_id=task["id"], prompt_version="final-report:case-guided:v1", analysis_mode=mode,
+            case_description=context, main_evidence=frozen.main_evidence, appendix_evidence=frozen.appendix_evidence,
+            allowed_report_evidence_ids=frozen.allowed_report_evidence_ids,
+            neutral_materials=frozen.neutral_materials, evidence_scope_hash=frozen.evidence_scope_hash,
+            baseline=baseline,
+        )
 
 
 __all__ = [

@@ -1,6 +1,7 @@
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import GenerateReportPanel from './GenerateReportPanel';
+vi.mock('../../services/taskService', () => ({ fetchTaskById: vi.fn().mockResolvedValue({ case_description: '' }) }));
 
 const binding = (key, status, { bound = null, newer = false } = {}) => ({
     evidence_key: key,
@@ -66,11 +67,11 @@ describe('GenerateReportPanel', () => {
         expect(screen.getByText(/仍绑定历史版本/)).toBeInTheDocument();
     });
 
-    test('Generate request carries exactly {task_id, requested_by} (§26-2)', async () => {
+    test('first-stage request carries only actor and mode, never case text or an evidence list', async () => {
         const { generate } = makePanel();
         await submit();
         await waitFor(() => expect(generate).toHaveBeenCalledTimes(1));
-        expect(generate).toHaveBeenCalledWith('t1', { requestedBy: 'analyst-x' });
+        expect(generate).toHaveBeenCalledWith('t1', { requestedBy: 'analyst-x', analysisMode: 'evidence_only' });
     });
 
     test('rapid double-click produces exactly one admission (§26-3)', async () => {
@@ -138,6 +139,6 @@ describe('GenerateReportPanel', () => {
             />,
         );
         expect(await screen.findByTestId('summary-empty')).toBeInTheDocument();
-        expect(screen.getByText(/基于当前显式 Report Evidence 集合/)).toBeInTheDocument();
+        expect(screen.getByText(/当前入报材料范围内独立阅读/)).toBeInTheDocument();
     });
 });
