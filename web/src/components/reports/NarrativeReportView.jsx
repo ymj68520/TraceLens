@@ -15,6 +15,7 @@ import { Link } from 'react-router-dom';
 import { placeNarrativeCitations } from './narrativeCitationPlacement';
 import EvidenceClassification, { ClassificationBadges, ClassificationDetails } from './EvidenceClassification';
 import { priorityStyle } from './evidenceClassificationStyles';
+import StageAnalysisPanel, { StageSourcePanel } from './StageAnalysisPanel';
 
 function previewText(value, limit) {
     const text = String(value || '').replace(/\s+/g, ' ').trim();
@@ -133,6 +134,7 @@ const NarrativeReportView = ({
 
     const citationsById = useMemo(() => new Map((report?.citations || []).map((entry) => [entry.citation_id, entry])), [report]);
     const classificationsByKey = useMemo(() => new Map((report?.evidence_classifications?.items || []).map(entry => [entry.evidence_key, entry])), [report]);
+    const stageMaterialsByKey = useMemo(() => new Map((report?.stage_analysis?.materials || []).map(entry => [entry.evidence_key, entry])), [report]);
     const openEntry = openCitationId ? citationsById.get(openCitationId) || null : null;
 
     useEffect(() => {
@@ -155,6 +157,15 @@ const NarrativeReportView = ({
     const loadPreview = (citationId) => {
         const citation = citationsById.get(citationId);
         if (!citation || citationPreviews[citationId] || pendingPreviewsRef.current.has(citationId)) return;
+        if (report?.stage_analysis) {
+            const material = stageMaterialsByKey.get(citation.evidence_key);
+            setCitationPreviews(previous => ({ ...previous, [citationId]: {
+                title: citation.evidence_key,
+                summary: previewText(material?.text, 130) || '本轮材料不可读，未回退使用历史 AI 摘要。',
+                description: material?.kind === 'machine_visual' ? '本轮机器视觉观察，非原文或OCR。' : '本轮冻结材料片段，点击查看来源与读取范围。',
+            } }));
+            return;
+        }
         pendingPreviewsRef.current.add(citationId);
         setCitationPreviews((previous) => ({ ...previous, [citationId]: { loading: true } }));
         const requestedIdentity = identity;
@@ -195,19 +206,37 @@ const NarrativeReportView = ({
 
     useEffect(() => {
         if (!openEntry) return undefined;
+        const returnFocus = document.activeElement;
         const frame = requestAnimationFrame(() => tracebackRef.current?.focus());
-        const onEscape = (event) => {
+        const onDialogKeyDown = (event) => {
             if (event.key === 'Escape') setOpenCitationId(null);
+            if (event.key !== 'Tab') return;
+            const dialog = tracebackRef.current;
+            const focusable = [...(dialog?.querySelectorAll(
+                'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+            ) || [])].filter(element => element.getClientRects().length > 0);
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            const active = document.activeElement;
+            if (!first) {
+                event.preventDefault();
+                dialog?.focus();
+            } else if (!dialog.contains(active) || active === dialog
+                || (event.shiftKey ? active === first : active === last)) {
+                event.preventDefault();
+                (event.shiftKey ? last : first).focus();
+            }
         };
-        window.addEventListener('keydown', onEscape);
+        window.addEventListener('keydown', onDialogKeyDown);
         return () => {
             cancelAnimationFrame(frame);
-            window.removeEventListener('keydown', onEscape);
+            window.removeEventListener('keydown', onDialogKeyDown);
+            if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
         };
     }, [openEntry]);
 
     return (
-        <div className="space-y-4" data-testid="narrative-report-view">
+        <div className="space-y-4 [overflow-wrap:anywhere]" data-testid="narrative-report-view">
             {error && (
                 <div role="alert" className="rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-900/20 p-4 text-sm text-rose-600 dark:text-rose-400" data-testid="narrative-report-error">
                     叙事报告暂时不可读取（HTTP {error?.status || '错误'}）：
@@ -223,7 +252,9 @@ const NarrativeReportView = ({
                         <div className="flex items-start gap-3">
                             <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-300"><FileText size={20} aria-hidden /></span>
                             <div className="min-w-0 space-y-1.5">
-                                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-indigo-600 dark:text-indigo-300">最终报告 · 证据叙事</p>
+                                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-indigo-600 dark:text-indigo-300">{report.stage_analysis
+                                    ? report.stage_analysis.analysis_mode === 'evidence_only' ? '首次研判 · 材料自主' : '二次研判 · 案情对照'
+                                    : '最终报告 · 证据叙事'}</p>
                                 <h2 className="text-xl font-bold leading-snug text-slate-900 dark:text-white md:text-2xl">{report.title}</h2>
                                 <p className="text-xs text-slate-500 dark:text-slate-400">版本 v{report.version} · 生成时间 {report.created_at} · {report.sections?.length || 0} 个章节</p>
                             </div>
@@ -242,6 +273,12 @@ const NarrativeReportView = ({
 
                     <EvidenceClassification key={reportId} classification={report.evidence_classifications}
                         citations={report.citations} taskId={taskId} reportId={reportId} onOpenCitation={openCitation} />
+                    <StageAnalysisPanel stage={report.stage_analysis} taskId={taskId} classifications={report.evidence_classifications}
+                        onOpenMaterial={materialId => {
+                            const material = report.stage_analysis?.materials.find(m => m.material_id === materialId);
+                            const citation = report.citations.find(c => c.evidence_key === material?.evidence_key);
+                            if (citation) setOpenCitationId(citation.citation_id);
+                        }} />
 
                     <article className="space-y-5" data-testid="narrative-sections">
                         {(report.sections || []).map((section, index) => {
@@ -283,10 +320,13 @@ const NarrativeReportView = ({
                         </p>
                     )}
                     {openEntry && (
-                        <div className="fixed inset-0 z-[70] flex justify-end" data-testid="citation-overlay">
+                        <div className="fixed inset-0 z-[70] !m-0 flex justify-end" data-testid="citation-overlay">
                             <button type="button" className="absolute inset-0 bg-slate-950/35 backdrop-blur-[2px]" aria-label="关闭证据溯源" onClick={() => setOpenCitationId(null)} />
                             <div ref={tracebackRef} id={`citation-evidence-${openCitationId}`} role="dialog" aria-modal="true" aria-label={`引用 ${openCitationId} 的证据溯源`} tabIndex={-1} className="relative z-10 h-full w-full max-w-[540px] overflow-y-auto border-l border-blue-100 bg-slate-50 p-4 shadow-[-18px_0_45px_rgba(15,23,42,0.2)] outline-none dark:border-slate-700 dark:bg-slate-900 md:p-6" data-testid="citation-evidence-target">
-                                <TracebackPanel taskId={taskId} reportId={reportId} citation={openEntry} onClose={() => setOpenCitationId(null)} />
+                                {report.stage_analysis
+                                    ? <StageSourcePanel material={stageMaterialsByKey.get(openEntry.evidence_key)} citationId={openCitationId}
+                                        taskId={taskId} reportId={reportId} onClose={() => setOpenCitationId(null)} />
+                                    : <TracebackPanel taskId={taskId} reportId={reportId} citation={openEntry} onClose={() => setOpenCitationId(null)} />}
                                 <section className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800" aria-label="引用证据分类">
                                     <h4 className="mb-3 text-sm font-semibold text-slate-800 dark:text-slate-100">报告生成时的证据分类</h4>
                                     <ClassificationDetails classification={classificationsByKey.get(openEntry.evidence_key)} questions={report.evidence_classifications?.questions} />

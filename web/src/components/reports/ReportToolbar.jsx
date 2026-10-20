@@ -12,7 +12,7 @@ export default function ReportToolbar({
 
   return (
     <header className="flex flex-wrap items-center gap-3 border-b border-slate-200 pb-4 dark:border-slate-700">
-      <div className="mr-auto">
+      <div className="mr-auto min-w-0 max-w-full [overflow-wrap:anywhere]">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{title}</h1>
         {version && <p className="text-sm text-slate-500">版本 {version.version}</p>}
         {generatedAt && <time className="text-xs text-slate-400" dateTime={generatedAt}>{generatedAt}</time>}

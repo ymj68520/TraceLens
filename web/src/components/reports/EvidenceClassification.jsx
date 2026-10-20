@@ -12,7 +12,9 @@ const MATERIALS = {
 const STATES = { deleted: '已删除', recovered: '已恢复', insufficient_content: '内容不足', incomplete_provenance: '来源定位不完整' };
 const REVIEWS = { machine_suggested: '机器建议', pending: '分类待复核', confirmed: '分类已确认', adjusted: '人工已调整' };
 const RELATIONS = { supports: '支持线索', inconsistent: '存在不一致', background: '背景材料', unknown: '暂无法判断' };
-const BASIS = { initial_analysis: '初次分析摘要；尚未核对原文', android_record: '冻结的 Android 派生解析记录；不代表已核对原库', metadata: '文件元数据；缺少可用内容' };
+const BASIS = { initial_analysis: '初次分析摘要；尚未核对原文', android_record: '冻结的 Android 派生解析记录；不代表已核对原库', metadata: '文件元数据；缺少可用内容',
+    neutral_material: '本轮冻结材料投影；具体来源和读取范围见溯源，未使用历史 AI 摘要',
+    machine_visual: '本轮机器视觉观察；不是原文、OCR或已核验事实' };
 const chip = 'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs leading-5';
 const neutral = 'border-slate-200 bg-white text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300';
 
@@ -31,7 +33,7 @@ export function ClassificationBadges({ classification, compact = false }) {
 
 export function ClassificationDetails({ classification, questions = [] }) {
     if (!classification) return <p className="text-xs text-slate-500">历史报告没有冻结的分类信息，未自动推定优先级。</p>;
-    const byId = new Map(questions.map(q => [q.question_id, q.text]));
+    const byId = new Map(questions.map(q => [q.question_id, q]));
     return <div className="space-y-3 text-sm leading-6 text-slate-700 dark:text-slate-200" data-testid="classification-details">
         <ClassificationBadges classification={classification} />
         <p className="text-slate-700 dark:text-slate-200">依据：{classification.reason}</p>
@@ -39,7 +41,7 @@ export function ClassificationDetails({ classification, questions = [] }) {
         {classification.basis_quote && <blockquote className="whitespace-pre-wrap break-words border-l-2 border-slate-300 pl-3 text-xs text-slate-600 dark:text-slate-300">依据摘录（上述来源）：{classification.basis_quote}</blockquote>}
         {classification.relations?.length ? <ul className="space-y-2">
             {classification.relations.map(relation => <li key={relation.question_id} className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                <p className="text-xs text-slate-500 dark:text-slate-400">待核事项（案情背景）：{byId.get(relation.question_id) || '对应事项不可用'}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{byId.get(relation.question_id)?.origin === 'generic' ? '材料核查维度' : '待核事项（案情背景）'}：{byId.get(relation.question_id)?.text || '对应事项不可用'}</p>
                 <p className="mt-1"><span className="font-medium">{RELATIONS[relation.relation] || RELATIONS.unknown}</span> · {relation.reason}</p>
             </li>)}
         </ul> : <p className="text-xs text-slate-500 dark:text-slate-400">与待核问题的关系：暂无法判断。</p>}

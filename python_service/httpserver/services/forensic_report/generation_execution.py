@@ -310,16 +310,27 @@ class ReportGenerationExecutor:
                 error_message="report generation interrupted by service restart",
             )
 
-    def has_report_version(self, task_id: str) -> bool:
+    def has_report_version(self, task_id: str, *, analysis_mode=None) -> bool:
         """True when any report version already exists for the task.
 
         Read-only guard for the pipeline-tail auto generation: a task that
         already produced a report (auto or analyst-triggered) is never
         auto-generated again, whatever the ingestion replay history is.
         """
-        return bool(
-            self._repository.list_versions(ScopeType.TASK, task_id)
-        )
+        versions = self._repository.list_versions(ScopeType.TASK, task_id)
+        if analysis_mode is None:
+            return bool(versions)
+        for version in versions:
+            if version.status != "ready" or version.report_kind != "llm_generation":
+                continue
+            try:
+                manifest = GenerationReportManifest.model_validate(self._writer.read_manifest(task_id, version.report_id))
+                if (manifest.task_id == task_id and manifest.report_id == version.report_id
+                        and manifest.stage_analysis and manifest.stage_analysis.analysis_mode == analysis_mode):
+                    return True
+            except (OSError, ValueError, KeyError):
+                continue
+        return False
 
     async def submit(self, generation_id: str) -> None:
         """Schedule one admitted generation; scheduling failure is durable.
@@ -433,13 +444,16 @@ class ReportGenerationExecutor:
                 return
             try:
                 classifications = None
-                if envelope.schema_version == 4:
+                stage_analysis = None
+                if envelope.schema_version == 5:
+                    response, classifications, stage_analysis, model = await self._generate_staged(envelope)
+                elif envelope.schema_version == 4:
                     classifications = await self._classify_evidence(envelope)
-                if envelope.schema_version >= 2:
+                if 2 <= envelope.schema_version <= 4:
                     response, model = await self._generate_sectioned(
                         envelope, classifications=classifications,
                     )
-                else:
+                elif envelope.schema_version == 1:
                     response, model = await self._generate_single_shot(envelope)
             except _StageFailure as exc:
                 await self._fail(generation_id, exc.code, exc.message, model=exc.model)
@@ -472,7 +486,7 @@ class ReportGenerationExecutor:
             try:
                 report_id = new_generation_report_id()
                 manifest = GenerationReportManifest(
-                    schema_version="1.1" if classifications is not None else "1.0",
+                    schema_version="1.2" if stage_analysis is not None else ("1.1" if classifications is not None else "1.0"),
                     report_id=report_id,
                     scope_type=ScopeType.TASK,
                     scope_id=row.task_id,
@@ -486,6 +500,7 @@ class ReportGenerationExecutor:
                     sections=response.sections,
                     citations=build_citation_manifest(response, envelope),
                     evidence_classifications=classifications,
+                    stage_analysis=stage_analysis,
                 )
                 final_dir = await asyncio.to_thread(
                     self._writer.publish,
@@ -564,7 +579,58 @@ class ReportGenerationExecutor:
                 model=model,
             ) from None
 
-    async def _classify_evidence(self, envelope) -> ReportClassifications:
+    async def _generate_staged(self, envelope):
+        from .generation_stages import (
+            materialize_images, discover_directions, compare_directions, render_stage_report,
+        )
+        from .models import StageAnalysis
+        models, text_models = set(), set()
+        # Observe the existing provider's actual responses, without new clients.
+        delegate = self._llm_service
+
+        class RecordedCalls:
+            async def chat_completion(this, *args, **kwargs):
+                response = await delegate.chat_completion(*args, **kwargs)
+                if response.get("model"):
+                    models.add(response["model"])
+                    text_models.add(response["model"])
+                return response
+
+            async def analyze_image(this, *args, **kwargs):
+                response = await delegate.analyze_image(*args, **kwargs)
+                if response.get("model"):
+                    models.add(response["model"])
+                return response
+
+        provider = RecordedCalls()
+        try:
+            materials = await materialize_images(envelope, provider)
+            if not any(m.text and m.status != "unavailable" for m in materials):
+                raise ValueError("NEUTRAL_SOURCES_UNAVAILABLE")
+            classifications = await self._classify_evidence(envelope, materials=materials)
+            directions, warnings = await discover_directions(envelope, materials, provider)
+            comparisons, comparison_warnings = await compare_directions(envelope, materials, provider, directions)
+            warnings += comparison_warnings + tuple(
+                f"{m.material_id}:{note}" for m in materials for note in m.limitations)
+            models.update(c.model for c in classifications.items if c.model)
+            text_models.update(c.model for c in classifications.items if c.model)
+            if envelope.baseline and set(envelope.baseline.text_models) != text_models:
+                warnings += ("TEXT_MODEL_CHANGED_OR_BASELINE_MODEL_UNKNOWN",)
+            response, stage = render_stage_report(envelope, materials, directions, comparisons, warnings)
+            stage = StageAnalysis.model_validate({
+                **stage.model_dump(mode="json"), "warnings": warnings,
+                "text_models": tuple(sorted(text_models)),
+                "baseline_text_models": envelope.baseline.text_models if envelope.baseline else (),
+            })
+            return response, classifications, stage, ", ".join(sorted(models)) or "unknown"
+        except ValueError as exc:
+            code = str(exc)
+            raise _StageFailure(
+                code.lower() if code.isupper() and " " not in code else "stage_analysis_invalid",
+                "材料自主研判或案情对照未通过来源校验，请检查本轮可读材料。",
+            ) from None
+
+    async def _classify_evidence(self, envelope, *, materials=None) -> ReportClassifications:
         """Bounded classification within the existing generation job.
 
         No writes to source/investigation databases, no new worker or endpoint.
@@ -579,6 +645,23 @@ class ReportGenerationExecutor:
         questions = classification_questions(envelope.case_description)
         inputs = [classification_input(item) for item in
                   (*envelope.main_evidence, *envelope.appendix_evidence)]
+        aliases = {}
+        if materials is not None:
+            from .generation_stages import stage_questions
+            questions = stage_questions(envelope)
+            sources = {m.evidence_key: m for m in materials}
+            for value in inputs:
+                source = sources[value["evidence_key"]]
+                aliases[source.material_id] = source.evidence_key
+                value.update(
+                    evidence_key=source.material_id, basis_text=source.text[:1200],
+                    basis_type=("machine_visual" if source.kind == "machine_visual" else
+                                "android_record" if source.kind == "android_record" else "neutral_material"),
+                    basis_truncated=len(source.text) > 1200 or source.status == "partial",
+                    source_hash=source.source_sha256 or source.content_sha256,
+                    material_states=tuple(state for state in value["material_states"]
+                                          if state != "insufficient_content" or not source.text),
+                )
         results = {v["evidence_key"]: unassessed_classification(v) for v in inputs}
         readable = [v for v in inputs if v["basis_text"].strip()]
         unavailable = False
@@ -588,9 +671,12 @@ class ReportGenerationExecutor:
             if not unavailable:
                 try:
                     response = await self._llm_service.chat_completion(
-                        CLASSIFICATION_SYSTEM_V1,
+                        CLASSIFICATION_SYSTEM_V1 + (
+                            "\n本轮使用冻结材料投影，neutral_material不是历史摘要。"
+                            "origin=generic的问题是通用材料核查维度，不是案件事实；只能据材料判断。"
+                            if materials is not None else ""),
                         json.dumps({
-                            "questions": [q.model_dump(mode="json") for q in questions],
+                            "questions": [q.model_dump(mode="json", exclude_defaults=True) for q in questions],
                             "materials": [{k: v[k] for k in (
                                 "evidence_key", "material_type", "basis_type",
                                 "basis_text", "basis_truncated",
@@ -607,6 +693,9 @@ class ReportGenerationExecutor:
                 except (ValueError, KeyError, TypeError):
                     logger.warning("Report classification rejected; keeping unassessed items")
             results.update((v.evidence_key, v) for v in values)
+        if aliases:
+            results = {aliases[key]: value.model_copy(update={"evidence_key": aliases[key]})
+                       for key, value in results.items()}
         return ReportClassifications(
             questions=questions,
             items=tuple(results[key] for key in sorted(results)),

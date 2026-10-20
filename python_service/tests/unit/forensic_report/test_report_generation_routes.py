@@ -57,7 +57,8 @@ class FakeAdmissionService:
         self.error = error
         self.calls = []
 
-    async def admit(self, task_id, *, requested_by):
+    async def admit(self, task_id, *, requested_by, analysis_mode, base_report_id, case_description):
+        self.stage_options = (analysis_mode, base_report_id, case_description)
         self.calls.append((task_id, requested_by))
         if self.error is not None:
             raise self.error
@@ -105,6 +106,7 @@ def test_generate_admits_and_submits_exact_id(monkeypatch):
     })
 
     assert response.status_code == 202
+    assert service.stage_options == ("evidence_only", None, None)
     assert response.json()["generation_id"] == "rg_1"
     assert service.calls == [("A", "analyst-x")]
     assert executor.submitted == ["rg_1"]
@@ -200,3 +202,16 @@ def test_get_completed_generation_missing_manifest_is_503(monkeypatch):
     response = client.get("/api/reports/generations/rg_1", params={"task_id": "A"})
     assert response.status_code == 503
     assert response.json()["detail"] == "report generation record is unavailable"
+
+
+def test_stage_request_freezes_explicit_context_and_preserves_server_evidence_boundary(monkeypatch):
+    service, executor = FakeAdmissionService(result=_row()), FakeExecutor()
+    client = make_client(service, executor, _identity_reader(None), monkeypatch)
+    payload = {"task_id": "A", "requested_by": "analyst", "analysis_mode": "case_guided",
+               "base_report_id": "report-a", "case_description": "本次案情"}
+    result = client.post("/api/reports/generate", json=payload)
+    assert result.status_code == 202
+    assert service.stage_options == ("case_guided", "report-a", "本次案情")
+    assert client.post("/api/reports/generate", json={**payload, "evidence_keys": ["file:/foreign"]}).status_code == 422
+    assert client.post("/api/reports/generate", json={**payload, "analysis_mode": "evidence_only"}).status_code == 422
+    assert client.post("/api/reports/generate", json={k: v for k, v in payload.items() if k != "base_report_id"}).status_code == 422

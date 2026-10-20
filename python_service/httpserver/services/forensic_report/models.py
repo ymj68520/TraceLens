@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from enum import Enum
 from pathlib import Path
 from typing import Any, Iterator, Literal, Protocol, Sequence
@@ -410,6 +411,147 @@ class ReportGenerationEnvelopeV4(ReportGenerationEnvelopeV3):
     classification_policy: Literal["evidence-dimensions:v1"] = "evidence-dimensions:v1"
 
 
+class NeutralMaterial(BaseModel):
+    """Content frozen for this report; never a historical AI summary."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    material_id: str = Field(pattern=r"^m[0-9]+$")
+    evidence_key: str
+    kind: Literal["text", "parsed_text", "android_record", "audio_transcript",
+                  "image", "machine_visual", "unavailable"]
+    text: str = Field(default="", max_length=4000)
+    media_base64: str = Field(default="", max_length=3_000_000)
+    source_sha256: str = Field(default="", pattern=r"^(?:[a-f0-9]{64})?$")
+    content_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    original_characters: int = Field(default=0, ge=0)
+    status: Literal["ready", "partial", "unavailable"]
+    limitations: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _content_integrity(self):
+        if hashlib.sha256(self.text.encode("utf-8")).hexdigest() != self.content_sha256:
+            raise ValueError("neutral material text hash mismatch")
+        if self.kind == "image" and self.status != "unavailable":
+            import base64
+            try:
+                raw = base64.b64decode(self.media_base64, validate=True)
+            except ValueError as exc:
+                raise ValueError("invalid frozen image") from exc
+            if not raw or hashlib.sha256(raw).hexdigest() != self.source_sha256:
+                raise ValueError("frozen image hash mismatch")
+        elif self.media_base64:
+            raise ValueError("only frozen images carry media")
+        return self
+
+
+class MaterialQuote(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    material_id: str
+    quote: str = Field(min_length=1, max_length=300)
+
+
+class MaterialSpan(MaterialQuote):
+    character_start: int = Field(ge=0)
+    character_end: int = Field(gt=0)
+    ambiguous: bool = False
+
+
+class DirectionSuggestion(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    title: str = Field(min_length=1, max_length=160)
+    description: str = Field(min_length=1, max_length=1500)
+    finding_kind: Literal["observation", "hypothesis"]
+    supporting_refs: tuple[MaterialQuote, ...] = Field(default=(), max_length=6)
+    counter_refs: tuple[MaterialQuote, ...] = Field(default=(), max_length=6)
+    missing_information: tuple[str, ...] = Field(default=(), max_length=8)
+    alternative_explanations: tuple[str, ...] = Field(default=(), max_length=6)
+    baseline_direction_ids: tuple[str, ...] = Field(default=(), max_length=8)
+    case_context_quote: str = Field(default="", max_length=500)
+
+
+class DirectionBatch(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    directions: tuple[DirectionSuggestion, ...] = Field(max_length=8)
+
+
+class InvestigationDirection(DirectionSuggestion):
+    direction_id: str
+    supporting_refs: tuple[MaterialSpan, ...] = ()
+    counter_refs: tuple[MaterialSpan, ...] = ()
+    origin: Literal["material", "reinterpreted", "new_candidate", "case_only"]
+
+
+class ComparisonSuggestion(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    baseline_direction_id: str
+    status: Literal["supported", "revised", "weakened", "contradicted", "insufficient", "case_only"]
+    reason: str = Field(min_length=1, max_length=1200)
+    supporting_refs: tuple[MaterialQuote, ...] = Field(default=(), max_length=6)
+    counter_refs: tuple[MaterialQuote, ...] = Field(default=(), max_length=6)
+    missing_information: tuple[str, ...] = Field(default=(), max_length=8)
+    case_context_quote: str = Field(default="", max_length=500)
+
+
+class DirectionComparison(ComparisonSuggestion):
+    supporting_refs: tuple[MaterialSpan, ...] = ()
+    counter_refs: tuple[MaterialSpan, ...] = ()
+
+
+class BaselineContext(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    report_id: str
+    report_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    input_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    evidence_scope_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    materials: tuple[NeutralMaterial, ...]
+    directions: tuple[InvestigationDirection, ...]
+    priorities: dict[str, Literal["P1", "P2", "P3", "unassessed"]] = Field(default_factory=dict)
+    text_models: tuple[str, ...] = ()
+
+
+def material_scope_hash(materials) -> str:
+    value = [m.model_dump(mode="json") for m in materials]
+    return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True,
+                                    separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+class ReportGenerationEnvelopeV5(ReportGenerationEnvelopeV4):
+    schema_version: Literal[5] = 5
+    analysis_mode: Literal["evidence_only", "case_guided"]
+    neutral_materials: tuple[NeutralMaterial, ...]
+    evidence_scope_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    baseline: BaselineContext | None = None
+
+    @model_validator(mode="after")
+    def _stage_boundary(self):
+        keys = [m.evidence_key for m in self.neutral_materials]
+        ids = [m.material_id for m in self.neutral_materials]
+        if keys != list(self.allowed_report_evidence_ids) or len(ids) != len(set(ids)):
+            raise ValueError("neutral material coverage mismatch")
+        if material_scope_hash(self.neutral_materials) != self.evidence_scope_hash:
+            raise ValueError("evidence scope hash mismatch")
+        for item in (*self.main_evidence, *self.appendix_evidence):
+            payload = item.snapshot.payload
+            if item.bound_analysis is not None or any(getattr(payload, k, None) is not None for k in (
+                "initial_summary", "initial_description", "initial_keywords", "initial_model",
+                "initial_analyzed_at", "scene_type", "scene_priority", "scene_relevant",
+            )):
+                raise ValueError("case-derived analysis is forbidden in neutral sources")
+        if self.analysis_mode == "evidence_only":
+            if self.case_description or self.baseline is not None or self.prompt_version != "final-report:evidence-only:v1":
+                raise ValueError("first-stage input must be independent of case context")
+        else:
+            if not self.case_description.strip() or self.baseline is None or self.prompt_version != "final-report:case-guided:v1":
+                raise ValueError("second-stage input requires case context and baseline")
+            if self.baseline.evidence_scope_hash != self.evidence_scope_hash:
+                raise ValueError("second-stage evidence scope changed")
+            if [(m.material_id, m.evidence_key, m.source_sha256) for m in self.baseline.materials] != [
+                (m.material_id, m.evidence_key, m.source_sha256) for m in self.neutral_materials
+            ]:
+                raise ValueError("baseline material identity changed")
+        return self
+
+
 def _validate_envelope_determinism(
     *,
     task_id: str,
@@ -446,7 +588,7 @@ def _validate_envelope_determinism(
                 raise ValueError("claim evidence_refs must be sorted")
 
 
-def parse_generation_envelope(raw: str) -> "ReportGenerationEnvelopeV1 | ReportGenerationEnvelopeV2 | ReportGenerationEnvelopeV3 | ReportGenerationEnvelopeV4":
+def parse_generation_envelope(raw: str) -> "ReportGenerationEnvelopeV1 | ReportGenerationEnvelopeV2 | ReportGenerationEnvelopeV3 | ReportGenerationEnvelopeV4 | ReportGenerationEnvelopeV5":
     """Parse a persisted generation envelope, dispatching on schema_version.
 
     A stored row's bytes are version-tagged; strict pydantic validation for
@@ -466,6 +608,7 @@ def parse_generation_envelope(raw: str) -> "ReportGenerationEnvelopeV1 | ReportG
         2: ReportGenerationEnvelopeV2,
         3: ReportGenerationEnvelopeV3,
         4: ReportGenerationEnvelopeV4,
+        5: ReportGenerationEnvelopeV5,
     }.get(version)
     if model is None:
         raise ValueError(f"unsupported envelope schema_version: {version!r}")
@@ -638,6 +781,7 @@ class ClassificationQuestion(BaseModel):
 
     question_id: str = Field(min_length=1, max_length=32)
     text: str = Field(min_length=1, max_length=500)
+    origin: Literal["case", "material", "generic"] = "case"
 
 
 class EvidenceQuestionRelation(BaseModel):
@@ -693,7 +837,7 @@ class ReportEvidenceClassification(BaseModel):
     review_status: Literal["machine_suggested", "pending", "confirmed", "adjusted"] = "pending"
     assessment_status: Literal["classified", "insufficient", "failed"] = "insufficient"
     reason: str
-    basis_type: Literal["initial_analysis", "android_record", "metadata"]
+    basis_type: Literal["initial_analysis", "android_record", "metadata", "neutral_material", "machine_visual"]
     basis_quote: str = ""
     basis_truncated: bool = False
     source_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
@@ -716,6 +860,59 @@ class ReportClassifications(BaseModel):
         for item in self.items:
             if any(r.question_id not in questions for r in item.relations):
                 raise ValueError("classification references unknown question")
+        return self
+
+
+class StageAnalysis(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    analysis_mode: Literal["evidence_only", "case_guided"]
+    evidence_scope_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    case_description: str = Field(default="", max_length=8000)
+    case_context_hash: str | None = None
+    baseline_report_id: str | None = None
+    baseline_report_hash: str | None = None
+    materials: tuple[NeutralMaterial, ...]
+    directions: tuple[InvestigationDirection, ...]
+    comparisons: tuple[DirectionComparison, ...] = ()
+    baseline_directions: tuple[InvestigationDirection, ...] = ()
+    baseline_priorities: dict[str, str] = Field(default_factory=dict)
+    warnings: tuple[str, ...] = ()
+    text_models: tuple[str, ...] = ()
+    baseline_text_models: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _stage_integrity(self):
+        materials = {m.material_id: m for m in self.materials}
+        if len(materials) != len(self.materials) or len({m.evidence_key for m in self.materials}) != len(self.materials):
+            raise ValueError("duplicate stage material")
+        if any(m.media_base64 for m in self.materials):
+            raise ValueError("published stage must not expose frozen media bytes")
+        if self.analysis_mode == "evidence_only":
+            if self.case_description or self.case_context_hash or self.baseline_report_id or self.baseline_report_hash or self.baseline_directions or self.comparisons:
+                raise ValueError("autonomous report cannot inherit case context or a baseline")
+        elif (not self.case_description.strip() or not self.baseline_report_id or not self.baseline_report_hash
+              or self.case_context_hash != hashlib.sha256(self.case_description.encode("utf-8")).hexdigest()):
+            raise ValueError("case-guided report lineage or context hash mismatch")
+        baseline_ids = {d.direction_id for d in self.baseline_directions}
+        if len(baseline_ids) != len(self.baseline_directions):
+            raise ValueError("duplicate baseline direction")
+        compared = [c.baseline_direction_id for c in self.comparisons]
+        if len(compared) != len(set(compared)) or set(compared) != baseline_ids:
+            raise ValueError("comparison must retain every baseline direction exactly once")
+        if len({d.direction_id for d in self.directions}) != len(self.directions):
+            raise ValueError("duplicate investigation direction")
+        for record in (*self.directions, *self.baseline_directions, *self.comparisons):
+            for ref in (*record.supporting_refs, *record.counter_refs):
+                source = materials.get(ref.material_id)
+                if source is None or source.status == "unavailable" or source.text[ref.character_start:ref.character_end] != ref.quote:
+                    raise ValueError("stage quote no longer matches frozen material")
+        for direction in self.directions:
+            if not set(direction.baseline_direction_ids) <= baseline_ids:
+                raise ValueError("direction refers outside baseline")
+            if self.analysis_mode == "evidence_only" and (direction.case_context_quote or direction.origin != "material"):
+                raise ValueError("case context cannot enter autonomous directions")
+        if not set(self.baseline_priorities) <= {m.evidence_key for m in self.materials}:
+            raise ValueError("baseline priority is outside material scope")
         return self
 
 
@@ -746,10 +943,19 @@ class GenerationReportManifest(BaseModel):
     sections: tuple[StructuredReportSection, ...]
     citations: tuple[CitationManifestEntry, ...]
     evidence_classifications: ReportClassifications | None = None
+    stage_analysis: StageAnalysis | None = None
 
     @model_validator(mode="after")
     def _classification_contract(self):
-        if self.prompt_version == "final-report:v4":
+        if self.prompt_version in ("final-report:evidence-only:v1", "final-report:case-guided:v1"):
+            if self.schema_version != "1.2" or self.stage_analysis is None or self.evidence_classifications is None:
+                raise ValueError("stage report requires frozen analysis and classifications")
+            expected = "evidence_only" if self.prompt_version == "final-report:evidence-only:v1" else "case_guided"
+            if self.stage_analysis.analysis_mode != expected:
+                raise ValueError("stage report mode mismatch")
+        elif self.stage_analysis is not None:
+            raise ValueError("legacy reports cannot acquire a stage implicitly")
+        elif self.prompt_version == "final-report:v4":
             if self.schema_version != "1.1" or self.evidence_classifications is None:
                 raise ValueError("classified report requires its frozen classification contract")
         elif self.evidence_classifications is not None:
