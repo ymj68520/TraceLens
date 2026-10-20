@@ -103,7 +103,12 @@ def test_selected_sms_freeze_review_report_and_exact_backlink(tmp_path):
     assert repo.get_snapshot(key).payload.provenance["input_file"] == "candidate_only"
     repo.add_report_evidence(key, report_status="main", analysis_id=analysis.analysis_id,
                              added_by="synthetic-principal")
-    envelope = ReportGenerationInputBuilder(tmp_path / "investigation.db", task_id).assemble()
+    builder = ReportGenerationInputBuilder(tmp_path / "investigation.db", task_id)
+    current_envelope = builder.assemble()
+    assert current_envelope.schema_version == 4
+    assert current_envelope.allowed_report_evidence_ids == (key,)
+    # This regression continues to execute the frozen legacy Android contract.
+    envelope = builder.assemble("final-report:v3")
     assert envelope.schema_version == 3 and envelope.prompt_version == "final-report:v3"
     assert envelope.allowed_report_evidence_ids == (key,)
     parsed = parse_generation_envelope(json.dumps(envelope.model_dump(mode="json")))
@@ -145,7 +150,7 @@ def test_selected_sms_freeze_review_report_and_exact_backlink(tmp_path):
     async def run_report():
         admission = ReportGenerationAdmissionService(cpp, report_repo)
         executor = ReportGenerationExecutor(report_repo, GenerationReportWriter(report_root), report_llm)
-        row = await admission.admit(task_id, requested_by="synthetic-principal")
+        row = await admission.admit(task_id, requested_by="synthetic-principal", prompt_version="final-report:v3")
         await executor.submit(row.generation_id)
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
@@ -245,12 +250,12 @@ def test_full_v7_report_binding_survives_v8_rebuild(tmp_path):
     repo.add_report_evidence("file:/old.txt", report_status="main", analysis_id=analysis.analysis_id, added_by="old-reviewer")
     before = db.read_bytes()
     assert InvestigationGraphReader(db, "old-task").latest_snapshot("file:/old.txt").snapshot_id == snapshot.snapshot_id
-    old_input = ReportGenerationInputBuilder(db, "old-task").assemble()
+    old_input = ReportGenerationInputBuilder(db, "old-task").assemble("final-report:v2")
     assert old_input.schema_version == 2
     assert hashlib.sha256(db.read_bytes()).digest() == hashlib.sha256(before).digest()
     repo._migrate_v7_to_v8()
     reopened = InvestigationRepository(db, "old-task")
-    after_input = ReportGenerationInputBuilder(db, "old-task").assemble()
+    after_input = ReportGenerationInputBuilder(db, "old-task").assemble("final-report:v2")
     assert after_input.model_dump(mode="json") == old_input.model_dump(mode="json")
     assert reopened.get_snapshot("file:/old.txt").snapshot_id == snapshot.snapshot_id
     assert reopened.get_analysis(analysis.analysis_id).input_hash == analysis.input_hash

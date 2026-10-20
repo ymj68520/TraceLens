@@ -26,13 +26,15 @@ from httpserver.services.forensic_report.models import (
     GenerationReportManifest,
     ScopeType,
     StructuredReportSection,
+    ReportClassifications,
+    ReportEvidenceClassification,
 )
 from httpserver.services.forensic_report.repository import ReportRepository
 
 TASK = "task-A"
 
 
-def _manifest(report_id: str, generation_id: str) -> GenerationReportManifest:
+def _manifest(report_id: str, generation_id: str, classified=False) -> GenerationReportManifest:
     return GenerationReportManifest(
         report_id=report_id,
         scope_type=ScopeType.TASK,
@@ -40,7 +42,13 @@ def _manifest(report_id: str, generation_id: str) -> GenerationReportManifest:
         task_id=TASK,
         generation_id=generation_id,
         title="Narrative Report",
-        prompt_version="final-report:v1",
+        prompt_version="final-report:v4" if classified else "final-report:v1",
+        schema_version="1.1" if classified else "1.0",
+        evidence_classifications=ReportClassifications(items=(
+            ReportEvidenceClassification(evidence_key="file:/case/a.txt",
+                priority="unassessed", reason="合成材料不足", basis_type="metadata",
+                source_hash="a" * 64),
+        )) if classified else None,
         input_hash="h" * 64,
         model="test-model",
         generated_at="2026-08-16T00:00:00+00:00",
@@ -65,7 +73,7 @@ def _manifest(report_id: str, generation_id: str) -> GenerationReportManifest:
     )
 
 
-def _publish(root: Path) -> tuple[ReportRepository, str, str]:
+def _publish(root: Path, classified=False) -> tuple[ReportRepository, str, str]:
     """Create (repository, report_id, generation_id) with one snapshot + one
     published narrative version."""
     repository = ReportRepository(root / "reports.db")
@@ -79,15 +87,15 @@ def _publish(root: Path) -> tuple[ReportRepository, str, str]:
     admitted = repository.create_generation_input(
         TASK,
         requested_by="analyst-x",
-        input_schema_version=1,
-        prompt_version="final-report:v1",
+        input_schema_version=4 if classified else 1,
+        prompt_version="final-report:v4" if classified else "final-report:v1",
         input_envelope_json="{}",
         input_hash="h" * 64,
     )
     report_id = "11111111-1111-4111-8111-111111111111"
     generation_id = admitted.generation_id
     final_dir = writer.publish(
-        task_id=TASK, report_id=report_id, manifest=_manifest(report_id, generation_id)
+        task_id=TASK, report_id=report_id, manifest=_manifest(report_id, generation_id, classified)
     )
     repository.claim_generation(generation_id)
     repository.complete_generation_publication(
@@ -108,6 +116,18 @@ def make_client(root: Path, monkeypatch) -> TestClient:
     app = FastAPI()
     app.include_router(report_narrative.router, prefix="/api/reports")
     return TestClient(app)
+
+
+def test_classification_is_returned_from_the_exact_published_manifest(tmp_path, monkeypatch):
+    _, report_id, _ = _publish(tmp_path, classified=True)
+    client = make_client(tmp_path, monkeypatch)
+    result = client.get(f"/api/reports/narrative/versions/{report_id}", params={"task_id": TASK})
+    assert result.status_code == 200
+    annotation = result.json()["evidence_classifications"]["items"][0]
+    assert annotation["evidence_key"] == "file:/case/a.txt"
+    assert annotation["priority"] == "unassessed"
+    assert annotation["review_status"] == "pending"
+    assert annotation["source_hash"] == "a" * 64
 
 
 def test_narrative_version_returns_persisted_contract(tmp_path, monkeypatch):

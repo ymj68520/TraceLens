@@ -91,7 +91,7 @@ def test_quiesced_backup_restores_v7_v8_r2_result_set_and_partial_html(tmp_path)
     assert frozen["record"]["body"] == "同一条短信"
     reader = InvestigationGraphReader(restored / "investigation.db", task["id"])
     assert reader.latest_snapshot(key).payload.result_set_id == result_set_id
-    envelope = ReportGenerationInputBuilder(restored / "investigation.db", task["id"]).assemble()
+    envelope = ReportGenerationInputBuilder(restored / "investigation.db", task["id"]).assemble("final-report:v3")
     assert envelope.schema_version == 3 and envelope.allowed_report_evidence_ids == (key,)
     version, narrative = read_narrative_version_strict(
         restored / "reports/reports.db", restored / "reports", task["id"], report_id)

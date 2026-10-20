@@ -38,6 +38,7 @@ from .generation_prompts import (
     get_section_user_prompt_template,
     render_evidence_projection,
     render_group_inventory,
+    CLASSIFICATION_SYSTEM_V1,
 )
 from .generation_structured import (
     StructuredReportOutputError,
@@ -59,6 +60,7 @@ from .models import (
     StructuredReportResponse,
     StructuredReportSection,
     StructuredSectionResponse,
+    ReportClassifications,
     parse_generation_envelope,
 )
 from .repository import ReportRepository
@@ -430,8 +432,13 @@ class ReportGenerationExecutor:
                 )
                 return
             try:
+                classifications = None
+                if envelope.schema_version == 4:
+                    classifications = await self._classify_evidence(envelope)
                 if envelope.schema_version >= 2:
-                    response, model = await self._generate_sectioned(envelope)
+                    response, model = await self._generate_sectioned(
+                        envelope, classifications=classifications,
+                    )
                 else:
                     response, model = await self._generate_single_shot(envelope)
             except _StageFailure as exc:
@@ -465,6 +472,7 @@ class ReportGenerationExecutor:
             try:
                 report_id = new_generation_report_id()
                 manifest = GenerationReportManifest(
+                    schema_version="1.1" if classifications is not None else "1.0",
                     report_id=report_id,
                     scope_type=ScopeType.TASK,
                     scope_id=row.task_id,
@@ -477,6 +485,7 @@ class ReportGenerationExecutor:
                     generated_at=datetime.now(timezone.utc).isoformat(),
                     sections=response.sections,
                     citations=build_citation_manifest(response, envelope),
+                    evidence_classifications=classifications,
                 )
                 final_dir = await asyncio.to_thread(
                     self._writer.publish,
@@ -555,8 +564,56 @@ class ReportGenerationExecutor:
                 model=model,
             ) from None
 
+    async def _classify_evidence(self, envelope) -> ReportClassifications:
+        """Bounded classification within the existing generation job.
+
+        No writes to source/investigation databases, no new worker or endpoint.
+        Invalid output keeps every affected item visible as unassessed.
+        """
+        from .generation_classification import (
+            BATCH_SIZE, classification_input, classification_questions,
+            parse_classifications, unassessed_classification,
+        )
+        import json
+
+        questions = classification_questions(envelope.case_description)
+        inputs = [classification_input(item) for item in
+                  (*envelope.main_evidence, *envelope.appendix_evidence)]
+        results = {v["evidence_key"]: unassessed_classification(v) for v in inputs}
+        readable = [v for v in inputs if v["basis_text"].strip()]
+        unavailable = False
+        for start in range(0, len(readable), BATCH_SIZE):
+            batch = readable[start:start + BATCH_SIZE]
+            values = [unassessed_classification(v, failed=True) for v in batch]
+            if not unavailable:
+                try:
+                    response = await self._llm_service.chat_completion(
+                        CLASSIFICATION_SYSTEM_V1,
+                        json.dumps({
+                            "questions": [q.model_dump(mode="json") for q in questions],
+                            "materials": [{k: v[k] for k in (
+                                "evidence_key", "material_type", "basis_type",
+                                "basis_text", "basis_truncated",
+                            )} for v in batch],
+                        }, ensure_ascii=False),
+                        max_tokens=4096, temperature=0.0,
+                    )
+                    values = parse_classifications(
+                        response.get("content", ""), batch, questions, response.get("model"),
+                    )
+                except httpx.HTTPError:
+                    unavailable = True
+                    logger.warning("Report classification provider unavailable; keeping unassessed items")
+                except (ValueError, KeyError, TypeError):
+                    logger.warning("Report classification rejected; keeping unassessed items")
+            results.update((v.evidence_key, v) for v in values)
+        return ReportClassifications(
+            questions=questions,
+            items=tuple(results[key] for key in sorted(results)),
+        )
+
     async def _generate_sectioned(
-        self, envelope: ReportGenerationEnvelopeV2
+        self, envelope: ReportGenerationEnvelopeV2, *, classifications=None,
     ) -> tuple[StructuredReportResponse, str | None]:
         """v2 contract: outline once, then one call per planned section.
 
@@ -570,7 +627,13 @@ class ReportGenerationExecutor:
             envelope.prompt_version
         )
         section_template = get_section_user_prompt_template(envelope.prompt_version)
-        groups = group_report_evidence(envelope)
+        fallback_group, fallback_name = _FALLBACK_GROUP_ID, _FALLBACK_GROUP_NAME
+        if classifications is not None:
+            from .generation_classification import classified_groups, UNCLASSIFIED_GROUP, UNCLASSIFIED_NAME
+            groups = classified_groups(envelope, classifications)
+            fallback_group, fallback_name = UNCLASSIFIED_GROUP, UNCLASSIFIED_NAME
+        else:
+            groups = group_report_evidence(envelope)
         if not groups:  # admission already rejects empty evidence sets
             raise _StageFailure(
                 "no_report_evidence", "task has no report evidence"
@@ -585,15 +648,16 @@ class ReportGenerationExecutor:
             task_id=envelope.task_id,
             case_description=envelope.case_description.strip() or "(未提供)",
             groups_brief=groups_brief,
-            fallback_group=_FALLBACK_GROUP_ID,
-            fallback_name=_FALLBACK_GROUP_NAME,
+            fallback_group=fallback_group,
+            fallback_name=fallback_name,
         )
         result = await self._llm_service.chat_completion(
             system_prompt, outline_prompt
         )
         model = result.get("model") or None
         outline = await asyncio.to_thread(
-            self._parse_outline, result.get("content", ""), groups, model
+            self._parse_outline, result.get("content", ""), groups, model,
+            fallback_group=fallback_group,
         )
         sections = outline.sections
 
@@ -621,6 +685,13 @@ class ReportGenerationExecutor:
                     projection = render_evidence_projection(
                         scope_items, include_bound_analysis=envelope.schema_version >= 3
                     )
+                    if classifications is not None:
+                        import json
+                        keys = set(scope_keys)
+                        projection += "\n机器分类（不是原始证据或人工复核）：\n" + json.dumps(
+                            [c.model_dump(mode="json") for c in classifications.items if c.evidence_key in keys],
+                            ensure_ascii=False,
+                        )
                 else:
                     scope_keys = all_keys
                     projection = groups_brief
@@ -685,6 +756,8 @@ class ReportGenerationExecutor:
         content: str,
         groups: list[tuple[str, str, list[EnvelopeEvidenceItemV1]]],
         model: str | None,
+        *,
+        fallback_group: str = _FALLBACK_GROUP_ID,
     ) -> StructuredOutlineResponse:
         """Parse + deterministically repair the outline.
 
@@ -727,7 +800,7 @@ class ReportGenerationExecutor:
         owners = [
             i
             for i, section in enumerate(sections)
-            if _FALLBACK_GROUP_ID in section.group_ids
+            if fallback_group in section.group_ids
         ]
         for extra in owners[1:]:
             logger.warning(
@@ -737,7 +810,7 @@ class ReportGenerationExecutor:
             kept = tuple(
                 gid
                 for gid in sections[extra].group_ids
-                if gid != _FALLBACK_GROUP_ID
+                if gid != fallback_group
             )
             sections[extra] = sections[extra].model_copy(update={"group_ids": kept})
         # Every group must be covered somewhere; unassigned ones append to

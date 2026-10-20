@@ -47,6 +47,7 @@ from .models import (
     ReportGenerationEnvelopeV1,
     ReportGenerationEnvelopeV2,
     ReportGenerationEnvelopeV3,
+    ReportGenerationEnvelopeV4,
     ReportGenerationInput,
 )
 from .repository import ReportRepository
@@ -54,7 +55,7 @@ from .repository import ReportRepository
 # Prompt version identity only (R2b): the version string is frozen into the
 # envelope hash now so R2c's executor prompt can never invalidate an admitted
 # input_hash contract. The prompt itself is R2c scope.
-REPORT_GENERATION_PROMPT_VERSION = "final-report:v2"
+REPORT_GENERATION_PROMPT_VERSION = "final-report:v4"
 
 # Legacy single-shot contract (schema v1). Kept executable per the R2c
 # compatibility map; admission no longer produces it by default. The literal
@@ -160,8 +161,15 @@ class ReportGenerationInputBuilder:
             ),
         )
         has_android = any(item.snapshot.evidence_type == "android_artifact" for item in (*main, *appendix))
+        if prompt_version == "final-report:v4":
+            return ReportGenerationEnvelopeV4(
+                case_description=case_description[:CASE_DESCRIPTION_MAX_CHARS],
+                **{**common,
+                   "main_evidence": tuple(EnvelopeEvidenceItemV3.model_validate(i.model_dump(mode="json")) for i in main),
+                   "appendix_evidence": tuple(EnvelopeEvidenceItemV3.model_validate(i.model_dump(mode="json")) for i in appendix)},
+            )
         if has_android:
-            if prompt_version not in (REPORT_GENERATION_PROMPT_VERSION, "final-report:v3"):
+            if prompt_version not in ("final-report:v2", "final-report:v3"):
                 raise ReportGenerationInputError("invalid_report_evidence_binding", "Android evidence requires report v3")
             return ReportGenerationEnvelopeV3(
                 case_description=case_description[:CASE_DESCRIPTION_MAX_CHARS],

@@ -5,7 +5,7 @@
 // 之后 Investigation 里的 rebind/新 accepted/claim 变化都不会改变这里
 // 显示的内容（§12/§16）。citation 点击 = exact citation_id → manifest
 // entry 查表，绝不在正文里做 regex/Markdown token 推导（§13）。
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUpRight, ChevronDown, FileSearch, FileText } from 'lucide-react';
 import CitationTracebackPanel from './CitationTracebackPanel';
 import { getInvestigationSnapshot } from '../../services/investigationService';
@@ -13,13 +13,15 @@ import { investigationEvidenceUrl } from '../../utils/evidenceKey';
 import { FIELD_AUTH_ENABLED } from '../../config/runtime';
 import { Link } from 'react-router-dom';
 import { placeNarrativeCitations } from './narrativeCitationPlacement';
+import EvidenceClassification, { ClassificationBadges, ClassificationDetails } from './EvidenceClassification';
+import { priorityStyle } from './evidenceClassificationStyles';
 
 function previewText(value, limit) {
     const text = String(value || '').replace(/\s+/g, ' ').trim();
     return text.length > limit ? `${text.slice(0, limit)}…` : text;
 }
 
-function CitationMarker({ taskId, reportId, citationId, citation, inline, focused = false, preview, onOpen, onPreview }) {
+function CitationMarker({ taskId, reportId, citationId, citation, classification, inline, focused = false, preview, onOpen, onPreview }) {
     const [hovered, setHovered] = useState(false);
     const [popupPlacement, setPopupPlacement] = useState({ left: 0, below: false });
     const markerRef = useRef(null);
@@ -54,10 +56,12 @@ function CitationMarker({ taskId, reportId, citationId, citation, inline, focuse
                 id={`report-citation-${citationId}`}
                 data-testid={`citation-chip-${citationId}`}
                 onClick={() => onOpen(citationId)}
-                className={`inline-flex items-center rounded-md border border-blue-200/80 bg-blue-50 px-1.5 py-0.5 font-mono font-semibold text-blue-700 shadow-[0_1px_2px_rgba(37,99,235,0.08)] transition-all duration-150 hover:-translate-y-0.5 hover:border-blue-400 hover:bg-blue-100 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-200 dark:hover:bg-blue-900/50 ${focused ? 'ring-2 ring-amber-400 ring-offset-2 dark:ring-offset-slate-900' : ''} ${inline ? 'text-[10px] leading-none' : 'text-[11px]'}`}
+                data-priority={classification?.priority || 'unassessed'}
+                title={classification ? priorityStyle(classification.priority).label : '历史未分类'}
+                className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono font-semibold transition-all hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${priorityStyle(classification?.priority).tone} ${focused ? 'ring-2 ring-amber-400 ring-offset-2 dark:ring-offset-slate-900' : ''} ${inline ? 'text-[10px] leading-none' : 'text-[11px]'}`}
                 aria-label={`查看引用 ${citationId} 的证据`}
             >
-                {citationId}
+                {citationId}{classification && <span>{priorityStyle(classification.priority).label}</span>}
             </button>
             {hovered && (
                 <span role="tooltip" data-testid={`citation-tooltip-${citationId}`} style={{ left: popupPlacement.left }} className={`absolute z-40 block w-80 max-w-[80vw] overflow-hidden rounded-2xl border border-slate-200 bg-white text-left text-xs normal-case shadow-[0_16px_40px_rgba(15,23,42,0.18)] ring-1 ring-white/70 dark:border-slate-600 dark:bg-slate-800 dark:ring-slate-700 ${popupPlacement.below ? 'top-full mt-2' : 'bottom-full mb-2'}`}>
@@ -65,6 +69,7 @@ function CitationMarker({ taskId, reportId, citationId, citation, inline, focuse
                         <span className="inline-flex shrink-0 items-center rounded-md bg-blue-600 px-1.5 py-0.5 font-mono font-bold text-white">{citationId}</span>
                         <span className="min-w-0 break-all font-semibold leading-5 text-slate-800 dark:text-slate-100">{preview?.title || filename}</span>
                     </span>
+                    {classification && <span className="block px-3.5 pt-3"><ClassificationBadges classification={classification} compact /></span>}
                     {preview?.loading ? <span className="block px-3.5 py-3 text-slate-500">正在读取证据简介…</span> : preview?.error ? <span className="block px-3.5 py-3 text-amber-700 dark:text-amber-300">证据简介暂不可用，点击仍可查看引用溯源。</span> : (
                         <>
                             <span className="block px-3.5 pt-3 font-semibold text-slate-500 dark:text-slate-400">证据简述</span>
@@ -126,7 +131,8 @@ const NarrativeReportView = ({
         return () => { cancelled = true; };
     }, [identity, taskId, reportId, fetchNarrative]);
 
-    const citationsById = new Map((report?.citations || []).map((entry) => [entry.citation_id, entry]));
+    const citationsById = useMemo(() => new Map((report?.citations || []).map((entry) => [entry.citation_id, entry])), [report]);
+    const classificationsByKey = useMemo(() => new Map((report?.evidence_classifications?.items || []).map(entry => [entry.evidence_key, entry])), [report]);
     const openEntry = openCitationId ? citationsById.get(openCitationId) || null : null;
 
     useEffect(() => {
@@ -234,6 +240,9 @@ const NarrativeReportView = ({
                         </details>
                     </header>
 
+                    <EvidenceClassification key={reportId} classification={report.evidence_classifications}
+                        citations={report.citations} taskId={taskId} reportId={reportId} onOpenCitation={openCitation} />
+
                     <article className="space-y-5" data-testid="narrative-sections">
                         {(report.sections || []).map((section, index) => {
                             const { placements, unresolved } = placeNarrativeCitations(section.content, section.citation_ids, citationsById);
@@ -241,7 +250,7 @@ const NarrativeReportView = ({
                             let cursor = 0;
                             placements.forEach(({ end, citationId }) => {
                                 prose.push(section.content.slice(cursor, end));
-                                prose.push(<CitationMarker key={citationId} taskId={taskId} reportId={reportId} citationId={citationId} citation={citationsById.get(citationId)} inline focused={focusCitationId === citationId} preview={citationPreviews[citationId]} onOpen={openCitation} onPreview={loadPreview} />);
+                                prose.push(<CitationMarker key={citationId} taskId={taskId} reportId={reportId} citationId={citationId} citation={citationsById.get(citationId)} classification={classificationsByKey.get(citationsById.get(citationId)?.evidence_key)} inline focused={focusCitationId === citationId} preview={citationPreviews[citationId]} onOpen={openCitation} onPreview={loadPreview} />);
                                 cursor = end;
                             });
                             prose.push(section.content.slice(cursor));
@@ -259,7 +268,7 @@ const NarrativeReportView = ({
                                         <details className="group mt-6 border-t border-dashed border-slate-200 pt-4 dark:border-slate-700">
                                             <summary className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-blue-700 dark:text-slate-400 dark:hover:text-blue-300"><ChevronDown size={14} className="transition-transform group-open:rotate-180" aria-hidden />另有 {unresolved.length} 条章节级引用（未推测具体句子）</summary>
                                             <div className="mt-3 flex flex-wrap gap-1.5">
-                                                {unresolved.map((citationId) => <CitationMarker key={citationId} taskId={taskId} reportId={reportId} citationId={citationId} citation={citationsById.get(citationId)} focused={focusCitationId === citationId} preview={citationPreviews[citationId]} onOpen={openCitation} onPreview={loadPreview} />)}
+                                                {unresolved.map((citationId) => <CitationMarker key={citationId} taskId={taskId} reportId={reportId} citationId={citationId} citation={citationsById.get(citationId)} classification={classificationsByKey.get(citationsById.get(citationId)?.evidence_key)} focused={focusCitationId === citationId} preview={citationPreviews[citationId]} onOpen={openCitation} onPreview={loadPreview} />)}
                                             </div>
                                         </details>
                                     )}
@@ -278,6 +287,10 @@ const NarrativeReportView = ({
                             <button type="button" className="absolute inset-0 bg-slate-950/35 backdrop-blur-[2px]" aria-label="关闭证据溯源" onClick={() => setOpenCitationId(null)} />
                             <div ref={tracebackRef} id={`citation-evidence-${openCitationId}`} role="dialog" aria-modal="true" aria-label={`引用 ${openCitationId} 的证据溯源`} tabIndex={-1} className="relative z-10 h-full w-full max-w-[540px] overflow-y-auto border-l border-blue-100 bg-slate-50 p-4 shadow-[-18px_0_45px_rgba(15,23,42,0.2)] outline-none dark:border-slate-700 dark:bg-slate-900 md:p-6" data-testid="citation-evidence-target">
                                 <TracebackPanel taskId={taskId} reportId={reportId} citation={openEntry} onClose={() => setOpenCitationId(null)} />
+                                <section className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800" aria-label="引用证据分类">
+                                    <h4 className="mb-3 text-sm font-semibold text-slate-800 dark:text-slate-100">报告生成时的证据分类</h4>
+                                    <ClassificationDetails classification={classificationsByKey.get(openEntry.evidence_key)} questions={report.evidence_classifications?.questions} />
+                                </section>
                             </div>
                         </div>
                     )}

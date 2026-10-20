@@ -5,7 +5,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Iterator, Literal, Protocol, Sequence
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from ..investigation.models import (
     AnalysisGroundingStatus,
@@ -403,6 +403,13 @@ class ReportGenerationEnvelopeV3(ReportGenerationEnvelopeV2):
     appendix_evidence: tuple[EnvelopeEvidenceItemV3, ...] = ()
 
 
+class ReportGenerationEnvelopeV4(ReportGenerationEnvelopeV3):
+    """Classification is part of the existing report job, with a frozen policy."""
+
+    schema_version: Literal[4] = 4
+    classification_policy: Literal["evidence-dimensions:v1"] = "evidence-dimensions:v1"
+
+
 def _validate_envelope_determinism(
     *,
     task_id: str,
@@ -439,7 +446,7 @@ def _validate_envelope_determinism(
                 raise ValueError("claim evidence_refs must be sorted")
 
 
-def parse_generation_envelope(raw: str) -> "ReportGenerationEnvelopeV1 | ReportGenerationEnvelopeV2":
+def parse_generation_envelope(raw: str) -> "ReportGenerationEnvelopeV1 | ReportGenerationEnvelopeV2 | ReportGenerationEnvelopeV3 | ReportGenerationEnvelopeV4":
     """Parse a persisted generation envelope, dispatching on schema_version.
 
     A stored row's bytes are version-tagged; strict pydantic validation for
@@ -458,6 +465,7 @@ def parse_generation_envelope(raw: str) -> "ReportGenerationEnvelopeV1 | ReportG
         1: ReportGenerationEnvelopeV1,
         2: ReportGenerationEnvelopeV2,
         3: ReportGenerationEnvelopeV3,
+        4: ReportGenerationEnvelopeV4,
     }.get(version)
     if model is None:
         raise ValueError(f"unsupported envelope schema_version: {version!r}")
@@ -616,6 +624,101 @@ class CitationManifestEntry(BaseModel):
     claim_type: ClaimType | None = None
 
 
+EvidenceTopic = Literal[
+    "funds", "identity_accounts", "communications", "location", "network", "tools",
+]
+MaterialType = Literal[
+    "document", "chat_record", "transaction_record", "image", "log",
+    "android_artifact", "other", "unknown",
+]
+
+
+class ClassificationQuestion(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    question_id: str = Field(min_length=1, max_length=32)
+    text: str = Field(min_length=1, max_length=500)
+
+
+class EvidenceQuestionRelation(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    question_id: str = Field(min_length=1, max_length=32)
+    relation: Literal["supports", "inconsistent", "background", "unknown"]
+    reason: str = Field(min_length=1, max_length=300)
+
+
+class EvidenceClassificationSuggestion(BaseModel):
+    """Only semantic suggestions can be emitted by the model; never review state."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    evidence_key: str = Field(min_length=1, max_length=4096)
+    material_type: MaterialType
+    topics: tuple[EvidenceTopic, ...] = Field(max_length=6)
+    relations: tuple[EvidenceQuestionRelation, ...] = Field(max_length=4)
+    key_issue: bool = Field(strict=True)
+    reason: str = Field(min_length=1, max_length=300)
+    basis_quote: str = Field(min_length=1, max_length=300)
+
+    @model_validator(mode="after")
+    def _unique_dimensions(self):
+        if len(set(self.topics)) != len(self.topics):
+            raise ValueError("duplicate classification topic")
+        ids = [r.question_id for r in self.relations]
+        if len(set(ids)) != len(ids):
+            raise ValueError("duplicate classification question")
+        return self
+
+
+class EvidenceClassificationBatch(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    classifications: tuple[EvidenceClassificationSuggestion, ...] = Field(max_length=6)
+
+
+class ReportEvidenceClassification(BaseModel):
+    """Frozen display annotation; it never changes adoption or analysis review."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    evidence_key: str
+    material_type: MaterialType = "unknown"
+    topics: tuple[EvidenceTopic, ...] = ()
+    relations: tuple[EvidenceQuestionRelation, ...] = ()
+    priority: Literal["P1", "P2", "P3", "unassessed"] = "unassessed"
+    material_states: tuple[Literal[
+        "deleted", "recovered", "insufficient_content", "incomplete_provenance",
+    ], ...] = ()
+    review_status: Literal["machine_suggested", "pending", "confirmed", "adjusted"] = "pending"
+    assessment_status: Literal["classified", "insufficient", "failed"] = "insufficient"
+    reason: str
+    basis_type: Literal["initial_analysis", "android_record", "metadata"]
+    basis_quote: str = ""
+    basis_truncated: bool = False
+    source_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    model: str | None = None
+
+
+class ReportClassifications(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    policy_version: Literal["evidence-dimensions:v1"] = "evidence-dimensions:v1"
+    questions: tuple[ClassificationQuestion, ...] = ()
+    items: tuple[ReportEvidenceClassification, ...]
+
+    @model_validator(mode="after")
+    def _validate_references(self):
+        keys = [item.evidence_key for item in self.items]
+        questions = [q.question_id for q in self.questions]
+        if len(set(keys)) != len(keys) or len(set(questions)) != len(questions):
+            raise ValueError("duplicate classification identity")
+        for item in self.items:
+            if any(r.question_id not in questions for r in item.relations):
+                raise ValueError("classification references unknown question")
+        return self
+
+
 class GenerationReportManifest(BaseModel):
     """The published artifact of one successful LLM generation (R2c).
 
@@ -642,6 +745,16 @@ class GenerationReportManifest(BaseModel):
     generated_at: str
     sections: tuple[StructuredReportSection, ...]
     citations: tuple[CitationManifestEntry, ...]
+    evidence_classifications: ReportClassifications | None = None
+
+    @model_validator(mode="after")
+    def _classification_contract(self):
+        if self.prompt_version == "final-report:v4":
+            if self.schema_version != "1.1" or self.evidence_classifications is None:
+                raise ValueError("classified report requires its frozen classification contract")
+        elif self.evidence_classifications is not None:
+            raise ValueError("legacy reports cannot acquire classifications implicitly")
+        return self
 
 
 class ReportGenerationStatus(BaseModel):

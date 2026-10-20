@@ -20,7 +20,6 @@ import pytest
 
 from httpserver.services.evidence import ResolvedEvidence
 from httpserver.services.forensic_report.generation import (
-    REPORT_GENERATION_PROMPT_VERSION,
     ReportGenerationInputBuilder,
 )
 from httpserver.services.forensic_report.generation_execution import (
@@ -29,6 +28,7 @@ from httpserver.services.forensic_report.generation_execution import (
 )
 from httpserver.services.forensic_report.generation_prompts import (
     REPORT_GENERATION_PROMPT_V2,
+    REPORT_GENERATION_PROMPT_V2 as REPORT_GENERATION_PROMPT_VERSION,
 )
 from httpserver.services.forensic_report.generation_writer import (
     GenerationReportWriter,

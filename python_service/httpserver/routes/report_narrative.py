@@ -20,6 +20,7 @@ from ..services.forensic_report.models import (
     CitationManifestEntry,
     ReportStatus,
     StructuredReportSection,
+    ReportClassifications,
 )
 from ..services.forensic_report.narrative_reader import (
     read_narrative_version_strict,
@@ -46,6 +47,7 @@ class NarrativeReportResponse(BaseModel):
     input_hash: str
     sections: tuple[StructuredReportSection, ...]
     citations: tuple[CitationManifestEntry, ...]
+    evidence_classifications: ReportClassifications | None = None
 
 
 @router.get(
@@ -80,4 +82,5 @@ async def get_narrative_report_version(
         input_hash=manifest.input_hash,
         sections=manifest.sections,
         citations=manifest.citations,
+        evidence_classifications=manifest.evidence_classifications,
     )
