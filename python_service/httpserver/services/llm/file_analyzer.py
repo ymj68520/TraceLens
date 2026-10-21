@@ -29,9 +29,9 @@ from ...prompts import (
 
 logger = logging.getLogger(__name__)
 
-# 单次文本分析的内容字符预算：超出即截断。CJK 下字符数≈token 数，128k 上下文
-# 需为系统提示与输出（max_tokens 默认 2000）留足余量，90k 字符是安全的经验值。
-MAX_ANALYSIS_CONTENT_CHARS = 90_000
+# 单次文本分析的内容字符预算：超出即截断。在 1M 上下文（DeepSeek v4.1 Flash 多模态）下，
+# 为系统提示、格式规范及生成输出留足安全余量后，可承载高达 750k 字符的单文件全量取证分析。
+MAX_ANALYSIS_CONTENT_CHARS = 750_000
 
 
 def resolve_analysis_path(file_path: str, extraction_dir: Optional[str]) -> Optional[str]:

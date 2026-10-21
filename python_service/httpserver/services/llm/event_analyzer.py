@@ -42,8 +42,8 @@ class EventAnalyzer:
         """
         self.settings = settings
 
-    # Max characters for event description before sending to LLM
-    MAX_DESCRIPTION_CHARS = 8000
+    # Max characters for event description before sending to LLM (scaled for 1M context models)
+    MAX_DESCRIPTION_CHARS = 100_000
 
     async def analyze_event_cluster(
         self,

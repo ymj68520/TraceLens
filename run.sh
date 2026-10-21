@@ -235,6 +235,12 @@ if [ "$RUN_CPP" = "1" ]; then
     fi
 fi
 
+# ── 确保任务数据目录、证据软链接与 Agent 研判数据库就绪 ──────────────────────────
+if [ -f "$PROJECT_ROOT/scripts/setup_agent_tasks.py" ]; then
+    echo -e "${CYAN}➤ 同步任务数据底座与 Agent 证据数据库...${NC}"
+    python3 "$PROJECT_ROOT/scripts/setup_agent_tasks.py" >/dev/null 2>&1 || true
+fi
+
 # ── 启动 C++ 服务 ─────────────────────────────────────────────────────────────
 if [ "$RUN_CPP" = "1" ]; then
     echo -e "${BLUE}➤ 启动 C++ HTTP 服务（端口 ${CPP_PORT}）${NC}"

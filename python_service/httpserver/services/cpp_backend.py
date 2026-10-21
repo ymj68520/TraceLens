@@ -251,19 +251,70 @@ class CppBackendService:
         include_llm: bool = True,
         page: int = 1,
         page_size: int = 50,
+        query: Optional[str] = None,
+        path_prefix: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Get paginated files from a task.
 
-        Note: C++ backend uses largest files endpoint. Pagination is client-side.
-        For proper pagination, a new C++ endpoint is needed.
+        Attempts direct SQLite lookup on task's output_files_db if accessible,
+        allowing full substring (query) and path prefix matching without relying
+        solely on the largest-files endpoint.
         """
-        # Calculate offset for client-side pagination
+        import asyncio
+        import os
+        import sqlite3
+
+        task = await self.get_task(task_id)
+        files_db = task.get("output_files_db") if isinstance(task, dict) else None
+
+        if files_db and os.path.isfile(files_db):
+            def _query_sqlite():
+                offset = (page - 1) * page_size
+                conn = sqlite3.connect(files_db)
+                conn.row_factory = sqlite3.Row
+                c = conn.cursor()
+                where = ["1=1"]
+                params = []
+                if query:
+                    where.append("(path LIKE ? OR name LIKE ?)")
+                    params.extend([f"%{query}%", f"%{query}%"])
+                if path_prefix:
+                    where.append("path LIKE ?")
+                    params.append(f"{path_prefix}%")
+                if file_type:
+                    where.append("(category = ? OR type = ?)")
+                    params.extend([file_type, file_type])
+                if extension:
+                    clean_ext = extension.lstrip(".")
+                    where.append("lower(extension) = lower(?)")
+                    params.append(clean_ext)
+                if deleted_only:
+                    where.append("is_deleted = 1")
+
+                where_sql = " AND ".join(where)
+                c.execute(f"SELECT count(*) FROM files WHERE {where_sql}", params)
+                total_count = c.fetchone()[0]
+
+                c.execute(
+                    f"SELECT id, name, path, size, extension, md5, is_deleted, llm_description, mtime "
+                    f"FROM files WHERE {where_sql} ORDER BY scene_priority DESC, mtime DESC, id ASC "
+                    f"LIMIT ? OFFSET ?",
+                    params + [page_size, offset],
+                )
+                rows = [dict(r) for r in c.fetchall()]
+                conn.close()
+                return {"files": rows, "total_count": total_count}
+
+            try:
+                return await asyncio.to_thread(_query_sqlite)
+            except Exception as e:
+                logger.warning(f"Direct files.db query failed, falling back to C++ API: {e}")
+
+        # Fallback to C++ API
         offset = (page - 1) * page_size
         params = {"task_id": task_id, "limit": page_size + offset}
 
-        # Use largest files endpoint (other endpoints could be added based on file_type)
         result = await self._request("GET", "/api/forensics/files/largest", params=params)
-        # C++ backend may return a plain list or a wrapped {"largest_files": [...]}
         if isinstance(result, dict):
             all_files = result.get("largest_files") or result.get("files") or []
         elif isinstance(result, list):
@@ -271,8 +322,12 @@ class CppBackendService:
         else:
             all_files = []
 
-        # Apply client-side filtering and pagination
         filtered_files = all_files
+        if query:
+            q_lower = query.lower()
+            filtered_files = [f for f in filtered_files if q_lower in str(f.get("path", "")).lower() or q_lower in str(f.get("name", "")).lower()]
+        if path_prefix:
+            filtered_files = [f for f in filtered_files if str(f.get("path", "")).startswith(path_prefix)]
         if file_type:
             filtered_files = [f for f in filtered_files if f.get("category") == file_type]
         if extension:
@@ -280,7 +335,6 @@ class CppBackendService:
         if deleted_only:
             filtered_files = [f for f in filtered_files if f.get("is_deleted", False)]
 
-        # Apply pagination
         total_count = len(filtered_files)
         paginated_files = filtered_files[offset:offset + page_size]
 

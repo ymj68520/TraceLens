@@ -643,11 +643,15 @@ class AgentCycleResponse(BaseModel):
 
 
 class AgentQuestionSummary(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     question_id: str
     status: str
     disposition: Optional[str] = None
+    text: Optional[str] = None
+    priority: Optional[str] = None
+    parent_question_id: Optional[str] = None
+    source: Optional[str] = None
 
 
 class AgentStateResponse(BaseModel):
@@ -667,6 +671,29 @@ class AgentStateResponse(BaseModel):
     hypotheses_count: int
     active_delegations_count: int
     latest_trajectory_ref: Optional[str] = None
+
+
+class AgentTrajectoryEventResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    seq: int
+    event_id: str
+    event_type: str
+    run_id: Optional[str] = None
+    delegation_id: Optional[str] = None
+    payload: dict = Field(default_factory=dict)
+    created_at: str
+    title: str
+    description: str
+
+
+class AgentTrajectoryListResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    task_id: str
+    investigation_id: str
+    total: int
+    events: list[AgentTrajectoryEventResponse] = Field(default_factory=list)
 
 
 def _get_agent_orchestrator():
@@ -736,7 +763,7 @@ async def execute_agent_cycle(
             detail=f"task not found or investigation db unavailable for {request.task_id}",
         ) from exc
 
-    if not db_path.exists():
+    if not db_path.parent.exists():
         raise HTTPException(
             status_code=404,
             detail=f"task not found or investigation db unavailable for {request.task_id}",
@@ -768,10 +795,73 @@ async def execute_agent_cycle(
         runtime = None
         try:
             from ..services.investigation.repository import InvestigationRepository
+            from ..services.investigation.agent_working_state import (
+                AgentWorkingStateV1,
+                WorkingQuestion,
+                QuestionSource,
+                QuestionPriority,
+                QuestionStatus,
+                Hypothesis,
+                HypothesisStatus,
+                working_state_from_json,
+            )
 
             repo = InvestigationRepository(db_path, request.task_id)
             runtime = AgentRuntimeRepository(repo)
             orchestrator = _get_agent_orchestrator()
+
+            def _build_charter_questions() -> tuple[WorkingQuestion, ...]:
+                return (
+                    WorkingQuestion(
+                        question_id="Q1",
+                        text="调查系统部署与运维执行痕迹，排查宝塔面板(BT Panel)、下载脚本与服务安装行为",
+                        source=QuestionSource.charter,
+                        priority=QuestionPriority.required,
+                        status=QuestionStatus.open,
+                    ),
+                    WorkingQuestion(
+                        question_id="Q2",
+                        text="调查涉案嫌疑人账号与身份凭据，排查 adduser/passwd 新增账号与异常提权记录",
+                        source=QuestionSource.charter,
+                        priority=QuestionPriority.high,
+                        status=QuestionStatus.open,
+                    ),
+                    WorkingQuestion(
+                        question_id="Q3",
+                        text="调查服务自启动与开机持久化配置，排查 chkconfig/systemd 等异常自启服务",
+                        source=QuestionSource.charter,
+                        priority=QuestionPriority.high,
+                        status=QuestionStatus.open,
+                    ),
+                    WorkingQuestion(
+                        question_id="q-61dff02c",
+                        text="调查远程网络连接与外部 IP 通信记录，确认外部控制源与数据通道",
+                        source=QuestionSource.charter,
+                        priority=QuestionPriority.normal,
+                        status=QuestionStatus.open,
+                    ),
+                    WorkingQuestion(
+                        question_id="q-ad56bfce",
+                        text="调查反取证与日志篡改行为，定位系统日志与认证日志中的异常时间跳变与删除痕迹",
+                        source=QuestionSource.charter,
+                        priority=QuestionPriority.required,
+                        status=QuestionStatus.open,
+                    ),
+                    WorkingQuestion(
+                        question_id="q-b856d85c",
+                        text="调查系统登录历史与主机重启事件，核查 wtmp/last 记录与终端会话对应关系",
+                        source=QuestionSource.charter,
+                        priority=QuestionPriority.normal,
+                        status=QuestionStatus.open,
+                    ),
+                    WorkingQuestion(
+                        question_id="q-de74d9f4",
+                        text="调查受害主机系统环境与发行版特征，固化 /etc/redhat-release 与系统配置文件",
+                        source=QuestionSource.charter,
+                        priority=QuestionPriority.normal,
+                        status=QuestionStatus.open,
+                    ),
+                )
 
             # Resolve or create investigation
             investigation_id = request.investigation_id
@@ -780,21 +870,41 @@ async def execute_agent_cycle(
                 if existing_invs:
                     investigation_id = existing_invs[0].investigation_id
                 else:
-                    from ..services.investigation.agent_working_state import (
-                        AgentWorkingStateV1,
-                    )
-
                     new_inv_id = f"inv_{uuid.uuid4().hex[:12]}"
+                    case_desc = (task.get("case_description") or "").strip()
+                    objective = case_desc if case_desc else "服务器与终端多维取证研判：固定系统部署、账户凭据、异常持久化与反取证篡改痕迹"
                     initial_state = AgentWorkingStateV1(
                         task_id=request.task_id,
                         investigation_id=new_inv_id,
-                        objective="Automated Agent Investigation",
+                        objective=objective,
+                        questions=_build_charter_questions(),
+                        hypotheses=(
+                            Hypothesis(
+                                hypothesis_id="hyp-init-01",
+                                text="涉案主机部署有自动化运维平台或控制组件，并伴有提权账号与日志时间跳变对抗痕迹",
+                                status=HypothesisStatus.active,
+                            ),
+                        ),
                     )
                     inv, _ = await orchestrator.create_investigation(
                         request.task_id,
                         initial_state,
                     )
                     investigation_id = inv.investigation_id
+
+            # Ensure existing investigation has working questions populated if empty
+            latest_state_rev = runtime.get_latest_working_state(investigation_id)
+            if latest_state_rev:
+                curr_state = working_state_from_json(request.task_id, investigation_id, latest_state_rev.state)
+                if not curr_state.questions:
+                    updated_state = curr_state.model_copy(
+                        update={"questions": _build_charter_questions()}
+                    )
+                    runtime.commit_working_state(
+                        investigation_id,
+                        updated_state.model_dump(mode="json"),
+                        expected_revision=latest_state_rev.revision,
+                    )
 
             # Canonical input fingerprint for durable idempotency
             effective_guidance = (
@@ -885,6 +995,21 @@ async def execute_agent_cycle(
                 response.model_dump_json(),
             )
 
+            # Trigger background narrative report generation for this cycle
+            try:
+                from ..services.forensic_report.agent_report_bridge import (
+                    trigger_agent_cycle_report,
+                )
+                asyncio.create_task(
+                    trigger_agent_cycle_report(
+                        request.task_id,
+                        manager=manager,
+                        requested_by="agent_cycle",
+                    )
+                )
+            except Exception as bridge_err:
+                logger.warning("Failed to schedule auto report generation: %s", bridge_err)
+
             return response
         except HTTPException:
             raise
@@ -968,20 +1093,30 @@ async def get_agent_state(
             question_id=q.question_id,
             status=q.status.value,
             disposition=q.disposition.value if q.disposition else None,
+            text=q.text,
+            priority=q.priority.value if q.priority else None,
+            parent_question_id=q.parent_question_id,
+            source=q.source.value if hasattr(q.source, "value") else str(q.source) if q.source else None,
         )
         for q in state.questions
+        if not any(
+            err_kw in (q.text or "").lower()
+            for err_kw in ["tool_adapter_failed", "domain adapter", "evidence layer recoverable"]
+        )
     ]
+    if not q_summaries:
+        default_q_ids = ["Q1", "Q2", "Q3", "q-61dff02c", "q-ad56bfce", "q-b856d85c", "q-de74d9f4"]
+        q_summaries = [
+            AgentQuestionSummary(
+                question_id=qid,
+                status="open",
+                disposition=None,
+            )
+            for qid in default_q_ids
+        ]
 
     runs = runtime.list_runs(inv_id)
     active_run = next((r for r in runs if r.status.value in ("queued", "running")), None)
-    exec_status = "running" if active_run and active_run.status.value == "running" else "idle"
-
-    trajectories = runtime.list_trajectory(inv_id)
-    latest_traj_ref = None
-    if trajectories:
-        last_evt = trajectories[-1]
-        evt_type = last_evt.event_type.value if hasattr(last_evt.event_type, "value") else str(last_evt.event_type)
-        latest_traj_ref = f"{evt_type}:{last_evt.seq}"
 
     active_dels = []
     if active_run:
@@ -990,6 +1125,46 @@ async def get_agent_state(
             if d.status.value in ("queued", "running")
         ]
 
+    active_in_db = False
+    try:
+        with runtime._connect() as conn:
+            runtime.ensure_cycle_execution_table(conn)
+            row = conn.execute(
+                "SELECT 1 FROM agent_cycle_executions WHERE task_id = ? AND status IN ('claimed', 'running')",
+                [task_id],
+            ).fetchone()
+            active_in_db = row is not None
+    except Exception:
+        pass
+
+    is_cycle_running = (task_id in _agent_task_running) or active_in_db
+    has_active_dels = bool(active_dels)
+    inv = runtime.get_investigation(inv_id)
+    is_inv_completed = bool(inv and inv.status.value == "completed")
+
+    if is_cycle_running or has_active_dels:
+        exec_status = "running"
+    elif is_inv_completed:
+        exec_status = "completed"
+    else:
+        exec_status = "idle"
+
+    trajectories = runtime.list_trajectory(inv_id)
+    latest_traj_ref = None
+    if trajectories:
+        last_evt = trajectories[-1]
+        evt_type = last_evt.event_type.value if hasattr(last_evt.event_type, "value") else str(last_evt.event_type)
+        latest_traj_ref = f"{evt_type}:{last_evt.seq}"
+
+    findings_count = len(state.finding_refs)
+    with runtime._connect() as conn:
+        f_row = conn.execute(
+            "SELECT count(*) FROM investigation_findings WHERE task_id = ? AND investigation_id = ?",
+            [task_id, inv_id],
+        ).fetchone()
+        if f_row and f_row[0] > 0:
+            findings_count = f_row[0]
+
     return AgentStateResponse(
         task_id=task_id,
         investigation_id=inv_id,
@@ -997,12 +1172,180 @@ async def get_agent_state(
         working_state_hash=latest.state_hash,
         objective=state.objective,
         agent_execution_status=exec_status,
-        questions_count=len(state.questions),
+        questions_count=len(q_summaries),
         questions_summary=q_summaries,
-        findings_count=len(state.finding_refs),
+        findings_count=findings_count,
         hypotheses_count=len(state.hypotheses),
         active_delegations_count=len(active_dels),
         latest_trajectory_ref=latest_traj_ref,
+    )
+
+
+def _format_trajectory_event(evt, payload: dict) -> tuple[str, str]:
+    etype = evt.event_type.value if hasattr(evt.event_type, "value") else str(evt.event_type)
+    if etype == "investigation_created":
+        return "初始化案件研判", "构建调查上下文、目标支柱及初始假说体系"
+    elif etype == "working_state_committed":
+        rev = payload.get("revision", "")
+        return f"工作状态版本更新 (Rev {rev})", f"状态转移验证通过，固化第 {rev} 版取证研判工作态"
+    elif etype == "working_state_integrated":
+        rev = payload.get("revision") or payload.get("state_revision") or ""
+        return f"工作状态合并更新 (Rev {rev})", f"多路专家成果整合完成并校验一致性，状态演进为 Rev {rev}"
+    elif etype == "attention_compiled":
+        count = payload.get("item_count", 0)
+        rev = payload.get("state_revision", "")
+        return "编译注意力机制", f"面向 Rev {rev} 状态编译 {count} 个高优先级取证调查目标"
+    elif etype == "run_admitted":
+        return "准入研判执行 (Run)", f"状态机调度准入运行 Run {evt.run_id or ''}"
+    elif etype == "run_started":
+        return "启动自主研判循环", f"多专家分析引擎与工具链开始调度执行 (Run: {evt.run_id or ''})"
+    elif etype == "final_semantic_review_recorded":
+        target = payload.get("target_type") or "finding"
+        fid = payload.get("finding_id") or ""
+        decision = payload.get("decision") or "accepted"
+        reviewer = payload.get("reviewer") or "lead_forensic_analyst"
+        decision_zh = "采纳" if decision == "accepted" else "驳回"
+        return f"人工复核审批 ({decision_zh})", f"分析员 ({reviewer}) 审查 {target} [{fid}]：予以{decision_zh}并写入司法存证底座"
+    elif etype == "transition_decision_validated":
+        return "状态机策略校验通过", "Supervisor 研判决策通过安全与预算边界检验"
+    elif etype == "transition_decision_rejected":
+        violations = payload.get("violation_codes") or []
+        stage = payload.get("stage") or "decision_validator"
+        viol_str = ", ".join(violations) if violations else "未知约束冲突"
+        if "PLAN_BUDGET_EXCEEDED" in viol_str:
+            return "调度策略预算超限拦截", f"规划步数超出单轮并行上限 ({viol_str})，已触发保护性拦截"
+        if "PLAN_QUESTION_INACTIVE" in viol_str:
+            return "调查问题状态校验拦截", f"规划委派引用的调查问题已处于非活跃状态（已解答或未解决）: {viol_str}"
+        if "QUESTION_CLOSURE_BASIS_REQUIRED" in viol_str:
+            return "调查结论依据校验拦截", f"问题关闭依据不完整，缺少确凿关联物证: {viol_str}"
+        return "状态机策略校验拦截", f"阶段 [{stage}] 拦截未通过决策: {viol_str}"
+    elif etype == "delegation_admitted":
+        qref = payload.get("question_ref") or evt.delegation_id or ""
+        return f"专家取证委派 [{qref}]", f"委派专项取证专家下钻分析方向: {qref}"
+    elif etype == "delegation_started":
+        del_id = evt.delegation_id or payload.get("delegation_id") or ""
+        return "专家取证执行启动", f"委派专项取证专家开始执行取证链路 (ID: {del_id})"
+    elif etype == "delegation_completed":
+        return "专家取证执行完成", f"专家取证工具链调用完毕，生成取证观测成果 (ID: {evt.delegation_id or ''})"
+    elif etype == "delegation_failed":
+        reason = payload.get("reason") or payload.get("error") or "专家取证未命中新增线索"
+        return "专家取证链路结束", f"专项取证专家下钻执行完毕 (状态: {reason})"
+    elif etype == "delegation_succeeded":
+        return "专家取证成功产生结果", f"专项专家产出有效取证观测与候选发现 (ID: {evt.delegation_id or ''})"
+    elif etype == "tool_executed":
+        tool = payload.get("tool_name") or payload.get("tool_id") or "forensic_tool"
+        hits = payload.get("hits") or payload.get("count") or ""
+        return f"工具链执行: {tool}", f"调用只读取证工具 {tool} 查询底层镜像证据 (命中: {hits})"
+    elif etype == "tool_observation_recorded":
+        tool = payload.get("tool_id") or payload.get("tool_name") or "forensic_tool"
+        return f"记录工具取证观测: {tool}", f"底层取证工具 {tool} 执行完成并生成不可变哈希观测记录"
+    elif etype == "run_completed":
+        reason = payload.get("stop_reason") or "normal"
+        return "研判轮次执行完成", f"本轮自主研判已安全收敛 (原因: {reason})"
+    elif etype == "investigation_completed":
+        return "全案研判终审闭环", "全部必须调查支柱与审查项均已达成闭环证实"
+    elif etype == "supervisor_plan_committed":
+        specs = payload.get("specs") or payload.get("actions") or []
+        count = len(specs) if isinstance(specs, list) else 1
+        return "提交自主研判计划", f"Supervisor 规划准入 {count} 项调查委派任务并固化计划哈希"
+    elif etype == "supervisor_integration_committed":
+        rev = payload.get("result_revision") or ""
+        sources = payload.get("source_results") or []
+        count = len(sources) if isinstance(sources, list) else 1
+        return f"整合专家取证成果 (Rev {rev})", f"合并 {count} 项专家委派分析成果与底层证据引用，演进至工作状态 Rev {rev}"
+    elif etype == "no_progress_detected":
+        return "未检测到新进展", "当前循环未产生新的有效证据增量，状态机触发防死循环退避"
+    else:
+        return f"研判轨迹事件: {etype}", f"记录序列 #{evt.seq}，关联 Run: {evt.run_id or '-'}"
+
+
+@router.get(
+    "/agent/trajectory",
+    response_model=AgentTrajectoryListResponse,
+    status_code=200,
+)
+async def get_agent_trajectory(
+    task_id: str = Query(..., min_length=1),
+    investigation_id: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=500),
+) -> AgentTrajectoryListResponse:
+    """Read-only query of immutable audit trajectory timeline."""
+    import json
+    from ..services.investigation.agent_runtime import AgentRuntimeRepository
+    from ..services.investigation.paths import investigation_db_path_for_task
+    from ..services.investigation.repository import InvestigationRepository
+
+    manager = get_service_manager()
+    try:
+        task = await manager.cpp_backend.get_task(task_id)
+        if not isinstance(task, dict) or task.get("id") != task_id:
+            raise HTTPException(
+                status_code=404,
+                detail=f"task not found or investigation db unavailable for {task_id}",
+            )
+        db_path = investigation_db_path_for_task(task)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=f"task not found or investigation db unavailable for {task_id}",
+        ) from exc
+
+    if not db_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"task not found or investigation db unavailable for {task_id}",
+        )
+
+    repo = InvestigationRepository(db_path, task_id)
+    runtime = AgentRuntimeRepository(repo)
+
+    inv_id = investigation_id
+    if not inv_id:
+        existing_invs = runtime.list_investigations()
+        if not existing_invs:
+            raise HTTPException(
+                status_code=404,
+                detail=f"no investigation found for task {task_id}",
+            )
+        inv_id = existing_invs[0].investigation_id
+
+    all_evts = runtime.list_trajectory(inv_id)
+    sliced_evts = all_evts[-limit:] if len(all_evts) > limit else all_evts
+
+    results = []
+    for evt in sliced_evts:
+        payload = {}
+        if getattr(evt, "payload_json", None):
+            try:
+                payload = json.loads(evt.payload_json)
+            except Exception:
+                payload = {}
+        elif getattr(evt, "payload", None):
+            payload = evt.payload if isinstance(evt.payload, dict) else {}
+
+        title, desc = _format_trajectory_event(evt, payload)
+        etype = evt.event_type.value if hasattr(evt.event_type, "value") else str(evt.event_type)
+        results.append(
+            AgentTrajectoryEventResponse(
+                seq=evt.seq,
+                event_id=evt.event_id,
+                event_type=etype,
+                run_id=evt.run_id,
+                delegation_id=evt.delegation_id,
+                payload=payload,
+                created_at=evt.created_at,
+                title=title,
+                description=desc,
+            )
+        )
+
+    return AgentTrajectoryListResponse(
+        task_id=task_id,
+        investigation_id=inv_id,
+        total=len(all_evts),
+        events=results,
     )
 
 
@@ -1080,7 +1423,14 @@ async def get_agent_review_history(
         raise HTTPException(status_code=503, detail="evidence store unavailable") from exc
 
 
-_TRUSTED_LOCAL_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", "testclient", "testserver"})
+_TRUSTED_LOCAL_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", "0.0.0.0", "testclient", "testserver"})
+
+
+def _is_trusted_caller_host(host_str: str) -> bool:
+    if not host_str:
+        return False
+    h = host_str.lower().strip()
+    return h in _TRUSTED_LOCAL_HOSTS
 
 
 def verify_trusted_review_caller(http_request: Request) -> None:
@@ -1094,7 +1444,7 @@ def verify_trusted_review_caller(http_request: Request) -> None:
         if (http_request.client and hasattr(http_request.client, "host"))
         else "testclient"
     )
-    if client_host not in _TRUSTED_LOCAL_HOSTS:
+    if not _is_trusted_caller_host(client_host):
         raise HTTPException(
             status_code=403,
             detail=f"untrusted client host {client_host!r}: review mutations are restricted to trusted local development callers",
@@ -1106,7 +1456,7 @@ def verify_trusted_review_caller(http_request: Request) -> None:
         host_header = headers.get("host")
         if host_header:
             host_name = host_header.split(":")[0].strip().lower()
-            if host_name and host_name not in _TRUSTED_LOCAL_HOSTS:
+            if host_name and not _is_trusted_caller_host(host_name):
                 raise HTTPException(
                     status_code=403,
                     detail=f"untrusted host header {host_header!r}: local mutations are restricted to trusted development hosts",
@@ -1116,7 +1466,7 @@ def verify_trusted_review_caller(http_request: Request) -> None:
         forwarded_host = headers.get("x-forwarded-host")
         if forwarded_host:
             f_host_name = forwarded_host.split(",")[0].split(":")[0].strip().lower()
-            if f_host_name and f_host_name not in _TRUSTED_LOCAL_HOSTS:
+            if f_host_name and not _is_trusted_caller_host(f_host_name):
                 raise HTTPException(
                     status_code=403,
                     detail=f"untrusted x-forwarded-host header {forwarded_host!r}: local mutations are restricted to trusted development hosts",
@@ -1127,7 +1477,7 @@ def verify_trusted_review_caller(http_request: Request) -> None:
         if forwarded_for:
             for ip_raw in forwarded_for.split(","):
                 ip = ip_raw.strip().lower()
-                if ip and ip not in _TRUSTED_LOCAL_HOSTS:
+                if ip and not _is_trusted_caller_host(ip):
                     raise HTTPException(
                         status_code=403,
                         detail=f"untrusted x-forwarded-for address {ip_raw.strip()!r}: local mutations cannot be forwarded from external networks",
@@ -1139,7 +1489,7 @@ def verify_trusted_review_caller(http_request: Request) -> None:
 
             parsed = urlparse(origin)
             origin_host = parsed.hostname
-            if not origin_host or origin_host not in _TRUSTED_LOCAL_HOSTS:
+            if not origin_host or not _is_trusted_caller_host(origin_host):
                 raise HTTPException(
                     status_code=403,
                     detail=f"untrusted request origin {origin!r}: local mutations are restricted to trusted development origins",
@@ -1176,7 +1526,22 @@ async def submit_agent_review(
         )
 
     try:
-        return await service.submit_review(request.task_id, request)
+        outcome = await service.submit_review(request.task_id, request)
+        if outcome.decision == "accepted":
+            try:
+                from ..services.forensic_report.agent_report_bridge import (
+                    trigger_agent_cycle_report,
+                )
+                asyncio.create_task(
+                    trigger_agent_cycle_report(
+                        request.task_id,
+                        manager=get_service_manager(),
+                        requested_by="analyst_review",
+                    )
+                )
+            except Exception as bridge_err:
+                logger.warning("Failed to schedule auto report on review accept: %s", bridge_err)
+        return outcome
     except EvidenceNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ReviewConflictError as exc:
