@@ -95,7 +95,7 @@ _FALLBACK_GROUP_NAME = "系统组件与软件产物"
 
 
 def group_report_evidence(
-    envelope: ReportGenerationEnvelopeV2,
+    envelope: ReportGenerationEnvelopeV1 | ReportGenerationEnvelopeV2 | ReportGenerationEnvelopeV3 | ReportGenerationEnvelopeV4,
 ) -> list[tuple[str, str, list[EnvelopeEvidenceItemV1]]]:
     """Partition main+appendix evidence into ordered deterministic groups.
 
@@ -108,8 +108,20 @@ def group_report_evidence(
         if item.snapshot.evidence_type == "android_artifact":
             groups.setdefault("android_records", []).append(item)
             continue
-        path = item.snapshot.payload.normalized_path.lower()
-        if item.snapshot.payload.is_deleted:
+        payload = item.snapshot.payload
+        is_dict = isinstance(payload, dict)
+        raw_path = (
+            (payload.get("normalized_path") or payload.get("path") or item.evidence_key or "")
+            if is_dict
+            else (getattr(payload, "normalized_path", None) or item.evidence_key or "")
+        )
+        path = str(raw_path).lower()
+        is_deleted = (
+            bool(payload.get("is_deleted", False))
+            if is_dict
+            else bool(getattr(payload, "is_deleted", False))
+        )
+        if is_deleted:
             group_id = "recovered"
         else:
             group_id = _FALLBACK_GROUP_ID
@@ -132,6 +144,9 @@ def group_report_evidence(
     fallback_items = groups.pop(_FALLBACK_GROUP_ID, [])
     if fallback_items:
         ordered.append((_FALLBACK_GROUP_ID, _FALLBACK_GROUP_NAME, fallback_items))
+    for gid, items in list(groups.items()):
+        if items:
+            ordered.append((gid, gid, items))
     return ordered
 
 
@@ -464,10 +479,12 @@ class ReportGenerationExecutor:
             # version is only ever visible together with its manifest.
             try:
                 report_id = new_generation_report_id()
+                scope_type = ScopeType(row.scope_type)
+                scope_id = row.scope_id
                 manifest = GenerationReportManifest(
                     report_id=report_id,
-                    scope_type=ScopeType.TASK,
-                    scope_id=row.task_id,
+                    scope_type=scope_type,
+                    scope_id=scope_id,
                     task_id=row.task_id,
                     generation_id=generation_id,
                     title=response.title,
@@ -481,6 +498,8 @@ class ReportGenerationExecutor:
                 final_dir = await asyncio.to_thread(
                     self._writer.publish,
                     task_id=row.task_id,
+                    scope_id=scope_id,
+                    scope_type=scope_type.value,
                     report_id=report_id,
                     manifest=manifest,
                 )
@@ -580,10 +599,21 @@ class ReportGenerationExecutor:
             render_group_inventory(gid, name, items) for gid, name, items in groups
         )
 
+        target_id = getattr(envelope, "case_id", getattr(envelope, "task_id", "unknown"))
+        case_name = getattr(envelope, "case_name", target_id)
+        devices = getattr(envelope, "devices", ())
+        devices_summary = "\n".join(
+            f"- [{d.scope}] {d.role_description} (时区: {d.timezone}, 偏置: {d.clock_skew_seconds}s)"
+            for d in devices
+        ) if devices else "单镜像任务环境"
+
         # Stage 1: outline.
         outline_prompt = outline_template.format(
-            task_id=envelope.task_id,
+            task_id=target_id,
+            case_id=target_id,
+            case_name=case_name,
             case_description=envelope.case_description.strip() or "(未提供)",
+            devices_summary=devices_summary,
             groups_brief=groups_brief,
             fallback_group=_FALLBACK_GROUP_ID,
             fallback_name=_FALLBACK_GROUP_NAME,
@@ -625,7 +655,8 @@ class ReportGenerationExecutor:
                     scope_keys = all_keys
                     projection = groups_brief
             section_prompt = section_template.format(
-                task_id=envelope.task_id,
+                task_id=target_id,
+                case_id=target_id,
                 case_description=envelope.case_description.strip() or "(未提供)",
                 section_no=index,
                 section_total=len(sections),

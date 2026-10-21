@@ -403,6 +403,69 @@ class ReportGenerationEnvelopeV3(ReportGenerationEnvelopeV2):
     appendix_evidence: tuple[EnvelopeEvidenceItemV3, ...] = ()
 
 
+class DeviceScopeSummary(BaseModel):
+    """Summary of one member device/image in a cross-image case."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    scope: str
+    role_description: str
+    task_id: str
+    image_name: str
+    clock_skew_seconds: int = 0
+    timezone: str = "UTC"
+
+
+class ReportGenerationEnvelopeV4(BaseModel):
+    """V4: Cross-image multi-device case report generation envelope."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    schema_version: Literal[4] = 4
+    prompt_version: str
+    case_id: str
+    case_name: str
+    case_description: str = Field(max_length=CASE_DESCRIPTION_MAX_CHARS)
+    devices: tuple[DeviceScopeSummary, ...] = ()
+    main_evidence: tuple[EnvelopeEvidenceItemV3, ...] = ()
+    appendix_evidence: tuple[EnvelopeEvidenceItemV3, ...] = ()
+    allowed_report_evidence_ids: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _validate_determinism(self):
+        items = (*self.main_evidence, *self.appendix_evidence)
+        for name, keys in (
+            ("main_evidence", [i.evidence_key for i in self.main_evidence]),
+            ("appendix_evidence", [i.evidence_key for i in self.appendix_evidence]),
+        ):
+            if keys != sorted(keys):
+                raise ValueError(f"{name} must be sorted by evidence_key")
+            if len(set(keys)) != len(keys):
+                raise ValueError(f"{name} contains a duplicate evidence_key")
+        if list(self.allowed_report_evidence_ids) != sorted(set(self.allowed_report_evidence_ids)):
+            raise ValueError("allowed_report_evidence_ids must be sorted and unique")
+        if set(self.allowed_report_evidence_ids) != {i.evidence_key for i in items}:
+            raise ValueError(
+                "allowed_report_evidence_ids must equal the main+appendix keys"
+            )
+        known_task_ids = {d.task_id for d in self.devices}
+        for item in items:
+            if known_task_ids and item.snapshot.task_id not in known_task_ids:
+                raise ValueError(
+                    f"envelope snapshot task {item.snapshot.task_id} not in case devices"
+                )
+            bound = item.bound_analysis
+            if bound is None:
+                continue
+            claim_ids = [claim.claim_id for claim in bound.claims]
+            if claim_ids != sorted(claim_ids):
+                raise ValueError("claims must be sorted by claim_id")
+            for claim in bound.claims:
+                if list(claim.evidence_refs) != sorted(claim.evidence_refs):
+                    raise ValueError("claim evidence_refs must be sorted")
+        return self
+
+
 def _validate_envelope_determinism(
     *,
     task_id: str,
@@ -439,7 +502,9 @@ def _validate_envelope_determinism(
                 raise ValueError("claim evidence_refs must be sorted")
 
 
-def parse_generation_envelope(raw: str) -> "ReportGenerationEnvelopeV1 | ReportGenerationEnvelopeV2":
+def parse_generation_envelope(
+    raw: str,
+) -> "ReportGenerationEnvelopeV1 | ReportGenerationEnvelopeV2 | ReportGenerationEnvelopeV3 | ReportGenerationEnvelopeV4":
     """Parse a persisted generation envelope, dispatching on schema_version.
 
     A stored row's bytes are version-tagged; strict pydantic validation for
@@ -458,6 +523,7 @@ def parse_generation_envelope(raw: str) -> "ReportGenerationEnvelopeV1 | ReportG
         1: ReportGenerationEnvelopeV1,
         2: ReportGenerationEnvelopeV2,
         3: ReportGenerationEnvelopeV3,
+        4: ReportGenerationEnvelopeV4,
     }.get(version)
     if model is None:
         raise ValueError(f"unsupported envelope schema_version: {version!r}")

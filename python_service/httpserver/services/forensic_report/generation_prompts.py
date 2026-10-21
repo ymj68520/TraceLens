@@ -33,11 +33,13 @@ from .models import (
 REPORT_GENERATION_PROMPT_V1 = "final-report:v1"
 REPORT_GENERATION_PROMPT_V2 = "final-report:v2"
 REPORT_GENERATION_PROMPT_V3 = "final-report:v3"
+REPORT_GENERATION_PROMPT_V4 = "cross-case-report:v1"
 
 REPORT_GENERATION_ENVELOPE_COMPAT: dict[int, frozenset[str]] = {
     1: frozenset({REPORT_GENERATION_PROMPT_V1}),
     2: frozenset({REPORT_GENERATION_PROMPT_V2}),
     3: frozenset({REPORT_GENERATION_PROMPT_V3}),
+    4: frozenset({REPORT_GENERATION_PROMPT_V4}),
 }
 
 # Prompt version -> structured output contract identity.
@@ -45,6 +47,7 @@ REPORT_GENERATION_PROMPT_OUTPUT_CONTRACT: dict[str, str] = {
     REPORT_GENERATION_PROMPT_V1: "structured_final_report_v1",
     REPORT_GENERATION_PROMPT_V2: "structured_final_report_v2",
     REPORT_GENERATION_PROMPT_V3: "structured_final_report_v3",
+    REPORT_GENERATION_PROMPT_V4: "structured_final_report_v2",
 }
 
 REPORT_GENERATION_PROMPT_REGISTRY: dict[str, tuple[str, str]] = {}
@@ -160,11 +163,80 @@ REPORT_GENERATION_SECTION_USER_TEMPLATE_V3 = REPORT_GENERATION_SECTION_USER_TEMP
     '"citation_id":"c001","evidence_key":"...","analysis_id":null,"claim_id":null',
 ) + "\n5. 若本章投影含 bound_analysis，才可在对应 citation 中填写该精确 analysis_id；claim_id 只能来自该绑定分析的 claims。没有绑定时保持 null；引用合法不等于原始数据库行已核实。\n"
 
+REPORT_GENERATION_SYSTEM_CROSS_CASE = """\
+你是一名跨设备联合数字取证最终研判报告撰写专家。
+本案涉及多个涉案实体设备（例如嫌疑人电脑终端 src_pc、涉案服务器 src_server、涉案移动终端 src_phone 等）。
+所有证据引用均使用完全限定证据引用（FQER，格式为 scope:type:path，如 src_pc:file:/Users/... 或 src_server:file:/etc/...）。
+
+核心研判原则：
+1. 跨设备因果互证与作案链路闭环：报告必须打破单一设备的信息孤岛，重点揭示跨设备间的双向印证与因果链条（例如：客户端工具运行与服务器后门连接的匹配；客户端编写话术/脚本与服务器后台业务数据的对应；移动终端账号与涉案服务资产的关联）。
+2. 全局关键指标碰撞：深入挖掘跨设备共同出现的 IP 地址、域名、恶意代码 Hash、网络连接、涉案账号等全局 IOC。
+3. 严格语义边界：Evidence Snapshot 是唯一权威的证据事实。只能引用白名单内的 FQER evidence_key；严禁发明任何不存在的 evidence_key、citation_id 或伪造哈希。
+4. 全文使用司法取证与专业研判规范语言，简体中文叙述；结构清晰、层层递进、逻辑严密，正文不得出现任何 Markdown 围栏或无关寒暄。
+
+只输出一个严格 JSON object，字段必须为 heading、content、citations。
+"""
+
+REPORT_GENERATION_OUTLINE_USER_TEMPLATE_CROSS_CASE = """\
+请基于以下案件背景、涉案实体设备清单与跨设备证据分组清单，拟定本案《跨镜像综合取证研判报告》的章节大纲。
+
+案件 ID: {task_id}
+
+案件背景:
+{case_description}
+
+证据分组清单（每组每行一个条目：FQER evidence_key | 摘要要点）:
+{groups_brief}
+
+大纲拟定要求：
+1. 只返回严格 JSON：{{"title":"...","sections":[{{"heading":"...","brief":"本章要写什么（50字内）","group_ids":["分组ID"]}}]}}
+2. 建议规划 4 到 8 个结构严谨的取证章节：
+   - 第一章必须是案件与涉案设备环境总览（heading 以"案件总览与涉案设备环境"开头、group_ids 为空数组，梳理各涉案终端/服务器角色）；
+   - 第二章建议围绕跨设备关键指标碰撞与全局 IOC（公网IP、通信端口、木马样本哈希）；
+   - 第三章建议深入时空因果链与作案过程还原（客户端登录 -> 服务器注入/反弹 -> 数据导出/转移等链条）；
+   - 随后的章节按实体设备（如嫌疑人 PC 端痕迹、涉案服务器端数据）分块展开深入论证；
+   - 最后一章归纳司法证明力评价与证据闭环结论。
+3. 每个证据分组必须被合理分配到对应章节。
+"""
+
+REPORT_GENERATION_SECTION_USER_TEMPLATE_CROSS_CASE = """\
+请撰写本案《跨镜像综合取证研判报告》的一章。
+
+案件 ID: {task_id}
+
+案件背景:
+{case_description}
+
+本章在报告中的位置：第 {section_no} 章，共 {section_total} 章。
+全报告大纲（仅供把握行文衔接，不要越章展开）:
+{outline_brief}
+
+本章任务：heading="{heading}";要点={brief}
+
+本章引用白名单（只能引用这些 FQER evidence_key，逐条给出，切勿遗漏）:
+{allowed_ids}
+
+本章跨设备证据材料（Evidence Snapshot 投影，JSON）:
+{projection}
+
+写作要求：
+1. 只返回严格 JSON：{{"heading":"...","content":"...","citations":[{{"citation_id":"c001","evidence_key":"...","analysis_id":null,"claim_id":null}}]}}
+2. content 为 400 到 2500 字的简体中文叙述，纯文本无 Markdown；重点分析证据背后的作案手法与设备间关联，先结论后细节，关键事实均需标注对应 citation；
+3. heading 沿用本章任务给定的 heading；citation_id 从 c001 开始连续编号，章内唯一；
+4. 证据材料未覆盖的案情信息可以直接叙述但不得编造具体数据；材料与案情无关时如实说明关联有限。
+"""
+
+REPORT_GENERATION_PROMPT_REGISTRY[REPORT_GENERATION_PROMPT_V4] = (
+    REPORT_GENERATION_SYSTEM_CROSS_CASE,
+    REPORT_GENERATION_OUTLINE_USER_TEMPLATE_CROSS_CASE,
+)
+
 # Prompt-version -> per-section user template (v2 executes sections with the
 # shared v2 system prompt and the section template; v1 has no section stage).
 SECTION_USER_TEMPLATE_BY_VERSION: dict[str, str] = {
     REPORT_GENERATION_PROMPT_V2: REPORT_GENERATION_SECTION_USER_TEMPLATE_V2,
     REPORT_GENERATION_PROMPT_V3: REPORT_GENERATION_SECTION_USER_TEMPLATE_V3,
+    REPORT_GENERATION_PROMPT_V4: REPORT_GENERATION_SECTION_USER_TEMPLATE_CROSS_CASE,
 }
 
 
@@ -229,7 +301,11 @@ def project_evidence_item(item: EnvelopeEvidenceItemV1, *, include_bound_analysi
     slimmed) so per-section prompts stay within a usable token budget.
     """
     payload = item.snapshot.payload
-    described = payload.model_dump(mode="json")
+    described = (
+        payload.model_dump(mode="json")
+        if hasattr(payload, "model_dump")
+        else (payload if isinstance(payload, dict) else {})
+    )
     if item.snapshot.evidence_type == "android_artifact":
         projected = {
             "evidence_key": item.evidence_key,
@@ -251,7 +327,7 @@ def project_evidence_item(item: EnvelopeEvidenceItemV1, *, include_bound_analysi
     description = described.get("initial_description") or ""
     projected = {
         "evidence_key": item.evidence_key,
-        "path": described.get("normalized_path"),
+        "path": described.get("normalized_path") or described.get("path") or item.evidence_key,
         "name": described.get("name"),
         "size": described.get("size"),
         "mtime": _format_epoch(described.get("mtime")),
@@ -277,13 +353,21 @@ def render_group_inventory(
     lines = []
     for item in items:
         payload = item.snapshot.payload
+        described = (
+            payload.model_dump(mode="json")
+            if hasattr(payload, "model_dump")
+            else (payload if isinstance(payload, dict) else {})
+        )
+        norm_path = described.get("normalized_path") or described.get("path") or item.evidence_key
+        summary = (described.get("initial_summary") or "").replace("\n", " ")[:120]
         if item.snapshot.evidence_type == "android_artifact":
-            lines.append(f"{group_id}[{group_name}] {item.evidence_key} | AndroidAnalyzer {payload.artifact_kind}/{payload.record_id} | 派生记录，原始来源定位见冻结快照")
+            kind = described.get("artifact_kind", "unknown")
+            rec_id = described.get("record_id", "0")
+            lines.append(f"{group_id}[{group_name}] {item.evidence_key} | AndroidAnalyzer {kind}/{rec_id} | 派生记录，原始来源定位见冻结快照")
             continue
-        summary = (payload.initial_summary or "").replace("\n", " ")[:120]
         lines.append(
             f"{group_id}[{group_name}] {item.evidence_key} | "
-            f"{payload.normalized_path} | {summary}"
+            f"{norm_path} | {summary}"
         )
     return "\n".join(lines)
 
