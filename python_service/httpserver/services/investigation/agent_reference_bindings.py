@@ -363,10 +363,14 @@ def build_plan_binding_table(
             )
         )
 
+    active_questions = [
+        entry for entry in pack.question_index
+        if entry.status in ("open", "in_progress")
+    ]
     for handle, entry in (
         (f"Q{index}", entry)
         for index, entry in enumerate(
-            sorted(pack.question_index, key=lambda q: q.question_id), start=1
+            sorted(active_questions, key=lambda q: q.question_id), start=1
         )
     ):
         bindings.append(

@@ -5640,6 +5640,15 @@ class AgentRuntimeRepository:
                     payload={"failure_code": "runtime_restart"}, now=now,
                 )
                 delegations_failed += 1
+
+            # Interrupted runs may leave unintegrated completed delegations; mark them stale
+            conn.execute(
+                "UPDATE agent_delegations "
+                "SET status = 'stale', stale_at = ? "
+                "WHERE task_id = ? AND status = 'completed' AND integrated_at IS NULL "
+                "AND run_id IN (SELECT run_id FROM agent_runs WHERE task_id = ? AND status IN ('failed', 'cancelled'))",
+                [now, self.task_id, self.task_id],
+            )
             investigation_rows = conn.execute(
                 "SELECT * FROM agent_investigations "
                 "WHERE task_id = ? AND status = 'active' "

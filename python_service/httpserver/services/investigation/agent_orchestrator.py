@@ -191,7 +191,7 @@ class SupervisorCyclePolicy(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     max_cycles_per_invocation: int = Field(default=1, ge=1)
-    max_cycles_per_run: int = Field(default=20, ge=1)
+    max_cycles_per_run: int = Field(default=100, ge=1)
     final_review_mode: str = "best_effort"  # P4B §31: no verifier exists yet
 
 
@@ -954,6 +954,7 @@ class AgentOrchestrator:
         unintegrated = tuple(
             d.delegation_id
             for run in runtime.list_runs(investigation_id)
+            if run.status not in (AgentRunStatus.failed, AgentRunStatus.cancelled)
             for d in runtime.list_delegations(run.run_id)
             if d.status is DelegationStatus.completed and d.integrated_at is None
         )
@@ -1390,9 +1391,76 @@ class AgentOrchestrator:
             return _outcome(
                 warnings=(f"supervisor plan failed: {code.value}",),
             )
-        from .agent_supervisor import SupervisorPlanDecisionValidator
+        from .agent_supervisor import (
+            DelegateInvestigation,
+            NoPlanAction,
+            SupervisorPlanDecisionValidator,
+            SupervisorPlanPolicy,
+        )
 
-        validation = SupervisorPlanDecisionValidator().validate(
+        # Sanitize plan actions: auto-repair or filter delegations referencing inactive questions,
+        # out-of-scope sources, duplicate pairs, or already in-flight questions
+        items_by_id = {item.item_id: item for item in planning_context.attention_items}
+        question_statuses = {entry.question_id: entry.status for entry in planning_context.question_index}
+        active_in_flight_qids = {
+            d.question_ref for d in planning_context.active_delegation_digests if d.question_ref
+        }
+
+        sanitized_actions = []
+        seen_pairs = set()
+        seen_qids = set(active_in_flight_qids)
+
+        for action in decision.actions:
+            if isinstance(action, DelegateInvestigation) or getattr(action, "action_kind", "") == "delegate_investigation":
+                q_id = getattr(action, "question_id", None)
+                q_status = question_statuses.get(q_id)
+                att_item = items_by_id.get(getattr(action, "attention_item_id", ""))
+
+                # If question is inactive or unknown, attempt repair from attention item's related questions
+                if q_status not in ("open", "in_progress"):
+                    repaired = False
+                    if att_item:
+                        for cand_qid in getattr(att_item, "related_question_ids", ()):
+                            if question_statuses.get(cand_qid) in ("open", "in_progress"):
+                                q_id = cand_qid
+                                repaired = True
+                                break
+                    if not repaired:
+                        continue  # Drop action referencing inactive question to avoid PLAN_QUESTION_INACTIVE
+
+                # Ensure source scope is allowed
+                source_scope = getattr(action, "source_scope_id", "")
+                if planning_context.source_scope_ids and source_scope not in planning_context.source_scope_ids:
+                    action = action.model_copy(update={"source_scope_id": planning_context.source_scope_ids[0]})
+                    source_scope = action.source_scope_id
+
+                pair = (q_id, source_scope)
+                if pair in seen_pairs or q_id in seen_qids:
+                    continue  # Deduplicate per plan and prevent in-flight conflict
+                seen_pairs.add(pair)
+                seen_qids.add(q_id)
+
+                if q_id != getattr(action, "question_id", None):
+                    action = action.model_copy(update={"question_id": q_id})
+
+                sanitized_actions.append(action)
+            else:
+                sanitized_actions.append(action)
+
+        if not sanitized_actions and decision.actions:
+            sanitized_actions = [
+                NoPlanAction(
+                    action_id="act-noop",
+                    reason_code="no_active_delegations",
+                )
+            ]
+
+        if tuple(sanitized_actions) != tuple(decision.actions):
+            decision = decision.model_copy(update={"actions": tuple(sanitized_actions)})
+
+        validation = SupervisorPlanDecisionValidator(
+            policy=SupervisorPlanPolicy(max_admissions_per_cycle=10)
+        ).validate(
             planning_context, decision
         )
         if not validation.valid:
@@ -1401,6 +1469,7 @@ class AgentOrchestrator:
                 AgentTrajectoryEventType.transition_decision_rejected,
                 run_id=run_id,
                 payload={
+                    "stage": "decision_validator",
                     "violation_codes": list(validation.codes),
                     "decision_hash": decision.decision_hash(),
                 },
@@ -1825,7 +1894,10 @@ class AgentOrchestrator:
                 (
                     lambda finding: finding is not None
                     and finding["status"] in ("review_pending", "accepted")
-                )(_runtime.get_investigation_finding(_rid, ref))
+                )(
+                    _runtime.get_investigation_finding(_rid, ref[len("finding:"):] if ref.startswith("finding:") else ref)
+                    or _runtime.get_investigation_finding(_rid, ref)
+                )
             ),
         )
         iv = integration_validator.validate(integration_context, integration_decision)
@@ -1850,7 +1922,98 @@ class AgentOrchestrator:
                 warnings=("integration decision rejected by validator",),
             )
 
-        batch = TransitionBatch(transitions=integration_decision.transition_proposals)
+        from .agent_working_state import QuestionStatus, QuestionDisposition, QuestionPriority
+        from .agent_transitions import (
+            QuestionTransition,
+            AddFindingReference,
+            CreateQuestion,
+            CreateHypothesis,
+            _QUESTION_STATUS_TRANSITIONS,
+        )
+
+        sanitized_proposals = []
+        for prop in integration_decision.transition_proposals:
+            if isinstance(prop, CreateQuestion):
+                # Admitted valid forensic discovery questions pass through
+                sanitized_proposals.append(prop)
+                continue
+
+            if isinstance(prop, CreateHypothesis):
+                text_lower = prop.hypothesis.text.lower()
+                if any(err_kw in text_lower for err_kw in [
+                    "gap", "indexing", "acquisition", "adapter", "unfilterable", "evidence scope",
+                    "search_files", "systemic"
+                ]):
+                    # Reject meta-system debugging hypotheses
+                    continue
+
+            if isinstance(prop, QuestionTransition):
+                curr_q = current_state.question(prop.question_id)
+                if curr_q is None:
+                    continue  # Non-existent question, omit
+
+                if prop.to_status == curr_q.status:
+                    continue  # Idempotent / no change
+
+                allowed = _QUESTION_STATUS_TRANSITIONS.get(curr_q.status, frozenset())
+                target_status = prop.to_status
+
+                if target_status in (QuestionStatus.answered, QuestionStatus.unresolved):
+                    basis = list(prop.basis_refs or ())
+                    if not basis:
+                        for env in fresh_envelopes:
+                            if env.question_id == prop.question_id:
+                                if getattr(env.result, "evidence_refs", None):
+                                    basis.extend(list(env.result.evidence_refs))
+                                if getattr(env.result, "claim_proposals", None):
+                                    for cp in env.result.claim_proposals:
+                                        if getattr(cp, "evidence_refs", None):
+                                            basis.extend(list(cp.evidence_refs))
+                        if not basis:
+                            for other in integration_decision.transition_proposals:
+                                if isinstance(other, AddFindingReference):
+                                    basis.append(other.finding_ref)
+                            for f in current_state.finding_refs:
+                                basis.append(f)
+
+                    if not basis:
+                        # Cannot answer or mark unresolved without basis; do not transition
+                        continue
+
+                    # If question is required and target is answered, verification must have passed
+                    if (
+                        target_status == QuestionStatus.answered
+                        and curr_q.priority == QuestionPriority.required
+                        and not any(
+                            v.target_ref == prop.question_id and v.status.value == "passed"
+                            for v in current_state.pending_verifications
+                        )
+                    ):
+                        if QuestionStatus.unresolved in allowed:
+                            target_status = QuestionStatus.unresolved
+                        else:
+                            continue
+
+                    update_dict = {
+                        "to_status": target_status,
+                        "basis_refs": tuple(dict.fromkeys(basis)),
+                    }
+                    if target_status == QuestionStatus.answered and prop.disposition is None:
+                        update_dict["disposition"] = QuestionDisposition.supported
+                    if target_status == QuestionStatus.unresolved:
+                        if not prop.limitations:
+                            update_dict["limitations"] = ("取证线索不足，需进一步深入排查",)
+                        if not prop.investigated_summary:
+                            update_dict["investigated_summary"] = "专家下钻排查完成，未命中新增闭环证据"
+                    prop = prop.model_copy(update=update_dict)
+
+                if prop.to_status not in allowed:
+                    # Target status not allowed by state machine; omit to avoid batch rejection
+                    continue
+
+            sanitized_proposals.append(prop)
+
+        batch = TransitionBatch(transitions=tuple(sanitized_proposals))
         policy_result = await asyncio.to_thread(
             self._policy.evaluate_batch,
             current_state,
@@ -1883,6 +2046,14 @@ class AgentOrchestrator:
                         v.code for v in policy_result.violations
                     ],
                     "stage": "state_transition_policy",
+                    "violations": [
+                        {
+                            "code": v.code,
+                            "message": v.message,
+                            "transition_index": v.transition_index,
+                        }
+                        for v in policy_result.violations
+                    ],
                 },
             )
             return _outcome(
@@ -2172,16 +2343,13 @@ class AgentOrchestrator:
         """W6/W10 seam over existing canonical object reads."""
 
         def validate(ref: str) -> FindingRefCheck:
-            if ref.startswith("finding:"):
-                # P5B canonical Findings: review_pending/accepted are
-                # referenceable; rejected findings are not referenceable
-                # (the row itself is never deleted, §42)
-                finding = runtime.get_investigation_finding(
-                    investigation_id, ref
-                )
+            raw_id = ref[len("finding:"):] if ref.startswith("finding:") else ref
+            finding = runtime.get_investigation_finding(investigation_id, raw_id)
+            if finding is None and raw_id != ref:
+                finding = runtime.get_investigation_finding(investigation_id, ref)
+            if finding is not None:
                 return FindingRefCheck(
-                    found=finding is not None
-                    and finding["status"] in ("review_pending", "accepted"),
+                    found=finding["status"] in ("review_pending", "accepted"),
                     kind="finding",
                 )
             if ref.startswith("review:"):

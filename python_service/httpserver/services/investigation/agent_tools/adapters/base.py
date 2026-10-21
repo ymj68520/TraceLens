@@ -28,9 +28,9 @@ class ToolCatalogConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    default_page_size: int = Field(default=20, ge=1, le=100)
-    max_page_size: int = Field(default=50, ge=1, le=200)
-    max_preview_chars: int = Field(default=8000, ge=200)
+    default_page_size: int = Field(default=30, ge=1, le=200)
+    max_page_size: int = Field(default=100, ge=1, le=500)
+    max_preview_chars: int = Field(default=64000, ge=200, le=2000000)
     max_temporal_window_seconds: int = Field(default=7 * 86400, ge=60)
     default_temporal_window_seconds: int = Field(default=600, ge=1)
     max_related_items: int = Field(default=20, ge=1, le=100)

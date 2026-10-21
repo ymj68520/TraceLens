@@ -352,7 +352,7 @@ class SupervisorPlanPolicy(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    max_admissions_per_cycle: int = Field(default=4, ge=1)
+    max_admissions_per_cycle: int = Field(default=10, ge=1)
     allowed_action_kinds: tuple[str, ...] = (
         "delegate_investigation",
         "request_finalization",
@@ -639,7 +639,14 @@ def _integration_instructions(context) -> str:
         "dimension ids) — never invent or reformat a ref. "
         "Never emit a complete working state, JSON patch, SQL, "
         "canonical claim, review decision, graph or report mutation. Bind "
-        "every proposal to the current state revision."
+        "every proposal to the current state revision.\n\n"
+        "TRANSITION RULES:\n"
+        "- When proposing QuestionTransition:\n"
+        "  - If 'to_status' is 'answered', you MUST provide 'disposition' ('confirmed'/'supported'/'refuted') AND a non-empty 'basis_refs' tuple copied from fresh specialist result evidence_refs or finding_refs. NEVER transition to 'answered' with empty basis_refs.\n"
+        "  - If 'to_status' is 'unresolved', you MUST provide 'basis_refs', 'limitations', and 'investigated_summary'.\n"
+        "  - If a question does not yet have conclusive evidence, KEEP its status as 'open'.\n"
+        "- When proposing AddFindingReference:\n"
+        "  - Use canonical finding IDs from the context or fresh results."
     )
 
 
@@ -680,8 +687,17 @@ def _planning_instructions_v2(projection) -> str:
         "has no fields for them. source_scope_id must be one of the "
         "listed source_scopes. Emit AT MOST ONE delegate_investigation "
         "per (question, source scope) pair and never repeat the same "
-        "pair twice in one plan. request_finalization and no_action "
-        "require a reason code. Return proposals only."
+        "pair twice in one plan. Emit AT MOST 7 delegate_investigation "
+        "actions total in this plan. Each delegate_investigation action "
+        "MUST target an ACTIVE question (choose from the attention item's "
+        "'related_question_handles'). NEVER delegate to an inactive or "
+        "unrelated question. request_finalization and no_action "
+        "require a reason code. "
+        "CRITICAL: If attention_items is empty, all investigation directions have reached terminal or blocked status; you MUST emit a request_finalization action with reason_code='investigation_converged'. "
+        "Return proposals only. "
+        "All text in intent, summaries and notes MUST be in professional Simplified Chinese (简体中文). "
+        "Prioritize newly spawned sub-questions targeting persistence backdoors, rogue accounts or anti-forensic time jumps. "
+        "Avoid re-delegating basic environment questions if their primary artifacts were already identified in prior cycles."
     )
 
 
@@ -716,8 +732,19 @@ def _integration_instructions_v2(projection) -> str:
         "Dispositions, statuses and closure semantics remain your "
         "responsibility and are validated strictly. Never emit a "
         "complete working state, JSON patch, SQL, canonical claim, "
-        "review decision, graph or report mutation. Return proposals "
-        "only."
+        "review decision, graph or report mutation. Return proposals only.\n\n"
+        "Language & Domain Constraints:\n"
+        "1. All generated text (question texts, hypothesis texts, summaries, limitations) MUST be in Simplified Chinese (简体中文).\n"
+        "2. Question Management & create_question Guidelines:\n"
+        "   - Available actions include 'update_question' and 'create_question'.\n"
+        "   - Use 'create_question' to establish a new investigation lead ONLY when a new substantive forensic entity or evidence is discovered (e.g. an unmapped malicious external IP, newly detected cryptocurrency address, unknown suspect alias, or hidden persistence backdoor script).\n"
+        "   - NEVER create software debugging / tool-failure questions (e.g. asking why a tool failed, why files were not indexed, or asking developers to fix extraction adapters like TOOL_ADAPTER_FAILED). Tool failures and extraction gaps belong in limitations of existing questions, NOT as new investigation questions.\n"
+        "   - DO NOT create duplicate or rephrased questions that overlap with existing charter questions (Q1..Q7).\n"
+        "3. Question Closure & Anti-Loop (Auto-closure):\n"
+        "   - When a question's factual core has been verified (e.g. system release in /etc/redhat-release, or basic panel installation in /www/server/panel), you MUST transition its status to 'answered' with an investigated_summary rather than keeping it 'in_progress'. Do NOT keep re-delegating settled questions.\n"
+        "   - In update_question, investigated_summary MUST be evidence-grounded, analytical and substantive (typically 100-500 Chinese characters). State the concrete facts established and evidence paths directly without redundant narrative filler.\n"
+        "4. Sub-Question Focus (Anti-starvation):\n"
+        "   - Prioritize resolving newly spawned sub-questions concerning persistence backdoors (/root/.ssh/authorized_keys, /etc/rc.local, gwarp) and anti-forensic time jumps (chrony) so all branches reach closure."
     )
 
 

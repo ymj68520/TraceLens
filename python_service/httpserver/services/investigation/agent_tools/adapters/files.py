@@ -14,6 +14,8 @@ from .services import ForensicToolServices
 class SearchFilesInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    query: Optional[str] = None
+    path_prefix: Optional[str] = None
     file_type: Optional[str] = None
     extension: Optional[str] = None
     deleted_only: bool = False
@@ -59,6 +61,8 @@ def build_search_files_tool(
             )
         result = await services.cpp_backend.get_task_files_paginated(
             task_id,
+            query=args.query,
+            path_prefix=args.path_prefix,
             file_type=args.file_type,
             extension=args.extension,
             deleted_only=args.deleted_only,

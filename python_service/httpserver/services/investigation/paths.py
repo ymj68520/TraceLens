@@ -8,6 +8,7 @@ path. Fail-closed: no trusted path, or inconsistent directories, -> error
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from ..evidence.exceptions import EvidenceStoreError
@@ -17,8 +18,8 @@ def investigation_db_path_for_task(task: dict) -> Path:
     """Return the investigation.db path for a task.
 
     Uses whichever trusted DB paths are present (files.db, events.db or raw.db);
-    they must agree on the parent directory. ``resolve(strict=False)`` normalizes
-    syntactic differences (e.g. ``data/tasks/A`` vs ``./data/tasks/A``).
+    they must agree on the parent directory. Avoids following symlinks so task-specific
+    directories remain distinct even when db files are symlinked to shared fixtures.
     """
     if isinstance(task, str):
         raise EvidenceStoreError(
@@ -33,11 +34,11 @@ def investigation_db_path_for_task(task: dict) -> Path:
     events_db = task.get("output_events_db")
     raw_db = task.get("output_raw_db")
     if files_db:
-        parents.append(Path(files_db).resolve(strict=False).parent)
+        parents.append(Path(os.path.normpath(os.path.abspath(files_db))).parent)
     if events_db:
-        parents.append(Path(events_db).resolve(strict=False).parent)
+        parents.append(Path(os.path.normpath(os.path.abspath(events_db))).parent)
     if raw_db:
-        parents.append(Path(raw_db).resolve(strict=False).parent)
+        parents.append(Path(os.path.normpath(os.path.abspath(raw_db))).parent)
 
     if not parents:
         raise EvidenceStoreError("task has no trusted database path")
