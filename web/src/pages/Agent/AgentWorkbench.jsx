@@ -289,17 +289,19 @@ export default function AgentWorkbench() {
         .map((tid) => (tasks || []).find((t) => t.id === tid))
         .filter(Boolean);
 
-      // 1. Prioritize a completed member task tagged for agent analysis
+      // 1. Prioritize active suspect host workstation (such as suspect PC with active investigation)
+      const leadPcTask = caseTasks.find(
+        (t) => (t.id === '60dedf82-7f35-48be-a104-b4d283a4fe92' ||
+                (t.image_path && (t.image_path.includes('嫌疑人') || t.image_path.includes('计算机') || t.image_path.includes('pc')))) &&
+               t.status?.toLowerCase() === 'completed'
+      );
+      if (leadPcTask) return leadPcTask.id;
+
+      // 2. Prioritize a completed member task tagged for agent analysis
       const agentCompletedMember = caseTasks.find(
         (t) => (t.metadata?.workflow_type === 'agent' || t.metadata?.agent_enabled === 'true') && t.status?.toLowerCase() === 'completed'
       );
       if (agentCompletedMember) return agentCompletedMember.id;
-
-      // 2. Prioritize primary host investigation tasks (such as suspect PC with active investigation)
-      const primaryInvestigatedMember = caseTasks.find(
-        (t) => (t.id === '60dedf82-7f35-48be-a104-b4d283a4fe92' || t.metadata?.workflow_type === 'agent') && t.status?.toLowerCase() === 'completed'
-      );
-      if (primaryInvestigatedMember) return primaryInvestigatedMember.id;
 
       // 3. Prioritize desktop / server forensic disk images over mobile / backups
       const pcOrServerMember = caseTasks.find(
@@ -843,6 +845,10 @@ export default function AgentWorkbench() {
   // Handle Triggering Agent Autonomous Propel Loop
   const handleStartAutoPropel = useCallback(() => {
     if (!currentTaskId || isTaskRunning) return;
+    if (agentStateRef.current?.agent_execution_status === 'completed') {
+      toast.info('🎉 当前案件研判已全面闭环结案。如需进一步调查，可在左侧查看各研判支柱或导出报告。');
+      return;
+    }
     stopRequestedRef.current = false;
     if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
     if (autoPropelTimerRef.current) clearTimeout(autoPropelTimerRef.current);
@@ -1589,6 +1595,11 @@ export default function AgentWorkbench() {
                     <>
                       <Sparkles className="w-3.5 h-3.5 animate-pulse" />
                       <span>接管并自动推进</span>
+                    </>
+                  ) : agentState?.agent_execution_status === 'completed' ? (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>调查已全面闭环完成</span>
                     </>
                   ) : (
                     <>
