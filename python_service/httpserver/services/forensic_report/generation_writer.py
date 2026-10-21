@@ -43,10 +43,11 @@ class GenerationReportWriter:
         scope_id: str | None = None,
     ) -> Path:
         resolved_scope = scope_id or task_id
+        scope_folder = "case" if scope_type == "case" else "task"
         return (
             self.report_root
             / "snapshots"
-            / safe_segment(scope_type)
+            / scope_folder
             / safe_segment(resolved_scope)
             / safe_segment(report_id)
         )
@@ -100,6 +101,16 @@ class GenerationReportWriter:
             resolved_scope, report_id, scope_type=scope_type, scope_id=resolved_scope
         )
         manifest_path = final_dir / "manifest.json"
+        if not manifest_path.is_file() and scope_type == "case":
+            legacy_dir = (
+                self.report_root
+                / "snapshots"
+                / safe_segment(scope_type)
+                / safe_segment(resolved_scope)
+                / safe_segment(report_id)
+            )
+            if (legacy_dir / "manifest.json").is_file():
+                manifest_path = legacy_dir / "manifest.json"
         root = (self.report_root / "snapshots").resolve()
         resolved = manifest_path.resolve()
         if resolved != manifest_path:
