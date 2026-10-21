@@ -249,6 +249,46 @@
     },
     {
       "method": "GET",
+      "path": "/api/graphiti/event-analysis/runs",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/graphiti/event-analysis/runs",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/graphiti/event-analysis/runs/{run_id}",
+      "permission": "read"
+    },
+    {
+      "method": "POST",
+      "path": "/api/graphiti/event-analysis/runs/{run_id}/cancel",
+      "permission": "write"
+    },
+    {
+      "method": "GET",
+      "path": "/api/graphiti/event-analysis/runs/{run_id}/detail",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/graphiti/event-analysis/runs/{run_id}/graph",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/graphiti/event-views",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/graphiti/event-views/detail",
+      "permission": "read"
+    },
+    {
+      "method": "GET",
       "path": "/api/graphiti/graph",
       "permission": "read"
     },

@@ -44,12 +44,12 @@ class PeopleGraphService:
 
     async def list_runs(self, task_id):
         _, store = await self._scope(task_id)
-        return [self._public(r) for r in await asyncio.to_thread(store.list)]
+        return [self._public(r) for r in await asyncio.to_thread(store.list, ("discover", "assess", "identity_review"))]
 
     async def _run(self, task_id, run_id):
         task, store = await self._scope(task_id)
         run = await asyncio.to_thread(store.get, run_id)
-        if run is None:
+        if run is None or run["operation"] not in ("discover", "assess", "identity_review"):
             raise FileNotFoundError("分析版本不属于当前任务")
         return task, store, run
 
@@ -95,7 +95,7 @@ class PeopleGraphService:
         base = None
         if request.base_run_id:
             base = await asyncio.to_thread(store.get, request.base_run_id)
-            if not base or base["status"] != "completed":
+            if not base or base["status"] != "completed" or base["operation"] not in ("discover", "assess", "identity_review"):
                 raise ValueError("基线必须是当前任务已完成的分析版本")
         if request.mode == "assess" and not base:
             raise ValueError("重新评估需要已有人员发现版本")
@@ -110,14 +110,18 @@ class PeopleGraphService:
             if not self._accepting:
                 raise RunConflict("服务正在关闭")
             run = await asyncio.to_thread(store.admit, frozen, actor, self.epoch, request.mode, request.base_run_id)
-            handle = asyncio.create_task(self._execute(task, store, run, base))
-            self._tasks[run["run_id"]] = handle
-            self._stores[run["run_id"]] = store
-            def cleanup(_):
-                self._tasks.pop(run["run_id"], None)
-                self._stores.pop(run["run_id"], None)
-            handle.add_done_callback(cleanup)
+            self.launch(store, run, self._execute(task, store, run, base))
         return self._public(run)
+
+    def launch(self, store, run, worker):
+        """Register work under the shared admission lock and shutdown owner."""
+        handle = asyncio.create_task(worker)
+        self._tasks[run["run_id"]] = handle
+        self._stores[run["run_id"]] = store
+        def cleanup(_):
+            self._tasks.pop(run["run_id"], None)
+            self._stores.pop(run["run_id"], None)
+        handle.add_done_callback(cleanup)
 
     async def _execute(self, task, store, run, base):
         rid, frozen = run["run_id"], run["input"]

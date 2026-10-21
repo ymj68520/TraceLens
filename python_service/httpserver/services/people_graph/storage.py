@@ -82,16 +82,17 @@ class PeopleGraphStore:
             value["result"] = result
         return value
 
-    def list(self):
+    def list(self, operations=None):
         if not self.path.is_file():
             return []
         with closing(self._connect()) as conn:
             if not self._exists(conn):
                 return []
+            clause = " AND operation IN (" + ",".join("?" for _ in operations) + ")" if operations else ""
             rows = conn.execute("SELECT run_id,task_id,base_run_id,operation,status,owner_epoch,actor,created_at,"
                                 "completed_at,phase,progress,input_json,input_hash,NULL AS result_json,result_hash,error "
-                                "FROM graph_analysis_runs WHERE task_id=? ORDER BY created_at DESC,run_id DESC LIMIT 100",
-                                (self.task_id,)).fetchall()
+                                "FROM graph_analysis_runs WHERE task_id=?" + clause + " ORDER BY created_at DESC,run_id DESC LIMIT 100",
+                                (self.task_id, *(operations or ()))).fetchall()
             return [self._decode(row) for row in rows]
 
     def get(self, run_id, with_result=True):
@@ -117,7 +118,7 @@ class PeopleGraphStore:
                              (run_id, self.task_id, base_run_id, operation, epoch, actor, now(),
                               json.dumps(frozen, ensure_ascii=False), digest(frozen)))
             except sqlite3.IntegrityError as exc:
-                raise RunConflict("当前任务已有人员或优先级分析在运行") from exc
+                raise RunConflict("当前任务已有图谱分析在运行") from exc
         return self.get(run_id)
 
     def progress(self, run_id, phase, progress):

@@ -30,6 +30,8 @@ import EntitiesTab from '../components/knowledge-graph/EntitiesTab';
 import RelationshipsTab from '../components/knowledge-graph/RelationshipsTab';
 import RelationshipTracePanel from '../components/knowledge-graph/RelationshipTracePanel';
 import PeopleGraphPanel from '../components/knowledge-graph/PeopleGraphPanel';
+import EventGraphPanel from '../components/knowledge-graph/EventGraphPanel';
+import CommunicationGraphEntry from '../components/knowledge-graph/CommunicationGraphEntry';
 
 const escapeGraphTooltip = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -98,6 +100,10 @@ export default function KnowledgeGraph() {
     const selectPeopleRun = useCallback((runId) => setPeopleSelection(previous =>
         previous.taskId === taskId && previous.runId === runId ? previous : { taskId, runId }), [taskId]);
     const selectedPeopleRun = peopleSelection.taskId === taskId ? peopleSelection.runId : '';
+    const [eventSelection, setEventSelection] = useState({ taskId: null, runId: '' });
+    const selectEventRun = useCallback(runId => setEventSelection(previous =>
+        previous.taskId === taskId && previous.runId === runId ? previous : { taskId, runId }), [taskId]);
+    const selectedEventRun = eventSelection.taskId === taskId ? eventSelection.runId : '';
     const PAGE_SIZE = 20;
     const currentTask = tasks.find((t) => t.id === taskId);
     const graphConnected = Boolean(taskId) && status?.task_id === taskId && status?.neo4j_connected === true;
@@ -650,6 +656,10 @@ export default function KnowledgeGraph() {
     const tabs = [
         { id: 'graph', label: '🕸️ 图谱可视化' },
         { id: 'people', label: '人员关系图' },
+        { id: 'events', label: '事件—证据图' },
+        { id: 'evidence', label: '证据关联图' },
+        { id: 'associations', label: '智能事件关联' },
+        { id: 'communications', label: '通讯关系图' },
         { id: 'priorities', label: '优先级关系网' },
         { id: 'search', label: '🔍 搜索' },
         { id: 'entities', label: '📦 实体' },
@@ -953,6 +963,8 @@ export default function KnowledgeGraph() {
             <Card>
                 {activeTab === 'graph' && renderGraph()}
                 {activeTab === 'people' && <PeopleGraphPanel key={`${taskId}:people`} taskId={taskId} view="people" initialRunId={selectedPeopleRun} onRunChange={selectPeopleRun} />}
+                {['events', 'evidence', 'associations'].includes(activeTab) && <EventGraphPanel key={taskId} taskId={taskId} view={activeTab} initialRunId={selectedEventRun} onRunChange={selectEventRun} />}
+                {activeTab === 'communications' && <CommunicationGraphEntry taskId={taskId} />}
                 {activeTab === 'priorities' && <PeopleGraphPanel key={`${taskId}:relations`} taskId={taskId} view="relations" initialRunId={selectedPeopleRun} onRunChange={selectPeopleRun} />}
                 {activeTab === 'search' && renderSearch()}
                 {activeTab === 'entities' && renderEntities()}

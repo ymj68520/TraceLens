@@ -583,6 +583,14 @@ class ServiceManager:
         return self._people_graph_service
 
     @property
+    def event_graph_service(self):
+        manager = self.people_graph_service
+        if not hasattr(manager, "event_views"):
+            from .event_graph.service import EventGraphService
+            manager.event_views = EventGraphService(manager)
+        return manager.event_views
+
+    @property
     def report_evidence_service(self):
         """Get the Report Evidence binding service (Phase R1)."""
         self._require_service_access()

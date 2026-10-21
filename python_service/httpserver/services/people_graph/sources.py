@@ -69,7 +69,8 @@ async def read_materials(task, limit, llm, progress):
             item = SimpleNamespace(snapshot=SimpleNamespace(payload=SimpleNamespace(
                 normalized_path=row["path"], md5=row["md5"], size=row["size"])))
             source, raw, md5, notes = await asyncio.to_thread(_file_bytes, task, item)
-            material.update(source_hash=hashlib.sha256(raw).hexdigest(), _path=str(source), _stamp=file_stamp(source))
+            material.update(source_hash=hashlib.sha256(raw).hexdigest(), source_md5=md5,
+                            _path=str(source), _stamp=file_stamp(source))
             ext, kind, text = source.suffix.lower(), "text", ""
             partial = False
             if ext in TEXT_EXTENSIONS or not ext:
