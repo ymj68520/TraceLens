@@ -334,6 +334,7 @@ function CaseCard({ forensicCase: fc, tasks, onStartAnalysis, onDelete, onAddTas
   const allTasksCompleted = caseTasks.length === allTasksCount && caseTasks.every(t => t.status === 'completed');
   const failedTasks = caseTasks.filter(t => t.status === 'failed' || t.status === 'error');
   const isPolling = !!polling;
+  const primaryTask = caseTasks.find(t => t.status === 'completed') || caseTasks[0];
 
   return (
     <Card>
@@ -377,6 +378,16 @@ function CaseCard({ forensicCase: fc, tasks, onStartAnalysis, onDelete, onAddTas
               )}
             </div>
           )}
+          {primaryTask && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => navigate(`/agent?task_id=${primaryTask.id}&case_id=${fc.id}`)}
+              className="border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 shadow-sm flex items-center gap-1"
+            >
+              🤖 跨镜像 Agent 研判
+            </Button>
+          )}
           {fc.status === 'completed' && (
             <Button
                 variant="primary"
@@ -414,14 +425,37 @@ function CaseCard({ forensicCase: fc, tasks, onStartAnalysis, onDelete, onAddTas
           <div className="space-y-2">
             {caseTasks.map(t => (
               <div key={t.id} className="flex justify-between items-center text-xs p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
-                <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <span className="font-mono text-slate-400">ID:{t.id.substring(0, 6)}</span>
+                  {(() => {
+                    const img = (t.image_path || '').toLowerCase();
+                    const scope = t.metadata?.device_scope || (
+                      img.includes('服务器') || img.includes('server') ? 'src_server' :
+                      img.includes('android') || img.includes('phone') || img.includes('miui') ? 'src_phone' :
+                      'src_pc'
+                    );
+                    const scopeColor = scope === 'src_server'
+                      ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'
+                      : scope === 'src_phone'
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300';
+                    return (
+                      <span className={`case-subtask-scope px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${scopeColor}`}>
+                        {scope}
+                      </span>
+                    );
+                  })()}
                   <span className="font-medium text-slate-700 dark:text-slate-300 max-w-[200px] truncate" title={t.image_path}>
                     {t.image_path?.split('/').pop() || t.id}
                   </span>
                   {/* Quick links into task-context pages */}
                   {t.status === 'completed' && (
                     <span className="flex items-center gap-1.5 ml-1">
+                      <button
+                        onClick={() => navigate(`/agent?task_id=${t.id}&case_id=${fc.id}`)}
+                        className="text-slate-400 hover:text-purple-600 transition-colors font-bold"
+                        title="进入 Agent 研判中心"
+                      >🤖</button>
                       <button
                         onClick={() => navigate(`/files?task_id=${t.id}`)}
                         className="text-slate-400 hover:text-blue-600 transition-colors"

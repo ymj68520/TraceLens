@@ -13,9 +13,11 @@
  *    logical Android source (dir / zip / MIUI backup). Logical sources bypass
  *    the TSK pipeline entirely.
  */
-import { useCallback, useState } from 'react';
-import { useDispatch } from 'react-redux';
+import { useCallback, useEffect, useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 import { createTask, fetchTasks } from '../../store/taskSlice';
+import { fetchCases } from '../../store/caseSlice';
+import { addTasksToCase } from '../../services/caseGroupService';
 import { closeModal } from '../../store/uiSlice';
 import { Bot, FolderOpen } from 'lucide-react';
 import Button from '../common/Button';
@@ -41,6 +43,8 @@ const DATA_SOURCES = [
 
 const INITIAL_FORM = {
   workflow_type: 'standard',
+  case_id: '',
+  device_scope: 'auto',
   image_path: '',
   android_source: 'tsk',
   backup_password: '',
@@ -57,6 +61,13 @@ const INITIAL_FORM = {
 export default function CreateTaskModal({ initialSource = null, onClose = () => {} }) {
   const dispatch = useDispatch();
   const toast = useToast();
+  const { cases } = useSelector((state) => state.cases);
+
+  useEffect(() => {
+    if (!cases || cases.length === 0) {
+      dispatch(fetchCases());
+    }
+  }, [dispatch, cases]);
 
   const [form, setForm] = useState(() => ({ ...INITIAL_FORM, ...initialSource }));
   const [isCreating, setIsCreating] = useState(false);
@@ -127,11 +138,23 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
           ...(form.metadata || {}),
           workflow_type: form.workflow_type || 'standard',
           ...(isAgent ? { agent_enabled: 'true' } : {}),
+          ...(form.device_scope && form.device_scope !== 'auto'
+            ? { device_scope: form.device_scope, source_label: form.device_scope }
+            : {}),
+          ...(form.case_id ? { case_id: form.case_id } : {}),
         },
       };
       // Only send backup_password when non-empty (keeps it runtime-only / sparse).
       if (!payload.backup_password) delete payload.backup_password;
-      await dispatch(createTask(payload)).unwrap();
+      const createdTask = await dispatch(createTask(payload)).unwrap();
+      if (form.case_id && createdTask?.id) {
+        try {
+          await addTasksToCase(form.case_id, [createdTask.id]);
+          dispatch(fetchCases());
+        } catch (caseErr) {
+          console.warn('Failed to associate task with case:', caseErr);
+        }
+      }
       dispatch(closeModal());
       onClose();
       setForm(INITIAL_FORM);
@@ -251,6 +274,54 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
               />
             </Field>
           )}
+
+          {/* Multi-Image Case & Device Role Association */}
+          <div className="p-3 rounded-xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50/40 dark:bg-indigo-950/20 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-indigo-900 dark:text-indigo-200 uppercase tracking-wider flex items-center gap-1.5">
+                <span>🗂 案件归属与设备角色（多镜像协同）</span>
+              </span>
+              <span className="text-[11px] text-indigo-600/80 dark:text-indigo-400">供 Agent 跨源分析</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  所属案件 (Case)
+                </label>
+                <select
+                  disabled={isCreating}
+                  value={form.case_id || ''}
+                  onChange={(e) => set('case_id', e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="">独立任务（暂不关联案件）</option>
+                  {(cases || []).map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.task_ids?.length || 0} 个镜像)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  设备作用域角色 (Device Scope)
+                </label>
+                <select
+                  disabled={isCreating}
+                  value={form.device_scope || 'auto'}
+                  onChange={(e) => set('device_scope', e.target.value)}
+                  className={inputCls}
+                >
+                  <option value="auto">自动推断 (根据镜像名与平台)</option>
+                  <option value="src_pc">src_pc · 嫌疑人计算机 (Windows PC)</option>
+                  <option value="src_server">src_server · 涉案服务器 (Linux Server)</option>
+                  <option value="src_phone">src_phone · 涉案移动端 (Android Phone)</option>
+                </select>
+              </div>
+            </div>
+          </div>
 
           {/* Case Description — always visible, required for LLM analysis */}
           <Field label="案情描述 *" hint="AI 将根据此描述筛选关键文件并生成分析报告">

@@ -158,14 +158,42 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskC
               <td className="px-4 py-4 whitespace-nowrap text-[10px] font-mono text-slate-500 dark:text-slate-400">
                 {task.id?.substring(0, 8)}
               </td>
-              <td className="px-4 py-4 text-sm text-slate-900 dark:text-white truncate max-w-[200px]" title={task.image_path}>
-                <div className="truncate">{task.metadata?.source_label || task.image_path}</div>
+              <td className="px-4 py-4 text-sm text-slate-900 dark:text-white truncate max-w-[220px]" title={task.image_path}>
+                <div className="flex items-center gap-1.5 truncate">
+                  {(() => {
+                    const img = (task.image_path || '').toLowerCase();
+                    const scope = task.metadata?.device_scope || (
+                      img.includes('服务器') || img.includes('server') ? 'src_server' :
+                      img.includes('android') || img.includes('phone') || img.includes('miui') ? 'src_phone' :
+                      (img.includes('计算机') || img.includes('pc') || img.includes('嫌疑人')) ? 'src_pc' : null
+                    );
+                    if (!scope) return null;
+                    const scopeColor = scope === 'src_server'
+                      ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'
+                      : scope === 'src_phone'
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300';
+                    return (
+                      <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono font-bold shrink-0 ${scopeColor}`}>
+                        {scope}
+                      </span>
+                    );
+                  })()}
+                  <span className="truncate">{task.metadata?.source_label || task.image_path}</span>
+                </div>
                 {forensicCase && (
-                  <Link to={`/reports/case/${forensicCase.id}`}
-                    className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 text-[10px] text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
-                    title={`所属案件：${forensicCase.name}`}>
-                    🗂 {forensicCase.name}
-                  </Link>
+                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                    <Link to={`/reports/case/${forensicCase.id}`}
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 text-[10px] text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"
+                      title={`所属案件：${forensicCase.name}`}>
+                      🗂 {forensicCase.name}
+                    </Link>
+                    <Link to={`/agent?task_id=${task.id}&case_id=${forensicCase.id}`}
+                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-700 text-[10px] text-purple-700 dark:text-purple-300 hover:bg-purple-100 transition-colors"
+                      title="进入该案件的 Agent 协同研判">
+                      🤖 协同研判
+                    </Link>
+                  </div>
                 )}
               </td>
               <td className="px-4 py-4 whitespace-nowrap">

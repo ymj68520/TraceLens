@@ -25,21 +25,33 @@ export const fetchCases = createAsyncThunk(
  */
 export const createCaseWithTasks = createAsyncThunk(
   'cases/createWithTasks',
-  async ({ name, description, imagePaths = [], priority = 'normal', androidAnalyze = false, associateTaskIds = [] }, { rejectWithValue }) => {
+  async ({ name, description, imagePaths = [], priority = 'normal', androidAnalyze = false, associateTaskIds = [], enableAgent = true }, { rejectWithValue }) => {
     try {
       const analysisOptions = imagePaths.length ? await caseGroupSvc.caseTaskAnalysisOptions() : {};
       // Step 1 — create individual tasks for each NEW image path
       const createdTasks = await Promise.all(
-        imagePaths.map((path) =>
-          taskService.createTask({
+        imagePaths.map((path) => {
+          let scope = 'src_pc';
+          const pLower = path.toLowerCase();
+          if (pLower.includes('server') || path.includes('服务器')) {
+            scope = 'src_server';
+          } else if (pLower.includes('android') || pLower.includes('phone') || pLower.includes('miui') || path.includes('手机')) {
+            scope = 'src_phone';
+          }
+          return taskService.createTask({
             image_path:      path,
             priority,
             case_description: description,
             ...analysisOptions,
             llm_mode:        'smart',
-            android_analyze: androidAnalyze,
-          })
-        )
+            android_analyze: androidAnalyze || scope === 'src_phone',
+            metadata: {
+              ...(enableAgent ? { workflow_type: 'agent', agent_enabled: 'true' } : {}),
+              device_scope: scope,
+              source_label: scope,
+            },
+          });
+        })
       );
       const newTaskIds = createdTasks.map((t) => t.id);
 

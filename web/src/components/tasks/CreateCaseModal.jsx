@@ -18,6 +18,7 @@ const INIT = {
   imagePaths:     [''],
   priority:       'normal',
   androidAnalyze: false,
+  enableAgent:    true,
 };
 
 export default function CreateCaseModal({ onSubmit, onClose, existingTasks = [] }) {
@@ -121,6 +122,24 @@ export default function CreateCaseModal({ onSubmit, onClose, existingTasks = [] 
               rows={3} className={`${inputCls} resize-none`}
               placeholder="请描述案情背景、涉案行为、需要查找的关键信息..." />
           </Field>
+
+          {/* Multi-Image Agent Toggle */}
+          <div className="p-3 rounded-xl border border-purple-200 dark:border-purple-800 bg-purple-50/60 dark:bg-purple-950/20">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.enableAgent !== false}
+                onChange={(e) => set('enableAgent', e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+              />
+              <span className="text-xs font-bold text-purple-900 dark:text-purple-200">
+                🤖 启用 Agent 跨镜像智能协同研判 (Multi-Device Agent Investigation)
+              </span>
+            </label>
+            <p className="text-[11px] text-purple-700/80 dark:text-purple-400 mt-1 ml-6">
+              自动初始化跨镜像规划器（Supervisor）、完全限定证据引用（FQER）及跨设备线索关联工具。
+            </p>
+          </div>
 
           {/* Image paths */}
           <div>
