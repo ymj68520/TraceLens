@@ -51,6 +51,7 @@ const FALLBACK_TOAST = {
 
 export default function AgentReviewPanel({
   taskId,
+  investigationId = null,
   evidenceKey = null,
   eventId = null,
   onTraceEvidence,
@@ -113,7 +114,9 @@ export default function AgentReviewPanel({
     setLoading(true);
     setError(null);
     try {
-      const response = await listAgentReviewCandidates(targetTaskId);
+      const response = investigationId
+        ? await listAgentReviewCandidates(targetTaskId, investigationId)
+        : await listAgentReviewCandidates(targetTaskId);
       // Verify response belongs to the active task (T23)
       if (currentTaskRef.current === targetTaskId) {
         const list = Array.isArray(response)
@@ -171,7 +174,10 @@ export default function AgentReviewPanel({
     setHistoryLoading(true);
 
     if (typeof getAgentReviewCandidate === 'function') {
-      getAgentReviewCandidate(taskId, selectedCandidateId)
+      const fetchDetail = investigationId
+        ? getAgentReviewCandidate(taskId, selectedCandidateId, investigationId)
+        : getAgentReviewCandidate(taskId, selectedCandidateId);
+      fetchDetail
         .then((detail) => {
           if (active && currentTaskRef.current === taskId) {
             setSelectedCandidateDetail(detail);
@@ -192,7 +198,10 @@ export default function AgentReviewPanel({
     }
 
     if (typeof getAgentReviewHistory === 'function') {
-      getAgentReviewHistory(taskId, selectedCandidateId)
+      const fetchHist = investigationId
+        ? getAgentReviewHistory(taskId, selectedCandidateId, investigationId)
+        : getAgentReviewHistory(taskId, selectedCandidateId);
+      fetchHist
         .then((hist) => {
           if (active && currentTaskRef.current === taskId) {
             const list = Array.isArray(hist) ? hist : [];
@@ -320,7 +329,10 @@ export default function AgentReviewPanel({
 
       // Refresh history from authoritative backend (T29)
       if (taskId && activeCandidate.candidate_id) {
-        getAgentReviewHistory(taskId, activeCandidate.candidate_id)
+        const fetchPostHist = investigationId
+          ? getAgentReviewHistory(taskId, activeCandidate.candidate_id, investigationId)
+          : getAgentReviewHistory(taskId, activeCandidate.candidate_id);
+        fetchPostHist
           .then((hist) => setHistory(Array.isArray(hist) ? hist : []))
           .catch(() => {});
       }
@@ -334,7 +346,10 @@ export default function AgentReviewPanel({
         toastRef.current.error('The review candidate has changed or has already been reviewed.');
         // Refresh authoritative candidate data, do NOT auto retry
         if (taskId && activeCandidate.candidate_id) {
-          getAgentReviewCandidate(taskId, activeCandidate.candidate_id)
+          const fetchPostCand = investigationId
+            ? getAgentReviewCandidate(taskId, activeCandidate.candidate_id, investigationId)
+            : getAgentReviewCandidate(taskId, activeCandidate.candidate_id);
+          fetchPostCand
             .then((fresh) => {
               setSelectedCandidateDetail(fresh);
               setCandidates((prev) =>

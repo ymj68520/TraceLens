@@ -15,6 +15,7 @@ import AgentExecutionControl from './AgentExecutionControl';
  */
 export default function AnalysisWorkspace({
   taskId,
+  investigationId = null,
   file,
   events,
   event,
@@ -89,10 +90,12 @@ export default function AnalysisWorkspace({
       <div className="shrink-0 max-h-[50%] flex flex-col min-h-0">
         <AgentExecutionControl
           taskId={taskId}
+          investigationId={investigationId}
           onCycleCompleted={handleCycleCompleted}
         />
         <AgentReviewPanel
           taskId={taskId}
+          investigationId={investigationId}
           evidenceKey={resolvedEvidenceKey}
           eventId={eventId}
           onTraceEvidence={onTraceEvidence}

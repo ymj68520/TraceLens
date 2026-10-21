@@ -23,11 +23,12 @@ const MIDDLE_TABS = [
 export default function Investigation() {
   const [searchParams] = useSearchParams();
   const taskId = searchParams.get('task_id') || searchParams.get('taskId');
-  const selectionKey = `${taskId || ''}|${searchParams.get('report_id') || ''}|${searchParams.get('event') || ''}|${searchParams.get('file') || ''}|${searchParams.get('evidence_key') || ''}`;
-  return <InvestigationForTask key={selectionKey} taskId={taskId} searchParams={searchParams} />;
+  const requestedInvestigationId = searchParams.get('investigation_id') || searchParams.get('investigationId');
+  const selectionKey = `${taskId || ''}|${requestedInvestigationId || ''}|${searchParams.get('report_id') || ''}|${searchParams.get('event') || ''}|${searchParams.get('file') || ''}|${searchParams.get('evidence_key') || ''}`;
+  return <InvestigationForTask key={selectionKey} taskId={taskId} searchParams={searchParams} requestedInvestigationId={requestedInvestigationId} />;
 }
 
-function InvestigationForTask({ taskId, searchParams }) {
+function InvestigationForTask({ taskId, searchParams, requestedInvestigationId }) {
   // MVP (mvp-phase1-acceptance §4.4): the graph tab and the LLM workspace
   // actions are trimmed; read-only browsing and file evidence binding stay.
   const { workbench_llm_enabled: workbenchLlmEnabled } = useFeatures();
@@ -240,6 +241,7 @@ function InvestigationForTask({ taskId, searchParams }) {
         <section className={`min-h-0 overflow-hidden rounded-2xl glass ${graphActive ? 'hidden' : ''}`} data-testid="analysis-workspace-column">
           <AnalysisWorkspace
             taskId={taskId}
+            investigationId={requestedInvestigationId}
             file={selectedFile}
             events={events}
             event={selectedEvent}
