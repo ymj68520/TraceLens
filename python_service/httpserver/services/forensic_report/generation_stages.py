@@ -8,6 +8,7 @@ import json
 from .generation_sources import digest, material
 from .generation_structured import _loads_strict
 from .generation_prompts import STAGE_DISCOVERY_SYSTEM_V1, STAGE_COMPARE_SYSTEM_V1, NEUTRAL_IMAGE_PROMPT_V1
+from .generation_prompts import STAGE_DISCOVERY_SYSTEM_V2, STAGE_COMPARE_SYSTEM_V2
 from .models import (
     DirectionBatch, InvestigationDirection, MaterialSpan, ComparisonSuggestion,
     DirectionComparison, StageAnalysis, StructuredReportResponse, StructuredReportSection,
@@ -148,7 +149,7 @@ async def discover_directions(envelope, materials, llm):
         }, ensure_ascii=False)
         if len(request) > REQUEST_CHAR_LIMIT:
             raise ValueError("STAGE_INPUT_BUDGET_EXCEEDED")
-        response = await llm.chat_completion(STAGE_DISCOVERY_SYSTEM_V1, request, max_tokens=4096, temperature=0.0)
+        response = await llm.chat_completion(STAGE_DISCOVERY_SYSTEM_V2 if envelope.prompt_version.endswith(":v2") else STAGE_DISCOVERY_SYSTEM_V1, request, max_tokens=4096, temperature=0.0)
         values = parse_directions(response.get("content", ""), sent, full, envelope, {d.direction_id for d in prior})
         directions.update((d.direction_id, d) for d in values)
         successful += 1
@@ -212,7 +213,7 @@ async def compare_directions(envelope, materials, llm, current_directions=()):
             }, ensure_ascii=False)
             if len(request) > REQUEST_CHAR_LIMIT:
                 raise ValueError("COMPARISON_INPUT_BUDGET_EXCEEDED")
-            response = await llm.chat_completion(STAGE_COMPARE_SYSTEM_V1, request, max_tokens=2048, temperature=0.0)
+            response = await llm.chat_completion(STAGE_COMPARE_SYSTEM_V2 if envelope.prompt_version.endswith(":v2") else STAGE_COMPARE_SYSTEM_V1, request, max_tokens=2048, temperature=0.0)
             content = response.get("content", "")
             if not isinstance(content, str) or len(content) > 16000:
                 raise ValueError("COMPARISON_OUTPUT_BUDGET_EXCEEDED")

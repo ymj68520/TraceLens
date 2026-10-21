@@ -181,8 +181,8 @@ describe('ForensicReportPage generation chain (§28)', () => {
     test('G1 completes into exact V1, citation traces to exact A1/C1, and a later rebind never rewrites V1', async () => {
         const { versionsStore } = makePage();
         expect(await screen.findByTestId('generate-source-summary')).toBeInTheDocument();
-        expect(screen.getByTestId('summary-main')).toHaveTextContent('Main Evidence: 1');
-        expect(screen.getByTestId('summary-original')).toHaveTextContent('Original-only: 1');
+        expect(screen.getByTestId('summary-main')).toHaveTextContent('主要证据： 1');
+        expect(screen.getByTestId('summary-original')).toHaveTextContent('仅原始材料： 1');
 
         const genState = { generation_id: 'rg_1', task_id: TASK, status: 'admitted' };
         generateReport.mockResolvedValue({ ...genState });

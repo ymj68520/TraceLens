@@ -5,11 +5,11 @@ import {
 } from '../../../services/investigationService';
 
 function readErrorMessage(error) {
-  return error?.message || 'Publication read failed.';
+  return error?.message || '读取发布记录失败。';
 }
 
 function publishErrorMessage(error) {
-  return error?.message || 'Publication failed.';
+  return error?.message || '发布失败。';
 }
 
 export default function useFinalReportPublication(taskId, reportId, enabled = false) {

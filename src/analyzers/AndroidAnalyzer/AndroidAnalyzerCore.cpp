@@ -4,6 +4,8 @@
 #include "DatabaseManager/FileExtractor/FileExtractor.h"
 #include "LogicalDirExtractor.h"
 #include "ZipArchiveExtractor.h"
+#include "HarmonyBackupExtractor.h"
+#include "HarmonyArtifactParsers.h"
 #include "MiuiBackupExtractor.h"
 #include "ArchiveFileExtractor.h"
 #include "FilesystemEvidenceSource.h"
@@ -66,6 +68,8 @@ AndroidAnalyzer::~AndroidAnalyzer() {
 
 bool AndroidAnalyzer::initialize() {
     sourceError_.clear();
+    if ((sourceMode_ == AndroidSourceMode::LogicalDir || sourceMode_ == AndroidSourceMode::TSK) &&
+        HarmonyBackupExtractor::recognizes(imagePath_)) sourceMode_ = AndroidSourceMode::HarmonyBackup;
     // Auto-promote a generic directory source to MIUI backup mode when the
     // folder is in fact a MIUI backup (descript.xml + .bak files). This keeps
     // analysis correct regardless of which source the user picked in the UI —
@@ -83,6 +87,10 @@ bool AndroidAnalyzer::initialize() {
     // in this module go through fileExtractor_->extractFileByPath(...), so the
     // backend is transparent to the parsing logic.
     switch (sourceMode_) {
+        case AndroidSourceMode::HarmonyBackup: {
+            fileExtractor_ = std::make_unique<HarmonyBackupExtractor>(imagePath_);
+            break;
+        }
         case AndroidSourceMode::MiuiBackup: {
             auto miui = std::make_unique<MiuiBackupExtractor>(imagePath_);
             if (!backupPassword_.empty()) miui->setBackupPassword(backupPassword_);
@@ -123,7 +131,12 @@ bool AndroidAnalyzer::initialize() {
             break;
     }
 
-    if (!fileExtractor_->initialize()) {
+    auto* harmony = dynamic_cast<HarmonyBackupExtractor*>(fileExtractor_.get());
+    if (harmony) harmony->setProgress(sourceProgress_, sourceCancelled_);
+    const bool initialized = harmony && dbManager_
+        ? harmony->loadIndex(dbManager_->getDb()) : fileExtractor_->initialize();
+    if (!initialized) {
+        if (harmony) sourceError_ = harmony->error();
         if (auto* archive = dynamic_cast<ArchiveFileExtractor*>(fileExtractor_.get()))
             sourceError_ = archive->errorCode();
         if (auto* image = dynamic_cast<FilesystemEvidenceFileExtractor*>(fileExtractor_.get()))
@@ -145,7 +158,7 @@ bool AndroidAnalyzer::initialize() {
         if (!miui || miui->temporaryRoot().empty()) return false;
         secureTemporaryRoot_ = miui->temporaryRoot().string();
     } else {
-        const bool sourceIsDirectory = sourceMode_ == AndroidSourceMode::LogicalDir;
+        const bool sourceIsDirectory = sourceMode_ == AndroidSourceMode::LogicalDir || sourceMode_ == AndroidSourceMode::HarmonyBackup;
         fs::path evidenceRoot;
         fs::path root;
         if (!miui_secure_temp::evidenceRootForSource(imagePath_, sourceIsDirectory, evidenceRoot) ||
@@ -178,6 +191,13 @@ bool AndroidAnalyzer::initialize() {
 }
 
 void AndroidAnalyzer::analyzeAndroidData() {
+    if (auto* harmony = dynamic_cast<HarmonyBackupExtractor*>(fileExtractor_.get())) {
+        if (!analyzeHarmonyBackup(*harmony, *androidDb_, secureTemporaryRoot_))
+            throw std::runtime_error("HARMONY_ANALYSIS_FAILED");
+        analyzeWithLLM();
+        AuditLog::instance().log("SYSTEM", "HARMONY_ANALYSIS_COMPLETE", imagePath_);
+        return;
+    }
     const auto analysisStarted = std::chrono::steady_clock::now();
     std::cout << "Starting Android data analysis..." << std::endl;
     AuditLog::instance().log("SYSTEM", "ANDROID_ANALYSIS_START", "Starting Android data analysis: " + imagePath_);

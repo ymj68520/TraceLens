@@ -81,7 +81,7 @@ from .models import (
     parse_analysis_input_envelope,
     parse_event_refresh_envelope,
 )
-from .prompts import EVENT_REFRESH_PROMPT_VERSION, PROMPT_OUTPUT_CONTRACT
+from .prompts import EVENT_REFRESH_PROMPT_VERSION, PROMPT_OUTPUT_CONTRACT, ANDROID_PROMPT_VERSION
 
 
 class AnalysisReviewConflictError(RuntimeError):
@@ -1723,10 +1723,10 @@ class InvestigationRepository:
             # model_dump(mode="json") excludes snapshot_id (Field exclude=True, A12).
             has_android = (trusted_snapshot.evidence_type == "android_artifact" or
                            any(entry.snapshot.get("evidence_type") == "android_artifact" for entry in related_entries))
-            if has_android and prompt_version not in (None, "investigation-evidence-analysis:v4"):
-                raise ValueError("Android evidence requires analysis prompt v4")
+            if has_android and prompt_version not in (None, "investigation-evidence-analysis:v4", ANDROID_PROMPT_VERSION):
+                raise ValueError("安卓证据需要专用的派生记录分析提示版本")
             if has_android and prompt_version is None:
-                prompt_version = "investigation-evidence-analysis:v4"
+                prompt_version = ANDROID_PROMPT_VERSION
             envelope_cls = AnalysisInputEnvelopeV3 if has_android else AnalysisInputEnvelopeV2
             envelope = envelope_cls(
                 evidence_snapshot=trusted_snapshot.model_dump(mode="json"),

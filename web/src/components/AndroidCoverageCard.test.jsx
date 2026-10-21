@@ -20,7 +20,7 @@ test('distinguishes a missing source from an absence of evidence', async () => {
   render(<AndroidCoverageCard taskId="task-a" />);
   expect(await screen.findByText(/未找到候选文件/)).toBeInTheDocument();
   expect(screen.getByText(/不能证明数据不存在/)).toBeInTheDocument();
-  expect(screen.getByText(/wechat_messages: 1/)).toBeInTheDocument();
+  expect(screen.getByText(/微信消息：\s*1/)).toBeInTheDocument();
   expect(getAndroidSourceCoverage).toHaveBeenCalledWith('task-a');
 });
 
@@ -59,6 +59,6 @@ test('super normalization states userdata is not present and EROFS is unsupporte
   } });
   render(<AndroidCoverageCard taskId="task-super" />);
   expect(await screen.findByText(/super 来源不包含 userdata/)).toBeInTheDocument();
-  expect(screen.getByText(/product_a/)).toHaveTextContent('UNSUPPORTED_FILESYSTEM');
+  expect(screen.getByText(/product_a/)).toHaveTextContent('暂不支持的文件系统');
   expect(screen.getByRole('link', { name: '下载完整规范化来源链' })).toHaveAttribute('href', '/normalization/task-super');
 });

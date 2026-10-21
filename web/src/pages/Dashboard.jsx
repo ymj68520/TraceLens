@@ -1,3 +1,4 @@
+import { forensicLabel } from '../utils/forensicLabels';
 import { useEffect, useMemo, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { Link } from 'react-router-dom';
@@ -121,10 +122,10 @@ const Dashboard = () => {
   }, [tasks, statistics, pagination]);
 
   const statCards = [
-    { label: 'Total Tasks', value: stats.total, Icon: ListTodo, gradient: 'from-primary-500/20 to-primary-600/10 dark:from-primary-500/10 dark:to-primary-600/5', iconColor: 'text-primary-500' },
-    { label: 'Running', value: stats.running, Icon: Play, gradient: 'from-blue-500/20 to-blue-600/10 dark:from-blue-500/10 dark:to-blue-600/5', iconColor: 'text-blue-500' },
-    { label: 'Completed', value: stats.completed, Icon: CheckCircle2, gradient: 'from-emerald-500/20 to-emerald-600/10 dark:from-emerald-500/10 dark:to-emerald-600/5', iconColor: 'text-emerald-500' },
-    { label: 'Failed', value: stats.failed, Icon: XCircle, gradient: 'from-rose-500/20 to-rose-600/10 dark:from-rose-500/10 dark:to-rose-600/5', iconColor: 'text-rose-500' },
+    { label: '全部任务', value: stats.total, Icon: ListTodo, gradient: 'from-primary-500/20 to-primary-600/10 dark:from-primary-500/10 dark:to-primary-600/5', iconColor: 'text-primary-500' },
+    { label: '运行中', value: stats.running, Icon: Play, gradient: 'from-blue-500/20 to-blue-600/10 dark:from-blue-500/10 dark:to-blue-600/5', iconColor: 'text-blue-500' },
+    { label: '已完成', value: stats.completed, Icon: CheckCircle2, gradient: 'from-emerald-500/20 to-emerald-600/10 dark:from-emerald-500/10 dark:to-emerald-600/5', iconColor: 'text-emerald-500' },
+    { label: '失败', value: stats.failed, Icon: XCircle, gradient: 'from-rose-500/20 to-rose-600/10 dark:from-rose-500/10 dark:to-rose-600/5', iconColor: 'text-rose-500' },
   ];
 
   const handleToonExport = async () => {
@@ -145,8 +146,8 @@ const Dashboard = () => {
     <div className="space-y-8">
       {/* Welcome */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-        <h1 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Dashboard</h1>
-        <p className="mt-1 text-slate-500 dark:text-slate-400">Welcome to the Digital Forensics Analysis Tool</p>
+        <h1 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">工作台</h1>
+        <p className="mt-1 text-slate-500 dark:text-slate-400">数字取证分析工作台</p>
       </motion.div>
 
       {/* Statistics */}
@@ -172,7 +173,7 @@ const Dashboard = () => {
       </motion.div>
 
       {/* Health Cards */}
-      <Card title="Service Health">
+      <Card title="服务状态">
         <motion.div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4" variants={stagger} initial="hidden" animate="visible">
           {Object.entries(depHealth).map(([key, dep]) => {
             const Icon = dep.Icon;
@@ -208,38 +209,38 @@ const Dashboard = () => {
         </motion.div>
       </Card>
 
-      {/* Quick Actions */}
-      <Card title="Quick Actions">
+      {/* 常用操作 */}
+      <Card title="常用操作">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <Link to="/tasks" className="flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-primary-600 to-primary-500 text-white rounded-xl hover:from-primary-500 hover:to-primary-400 transition-all shadow-md hover:shadow-glow-primary font-medium text-sm">
-            <Plus size={16} /> Create New Task
+            <Plus size={16} /> 创建分析任务
           </Link>
           <Link to="/tasks" className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-100/80 dark:bg-slate-800/60 text-slate-700 dark:text-slate-200 rounded-xl hover:bg-slate-200/80 dark:hover:bg-slate-700/60 transition-all font-medium text-sm">
-            <ClipboardList size={16} /> View All Tasks
+            <ClipboardList size={16} /> 查看全部任务
           </Link>
           <Link to="/search" className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-100/80 dark:bg-slate-800/60 text-slate-700 dark:text-slate-200 rounded-xl hover:bg-slate-200/80 dark:hover:bg-slate-700/60 transition-all font-medium text-sm">
-            <Search size={16} /> Search Files
+            <Search size={16} /> 搜索文件
           </Link>
           <button onClick={handleToonExport} disabled={exporting || !tasks.some((t) => t.status === 'completed')} className="flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-600 to-purple-500 text-white rounded-xl hover:from-purple-500 hover:to-purple-400 transition-all shadow-md font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed">
-            <Upload size={16} /> {exporting ? 'Exporting...' : 'TOON Export'}
+            <Upload size={16} /> {exporting ? '正在导出…' : '导出 TOON'}
           </button>
         </div>
       </Card>
 
-      {/* Recent Tasks */}
-      <Card title="Recent Tasks" subtitle="Latest analysis tasks">
+      {/* 最近任务 */}
+      <Card title="最近任务" subtitle="最近的取证分析任务">
         {status === 'loading' ? (
           <div className="flex items-center justify-center py-12 gap-3 text-slate-400">
-            <Spinner size="md" /><span>Loading tasks...</span>
+            <Spinner size="md" /><span>正在读取任务…</span>
           </div>
         ) : tasks.length === 0 ? (
-          <div className="text-center py-12 text-slate-400">No tasks yet. Create your first task to get started.</div>
+          <div className="text-center py-12 text-slate-400">暂无任务，请先创建分析任务。</div>
         ) : (
           <div className="overflow-x-auto -mx-6">
             <table className="min-w-full">
               <thead>
                 <tr className="border-b border-slate-200/50 dark:border-slate-700/30">
-                  {['Task ID', 'Image Path', 'Status', 'Progress', 'Actions'].map((h) => (
+                  {['任务编号', '检材路径', '状态', '进度', '操作'].map((h) => (
                     <th key={h} className="px-6 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
@@ -255,16 +256,16 @@ const Dashboard = () => {
                   >
                     <td className="px-6 py-4 text-sm font-mono text-slate-700 dark:text-slate-300">{task.id?.substring(0, 8)}...</td>
                     <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400 max-w-[200px] truncate">{task.image_path}</td>
-                    <td className="px-6 py-4"><Badge variant={task.status === 'completed' ? 'green' : task.status === 'failed' ? 'red' : task.status === 'running' ? 'blue' : 'gray'}>{task.status}</Badge></td>
+                    <td className="px-6 py-4"><Badge variant={task.status === 'completed' ? 'green' : task.status === 'failed' ? 'red' : task.status === 'running' ? 'blue' : 'gray'}>{forensicLabel(task.status)}</Badge></td>
                     <td className="px-6 py-4 text-sm font-mono text-slate-500">{task.progress?.overall_percentage ? `${task.progress.overall_percentage.toFixed(1)}%` : '-'}</td>
                     <td className="px-6 py-4 text-sm font-medium space-x-3">
                       {task.status === 'completed' && (
                         <>
-                          <Link to={`/timeline?task_id=${task.id}`} className="text-primary-500 hover:text-primary-400 transition-colors">Timeline</Link>
-                          <Link to={`/files?task_id=${task.id}`} className="text-emerald-500 hover:text-emerald-400 transition-colors">Files</Link>
+                          <Link to={`/timeline?task_id=${task.id}`} className="text-primary-500 hover:text-primary-400 transition-colors">时间线</Link>
+                          <Link to={`/files?task_id=${task.id}`} className="text-emerald-500 hover:text-emerald-400 transition-colors">文件</Link>
                         </>
                       )}
-                      {task.status !== 'completed' && <Link to="/tasks" className="text-primary-500 hover:text-primary-400 transition-colors">View</Link>}
+                      {task.status !== 'completed' && <Link to="/tasks" className="text-primary-500 hover:text-primary-400 transition-colors">查看</Link>}
                     </td>
                   </motion.tr>
                 ))}

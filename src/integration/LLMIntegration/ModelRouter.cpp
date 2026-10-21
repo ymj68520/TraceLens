@@ -1,5 +1,6 @@
 #include "ModelRouter.h"
 #include "LLMClient.h"
+#include "OutputLanguage.h"
 #include <algorithm>
 #include <limits>
 
@@ -50,6 +51,7 @@ RoutingStrategy ModelRouter::getStrategy() const {
 LLMResponse ModelRouter::chat(const std::vector<ChatMessage>& messages,
                               ModelCapability requiredCapability) {
     LLMResponse response;
+    const auto localizedMessages = chineseOutputMessages(messages);
     
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -90,7 +92,7 @@ LLMResponse ModelRouter::chat(const std::vector<ChatMessage>& messages,
                 entry->currentLoad++;
             }
             
-            response = entry->client->chat(messages);
+            response = entry->client->chat(localizedMessages);
             
             {
                 std::lock_guard<std::mutex> lock(mutex_);
@@ -144,7 +146,7 @@ LLMResponse ModelRouter::chat(const std::vector<ChatMessage>& messages,
         return response;
     }
     
-    return client->chat(messages);
+    return client->chat(localizedMessages);
 }
 
 LLMResponse ModelRouter::chat(const std::string& prompt, 

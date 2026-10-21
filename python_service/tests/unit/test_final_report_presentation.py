@@ -87,6 +87,9 @@ def test_presentation_is_byte_stable_and_does_not_mutate_report():
     assert markdown.final_report_hash == report.final_report_hash
     assert markdown.filename.endswith(".md")
     assert html.presentation_hash == hashlib.sha256(html.body).hexdigest()
+    assert markdown.body.decode('utf-8').startswith('# 取证分析报告')
+    assert '<html lang="zh-CN">' in html.body.decode('utf-8')
+    assert '<h1>取证分析报告</h1>' in html.body.decode('utf-8')
     assert report.model_dump(mode="json") == before
     assert report.final_report_hash == report.compute_hash()
 

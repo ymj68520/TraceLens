@@ -116,6 +116,7 @@ std::string AndroidLLMAnalysisService::getTableNameForType(ArtifactType type) {
         case ArtifactType::SYSTEM_LOG: return "system_logs";
         case ArtifactType::DEVICE_IDENTIFIER: return "device_identifiers";
         case ArtifactType::WIFI_NETWORK: return "wifi_networks";
+        case ArtifactType::MOBILE_RECORD: return "mobile_artifacts";
         default: return "";
     }
 }
@@ -137,6 +138,10 @@ std::string AndroidLLMAnalysisService::getSelectSQLForType(ArtifactType type) {
         case ArtifactType::SYSTEM_LOG: return A::SELECT_SYSTEM_LOGS_PENDING_ANALYSIS;
         case ArtifactType::DEVICE_IDENTIFIER: return A::SELECT_DEVICE_IDENTIFIERS_PENDING_ANALYSIS;
         case ArtifactType::WIFI_NETWORK: return A::SELECT_WIFI_NETWORKS_PENDING_ANALYSIS;
+        case ArtifactType::MOBILE_RECORD: return "SELECT id,kind,package_name,source_path,source_table,source_key,record_json,"
+            "timestamp_raw,time_unit,parser_version FROM mobile_artifacts WHERE llm_analyzed_at IS NULL "
+            "ORDER BY CASE kind WHEN 'calendar' THEN 0 WHEN 'recording' THEN 1 WHEN 'qq_contact' THEN 2 "
+            "WHEN 'note_block' THEN 3 ELSE 4 END,id LIMIT ?";
         default: return "";
     }
 }

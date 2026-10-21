@@ -77,7 +77,7 @@ bool optionRequiresNonOptionValue(const std::string& option) {
 
 bool isValidAndroidSource(const std::string& source) {
     static const std::unordered_set<std::string> validSources{
-        "tsk", "dir", "zip", "miui-backup", "tar", "seven-zip", "android-backup", "filesystem-image"
+        "tsk", "dir", "zip", "miui-backup", "harmony-backup", "tar", "seven-zip", "android-backup", "filesystem-image"
     };
     return validSources.contains(source);
 }
@@ -112,7 +112,7 @@ void CommandLineParser::printUsage(const char* programName) {
     std::cout << "  --android-analyze           Analyze Android data\n";
     std::cout << "  --android-source <mode>     Android data source: tsk (default, disk image),\n"
                  "                              dir (extracted data/ tree), zip (Image.zip),\n"
-                 "                              miui-backup (Xiaomi MIUI .bak folder),\n"
+                 "                              miui-backup (Xiaomi MIUI .bak folder), harmony-backup (decrypted Huawei folder),\n"
                  "                              tar, seven-zip, android-backup (.ab),\n"
                  "                              filesystem-image (userdata EXT4/F2FS RAW/E01)\n";
     std::cout << "  --wechat-password <pass>    WeChat SQLCipher decryption password\n";
@@ -199,10 +199,11 @@ CommandLineArgs CommandLineParser::parse(int argc, char* argv[]) {
             const std::string source = argv[++i];
             if (!isValidAndroidSource(source)) {
                 args.parse_error = "Invalid --android-source '" + source +
-                    "' (expected tsk, dir, zip, miui-backup, tar, seven-zip, android-backup, or filesystem-image)";
+                    "' (expected tsk, dir, zip, miui-backup, harmony-backup, tar, seven-zip, android-backup, or filesystem-image)";
                 return args;
             }
             args.android_source = source;
+            if (source == "harmony-backup") args.android_analyze = true;
         } else if (arg == "--wechat-password" && i + 1 < argc) {
             args.wechat_password = argv[++i];
         } else if (arg == "--backup-password-stdin") {

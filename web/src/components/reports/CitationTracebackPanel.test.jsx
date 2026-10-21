@@ -175,9 +175,9 @@ describe('CitationTracebackPanel', () => {
             />,
         );
         expect(await screen.findByTestId('traceback-claim-layer')).toBeInTheDocument();
-        expect(screen.getByText(/Evidence Source/i)).toBeInTheDocument();
-        expect(screen.getByText(/analyst-accepted derived finding/i)).toBeInTheDocument();
-        expect(screen.getByText(/derived claim/i)).toBeInTheDocument();
+        expect(screen.getByText(/证据及其来源/)).toBeInTheDocument();
+        expect(screen.getByText(/分析员已接受的派生分析/)).toBeInTheDocument();
+        expect(screen.getByText(/派生断言/)).toBeInTheDocument();
     });
 
     test('file evidence keys open the investigation workbench in a new tab at that file', async () => {

@@ -10,6 +10,7 @@
 - **镜像与文件系统**：E01 (EnCase) / DD 原始镜像；NTFS、FAT、EXT2/3/4、XFS（`--xfs-mode auto|native|pure`）；加密卷解密（LUKS / BitLocker 等，`--key-dir`/`--key-password`，BitLocker FVEK 需配套 Volatility3 插件）；多分区镜像分析
 - **三层数据库产出**：`_raw.db`（文件系统元数据）→ `_events.db`（时间线事件）→ `_files.db`（24 类文件分类 + LLM 分析列 + 场景优先级）
 - **平台专项取证**：
+  - **华为鸿蒙已解密备份**：`--android-source harmony-backup`，支持 `.info.json + files`、解密后的 JSON/TAR 和独立文件；日历、录音、媒体、思源笔记与可读 QQ 资料。沿用原任务、文件分类/提取、时间线及报告流程，详见 [鸿蒙备份适配](docs/modules/HarmonyBackup.md)。
   - **Android**：短信/联系人/通话记录、Chrome 历史、已装应用、WiFi；MIUI 备份（`.bak`）解析、微信（SQLCipher 解密，支持 `--backup-password-stdin/-fd` 避免密码进 argv）、QQNT 工件；逻辑取证数据源 `--android-source tsk|dir|zip|miui-backup`
   - **Windows**：注册表、事件日志、Prefetch、Amcache、SRUM、LNK、Jump List、MFT、浏览器（Chromium/Firefox）、USB 等（Shimcache/UserAssist/RDP/WiFi 解析器已实现但尚未接线）
   - **Linux**：70+ 张 `linux_*` 工件表 —— 系统日志(syslog/journal/auditd)、用户/登录/SSH、Shell 历史、持久化检测、容器(Docker/Podman)、Web 服务器(Apache/Nginx)、防火墙/SELinux/AppArmor、攻击链与异常分析等

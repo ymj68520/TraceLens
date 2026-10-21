@@ -84,7 +84,7 @@ test('detail error preserves the version list and retry uses selected report id'
 
   const { result } = renderHook(() => useFinalReportViewer('task-a'));
 
-  await waitFor(() => expect(result.current.detailError).toBe('Report version not found.'));
+  await waitFor(() => expect(result.current.detailError).toBe('未找到报告版本。'));
   expect(result.current.reports).toEqual([reports[0]]);
 
   await act(async () => {

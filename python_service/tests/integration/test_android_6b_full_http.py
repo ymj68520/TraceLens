@@ -48,6 +48,7 @@ def test_synthetic_sms_auth_analysis_review_r2_http(tmp_path, monkeypatch, reque
 
     class AnalysisStub:
         async def chat_completion(self, system, user):
+            assert "简体中文" in system
             assert selected_key in user and ":sms:2" not in user
             return {"model": "test-only-mock", "content": json.dumps({
                 "description": "仅冻结解析行1", "summary": "短信原始行未核实",
@@ -59,13 +60,21 @@ def test_synthetic_sms_auth_analysis_review_r2_http(tmp_path, monkeypatch, reque
         def __init__(self):
             self.calls = 0
 
-        async def chat_completion(self, system, user):
+        async def chat_completion(self, system, user, **kwargs):
+            if '"classifications"' in system:
+                body = json.loads(user)
+                return {"model": "test-only-mock", "content": json.dumps({"classifications": [
+                    {"evidence_key": item["evidence_key"], "material_type": "android_artifact",
+                     "topics": ["communications"], "relations": [], "key_issue": False,
+                     "reason": "冻结短信记录", "basis_quote": item["basis_text"][:80]}
+                    for item in body["materials"]]}, ensure_ascii=False)}
+            assert "简体中文" in system
             self.calls += 1
             assert ":sms:2" not in user
             responses = [
                 {"title": "合成 R2 报告", "sections": [
                     {"heading": "案件背景与检材概况", "brief": "合成范围", "group_ids": []},
-                    {"heading": "短信证据", "brief": "单条派生记录", "group_ids": ["android_records"]},
+                    {"heading": "短信证据", "brief": "单条派生记录", "group_ids": ["communications"]},
                     {"heading": "综合结论", "brief": "来源限制", "group_ids": []}]},
                 {"heading": "案件背景与检材概况", "content": "仅供合成测试。", "citations": []},
                 {"heading": "短信证据", "content": "冻结记录显示 HTTP 合成短信。", "citations": [
@@ -207,7 +216,7 @@ def test_synthetic_sms_auth_analysis_review_r2_http(tmp_path, monkeypatch, reque
             if report_state["status"] in ("completed", "failed"):
                 break
             time.sleep(.02)
-        assert report_state["status"] == "completed", report_state
+        assert report_state["status"] == "completed", json.dumps(report_state, ensure_ascii=False)
         assert report_state["requested_by"] == "analyst"
         report_id = report_state["report_id"]
         narrative = client.get(f"/api/reports/narrative/versions/{report_id}", headers=analyst,

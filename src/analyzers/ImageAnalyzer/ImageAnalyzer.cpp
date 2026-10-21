@@ -1,4 +1,5 @@
 #include "ImageAnalyzer.h"
+#include "AndroidAnalyzer/HarmonyBackupExtractor.h"
 #include "DatabaseManager/DatabaseManager.h"
 #include "XFSHelper.h"
 #include "NativeFilesystemWalker.h"
@@ -95,6 +96,17 @@ ImageAnalyzer::~ImageAnalyzer() {
 }
 
 bool ImageAnalyzer::analyze() {
+	if (HarmonyBackupExtractor::recognizes(imagePath_)) {
+		harmonySource_ = std::make_unique<HarmonyBackupExtractor>(imagePath_);
+		harmonySource_->setProgress([this](std::size_t n) {
+			if (progressCallback_) progressCallback_(static_cast<int>(n));
+		}, [this]() { return isCancelled(); });
+		if (!harmonySource_->initialize()) {
+			std::cerr << "Harmony backup: " << harmonySource_->error() << std::endl;
+			return false;
+		}
+		return true;
+	}
 	if (!openImage()) {
 		return false;
 	}
@@ -340,6 +352,26 @@ bool ImageAnalyzer::extractToDatabase(const std::string& dbPath) {
 	if (!dbManager_->initialize()) {
 		std::cerr << "Error initializing database" << std::endl;
 		return false;
+	}
+	if (harmonySource_) {
+		if (sqlite3_exec(dbManager_->getDb(), "DELETE FROM files; DROP TABLE IF EXISTS harmony_source_files;"
+		    "DROP TABLE IF EXISTS harmony_source_meta;", nullptr, nullptr, nullptr) != SQLITE_OK) return false;
+		std::int64_t logicalId = 0;
+		for (const auto& [path, entry] : harmonySource_->entries()) {
+			if (isCancelled()) return false;
+			FileRecord record{};
+			record.inode = ++logicalId; // logical file ID; not a physical filesystem inode
+			record.path = path; record.name = fs::path(path).filename().string();
+			record.size = entry.size; record.mtime = entry.modified;
+			record.type = "REG"; record.isAllocated = 1;
+			if (!dbManager_->insertFileRecord(record)) return false;
+			tickFileProgress();
+		}
+		dbManager_->flushInsertBatch();
+		sqlite3_exec(dbManager_->getDb(), "BEGIN", nullptr, nullptr, nullptr);
+		const bool saved = harmonySource_->saveIndex(dbManager_->getDb());
+		sqlite3_exec(dbManager_->getDb(), saved ? "COMMIT" : "ROLLBACK", nullptr, nullptr, nullptr);
+		return saved && logicalId > 0;
 	}
 
 	// Record partition metadata into the partitions table (previously dead code).

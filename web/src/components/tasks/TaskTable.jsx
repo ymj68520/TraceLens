@@ -1,3 +1,4 @@
+import { forensicLabel, taskPhaseLabel } from '../../utils/forensicLabels';
 /**
  * TaskTable
  *
@@ -15,17 +16,17 @@ import { STATUS_COLORS, PRIORITY_COLORS } from '../../utils/constants';
 function formatDate(timestamp) {
   if (!timestamp || timestamp === 0) return '-';
   const date = timestamp > 1e12 ? new Date(timestamp) : new Date(timestamp * 1000);
-  return date.toLocaleString();
+  return date.toLocaleString('zh-CN');
 }
 
 function StatusBadge({ status }) {
   const color = STATUS_COLORS[status?.toLowerCase()]?.split('-')[1] || 'gray';
-  return <Badge variant={color}>{status}</Badge>;
+  return <Badge variant={color}>{forensicLabel(status)}</Badge>;
 }
 
 function PriorityBadge({ priority }) {
   const color = PRIORITY_COLORS[priority?.toLowerCase()]?.split('-')[1] || 'gray';
-  return <Badge variant={color}>{priority}</Badge>;
+  return <Badge variant={color}>{forensicLabel(priority)}</Badge>;
 }
 
 function ProgressCell({ task }) {
@@ -40,7 +41,7 @@ function ProgressCell({ task }) {
     <div className="w-full">
       <ProgressBar value={task.progress?.overall_percentage || 0} showLabel={false} size="xs" />
       <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 truncate">
-        {task.progress?.phase_description || 'Processing...'}
+        {taskPhaseLabel(task.progress?.current_phase || task.progress?.phase)}
       </p>
     </div>
   );
@@ -53,14 +54,14 @@ function ActionsCell({ task, onCancel, onDelete, onJoinCase }) {
     <div className="flex items-center space-x-1 text-xs font-medium">
       {status === 'running' && (
         <button onClick={() => onCancel(task.id)} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300">
-          Cancel
+          取消
         </button>
       )}
       {status === 'completed' && (
         <>
-          <Link to={`/timeline?task_id=${task.id}`} className="text-primary-600 hover:underline">Timeline</Link>
-          <Link to={`/files?task_id=${task.id}`} className="text-green-600 hover:underline ml-1">Files</Link>
-          <Link to={`/reports/task/${task.id}`} className="text-teal-600 hover:underline ml-1">Report</Link>
+          <Link to={`/timeline?task_id=${task.id}`} className="text-primary-600 hover:underline">时间线</Link>
+          <Link to={`/files?task_id=${task.id}`} className="text-green-600 hover:underline ml-1">文件</Link>
+          <Link to={`/reports/task/${task.id}`} className="text-teal-600 hover:underline ml-1">报告</Link>
           {onJoinCase && (
             <button onClick={() => onJoinCase(task.id)} className="text-indigo-600 hover:underline ml-1" title="将此任务加入多镜像案件">
               加入案件
@@ -69,7 +70,7 @@ function ActionsCell({ task, onCancel, onDelete, onJoinCase }) {
         </>
       )}
       {finished && (
-        <button onClick={() => onDelete(task.id)} className="text-slate-400 hover:text-red-600 ml-2" title="Delete task">
+        <button onClick={() => onDelete(task.id)} className="text-slate-400 hover:text-red-600 ml-2" title="删除任务">
           🗑️
         </button>
       )}
@@ -88,7 +89,7 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskC
   if (tasks.length === 0) {
     return (
       <div className="text-center py-12">
-        <p className="text-slate-500 dark:text-slate-400">No tasks found. Create your first task to get started.</p>
+        <p className="text-slate-500 dark:text-slate-400">暂无任务，请先创建分析任务。</p>
       </div>
     );
   }
@@ -109,7 +110,7 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskC
                 />
               </th>
             )}
-            {['ID', 'Image Path', 'Status', 'Priority', 'Timeline', 'Progress', 'Actions'].map((h, i) => (
+            {['编号', '检材路径', '状态', '优先级', '起止时间', '进度', '操作'].map((h, i) => (
               <th key={h} className={`px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider ${i === 0 ? 'w-20' : i === 2 ? 'w-28' : i === 3 ? 'w-24' : i === 4 ? 'w-44' : i === 5 ? 'w-40' : i === 6 ? 'w-48' : ''}`}>
                 {h}
               </th>
@@ -123,7 +124,7 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskC
             const isFailed = task.status?.toLowerCase() === 'failed';
             const failureLog = isFailed
               ? [
-                  `[${formatDate(task.timestamps?.completed)}] [FAILED] ${task.message || 'Task failed'}`,
+                  `[${formatDate(task.timestamps?.completed)}] [失败] ${task.message || '任务失败'}`,
                   task.error_details ? `  └─ ${task.error_details}` : null,
                 ].filter(Boolean).join('\n')
               : null;
@@ -159,11 +160,11 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskC
               <td className="px-4 py-4 whitespace-nowrap">
                 <StatusBadge status={task.status} />
                 {task.metadata?.source_verification === 'UNVERIFIED_SOURCE' &&
-                  <span className="block mt-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400" title="未经过 Android 镜像完整哈希及文件系统预检">UNVERIFIED_SOURCE</span>}
+                  <span className="block mt-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400" title="未经过 Android 镜像完整哈希及文件系统预检">来源未经预检验证</span>}
                 {task.metadata?.android_coverage_status === 'COMPLETED_WITH_LOCKED_USERDATA' &&
-                  <span className="block mt-1 text-[10px] font-semibold text-orange-700 dark:text-orange-400">LOCKED USERDATA</span>}
+                  <span className="block mt-1 text-[10px] font-semibold text-orange-700 dark:text-orange-400">用户数据加密锁定</span>}
                 {task.metadata?.android_coverage_status === 'SUPER_NORMALIZED_NO_USERDATA' &&
-                  <span className="block mt-1 text-[10px] font-semibold text-violet-700 dark:text-violet-400">SUPER NORMALIZED · NO USERDATA</span>}
+                  <span className="block mt-1 text-[10px] font-semibold text-violet-700 dark:text-violet-400">已规范化，未含用户数据分区</span>}
               </td>
               <td className="px-4 py-4 whitespace-nowrap">
                 <PriorityBadge priority={task.priority} />
@@ -171,13 +172,13 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskC
               <td className="px-4 py-4 whitespace-nowrap leading-tight">
                 <div className="flex flex-col space-y-1">
                   <div className="flex items-center text-[10px] text-slate-400">
-                    <span className="w-24 uppercase shrink-0">Start:</span>
+                    <span className="w-24 uppercase shrink-0">开始：</span>
                     <span className="text-slate-600 dark:text-slate-300 font-medium">{formatDate(task.timestamps?.created)}</span>
                   </div>
                   <div className="flex items-center text-[10px] text-slate-400">
                     {/* 被服务重启中断的任务，完成时间只是中断时刻，以"中断于"语义展示 */}
                     <span className="w-24 uppercase shrink-0">
-                      {task.interrupted_by_restart ? t('task.interruptedAt') : 'End:'}
+                      {task.interrupted_by_restart ? t('task.interruptedAt') : '结束：'}
                     </span>
                     <span className="text-slate-600 dark:text-slate-300 font-medium">{formatDate(task.timestamps?.completed)}</span>
                   </div>

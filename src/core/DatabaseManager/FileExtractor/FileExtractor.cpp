@@ -1,4 +1,5 @@
 #include "FileExtractor.h"
+#include "AndroidAnalyzer/HarmonyBackupExtractor.h"
 #include "AuditLog/AuditLog.h"
 #include <iostream>
 #include <fstream>
@@ -38,6 +39,13 @@ bool FileExtractor::initialize() {
         return false;
     }
 
+    if (HarmonyBackupExtractor::recognizes(imagePath_)) {
+        auto source = std::make_unique<HarmonyBackupExtractor>(imagePath_);
+        // A frozen source index is mandatory when extracting through a task.
+        if (!source->loadIndex(dbManager_->getDb())) return false;
+        logicalSource_ = std::move(source);
+        return true;
+    }
     // Open image
     if (!openImage()) {
         std::cerr << "Error: Failed to open image" << std::endl;

@@ -21,8 +21,25 @@
 #include "analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.h"
 #include "DatabaseManager/SQL/android_analysis_sql.h"
 #include "DatabaseManager/SQL/android_analysis_sql_llm.h"
+#include "integration/LLMIntegration/OutputLanguage.h"
 
 namespace fs = std::filesystem;
+
+TEST(AndroidLlmLanguageTest, ChinesePolicyPreservesOriginalEvidenceAndProtocol) {
+    using namespace forensics::llm;
+    const std::string evidence = R"({"body":"Original English evidence","path":"/data/account.db"})";
+    const std::vector<forensics::llm::ChatMessage> original{{"system", "Return JSON with summary and description"}, {"user", evidence}};
+    const auto messages = chineseOutputMessages(original);
+    ASSERT_EQ(messages.size(), 2);
+    EXPECT_NE(messages[0].content.find("简体中文"), std::string::npos);
+    EXPECT_NE(messages[0].content.find("summary and description"), std::string::npos);
+    EXPECT_EQ(messages[1].content, evidence);
+    EXPECT_EQ(original[0].content, "Return JSON with summary and description");
+    const auto withoutSystem = chineseOutputMessages({{"user", evidence}});
+    ASSERT_EQ(withoutSystem.size(), 2);
+    EXPECT_EQ(withoutSystem[0].role, "system");
+    EXPECT_EQ(withoutSystem[1].content, evidence);
+}
 
 namespace {
 // RAII temp file path backed by the OS temp directory.

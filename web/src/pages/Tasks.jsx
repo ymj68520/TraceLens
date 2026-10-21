@@ -1,3 +1,4 @@
+import { forensicLabel } from '../utils/forensicLabels';
 import { motion } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -80,7 +81,7 @@ const Tasks = () => {
     const { taskId } = confirmState;
     setConfirmState((s) => ({ ...s, loading: true }));
     try {
-      await dispatch(cancelTask({ taskId, reason: 'Cancelled by user' })).unwrap();
+      await dispatch(cancelTask({ taskId, reason: '用户取消' })).unwrap();
       toast.success('任务已取消');
       dispatch(fetchTasks(filters));
     } catch (err) {
@@ -130,9 +131,9 @@ const Tasks = () => {
             initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
             className="text-3xl font-bold text-slate-900 dark:text-white"
           >
-            Tasks
+            分析任务
           </motion.h1>
-          <p className="mt-2 text-slate-600 dark:text-slate-300">Manage and monitor analysis tasks</p>
+          <p className="mt-2 text-slate-600 dark:text-slate-300">管理和查看取证分析任务</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => setShowPreflight((value) => !value)}>🔍 检材预检</Button>
@@ -142,7 +143,7 @@ const Tasks = () => {
           <Button variant="outline" onClick={() => setShowCompose(true)} disabled={selectedTaskIds.size === 0}>
             📂 组建案件（{selectedTaskIds.size}）
           </Button>
-          <Button onClick={() => { setTaskSourcePrefill(null); dispatch(openModal({ type: 'createTask' })); }}>➕ Create Task</Button>
+          <Button onClick={() => { setTaskSourcePrefill(null); dispatch(openModal({ type: 'createTask' })); }}>➕ 创建任务</Button>
         </div>
       </div>
 
@@ -154,13 +155,13 @@ const Tasks = () => {
       {/* Filters */}
       <Card>
         <div className="flex flex-wrap gap-4">
-          <FilterSelect label="Status" value={filters.status} onChange={(v) => handleFilterChange('status', v)}>
-            <option value="all">All</option>
-            {Object.values(TASK_STATUS).map((s) => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+          <FilterSelect label="状态" value={filters.status} onChange={(v) => handleFilterChange('status', v)}>
+            <option value="all">全部</option>
+            {Object.values(TASK_STATUS).map((s) => <option key={s} value={s}>{forensicLabel(s)}</option>)}
           </FilterSelect>
-          <FilterSelect label="Priority" value={filters.priority} onChange={(v) => handleFilterChange('priority', v)}>
-            <option value="all">All</option>
-            {Object.values(TASK_PRIORITY).map((p) => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
+          <FilterSelect label="优先级" value={filters.priority} onChange={(v) => handleFilterChange('priority', v)}>
+            <option value="all">全部</option>
+            {Object.values(TASK_PRIORITY).map((p) => <option key={p} value={p}>{forensicLabel(p)}</option>)}
           </FilterSelect>
         </div>
       </Card>

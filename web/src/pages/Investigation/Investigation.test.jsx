@@ -375,7 +375,7 @@ test('shows unavailable historical citation instead of silently dropping it', as
   fireEvent.click(screen.getByText('Claim unavailable'));
   await screen.findByText('Claim 历史引用 / 已不属于当前 Event');
   expect(screen.getAllByText('file:/missing.txt').length).toBeGreaterThan(0);
-  expect(screen.getByText('Evidence unavailable / unresolved')).toBeInTheDocument();
+  expect(screen.getByText('证据不可用或尚未解析')).toBeInTheDocument();
 });
 
 test('ignores every late response from a previously selected evidence item', async () => {

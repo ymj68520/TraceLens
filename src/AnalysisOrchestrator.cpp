@@ -6,6 +6,7 @@
 #include "FileFilter/FileFilter.h"
 #include "HTTPServer/HTTPserver.h"
 #include "AndroidAnalyzer/AndroidAnalyzer.h"
+#include "AndroidAnalyzer/HarmonyBackupExtractor.h"
 #include "WindowsFilesAnalyzer/WindowsFilesAnalyzer.h"
 #include "LinuxFilesAnalyzer/LinuxFilesAnalyzer.h"
 #include "MemoryAnalyzer/MemoryAnalyzer.h"
@@ -152,6 +153,19 @@ std::string AnalysisOrchestrator::getDatabaseDir(const CommandLineArgs& args) {
 }
 
 int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
+    if (args.android_source == "harmony-backup" && !HarmonyBackupExtractor::recognizes(args.image_path)) {
+        std::cerr << "INVALID_HARMONY_BACKUP: expected .info.json and files directory" << std::endl;
+        return 1;
+    }
+    if (HarmonyBackupExtractor::recognizes(args.image_path)) {
+        const auto evidence=fs::weakly_canonical(args.image_path);
+        const auto planned=args.db_dir.empty()?PathManager::instance().getDataDir()/"cli":fs::path(args.db_dir);
+        const auto relative=fs::weakly_canonical(planned).lexically_relative(evidence);
+        if (!relative.empty() && *relative.begin()!="..") {
+            std::cerr << "HARMONY_OUTPUT_INSIDE_EVIDENCE: choose a separate output directory" << std::endl;
+            return 1;
+        }
+    }
     const bool reportOnly = args.generate_report && !args.image_path.empty() && fs::exists(args.image_path);
     if (args.image_path.empty() || !fs::exists(args.image_path)) {
         if (args.image_path.empty() && !reportOnly) {
@@ -172,7 +186,7 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
     // Android logical extraction (directory or zip) does not need — and cannot
     // use — the TSK disk-image pipeline. Route it to a dedicated path that
     // runs only the Android analyzer against the data source directly.
-    if (args.android_analyze &&
+    if (args.android_analyze && !HarmonyBackupExtractor::recognizes(args.image_path) &&
         (args.android_source == "dir" || args.android_source == "zip" ||
          args.android_source == "miui-backup" || args.android_source == "tar" ||
          args.android_source == "seven-zip" || args.android_source == "android-backup" ||
@@ -296,6 +310,9 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
                 if (androidAnalyzer->initialize()) {
                     androidAnalyzer->analyzeAndroidData();
                     std::cout << "✓ Android analysis complete\n" << std::endl;
+                } else if (HarmonyBackupExtractor::recognizes(args.image_path)) {
+                    std::cerr << "HARMONY_INIT_FAILED" << std::endl;
+                    return 1;
                 }
             }
         }
@@ -605,13 +622,14 @@ int AnalysisOrchestrator::runExtraction(const CommandLineArgs& args) {
         return 1;
     }
 
-    std::string imagePath;
+    std::string imagePath = args.image_path;
     std::string dbName = fs::path(dbPath).stem().string();
     if (dbName.ends_with("_files")) dbName = dbName.substr(0, dbName.length() - 6);
     else if (dbName.ends_with("_events")) dbName = dbName.substr(0, dbName.length() - 7);
     else if (dbName.ends_with("_raw")) dbName = dbName.substr(0, dbName.length() - 4);
 
     for (const auto& ext : {".dd", ".DD", ".001", ".e01", ".E01", ".raw", ".RAW"}) {
+        if (!imagePath.empty()) break;
         if (fs::exists(dbName + ext)) {
             imagePath = dbName + ext;
             break;

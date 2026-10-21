@@ -444,7 +444,7 @@ class ReportGenerationAdmissionService:
             main, appendix = sanitize_items(current.main_evidence), sanitize_items(current.appendix_evidence)
             materials = await freeze_materials(task, (*main, *appendix))
             return ReportGenerationEnvelopeV5(
-                task_id=task["id"], prompt_version="final-report:evidence-only:v1",
+                task_id=task["id"], prompt_version="final-report:evidence-only:v2",
                 analysis_mode=mode, case_description="", main_evidence=main, appendix_evidence=appendix,
                 allowed_report_evidence_ids=current.allowed_report_evidence_ids,
                 neutral_materials=materials, evidence_scope_hash=material_scope_hash(materials),
@@ -488,7 +488,7 @@ class ReportGenerationAdmissionService:
             text_models=stage.text_models,
         )
         return ReportGenerationEnvelopeV5(
-            task_id=task["id"], prompt_version="final-report:case-guided:v1", analysis_mode=mode,
+            task_id=task["id"], prompt_version="final-report:case-guided:v2", analysis_mode=mode,
             case_description=context, main_evidence=frozen.main_evidence, appendix_evidence=frozen.appendix_evidence,
             allowed_report_evidence_ids=frozen.allowed_report_evidence_ids,
             neutral_materials=frozen.neutral_materials, evidence_scope_hash=frozen.evidence_scope_hash,

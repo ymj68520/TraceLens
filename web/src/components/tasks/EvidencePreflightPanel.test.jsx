@@ -67,7 +67,7 @@ test('only a verified supported logical source can prefill a new Android Task', 
   render(<EvidencePreflightPanel onCreateTask={onCreateTask} />);
   await screen.findByRole('combobox', { name: '候选检材' });
   await user.click(screen.getByRole('button', { name: '后台计算完整 SHA-256' }));
-  await user.click(await screen.findByRole('button', { name: '按此来源新建 Android Task' }));
+  await user.click(await screen.findByRole('button', { name: '按此来源新建 安卓分析任务' }));
   expect(onCreateTask).toHaveBeenCalledWith({ image_path: '/evidence/android', android_source: 'dir' });
 });
 
@@ -86,7 +86,7 @@ test('verified Android TAR prefill carries immutable preflight identity', async 
   await screen.findByRole('combobox', { name: '候选检材' });
   await user.click(screen.getByRole('button', { name: '后台计算完整 SHA-256' }));
   expect(screen.getByTestId('evidence-preflight-result')).toHaveTextContent('归档成员：5');
-  await user.click(await screen.findByRole('button', { name: '按此来源新建 Android Task' }));
+  await user.click(await screen.findByRole('button', { name: '按此来源新建 安卓分析任务' }));
   expect(onCreateTask).toHaveBeenCalledWith({
     image_path: '/evidence/phone.tar', android_source: 'tar',
     preflight_job_id: '1234567890abcdef1234567890abcdef',
@@ -108,7 +108,7 @@ test('verified Android userdata image prefill binds hash and detected kind', asy
   render(<EvidencePreflightPanel onCreateTask={onCreateTask} />);
   await screen.findByRole('combobox', { name: '候选检材' });
   await user.click(screen.getByRole('button', { name: '后台计算完整 SHA-256' }));
-  await user.click(await screen.findByRole('button', { name: '按此来源新建 Android Task' }));
+  await user.click(await screen.findByRole('button', { name: '按此来源新建 安卓分析任务' }));
   expect(onCreateTask).toHaveBeenCalledWith({
     image_path: '/evidence/userdata.img', android_source: 'filesystem-image',
     preflight_job_id: '1234567890abcdef1234567890abcdef',
@@ -131,7 +131,7 @@ test('locked userdata offers only a locked-coverage Task', async () => {
   await screen.findByRole('combobox', { name: '候选检材' });
   await user.click(screen.getByRole('button', { name: '后台计算完整 SHA-256' }));
   expect(screen.getByTestId('evidence-preflight-result')).toHaveTextContent('不会尝试解析密文');
-  await user.click(await screen.findByRole('button', { name: '按此来源新建 Android Task' }));
+  await user.click(await screen.findByRole('button', { name: '按此来源新建 安卓分析任务' }));
   expect(onCreateTask).toHaveBeenCalledWith(expect.objectContaining({
     preflight_detected_kind: 'android_userdata_locked', android_source: 'filesystem-image',
   }));
@@ -155,7 +155,7 @@ test('validated sparse userdata carries the exact normalization plan', async () 
   await screen.findByRole('combobox', { name: '候选检材' });
   await user.click(screen.getByRole('button', { name: '后台计算完整 SHA-256' }));
   expect(screen.getByTestId('evidence-preflight-result')).toHaveTextContent('F2FS');
-  await user.click(await screen.findByRole('button', { name: '按此来源新建 Android Task' }));
+  await user.click(await screen.findByRole('button', { name: '按此来源新建 安卓分析任务' }));
   expect(onCreateTask).toHaveBeenCalledWith(expect.objectContaining({
     android_source: 'android-container', preflight_plan_sha256: 'b'.repeat(64),
     preflight_detected_kind: 'android_sparse_userdata', preflight_selected_slot: 0,
@@ -180,8 +180,8 @@ test('super inventory never claims userdata analysis', async () => {
   render(<EvidencePreflightPanel onCreateTask={onCreateTask} />);
   await screen.findByRole('combobox', { name: '候选检材' });
   await user.click(screen.getByRole('button', { name: '后台计算完整 SHA-256' }));
-  expect(screen.getByTestId('evidence-preflight-result')).toHaveTextContent('NOT_PRESENT_IN_SOURCE');
-  await user.click(await screen.findByRole('button', { name: '建立系统分区规范化 Task' }));
+  expect(screen.getByTestId('evidence-preflight-result')).toHaveTextContent('来源中未包含');
+  await user.click(await screen.findByRole('button', { name: '建立系统分区规范化任务' }));
   expect(onCreateTask).toHaveBeenCalledWith(expect.objectContaining({
     android_source: 'android-container', preflight_detected_kind: 'android_raw_super',
   }));
@@ -198,8 +198,8 @@ test('locked Android Backup never offers one-click analysis', async () => {
   render(<EvidencePreflightPanel onCreateTask={vi.fn()} />);
   await screen.findByRole('combobox', { name: '候选检材' });
   await user.click(screen.getByRole('button', { name: '后台计算完整 SHA-256' }));
-  expect(screen.getByTestId('evidence-preflight-result')).toHaveTextContent('locked');
-  expect(screen.queryByRole('button', { name: '按此来源新建 Android Task' })).not.toBeInTheDocument();
+  expect(screen.getByTestId('evidence-preflight-result')).toHaveTextContent('加密锁定');
+  expect(screen.queryByRole('button', { name: '按此来源新建 安卓分析任务' })).not.toBeInTheDocument();
 });
 
 test('password-unlocked Android Backup carries only runtime secret to Task form', async () => {
@@ -220,7 +220,7 @@ test('password-unlocked Android Backup carries only runtime secret to Task form'
   await user.type(screen.getByLabelText(/归档\/备份密码/), 'one-time-secret');
   await user.click(screen.getByRole('button', { name: '后台计算完整 SHA-256' }));
   expect(startEvidencePreflight).toHaveBeenCalledWith('ab-candidate', true, 'one-time-secret');
-  await user.click(await screen.findByRole('button', { name: '按此来源新建 Android Task' }));
+  await user.click(await screen.findByRole('button', { name: '按此来源新建 安卓分析任务' }));
   expect(onCreateTask).toHaveBeenCalledWith(expect.objectContaining({
     android_source: 'android-backup', backup_password: 'one-time-secret',
     preflight_detected_kind: 'android_backup_encrypted',

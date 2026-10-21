@@ -1,3 +1,4 @@
+#include "DatabaseManager/HarmonySourceIndex.h"
 #include "FileFilter.h"
 #include "PathManager/PathManager.h"
 #include "AuditLog/AuditLog.h"
@@ -480,6 +481,11 @@ FilterStats FileFilter::applyFilter(const std::string& sourceDbPath,
 
     // Commit transaction
     sqlite3_exec(filteredDb, "COMMIT;", nullptr, nullptr, nullptr);
+
+    if (!copyHarmonySourceIndex(sourceDb, filteredDb, sourceDbPath)) {
+        sqlite3_close(filteredDb); sqlite3_close(sourceDb);
+        throw std::runtime_error("Failed to preserve Harmony evidence source index");
+    }
 
     sqlite3_close(filteredDb);
     sqlite3_close(sourceDb);

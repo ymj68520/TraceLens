@@ -268,6 +268,10 @@ def build_package(*, output: Path, task: dict | None = None, import_id: str | No
         try:
             snapshot = stage / ("android.db" if task is not None else "records.db")
             _snapshot(source, snapshot)
+            if task is not None:
+                with closing(sqlite3.connect(f"file:{quote(str(snapshot), safe='/')}?mode=ro", uri=True)) as con:
+                    if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='mobile_artifacts'").fetchone():
+                        tables = (*ANDROID_TABLES, "mobile_artifacts")
             counts = _export_rows(snapshot, stage / "records.jsonl", tables)
             _json(stage / "coverage.json", coverage)
             if task is not None:
@@ -342,8 +346,10 @@ def verify_package(path: Path) -> dict:
     manifest = json.loads((path / "package_manifest.json").read_text(encoding="utf-8"))
     if manifest.get("source_type") not in {"android_analyzer", "external_html_report"}:
         raise ValueError("unknown package source type")
-    allowed_tables = set(ANDROID_TABLES if manifest["source_type"] == "android_analyzer" else ("records",))
-    if set(manifest["counts"]) != allowed_tables:
+    allowed_tables = set(manifest["counts"])
+    valid_table_sets = [set(ANDROID_TABLES), set(ANDROID_TABLES) | {"mobile_artifacts"}] \
+        if manifest["source_type"] == "android_analyzer" else [{"records"}]
+    if allowed_tables not in valid_table_sets:
         raise ValueError("unexpected package tables")
     members = list(path.iterdir())
     if any(member.is_symlink() or not member.is_file() for member in members):

@@ -5,6 +5,7 @@ cmake_minimum_required(VERSION 3.16)
 find_package(GTest QUIET)
 find_package(GMock QUIET)
 find_package(PkgConfig REQUIRED)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 pkg_check_modules(CURL REQUIRED libcurl)
 
 # Include directories
@@ -41,6 +42,16 @@ include_directories(${CURL_INCLUDE_DIRS})
 # ============================================================================
 # New GTest-based Unit Tests
 # ============================================================================
+
+add_executable(test_harmony_backup_gtest
+  UnitTest/test_harmony_backup_gtest.cpp
+  ../src/analyzers/AndroidAnalyzer/HarmonyBackupExtractor.cpp
+  ../src/analyzers/AndroidAnalyzer/HarmonyArtifactParsers.cpp
+  ../src/analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.cpp)
+target_include_directories(test_harmony_backup_gtest PRIVATE ${CMAKE_SOURCE_DIR}/src
+  ${CMAKE_SOURCE_DIR}/src/core ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer)
+target_link_libraries(test_harmony_backup_gtest GTest::gtest_main sqlite3 ${LIBARCHIVE_LIBRARIES} OpenSSL::Crypto)
+add_test(NAME HarmonyBackupTests COMMAND test_harmony_backup_gtest)
 
 # Linux Analyzer GTest Tests
 add_executable(
@@ -113,6 +124,12 @@ target_include_directories(
 target_link_libraries(test_android_llm_gtest ${GTEST_LIBRARIES}
                       ${GMOCK_LIBRARIES} sqlite3 pthread ${ZLIB_LIBRARIES} duckx OpenSSL::Crypto)
 add_test(NAME AndroidLlmGTests COMMAND test_android_llm_gtest)
+
+add_executable(test_report_chinese_gtest UnitTest/test_report_chinese_gtest.cpp
+  ../src/report/ReportGenerator.cpp)
+target_include_directories(test_report_chinese_gtest PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_report_chinese_gtest GTest::gtest_main sqlite3)
+add_test(NAME ChineseReportTests COMMAND test_report_chinese_gtest)
 
 # Compressed Log Parser Tests
 add_executable(
@@ -1223,7 +1240,7 @@ if(UNIX)
       --analyzer $<TARGET_FILE:forensic_analyzer>)
   add_test(NAME AndroidArchiveHttpEndToEndTests
     COMMAND ${CMAKE_SOURCE_DIR}/python_service/.venv/bin/python
-      ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_android_container_http_e2e.py
+      ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_android_archive_http_e2e.py
       --analyzer $<TARGET_FILE:forensic_analyzer>)
   set_tests_properties(AndroidArchiveHttpEndToEndTests PROPERTIES
     ENVIRONMENT "PYTHONPATH=${CMAKE_SOURCE_DIR}/python_service" TIMEOUT 180)
@@ -1424,3 +1441,16 @@ add_executable(
 target_include_directories(test_llm_scratch_gtest PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_llm_scratch_gtest ${GTEST_LIBRARIES} gtest_main)
 add_test(NAME LLMScratchTests COMMAND test_llm_scratch_gtest)
+
+# The existing extraction/classification tests also exercise the logical source backend.
+foreach(harmony_consumer test_file_extractor_text_dump test_scene_classifier_gtest test_text_dump_adapters)
+  target_sources(${harmony_consumer} PRIVATE ../src/analyzers/AndroidAnalyzer/HarmonyBackupExtractor.cpp)
+  target_link_libraries(${harmony_consumer} ${LIBARCHIVE_LIBRARIES} OpenSSL::Crypto)
+endforeach()
+
+add_test(NAME HarmonyBackupCliEndToEndTests
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_harmony_backup_cli.py
+    --analyzer $<TARGET_FILE:forensic_analyzer>)
+add_test(NAME HarmonyBackupHttpEndToEndTests
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_harmony_backup_http.py
+    --analyzer $<TARGET_FILE:forensic_analyzer>)

@@ -22,14 +22,14 @@ export function checkFinalReportIntegrity(report) {
   ) {
     warnings.push({
       code: 'REPORT_SECTION_ORDER_INVALID',
-      message: 'Persisted report sections do not match the canonical five-section structure.',
+      message: '已保存报告的章节与规定的五节结构不一致。',
     });
   }
 
   duplicate(sectionIds).forEach((sectionId) => {
     warnings.push({
       code: 'REPORT_DUPLICATE_SECTION',
-      message: `Persisted report contains duplicate section ${sectionId}.`,
+      message: `已保存报告包含重复章节 ${sectionId}。`,
     });
   });
 
@@ -59,13 +59,13 @@ export function checkFinalReportIntegrity(report) {
   if (!sameSet(paragraphClaimIds, manifestClaimIds)) {
     warnings.push({
       code: 'REPORT_CLAIM_MANIFEST_MISMATCH',
-      message: 'Persisted Claim manifest does not match paragraph Claim references.',
+      message: '已保存的断言清单与正文中的断言引用不一致。',
     });
   }
   if (!sameSet(paragraphCitationIds, manifestCitationIds)) {
     warnings.push({
       code: 'REPORT_CITATION_MANIFEST_MISMATCH',
-      message: 'Persisted Citation manifest does not match paragraph Citation references.',
+      message: '已保存的引用清单与正文中的证据引用不一致。',
     });
   }
 

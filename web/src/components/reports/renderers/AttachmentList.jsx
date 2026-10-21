@@ -1,5 +1,5 @@
 function displaySize(size) {
-  return Number.isFinite(size) ? `${size.toLocaleString()} B` : null;
+  return Number.isFinite(size) ? `${size.toLocaleString('zh-CN')} B` : null;
 }
 
 export default function AttachmentList({ attachments = [] }) {

@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <type_traits>
+#include <unistd.h>
 
 #include "analyzers/AndroidAnalyzer/WeChatDecryptor.h"
 
@@ -14,7 +15,8 @@ namespace fs = std::filesystem;
 class WeChatDecryptorTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        testDbPath_ = fs::temp_directory_path() / "test_wechat.db";
+        testDbPath_ = fs::temp_directory_path() / ("test_wechat_" + std::to_string(getpid()) + ".db");
+        fs::remove(testDbPath_);
     }
 
     void TearDown() override {
@@ -32,8 +34,17 @@ TEST_F(WeChatDecryptorTest, EmptyPasswordReturnsError) {
 
 TEST_F(WeChatDecryptorTest, NonexistentFileReturnsError) {
     WeChatDecryptor decryptor;
-    EXPECT_FALSE(decryptor.openDatabase("/nonexistent.db", "abcdef1"));
+    EXPECT_FALSE(decryptor.openDatabase(testDbPath_.string(), "abcdef1"));
     EXPECT_FALSE(decryptor.getLastError().empty());
+    EXPECT_FALSE(fs::exists(testDbPath_));
+}
+
+TEST_F(WeChatDecryptorTest, EmptyFileIsNotSuccessfulDecryption) {
+    std::ofstream(testDbPath_).close();
+    WeChatDecryptor decryptor;
+    EXPECT_FALSE(decryptor.openDatabase(testDbPath_.string(), "abcdef1"));
+    EXPECT_EQ(decryptor.getDb(), nullptr);
+    EXPECT_EQ(fs::file_size(testDbPath_), 0);
 }
 
 TEST_F(WeChatDecryptorTest, MD5DerivationProducesCorrectLength) {
@@ -79,7 +90,7 @@ TEST_F(WeChatDecryptorTest, OpenDatabaseUpdatesState) {
     WeChatDecryptor decryptor;
 
     // Try opening nonexistent file
-    EXPECT_FALSE(decryptor.openDatabase("/nonexistent.db", "abcdef1"));
+    EXPECT_FALSE(decryptor.openDatabase(testDbPath_.string(), "abcdef1"));
 
     // Database handle should still be null after failed open
     EXPECT_EQ(decryptor.getDb(), nullptr);
@@ -93,7 +104,7 @@ TEST_F(WeChatDecryptorTest, MultipleOpenAttempts) {
     EXPECT_FALSE(decryptor.openDatabase("", ""));
 
     // Second attempt with nonexistent file - should still work (no stale state)
-    EXPECT_FALSE(decryptor.openDatabase("/nonexistent.db", "abcdef1"));
+    EXPECT_FALSE(decryptor.openDatabase(testDbPath_.string(), "abcdef1"));
     EXPECT_FALSE(decryptor.getLastError().empty());
 }
 

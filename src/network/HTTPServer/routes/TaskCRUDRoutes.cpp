@@ -136,7 +136,7 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
         {
             const std::string source_kind = body.value("android_source", "tsk");
             static const std::set<std::string> supportedSources{
-                "tsk", "dir", "zip", "miui-backup", "tar", "seven-zip", "android-backup", "filesystem-image", "android-container"};
+                "tsk", "dir", "zip", "miui-backup", "harmony-backup", "tar", "seven-zip", "android-backup", "filesystem-image", "android-container"};
             if (!supportedSources.count(source_kind)) {
                 res.code = 400;
                 res.set_header("Content-Type", "application/json");
@@ -144,7 +144,7 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
                                {"error_code", "UNSUPPORTED_ANDROID_SOURCE"}}.dump());
                 return res;
             }
-            const bool wants_directory = (source_kind == "dir" || source_kind == "miui-backup");
+            const bool wants_directory = (source_kind == "dir" || source_kind == "miui-backup" || source_kind == "harmony-backup");
             std::error_code ec;
             const bool exists = std::filesystem::exists(image_path, ec);
             bool type_ok = true;

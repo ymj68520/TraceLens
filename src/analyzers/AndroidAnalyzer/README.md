@@ -71,6 +71,9 @@
   | TSK 磁盘镜像 | (默认) | E01 / DD 块级镜像 | 经 The Sleuth Kit 打开,依赖 `_raw.db` 的 path→inode 映射 |
   | 逻辑提取目录 | `--android-source dir` | 已解压的 `data/` 目录树 | ADB 逻辑/文件系统提取,无需 TSK、无需 `_raw.db` |
   | 逻辑提取压缩包 | `--android-source zip` | 打包的 `Image.zip` | 通过 libzip 按需读取归档内文件,无需解压整个压缩包(需 libzip) |
+  | 鸿蒙已解密备份 | `--android-source harmony-backup` | `.info.json + files` 目录 | libarchive 建立按应用隔离的逻辑文件索引，接入原文件分类、提取、时间线与报告流程；`dir` 可自动识别 |
+
+  鸿蒙备份适配及限制见 [HarmonyBackup.md](../../../docs/modules/HarmonyBackup.md)。备份的逻辑文件编号不能当作物理磁盘 inode；应用表或索引不可读时单独记录状态，不阻断同库内可读业务表。
 
   逻辑提取模式专为移动取证工具导出的 ADB 提取设计(例如打包为 `Image.zip` 的 `data/data/<包名>/databases/*.db` 文件树)。这类数据**不是块级磁盘镜像**,无法被 TSK 打开,因此 `dir`/`zip` 模式会绕过 TSK 流水线直接分析数据源。
 

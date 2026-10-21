@@ -31,7 +31,7 @@ from ..evidence.keys import parse_evidence_key
 from .models import SecondaryAnalysis, SecondaryAnalysisStatus, parse_analysis_input_envelope
 from .paths import investigation_db_path_for_task
 from .prompts import (
-    CURRENT_PROMPT_VERSION,
+    CURRENT_PROMPT_VERSION, ANDROID_PROMPT_VERSION,
     ENVELOPE_PROMPT_COMPAT,
     PROMPT_OUTPUT_CONTRACT,
     build_user_prompt,
@@ -196,7 +196,7 @@ class SecondaryAnalysisExecutor:
                 analyst_note=analyst_note,
                 case_context=case_context,
                 related_evidence=ordered_related,
-                prompt_version=("investigation-evidence-analysis:v4" if
+                prompt_version=(ANDROID_PROMPT_VERSION if
                                 (snapshot.evidence_type == "android_artifact" or
                                  any(key.startswith("android_artifact:") for key in ordered_related))
                                 else CURRENT_PROMPT_VERSION),

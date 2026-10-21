@@ -12,6 +12,7 @@ _TABLES = (
     "whatsapp_messages", "telegram_messages", "installed_apps",
     "wechat_artifact_inventory", "qqnt_artifact_inventory", "wifi_networks",
     "installed_packages",
+    "mobile_artifacts",
 )
 
 
@@ -25,7 +26,7 @@ def android_db_candidates(task: dict) -> list[Path]:
     if isinstance(metadata, dict) and metadata.get("android_db"):
         candidates.append(Path(metadata["android_db"]))
     files_db = task.get("output_files_db")
-    if files_db and task.get("android_source") in {"dir", "zip", "miui-backup"}:
+    if files_db and task.get("android_source") in {"dir", "zip", "miui-backup", "harmony-backup"}:
         candidates.append(Path(files_db))
     if files_db:
         candidates.append(Path(files_db).with_name("android.db"))

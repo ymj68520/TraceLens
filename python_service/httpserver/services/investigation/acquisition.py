@@ -148,12 +148,13 @@ def _acquire_android_artifact(resolved: ResolvedEvidence) -> AndroidArtifactSnap
         "contacts": ("display_name", "phone_number", "email", "account_name"),
         "apps": ("package_name", "version", "installer"),
         "wifi": ("ssid", "key_mgmt", "last_connected"),
+        "mobile": ("kind", "package_name", "app_index", "record_json", "timestamp_raw", "time_unit", "timestamp_seconds"),
     }[resolved.artifact_kind]
     source = detail.get("source")
     coverage = manifest.get("coverage") or {}
     source_items = [item for item in coverage.get("sources", [])
                     if item.get("artifact_kind") == {"apps": "installed_apps"}.get(
-                        resolved.artifact_kind, resolved.artifact_kind)]
+                        resolved.artifact_kind, fields.get("kind") if resolved.artifact_kind == "mobile" else resolved.artifact_kind)]
     provenance = {
         "derived_result_record": "exact",
         # A unique candidate with a file hash is still not proof that this
@@ -169,6 +170,9 @@ def _acquire_android_artifact(resolved: ResolvedEvidence) -> AndroidArtifactSnap
         "source_candidates": detail.get("source_candidates", []),
     }
     warnings = list(coverage.get("warnings") or [])
+    if resolved.artifact_kind == "mobile" and source:
+        provenance.update(input_file="hashed_database_bundle", original_database_record="parser_bound_table_key",
+                          original_table=source.get("original_table"), original_primary_key=source.get("original_primary_key"))
     warnings.append(detail["warning"])
     return AndroidArtifactSnapshotPayload(
         task_id=resolved.task_id,
@@ -180,12 +184,17 @@ def _acquire_android_artifact(resolved: ResolvedEvidence) -> AndroidArtifactSnap
         record_hash=detail["record_hash"],
         record_fields=fields,
         redacted_fields=("pre_shared_key",) if resolved.artifact_kind == "wifi" and "pre_shared_key" in fields else (),
-        normalized_fields={name: fields.get(name) for name in normalized_names if name in fields},
-        raw_timestamp=fields.get("date") if resolved.artifact_kind == "sms" else
+        normalized_fields={**{name: fields.get(name) for name in normalized_names if name in fields},
+                           **({"platform": "HarmonyOS"} if resolved.artifact_kind == "mobile" else {})},
+        raw_timestamp=fields.get("timestamp_raw") if resolved.artifact_kind == "mobile" else
+                      fields.get("date") if resolved.artifact_kind == "sms" else
                       fields.get("last_connected") if resolved.artifact_kind == "wifi" else None,
-        timestamp_unit=None, timestamp_timezone=None, timestamp_basis=None,
-        parser_name=manifest.get("parser_name") or "AndroidAnalyzer",
-        parser_version=manifest.get("parser_version"),
+        timestamp_unit=fields.get("time_unit") if resolved.artifact_kind == "mobile" else None,
+        timestamp_timezone="UTC" if resolved.artifact_kind == "mobile" and fields.get("time_unit") in {"epoch_s", "epoch_ms"} else None,
+        timestamp_basis="source_database_value" if resolved.artifact_kind == "mobile" else None,
+        parser_name="AndroidAnalyzer/HarmonyBackup" if resolved.artifact_kind == "mobile" else
+                    manifest.get("parser_name") or "AndroidAnalyzer",
+        parser_version=fields.get("parser_version") or manifest.get("parser_version"),
         android_user=None,
         account=fields.get("account_name") if resolved.artifact_kind == "contacts" else None,
         provenance=provenance,

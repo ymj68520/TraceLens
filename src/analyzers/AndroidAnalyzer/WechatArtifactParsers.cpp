@@ -90,41 +90,41 @@ ArtifactInfo classifyArtifact(const std::string& memberName) {
     if (endsWith(base, "-wal") || endsWith(base, "-shm") || endsWith(base, "-journal")) {
         result.category = "database_sidecar";
         result.format = "sqlite_sidecar";
-        result.summary = "SQLite sidecar file";
+        result.summary = "SQLite 配套文件";
     } else if (isMiuiWeChatDatabaseMember(memberName)) {
         // Per-account SQLCipher EnMicroMsg.db held in MIUI's r/MicroMsg or db
         // subtree. Decryption is handled by the dedicated message pipeline; here
         // we only inventory it as recognized evidence.
         result.category = "database";
         result.format = "sqlcipher";
-        result.summary = "WeChat SQLCipher primary database (EnMicroMsg.db)";
+        result.summary = "微信 SQLCipher 主数据库（EnMicroMsg.db）";
     } else if (startsWith(memberName, "apps/com.tencent.mm/db/")) {
         result.category = "database";
         result.format = "unknown";
-        result.summary = "WeChat database candidate";
+        result.summary = "微信数据库候选文件";
     } else if (containsSegment(memberName, "mmkv")) {
         result.category = "mmkv";
         result.format = endsWith(base, ".crc") ? "mmkv_crc" : "mmkv";
-        result.summary = "WeChat MMKV key-value store";
+        result.summary = "微信 MMKV 键值存储";
     } else if (startsWith(memberName, "apps/com.tencent.mm/sp/") ||
                startsWith(memberName, "apps/com.tencent.mm/d_sp/") ||
                containsSegment(memberName, "shared_prefs")) {
         result.category = "shared_pref";
         result.format = endsWith(base, ".xml") ? "xml" : "unknown";
-        result.summary = "WeChat shared preference";
+        result.summary = "微信应用偏好配置";
     } else if (containsSegment(memberName, "xlog") ||
                endsWith(base, ".wxlog") || endsWith(base, ".xlog")) {
         result.category = "xlog";
         result.format = endsWith(base, ".wxlog") ? "wxlog" : "xlog";
-        result.summary = "WeChat Xlog runtime log";
+        result.summary = "微信 Xlog 运行日志";
     } else if (endsWith(base, ".json")) {
         result.category = "config";
         result.format = "json";
-        result.summary = "WeChat JSON configuration or UI resource";
+        result.summary = "微信 JSON 配置或界面资源";
     } else if (endsWith(base, ".zip")) {
         result.category = "cache";
         result.format = "zip";
-        result.summary = "WeChat packaged UI resource";
+        result.summary = "微信打包界面资源";
     }
     return result;
 }
@@ -382,7 +382,7 @@ bool persistWechatBackupAnalysis(MiuiBackupExtractor& src, AndroidAnalysisDataba
             staged = src.temporaryRoot() / ("wechat-artifact-" + std::to_string(sequence++));
             if (!stageMember(src, memberName, staged)) {
                 artifact.parseStatus = "parse_error";
-                artifact.summary = "Failed to stage WeChat artifact";
+                artifact.summary = "提取微信文件失败";
             } else {
                 hash = sha256(staged);
                 if (artifact.category == "shared_pref" && artifact.format == "xml") {
@@ -393,7 +393,7 @@ bool persistWechatBackupAnalysis(MiuiBackupExtractor& src, AndroidAnalysisDataba
                     // CRC sidecar; treat presence as evidence rather than
                     // inferring printable key/value pairs.
                     artifact.parseStatus = "recognized";
-                    artifact.summary = "WeChat MMKV store recognized; decoder and CRC verification required";
+                    artifact.summary = "已识别微信 MMKV 存储；仍需解码及 CRC 校验";
                 } else if (artifact.category == "database") {
                     if (isSqlite(staged)) {
                         artifact.format = "sqlite";
@@ -402,10 +402,10 @@ bool persistWechatBackupAnalysis(MiuiBackupExtractor& src, AndroidAnalysisDataba
                             artifact.parseStatus = "parse_error";
                         } else if (recoveredRecords == 0) {
                             artifact.parseStatus = "recognized";
-                            artifact.summary = "SQLite schema indexed; no WeChat allowlisted table matched";
+                            artifact.summary = "已索引 SQLite 表结构，未匹配可解析的微信表";
                         } else {
                             artifact.parseStatus = "parsed";
-                            artifact.summary = "SQLite records recovered from WeChat allowlisted tables";
+                            artifact.summary = "已从支持的微信表解析 SQLite 记录";
                         }
                     } else {
                         artifact.parseStatus = "recognized";
@@ -431,7 +431,7 @@ bool persistWechatBackupAnalysis(MiuiBackupExtractor& src, AndroidAnalysisDataba
                    (artifact.category == "database" || artifact.category == "mmkv" ||
                     artifact.category == "shared_pref")) {
             artifact.parseStatus = "limit_exceeded";
-            artifact.summary += "; exceeds WeChat parser staging limit";
+            artifact.summary += "；超过微信解析器的提取大小上限";
         }
 
         const std::string typeFlag(1, entry.typeFlag == '\0' ? '0' : entry.typeFlag);

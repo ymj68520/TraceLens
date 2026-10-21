@@ -107,6 +107,7 @@ private:
     // Partition offsets recorded during openFileSystem for XFS fallback init.
     std::map<int, uint64_t> xfsPartitionOffsets_;
     std::unique_ptr<DatabaseManager> dbManager_;
+    std::unique_ptr<IFileExtractor> logicalSource_;
 
     bool openImage();
     bool openFileSystem();

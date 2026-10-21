@@ -186,8 +186,12 @@ bool EventExtractor::importLinuxArtifacts(const std::string& linuxDbPath) {
 
 bool EventExtractor::importAndroidArtifacts(const std::string& androidDbPath) {
     AuditLog::instance().log("SYSTEM", "TIMELINE_MERGE", "Importing Android artifacts from: " + androidDbPath);
-    std::string attachSql = "ATTACH DATABASE '" + androidDbPath + "' AS android_db;";
-    sqlite3_exec(eventDb_, attachSql.c_str(), nullptr, nullptr, nullptr);
+    sqlite3_stmt* attach = nullptr;
+    if (sqlite3_prepare_v2(eventDb_, "ATTACH DATABASE ? AS android_db", -1, &attach, nullptr) != SQLITE_OK) return false;
+    sqlite3_bind_text(attach, 1, androidDbPath.c_str(), -1, SQLITE_TRANSIENT);
+    const bool attached = sqlite3_step(attach) == SQLITE_DONE;
+    sqlite3_finalize(attach);
+    if (!attached) return false;
 
     const char* importSystemLogsSql = R"(
         INSERT INTO events (timestamp, event_type, file_path, inode, description, file_size, file_type, system_context, priority, severity, event_source, event_category, normalized_type, source_id)
@@ -196,12 +200,29 @@ bool EventExtractor::importAndroidArtifacts(const std::string& androidDbPath) {
     )";
     sqlite3_exec(eventDb_, importSystemLogsSql, nullptr, nullptr, nullptr);
 
+    sqlite3_stmt* check = nullptr;
+    bool imported = true;
+    if (sqlite3_prepare_v2(eventDb_, "SELECT 1 FROM android_db.sqlite_master WHERE name='mobile_artifacts'", -1, &check, nullptr) == SQLITE_OK &&
+        sqlite3_step(check) == SQLITE_ROW) {
+        const char* mobile = R"SQL(
+            DELETE FROM events WHERE event_source='HARMONY_BACKUP';
+            INSERT INTO events(timestamp,event_type,file_path,inode,description,file_size,file_type,system_context,
+                priority,severity,event_source,event_category,normalized_type,source_id)
+            SELECT timestamp_seconds,'HARMONY_'||upper(kind),source_path,0,
+                kind||' ['||package_name||'] '||substr(record_json,1,256),0,'MOBILE_ARTIFACT','HarmonyOS',
+                'MEDIUM','INFO','HARMONY_BACKUP',kind,kind,'mobile:'||id
+            FROM android_db.mobile_artifacts WHERE timestamp_seconds IS NOT NULL;
+        )SQL";
+        imported = sqlite3_exec(eventDb_, mobile, nullptr, nullptr, nullptr) == SQLITE_OK;
+    }
+    sqlite3_finalize(check);
+
     sqlite3_exec(eventDb_, "DETACH DATABASE android_db;", nullptr, nullptr, nullptr);
 
     // 标准化导入的事件
     standardizeEvents();
 
-    return true;
+    return imported;
 }
 
 bool EventExtractor::insertSystemEvent(const SystemEvent& event) {

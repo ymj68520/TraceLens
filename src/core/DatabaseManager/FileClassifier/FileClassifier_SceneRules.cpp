@@ -68,6 +68,12 @@ bool FileClassifier::isSceneRelevant(const std::string& path, const std::string&
 }
 
 void FileClassifier::applyAndroidSceneRules(const std::string& path, const std::string& filename, int& priority, bool& relevant) {
+    if (path.rfind("/harmony/", 0) == 0) {
+        relevant = true;
+        priority = filename.ends_with(".db") || filename.ends_with(".db-wal") || filename.ends_with(".sy")
+            ? ScenePriority::HIGH : ScenePriority::MEDIUM;
+        return;
+    }
     // Android critical system provider paths (check first for precise matching)
     static const std::vector<std::string> criticalAppPaths = {
         "com.android.providers.contacts",

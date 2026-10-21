@@ -437,6 +437,7 @@ def test_envelope_prompt_compat_map():
     assert ENVELOPE_PROMPT_COMPAT[2] == frozenset({
         "investigation-evidence-analysis:v2",
         "investigation-evidence-analysis:v3",
+        "investigation-evidence-analysis:v5",
     })
-    assert CURRENT_PROMPT_VERSION == "investigation-evidence-analysis:v3"
+    assert CURRENT_PROMPT_VERSION == "investigation-evidence-analysis:v5"
     assert CURRENT_PROMPT_VERSION in PROMPT_REGISTRY

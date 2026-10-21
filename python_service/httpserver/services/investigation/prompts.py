@@ -19,11 +19,14 @@ from .models import (
     EventRefreshEnvelopeV2,
 )
 
-EVENT_REFRESH_PROMPT_VERSION = "investigation-event-refresh:v1"
+CHINESE_OUTPUT_RULE = "\n所有标题、摘要、说明、断言及分析关键词等自然语言必须使用简体中文。JSON 字段名、协议枚举、标识符和路径保持不变。证据引文逐字保留原文，用中文解释，不得改写证据。"
+
+EVENT_REFRESH_PROMPT_VERSION = "investigation-event-refresh:v2"
 REFRESH_ENVELOPE_PROMPT_COMPAT: dict[int, frozenset[str]] = {
-    2: frozenset({EVENT_REFRESH_PROMPT_VERSION}),
+    2: frozenset({"investigation-event-refresh:v1", EVENT_REFRESH_PROMPT_VERSION}),
 }
 REFRESH_PROMPT_OUTPUT_CONTRACT = {
+    "investigation-event-refresh:v1": "structured_event_narrative_v1",
     EVENT_REFRESH_PROMPT_VERSION: "structured_event_narrative_v1",
 }
 
@@ -59,8 +62,12 @@ Authoritative Event Evidence IDs:
 """
 
 EVENT_REFRESH_PROMPT_REGISTRY: dict[str, tuple[str, str]] = {
-    EVENT_REFRESH_PROMPT_VERSION: (
+    "investigation-event-refresh:v1": (
         EVENT_REFRESH_SYSTEM_V1,
+        EVENT_REFRESH_USER_TEMPLATE_V1,
+    ),
+    EVENT_REFRESH_PROMPT_VERSION: (
+        EVENT_REFRESH_SYSTEM_V1 + CHINESE_OUTPUT_RULE,
         EVENT_REFRESH_USER_TEMPLATE_V1,
     ),
 }
@@ -107,20 +114,23 @@ def build_event_refresh_user_prompt(
 # Version registry
 # ---------------------------------------------------------------------------
 
-CURRENT_PROMPT_VERSION = "investigation-evidence-analysis:v3"
+CURRENT_PROMPT_VERSION = "investigation-evidence-analysis:v5"
+ANDROID_PROMPT_VERSION = "investigation-evidence-analysis:v6"
 
 # Input envelope compatibility. V2 input is shared by historical legacy v2
 # and current structured v3 output contracts.
 ENVELOPE_PROMPT_COMPAT: dict[int, frozenset[str]] = {
     1: frozenset({"investigation-evidence-analysis:v1"}),
-    2: frozenset({"investigation-evidence-analysis:v2", "investigation-evidence-analysis:v3"}),
-    3: frozenset({"investigation-evidence-analysis:v4"}),
+    2: frozenset({"investigation-evidence-analysis:v2", "investigation-evidence-analysis:v3", CURRENT_PROMPT_VERSION}),
+    3: frozenset({"investigation-evidence-analysis:v4", ANDROID_PROMPT_VERSION}),
 }
 PROMPT_OUTPUT_CONTRACT: dict[str, str] = {
     "investigation-evidence-analysis:v1": "legacy_text",
     "investigation-evidence-analysis:v2": "legacy_text",
     "investigation-evidence-analysis:v3": "structured_claims_v1",
     "investigation-evidence-analysis:v4": "structured_claims_v1",
+    CURRENT_PROMPT_VERSION: "structured_claims_v1",
+    ANDROID_PROMPT_VERSION: "structured_claims_v1",
 }
 
 # ---------------------------------------------------------------------------
@@ -260,6 +270,16 @@ PROMPT_REGISTRY: dict[str, tuple[str, str]] = {
         SECONDARY_ANALYSIS_USER_TEMPLATE_V3,
     ),
 }
+
+
+PROMPT_REGISTRY[CURRENT_PROMPT_VERSION] = (
+    SECONDARY_ANALYSIS_SYSTEM_V3 + CHINESE_OUTPUT_RULE,
+    SECONDARY_ANALYSIS_USER_TEMPLATE_V3,
+)
+PROMPT_REGISTRY[ANDROID_PROMPT_VERSION] = (
+    PROMPT_REGISTRY["investigation-evidence-analysis:v4"][0] + CHINESE_OUTPUT_RULE,
+    SECONDARY_ANALYSIS_USER_TEMPLATE_V3,
+)
 
 
 def get_prompt(version: str) -> tuple[str, str]:

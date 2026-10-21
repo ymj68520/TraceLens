@@ -8,6 +8,7 @@
 // FileClassifierMappings.cpp / FileClassifierPatterns.cpp.)
 
 #include "FileClassifier.h"
+#include "DatabaseManager/HarmonySourceIndex.h"
 #include "DatabaseManager/SQL/file_classifier_sql.h"
 #include "AuditLog/AuditLog.h"
 #include "EncryptionUtils.h"
@@ -47,6 +48,7 @@ bool FileClassifier::classifyAndExtract() {
 	if (!classifyFiles()) {
 		return false;
 	}
+	if (!copyHarmonySourceIndex(sourceDb_, fileDb_, sourceDbPath_)) return false;
 
 	std::cout << "Files classified successfully" << std::endl;
 	AuditLog::instance().log("SYSTEM", "CLASSIFICATION_COMPLETE", "File classification completed to: " + fileDbPath_);

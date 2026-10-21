@@ -60,6 +60,15 @@ def _candidate_id(path: Path) -> str:
 
 def _probe(path: Path) -> dict:
     if path.is_dir():
+        header = path / ".info.json"
+        if header.is_file() and not header.is_symlink() and header.stat().st_size <= 8 * 1024 * 1024 and (path / "files").is_dir():
+            try:
+                metadata = json.loads(header.read_text(encoding="utf-8-sig"))
+                if isinstance(metadata.get("BackupFileHeaderInfo"), dict) and isinstance(metadata.get("BackupFileModuleInfo"), list):
+                    return {"kind": "harmony_decrypted_backup", "adapter": "harmony-backup", "confidence": "high",
+                            "reason": "Backup structure recognized; decrypted members and coverage are verified during analysis"}
+            except (OSError, UnicodeError, ValueError, AttributeError):
+                pass
         if (path / "index.html").is_file() and any((path / "report").glob("*/export.db")):
             return {"kind": "derived_html_report", "adapter": "android_report", "confidence": "high"}
         if (path / "descript.xml").is_file() and any(path.glob("*.bak")):

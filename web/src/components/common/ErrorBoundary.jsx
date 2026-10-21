@@ -35,15 +35,15 @@ class ErrorBoundary extends Component {
                         <div className="text-center">
                             <div className="text-6xl mb-4">⚠️</div>
                             <h1 className="text-2xl font-bold text-gray-900 mb-2">
-                                Something went wrong
+                                出现错误
                             </h1>
                             <p className="text-gray-600 mb-4">
-                                An unexpected error occurred. Please try again or reload the page.
+                                出现未预期的错误，请重试或重新加载页面。
                             </p>
 
                             {this.state.error && (
                                 <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-left">
-                                    <p className="text-sm font-medium text-red-800">Error details:</p>
+                                    <p className="text-sm font-medium text-red-800">错误详情：</p>
                                     <p className="text-sm text-red-700 font-mono mt-1 break-all">
                                         {this.state.error.toString()}
                                     </p>
@@ -55,18 +55,18 @@ class ErrorBoundary extends Component {
                                     onClick={this.handleRetry}
                                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
                                 >
-                                    Try Again
+                                    重试
                                 </button>
                                 <button
                                     onClick={this.handleReload}
                                     className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors"
                                 >
-                                    Reload Page
+                                    重新加载页面
                                 </button>
                             </div>
 
                             <p className="mt-6 text-xs text-gray-400">
-                                If this problem persists, please contact support.
+                                如果问题持续出现，请联系系统维护人员。
                             </p>
                         </div>
                     </div>

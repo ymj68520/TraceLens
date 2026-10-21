@@ -467,7 +467,8 @@ int FileExtractor::extractByName(const std::string& pattern, const std::string& 
     // are exactly the ones worth analyzing. Wildcard patterns keep the
     // allocated-only scope so bulk requests don't sweep in unrecoverable
     // deleted entries; bulk deleted recovery has its own DELETED mode.
-    auto files = searchFiles("type='REG' AND (is_allocated=1 OR is_deleted=1)");
+    auto files = searchFiles(logicalSource_ ? "type='REG' AND is_deleted=0" :
+                             "type='REG' AND (is_allocated=1 OR is_deleted=1)");
     std::vector<FileRecord> matches;
     for (const auto& file : files) {
         bool matched = false;
@@ -512,7 +513,7 @@ int FileExtractor::extractByExtension(const std::string& extensions, const std::
     }
 
     // Extension matching is performed in memory so request patterns never become SQL.
-    auto files = searchFiles("type='REG' AND is_allocated=1");
+    auto files = searchFiles(logicalSource_ ? "type='REG' AND is_deleted=0" : "type='REG' AND is_allocated=1");
     std::vector<FileRecord> matches;
     for (const auto& file : files) {
         const auto dot = file.name.find_last_of('.');
@@ -676,6 +677,13 @@ bool FileExtractor::extractFileByPath(const std::string& filePath, const std::st
 }
 
 bool FileExtractor::extractFile(const FileRecord& record, const std::string& outputPath, bool overwrite, int* skippedCount) {
+    if (logicalSource_) {
+        if (!overwrite && fs::exists(outputPath)) {
+            if (skippedCount) ++*skippedCount;
+            return false;
+        }
+        return logicalSource_->extractFileByPath(record.path, outputPath);
+    }
     // Skip directories
     if (record.type == "DIR") {
         return false;

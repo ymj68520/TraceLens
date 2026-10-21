@@ -15,7 +15,7 @@ const emptyState = {
 };
 
 function errorMessage(error) {
-  return error?.status === 404 ? 'Report version not found.' : error?.message || 'Report viewer request failed.';
+  return error?.status === 404 ? '未找到报告版本。' : error?.message || '读取报告失败。';
 }
 
 export default function useFinalReportViewer(taskId) {

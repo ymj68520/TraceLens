@@ -75,7 +75,7 @@ class Model:
     async def chat_completion(self, system, user, **kwargs):
         self.calls.append((system, user))
         body = json.loads(user)
-        if system == STAGE_DISCOVERY_SYSTEM_V1:
+        if system.startswith(STAGE_DISCOVERY_SYSTEM_V1):
             source = body["materials"][0]
             item = {"title": "资金活动待核线索", "description": "应核对材料中的业务背景和账户关系。",
                     "finding_kind": "hypothesis",
@@ -88,7 +88,7 @@ class Model:
                 item.update(supporting_refs=[], baseline_direction_ids=[],
                             case_context_quote=body["case_context"], title="仅案情提出的待核方向")
             response = {"directions": [item]}
-        elif system == STAGE_COMPARE_SYSTEM_V1:
+        elif system.startswith(STAGE_COMPARE_SYSTEM_V1):
             source = body["materials"][0]
             response = {"baseline_direction_id": body["baseline_direction"]["direction_id"],
                         "status": "supported", "reason": "仍应保留原线索并核对。",
@@ -323,7 +323,7 @@ async def test_newly_linked_counter_material_can_revise_the_baseline(tmp_path):
     class CounterModel(Model):
         async def chat_completion(self, system, user, **kwargs):
             body = json.loads(user)
-            if system == STAGE_DISCOVERY_SYSTEM_V1:
+            if system.startswith(STAGE_DISCOVERY_SYSTEM_V1):
                 value = {"title": "执行情况存在差异", "description": "需要核对安排与实际执行。",
                          "finding_kind": "hypothesis",
                          "supporting_refs": [{"material_id": "m0001", "quote": RAW[:8]}],
@@ -332,7 +332,7 @@ async def test_newly_linked_counter_material_can_revise_the_baseline(tmp_path):
                          "baseline_direction_ids": [body["baseline_directions"][0]["direction_id"]],
                          "case_context_quote": ""}
                 return {"model": "synthetic", "content": json.dumps({"directions": [value]})}
-            if system == STAGE_COMPARE_SYSTEM_V1:
+            if system.startswith(STAGE_COMPARE_SYSTEM_V1):
                 assert any(counter in m["text"] for m in body["materials"])
                 value = {"baseline_direction_id": body["baseline_direction"]["direction_id"],
                          "status": "weakened", "reason": "对照记录削弱了实际执行的判断。",

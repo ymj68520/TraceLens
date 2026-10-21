@@ -44,10 +44,10 @@ describe('GenerateReportPanel', () => {
     test('source summary reflects the explicit Report Evidence set (main=2 appendix=1 original=1 bound=2)', async () => {
         makePanel();
         expect(await screen.findByTestId('generate-source-summary')).toBeInTheDocument();
-        expect(screen.getByTestId('summary-main')).toHaveTextContent('Main Evidence: 2');
-        expect(screen.getByTestId('summary-appendix')).toHaveTextContent('Appendix Evidence: 1');
-        expect(screen.getByTestId('summary-original')).toHaveTextContent('Original-only: 1');
-        expect(screen.getByTestId('summary-bound')).toHaveTextContent('Bound accepted analyses: 2');
+        expect(screen.getByTestId('summary-main')).toHaveTextContent('主要证据： 2');
+        expect(screen.getByTestId('summary-appendix')).toHaveTextContent('附录证据： 1');
+        expect(screen.getByTestId('summary-original')).toHaveTextContent('仅原始材料： 1');
+        expect(screen.getByTestId('summary-bound')).toHaveTextContent('已绑定的已接受分析： 2');
         // excluded 行不是 source set 的一部分
         expect(screen.queryByText(/excluded/)).not.toBeInTheDocument();
     });

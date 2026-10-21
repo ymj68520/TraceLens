@@ -61,16 +61,16 @@ beforeEach(() => {
 test('shows an explicit no-publication fact state without calling it Unpublished', async () => {
   render(<MemoryRouter initialEntries={['/investigation/report?task_id=task-a']}><FinalReportViewer /></MemoryRouter>);
 
-  await waitFor(() => expect(screen.getByText('No publication fact for this report version.')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText('此报告版本尚无发布记录。')).toBeInTheDocument());
   expect(screen.queryByText('Unpublished')).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Publish this report version' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '发布此报告版本' })).toBeInTheDocument();
 });
 
 test('publishes the selected report version and re-reads the same publication', async () => {
   render(<MemoryRouter initialEntries={['/investigation/report?task_id=task-a']}><FinalReportViewer /></MemoryRouter>);
 
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Publish this report version' })).toBeInTheDocument(), { timeout: 5000 });
-  fireEvent.click(screen.getByRole('button', { name: 'Publish this report version' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: '发布此报告版本' })).toBeInTheDocument(), { timeout: 5000 });
+  fireEvent.click(screen.getByRole('button', { name: '发布此报告版本' }));
 
   await waitFor(() => expect(publishFinalReport).toHaveBeenCalledWith('task-a', 'r3'));
   expect(getFinalReportPublication).toHaveBeenLastCalledWith('task-a', 'r3');
@@ -79,10 +79,10 @@ test('publishes the selected report version and re-reads the same publication', 
 test('renders selected report, sections, paragraph metadata, and only Assembled status', async () => {
   render(<MemoryRouter initialEntries={['/investigation/report?task_id=task-a']}><FinalReportViewer /></MemoryRouter>);
 
-  await waitFor(() => expect(screen.getByText('Selected Report Version: v3')).toBeInTheDocument());
-  expect(screen.getAllByText('Assembled').length).toBeGreaterThan(0);
+  await waitFor(() => expect(screen.getByText('选中的报告版本：v3')).toBeInTheDocument());
+  expect(screen.getAllByText('已编制').length).toBeGreaterThan(0);
   expect(screen.getByText('Immutable paragraph text')).toBeInTheDocument();
-  expect(screen.getByText('Claim claim-1')).toBeInTheDocument();
+  expect(screen.getByText('断言 claim-1')).toBeInTheDocument();
   expect(screen.getByText('CIT-001')).toBeInTheDocument();
   expect(screen.getByText('Section 5')).toBeInTheDocument();
   expect(screen.queryByText('Published')).not.toBeInTheDocument();
@@ -94,14 +94,14 @@ test('shows empty state and sends no mutation request when no reports exist', as
   getFinalReports.mockResolvedValue({ reports: [] });
   render(<MemoryRouter initialEntries={['/investigation/report?task_id=task-a']}><FinalReportViewer /></MemoryRouter>);
 
-  await waitFor(() => expect(screen.getByText('No final report versions have been assembled for this task.')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText('此任务尚未编制最终报告。')).toBeInTheDocument());
   expect(getFinalReport).not.toHaveBeenCalled();
 });
 
 test('shows task selection state and performs no request without task id', () => {
   render(<MemoryRouter initialEntries={['/investigation/report']}><FinalReportViewer /></MemoryRouter>);
 
-  expect(screen.getByText('Select a task to view its assembled Final Report Versions.')).toBeInTheDocument();
+  expect(screen.getByText('请选择任务，查看已编制的报告版本。')).toBeInTheDocument();
   expect(getFinalReports).not.toHaveBeenCalled();
   expect(getFinalReport).not.toHaveBeenCalled();
 });
@@ -109,13 +109,13 @@ test('shows task selection state and performs no request without task id', () =>
 test('opens citation trace from the immutable report manifest without another request', async () => {
   render(<MemoryRouter initialEntries={['/investigation/report?task_id=task-a']}><FinalReportViewer /></MemoryRouter>);
 
-  await waitFor(() => expect(screen.getByText('Selected Report Version: v3')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText('选中的报告版本：v3')).toBeInTheDocument());
   fireEvent.click(screen.getByRole('button', { name: 'CIT-001' }));
 
-  expect(screen.getByText('Report Citation')).toBeInTheDocument();
+  expect(screen.getByText('报告引用')).toBeInTheDocument();
   expect(screen.getByText('(task-a, file:/a)')).toBeInTheDocument();
-  expect(screen.getByText('Report-bound Evidence Snapshot')).toBeInTheDocument();
-  expect(screen.getByText('Pinned Analysis')).toBeInTheDocument();
+  expect(screen.getByText('报告绑定的证据快照')).toBeInTheDocument();
+  expect(screen.getByText('绑定的分析版本')).toBeInTheDocument();
   expect(screen.getByText('claim-1')).toBeInTheDocument();
   expect(getClaimProvenance).not.toHaveBeenCalled();
 });
@@ -123,27 +123,27 @@ test('opens citation trace from the immutable report manifest without another re
 test('opens exact historical Claim trace and joins report usage by evidence key', async () => {
   render(<MemoryRouter initialEntries={['/investigation/report?task_id=task-a']}><FinalReportViewer /></MemoryRouter>);
 
-  await waitFor(() => expect(screen.getByText('Selected Report Version: v3')).toBeInTheDocument());
-  fireEvent.click(screen.getByRole('button', { name: 'Claim claim-1' }));
+  await waitFor(() => expect(screen.getByText('选中的报告版本：v3')).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: '断言 claim-1' }));
 
-  await waitFor(() => expect(screen.getByText('Historical Claim')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText('历史断言')).toBeInTheDocument());
   expect(getClaimProvenance).toHaveBeenCalledWith('task-a', 'claim-1');
   expect(screen.getByText('Historical claim text')).toBeInTheDocument();
-  expect(screen.getByText('Current historical Claim row status')).toBeInTheDocument();
-  expect(screen.getByText('supports')).toBeInTheDocument();
-  expect(screen.getByText('contradicts')).toBeInTheDocument();
-  expect(screen.getByText('CIT-001 · Used in this report')).toBeInTheDocument();
-  expect(screen.getByText('Claim provenance, not cited in this report')).toBeInTheDocument();
+  expect(screen.getByText('历史断言当前状态')).toBeInTheDocument();
+  expect(screen.getByText('支持')).toBeInTheDocument();
+  expect(screen.getByText('存在相反证据')).toBeInTheDocument();
+  expect(screen.getByText('CIT-001 · 已在本报告引用')).toBeInTheDocument();
+  expect(screen.getByText('断言来源，未被本报告引用')).toBeInTheDocument();
 });
 
 test('shows opaque Claim not-found without falling back to current claims', async () => {
   getClaimProvenance.mockRejectedValueOnce({ status: 404, message: 'hidden' });
   render(<MemoryRouter initialEntries={['/investigation/report?task_id=task-a']}><FinalReportViewer /></MemoryRouter>);
 
-  await waitFor(() => expect(screen.getByText('Selected Report Version: v3')).toBeInTheDocument());
-  fireEvent.click(screen.getByRole('button', { name: 'Claim claim-1' }));
+  await waitFor(() => expect(screen.getByText('选中的报告版本：v3')).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: '断言 claim-1' }));
 
-  await waitFor(() => expect(screen.getByText('Claim provenance not found.')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText('未找到断言来源。')).toBeInTheDocument());
   expect(screen.queryByText('hidden')).not.toBeInTheDocument();
 });
 
@@ -153,7 +153,7 @@ test('shows persisted report integrity warning without repairing the payload', a
   getFinalReport.mockResolvedValue({ report: invalid });
   render(<MemoryRouter initialEntries={['/investigation/report?task_id=task-a']}><FinalReportViewer /></MemoryRouter>);
 
-  await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Report Integrity Warning'));
+  await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('报告完整性提醒'));
   expect(screen.getByText('Immutable paragraph text')).toBeInTheDocument();
 });
 
@@ -163,6 +163,6 @@ test('shows persisted report integrity warning without repairing the payload', a
   getFinalReport.mockResolvedValue({ report: invalid });
   render(<MemoryRouter initialEntries={['/investigation/report?task_id=task-a']}><FinalReportViewer /></MemoryRouter>);
 
-  await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Report Integrity Warning'));
+  await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('报告完整性提醒'));
   expect(screen.getByText('Immutable paragraph text')).toBeInTheDocument();
 });

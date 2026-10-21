@@ -200,7 +200,7 @@ const GenerateReportPanel = ({
 
     return (
         <section
-            aria-label="Generate report"
+            aria-label="生成报告"
             data-testid="generate-report-panel"
             className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 space-y-3"
         >
@@ -242,10 +242,10 @@ const GenerateReportPanel = ({
             {summary && analysisMode !== 'case_guided' && (
                 <div className="text-xs text-slate-600 dark:text-slate-300 space-y-1" data-testid="generate-source-summary">
                     <div className="flex flex-wrap gap-3">
-                        <span data-testid="summary-main">Main Evidence: {summary.main}</span>
-                        <span data-testid="summary-appendix">Appendix Evidence: {summary.appendix}</span>
-                        <span data-testid="summary-original">Original-only: {summary.originalOnly}</span>
-                        <span data-testid="summary-bound">Bound accepted analyses: {summary.bound}</span>
+                        <span data-testid="summary-main">主要证据： {summary.main}</span>
+                        <span data-testid="summary-appendix">附录证据： {summary.appendix}</span>
+                        <span data-testid="summary-original">仅原始材料： {summary.originalOnly}</span>
+                        <span data-testid="summary-bound">已绑定的已接受分析： {summary.bound}</span>
                     </div>
                     {summary.newer.map((row) => (
                         <p

@@ -83,34 +83,34 @@ ArtifactInfo classifyArtifact(const std::string& memberName) {
             ? "database_sidecar" : "database";
         result.format = result.category == "database_sidecar" ? "sqlite_sidecar" : "unknown";
         result.summary = result.category == "database_sidecar"
-            ? "SQLite sidecar file" : "QQ/QQNT database candidate";
+            ? "SQLite 配套文件" : "QQ/QQNT 数据库候选文件";
     } else if (startsWith(memberName, "apps/com.tencent.mobileqq/f/mmkv/") ||
                startsWith(memberName, "apps/com.tencent.mobileqq/f/nt_wtlogin/mmkv/")) {
         result.category = "mmkv";
         result.format = endsWith(base, ".crc") ? "mmkv_crc" : "mmkv";
-        result.summary = "QQNT MMKV key-value store";
+        result.summary = "QQNT MMKV 键值存储";
     } else if (startsWith(memberName, "apps/com.tencent.mobileqq/sp/") ||
                startsWith(memberName, "apps/com.tencent.mobileqq/d_sp/")) {
         result.category = "shared_pref";
         result.format = endsWith(base, ".xml") ? "xml" : "unknown";
-        result.summary = "QQ shared preference";
+        result.summary = "QQ 应用偏好配置";
     } else if (startsWith(memberName, "apps/com.tencent.mobileqq/ef/tencent/msflogs/")) {
         result.category = "xlog";
         result.format = endsWith(base, ".qqxlog") ? "qqxlog" : "mmap";
-        result.summary = "QQ MSF/Xlog runtime log";
+        result.summary = "QQ MSF/Xlog 运行日志";
     } else if (startsWith(memberName, "apps/com.tencent.mobileqq/f/msfCore/") ||
                startsWith(memberName, "apps/com.tencent.mobileqq/f/beacon/")) {
         result.category = "config";
         result.format = "binary";
-        result.summary = "QQ network or service configuration";
+        result.summary = "QQ 网络或服务配置";
     } else if (endsWith(base, ".json")) {
         result.category = "config";
         result.format = "json";
-        result.summary = "QQ JSON configuration or UI resource";
+        result.summary = "QQ JSON 配置或界面资源";
     } else if (endsWith(base, ".zip")) {
         result.category = "cache";
         result.format = "zip";
-        result.summary = "QQ packaged UI resource";
+        result.summary = "QQ 打包界面资源";
     }
     return result;
 }
@@ -363,7 +363,7 @@ bool persistQqntBackupAnalysis(MiuiBackupExtractor& src, AndroidAnalysisDatabase
             staged = src.temporaryRoot() / ("qqnt-artifact-" + std::to_string(sequence++));
             if (!stageMember(src, memberName, staged)) {
                 artifact.parseStatus = "parse_error";
-                artifact.summary = "Failed to stage QQNT artifact";
+                artifact.summary = "提取 QQNT 文件失败";
             } else {
                 hash = sha256(staged);
                 if (artifact.category == "shared_pref" && artifact.format == "xml") {
@@ -374,7 +374,7 @@ bool persistQqntBackupAnalysis(MiuiBackupExtractor& src, AndroidAnalysisDatabase
                     // its protobuf-style records can be treated as evidence. Do not infer pairs
                     // of printable strings as key/value records.
                     artifact.parseStatus = "recognized";
-                    artifact.summary = "QQNT MMKV store recognized; decoder and CRC verification required";
+                    artifact.summary = "已识别 QQNT MMKV 存储；仍需解码及 CRC 校验";
                 } else if (artifact.category == "database") {
                     if (isSqlite(staged)) {
                         artifact.format = "sqlite";
@@ -383,10 +383,10 @@ bool persistQqntBackupAnalysis(MiuiBackupExtractor& src, AndroidAnalysisDatabase
                             artifact.parseStatus = "parse_error";
                         } else if (recoveredRecords == 0) {
                             artifact.parseStatus = "recognized";
-                            artifact.summary = "SQLite schema indexed; no QQNT allowlisted table matched";
+                            artifact.summary = "已索引 SQLite 表结构，未匹配可解析的 QQNT 表";
                         } else {
                             artifact.parseStatus = "parsed";
-                            artifact.summary = "SQLite records recovered from QQNT allowlisted tables";
+                            artifact.summary = "已从支持的 QQNT 表解析 SQLite 记录";
                         }
                     } else {
                         artifact.parseStatus = "recognized";
@@ -408,7 +408,7 @@ bool persistQqntBackupAnalysis(MiuiBackupExtractor& src, AndroidAnalysisDatabase
                    (artifact.category == "database" || artifact.category == "mmkv" ||
                     artifact.category == "shared_pref")) {
             artifact.parseStatus = "limit_exceeded";
-            artifact.summary += "; exceeds QQNT parser staging limit";
+            artifact.summary += "；超过 QQNT 解析器的提取大小上限";
         }
 
         const std::string typeFlag(1, entry.typeFlag == '\0' ? '0' : entry.typeFlag);

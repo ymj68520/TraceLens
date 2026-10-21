@@ -62,6 +62,8 @@ TEST(SqlCipherDatabaseTest, OpensCorrectPassphrase) {
     ASSERT_EQ(sqlite3_step(st), SQLITE_ROW);
     EXPECT_STREQ(reinterpret_cast<const char*>(sqlite3_column_text(st, 0)), "hello");
     sqlite3_finalize(st);
+    EXPECT_EQ(sqlite3_exec(handle, "INSERT INTO notes(body) VALUES('must not write');",
+                          nullptr, nullptr, nullptr), SQLITE_READONLY);
 
     c.close();
     std::error_code ec;

@@ -26,7 +26,7 @@ export const formatFileTime = (value) => {
   const n = Number(value);
   if (!n) return null;
   const date = new Date(n * 1000);
-  return Number.isNaN(date.getTime()) ? null : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? null : date.toLocaleString('zh-CN');
 };
 
 const fileTimes = (file) => TIME_TYPES
@@ -83,7 +83,7 @@ export default function FileTimestampTimeline({ taskId }) {
   const files = data?.files || [];
 
   return (
-    <section className="rounded-2xl glass p-5" aria-label="File timeline" data-testid="file-timeline">
+    <section className="rounded-2xl glass p-5" aria-label="文件时间线" data-testid="file-timeline">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2"><Clock size={18} className="text-primary-500" />文件时间线</h2>

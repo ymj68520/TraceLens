@@ -580,7 +580,7 @@ const Timeline = () => {
     summaryScope.end_time = summaryScope.start_time + 86400;
   }
 
-  if (!taskId) return <div className="p-8 text-center text-slate-500">Please select a task...</div>;
+  if (!taskId) return <div className="p-8 text-center text-slate-500">请选择分析任务…</div>;
 
   return (
     <div className={`flex flex-col space-y-4 relative ${viewMode === 'summary' ? 'lg:h-[calc(100vh-140px)] lg:overflow-hidden' : 'h-[calc(100vh-140px)] overflow-hidden'}`}>
@@ -636,7 +636,7 @@ const Timeline = () => {
                       <Bar dataKey="DELETED" stackId="a" fill="#ef4444" />
                     </BarChart>
                   </ResponsiveContainer>
-                ) : <div className="h-full flex items-center justify-center text-[10px] text-slate-400">Syncing...</div>}
+                ) : <div className="h-full flex items-center justify-center text-[10px] text-slate-400">正在同步…</div>}
               </div>
             </div>
           </div>
@@ -955,8 +955,8 @@ const Timeline = () => {
                         <tr>
                           <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('timeline.stats.matches')}</th>
                           <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('timeline.filter.type')}</th>
-                          <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Path</th>
-                          <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Size</th>
+                          <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">路径</th>
+                          <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">大小</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-slate-100">
@@ -978,11 +978,11 @@ const Timeline = () => {
 
           {/* Sticky Footer Pagination */}
           {viewMode !== 'summary' && <footer className="flex-shrink-0 flex items-center justify-between border-t border-slate-100 p-3 bg-slate-50/80 backdrop-blur-sm">
-                <Button variant="ghost" size="sm" disabled={currentPage === 1} onClick={() => updateParams({ page: currentPage - 1 })} icon={ChevronLeft} className="hover:bg-white shadow-sm">PREV</Button>
+                <Button variant="ghost" size="sm" disabled={currentPage === 1} onClick={() => updateParams({ page: currentPage - 1 })} icon={ChevronLeft} className="hover:bg-white shadow-sm">上一页</Button>
                 <div className="text-[10px] text-slate-500 font-black bg-white px-4 py-1.5 rounded-full border border-slate-200 shadow-sm tracking-widest uppercase">
                     {t('timeline.stats.navigator')} {currentPage} / {totalPages || 1}
                 </div>
-                <Button variant="ghost" size="sm" disabled={currentPage === totalPages || totalPages === 0} onClick={() => updateParams({ page: currentPage + 1 })} icon={ChevronRight} iconPosition="right" className="hover:bg-white shadow-sm">NEXT</Button>
+                <Button variant="ghost" size="sm" disabled={currentPage === totalPages || totalPages === 0} onClick={() => updateParams({ page: currentPage + 1 })} icon={ChevronRight} iconPosition="right" className="hover:bg-white shadow-sm">下一页</Button>
           </footer>}
         </main>
       </div>

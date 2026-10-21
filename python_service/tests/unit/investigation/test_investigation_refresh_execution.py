@@ -107,7 +107,7 @@ def test_new_admission_is_executable_v2(tmp_path):
     refresh = repo.create_event_refresh(event.event_id, requested_by="analyst")
     envelope = parse_event_refresh_envelope(refresh.input_envelope_json)
     assert envelope.schema_version == 2
-    assert envelope.prompt_version == "investigation-event-refresh:v1"
+    assert envelope.prompt_version == "investigation-event-refresh:v2"
 
 
 def test_repository_claim_and_atomic_completion_clears_dirty(tmp_path):

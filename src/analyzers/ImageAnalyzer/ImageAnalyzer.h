@@ -16,6 +16,7 @@ class DatabaseManager;
 class XFSHelper;
 class NativeFilesystemWalker;
 class TskFilesystemWalker;
+class HarmonyBackupExtractor;
 
 /**
  * @brief Metadata for a single detected partition whose filesystem opened OK.
@@ -161,6 +162,7 @@ private:
 	std::unique_ptr<XFSHelper> xfsHelper_;
 	std::unique_ptr<NativeFilesystemWalker> nativeWalker_;
 	std::unique_ptr<TskFilesystemWalker> tskWalker_;
+	std::unique_ptr<HarmonyBackupExtractor> harmonySource_;
 
 	std::function<bool()> cancellationCallback_;
 	std::function<void(int files_extracted)> progressCallback_;

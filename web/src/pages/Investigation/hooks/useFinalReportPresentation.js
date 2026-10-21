@@ -6,7 +6,7 @@ import {
 } from '../../../services/investigationService';
 
 function errorMessage(error) {
-  return error?.message || 'Report presentation request failed.';
+  return error?.message || '请求报告导出失败。';
 }
 
 function reportFilename(reportId, reportVersion, extension) {
@@ -15,7 +15,7 @@ function reportFilename(reportId, reportVersion, extension) {
 }
 
 function writePopup(targetWindow, content, shouldPrint = false) {
-  if (!targetWindow || targetWindow.closed) throw new Error('Could not open report presentation window.');
+  if (!targetWindow || targetWindow.closed) throw new Error('无法打开报告窗口，请检查浏览器弹窗设置。');
   const document = targetWindow.document;
   document.open();
   document.write(content);
@@ -79,7 +79,7 @@ export default function useFinalReportPresentation(taskId, reportId, reportVersi
     if (!enabled || !taskId || !reportId) return;
     const targetWindow = window.open('', '_blank');
     if (!targetWindow) {
-      setError('Could not open report presentation window.');
+      setError('无法打开报告窗口，请检查浏览器弹窗设置。');
       return;
     }
     void run('html', getFinalReportHtml, targetWindow);
@@ -89,7 +89,7 @@ export default function useFinalReportPresentation(taskId, reportId, reportVersi
     if (!enabled || !taskId || !reportId) return;
     const targetWindow = window.open('', '_blank');
     if (!targetWindow) {
-      setError('Could not open report presentation window.');
+      setError('无法打开报告窗口，请检查浏览器弹窗设置。');
       return;
     }
     void run('print', getFinalReportPrint, targetWindow);

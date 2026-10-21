@@ -1,3 +1,4 @@
+import { forensicLabel } from '../../utils/forensicLabels';
 import { useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { useSearchParams, useLocation } from 'react-router-dom';
@@ -68,17 +69,17 @@ const TaskSelector = () => {
     return (
         <div className="flex items-center gap-2">
             <span className="text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap hidden md:inline">
-                Task:
+                任务：
             </span>
             <select
                 value={currentTaskId || ''}
                 onChange={handleTaskChange}
                 className="block w-48 md:w-56 pl-3 pr-8 py-1.5 text-sm rounded-xl border-0 bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm text-slate-700 dark:text-slate-200 ring-1 ring-slate-200/50 dark:ring-slate-700/50 focus:ring-2 focus:ring-primary-500/50 transition-all"
             >
-                <option value="">Select task...</option>
+                <option value="">请选择任务…</option>
                 {tasks.map((task) => (
                     <option key={task.id} value={task.id}>
-                        {task.metadata?.source_label || task.image_path?.split('/').pop() || task.name || task.id} ({String(task.id).substring(0, 8)}) - {task.status}
+                        {task.metadata?.source_label || task.image_path?.split('/').pop() || task.name || task.id} ({String(task.id).substring(0, 8)}) - {forensicLabel(task.status)}
                     </option>
                 ))}
             </select>

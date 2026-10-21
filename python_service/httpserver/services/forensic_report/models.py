@@ -559,10 +559,10 @@ class ReportGenerationEnvelopeV5(ReportGenerationEnvelopeV4):
             )):
                 raise ValueError("case-derived analysis is forbidden in neutral sources")
         if self.analysis_mode == "evidence_only":
-            if self.case_description or self.baseline is not None or self.prompt_version != "final-report:evidence-only:v1":
+            if self.case_description or self.baseline is not None or self.prompt_version not in ("final-report:evidence-only:v1", "final-report:evidence-only:v2"):
                 raise ValueError("first-stage input must be independent of case context")
         else:
-            if not self.case_description.strip() or self.baseline is None or self.prompt_version != "final-report:case-guided:v1":
+            if not self.case_description.strip() or self.baseline is None or self.prompt_version not in ("final-report:case-guided:v1", "final-report:case-guided:v2"):
                 raise ValueError("second-stage input requires case context and baseline")
             if self.baseline.evidence_scope_hash != self.evidence_scope_hash:
                 raise ValueError("second-stage evidence scope changed")
@@ -968,10 +968,10 @@ class GenerationReportManifest(BaseModel):
 
     @model_validator(mode="after")
     def _classification_contract(self):
-        if self.prompt_version in ("final-report:evidence-only:v1", "final-report:case-guided:v1"):
+        if self.prompt_version in ("final-report:evidence-only:v1", "final-report:case-guided:v1", "final-report:evidence-only:v2", "final-report:case-guided:v2"):
             if self.schema_version != "1.2" or self.stage_analysis is None or self.evidence_classifications is None:
                 raise ValueError("stage report requires frozen analysis and classifications")
-            expected = "evidence_only" if self.prompt_version == "final-report:evidence-only:v1" else "case_guided"
+            expected = "evidence_only" if self.prompt_version in ("final-report:evidence-only:v1", "final-report:evidence-only:v2") else "case_guided"
             if self.stage_analysis.analysis_mode != expected:
                 raise ValueError("stage report mode mismatch")
         elif self.stage_analysis is not None:

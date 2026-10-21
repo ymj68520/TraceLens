@@ -42,7 +42,7 @@ def create_backup(root: Path, compressed: bool = False) -> Path:
 
 
 def run(command: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, capture_output=True, text=True, check=False)
+    return subprocess.run([*command, "--no-ai"], capture_output=True, text=True, check=False, timeout=120)
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -55,7 +55,7 @@ def verify_miui_route(analyzer: Path, root: Path) -> None:
     output = root / "out"
     secret = "TASK8_E2E_SECRET_SENTINEL"
     result = run([
-        str(analyzer), str(backup), "--android-analyze",
+        str(analyzer), str(backup), "--no-ai", "--android-analyze",
         "--android-source", "miui-backup",
         "--backup-password", secret,
         "--db-dir", str(output),
@@ -105,7 +105,7 @@ def verify_duplicate_backup_is_failure_only(analyzer: Path, root: Path) -> None:
         "</packages></MIUI-backup>", encoding="utf-8")
 
     output = root / "out"
-    result = run([str(analyzer), str(backup), "--android-analyze",
+    result = run([str(analyzer), str(backup), "--no-ai", "--android-analyze",
                   "--android-source", "miui-backup", "--db-dir", str(output)])
     assert_true(result.returncode == 0, f"duplicate backup run failed: {result.stdout}{result.stderr}")
     with sqlite3.connect(output / "backup_files.db") as connection:
@@ -151,7 +151,7 @@ def verify_secure_password_input(analyzer: Path, root: Path) -> None:
     output = root / "secure-out"
     secret = "MIUI_SECURE_INPUT_SENTINEL"
     result = subprocess.run([
-        str(analyzer), str(backup), "--android-analyze",
+        str(analyzer), str(backup), "--no-ai", "--android-analyze",
         "--android-source", "miui-backup",
         "--backup-password-stdin", "--db-dir", str(output),
     ], input=secret + "\n", capture_output=True, text=True, check=False)
@@ -169,7 +169,7 @@ def verify_tmpdir_isolation(analyzer: Path, root: Path) -> None:
     environment = os.environ.copy()
     environment["TMPDIR"] = str(hostile_tmp)
     result = subprocess.run([
-        str(analyzer), str(backup), "--android-analyze",
+        str(analyzer), str(backup), "--no-ai", "--android-analyze",
         "--android-source", "miui-backup", "--db-dir", str(output),
     ], capture_output=True, text=True, check=False, env=environment)
     assert_true(result.returncode == 0, f"TMPDIR isolation run failed: {result.stdout}{result.stderr}")
@@ -221,7 +221,7 @@ def verify_staged_sqlite_path_with_uri_characters(analyzer: Path, root: Path) ->
     environment = os.environ.copy()
     environment["TMPDIR"] = str(temp_root)
     result = subprocess.run([
-        str(analyzer), str(backup), "--android-analyze", "--android-source", "miui-backup",
+        str(analyzer), str(backup), "--no-ai", "--android-analyze", "--android-source", "miui-backup",
         "--db-dir", str(output),
     ], capture_output=True, text=True, check=False, env=environment)
     assert_true(result.returncode == 0, f"URI-character staging run failed: {result.stdout}{result.stderr}")
@@ -276,7 +276,7 @@ def verify_corrupt_sqlite_and_invalid_key_are_parse_errors(analyzer: Path, root:
                             ("noncanonical-padding", '{"key":"' + "A" * 42 + 'B="}')):
         backup = create_corrupt_encrypted_backup(root / label, key_hint)
         output = root / f"{label}-out"
-        result = run([str(analyzer), str(backup), "--android-analyze",
+        result = run([str(analyzer), str(backup), "--no-ai", "--android-analyze",
                       "--android-source", "miui-backup", "--db-dir", str(output)])
         assert_true(result.returncode == 0, f"corrupt database run failed: {result.stdout}{result.stderr}")
         with sqlite3.connect(output / "backup_files.db") as connection:

@@ -2,6 +2,7 @@
 #include <vector>
 #include <string>
 #include <cstdio>
+#include <filesystem>
 
 SqlCipherDatabase::~SqlCipherDatabase() {
     close();
@@ -29,10 +30,19 @@ bool SqlCipherDatabase::tryOpen(const std::string& dbPath,
                                 const SqlCipherConfig& config,
                                 bool isRawKey) {
     close();
+    lastError_.clear();
 
-    if (sqlite3_open(dbPath.c_str(), &db_) != SQLITE_OK) {
-        lastError_ = "Failed to open database file";
-        db_ = nullptr;
+    // A missing/empty input is not a successfully decrypted empty database.
+    // Never let sqlite3_open create a file at an evidence path.
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(dbPath, error) || error ||
+        std::filesystem::file_size(dbPath, error) < 16 || error) {
+        lastError_ = "数据库文件不存在、为空或无法读取";
+        return false;
+    }
+    if (sqlite3_open_v2(dbPath.c_str(), &db_, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
+        lastError_ = "无法以只读方式打开数据库文件";
+        close();
         return false;
     }
 

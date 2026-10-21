@@ -417,6 +417,8 @@ set(LIB_SOURCES
     # Android logical-extraction backends (dir / zip sources, bypassing TSK)
     src/analyzers/AndroidAnalyzer/LogicalDirExtractor.cpp
     src/analyzers/AndroidAnalyzer/ZipArchiveExtractor.cpp
+    src/analyzers/AndroidAnalyzer/HarmonyBackupExtractor.cpp
+    src/analyzers/AndroidAnalyzer/HarmonyArtifactParsers.cpp
     src/analyzers/AndroidAnalyzer/AndroidPathMapper.cpp
     src/analyzers/AndroidAnalyzer/FilesystemEvidenceSource.cpp
     src/analyzers/AndroidAnalyzer/ArchiveFileExtractor.cpp
@@ -607,10 +609,12 @@ set(TRACELENS_SOURCE_COMMIT "UNFROZEN_WORKTREE" CACHE STRING "Fixed source commi
 set(TRACELENS_SOURCE_SHA256 "UNFROZEN_WORKTREE" CACHE STRING "Fixed source input fingerprint")
 configure_file(include/tracelens/build_identity.h.in generated/tracelens/build_identity.h @ONLY)
 target_include_directories(forensic_analyzer PRIVATE "${CMAKE_BINARY_DIR}/generated")
+set(TRACELENS_RUNTIME_SOURCE_ROOT "${CMAKE_SOURCE_DIR}" CACHE PATH
+    "Runtime helper script root; override when building from a temporary source mirror")
 set_source_files_properties(src/analyzers/AndroidAnalyzer/FilesystemEvidenceSource.cpp
-    PROPERTIES COMPILE_DEFINITIONS "TRACELENS_SOURCE_ROOT=\"${CMAKE_SOURCE_DIR}\"")
+    PROPERTIES COMPILE_DEFINITIONS "TRACELENS_SOURCE_ROOT=\"${TRACELENS_RUNTIME_SOURCE_ROOT}\"")
 set_source_files_properties(src/network/HTTPServer/AndroidContainerNormalization.cpp
-    PROPERTIES COMPILE_DEFINITIONS "TRACELENS_SOURCE_ROOT=\"${CMAKE_SOURCE_DIR}\"")
+    PROPERTIES COMPILE_DEFINITIONS "TRACELENS_SOURCE_ROOT=\"${TRACELENS_RUNTIME_SOURCE_ROOT}\"")
 
 # Link libraries
 if(WIN32)

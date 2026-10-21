@@ -1,3 +1,4 @@
+import { forensicLabel, forensicFieldLabel } from '../utils/forensicLabels';
 import { useEffect, useState } from 'react';
 import Card from './common/Card';
 import { captureAndroidArtifact, getAndroidArtifact, getAndroidArtifacts } from '../services/evidenceIntakeService';
@@ -5,9 +6,10 @@ import { useNavigate } from 'react-router-dom';
 
 const KINDS = [
   ['sms', '短信'], ['contacts', '联系人'], ['apps', '已安装应用'], ['wifi', 'Wi-Fi'],
+  ['mobile', '鸿蒙记录'],
 ];
 
-export default function AndroidArtifactsCard({ taskId }) {
+export default function AndroidArtifactsCard({ taskId, platform }) {
   const navigate = useNavigate();
   const [kind, setKind] = useState('sms');
   const [query, setQuery] = useState('');
@@ -16,6 +18,7 @@ export default function AndroidArtifactsCard({ taskId }) {
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState('');
   const [capturing, setCapturing] = useState(false);
+  useEffect(() => { setKind(platform === 'HarmonyOS' ? 'mobile' : 'sms'); setPage(1); }, [taskId, platform]);
 
   useEffect(() => {
     let active = true;
@@ -49,7 +52,7 @@ export default function AndroidArtifactsCard({ taskId }) {
     } finally { setCapturing(false); }
   };
 
-  return <Card title="AndroidAnalyzer 原生工件" subtitle="此处读取 android.db；第三方 HTML 派生报告仍在独立 records.db。">
+  return <Card title="手机取证记录" subtitle="查看解析记录及来源，将选中记录加入现有调查与报告。">
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">{KINDS.map(([value, label]) => <button type="button" key={value}
         onClick={() => { setKind(value); setPage(1); }}
@@ -61,7 +64,7 @@ export default function AndroidArtifactsCard({ taskId }) {
         <p className="text-sm text-slate-600">共 {result.total} 条 · 第 {page} 页。此列表不能代表检材完整率。</p>
         <ul className="max-h-96 space-y-2 overflow-auto">{result.records.map((item) => <li key={item.id}>
           <button type="button" onClick={() => showDetail(item.id)} className="w-full rounded-lg border border-slate-200 p-2 text-left text-sm hover:border-indigo-400">
-            <span className="font-mono text-slate-500">#{item.id}</span> {item.body || item.display_name || item.package_name || item.ssid || '（无摘要）'}
+            <span className="font-mono text-slate-500">#{item.id}</span> {item.kind && <strong>{forensicLabel(item.kind)} · </strong>}{item.body || item.display_name || item.package_name || item.ssid || '（无摘要）'}
           </button></li>)}</ul>
         <div className="flex gap-2 text-sm"><button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</button>
           <button type="button" disabled={page * result.page_size >= result.total} onClick={() => setPage(page + 1)}>下一页</button></div>
@@ -69,12 +72,12 @@ export default function AndroidArtifactsCard({ taskId }) {
       {detail && <section className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm">
         <h3 className="font-semibold">记录与来源核对</h3>
         <p className="mt-1 text-amber-800">{detail.warning}</p>
-        <dl className="mt-2 space-y-1 break-all">{Object.entries(detail.record).map(([key, value]) => <div key={key}><dt className="inline font-medium">{key}：</dt><dd className="inline">{String(value ?? '—')}</dd></div>)}</dl>
+        <dl className="mt-2 space-y-1 break-all">{Object.entries(detail.record).map(([key, value]) => <div key={key}><dt className="inline font-medium">{forensicFieldLabel(key)}：</dt><dd className="inline">{['kind', 'related_file_status'].includes(key) ? forensicLabel(value) : String(value ?? '—')}</dd></div>)}</dl>
         {detail.source && <div className="mt-2 rounded-lg bg-white p-2">
           <p>候选路径：{detail.source.normalized_path}</p><p>原始路径：{detail.source.original_path || '未记录'}</p>
           <p>文件 SHA-256：{detail.source.sha256 || '未记录'}</p>
           <p>分区：{detail.source.partition_name || '未记录'} · 偏移：{detail.source.partition_start_offset ?? '未记录'}</p>
-          <p>原始表/主键：未逐条记录 · WAL frame：未逐条验证</p>
+          <p>原始表/主键：{detail.source.original_table || '未逐条记录'} {detail.source.original_primary_key ? JSON.stringify(detail.source.original_primary_key) : ''} · WAL 帧：未逐条验证</p>
         </div>}
         {!detail.source && <p className="mt-2">无法把本条结果唯一关联到某个来源文件。</p>}
         <button type="button" disabled={capturing} onClick={captureSelected}

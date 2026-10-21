@@ -1,3 +1,4 @@
+import { forensicLabel } from '../../utils/forensicLabels';
 // CitationTracebackPanel.jsx
 // R2d citation 溯源面板：persisted citation manifest entry 是唯一
 // authoritative identity；当前 Investigation strict 读只是可选增强。
@@ -139,7 +140,7 @@ const CitationTracebackPanel = ({
 
     return (
         <aside
-            aria-label="Citation provenance"
+            aria-label="引用来源"
             data-testid="citation-traceback-panel"
             className="space-y-4 rounded-2xl border border-blue-200 bg-gradient-to-br from-white via-white to-blue-50/50 p-5 shadow-md ring-1 ring-blue-50 dark:border-blue-900/60 dark:from-slate-800 dark:via-slate-800 dark:to-blue-950/20 dark:ring-slate-700 md:p-6"
         >
@@ -147,7 +148,7 @@ const CitationTracebackPanel = ({
                 <div className="flex items-center gap-3">
                     <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"><FileSearch size={18} aria-hidden /></span>
                     <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-300">Evidence Traceback</p>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-300">证据溯源</p>
                         <h4 className="mt-0.5 text-base font-bold text-slate-900 dark:text-slate-100">引用溯源 · <span className="font-mono text-blue-700 dark:text-blue-300">{citation.citation_id}</span></h4>
                     </div>
                 </div>
@@ -166,7 +167,7 @@ const CitationTracebackPanel = ({
             </p>
 
             <Layer
-                title="Evidence · Evidence Source"
+                title="证据及其来源"
                 tone="border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-900/20"
                 testId="traceback-evidence-layer"
             >
@@ -174,13 +175,13 @@ const CitationTracebackPanel = ({
                     <span className="text-slate-400">evidence_key: </span>
                     <EvidenceKeyLink value={citation.evidence_key} taskId={taskId} reportId={reportId} citationId={citation.citation_id} />
                 </p>
-                <Field label="captured_at" value={citation.evidence_captured_at ?? '—'} />
+                <Field label="采集时间" value={citation.evidence_captured_at ?? '—'} />
                 {snapshot && (
                     <>
-                        <Field label="evidence_type" value={snapshot.evidence_type || '—'} />
+                        <Field label="证据类型" value={forensicLabel(snapshot.evidence_type)} />
                         {snapshot.evidence_type === 'android_artifact' && <>
-                            <Field label="result_set_id" value={snapshot.payload?.result_set_id || '—'} />
-                            <Field label="artifact/record" value={`${snapshot.payload?.artifact_kind || '—'} / ${snapshot.payload?.record_id ?? '—'}`} />
+                            <Field label="结果集编号" value={snapshot.payload?.result_set_id || '—'} />
+                            <Field label="工件及记录编号" value={`${snapshot.payload?.artifact_kind || '—'} / ${snapshot.payload?.record_id ?? '—'}`} />
                             <p className="text-xs text-amber-800">AndroidAnalyzer 派生解析记录；原库主键、时间单位/时区和 WAL 定位以冻结来源字段为准，未知不代表已核实。</p>
                             <ExpandableDescription label="冻结来源精度与限制" value={JSON.stringify({
                                 provenance: snapshot.payload?.provenance || {},
@@ -196,18 +197,18 @@ const CitationTracebackPanel = ({
 
             {citation.analysis_id ? (
                 <Layer
-                    title="Accepted Analysis · analyst-accepted derived finding"
+                    title="分析员已接受的派生分析"
                     tone="border-purple-200 dark:border-purple-900/60 bg-purple-50/60 dark:bg-purple-900/20"
                     testId="traceback-analysis-layer"
                 >
-                    <Field label="analysis_id" value={citation.analysis_id} />
-                    <Field label="frozen version" value={citation.analysis_version ?? '—'} />
+                    <Field label="分析编号" value={citation.analysis_id} />
+                    <Field label="冻结版本" value={citation.analysis_version ?? '—'} />
                     {analysis && (
                         <>
-                            <Field label="status" value={analysis.status || '—'} />
-                            <Field label="accepted by" value={analysis.decided_by || '—'} mono={false} />
-                            <Field label="accepted at" value={analysis.decided_at || '—'} />
-                            <Field label="grounding" value={analysis.grounding_status || '—'} />
+                            <Field label="状态" value={forensicLabel(analysis.status)} />
+                            <Field label="确认人" value={analysis.decided_by || '—'} mono={false} />
+                            <Field label="确认时间" value={analysis.decided_at || '—'} />
+                            <Field label="证据引用校验" value={forensicLabel(analysis.grounding_status)} />
                             <ExpandableDescription label="分析描述" value={analysis.description || analysis.summary} />
                         </>
                     )}
@@ -220,16 +221,16 @@ const CitationTracebackPanel = ({
 
             {citation.claim_id && (
                 <Layer
-                    title="Claim · derived claim"
+                    title="派生断言"
                     tone="border-amber-200 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-900/20"
                     testId="traceback-claim-layer"
                 >
-                    <Field label="claim_id" value={citation.claim_id} />
-                    <Field label="claim type" value={citation.claim_type ?? '—'} />
+                    <Field label="断言编号" value={citation.claim_id} />
+                    <Field label="断言类型" value={forensicLabel(citation.claim_type)} />
                     {claim && (
                         <>
-                            <ExpandableDescription label="Claim 原文" value={claim.claim_text} />
-                            <Field label="grounding" value={claim.grounding_status || '—'} />
+                            <ExpandableDescription label="断言原文" value={claim.claim_text} />
+                            <Field label="证据引用校验" value={forensicLabel(claim.grounding_status)} />
                             <p className="text-[11px] text-slate-600 dark:text-slate-300 break-all">
                                 <span className="text-slate-400">evidence_refs: </span>
                                 {(claim.evidence_refs || []).length ? (

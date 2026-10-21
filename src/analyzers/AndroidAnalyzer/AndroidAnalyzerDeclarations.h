@@ -10,6 +10,7 @@
 #include <vector>
 #include <memory>
 #include <optional>
+#include <functional>
 #include <cstdint>
 #include "fileSystem.h"
 
@@ -33,6 +34,7 @@ enum class AndroidSourceMode {
     LogicalDir,
     Zip,
     MiuiBackup,
+    HarmonyBackup,
     Tar,
     SevenZip,
     AndroidBackup,
@@ -106,6 +108,9 @@ public:
 
     /// Skip the AI analysis phase (mirrors the analyzers' --no-ai flag).
     void setSkipAI(bool skip) { skipAI_ = skip; }
+    void setSourceCallbacks(std::function<void(std::size_t)> progress, std::function<bool()> cancelled) {
+        sourceProgress_ = std::move(progress); sourceCancelled_ = std::move(cancelled);
+    }
     bool getSkipAI() const { return skipAI_; }
 
     /**
@@ -199,6 +204,8 @@ private:
     std::string outputDbPath_;
     DatabaseManager* dbManager_;
     AndroidSourceMode sourceMode_ = AndroidSourceMode::TSK;
+    std::function<void(std::size_t)> sourceProgress_;
+    std::function<bool()> sourceCancelled_;
     std::unique_ptr<IFileExtractor> fileExtractor_;
     std::unique_ptr<AndroidAnalysisDatabase> androidDb_;
     std::string wechatPassword_;

@@ -1,3 +1,4 @@
+import { forensicLabel } from '../../utils/forensicLabels';
 /**
  * CreateTaskModal
  *
@@ -31,9 +32,10 @@ const DATA_SOURCES = [
   { value: 'dir', label: 'Android 目录', desc: '已解压的逻辑提取目录树' },
   { value: 'zip', label: 'Android ZIP', desc: '逻辑提取打包成的单个 .zip' },
   { value: 'miui-backup', label: 'MIUI 备份', desc: '小米 MIUI 离线备份目录（含 descript.xml + .bak）' },
+  { value: 'harmony-backup', label: '华为鸿蒙备份', desc: '已解密备份目录，含 .info.json 和 files' },
   { value: 'tar', label: 'Android TAR', desc: '.tar / .tar.gz / .tgz / .tar.xz（需完整预检）' },
   { value: 'seven-zip', label: 'Android 7z', desc: '.7z 逻辑提取归档（需完整预检）' },
-  { value: 'android-backup', label: 'Android Backup', desc: '.ab（需完整预检）' },
+  { value: 'android-backup', label: '安卓备份', desc: '.ab（需完整预检）' },
   { value: 'filesystem-image', label: 'Android userdata 镜像', desc: 'EXT4/F2FS RAW/E01（需完整预检）' },
   { value: 'android-container', label: 'Android sparse / super', desc: '需完整预检及规范化计划' },
 ];
@@ -72,7 +74,7 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
   const isArchive = ['tar', 'seven-zip', 'android-backup', 'filesystem-image', 'android-container'].includes(form.android_source);
 
   // Label / placeholder for the path input changes with the data source.
-  const pathLabel = isMiui
+  const pathLabel = form.android_source === 'harmony-backup' ? '鸿蒙备份目录 *' : isMiui
     ? 'MIUI 备份目录 *'
     : form.android_source === 'dir'
     ? 'Android 提取目录 *'
@@ -82,8 +84,8 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
     ? 'Android sparse / super 镜像 *'
     : isArchive
     ? 'Android 归档/备份文件 *'
-    : 'Image Path *';
-  const pathPlaceholder = isMiui
+    : '检材路径 *';
+  const pathPlaceholder = form.android_source === 'harmony-backup' ? '/path/to/已解密鸿蒙备份/' : isMiui
     ? '/path/to/MIUI备份目录（含 descript.xml + .bak）'
     : form.android_source === 'dir'
     ? '/path/to/android_logical_extraction/'
@@ -96,10 +98,10 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
     : form.android_source === 'android-backup'
     ? '/path/to/backup.ab'
     : form.android_source === 'filesystem-image'
-    ? '/path/to/userdata.img or /path/to/disk.E01'
+    ? '/path/to/userdata.img 或 /path/to/disk.E01'
     : form.android_source === 'android-container'
-    ? '/path/to/userdata.sparse or /path/to/super.img'
-    : '/path/to/disk_image.dd or /path/to/image.E01';
+    ? '/path/to/userdata.sparse 或 /path/to/super.img'
+    : '/path/to/disk_image.dd 或 /path/to/image.E01';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -128,7 +130,7 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
       onClose();
       setForm(INITIAL_FORM);
       dispatch(fetchTasks({}));
-      toast.success('Task created successfully!');
+      toast.success('任务创建成功');
     } catch (err) {
       // rejectWithValue payloads arrive either as the raw axios data object
       // ({error: "..."} from the backend's 4xx JSON) or as a plain string.
@@ -136,7 +138,7 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
         ? err
         : err?.error || err?.message || err?.detail
           ? String(err.error || err.message || err.detail)
-          : (err ? JSON.stringify(err) : 'Failed to create task.');
+          : (err ? JSON.stringify(err) : '创建任务失败');
       setError(msg);
     } finally {
       setIsCreating(false);
@@ -148,7 +150,7 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
       <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
-          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Create New Task</h2>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">创建分析任务</h2>
           <button onClick={() => { dispatch(closeModal()); onClose(); }} className="text-slate-400 hover:text-slate-500 dark:hover:text-slate-300">✕</button>
         </div>
 
@@ -213,10 +215,10 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
           </Field>
 
           {/* Priority */}
-          <Field label="Priority">
+          <Field label="优先级">
             <select disabled={isCreating} value={form.priority} onChange={(e) => set('priority', e.target.value)} className={inputCls}>
               {['low', 'normal', 'high', 'critical'].map((p) => (
-                <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                <option key={p} value={p}>{forensicLabel(p)}</option>
               ))}
             </select>
           </Field>
@@ -321,14 +323,14 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
           <div className="flex items-center gap-2 p-2 bg-primary-50 dark:bg-primary-900/20 rounded-lg">
             <span className="text-primary-600 dark:text-primary-400 text-sm">🤖</span>
             <span className="text-xs text-primary-700 dark:text-primary-300">
-              LLM 智能分析已默认开启（Smart 模式）
+              LLM 智能分析已默认开启（智能筛选模式）
             </span>
           </div>
 
           {/* Actions */}
           <div className="flex justify-end space-x-3 pt-2">
-            <Button type="button" variant="secondary" onClick={() => { dispatch(closeModal()); onClose(); }} disabled={isCreating}>Cancel</Button>
-            <Button type="submit" disabled={isCreating || (isRaid && !raidSource)}>{isCreating ? 'Creating...' : 'Create Task'}</Button>
+            <Button type="button" variant="secondary" onClick={() => { dispatch(closeModal()); onClose(); }} disabled={isCreating}>取消</Button>
+            <Button type="submit" disabled={isCreating || (isRaid && !raidSource)}>{isCreating ? '正在创建…' : '创建任务'}</Button>
           </div>
         </form>
       </div>

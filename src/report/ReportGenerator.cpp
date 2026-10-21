@@ -52,7 +52,7 @@ int ReportGenerator::tableRowCount(sqlite3* db, const std::string& table) {
 
 // Format a unix timestamp as "YYYY-MM-DD HH:MM:SS"
 static std::string formatTimestamp(int64_t ts) {
-    if (ts <= 0) return "N/A";
+    if (ts <= 0) return "未记录";
     std::time_t t = static_cast<std::time_t>(ts);
     std::tm tm{};
     localtime_r(&t, &tm);
@@ -111,8 +111,8 @@ bool ReportGenerator::writeMarkdown(const std::string& imagePath, const std::str
     writeSecurityFindings(out);
     writeTimeline(out);
 
-    out << "\n*This report was generated from structured analysis data and does not "
-        << "require AI/LLM processing.*\n";
+    out << "\n*本报告根据结构化解析数据生成，"
+        << "不依赖人工智能模型处理。*\n";
 
     return true;
 }
@@ -122,28 +122,28 @@ bool ReportGenerator::writeMarkdown(const std::string& imagePath, const std::str
 // ---------------------------------------------------------------------------
 
 void ReportGenerator::writeHeader(std::ofstream& out, const std::string& imagePath) {
-    out << "# Forensic Analysis Report\n\n";
-    out << "| Field | Value |\n";
+    out << "# 取证分析报告\n\n";
+    out << "| 项目 | 内容 |\n";
     out << "|-------|-------|\n";
-    out << "| **Source Image** | `" << mdEscape(imagePath) << "` |\n";
-    out << "| **Files DB** | `" << mdEscape(filesDbPath_) << "` |\n";
+    out << "| **检材来源** | `" << mdEscape(imagePath) << "` |\n";
+    out << "| **文件数据库** | `" << mdEscape(filesDbPath_) << "` |\n";
     if (!eventDbPath_.empty()) {
-        out << "| **Events DB** | `" << mdEscape(eventDbPath_) << "` |\n";
+        out << "| **事件数据库** | `" << mdEscape(eventDbPath_) << "` |\n";
     }
-    out << "| **Generated At** | " << currentTimeString() << " |\n\n";
+    out << "| **生成时间** | " << currentTimeString() << " |\n\n";
     out << "---\n\n";
 }
 
 void ReportGenerator::writeSummary(std::ofstream& out) {
     sqlite3* db = nullptr;
     if (sqlite3_open(filesDbPath_.c_str(), &db) != SQLITE_OK) {
-        out << "## Data Summary\n\n> Cannot open files.db\n\n";
+        out << "## 数据摘要\n\n> 无法打开文件数据库\n\n";
         if (db) sqlite3_close(db);
         return;
     }
 
-    out << "## Data Summary\n\n";
-    out << "| Data Category | Records |\n";
+    out << "## 数据摘要\n\n";
+    out << "| 数据类别 | 记录数 |\n";
     out << "|--------------|--------:|\n";
 
     auto appendRowsForPrefix = [&](const std::string& prefix,
@@ -165,26 +165,33 @@ void ReportGenerator::writeSummary(std::ofstream& out) {
             if (count >= 0) {
                 any = true;
                 std::string label = categoryPrefix;
-                label += table + prefix.size();
+                label += "解析记录（" + std::string(table) + "）";
                 out << "| " << mdEscape(label) << " | " << count << " |\n";
             }
         }
         sqlite3_finalize(stmt);
         if (!any) {
-            out << "| " << mdEscape(categoryPrefix + "artifacts") << " | — |\n";
+            out << "| " << mdEscape(categoryPrefix + "解析记录") << " | — |\n";
         }
     };
 
     appendRowsForPrefix("linux_", "Linux ");
     appendRowsForPrefix("windows_", "Windows ");
     appendRowsForPrefix("android_", "Android ");
+    for (const auto& [table, label] : std::vector<std::pair<std::string, std::string>>{
+            {"files", "已分类文件"}, {"mobile_artifacts", "鸿蒙手机记录"},
+            {"sms_messages", "短信"}, {"contacts", "联系人"}, {"call_logs", "通话记录"},
+            {"installed_packages", "安装包信息"}, {"wifi_networks", "无线网络"}}) {
+        const int count = tableRowCount(db, table);
+        if (count >= 0) out << "| " << label << " | " << count << " |\n";
+    }
 
     if (!eventDbPath_.empty()) {
         sqlite3* ev = nullptr;
         if (sqlite3_open(eventDbPath_.c_str(), &ev) == SQLITE_OK) {
             int total = tableRowCount(ev, "events");
             if (total >= 0) {
-                out << "| Timeline Events | " << total << " |\n";
+                out << "| 时间线事件 | " << total << " |\n";
             }
             sqlite3_close(ev);
         }
@@ -212,8 +219,8 @@ void ReportGenerator::writeUsers(std::ofstream& out) {
         return;
     }
 
-    out << "## User Accounts\n\n";
-    out << "| Username | UID | GID | Shell | Home Directory | Locked? | System? |\n";
+    out << "## 用户账户\n\n";
+    out << "| 用户名 | 用户编号 | 组编号 | 命令解释器 | 主目录 | 已锁定 | 系统账户 |\n";
     out << "|----------|----:|----:|-------|---------------|:-------:|:-------:|\n";
 
     int rowCount = 0;
@@ -228,15 +235,15 @@ void ReportGenerator::writeUsers(std::ofstream& out) {
 
         out << "| " << mdEscape(username) << " | " << uid << " | " << gid
             << " | `" << mdEscape(shell) << "` | `" << mdEscape(home) << "`"
-            << " | " << (locked ? "🔒 Yes" : "No")
-            << " | " << (sysacct ? "Yes" : "No") << " |\n";
+            << " | " << (locked ? "🔒 Yes" : "否")
+            << " | " << (sysacct ? "是" : "否") << " |\n";
         ++rowCount;
     }
     sqlite3_finalize(stmt);
     sqlite3_close(db);
 
     if (rowCount == 0) {
-        out << "*No user accounts found.*\n";
+        out << "*未发现用户账户。*\n";
     }
     out << "\n---\n\n";
 }
@@ -257,7 +264,7 @@ void ReportGenerator::writeShellHistory(std::ofstream& out) {
         return;
     }
 
-    out << "## Shell History\n\n";
+    out << "## 命令历史\n\n";
     std::set<std::string> users;
     while (sqlite3_step(userStmt) == SQLITE_ROW) {
         users.insert(colText(userStmt, 0));
@@ -265,7 +272,7 @@ void ReportGenerator::writeShellHistory(std::ofstream& out) {
     sqlite3_finalize(userStmt);
 
     if (users.empty()) {
-        out << "*No shell history found.*\n\n---\n\n";
+        out << "*未发现命令历史。*\n\n---\n\n";
         sqlite3_close(db);
         return;
     }
@@ -287,7 +294,7 @@ void ReportGenerator::writeShellHistory(std::ofstream& out) {
         sqlite3_finalize(stmt);
 
         if (cmds.empty()) continue;
-        out << "### " << mdEscape(user) << " (" << cmds.size() << " commands)\n\n";
+        out << "### " << mdEscape(user) << " (" << cmds.size() << " 条命令)\n\n";
         out << "```\n";
         for (const auto& [lineNum, cmd] : cmds) {
             if (lineNum > 0)
@@ -320,7 +327,7 @@ void ReportGenerator::writeCronJobs(std::ofstream& out) {
         return;
     }
 
-    out << "## Cron Jobs\n\n";
+    out << "## 定时任务\n\n";
     int rowCount = 0;
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         std::string user    = colText(stmt, 0);
@@ -333,19 +340,19 @@ void ReportGenerator::writeCronJobs(std::ofstream& out) {
         std::string file    = colText(stmt, 7);
         std::string type    = colText(stmt, 8);
 
-        out << "**Schedule:** `" << minute << " " << hour << " " << dom << " "
+        out << "**计划：** `" << minute << " " << hour << " " << dom << " "
             << month << " " << dow << "` ";
-        out << "| **User:** " << mdEscape(user) << " ";
-        out << "| **Type:** " << mdEscape(type) << "\n";
-        out << "- **Command:** `" << mdEscape(command) << "`\n";
-        out << "- **File:** `" << mdEscape(file) << "`\n\n";
+        out << "| **用户：** " << mdEscape(user) << " ";
+        out << "| **类型：** " << mdEscape(type) << "\n";
+        out << "- **命令：** `" << mdEscape(command) << "`\n";
+        out << "- **文件：** `" << mdEscape(file) << "`\n\n";
         ++rowCount;
     }
     sqlite3_finalize(stmt);
     sqlite3_close(db);
 
     if (rowCount == 0) {
-        out << "*No cron jobs found.*\n\n";
+        out << "*未发现定时任务。*\n\n";
     }
     out << "---\n\n";
 }
@@ -367,8 +374,8 @@ void ReportGenerator::writeNetworkConnections(std::ofstream& out) {
         return;
     }
 
-    out << "## Network Connections\n\n";
-    out << "| Protocol | Local Address:Port | Remote Address:Port | State | Process (PID) |\n";
+    out << "## 网络连接\n\n";
+    out << "| 协议 | 本地地址及端口 | 远程地址及端口 | 状态 | 进程及编号 |\n";
     out << "|----------|-------------------|---------------------|-------|----------------|\n";
 
     int rowCount = 0;
@@ -393,7 +400,7 @@ void ReportGenerator::writeNetworkConnections(std::ofstream& out) {
     sqlite3_close(db);
 
     if (rowCount == 0) {
-        out << "*No network connections found.*\n";
+        out << "*未发现网络连接。*\n";
     }
     out << "\n---\n\n";
 }
@@ -421,11 +428,11 @@ void ReportGenerator::writeLogHighlights(std::ofstream& out) {
         return;
     }
 
-    out << "## Log Highlights\n\n";
-    out << "*Showing non-INFO entries (WARN/ERROR/CRITICAL). Total log entries: "
+    out << "## 重要日志\n\n";
+    out << "*展示警告、错误及严重级别日志。日志总数："
         << total << ".*\n\n";
 
-    out << "| Timestamp | Level | Process | Message |\n";
+    out << "| 时间 | 级别 | 进程 | 日志内容 |\n";
     out << "|-----------|-------|---------|---------|\n";
 
     int rowCount = 0;
@@ -449,7 +456,7 @@ void ReportGenerator::writeLogHighlights(std::ofstream& out) {
     sqlite3_close(db);
 
     if (rowCount == 0) {
-        out << "*No warning/error log entries found (all entries are INFO level).*\n";
+        out << "*未发现警告或错误日志（记录均为信息级别）。*\n";
     }
     out << "\n---\n\n";
 }
@@ -468,9 +475,9 @@ void ReportGenerator::writeSecurityFindings(std::ofstream& out) {
             "SELECT anomaly_type, description, severity, anomaly_subtype "
             "FROM linux_anomalies ORDER BY severity DESC";
         if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-            out << "## Security Findings\n\n";
-            out << "### Detected Anomalies\n\n";
-            out << "| Severity | Type | Subtype | Description |\n";
+            out << "## 安全分析结果\n\n";
+            out << "### 检测到的异常\n\n";
+            out << "| 严重程度 | 类型 | 子类型 | 说明 |\n";
             out << "|:--------:|------|---------|-------------|\n";
 
             int rowCount = 0;
@@ -482,11 +489,11 @@ void ReportGenerator::writeSecurityFindings(std::ofstream& out) {
 
                 std::string sevLabel;
                 switch (severity) {
-                    case 4: sevLabel = "🔴 CRITICAL"; break;
-                    case 3: sevLabel = "🟠 HIGH"; break;
-                    case 2: sevLabel = "🟡 MEDIUM"; break;
-                    case 1: sevLabel = "🔵 LOW"; break;
-                    default: sevLabel = "ℹ️ INFO"; break;
+                    case 4: sevLabel = "🔴 严重"; break;
+                    case 3: sevLabel = "🟠 高"; break;
+                    case 2: sevLabel = "🟡 中"; break;
+                    case 1: sevLabel = "🔵 低"; break;
+                    default: sevLabel = "ℹ️ 信息"; break;
                 }
 
                 out << "| " << sevLabel << " | " << mdEscape(type)
@@ -495,7 +502,7 @@ void ReportGenerator::writeSecurityFindings(std::ofstream& out) {
                 ++rowCount;
             }
             if (rowCount == 0) {
-                out << "*No anomalies detected.*\n";
+                out << "*未检测到异常。*\n";
             }
             out << "\n";
             sqlite3_finalize(stmt);
@@ -509,8 +516,8 @@ void ReportGenerator::writeSecurityFindings(std::ofstream& out) {
             "SELECT tampering_type, severity, description, log_source "
             "FROM linux_tampering_findings ORDER BY severity DESC";
         if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-            out << "### Log Tampering Indicators\n\n";
-            out << "| Severity | Type | Source | Description |\n";
+            out << "### 日志篡改迹象\n\n";
+            out << "| 严重程度 | 类型 | 来源 | 说明 |\n";
             out << "|:--------:|------|--------|-------------|\n";
 
             int rowCount = 0;
@@ -521,10 +528,10 @@ void ReportGenerator::writeSecurityFindings(std::ofstream& out) {
                 std::string src  = colText(stmt, 3);
 
                 std::string sevLabel;
-                if (severity >= 3) sevLabel = "🔴 HIGH";
-                else if (severity >= 2) sevLabel = "🟡 MEDIUM";
-                else if (severity >= 1) sevLabel = "🔵 LOW";
-                else sevLabel = "ℹ️ INFO";
+                if (severity >= 3) sevLabel = "🔴 高";
+                else if (severity >= 2) sevLabel = "🟡 中";
+                else if (severity >= 1) sevLabel = "🔵 低";
+                else sevLabel = "ℹ️ 信息";
 
                 out << "| " << sevLabel << " | " << mdEscape(type)
                     << " | " << mdEscape(src)
@@ -532,7 +539,7 @@ void ReportGenerator::writeSecurityFindings(std::ofstream& out) {
                 ++rowCount;
             }
             if (rowCount == 0) {
-                out << "*No tampering indicators found.*\n";
+                out << "*未发现篡改迹象。*\n";
             }
             out << "\n";
             sqlite3_finalize(stmt);
@@ -540,7 +547,7 @@ void ReportGenerator::writeSecurityFindings(std::ofstream& out) {
     }
 
     if (!tableExists(db, "linux_anomalies") && !tableExists(db, "linux_tampering_findings")) {
-        out << "## Security Findings\n\n*No security tables found.*\n\n";
+        out << "## 安全分析结果\n\n*没有可用的安全分析数据表。*\n\n";
     }
 
     sqlite3_close(db);
@@ -566,8 +573,8 @@ void ReportGenerator::writeTimeline(std::ofstream& out) {
         return;
     }
 
-    out << "## Timeline (Top 100 Events)\n\n";
-    out << "| Timestamp | Type | Path | Description | Severity |\n";
+    out << "## 时间线（前 100 条事件）\n\n";
+    out << "| 时间 | 类型 | 路径 | 说明 | 严重程度 |\n";
     out << "|-----------|------|------|-------------|----------|\n";
 
     int rowCount = 0;
@@ -589,7 +596,7 @@ void ReportGenerator::writeTimeline(std::ofstream& out) {
     sqlite3_close(db);
 
     if (rowCount == 0) {
-        out << "*No timeline events found.*\n";
+        out << "*未发现时间线事件。*\n";
     }
     out << "\n---\n\n";
 }

@@ -3,6 +3,7 @@
 // Extracted from TaskManager.cpp for maintainability; same class, same public API.
 
 #include "TaskManager.h"
+#include "AndroidAnalyzer/HarmonyBackupExtractor.h"
 #include "TaskPersistence.h"
 #include "TaskWatchdog.h"
 #include "TaskSerialization.h"
@@ -414,7 +415,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
             }
             
             if (is_task_cancelled(task_id)) {
-                update_status(task_id, TaskStatus::CANCELLED, "Cancelled before start");
+                update_status(task_id, TaskStatus::CANCELLED, "任务开始前已取消");
                 return;
             }
 
@@ -425,7 +426,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
 
             // Check dependencies
             if (!can_start_task(task_id)) {
-                update_status(task_id, TaskStatus::PENDING, "Waiting for dependencies");
+                update_status(task_id, TaskStatus::PENDING, "等待依赖任务完成");
                 return;
             }
 
@@ -450,8 +451,8 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     return;
                 }
             }
-            update_status(task_id, TaskStatus::RUNNING, "Initializing analysis...");
-            update_progress(task_id, TaskPhase::INITIALIZING, 10, "Initializing analysis environment...");
+            update_status(task_id, TaskStatus::RUNNING, "正在初始化分析…");
+            update_progress(task_id, TaskPhase::INITIALIZING, 10, "正在初始化分析环境…");
 
             if (!std::filesystem::exists(imagePath)) {
                 update_status(task_id, TaskStatus::FAILED, "Image file not found",
@@ -461,6 +462,21 @@ void TaskManager::start_analysis(const std::string& task_id) {
             }
 
             // Generate DB paths
+            const bool harmonyBackup = HarmonyBackupExtractor::recognizes(imagePath);
+            bool harmonyCoverageIncomplete = !task.platform_analyze;
+            if (task.android_source == "harmony-backup" && !harmonyBackup) {
+                update_status(task_id, TaskStatus::FAILED, "INVALID_HARMONY_BACKUP");
+                return;
+            }
+            if (harmonyBackup) {
+                task.android_source = "harmony-backup";
+                task.scenarios = {ForensicScenario::ANDROID};
+                std::lock_guard<std::mutex> lock(mtx_);
+                tasks_[task_id].android_source = task.android_source;
+                tasks_[task_id].scenarios = task.scenarios;
+                tasks_[task_id].metadata["device_platform"] = "HarmonyOS";
+                tasks_[task_id].metadata["source_identity_kind"] = "logical_file_id_not_inode";
+            }
             std::filesystem::path p(imagePath);
             std::string baseName = p.stem().string();
 
@@ -511,7 +527,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 }
             }
 
-            update_progress(task_id, TaskPhase::INITIALIZING, 30, "Analysis environment initialized");
+            update_progress(task_id, TaskPhase::INITIALIZING, 30, "分析环境已初始化");
 
             // ── Logical Android analysis short-circuit ───────────────────────
             // A logical data source (directory / zip / MIUI backup) is NOT a TSK
@@ -528,7 +544,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 task.android_source == "android-container") {
 
                 if (is_task_cancelled(task_id)) {
-                    update_status(task_id, TaskStatus::CANCELLED, "Task cancelled");
+                    update_status(task_id, TaskStatus::CANCELLED, "任务已取消");
                     clear_backup_password(task_id);
                     return;
                 }
@@ -551,7 +567,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 }
 
                 if (is_task_cancelled(task_id)) {
-                    update_status(task_id, TaskStatus::CANCELLED, "Task cancelled");
+                    update_status(task_id, TaskStatus::CANCELLED, "任务已取消");
                     return;
                 }
 
@@ -577,7 +593,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 // so we only surface a progress note here rather than re-running it.
                 if (task.llm_analyze) {
                     update_progress(task_id, TaskPhase::LLM_ANALYSIS, 100,
-                                    "Android artifact LLM analysis completed (per-artifact)");
+                                    "手机记录的逐条智能分析已完成");
                 }
 
                 // No Graphiti gate for logical sources: android.db carries no
@@ -585,7 +601,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 // can never succeed — every dir/zip/miui-backup task failed at
                 // 99% under the SPEC §5 gate. Skip ingestion until a reader for
                 // android.db exists and finalize on the analysis result itself.
-                if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
+                if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "任务已取消"); return; }
                 add_audit_log(task_id, "GRAPHITI_INGESTION",
                               "Skipped: no Graphiti reader for android.db (source: " +
                                   task.android_source + ")");
@@ -618,16 +634,16 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     : locked
                     ? "COMPLETED_WITH_LOCKED_USERDATA: userdata 已识别，但用户加密内容不可读取，Android 工件覆盖不完整。"
                     : incomplete
-                    ? "Android source processed; coverage incomplete, review Android source status"
-                    : "Android source processed; source coverage recorded for review";
+                    ? "手机来源已处理；部分内容未解析，请核对来源覆盖状态"
+                    : "手机来源已处理；已记录来源覆盖情况，请复核";
                 update_progress(task_id, TaskPhase::FINALIZING, 100, message);
                 update_status(task_id, TaskStatus::COMPLETED, message);
                 return;
             }
 
             // 1. Image Analysis
-            if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
-            update_progress(task_id, TaskPhase::IMAGE_ANALYSIS, 10, "Analyzing image structure...");
+            if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "任务已取消"); return; }
+            update_progress(task_id, TaskPhase::IMAGE_ANALYSIS, 10, "正在分析检材结构…");
             auto analyzer = std::make_unique<ImageAnalyzer>(imagePath);
             analyzer->setXFSMode(task.xfs_mode);
             analyzer->setCancellationCallback([this, task_id]() { return is_task_cancelled(task_id); });
@@ -661,7 +677,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                               "detailed TSK/EWF errors.");
                 return;
             }
-            update_progress(task_id, TaskPhase::IMAGE_ANALYSIS, 50, "Image analysis completed, extracting metadata...");
+            update_progress(task_id, TaskPhase::IMAGE_ANALYSIS, 50, "检材结构分析已完成，正在提取元数据…");
 
             if (!analyzer->extractToDatabase(rawDbPath)) {
                 update_status(task_id, TaskStatus::FAILED, "Failed to create raw database",
@@ -671,7 +687,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                               "filesystem walker failed. See cpp_server.log for this task.");
                 return;
             }
-            update_progress(task_id, TaskPhase::IMAGE_ANALYSIS, 100, "Image analysis and metadata extraction completed");
+            update_progress(task_id, TaskPhase::IMAGE_ANALYSIS, 100, "检材结构分析与元数据提取已完成");
 
             // 1.4b. Auto-detect platform scenarios when the user did not pick any.
             // Probes the *un-filtered* raw DB for tell-tale artifact paths and
@@ -679,7 +695,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
             // analyzers run against the right OS. Must run before the filter,
             // since filter profiles drop system-noise — exactly these markers.
             if (task.scenarios.empty()) {
-                if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
+                if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "任务已取消"); return; }
                 update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 2,
                                 "Detecting platform scenarios from image...");
                 SceneDetection detection = detectScenes(rawDbPath);
@@ -710,7 +726,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
             // 1.5. Apply file filter (if profile specified)
             std::string effectiveRawDb = rawDbPath;
             if (!task.filter_profile.empty()) {
-                if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
+                if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "任务已取消"); return; }
                 update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 5, "Applying file filter: " + task.filter_profile + "...");
 
                 try {
@@ -747,8 +763,8 @@ void TaskManager::start_analysis(const std::string& task_id) {
             }
 
             // 2. Event Extraction
-            if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "Task cancelled"); return; }
-            update_progress(task_id, TaskPhase::EVENT_EXTRACTION, 10, "Extracting timeline events...");
+            if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "任务已取消"); return; }
+            update_progress(task_id, TaskPhase::EVENT_EXTRACTION, 10, "正在提取时间线事件…");
             auto eventExtractor = std::make_unique<EventExtractor>(effectiveRawDb, eventDbPath);
             if (!eventExtractor->extractEvents()) {
                 std::cerr << "Error: Failed to extract events from " << effectiveRawDb << std::endl;
@@ -757,11 +773,11 @@ void TaskManager::start_analysis(const std::string& task_id) {
                                   "' (events DB: " + eventDbPath + "). See cpp_server.log.");
                 return;
             }
-            update_progress(task_id, TaskPhase::EVENT_EXTRACTION, 100, "Timeline events extraction completed");
+            update_progress(task_id, TaskPhase::EVENT_EXTRACTION, 100, "时间线事件提取已完成");
 
             // 3. File Classification (scene-aware)
             if (is_task_cancelled(task_id)) { return; }
-            update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 10, "Classifying files by type...");
+            update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 10, "正在按类型分类文件…");
             auto fileClassifier = std::make_unique<FileClassifier>(effectiveRawDb, fileDbPath);
 
             // Map ForensicScenario to SceneType for scene-aware classification
@@ -782,7 +798,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                                   ", files DB: " + fileDbPath + "). See cpp_server.log.");
                 return;
             }
-            update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 100, "File classification completed");
+            update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 100, "文件分类已完成");
 
             // Publish the files DB path as soon as it exists: SPEC E record
             // calls arrive during LLM analysis and resolve the write target
@@ -793,7 +809,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
             // 4. LLM Analysis (Optional) - Stores descriptions directly in _files.db
             if (task.llm_analyze) {
                 if (is_task_cancelled(task_id)) { return; }
-                update_progress(task_id, TaskPhase::LLM_ANALYSIS, 10, "Starting LLM file description generation...");
+                update_progress(task_id, TaskPhase::LLM_ANALYSIS, 10, "正在生成文件智能分析说明…");
                 
                 forensics::LLMAnalysisService llmService;
                 if (llmService.initialize()) {
@@ -811,7 +827,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     
                     if (task.llm_mode == "full") {
                         // Full mode: analyze all files
-                        update_progress(task_id, TaskPhase::LLM_ANALYSIS, 30, "Full mode: Analyzing all files...");
+                        update_progress(task_id, TaskPhase::LLM_ANALYSIS, 30, "完整模式：正在分析全部文件…");
                         analyzedCount = llmService.analyzeAllFiles(fileDbPath, llmOpts,
                             [this, task_id](int current, int total, const std::string& file) -> bool {
                                 if (is_task_cancelled(task_id)) return false;
@@ -928,9 +944,24 @@ void TaskManager::start_analysis(const std::string& task_id) {
                                 auto androidAnalyzer = std::make_unique<AndroidAnalyzer>(imagePath, dbManager.get());
                                 std::string androidDbPath = pm.getTaskDbPaths(task_id, baseName).androidDb.string();
                                 androidAnalyzer->setOutputDatabasePath(androidDbPath);
+                                androidAnalyzer->setSkipAI(!task.llm_analyze);
+                                androidAnalyzer->setSourceCallbacks([this, task_id](std::size_t) { touch_heartbeat(task_id); },
+                                    [this, task_id]() { return is_task_cancelled(task_id); });
                                 if (androidAnalyzer->initialize()) {
                                     androidAnalyzer->analyzeAndroidData();
+                                    if (harmonyBackup) {
+                                        if (!eventExtractor->importAndroidArtifacts(androidDbPath))
+                                            throw std::runtime_error("HARMONY_TIMELINE_IMPORT_FAILED");
+                                        if (!writeAndroidCoverageManifest(task, androidDbPath))
+                                            throw std::runtime_error("HARMONY_COVERAGE_WRITE_FAILED");
+                                        const auto coverage = inspectAndroidCoverage(androidDbPath);
+                                        harmonyCoverageIncomplete = coverage.unresolved > 0;
+                                        std::lock_guard<std::mutex> lock(mtx_);
+                                        tasks_[task_id].metadata["android_db"] = androidDbPath;
+                                        tasks_[task_id].metadata["android_coverage_status"] = coverage.unresolved ? "incomplete" : "parsed_sources_present";
+                                    }
                                 } else {
+                                    if (harmonyBackup) throw std::runtime_error("HARMONY_INIT_FAILED");
                                     std::cerr << "Warning: Failed to initialize Android analyzer" << std::endl;
                                 }
                                 break;
@@ -993,6 +1024,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     } catch (const std::exception& e) {
                         std::cerr << "Warning: " << scenario_name << " analysis failed: " << e.what() << std::endl;
                         add_audit_log(task_id, "WARNING", scenario_name + " analysis failed: " + std::string(e.what()));
+                        if (harmonyBackup) throw;
                     }
 
                     scenario_index++;
@@ -1003,8 +1035,8 @@ void TaskManager::start_analysis(const std::string& task_id) {
             }
 
             // 7. File Carving (Optional) — signature-based recovery from unallocated space
-            if (task.file_carving && !is_task_cancelled(task_id)) {
-                update_progress(task_id, TaskPhase::FILE_CARVING, 0, "Starting file carving...");
+            if (task.file_carving && !harmonyBackup && !is_task_cancelled(task_id)) {
+                update_progress(task_id, TaskPhase::FILE_CARVING, 0, "正在恢复文件…");
                 try {
                     std::filesystem::path carveDir = pm.getTaskDir(task_id) / "carved_files";
                     std::filesystem::create_directories(carveDir);
@@ -1076,8 +1108,11 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 add_audit_log(task_id, "ERROR", "Analysis failed at the Graphiti ingestion gate");
                 return;
             }
-            update_progress(task_id, TaskPhase::FINALIZING, 100, "Analysis completed successfully");
-            update_status(task_id, TaskStatus::COMPLETED, "Analysis completed successfully");
+            const std::string completionMessage = harmonyBackup && harmonyCoverageIncomplete
+                ? "HarmonyOS backup analyzed; some sources are absent or unsupported. Review mobile source coverage."
+                : "Analysis completed successfully";
+            update_progress(task_id, TaskPhase::FINALIZING, 100, completionMessage);
+            update_status(task_id, TaskStatus::COMPLETED, completionMessage);
 
         } catch (const std::exception& e) {
             update_status(task_id, TaskStatus::FAILED, std::string("Analysis error: ") + e.what(),

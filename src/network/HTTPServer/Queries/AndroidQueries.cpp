@@ -163,6 +163,13 @@ json SQLiteHelper::get_android_media_analysis(const std::string& android_db) {
     // Preserve the legacy response shape until a dedicated Android media source exists.
     result["media_files"] = json::array();
     result["media_by_type"] = json::array();
+    if (table_exists(db, "mobile_artifacts")) {
+        result["media_files"] = execute_query(db, "SELECT id,kind,source_path,record_json,related_path,related_status "
+            "FROM mobile_artifacts WHERE kind IN ('media','media_file','recording','call_recording') ORDER BY id LIMIT 1000");
+        result["media_by_type"] = execute_query(db, "SELECT kind,COUNT(*) AS count FROM mobile_artifacts "
+            "WHERE kind IN ('media','media_file','recording','call_recording') GROUP BY kind");
+        result["scope"] = "backup_metadata; related_status indicates whether the referenced file was resolved";
+    }
 
     sqlite3_close(db);
     return result;
@@ -180,8 +187,13 @@ json SQLiteHelper::get_miui_backup_overview(const std::string& android_db) {
     sqlite3* db = open_database(android_db, result);
     if (!db) return result;
 
-    // Backup manifest (single row)
-    if (table_exists(db, "miui_backup_manifest")) {
+    // The existing mobile page consumes both sources; retain MIUI API aliases.
+    if (table_exists(db, "mobile_backup_manifest")) {
+        const auto manifest = execute_query(db, "SELECT platform,device,backup_version,backup_time_ms AS backup_date,"
+            "module_count AS package_count,manifest_sha256,adapter_version FROM mobile_backup_manifest LIMIT 1");
+        result["manifest"] = manifest.empty() ? json::object() : manifest[0];
+        result["artifact_counts"] = execute_query(db, "SELECT kind,COUNT(*) AS count FROM mobile_artifacts GROUP BY kind ORDER BY kind");
+    } else if (table_exists(db, "miui_backup_manifest")) {
         json manifest = execute_query(db, R"(
             SELECT device, miui_version, backup_date, total_size,
                    package_count, source_folder
@@ -618,7 +630,8 @@ json SQLiteHelper::get_android_llm_summary(const std::string& android_db) {
         {"qqnt_sqlite_records",   "QQ SQLite 记录"},
         {"system_logs",           "系统日志"},
         {"device_identifiers",    "设备标识"},
-        {"wifi_networks",         "WiFi 网络"}
+        {"wifi_networks",         "WiFi 网络"},
+        {"mobile_artifacts",      "鸿蒙取证记录"}
     };
 
     json coverage = json::array();

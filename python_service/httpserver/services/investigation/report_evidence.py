@@ -498,11 +498,59 @@ class ReportEvidenceService:
             }
 
         try:
-            return await asyncio.to_thread(_seed)
+            result = await asyncio.to_thread(_seed)
+            if task.get("android_source") == "harmony-backup":
+                mobile = await self._seed_analyzed_mobile(task, added_by=added_by)
+                result["mobile_seeded"] = mobile
+                result["seeded"] += mobile
+            return result
         except sqlite3.DatabaseError as exc:
             raise EvidenceStoreError(
                 "investigation database is unavailable"
             ) from exc
+
+    async def _seed_analyzed_mobile(self, task: dict, *, added_by: str) -> int:
+        """Feed analyzed Harmony rows into the same frozen report evidence path.
+
+        The pipeline invokes this after its existing ingestion tail. A bounded
+        selection of already-analyzed rows is used; this does not call a model
+        or automatically claim that every backup record is relevant evidence.
+        Existing analyst judgments, including exclusions, are retained.
+        """
+        from ..android_coverage import resolve_android_db
+        from ..android_artifact_reader import artifact_detail
+        from ..android_result_sets import freeze_selected_result
+        from .service import InvestigationCaptureService
+        from urllib.parse import quote
+
+        database = resolve_android_db(task)
+        if database is None:
+            return 0
+
+        def candidates():
+            with sqlite3.connect(f"file:{quote(str(database), safe='/')}?mode=ro", uri=True) as con:
+                if not con.execute("SELECT 1 FROM sqlite_master WHERE name='mobile_artifacts'").fetchone():
+                    return []
+                return [row[0] for row in con.execute(
+                    "SELECT id FROM mobile_artifacts WHERE llm_analyzed_at IS NOT NULL "
+                    "AND COALESCE(llm_description,'')<>'' ORDER BY id LIMIT 1000")]
+
+        task_id = task["id"]
+        judged = {item.evidence_key.rsplit(":", 2)[-1] for item in await self.list(task_id)
+                  if item.evidence_key.startswith("android_artifact:") and ":mobile:" in item.evidence_key}
+        capture = InvestigationCaptureService(self._cpp_backend, EvidenceResolver(self._cpp_backend))
+        count = 0
+        for row_id in await asyncio.to_thread(candidates):
+            if str(row_id) in judged:
+                continue
+            detail = await asyncio.to_thread(artifact_detail, task, "mobile", row_id)
+            frozen = await asyncio.to_thread(freeze_selected_result, task, "mobile", row_id,
+                expected_row_hash=detail["record_hash"], expected_source_revision=detail["source_revision"])
+            key = f"android_artifact:v1:{task_id}:{frozen['result_set_id']}:mobile:{row_id}"
+            await capture.capture(task_id, key)
+            await self.add(task_id, key, report_status="main", added_by=added_by)
+            count += 1
+        return count
 
 
 __all__ = ["ReportEvidenceService"]

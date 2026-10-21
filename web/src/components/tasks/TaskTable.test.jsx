@@ -12,7 +12,7 @@ test('completed task links to the versioned report workspace', () => {
     />,
   );
 
-  expect(screen.getByRole('link', { name: 'Report' })).toHaveAttribute(
+  expect(screen.getByRole('link', { name: '报告' })).toHaveAttribute(
     'href',
     '/reports/task/task-1',
   );

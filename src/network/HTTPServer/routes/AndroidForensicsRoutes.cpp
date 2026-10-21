@@ -10,6 +10,9 @@ namespace forensics {
 using json = nlohmann::json;
 
 AndroidForensicsRoutes::AndroidForensicsRoutes(HttpApp& app) {
+    CROW_ROUTE(app, "/api/forensics/android/backup-overview").methods("GET"_method)([this](const crow::request& req) {
+        return handle_miui_backup_overview(req);
+    });
     CROW_ROUTE(app, "/api/forensics/android/communication-summary").methods("GET"_method)([this](const crow::request& req) {
         return handle_android_communication_summary(req);
     });

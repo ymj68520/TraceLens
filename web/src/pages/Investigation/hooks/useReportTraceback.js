@@ -3,7 +3,7 @@ import { getClaimProvenance } from '../../../services/investigationService';
 
 function claimErrorMessage(error) {
   return error?.status === 404
-    ? 'Claim provenance not found.'
+    ? '未找到断言来源。'
     : error?.message || 'Claim provenance request failed.';
 }
 

@@ -17,6 +17,7 @@ public:
     ~AndroidAnalysisDatabase();
 
     bool initialize();
+    sqlite3* handle() const { return db_; }
     
     // System Data
     bool insertBuildProperty(const SystemBuildProperty& prop);

@@ -30,6 +30,7 @@ describe('two-stage report UI', () => {
         draw(<GenerateReportPanel taskId="T" generate={generate} evidenceLoader={loader}
             taskLoader={taskLoader} fetchGeneration={vi.fn()} />);
         fireEvent.change(screen.getByTestId('generate-actor-input'), { target: { value: 'analyst' } });
+        fireEvent.click(screen.getByLabelText('首次：材料自主研判'));
         fireEvent.click(screen.getByTestId('generate-submit'));
         await waitFor(() => expect(generate).toHaveBeenCalledWith('T', { requestedBy: 'analyst', analysisMode: 'evidence_only' }));
         expect(screen.queryByLabelText('本次案情描述')).toBeNull();

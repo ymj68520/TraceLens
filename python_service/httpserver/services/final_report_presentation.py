@@ -11,7 +11,7 @@ from typing import Iterable, Literal
 from .final_report_assembly import FinalReportVersion
 from .section_planning import SECTION_TAXONOMY
 
-FINAL_REPORT_PRESENTATION_VERSION = "report-presentation-v1"
+FINAL_REPORT_PRESENTATION_VERSION = "report-presentation-v2-zh"
 PresentationMode = Literal["screen", "print"]
 
 _CSP = (
@@ -136,15 +136,15 @@ def _markdown_metadata(label: str, values: Iterable[str]) -> str:
 def render_final_report_markdown(report: FinalReportVersion) -> str:
     """Render Markdown from the validated structured report only."""
     validate_final_report_for_presentation(report)
-    lines = ["# Final Report", ""]
+    lines = ["# 取证分析报告", ""]
     for section in report.sections:
         lines.extend([f"## {escape_markdown_text(section.title)}", ""])
         for paragraph in section.paragraphs:
             lines.append(escape_markdown_text(paragraph.text))
             if paragraph.claim_ids:
-                lines.append(_markdown_metadata("claims", paragraph.claim_ids))
+                lines.append(_markdown_metadata("断言", paragraph.claim_ids))
             if paragraph.citation_ids:
-                lines.append(_markdown_metadata("citations", paragraph.citation_ids))
+                lines.append(_markdown_metadata("引用", paragraph.citation_ids))
             lines.append("")
         if not section.paragraphs:
             lines.append("")
@@ -158,7 +158,7 @@ def _html_text(value: object) -> str:
 def _html_metadata(label: str, values: Iterable[str]) -> str:
     return (
         f'<div class="report-metadata" data-kind="{_html_text(label)}">'
-        f'<span class="metadata-label">{_html_text(label)}:</span> '
+        f'<span class="metadata-label">{_html_text({"Claims": "断言", "Citations": "引用"}.get(label, label))}:</span> '
         f'{_html_text(", ".join(values))}</div>'
     )
 
@@ -191,9 +191,9 @@ def _html_body(report: FinalReportVersion) -> str:
         f'data-report-id="{_html_text(report.report_id)}" '
         f'data-report-version="{_html_text(report.report_version)}">'
         '<header class="report-header">'
-        '<h1>Final Report</h1>'
-        f'<p class="report-version">Version {_html_text(report.report_version)}</p>'
-        f'<p class="report-hash">Final Report Hash: {_html_text(report.final_report_hash)}</p>'
+        '<h1>取证分析报告</h1>'
+        f'<p class="report-version">版本 {_html_text(report.report_version)}</p>'
+        f'<p class="report-hash">报告哈希：{_html_text(report.final_report_hash)}</p>'
         "</header>"
         f'{"".join(sections)}'
         "</main>"
@@ -233,12 +233,12 @@ body {{ margin: 0; background: #f8fafc; color: #172033; }}
 """
     return (
         "<!doctype html>\n"
-        '<html lang="en">\n<head>\n'
+        '<html lang="zh-CN">\n<head>\n'
         '<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         f'<meta http-equiv="Content-Security-Policy" content="{_html_text(_CSP)}">\n'
         f'<meta name="tracelens-presentation-version" content="{_html_text(FINAL_REPORT_PRESENTATION_VERSION)}">\n'
-        f'<title>{_html_text("Final Report v" + str(report.report_version))}</title>\n'
+        f'<title>{_html_text("取证分析报告 v" + str(report.report_version))}</title>\n'
         f"<style>{css}</style>\n"
         "</head>\n<body>\n"
         f"{_html_body(report)}\n"

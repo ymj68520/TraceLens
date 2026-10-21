@@ -5,7 +5,7 @@ const DEFAULT_SETTINGS = {
   refreshInterval: 5000,
   autoRefresh: true,
   theme: 'light',
-  language: 'en',
+  language: 'zh',
   itemsPerPage: 20,
   showTerminal: false,
 };
@@ -25,7 +25,7 @@ const loadSettings = () => {
         : undefined,
       autoRefresh: typeof parsed.autoRefresh === 'boolean' ? parsed.autoRefresh : undefined,
       theme: parsed.theme === 'dark' ? 'dark' : parsed.theme === 'light' ? 'light' : undefined,
-      language: parsed.language === 'zh' ? 'zh' : parsed.language === 'en' ? 'en' : undefined,
+      language: 'zh',
       showTerminal: typeof parsed.showTerminal === 'boolean' ? parsed.showTerminal : undefined,
     };
   } catch (error) {
@@ -51,6 +51,7 @@ const settingsSlice = createSlice({
   reducers: {
     updateSettings: (state, action) => {
       Object.assign(state, action.payload);
+      state.language = 'zh';
       persistSettings(state);
     },
     resetSettings: (state) => {

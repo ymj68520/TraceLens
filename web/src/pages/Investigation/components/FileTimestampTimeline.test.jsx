@@ -65,7 +65,7 @@ test('shows the empty and error states', async () => {
 });
 
 test('formatFileTime formats unix seconds and rejects junk', () => {
-  expect(formatFileTime(T0)).toBe(new Date(T0 * 1000).toLocaleString());
+  expect(formatFileTime(T0)).toBe(new Date(T0 * 1000).toLocaleString('zh-CN'));
   expect(formatFileTime(null)).toBeNull();
   expect(formatFileTime('abc')).toBeNull();
 });

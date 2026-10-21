@@ -47,6 +47,7 @@ public:
         SYSTEM_LOG,
         DEVICE_IDENTIFIER,
         WIFI_NETWORK,
+        MOBILE_RECORD,
         ALL
     };
 

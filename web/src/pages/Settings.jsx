@@ -212,8 +212,7 @@ const Settings = () => {
               onChange={(e) => handleSettingChange('language', e.target.value)}
               className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-700 dark:text-white"
             >
-              <option value="en">English</option>
-              <option value="zh">中文</option>
+              <option value="zh">简体中文</option>
             </select>
           </div>
         </div>
