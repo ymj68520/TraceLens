@@ -29,6 +29,7 @@ import {
   FolderOpen,
   HelpCircle,
   History,
+  Laptop,
   Layers,
   ListOrdered,
   Maximize2,
@@ -38,9 +39,11 @@ import {
   Play,
   RefreshCw,
   Search,
+  Server,
   Shield,
   ShieldAlert,
   ShieldCheck,
+  Smartphone,
   Sparkles,
   Square,
   Terminal,
@@ -55,6 +58,7 @@ import Spinner from '../../components/common/Spinner';
 import { useToast } from '../../components/common/ToastContext';
 import { fetchFeatures } from '../../services/featuresService';
 import { fetchTasksSilent } from '../../store/taskSlice';
+import { fetchCases } from '../../store/caseSlice';
 import {
   executeAgentCycle,
   getAgentReviewCandidate,
@@ -110,6 +114,8 @@ const STATUS_VARIANTS = {
   rejected: 'red',
 };
 
+const EMPTY_ARRAY = [];
+
 const DEFAULT_PILLARS = [
   { question_id: 'Q1', status: 'open' },
   { question_id: 'Q2', status: 'open' },
@@ -159,17 +165,117 @@ const PILLAR_METADATA = {
   },
 };
 
+// Device Scope & Provenance Helper
+const getCandidateScopeInfo = (candidate, currentMember = null) => {
+  const refs = candidate?.evidence_refs || [];
+  const scopes = new Set();
+  for (const ref of refs) {
+    if (typeof ref === 'string') {
+      if (ref.startsWith('src_pc:') || ref.startsWith('src_pc/')) scopes.add('src_pc');
+      else if (ref.startsWith('src_server:') || ref.startsWith('src_server/')) scopes.add('src_server');
+      else if (ref.startsWith('src_phone:') || ref.startsWith('src_phone/')) scopes.add('src_phone');
+    }
+  }
+
+  const text = ((candidate?.content || '') + ' ' + (candidate?.candidate_id || '')).toLowerCase();
+  if (
+    text.includes('src_server') ||
+    text.includes('涉案服务器') ||
+    text.includes('bt panel') ||
+    text.includes('宝塔') ||
+    text.includes('rc.local') ||
+    text.includes('gwarp') ||
+    text.includes('chkconfig')
+  ) {
+    scopes.add('src_server');
+  }
+  if (
+    text.includes('src_pc') ||
+    text.includes('嫌疑人计算机') ||
+    text.includes('话术') ||
+    text.includes('truecrypt') ||
+    text.includes('wangwu') ||
+    text.includes('桌面')
+  ) {
+    scopes.add('src_pc');
+  }
+  if (
+    text.includes('src_phone') ||
+    text.includes('涉案手机') ||
+    text.includes('手机') ||
+    text.includes('miui') ||
+    text.includes('chat') ||
+    text.includes('微信') ||
+    text.includes('telegram')
+  ) {
+    scopes.add('src_phone');
+  }
+
+  if (scopes.has('src_pc') && scopes.has('src_server')) {
+    return { scope: 'cross', label: '跨设备关联', Icon: Zap, variant: 'purple' };
+  }
+  if (scopes.has('src_server')) {
+    return { scope: 'src_server', label: '涉案服务器', Icon: Server, variant: 'green' };
+  }
+  if (scopes.has('src_phone')) {
+    return { scope: 'src_phone', label: '涉案手机', Icon: Smartphone, variant: 'purple' };
+  }
+  if (scopes.has('src_pc')) {
+    return { scope: 'src_pc', label: '嫌疑人计算机', Icon: Laptop, variant: 'blue' };
+  }
+  if (currentMember) {
+    return {
+      scope: currentMember.scope,
+      label: currentMember.roleLabel,
+      Icon: currentMember.Icon,
+      variant: currentMember.color,
+    };
+  }
+  return { scope: 'local', label: '本地检材', Icon: Laptop, variant: 'gray' };
+};
+
 export default function AgentWorkbench() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const toast = useToast();
   const { tasks } = useSelector((state) => state.tasks);
+  const cases = useSelector((state) => state.cases?.cases || EMPTY_ARRAY);
 
-  // Task & Investigation context from URL or fallback
+  // Fetch cases if not loaded
+  useEffect(() => {
+    if (!cases || cases.length === 0) {
+      dispatch(fetchCases());
+    }
+  }, [cases?.length, dispatch]);
+
+  // Task & Case context from URL or fallback
+  const caseIdParam = searchParams.get('case_id') || searchParams.get('caseId');
   const taskIdParam = searchParams.get('task_id') || searchParams.get('taskId');
+
+  // Associated Case resolution
+  const associatedCase = useMemo(() => {
+    if (caseIdParam && cases && cases.length > 0) {
+      const found = cases.find((c) => c.id === caseIdParam);
+      if (found) return found;
+    }
+    if (taskIdParam && cases && cases.length > 0) {
+      const found = cases.find((c) => Array.isArray(c.task_ids) && c.task_ids.includes(taskIdParam));
+      if (found) return found;
+    }
+    return null;
+  }, [caseIdParam, taskIdParam, cases]);
+
+  // Mode: cross-image mode is explicitly indicated by case_id param and a valid associated case
+  const isCrossImageMode = useMemo(() => {
+    return Boolean(caseIdParam && associatedCase);
+  }, [caseIdParam, associatedCase]);
+
   const currentTaskId = useMemo(() => {
     if (taskIdParam) return taskIdParam;
+    if (associatedCase && Array.isArray(associatedCase.task_ids) && associatedCase.task_ids.length > 0) {
+      return associatedCase.task_ids[0];
+    }
     if (tasks && tasks.length > 0) {
       // Prioritize completed agent-tagged tasks, then any completed tasks, then any agent tasks
       const completedAgentTask = tasks.find(
@@ -185,7 +291,7 @@ export default function AgentWorkbench() {
       return tasks[0].id;
     }
     return '60dedf82-7f35-48be-a104-b4d283a4fe92'; // Fallback to wo_dian synthetic task
-  }, [taskIdParam, tasks]);
+  }, [taskIdParam, associatedCase, tasks]);
 
   const selectedTask = useMemo(
     () => tasks?.find((t) => t.id === currentTaskId),
@@ -193,10 +299,73 @@ export default function AgentWorkbench() {
   );
   const isTaskRunning = selectedTask?.status?.toLowerCase() === 'running' || selectedTask?.status?.toLowerCase() === 'pending';
 
+  // Member tasks in this case
+  const caseMembers = useMemo(() => {
+    if (!associatedCase || !Array.isArray(associatedCase.task_ids)) {
+      return [];
+    }
+    return associatedCase.task_ids.map((tid) => {
+      const t = (tasks || []).find((x) => x.id === tid) || { id: tid };
+      const imgLower = (t.image_path || '').toLowerCase();
+      const nameLower = (t.task_name || '').toLowerCase();
+      const scope =
+        t.metadata?.device_scope ||
+        t.metadata?.source_label ||
+        (imgLower.includes('server') || imgLower.includes('服务器') || nameLower.includes('server') || nameLower.includes('服务器')
+          ? 'src_server'
+          : imgLower.includes('phone') || imgLower.includes('miui') || imgLower.includes('android') || imgLower.includes('手机') || nameLower.includes('phone') || nameLower.includes('手机')
+          ? 'src_phone'
+          : 'src_pc');
+
+      let roleLabel = '嫌疑人计算机';
+      let Icon = Laptop;
+      let color = 'blue';
+      if (scope === 'src_server') {
+        roleLabel = '涉案服务器';
+        Icon = Server;
+        color = 'emerald';
+      } else if (scope === 'src_phone') {
+        roleLabel = '涉案手机';
+        Icon = Smartphone;
+        color = 'purple';
+      }
+
+      const imageName =
+        t.image_path ? t.image_path.split('/').pop() :
+        t.task_name ? t.task_name :
+        `镜像设备 ${tid.slice(0, 8)}`;
+
+      return {
+        id: tid,
+        task: t,
+        scope,
+        roleLabel,
+        Icon,
+        color,
+        imageName,
+        isCurrent: tid === currentTaskId,
+        status: t.status || 'completed',
+      };
+    });
+  }, [associatedCase, tasks, currentTaskId]);
+
+  const currentMember = useMemo(
+    () => caseMembers.find((m) => m.isCurrent) || caseMembers[0] || null,
+    [caseMembers]
+  );
+
   const investigationIdParam = searchParams.get('investigation_id') || searchParams.get('investigationId');
   const [investigationId, setInvestigationId] = useState(
     investigationIdParam || (currentTaskId === '60dedf82-7f35-48be-a104-b4d283a4fe92' ? 'inv_wo_dian_002' : null)
   );
+
+  useEffect(() => {
+    if (investigationIdParam) {
+      setInvestigationId(investigationIdParam);
+    } else {
+      setInvestigationId(null);
+    }
+  }, [currentTaskId, investigationIdParam]);
 
   // Poll tasks if current task is running
   useEffect(() => {
@@ -213,13 +382,14 @@ export default function AgentWorkbench() {
       setSearchParams(
         (prev) => {
           prev.set('task_id', currentTaskId);
+          if (caseIdParam) prev.set('case_id', caseIdParam);
           if (investigationId) prev.set('investigation_id', investigationId);
           return prev;
         },
         { replace: true }
       );
     }
-  }, [taskIdParam, currentTaskId, investigationId, setSearchParams]);
+  }, [taskIdParam, currentTaskId, caseIdParam, investigationId, setSearchParams]);
 
   // Feature gate
   const [featureEnabled, setFeatureEnabled] = useState(true);
@@ -341,6 +511,7 @@ export default function AgentWorkbench() {
 
   // Filter tabs (Middle Panel)
   const [filterType, setFilterType] = useState('all'); // 'all' | 'FACT' | 'HYPOTHESIS' | 'review_pending'
+  const [deviceFilter, setDeviceFilter] = useState('all'); // 'all' | 'src_pc' | 'src_server' | 'src_phone' | 'cross'
 
   // Selected Evidence modal / preview
   const [previewEvidence, setPreviewEvidence] = useState(null);
@@ -881,6 +1052,12 @@ export default function AgentWorkbench() {
   // Filtered candidates
   const filteredCandidates = useMemo(() => {
     let list = candidates;
+    if (isCrossImageMode && deviceFilter !== 'all') {
+      list = list.filter((c) => {
+        const info = getCandidateScopeInfo(c, currentMember);
+        return info.scope === deviceFilter;
+      });
+    }
     if (selectedQuestionId) {
       // Find the selected question (could be a root or a child)
       const targetQuestions = [];
@@ -974,7 +1151,7 @@ export default function AgentWorkbench() {
       return list.filter((c) => c.review_status === 'review_pending');
     }
     return list;
-  }, [candidates, filterType, selectedQuestionId]);
+  }, [candidates, filterType, selectedQuestionId, isCrossImageMode, deviceFilter, currentMember]);
 
   const activeCandidate = candidateDetail || candidates.find((c) => c.candidate_id === selectedCandidateId);
   const selectedQuestionInfo = useMemo(() => {
@@ -1054,6 +1231,87 @@ export default function AgentWorkbench() {
                   会话: {investigationId || '待初始化'}
                 </span>
               </div>
+
+              {/* Mode & Associated Case Identifier */}
+              <div className="mt-2 flex items-center gap-2 flex-wrap" data-testid="agent-mode-identifier">
+                {isCrossImageMode ? (
+                  <>
+                    <span
+                      data-testid="mode-badge-cross-image"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-200 border border-purple-300 dark:border-purple-700 shadow-sm"
+                    >
+                      <Network className="w-3.5 h-3.5 text-purple-600 dark:text-purple-300 animate-pulse" />
+                      <span>🌐 跨镜像多设备联合研判模式</span>
+                      <span className="px-1.5 py-0.2 rounded-full bg-purple-200/80 dark:bg-purple-800/80 text-[10px] font-bold">
+                        {caseMembers.length} 设备协同
+                      </span>
+                    </span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                      <span>所属案件:</span>
+                      <strong className="text-slate-800 dark:text-slate-200">{associatedCase?.name || associatedCase?.id}</strong>
+                    </span>
+                    {currentMember && (
+                      <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
+                        当前工作区: <span className="text-purple-600 dark:text-purple-400 font-semibold">{currentMember.roleLabel} ({currentMember.imageName})</span>
+                      </span>
+                    )}
+                    <Link
+                      to={`/case-intelligence?case_id=${encodeURIComponent(associatedCase?.id)}&tab=cross-image`}
+                      className="text-xs text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-0.5 ml-1"
+                    >
+                      <span>案件智能全景</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </Link>
+                    <button
+                      type="button"
+                      data-testid="btn-switch-to-single-device"
+                      onClick={() => {
+                        setSearchParams((prev) => {
+                          prev.delete('case_id');
+                          return prev;
+                        });
+                      }}
+                      className="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 underline ml-1"
+                      title="切换到仅针对当前单设备的专注研判视图"
+                    >
+                      切换为单设备专注模式
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span
+                      data-testid="mode-badge-single-image"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700"
+                    >
+                      <Laptop className="w-3.5 h-3.5 text-slate-500" />
+                      <span>🖥️ 单镜像独立调查模式</span>
+                    </span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                      <span>当前镜像:</span>
+                      <strong className="text-slate-800 dark:text-slate-200 font-mono">
+                        {selectedTask?.image_path ? selectedTask.image_path.split('/').pop() : selectedTask?.task_name || currentTaskId}
+                      </strong>
+                    </span>
+                    {associatedCase && (
+                      <button
+                        type="button"
+                        data-testid="btn-switch-to-cross-image"
+                        onClick={() => {
+                          setSearchParams((prev) => {
+                            prev.set('case_id', associatedCase.id);
+                            return prev;
+                          });
+                        }}
+                        className="inline-flex items-center gap-1 text-xs text-purple-600 dark:text-purple-400 font-semibold hover:underline ml-1"
+                      >
+                        <span>所属案件「{associatedCase.name}」({associatedCase.task_ids?.length || 0}设备) · 切换为跨镜像联合研判</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+
               <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-1 line-clamp-1">
                 <strong>案件目标：</strong>{' '}
                 {agentState?.objective ||
@@ -1083,16 +1341,25 @@ export default function AgentWorkbench() {
             </Button>
 
             <Link
-              to={`/case-intelligence?task_id=${encodeURIComponent(currentTaskId)}&tab=forensic`}
+              data-testid="btn-view-investigation-report"
+              to={
+                isCrossImageMode && associatedCase
+                  ? `/case-intelligence?case_id=${encodeURIComponent(associatedCase.id)}&task_id=${encodeURIComponent(currentTaskId)}&tab=cross-image`
+                  : `/case-intelligence?task_id=${encodeURIComponent(currentTaskId)}&tab=forensic`
+              }
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60 shadow-sm transition-all"
             >
               <FileCheck2 className="w-3.5 h-3.5 text-teal-500" />
-              <span>查看调查报告</span>
-              {latestReportVersion && (
+              <span>{isCrossImageMode ? '查看跨镜像研判报告' : '查看调查报告'}</span>
+              {isCrossImageMode ? (
+                <span className="ml-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-mono bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 font-bold">
+                  案件级
+                </span>
+              ) : latestReportVersion ? (
                 <span className="ml-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-mono bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 font-bold">
                   v{latestReportVersion.version}
                 </span>
-              )}
+              ) : null}
             </Link>
 
             {isAutoPropelling ? (
@@ -1281,6 +1548,120 @@ export default function AgentWorkbench() {
           </div>
         )}
       </div>
+
+      {/* ── Cross-Image Member Images Matrix (Shown in Cross-Image Mode) ────── */}
+      {isCrossImageMode && caseMembers.length > 0 && (
+        <div
+          data-testid="case-member-matrix"
+          className="rounded-2xl glass-strong border border-purple-200/70 dark:border-purple-900/50 p-4 shadow-sm bg-gradient-to-r from-purple-50/40 via-indigo-50/20 to-transparent dark:from-purple-950/20 dark:via-indigo-950/10"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-purple-100 dark:border-purple-900/40">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-lg bg-purple-600 text-white flex items-center justify-center text-xs font-bold shadow-sm">
+                <Layers className="w-3.5 h-3.5" />
+              </div>
+              <span className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider flex items-center gap-1.5">
+                涉案设备镜像协同矩阵 (Member Devices Matrix)
+                <span className="text-[10px] font-normal text-purple-700 dark:text-purple-300 font-mono bg-purple-100/70 dark:bg-purple-900/50 px-1.5 py-0.5 rounded">
+                  共 {caseMembers.length} 台协同源
+                </span>
+              </span>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
+                <span>点击卡片可快速切换当前研判焦点工作区</span>
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-3">
+            {caseMembers.map((member) => {
+              const { Icon } = member;
+              const isFocus = member.isCurrent;
+              return (
+                <div
+                  key={member.id}
+                  data-testid={`case-member-card-${member.id}`}
+                  onClick={() => {
+                    if (!member.isCurrent) {
+                      setSearchParams((prev) => {
+                        prev.set('task_id', member.id);
+                        if (associatedCase) prev.set('case_id', associatedCase.id);
+                        prev.delete('investigation_id');
+                        return prev;
+                      });
+                    }
+                  }}
+                  className={`p-3 rounded-xl border transition-all cursor-pointer select-none flex flex-col justify-between gap-2.5 ${
+                    isFocus
+                      ? 'border-purple-500/80 bg-white dark:bg-slate-800 shadow-md ring-2 ring-purple-500/30'
+                      : 'border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50 hover:border-purple-300 hover:bg-slate-50 dark:hover:bg-slate-800/80'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div
+                        className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                          isFocus
+                            ? 'bg-purple-600 text-white shadow-sm'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                        }`}
+                      >
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                            {member.roleLabel}
+                          </span>
+                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                            {member.scope}
+                          </span>
+                        </div>
+                        <div
+                          className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate mt-0.5"
+                          title={member.imageName}
+                        >
+                          {member.imageName}
+                        </div>
+                      </div>
+                    </div>
+
+                    {isFocus ? (
+                      <span className="shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-700 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-purple-600 animate-ping" />
+                        当前聚焦
+                      </span>
+                    ) : (
+                      <span className="shrink-0 text-[10px] text-slate-400 hover:text-purple-600 flex items-center gap-0.5">
+                        <span>切换至此</span>
+                        <ChevronRight className="w-3 h-3" />
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1.5 border-t border-slate-100 dark:border-slate-800/60 text-[10px] text-slate-400 font-mono">
+                    <span className="flex items-center gap-1">
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          member.status === 'completed'
+                            ? 'bg-emerald-500'
+                            : member.status === 'running'
+                            ? 'bg-amber-500 animate-ping'
+                            : 'bg-slate-400'
+                        }`}
+                      />
+                      <span>状态: {member.status === 'completed' ? '就绪' : member.status}</span>
+                    </span>
+                    <span className="truncate max-w-[120px]">{member.id.slice(0, 8)}...</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── 3-Column Modern Agent Studio Layout ───────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 min-h-[720px]">
@@ -1560,7 +1941,7 @@ export default function AgentWorkbench() {
             </div>
 
             {/* Filter Tabs */}
-            <div className="flex items-center justify-between py-2.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-2.5">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5 shrink-0">
                   <Layers className="w-3.5 h-3.5 text-purple-500" />
@@ -1581,27 +1962,53 @@ export default function AgentWorkbench() {
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg text-xs">
-                {['all', 'FACT', 'HYPOTHESIS', 'review_pending'].map((type) => (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => setFilterType(type)}
-                    className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-all ${
-                      filterType === type
-                        ? 'bg-white dark:bg-slate-700 text-purple-700 dark:text-purple-300 shadow-sm'
-                        : 'text-slate-500 hover:text-slate-700'
-                    }`}
-                  >
-                    {type === 'all'
-                      ? '全部'
-                      : type === 'FACT'
-                      ? '事实'
-                      : type === 'HYPOTHESIS'
-                      ? '假说'
-                      : '待审'}
-                  </button>
-                ))}
+              <div className="flex items-center gap-2 flex-wrap">
+                {isCrossImageMode && (
+                  <div className="flex items-center gap-0.5 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg text-xs" data-testid="filter-device-group">
+                    {[
+                      { id: 'all', label: '全部设备' },
+                      { id: 'src_pc', label: 'PC' },
+                      { id: 'src_server', label: '服务器' },
+                      { id: 'cross', label: '跨源' },
+                    ].map((df) => (
+                      <button
+                        key={df.id}
+                        type="button"
+                        data-testid={`filter-device-${df.id}`}
+                        onClick={() => setDeviceFilter(df.id)}
+                        className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
+                          deviceFilter === df.id
+                            ? 'bg-purple-600 text-white shadow-sm font-semibold'
+                            : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                        }`}
+                      >
+                        {df.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg text-xs">
+                  {['all', 'FACT', 'HYPOTHESIS', 'review_pending'].map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setFilterType(type)}
+                      className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-all ${
+                        filterType === type
+                          ? 'bg-white dark:bg-slate-700 text-purple-700 dark:text-purple-300 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                    >
+                      {type === 'all'
+                        ? '全部'
+                        : type === 'FACT'
+                        ? '事实'
+                        : type === 'HYPOTHESIS'
+                        ? '假说'
+                        : '待审'}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -1633,6 +2040,7 @@ export default function AgentWorkbench() {
                 const isSelected = c.candidate_id === selectedCandidateId;
                 const epistemicVariant = EPISTEMIC_VARIANTS[c.claim_type] || 'gray';
                 const statusVariant = STATUS_VARIANTS[c.review_status] || 'gray';
+                const scopeInfo = getCandidateScopeInfo(c, currentMember);
 
                 return (
                   <div
@@ -1646,7 +2054,7 @@ export default function AgentWorkbench() {
                     }`}
                   >
                     <div className="flex items-center justify-between gap-1">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <Badge size="xs" variant={epistemicVariant}>
                           {c.claim_type}
                         </Badge>
@@ -1656,6 +2064,23 @@ export default function AgentWorkbench() {
                         <Badge size="xs" variant="blue">
                           {c.grounding_status}
                         </Badge>
+                        {isCrossImageMode && (
+                          <span
+                            data-testid={`badge-scope-${c.candidate_id}`}
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-medium font-mono ${
+                              scopeInfo.scope === 'cross'
+                                ? 'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-700'
+                                : scopeInfo.scope === 'src_server'
+                                ? 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                                : scopeInfo.scope === 'src_phone'
+                                ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-700'
+                                : 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700'
+                            }`}
+                          >
+                            <scopeInfo.Icon className="w-2.5 h-2.5" />
+                            <span>{scopeInfo.label}</span>
+                          </span>
+                        )}
                       </div>
                       <span className="text-[10px] font-mono text-slate-400">
                         Rev {c.source_revision}
@@ -1679,10 +2104,17 @@ export default function AgentWorkbench() {
             {activeCandidate && (
               <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                    <FileSearch className="w-3.5 h-3.5 text-purple-500" />
-                    事实依据与证据链溯源 (Provenance)
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <FileSearch className="w-3.5 h-3.5 text-purple-500" />
+                      事实依据与证据链溯源 (Provenance)
+                    </span>
+                    {isCrossImageMode && (
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                        来源: {getCandidateScopeInfo(activeCandidate, currentMember).label}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-[10px] font-mono text-slate-400">
                     ID: {activeCandidate.candidate_id}
                   </span>
@@ -1709,20 +2141,41 @@ export default function AgentWorkbench() {
 
                 {/* Provenance Evidence Buttons */}
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  {activeCandidate.evidence_refs?.map((ref) => (
-                    <button
-                      key={ref}
-                      type="button"
-                      data-testid={`evidence-ref-${ref}`}
-                      data-testid-alt="btn-evidence-provenance"
-                      onClick={() => setPreviewEvidence(ref)}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-950/30 text-[11px] font-mono text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors"
-                      title="点击溯源并查看此底层证据"
-                    >
-                      <FileText className="w-3 h-3" />
-                      <span>{ref}</span>
-                    </button>
-                  ))}
+                  {activeCandidate.evidence_refs?.map((ref) => {
+                    const isServer = ref.startsWith('src_server:') || ref.startsWith('src_server/');
+                    const isPC = ref.startsWith('src_pc:') || ref.startsWith('src_pc/');
+                    const isPhone = ref.startsWith('src_phone:') || ref.startsWith('src_phone/');
+                    return (
+                      <button
+                        key={ref}
+                        type="button"
+                        data-testid={`evidence-ref-${ref}`}
+                        data-testid-alt="btn-evidence-provenance"
+                        onClick={() => setPreviewEvidence(ref)}
+                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[11px] font-mono transition-colors ${
+                          isServer
+                            ? 'border-emerald-300 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100'
+                            : isPC
+                            ? 'border-blue-300 dark:border-blue-800 bg-blue-50/70 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 hover:bg-blue-100'
+                            : isPhone
+                            ? 'border-purple-300 dark:border-purple-800 bg-purple-50/70 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 hover:bg-purple-100'
+                            : 'border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/50'
+                        }`}
+                        title={`点击溯源并查看此底层证据 (${isServer ? '涉案服务器' : isPC ? '嫌疑人计算机' : isPhone ? '涉案手机' : '单机'})`}
+                      >
+                        {isServer ? (
+                          <Server className="w-3 h-3 text-emerald-600" />
+                        ) : isPC ? (
+                          <Laptop className="w-3 h-3 text-blue-600" />
+                        ) : isPhone ? (
+                          <Smartphone className="w-3 h-3 text-purple-600" />
+                        ) : (
+                          <FileText className="w-3 h-3" />
+                        )}
+                        <span>{ref}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -1875,17 +2328,26 @@ export default function AgentWorkbench() {
             {/* Final Report Card Footer */}
             <div className="mt-auto pt-3 border-t border-slate-100 dark:border-slate-800">
               <Link
-                to={`/case-intelligence?task_id=${encodeURIComponent(currentTaskId)}&tab=forensic`}
+                data-testid="btn-view-final-report-footer"
+                to={
+                  isCrossImageMode && associatedCase
+                    ? `/case-intelligence?case_id=${encodeURIComponent(associatedCase.id)}&task_id=${encodeURIComponent(currentTaskId)}&tab=cross-image`
+                    : `/case-intelligence?task_id=${encodeURIComponent(currentTaskId)}&tab=forensic`
+                }
                 className="w-full flex items-center justify-between p-2.5 rounded-xl bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200/60 dark:border-purple-900/40 hover:bg-purple-100/50 transition-colors text-xs font-semibold text-purple-700 dark:text-purple-300"
               >
                 <div className="flex items-center gap-2">
                   <FileText className="w-4 h-4 text-purple-500" />
-                  <span>终审调查报告</span>
-                  {latestReportVersion && (
+                  <span>{isCrossImageMode ? '跨镜像终审研判报告' : '终审调查报告'}</span>
+                  {isCrossImageMode ? (
+                    <Badge size="xs" variant="purple">
+                      案件跨源
+                    </Badge>
+                  ) : latestReportVersion ? (
                     <Badge size="xs" variant="purple">
                       v{latestReportVersion.version} 就绪
                     </Badge>
-                  )}
+                  ) : null}
                 </div>
                 <ArrowRight className="w-3.5 h-3.5" />
               </Link>

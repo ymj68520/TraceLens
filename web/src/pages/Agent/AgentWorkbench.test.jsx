@@ -103,12 +103,31 @@ const mockTrajectoryEvents = [
   },
 ];
 
-function renderAgentWorkbench(route = '/agent?task_id=task-test-01&investigation_id=inv_wo_dian_002') {
+function renderAgentWorkbench(
+  route = '/agent?task_id=task-test-01&investigation_id=inv_wo_dian_002',
+  initialCases = []
+) {
   const store = configureStore({
     reducer: {
       tasks: () => ({
-        tasks: [{ id: 'task-test-01', status: 'completed', metadata: { workflow_type: 'agent' } }],
+        tasks: [
+          {
+            id: 'task-test-01',
+            status: 'completed',
+            image_path: '/data/窝点嫌疑人计算机镜像.E01',
+            metadata: { workflow_type: 'agent', device_scope: 'src_pc' },
+          },
+          {
+            id: 'task-test-02',
+            status: 'completed',
+            image_path: '/data/服务器镜像.E01',
+            metadata: { workflow_type: 'agent', device_scope: 'src_server' },
+          },
+        ],
         currentTask: { id: 'task-test-01' },
+      }),
+      cases: () => ({
+        cases: initialCases,
       }),
     },
   });
@@ -247,4 +266,39 @@ test('R6: Start Agent Cycle button triggers executeAgentCycle', async () => {
       'task-test-01'
     );
   });
+});
+
+test('R7: Single-image mode renders single-image badge and current image info', async () => {
+  renderAgentWorkbench('/agent?task_id=task-test-01');
+
+  expect(await screen.findByTestId('mode-badge-single-image')).toBeInTheDocument();
+  expect(screen.getByText('🖥️ 单镜像独立调查模式')).toBeInTheDocument();
+  expect(screen.getByText('窝点嫌疑人计算机镜像.E01')).toBeInTheDocument();
+  expect(screen.queryByTestId('case-member-matrix')).not.toBeInTheDocument();
+});
+
+test('R8: Cross-image mode renders cross-image badge, member matrix, and device badges on candidates', async () => {
+  const mockCase = {
+    id: 'case-01',
+    name: '杀猪盘团伙专案',
+    task_ids: ['task-test-01', 'task-test-02'],
+  };
+
+  renderAgentWorkbench('/agent?task_id=task-test-01&case_id=case-01', [mockCase]);
+
+  // Mode badge
+  expect(await screen.findByTestId('mode-badge-cross-image')).toBeInTheDocument();
+  expect(screen.getByText(/跨镜像多设备联合研判模式/)).toBeInTheDocument();
+  expect(screen.getByText('杀猪盘团伙专案')).toBeInTheDocument();
+
+  // Member matrix
+  expect(screen.getByTestId('case-member-matrix')).toBeInTheDocument();
+  expect(screen.getByTestId('case-member-card-task-test-01')).toBeInTheDocument();
+  expect(screen.getByTestId('case-member-card-task-test-02')).toBeInTheDocument();
+
+  // Device Filter Group
+  expect(screen.getByTestId('filter-device-group')).toBeInTheDocument();
+
+  // Candidate badges
+  expect(screen.getByTestId('badge-scope-f-pillar1-scripts-01')).toHaveTextContent(/嫌疑人计算机/);
 });
