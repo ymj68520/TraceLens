@@ -238,6 +238,28 @@ class CppBackendService:
         if isinstance(result, dict) and result.get("id") == case_id:
             return result
         return None
+
+    async def create_case(
+        self, name: str, description: str, task_ids: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """Create a new forensic case in C++ backend."""
+        payload = {
+            "name": name,
+            "description": description,
+            "task_ids": task_ids or [],
+        }
+        return await self._request("POST", "/api/cases", json=payload)
+
+    async def add_tasks_to_case(
+        self, case_id: str, task_ids: List[str]
+    ) -> Dict[str, Any]:
+        """Add task_ids to an existing case in C++ backend."""
+        if not case_id or case_id in {".", ".."}:
+            raise ValueError(f"Invalid case_id: {case_id}")
+        case_segment = quote(case_id, safe="")
+        return await self._request(
+            "PUT", f"/api/cases/{case_segment}/tasks", json={"task_ids": task_ids}
+        )
     
     # File Operations
     

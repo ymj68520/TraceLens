@@ -40,8 +40,8 @@ def sync_agent_evidence_sync(task_id: str, db_path: Path, files_db_path: Optiona
         conn.row_factory = sqlite3.Row
         conn.execute("BEGIN IMMEDIATE")
 
-        # 1. Collect all evidence keys from findings
-        finding_file_paths: set[str] = set()
+        # 1. Collect all evidence keys from findings (supporting FQER)
+        finding_file_paths: set[tuple[str, str]] = set()  # (ev_key, normalized_path)
         findings = conn.execute(
             "SELECT evidence_refs_json FROM investigation_findings WHERE task_id = ?",
             (task_id,),
@@ -52,8 +52,11 @@ def sync_agent_evidence_sync(task_id: str, db_path: Path, files_db_path: Optiona
             try:
                 refs = json.loads(f["evidence_refs_json"]).get("refs", [])
                 for ref in refs:
-                    if isinstance(ref, str) and ref.startswith("file:"):
-                        finding_file_paths.add(ref[5:])
+                    if not isinstance(ref, str):
+                        continue
+                    if ":file:" in ref or ref.startswith("file:"):
+                        norm_p = ref.split(":file:", 1)[1] if ":file:" in ref else ref[5:]
+                        finding_file_paths.add((ref, norm_p))
             except Exception:
                 pass
 
@@ -62,8 +65,7 @@ def sync_agent_evidence_sync(task_id: str, db_path: Path, files_db_path: Optiona
             try:
                 with sqlite3.connect(f"file:{files_db_path}?mode=ro", uri=True) as files_conn:
                     files_conn.row_factory = sqlite3.Row
-                    for path in finding_file_paths:
-                        ev_key = f"file:{path}"
+                    for ev_key, path in finding_file_paths:
                         exists = conn.execute(
                             "SELECT 1 FROM evidence_snapshots WHERE task_id = ? AND evidence_key = ?",
                             (task_id, ev_key),
