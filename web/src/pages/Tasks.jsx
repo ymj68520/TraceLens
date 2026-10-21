@@ -11,7 +11,7 @@ import Button from '../components/common/Button';
 import Spinner from '../components/common/Spinner';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import { useToast } from '../components/common/ToastContext';
-import { TASK_STATUS, TASK_PRIORITY } from '../utils/constants';
+import { TASK_STATUS, TASK_PRIORITY, taskStatusZh, taskPriorityZh } from '../utils/constants';
 import TaskTable from '../components/tasks/TaskTable';
 import CreateTaskModal from '../components/tasks/CreateTaskModal';
 import AddTasksToCaseModal from '../components/tasks/AddTasksToCaseModal';

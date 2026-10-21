@@ -213,7 +213,7 @@ const Android = () => {
       <AndroidArtifactsCard taskId={taskId} platform={manifest.platform} />
       {manifest.platform === 'HarmonyOS' && <Card title="鸿蒙解析概览" subtitle="以下为解析记录数；媒体记录不等于原图数量，内容块不等于笔记篇数。"><div className="flex flex-wrap gap-4">{(overview?.artifact_counts || []).map((row) => <div key={row.kind} className="rounded-lg bg-slate-50 px-4 py-3"><div className="text-sm text-slate-600">{MOBILE_LABELS[row.kind] || row.kind}</div><strong>{Number(row.count).toLocaleString('zh-CN')}</strong></div>)}</div></Card>}
       <div className="border-b border-slate-200 overflow-x-auto">
-        <nav className="-mb-px flex space-x-8 min-w-max" aria-label="Tabs">
+        <nav className="-mb-px flex space-x-8 min-w-max" aria-label="页签">
           {[
             { id: 'overview', label: '📦 备份概览', hasData: tabData.overview },
             { id: 'apps', label: '📱 已备份应用', hasData: tabData.apps },

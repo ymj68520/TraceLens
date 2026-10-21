@@ -6,6 +6,7 @@ import { fetchTasks, fetchTaskStatistics } from '../store/taskSlice';
 import { getSystemHealth, getPythonHealth, getAnalysisHealth, exportToon } from '../services/systemService';
 import { getLLMStatus } from '../services/llmService';
 import { getGraphitiStatus } from '../services/graphitiService';
+import { taskStatusZh } from '../utils/constants';
 import Card from '../components/common/Card';
 import Badge from '../components/common/Badge';
 import Spinner from '../components/common/Spinner';
@@ -39,10 +40,10 @@ const Dashboard = () => {
       const cppStart = Date.now();
       try {
         const health = await getSystemHealth();
-        setSystemHealth({ status: 'online', message: 'Online', data: health });
+        setSystemHealth({ status: 'online', message: '在线', data: health });
         setDepHealth((prev) => ({ ...prev, cpp: { ...prev.cpp, status: 'online', latency: Date.now() - cppStart } }));
       } catch {
-        setSystemHealth({ status: 'offline', message: 'Offline' });
+        setSystemHealth({ status: 'offline', message: '离线' });
         setDepHealth((prev) => ({ ...prev, cpp: { ...prev.cpp, status: 'offline' } }));
       }
       const pyStart = Date.now();
@@ -276,13 +277,13 @@ const Dashboard = () => {
       </Card>
 
       {/* System Info */}
-      <Card title="System Information">
+      <Card title="系统信息">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[
-            { label: 'Server Status', value: systemHealth.message, dot: systemHealth.status },
-            { label: 'API Version', value: systemHealth.data?.version || 'v1.0.0' },
-            { label: 'Backend', value: 'C++20 + Crow Framework' },
-            { label: 'Supported Formats', value: 'E01, DD, RAW' },
+            { label: '服务状态', value: systemHealth.message, dot: systemHealth.status },
+            { label: 'API 版本', value: systemHealth.data?.version || 'v1.0.0' },
+            { label: '后端框架', value: 'C++20 + Crow Framework' },
+            { label: '支持的镜像格式', value: 'E01、DD、RAW' },
           ].map((item) => (
             <div key={item.label}>
               <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">{item.label}</p>

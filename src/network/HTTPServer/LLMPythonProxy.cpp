@@ -326,4 +326,43 @@ bool LLMPythonProxy::wait_for_job_completion(
     }
 }
 
+bool LLMPythonProxy::trigger_report_tail(const std::string& task_id) {
+    try {
+        httplib::Client cli(python_service_url_);
+        configure_field_client(cli);
+        cli.set_connection_timeout(10);
+        cli.set_read_timeout(60);
+        nlohmann::json body = {{"task_id", task_id}, {"requested_by", "pipeline"}};
+        auto res = cli.Post("/api/reports/pipeline-tail", body.dump(), "application/json");
+        if (res && (res->status == 200 || res->status == 202)) {
+            auto response = nlohmann::json::parse(res->body);
+            const std::string state = response.value("state", "");
+            return state == "running" || state == "completed";
+        }
+    } catch (...) {
+    }
+    return false;
+}
+
+LLMPythonProxy::ReportTailStatus LLMPythonProxy::get_report_tail_status(const std::string& task_id) {
+    ReportTailStatus status;
+    status.state = "unknown";
+    try {
+        httplib::Client cli(python_service_url_);
+        configure_field_client(cli);
+        cli.set_connection_timeout(5);
+        cli.set_read_timeout(15);
+        auto res = cli.Get(("/api/reports/pipeline-tail/status?task_id=" + task_id).c_str());
+        if (res && res->status == 200) {
+            auto response = nlohmann::json::parse(res->body);
+            status.state = response.value("state", "unknown");
+            status.generation_id = response.value("generation_id", "");
+            status.report_id = response.value("report_id", "");
+            status.error_code = response.value("error_code", "");
+        }
+    } catch (...) {
+    }
+    return status;
+}
+
 } // namespace forensics

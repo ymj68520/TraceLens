@@ -85,7 +85,7 @@ test('renders selected report, sections, paragraph metadata, and only Assembled 
   expect(screen.getByText('断言 claim-1')).toBeInTheDocument();
   expect(screen.getByText('CIT-001')).toBeInTheDocument();
   expect(screen.getByText('Section 5')).toBeInTheDocument();
-  expect(screen.queryByText('Published')).not.toBeInTheDocument();
+  expect(screen.queryByText('已发布')).not.toBeInTheDocument();
   expect(screen.queryByText('Unpublished')).not.toBeInTheDocument();
 });
 

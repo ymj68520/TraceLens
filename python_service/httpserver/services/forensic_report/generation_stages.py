@@ -5,6 +5,8 @@ import base64
 import hashlib
 import json
 
+import logging
+
 from .generation_sources import digest, material
 from .generation_structured import _loads_strict
 from .generation_prompts import STAGE_DISCOVERY_SYSTEM_V1, STAGE_COMPARE_SYSTEM_V1, NEUTRAL_IMAGE_PROMPT_V1
@@ -241,7 +243,107 @@ async def compare_directions(envelope, materials, llm, current_directions=()):
     return tuple(comparisons), tuple(warnings)
 
 
-def render_stage_report(envelope, materials, directions, comparisons, warnings):
+def stage_citation_name(evidence_key: str) -> str:
+    """File name used in narrative text; the reader places citation chips by it."""
+    path = evidence_key[5:] if evidence_key.startswith("file:") else evidence_key
+    return path.rsplit("/", 1)[-1] if "/" in path else path
+
+
+async def compose_stage_narrative(envelope, materials, directions, comparisons, llm):
+    """Weave validated directions into chapter narrative for investigators.
+
+    The LLM may only reorganize already-validated findings; quotes stay in
+    the directions (rendered in the stage panel) and section text names the
+    source files so the reader places classification-colored citation chips
+    inline. Any validation failure returns None — the caller falls back to
+    the per-direction fragment rendering.
+    """
+    if not directions:
+        return None
+    cid = {m.material_id: stage_citation_name(m.evidence_key) for m in materials}
+    name_rows = [{"name": stage_citation_name(m.evidence_key), "kind": m.kind,
+                  "coverage": m.status} for m in materials]
+    # Aggregate counts only: the full comparison rows render in their own
+    # 差异 sections, and the detailed list can overflow the request budget.
+    comparison_summary = dict(sorted(
+        (status, sum(1 for c in comparisons if c.status == status))
+        for status in {c.status for c in comparisons})) if comparisons else []
+
+    def direction_row(d):
+        return {
+            "kind": d.finding_kind, "origin": d.origin, "title": d.title,
+            "description": d.description,
+            "supporting": [{"file": cid[r.material_id], "quote": r.quote}
+                           for r in d.supporting_refs],
+            "counter": [{"file": cid[r.material_id], "quote": r.quote}
+                        for r in d.counter_refs],
+            "missing_information": list(d.missing_information),
+            "alternative_explanations": list(d.alternative_explanations),
+        }
+
+    # Wide evidence scopes exceed one request budget; compose in batches and
+    # concatenate the chapters, so narrative coverage never silently degrades
+    # to fragments just because the task has many directions.
+    batches, current, size = [], [], 0
+    for d in directions:
+        row = direction_row(d)
+        length = len(json.dumps(row, ensure_ascii=False))
+        if current and size + length > REQUEST_CHAR_LIMIT:
+            batches.append(current)
+            current, size = [], 0
+        current.append(row)
+        size += length
+    if current:
+        batches.append(current)
+
+    sections = []
+    for index, batch in enumerate(batches):
+        request = json.dumps({
+            "analysis_mode": envelope.analysis_mode,
+            "case_context": envelope.case_description or None,
+            "materials": name_rows,
+            "part": f"{index + 1}/{len(batches)}",
+            "validated_directions": batch,
+            "case_comparison_counts": comparison_summary if index == 0 else [],
+        }, ensure_ascii=False)
+        if len(request) > REQUEST_CHAR_LIMIT * 2:
+            return None
+        try:
+            response = await llm.chat_completion(STAGE_NARRATIVE_SYSTEM_V1, request,
+                                                 max_tokens=8192, temperature=0.0)
+            content = response.get("content")
+            if not isinstance(content, str) or len(content) > 60000:
+                raise ValueError("NARRATIVE_OUTPUT_UNUSABLE")
+            parsed = _loads_strict(content)
+            rows = parsed.get("sections") if isinstance(parsed, dict) else None
+            if not isinstance(rows, list) or not 1 <= len(rows) <= 8:
+                raise ValueError("NARRATIVE_SECTIONS_INVALID")
+            for row in rows:
+                if not isinstance(row, dict):
+                    raise ValueError("NARRATIVE_SECTION_INVALID")
+                heading, text = row.get("heading"), row.get("content")
+                if (not isinstance(heading, str) or not 2 <= len(heading.strip()) <= 40
+                        or not isinstance(text, str) or not 50 <= len(text) <= 9000):
+                    raise ValueError("NARRATIVE_SECTION_SIZE")
+                sections.append({"heading": heading.strip(), "content": text.strip()})
+        except ValueError:
+            # One unusable batch does not sink the rest; a narrative covering
+            # the remaining batches still beats falling back to fragments.
+            logger.warning("Stage narrative batch %d rejected; skipped", index + 1)
+    return sections or None
+
+
+def _narrative_citations(text: str, materials) -> tuple[str, ...]:
+    """Citation ids of the materials whose file name the section mentions."""
+    cited = []
+    for index, m in enumerate(materials, 1):
+        name = stage_citation_name(m.evidence_key)
+        if name and name in text:
+            cited.append(f"c{index:03}")
+    return tuple(cited)
+
+
+def render_stage_report(envelope, materials, directions, comparisons, warnings, narrative=None):
     phase_a = envelope.analysis_mode == "evidence_only"
     citations = tuple(StructuredReportCitation(citation_id=f"c{i:03}", evidence_key=m.evidence_key)
                       for i, m in enumerate(materials, 1))
@@ -256,25 +358,38 @@ def render_stage_report(envelope, materials, directions, comparisons, warnings):
                                        citation_ids=tuple(c.citation_id for c in citations))]
     if not phase_a:
         sections.append(StructuredReportSection(heading="本次案情（待核语境）", content=envelope.case_description))
-    for start in range(0, len(directions), 8):
-        chosen = directions[start:start + 8]
-        texts, refs = [], []
-        for direction in chosen:
-            texts.append(("材料观察：" if direction.finding_kind == "observation" else "待核方向：")
-                         + direction.title + "\n" + direction.description)
-            if direction.origin == "case_only":
-                texts.append("此项仅由案情提出，尚无材料支持。")
-            for label, sources in (("支持片段", direction.supporting_refs), ("相反或限制片段", direction.counter_refs)):
-                for ref in sources:
-                    texts.append(f"{label}（{cid[ref.material_id]}）：{ref.quote}")
-                    refs.append(cid[ref.material_id])
-            if direction.missing_information:
-                texts.append("仍缺信息：" + "；".join(direction.missing_information))
-            if direction.alternative_explanations:
-                texts.append("其他可能解释：" + "；".join(direction.alternative_explanations))
-        sections.append(StructuredReportSection(
-            heading=f"{'材料自主发现' if phase_a else '案情对照发现'}（{start // 8 + 1}）",
-            content="\n\n".join(texts), citation_ids=tuple(dict.fromkeys(refs))))
+    if narrative:
+        # Batches repeat the chapter skeleton; number repeated headings so
+        # the reader shows one ordered narrative instead of duplicates.
+        seen = {}
+        for row in narrative:
+            heading = row["heading"]
+            seen[heading] = seen.get(heading, 0) + 1
+            if seen[heading] > 1:
+                heading = f"{heading}（{seen[heading]}）"
+            sections.append(StructuredReportSection(
+                heading=heading, content=row["content"],
+                citation_ids=_narrative_citations(row["content"], materials)))
+    else:
+        for start in range(0, len(directions), 8):
+            chosen = directions[start:start + 8]
+            texts, refs = [], []
+            for direction in chosen:
+                texts.append(("材料观察：" if direction.finding_kind == "observation" else "待核方向：")
+                             + direction.title + "\n" + direction.description)
+                if direction.origin == "case_only":
+                    texts.append("此项仅由案情提出，尚无材料支持。")
+                for label, sources in (("支持片段", direction.supporting_refs), ("相反或限制片段", direction.counter_refs)):
+                    for ref in sources:
+                        texts.append(f"{label}（{cid[ref.material_id]}）：{ref.quote}")
+                        refs.append(cid[ref.material_id])
+                if direction.missing_information:
+                    texts.append("仍缺信息：" + "；".join(direction.missing_information))
+                if direction.alternative_explanations:
+                    texts.append("其他可能解释：" + "；".join(direction.alternative_explanations))
+            sections.append(StructuredReportSection(
+                heading=f"{'材料自主发现' if phase_a else '案情对照发现'}（{start // 8 + 1}）",
+                content="\n\n".join(texts), citation_ids=tuple(dict.fromkeys(refs))))
     if not directions:
         sections.append(StructuredReportSection(heading="调查方向与限制",
             content="本次可读材料尚未形成有来源支持的调查方向；这不等于不存在相关活动。"))

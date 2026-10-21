@@ -165,6 +165,29 @@ public:
     JobStatus get_job_status(const std::string& job_id);
 
     /**
+     * @brief First-stage (材料自主研判) report tail progress for the
+     *        task-completion gate.
+     */
+    struct ReportTailStatus {
+        std::string state;        // idle / running / completed / failed / unknown
+        std::string generation_id;
+        std::string report_id;
+        std::string error_code;
+    };
+
+    /**
+     * @brief Start the pipeline report tail (idempotent) for a task whose
+     *        analysis and knowledge-graph ingestion have finished.
+     * @return true when the tail is running or already completed
+     */
+    bool trigger_report_tail(const std::string& task_id);
+
+    /**
+     * @brief Poll the pipeline report tail state for the completion gate.
+     */
+    ReportTailStatus get_report_tail_status(const std::string& task_id);
+
+    /**
      * @brief Cancel a running or pending ingestion job.
      *
      * @param job_id Job ID to cancel

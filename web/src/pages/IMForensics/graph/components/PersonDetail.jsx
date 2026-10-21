@@ -36,7 +36,7 @@ export default function PersonDetail({ node, graphData, onClose }) {
                     </div>
                 </div>
                 <div className="bg-slate-700 rounded p-2">
-                    <div className="text-slate-400 text-xs">PageRank</div>
+                    <div className="text-slate-400 text-xs">PageRank 影响力</div>
                     <div className="text-slate-100 font-medium">
                         {(node.pagerank || 0).toFixed(4)}
                     </div>

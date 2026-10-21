@@ -350,6 +350,58 @@ bool TaskManager::wait_for_graphiti_ingestion(const std::string& task_id, const 
     return false;
 }
 
+// First-stage 材料自主研判 report gate: mirror the ingestion gate — the task
+// is only COMPLETED once the pipeline-tail report generation has finished;
+// failure after retries fails the task (artifacts stay browsable).
+bool TaskManager::wait_for_pipeline_report(const std::string& task_id) {
+    auto& config = forensics::ConfigManager::instance();
+    const int timeout_minutes = config.getInt("REPORT_TAIL_WAIT_TIMEOUT_MIN", 60);
+    if (timeout_minutes <= 0) {
+        // Escape hatch: restore the legacy fire-and-forget completion.
+        return true;
+    }
+    const int max_attempts = 1 + config.getInt("REPORT_TAIL_RETRIES", 1);
+    auto& proxy = forensics::LLMPythonProxy::instance();
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(timeout_minutes);
+    for (int attempt = 1; attempt <= max_attempts; ++attempt) {
+        update_progress(task_id, TaskPhase::FINALIZING, 40,
+                        "Generating first-stage material review report (attempt " +
+                            std::to_string(attempt) + ")...");
+        if (!proxy.trigger_report_tail(task_id)) {
+            add_audit_log(task_id, "WARNING",
+                          "Report tail trigger failed (attempt " + std::to_string(attempt) + ")");
+            continue;
+        }
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (is_task_cancelled(task_id)) return false;
+            touch_heartbeat(task_id);
+            const auto status = proxy.get_report_tail_status(task_id);
+            if (status.state == "completed") {
+                add_audit_log(task_id, "REPORT",
+                              "First-stage material review report generated");
+                return true;
+            }
+            if (status.state == "failed") {
+                add_audit_log(task_id, "WARNING",
+                              "Report tail failed: " +
+                                  (status.error_code.empty() ? "unknown" : status.error_code));
+                break;  // leave the poll loop; retry below
+            }
+            const double elapsed = std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - deadline).count();
+            const int pct = 40 + static_cast<int>(50.0 * (1.0 + elapsed / 60.0
+                / static_cast<double>(timeout_minutes)));
+            update_progress(task_id, TaskPhase::FINALIZING,
+                            pct < 90 ? pct : 90,
+                            "Generating first-stage material review report...");
+            std::this_thread::sleep_for(std::chrono::seconds(
+                config.getInt("REPORT_TAIL_POLL_SECONDS", 15)));
+        }
+        if (std::chrono::steady_clock::now() >= deadline) break;
+    }
+    return false;
+}
+
 void TaskManager::start_analysis(const std::string& task_id) {
     if (!analysis_pool_) {
         std::cerr << "CRITICAL: ThreadPool not initialized in TaskManager" << std::endl;

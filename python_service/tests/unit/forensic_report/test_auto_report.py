@@ -55,8 +55,66 @@ def test_auto_report_seeds_then_submits():
     assert admission.calls == [("T", "pipeline")]
     assert executor.submitted == ["gen-1"]
     assert summary == {
-        "task_id": "T", "seeded": 3, "generation_id": "gen-1",
+        "task_id": "T", "seeded": 3, "generation_id": "gen-1", "copies": None,
     }
+
+
+def test_ensure_evidence_copies_extracts_before_generation(monkeypatch):
+    from httpserver.services.forensic_report.auto_report import ensure_evidence_copies
+
+    class _Item:
+        def __init__(self, key):
+            self.evidence_key = key
+
+    class _ListEvidence:
+        async def list(self, task_id):
+            return [_Item("file:/case/a.txt"), _Item("file:/case/话术/b.docx"), _Item("cluster:v1:1:X")]
+
+    class _Backend:
+        def __init__(self):
+            self.patterns, self.polls = [], 0
+
+        async def extract_files(self, task_id, paths):
+            self.patterns.append(list(paths))
+            return {"job_id": "ext-1"}
+
+        async def get_extraction_status(self, job_id):
+            self.polls += 1
+            return {"status": "completed", "extracted_files": 2}
+
+    monkeypatch.setattr("httpserver.services.forensic_report.auto_report.asyncio.sleep",
+                        _noop_sleep)
+    evidence, backend = _ListEvidence(), _Backend()
+
+    summary = asyncio.run(ensure_evidence_copies(
+        "T", cpp_backend=backend, evidence_service=evidence))
+
+    assert backend.patterns == [["/case/a.txt", "/case/话术/b.docx"]]
+    assert summary == {"task_id": "T", "extracted": 2}
+
+
+async def _noop_sleep(_seconds):
+    return None
+
+
+def test_auto_report_pulls_copies_when_backend_present(monkeypatch):
+    evidence, admission, executor = _FakeEvidence(), _FakeAdmission(), _FakeExecutor()
+
+    async def _fake_copies(task_id, *, cpp_backend, evidence_service):
+        return {"task_id": task_id, "extracted": 3}
+
+    monkeypatch.setattr(
+        "httpserver.services.forensic_report.auto_report.ensure_evidence_copies",
+        _fake_copies,
+    )
+
+    summary = asyncio.run(auto_generate_pipeline_report(
+        "T", evidence_service=evidence, admission=admission, executor=executor,
+        cpp_backend=object(),
+    ))
+
+    assert summary["copies"] == {"task_id": "T", "extracted": 3}
+    assert executor.submitted == ["gen-1"]
 
 
 def test_auto_report_skips_when_report_exists():

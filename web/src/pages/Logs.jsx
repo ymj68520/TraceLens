@@ -156,11 +156,11 @@ const Logs = () => {
         </Card>
         <Card title="常用排查关键词">
           <div className="flex flex-wrap gap-2">
-            <Badge variant="outline">ERROR</Badge>
-            <Badge variant="outline">Failed</Badge>
-            <Badge variant="outline">Timeout</Badge>
-            <Badge variant="outline">LLM Response</Badge>
-            <Badge variant="outline">Extracting</Badge>
+            <Badge variant="outline">错误</Badge>
+            <Badge variant="outline">失败</Badge>
+            <Badge variant="outline">超时</Badge>
+            <Badge variant="outline">模型响应</Badge>
+            <Badge variant="outline">提取中</Badge>
             <Badge variant="outline">404 Not Found</Badge>
           </div>
         </Card>
