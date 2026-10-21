@@ -10,6 +10,18 @@ vi.mock('../../services/featuresService', () => ({
   fetchFeatures: () => Promise.resolve({ agent_execution_enabled: true }),
 }));
 
+vi.mock('../../services/reportService', () => ({
+  listReportVersions: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock('../../store/caseSlice', () => ({
+  fetchCases: vi.fn(() => ({ type: 'cases/noop' })),
+}));
+
+vi.mock('../../store/taskSlice', () => ({
+  fetchTasksSilent: vi.fn(() => ({ type: 'tasks/noop' })),
+}));
+
 vi.mock('../../services/investigationService', () => ({
   getAgentState: vi.fn(),
   getAgentTrajectory: vi.fn(),
@@ -107,28 +119,29 @@ function renderAgentWorkbench(
   route = '/agent?task_id=task-test-01&investigation_id=inv_wo_dian_002',
   initialCases = []
 ) {
+  const defaultTasksState = {
+    tasks: [
+      {
+        id: 'task-test-01',
+        status: 'completed',
+        image_path: '/data/窝点嫌疑人计算机镜像.E01',
+        metadata: { workflow_type: 'agent', device_scope: 'src_pc' },
+      },
+      {
+        id: 'task-test-02',
+        status: 'completed',
+        image_path: '/data/服务器镜像.E01',
+        metadata: { workflow_type: 'agent', device_scope: 'src_server' },
+      },
+    ],
+    currentTask: { id: 'task-test-01' },
+  };
+  const defaultCasesState = { cases: initialCases };
+
   const store = configureStore({
     reducer: {
-      tasks: () => ({
-        tasks: [
-          {
-            id: 'task-test-01',
-            status: 'completed',
-            image_path: '/data/窝点嫌疑人计算机镜像.E01',
-            metadata: { workflow_type: 'agent', device_scope: 'src_pc' },
-          },
-          {
-            id: 'task-test-02',
-            status: 'completed',
-            image_path: '/data/服务器镜像.E01',
-            metadata: { workflow_type: 'agent', device_scope: 'src_server' },
-          },
-        ],
-        currentTask: { id: 'task-test-01' },
-      }),
-      cases: () => ({
-        cases: initialCases,
-      }),
+      tasks: (state = defaultTasksState) => state,
+      cases: (state = defaultCasesState) => state,
     },
   });
 
@@ -143,6 +156,7 @@ function renderAgentWorkbench(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
   service.getAgentState.mockResolvedValue(mockAgentState);
   service.getAgentTrajectory.mockResolvedValue({
     task_id: 'task-test-01',
@@ -300,5 +314,37 @@ test('R8: Cross-image mode renders cross-image badge, member matrix, and device 
   expect(screen.getByTestId('filter-device-group')).toBeInTheDocument();
 
   // Candidate badges
-  expect(screen.getByTestId('badge-scope-f-pillar1-scripts-01')).toHaveTextContent(/嫌疑人计算机/);
+  expect(await screen.findByTestId('badge-scope-f-pillar1-scripts-01')).toHaveTextContent(/嫌疑人计算机/);
+});
+
+test('R9: In cross-image mode, focusing a device displays the cancel focus buttons', async () => {
+  const mockCase = {
+    id: 'case-01',
+    name: '杀猪盘团伙专案',
+    task_ids: ['task-test-01', 'task-test-02'],
+  };
+
+  renderAgentWorkbench('/agent?task_id=task-test-01&case_id=case-01', [mockCase]);
+
+  expect(await screen.findByTestId('mode-badge-cross-image')).toBeInTheDocument();
+  expect(screen.getByTestId('btn-cancel-device-focus-header')).toBeInTheDocument();
+  expect(screen.getByTestId('btn-cancel-device-focus-matrix')).toBeInTheDocument();
+  expect(screen.getByTestId('btn-cancel-focus-task-test-01')).toBeInTheDocument();
+  expect(screen.getByText('聚焦中')).toBeInTheDocument();
+});
+
+test('R10: All-devices global view displays global overview card as active and hides cancel focus buttons', async () => {
+  const mockCase = {
+    id: 'case-01',
+    name: '杀猪盘团伙专案',
+    task_ids: ['task-test-01', 'task-test-02'],
+  };
+
+  renderAgentWorkbench('/agent?case_id=case-01', [mockCase]);
+
+  expect(await screen.findByTestId('mode-badge-cross-image')).toBeInTheDocument();
+  expect(screen.getByTestId('case-member-card-all')).toBeInTheDocument();
+  expect(screen.getByText('当前全景')).toBeInTheDocument();
+  expect(screen.queryByTestId('btn-cancel-device-focus-matrix')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('btn-cancel-device-focus-header')).not.toBeInTheDocument();
 });

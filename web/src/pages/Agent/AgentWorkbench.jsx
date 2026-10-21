@@ -49,6 +49,7 @@ import {
   Terminal,
   User,
   Workflow,
+  X,
   Zap,
 } from 'lucide-react';
 import Badge from '../../components/common/Badge';
@@ -271,8 +272,17 @@ export default function AgentWorkbench() {
     return Boolean(caseIdParam && associatedCase);
   }, [caseIdParam, associatedCase]);
 
+  // In cross-image mode, taskIdParam indicates whether the investigator has focused on a specific single device.
+  // If taskIdParam is absent or 'all', the investigator is viewing the entire case (All Devices Global View).
+  const focusedTaskId = useMemo(() => {
+    if (!isCrossImageMode) return taskIdParam || null;
+    if (!taskIdParam || taskIdParam === 'all') return null;
+    return taskIdParam;
+  }, [isCrossImageMode, taskIdParam]);
+
   const currentTaskId = useMemo(() => {
-    if (taskIdParam) return taskIdParam;
+    if (focusedTaskId) return focusedTaskId;
+    if (taskIdParam && taskIdParam !== 'all') return taskIdParam;
     if (associatedCase && Array.isArray(associatedCase.task_ids) && associatedCase.task_ids.length > 0) {
       return associatedCase.task_ids[0];
     }
@@ -291,7 +301,7 @@ export default function AgentWorkbench() {
       return tasks[0].id;
     }
     return '60dedf82-7f35-48be-a104-b4d283a4fe92'; // Fallback to wo_dian synthetic task
-  }, [taskIdParam, associatedCase, tasks]);
+  }, [focusedTaskId, taskIdParam, associatedCase, tasks]);
 
   const selectedTask = useMemo(
     () => tasks?.find((t) => t.id === currentTaskId),
@@ -343,15 +353,44 @@ export default function AgentWorkbench() {
         Icon,
         color,
         imageName,
-        isCurrent: tid === currentTaskId,
+        isCurrent: Boolean(focusedTaskId && tid === focusedTaskId),
         status: t.status || 'completed',
       };
     });
-  }, [associatedCase, tasks, currentTaskId]);
+  }, [associatedCase, tasks, focusedTaskId]);
 
   const currentMember = useMemo(
-    () => caseMembers.find((m) => m.isCurrent) || caseMembers[0] || null,
-    [caseMembers]
+    () => (focusedTaskId ? caseMembers.find((m) => m.id === focusedTaskId) || null : null),
+    [caseMembers, focusedTaskId]
+  );
+
+  const handleCancelFocus = useCallback(() => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('task_id');
+      next.delete('investigation_id');
+      if (associatedCase) next.set('case_id', associatedCase.id);
+      return next;
+    });
+  }, [associatedCase, setSearchParams]);
+
+  const handleMemberCardClick = useCallback(
+    (memberId) => {
+      if (focusedTaskId === memberId) {
+        // Toggle off focus
+        handleCancelFocus();
+      } else {
+        // Focus on this specific device
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev);
+          next.set('task_id', memberId);
+          next.delete('investigation_id');
+          if (associatedCase) next.set('case_id', associatedCase.id);
+          return next;
+        });
+      }
+    },
+    [focusedTaskId, handleCancelFocus, associatedCase, setSearchParams]
   );
 
   const investigationIdParam = searchParams.get('investigation_id') || searchParams.get('investigationId');
@@ -376,13 +415,12 @@ export default function AgentWorkbench() {
     return () => clearInterval(timer);
   }, [isTaskRunning, dispatch]);
 
-  // Update URL if taskId was auto-resolved
+  // Update URL if taskId was auto-resolved (only in single-image standalone mode without case_id)
   useEffect(() => {
-    if (!taskIdParam && currentTaskId) {
+    if (!caseIdParam && !taskIdParam && currentTaskId) {
       setSearchParams(
         (prev) => {
           prev.set('task_id', currentTaskId);
-          if (caseIdParam) prev.set('case_id', caseIdParam);
           if (investigationId) prev.set('investigation_id', investigationId);
           return prev;
         },
@@ -523,7 +561,14 @@ export default function AgentWorkbench() {
     setStateError(null);
     try {
       const state = await getAgentState(currentTaskId, investigationId || undefined);
-      setAgentState(state);
+      if (!focusedTaskId && isCrossImageMode && associatedCase) {
+        setAgentState({
+          ...state,
+          objective: associatedCase.description || '案件全案多设备跨镜像协同研判：综合研判嫌疑人终端、服务器及涉案移动设备证据闭环',
+        });
+      } else {
+        setAgentState(state);
+      }
       if (state?.investigation_id && !investigationId) {
         setInvestigationId(state.investigation_id);
       }
@@ -536,7 +581,7 @@ export default function AgentWorkbench() {
     } finally {
       setStateLoading(false);
     }
-  }, [currentTaskId, investigationId, isTaskRunning]);
+  }, [currentTaskId, focusedTaskId, isCrossImageMode, associatedCase, investigationId, isTaskRunning]);
 
   // Trajectory State & Loader
   const [trajectoryEvents, setTrajectoryEvents] = useState([]);
@@ -564,10 +609,36 @@ export default function AgentWorkbench() {
     }
     setCandidatesLoading(true);
     try {
-      const res = await listAgentReviewCandidates(currentTaskId, investigationId || undefined);
-      const list = Array.isArray(res) ? res : Array.isArray(res?.candidates) ? res.candidates : [];
-      setCandidates(list);
-      setSelectedCandidateId((prev) => prev || (list.length > 0 ? list[0].candidate_id : null));
+      if (isCrossImageMode && !focusedTaskId && caseMembers.length > 0) {
+        // All-Devices Mode: load candidates from all case members and merge
+        const memberResults = await Promise.all(
+          caseMembers.map((m) =>
+            listAgentReviewCandidates(m.id).catch(() => [])
+          )
+        );
+        const merged = [];
+        const seen = new Set();
+        for (const res of memberResults) {
+          const list = Array.isArray(res) ? res : Array.isArray(res?.candidates) ? res.candidates : [];
+          for (const item of list) {
+            if (item && item.candidate_id && !seen.has(item.candidate_id)) {
+              seen.add(item.candidate_id);
+              merged.push(item);
+            }
+          }
+        }
+        setCandidates(merged);
+        setSelectedCandidateId((prev) =>
+          merged.some((c) => c.candidate_id === prev) ? prev : merged[0]?.candidate_id || null
+        );
+      } else {
+        const res = await listAgentReviewCandidates(currentTaskId, investigationId || undefined);
+        const list = Array.isArray(res) ? res : Array.isArray(res?.candidates) ? res.candidates : [];
+        setCandidates(list);
+        setSelectedCandidateId((prev) =>
+          list.some((c) => c.candidate_id === prev) ? prev : list[0]?.candidate_id || null
+        );
+      }
     } catch (err) {
       setCandidates([]);
       const status = err?.status || err?.response?.status;
@@ -577,7 +648,7 @@ export default function AgentWorkbench() {
     } finally {
       setCandidatesLoading(false);
     }
-  }, [currentTaskId, investigationId, isTaskRunning]);
+  }, [currentTaskId, focusedTaskId, isCrossImageMode, caseMembers, investigationId, isTaskRunning, toast]);
 
   // Fetch Candidate Detail
   useEffect(() => {
@@ -1250,9 +1321,30 @@ export default function AgentWorkbench() {
                       <span>所属案件:</span>
                       <strong className="text-slate-800 dark:text-slate-200">{associatedCase?.name || associatedCase?.id}</strong>
                     </span>
-                    {currentMember && (
-                      <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
-                        当前工作区: <span className="text-purple-600 dark:text-purple-400 font-semibold">{currentMember.roleLabel} ({currentMember.imageName})</span>
+                    {currentMember ? (
+                      <span className="text-xs font-mono text-slate-500 dark:text-slate-400 flex items-center gap-1.5 flex-wrap">
+                        <span>当前聚焦设备:</span>
+                        <span className="text-purple-600 dark:text-purple-400 font-semibold px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800">
+                          {currentMember.roleLabel} ({currentMember.imageName})
+                        </span>
+                        <button
+                          type="button"
+                          data-testid="btn-cancel-device-focus-header"
+                          onClick={handleCancelFocus}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/60 dark:hover:bg-purple-800 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-700 transition-colors shadow-xs"
+                          title="取消单机聚焦，返回全案多设备协同全景"
+                        >
+                          <X className="w-3 h-3" />
+                          <span>取消聚焦 / 返回全景</span>
+                        </button>
+                      </span>
+                    ) : (
+                      <span className="text-xs font-mono text-slate-500 dark:text-slate-400 flex items-center gap-1.5 flex-wrap">
+                        <span>工作区:</span>
+                        <span className="text-purple-600 dark:text-purple-400 font-semibold px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 flex items-center gap-1">
+                          <Network className="w-3 h-3" />
+                          🌐 全案多设备协同全景 (汇总 {caseMembers.length} 台设备)
+                        </span>
                       </span>
                     )}
                     <Link
@@ -1568,14 +1660,86 @@ export default function AgentWorkbench() {
               </span>
             </div>
             <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+              {focusedTaskId && (
+                <button
+                  type="button"
+                  data-testid="btn-cancel-device-focus-matrix"
+                  onClick={handleCancelFocus}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-white dark:bg-slate-800 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-700 shadow-xs hover:bg-purple-50 dark:hover:bg-purple-950 transition-colors"
+                  title="取消单机聚焦，查看全案所有设备联合研判全景"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>取消单机聚焦 · 返回全案全景</span>
+                </button>
+              )}
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
-                <span>点击卡片可快速切换当前研判焦点工作区</span>
+                <span>点击卡片可聚焦单机或取消聚焦</span>
               </span>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-3">
+            {/* Global Overview Card (All Devices in Case) */}
+            <div
+              data-testid="case-member-card-all"
+              onClick={handleCancelFocus}
+              className={`p-3 rounded-xl border transition-all cursor-pointer select-none flex flex-col justify-between gap-2.5 ${
+                !focusedTaskId
+                  ? 'border-purple-500/90 bg-gradient-to-br from-purple-100/90 via-white to-indigo-50/70 dark:from-purple-950/60 dark:via-slate-800 dark:to-indigo-950/40 shadow-md ring-2 ring-purple-500/40'
+                  : 'border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50 hover:border-purple-300 hover:bg-slate-50 dark:hover:bg-slate-800/80'
+              }`}
+              title="点击查看全案多设备联合研判全景"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                      !focusedTaskId
+                        ? 'bg-purple-600 text-white shadow-sm'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    <Network className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                        🌐 全案协同全景
+                      </span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 font-semibold">
+                        ALL ({caseMembers.length}台)
+                      </span>
+                    </div>
+                    <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                      跨镜像全局协同与因果推导
+                    </div>
+                  </div>
+                </div>
+
+                {!focusedTaskId ? (
+                  <span className="shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-700 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-600 animate-ping" />
+                    当前全景
+                  </span>
+                ) : (
+                  <span className="shrink-0 text-[10px] text-slate-400 hover:text-purple-600 flex items-center gap-0.5">
+                    <span>切回全景</span>
+                    <ChevronRight className="w-3 h-3" />
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between pt-1.5 border-t border-slate-100 dark:border-slate-800/60 text-[10px] text-slate-400 font-mono">
+                <span className="flex items-center gap-1 text-purple-600 dark:text-purple-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+                  <span>全局汇总模式</span>
+                </span>
+                <span>跨设备联动</span>
+              </div>
+            </div>
+
+            {/* Individual Device Cards */}
             {caseMembers.map((member) => {
               const { Icon } = member;
               const isFocus = member.isCurrent;
@@ -1583,21 +1747,13 @@ export default function AgentWorkbench() {
                 <div
                   key={member.id}
                   data-testid={`case-member-card-${member.id}`}
-                  onClick={() => {
-                    if (!member.isCurrent) {
-                      setSearchParams((prev) => {
-                        prev.set('task_id', member.id);
-                        if (associatedCase) prev.set('case_id', associatedCase.id);
-                        prev.delete('investigation_id');
-                        return prev;
-                      });
-                    }
-                  }}
+                  onClick={() => handleMemberCardClick(member.id)}
                   className={`p-3 rounded-xl border transition-all cursor-pointer select-none flex flex-col justify-between gap-2.5 ${
                     isFocus
                       ? 'border-purple-500/80 bg-white dark:bg-slate-800 shadow-md ring-2 ring-purple-500/30'
                       : 'border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50 hover:border-purple-300 hover:bg-slate-50 dark:hover:bg-slate-800/80'
                   }`}
+                  title={isFocus ? '再次点击取消聚焦' : '点击聚焦研判此设备'}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2.5 min-w-0">
@@ -1629,13 +1785,27 @@ export default function AgentWorkbench() {
                     </div>
 
                     {isFocus ? (
-                      <span className="shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-700 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-purple-600 animate-ping" />
-                        当前聚焦
-                      </span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-700 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-purple-600 animate-ping" />
+                          聚焦中
+                        </span>
+                        <button
+                          type="button"
+                          data-testid={`btn-cancel-focus-${member.id}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCancelFocus();
+                          }}
+                          className="p-0.5 text-slate-400 hover:text-purple-600 dark:hover:text-purple-300 rounded hover:bg-purple-100 dark:hover:bg-purple-900/40"
+                          title="取消聚焦"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     ) : (
                       <span className="shrink-0 text-[10px] text-slate-400 hover:text-purple-600 flex items-center gap-0.5">
-                        <span>切换至此</span>
+                        <span>点击聚焦</span>
                         <ChevronRight className="w-3 h-3" />
                       </span>
                     )}
