@@ -988,7 +988,7 @@ class ServiceManager:
                 cpp_backend=self._cpp_backend,
                 settings=self.settings,
                 tool_services=tool_services,
-                policy=AgentRunPolicy(max_model_requests=5),
+                policy=AgentRunPolicy(max_model_requests=10),
                 registry_builder=lambda r, observation_sink=None: build_read_only_registry(
                     tool_services, observation_sink=observation_sink
                 ),
@@ -1080,6 +1080,16 @@ class ServiceManager:
                         )
                     )
                 except Exception as exc:
+                    logger.error("Delegation %s execution failed: %s", delegation.delegation_id, exc, exc_info=True)
+                    try:
+                        runtime.transition_delegation_terminal(
+                            delegation.delegation_id,
+                            "failed",
+                            failure_code="agent_internal_failure",
+                            failure_message=f"{type(exc).__name__}: {exc}"[:200],
+                        )
+                    except Exception as trans_exc:
+                        logger.error("Failed to transition failed delegation %s: %s", delegation.delegation_id, trans_exc)
                     summaries.append(
                         DelegationExecutionSummary(
                             delegation_id=delegation.delegation_id,
@@ -1090,6 +1100,20 @@ class ServiceManager:
                             failure_summary=f"{type(exc).__name__}: {exc}"[:200],
                         )
                     )
+            # Ensure any admitted delegations not reached are marked failed
+            dispatched_ids = {s.delegation_id for s in summaries}
+            for d in admitted:
+                if d.delegation_id not in dispatched_ids:
+                    logger.warning("Delegation %s admitted but not matched in delegate_actions; failing closed", d.delegation_id)
+                    try:
+                        runtime.transition_delegation_terminal(
+                            d.delegation_id,
+                            "failed",
+                            failure_code="undispatched_delegation",
+                            failure_message="Delegation admitted without matching action",
+                        )
+                    except Exception as trans_exc:
+                        logger.error("Failed to fail undispatched delegation %s: %s", d.delegation_id, trans_exc)
             return summaries
 
         return AgentOrchestrator(

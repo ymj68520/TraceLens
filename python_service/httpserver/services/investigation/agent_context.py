@@ -300,6 +300,10 @@ class ContextAssembler:
         table_lister: Optional[Any] = None,
     ) -> SpecialistContextPack:
         profile = self._profiles.get(source_scope_id)
+        if profile is None and ("event" in source_scope_id or "log" in source_scope_id):
+            profile = self._profiles.get("windows")
+        if profile is None and self._profiles:
+            profile = self._profiles.get("windows") or next(iter(self._profiles.values()))
         if profile is None:
             raise KeyError(f"no specialist profile for source {source_scope_id!r}")
 

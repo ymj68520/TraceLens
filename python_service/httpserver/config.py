@@ -287,17 +287,17 @@ class Settings(BaseSettings):
 
     llm_text_base_url: str = Field(default="http://192.168.31.170:1234", alias="LLM_TEXT_BASE_URL")
     llm_text_model: str = Field(default="openai/gpt-oss-20b", alias="LLM_TEXT_MODEL")
-    llm_text_max_tokens: int = Field(default=4096, alias="LLM_TEXT_MAX_TOKENS")
+    llm_text_max_tokens: int = Field(default=16384, alias="LLM_TEXT_MAX_TOKENS")
     llm_text_temperature: float = Field(default=0.7, alias="LLM_TEXT_TEMPERATURE")
     
     llm_vision_base_url: str = Field(default="http://192.168.31.170:1234", alias="LLM_VISION_BASE_URL")
     llm_vision_model: str = Field(default="qwen/qwen3-vl-4b", alias="LLM_VISION_MODEL")
-    llm_vision_max_tokens: int = Field(default=4096, alias="LLM_VISION_MAX_TOKENS")
+    llm_vision_max_tokens: int = Field(default=16384, alias="LLM_VISION_MAX_TOKENS")
     llm_vision_temperature: float = Field(default=0.5, alias="LLM_VISION_TEMPERATURE")
     
     llm_timeout_seconds: int = Field(default=120, alias="LLM_TIMEOUT_SECONDS")
     llm_max_retries: int = Field(default=3, alias="LLM_MAX_RETRIES")
-    llm_context_length: int = Field(default=4096, alias="LLM_CONTEXT_LENGTH")
+    llm_context_length: int = Field(default=1048576, alias="LLM_CONTEXT_LENGTH")
     # Concurrent LLM calls per analysis pipeline (event clusters, files, artifacts).
     # Default 1 matches the C++ pipeline and .env: raise it only when the LLM
     # server can take more than one in-flight chat completion.
@@ -419,10 +419,10 @@ class Settings(BaseSettings):
     investigation_max_nodes: int = Field(default=200, ge=1, le=10000, alias="INVESTIGATION_MAX_NODES")
     multi_image_max_filter_files: int = Field(default=400, ge=1, le=20000, alias="MULTI_IMAGE_MAX_FILTER_FILES")
 
-    # File Analysis Settings
-    file_analysis_max_content: int = Field(default=10000, ge=1, le=1000000, alias="FILE_ANALYSIS_MAX_CONTENT")
+    # File Analysis Settings (scaled for 1M context models)
+    file_analysis_max_content: int = Field(default=100000, ge=1, le=10000000, alias="FILE_ANALYSIS_MAX_CONTENT")
     file_analysis_max_keywords: int = Field(default=10, ge=1, le=1000, alias="FILE_ANALYSIS_MAX_KEYWORDS")
-    file_analysis_max_content_limit: int = Field(default=50000, ge=1, le=1000000, alias="FILE_ANALYSIS_MAX_CONTENT_LIMIT")
+    file_analysis_max_content_limit: int = Field(default=500000, ge=1, le=10000000, alias="FILE_ANALYSIS_MAX_CONTENT_LIMIT")
     
     # Logging Settings
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")

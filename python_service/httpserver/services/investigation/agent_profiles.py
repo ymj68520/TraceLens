@@ -85,7 +85,7 @@ def default_profiles() -> dict[str, SourceSpecialistProfile]:
             "Investigate Windows-derived evidence: account usage, execution "
             "traces, persistence, device activity and file activity."
         ),
-        supported_source_types=("windows",),
+        supported_source_types=("windows", "src_event_logs"),
         default_tool_ids=(
             "get_task_context",
             "search_evidence",
@@ -188,6 +188,7 @@ def default_profiles() -> dict[str, SourceSpecialistProfile]:
         "windows": windows,
         "android": android,
         "linux": linux,
+        "src_event_logs": windows,
     }
 
 
