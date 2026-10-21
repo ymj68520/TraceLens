@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import sqlite3
 from pathlib import Path
 from typing import Optional
@@ -42,6 +43,96 @@ def _connect_ro(path: str) -> sqlite3.Connection:
     return sqlite3.connect(uri, uri=True, timeout=10)
 
 
+def _find_file_path(files_db: str, normalized_path: str) -> Optional[str]:
+    """Find matching file path in files.db with sensible forensic path normalization.
+
+    Tries in order:
+    1. Exact match on normalized_path
+    2. Candidate path variants (drive letter stripped, leading slash added/removed)
+    3. Case-insensitive match on normalized_path and variants (Windows/FAT/NTFS)
+    4. Task-scoped filename/suffix match (e.g. '%/TrueCrypt.exe' or name column)
+    """
+    if not normalized_path:
+        return None
+    try:
+        conn = _connect_ro(files_db)
+    except sqlite3.Error as exc:
+        raise EvidenceStoreError(f"cannot open files.db {files_db!r}: {exc}") from exc
+    try:
+        # 1. Exact match
+        row = conn.execute(
+            "SELECT path FROM files WHERE path = ? LIMIT 1", [normalized_path]
+        ).fetchone()
+        if row:
+            return row[0]
+
+        # 2. Candidate path variants
+        variants: list[str] = []
+        # Strip drive letter prefix (e.g. C/ or C:/ or c:/)
+        no_drive = re.sub(r"^[A-Za-z]:?/", "/", normalized_path)
+        if no_drive != normalized_path:
+            variants.append(no_drive)
+            variants.append(no_drive.lstrip("/"))
+
+        if not normalized_path.startswith("/"):
+            variants.append("/" + normalized_path)
+        else:
+            variants.append(normalized_path.lstrip("/"))
+
+        for v in variants:
+            row = conn.execute(
+                "SELECT path FROM files WHERE path = ? LIMIT 1", [v]
+            ).fetchone()
+            if row:
+                return row[0]
+
+        # 3. Case-insensitive match on exact and variants
+        for v in [normalized_path] + variants:
+            row = conn.execute(
+                "SELECT path FROM files WHERE path = ? COLLATE NOCASE LIMIT 1", [v]
+            ).fetchone()
+            if row:
+                return row[0]
+
+        # 4. Suffix and basename match in task scope
+        basename = normalized_path.split("/")[-1]
+        if basename:
+            # Check by path suffix using path column (guaranteed to exist across all schemas)
+            suffix_rows = conn.execute(
+                "SELECT path FROM files WHERE path LIKE ? COLLATE NOCASE LIMIT 10",
+                ["%/" + basename],
+            ).fetchall()
+            if len(suffix_rows) == 1:
+                return suffix_rows[0][0]
+            elif len(suffix_rows) > 1:
+                parts = [p for p in normalized_path.split("/") if p and not re.match(r"^[A-Za-z]:?$", p)]
+                if len(parts) >= 2:
+                    subpath_suffix = "/" + "/".join(parts[-2:])
+                    closest = [r[0] for r in suffix_rows if r[0].lower().endswith(subpath_suffix.lower())]
+                    if closest:
+                        return closest[0]
+                return suffix_rows[0][0]
+
+            # Try name column if present
+            try:
+                name_rows = conn.execute(
+                    "SELECT path FROM files WHERE name = ? COLLATE NOCASE LIMIT 10",
+                    [basename],
+                ).fetchall()
+                if len(name_rows) == 1:
+                    return name_rows[0][0]
+                elif len(name_rows) > 1:
+                    return name_rows[0][0]
+            except sqlite3.OperationalError:
+                pass
+
+        return None
+    except sqlite3.OperationalError as exc:
+        raise EvidenceStoreError(f"cannot query files table in {files_db!r}: {exc}") from exc
+    finally:
+        conn.close()
+
+
 def _file_exists(files_db: str, normalized_path: str) -> bool:
     """Exact existence check of normalized_path in files.db (R4).
 
@@ -49,19 +140,7 @@ def _file_exists(files_db: str, normalized_path: str) -> bool:
     table missing, query/schema error). Returns False only for a genuine
     not-found (file present, DB readable, path simply absent).
     """
-    try:
-        conn = _connect_ro(files_db)
-    except sqlite3.Error as exc:
-        raise EvidenceStoreError(f"cannot open files.db {files_db!r}: {exc}") from exc
-    try:
-        row = conn.execute(
-            "SELECT 1 FROM files WHERE path = ? LIMIT 1", [normalized_path]
-        ).fetchone()
-        return row is not None
-    except sqlite3.OperationalError as exc:
-        raise EvidenceStoreError(f"cannot query files table in {files_db!r}: {exc}") from exc
-    finally:
-        conn.close()
+    return _find_file_path(files_db, normalized_path) is not None
 
 
 def _cluster_lookup(events_db: str, unix_minute: int, event_type: str) -> Optional[dict]:
@@ -150,9 +229,9 @@ class EvidenceResolver:
         self, task_id: str, parsed: ParsedEvidenceKey, files_db: str
     ) -> ResolvedEvidence:
         normalized_path = parsed.normalized_path
-        # R4/R6: exact match inside THIS task's files.db only.
-        exists = await asyncio.to_thread(_file_exists, files_db, normalized_path)
-        if not exists:
+        # R4/R6: exact match or task-scoped forensic path match inside THIS task's files.db only.
+        matched_path = await asyncio.to_thread(_find_file_path, files_db, normalized_path)
+        if not matched_path:
             raise EvidenceNotFoundError(
                 f"file evidence not found in task {task_id}: {normalized_path!r}"
             )
@@ -160,7 +239,7 @@ class EvidenceResolver:
             task_id=task_id,
             evidence_key=parsed.canonical_key,
             evidence_type="file",
-            normalized_path=normalized_path,
+            normalized_path=matched_path,
             source_db=files_db,
         )
 

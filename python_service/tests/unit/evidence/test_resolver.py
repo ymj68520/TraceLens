@@ -100,6 +100,31 @@ async def test_resolve_canonical_key_for_backslash_input(tmp_path):
     assert res.normalized_path == "/case/report.docx"
 
 
+@pytest.mark.asyncio
+async def test_resolve_drive_letter_and_case_insensitive_variants(tmp_path):
+    fdb, edb = str(tmp_path / "files.db"), str(tmp_path / "events.db")
+    _make_files_db(fdb, ["/Program Files/TrueCrypt/TrueCrypt.exe"])
+    _make_events_db(edb, [])
+    r = EvidenceResolver(_backend({"A": {"output_files_db": fdb, "output_events_db": edb}}))
+
+    # Drive letter prefix
+    res1 = await r.resolve_evidence("A", "file:C/Program Files/TrueCrypt/TrueCrypt.exe")
+    assert res1.normalized_path == "/Program Files/TrueCrypt/TrueCrypt.exe"
+
+    # Drive letter with colon
+    res2 = await r.resolve_evidence("A", "file:C:/Program Files/TrueCrypt/TrueCrypt.exe")
+    assert res2.normalized_path == "/Program Files/TrueCrypt/TrueCrypt.exe"
+
+    # Case-insensitive
+    res3 = await r.resolve_evidence("A", "file:/program files/truecrypt/truecrypt.exe")
+    assert res3.normalized_path == "/Program Files/TrueCrypt/TrueCrypt.exe"
+
+    # Basename in task scope (e.g. C/soft/TrueCrypt/TrueCrypt.exe)
+    res4 = await r.resolve_evidence("A", "file:C/soft/TrueCrypt/TrueCrypt.exe")
+    assert res4.normalized_path == "/Program Files/TrueCrypt/TrueCrypt.exe"
+
+
+
 # ---------- cluster resolution ----------
 
 @pytest.mark.asyncio
