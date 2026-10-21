@@ -581,7 +581,8 @@ class ReportGenerationExecutor:
 
     async def _generate_staged(self, envelope):
         from .generation_stages import (
-            materialize_images, discover_directions, compare_directions, render_stage_report,
+            materialize_images, discover_directions, compare_directions,
+            compose_stage_narrative, render_stage_report,
         )
         from .models import StageAnalysis
         models, text_models = set(), set()
@@ -616,7 +617,15 @@ class ReportGenerationExecutor:
             text_models.update(c.model for c in classifications.items if c.model)
             if envelope.baseline and set(envelope.baseline.text_models) != text_models:
                 warnings += ("TEXT_MODEL_CHANGED_OR_BASELINE_MODEL_UNKNOWN",)
-            response, stage = render_stage_report(envelope, materials, directions, comparisons, warnings)
+            try:
+                narrative = await compose_stage_narrative(
+                    envelope, materials, directions, comparisons, provider)
+            except Exception:
+                logger.warning("Stage narrative composition failed; using fragment sections",
+                               exc_info=True)
+                narrative = None
+            response, stage = render_stage_report(envelope, materials, directions, comparisons, warnings,
+                                                  narrative)
             stage = StageAnalysis.model_validate({
                 **stage.model_dump(mode="json"), "warnings": warnings,
                 "text_models": tuple(sorted(text_models)),

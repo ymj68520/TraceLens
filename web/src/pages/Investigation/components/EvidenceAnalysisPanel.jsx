@@ -180,11 +180,11 @@ export default function EvidenceAnalysisPanel({ taskId, eventId, evidenceKey, on
             <dt className="text-slate-500">记录 SHA-256</dt><dd className="break-all">{initialAnalysis.record_hash}</dd>
             <dt className="text-slate-500">时间单位/时区</dt><dd>{initialAnalysis.timestamp_unit || '未知'} / {initialAnalysis.timestamp_timezone || '未知'}</dd>
           </> : detail.evidence_type === 'event_cluster' ? <>
-            <dt className="text-slate-500">Event Type</dt><dd>{detail.metadata?.event_type || '—'}</dd>
-            <dt className="text-slate-500">Event Count</dt><dd>{detail.metadata?.event_count ?? '—'}</dd>
-            <dt className="text-slate-500">Sampled</dt><dd>{detail.metadata?.sampled_event_count ?? '—'}</dd>
-            <dt className="text-slate-500">Time Window</dt><dd>{detail.metadata?.time_window ?? '—'}</dd>
-            <dt className="text-slate-500">Cluster Snapshot Digest (SHA-256)</dt><dd className="break-all">{detail.snapshot?.source_hash || '—'}</dd>
+            <dt className="text-slate-500">事件类型</dt><dd>{detail.metadata?.event_type || '—'}</dd>
+            <dt className="text-slate-500">事件数</dt><dd>{detail.metadata?.event_count ?? '—'}</dd>
+            <dt className="text-slate-500">采样数</dt><dd>{detail.metadata?.sampled_event_count ?? '—'}</dd>
+            <dt className="text-slate-500">时间窗口</dt><dd>{detail.metadata?.time_window ?? '—'}</dd>
+            <dt className="text-slate-500">簇快照摘要 (SHA-256)</dt><dd className="break-all">{detail.snapshot?.source_hash || '—'}</dd>
           </> : <>
             <dt className="text-slate-500">MD5</dt><dd className="break-all">{detail.md5 || '—'}</dd>
             <dt className="text-slate-500">文件大小</dt><dd>{detail.size != null ? `${detail.size} 字节` : '—'}</dd>
@@ -235,7 +235,7 @@ export default function EvidenceAnalysisPanel({ taskId, eventId, evidenceKey, on
         {version && <div className="mt-4 rounded-xl bg-slate-50 dark:bg-slate-900/40 p-4">
           <div className="flex items-center gap-2"><strong>v{version.version}</strong><Badge variant={status.variant}>{status.label}</Badge>{version.grounding_status && <Badge variant={version.grounding_status === 'valid' ? 'green' : 'yellow'} title="Grounded 仅表示 Evidence ID 真实存在，不代表事实已被充分证明。">{version.grounding_status}</Badge>}</div>
           <p className="mt-3 text-sm leading-6 whitespace-pre-wrap">{version.description || version.summary}</p>
-          {!!warnings.length && <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/20 p-3 text-xs text-amber-700"><div className="font-semibold">Grounding Warning</div>{warnings.map((w) => <div key={w}>• {w}</div>)}{version.grounding_status === 'partially_grounded' && <label className="mt-2 flex gap-2"><input type="checkbox" checked={acknowledge} onChange={(e) => setAcknowledge(e.target.checked)} />我已人工复核并确认接受这些警告</label>}</div>}
+          {!!warnings.length && <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/20 p-3 text-xs text-amber-700"><div className="font-semibold">落地警告</div>{warnings.map((w) => <div key={w}>• {w}</div>)}{version.grounding_status === 'partially_grounded' && <label className="mt-2 flex gap-2"><input type="checkbox" checked={acknowledge} onChange={(e) => setAcknowledge(e.target.checked)} />我已人工复核并确认接受这些警告</label>}</div>}
           {version.status === 'review_pending' && <div className="mt-3 flex gap-2"><Button size="sm" variant="success" icon={CheckCircle2} disabled={readOnly || (version.grounding_status === 'partially_grounded' && !acknowledge)} onClick={accept}>接受该分析</Button><Button size="sm" variant="danger" icon={CircleX} disabled={readOnly} onClick={reject}>拒绝</Button></div>}
         </div>}
       </Section>

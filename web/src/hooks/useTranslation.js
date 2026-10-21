@@ -11,7 +11,7 @@ export const useTranslation = () => {
     const { language } = useSelector((state) => state.settings);
 
     const t = (key) => {
-        const currentLocale = locales[language] || locales.en;
+        const currentLocale = locales[language] || locales.zh;
         return currentLocale[key] || key;
     };
 

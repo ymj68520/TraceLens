@@ -61,7 +61,7 @@ beforeEach(() => {
 test('shows an explicit no-publication fact state without calling it Unpublished', async () => {
   render(<MemoryRouter initialEntries={['/investigation/report?task_id=task-a']}><FinalReportViewer /></MemoryRouter>);
 
-  await waitFor(() => expect(screen.getByText('No publication fact for this report version.')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText('该报告版本没有发布状态记录。')).toBeInTheDocument());
   expect(screen.queryByText('Unpublished')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Publish this report version' })).toBeInTheDocument();
 });
@@ -79,13 +79,13 @@ test('publishes the selected report version and re-reads the same publication', 
 test('renders selected report, sections, paragraph metadata, and only Assembled status', async () => {
   render(<MemoryRouter initialEntries={['/investigation/report?task_id=task-a']}><FinalReportViewer /></MemoryRouter>);
 
-  await waitFor(() => expect(screen.getByText('Selected Report Version: v3')).toBeInTheDocument());
-  expect(screen.getAllByText('Assembled').length).toBeGreaterThan(0);
+  await waitFor(() => expect(screen.getByText('所选报告版本: v3')).toBeInTheDocument());
+  expect(screen.getAllByText('已生成').length).toBeGreaterThan(0);
   expect(screen.getByText('Immutable paragraph text')).toBeInTheDocument();
-  expect(screen.getByText('Claim claim-1')).toBeInTheDocument();
+  expect(screen.getByText('论断 claim-1')).toBeInTheDocument();
   expect(screen.getByText('CIT-001')).toBeInTheDocument();
   expect(screen.getByText('Section 5')).toBeInTheDocument();
-  expect(screen.queryByText('Published')).not.toBeInTheDocument();
+  expect(screen.queryByText('已发布')).not.toBeInTheDocument();
   expect(screen.queryByText('Unpublished')).not.toBeInTheDocument();
 });
 
@@ -94,14 +94,14 @@ test('shows empty state and sends no mutation request when no reports exist', as
   getFinalReports.mockResolvedValue({ reports: [] });
   render(<MemoryRouter initialEntries={['/investigation/report?task_id=task-a']}><FinalReportViewer /></MemoryRouter>);
 
-  await waitFor(() => expect(screen.getByText('No final report versions have been assembled for this task.')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText('该任务尚未生成最终报告版本。')).toBeInTheDocument());
   expect(getFinalReport).not.toHaveBeenCalled();
 });
 
 test('shows task selection state and performs no request without task id', () => {
   render(<MemoryRouter initialEntries={['/investigation/report']}><FinalReportViewer /></MemoryRouter>);
 
-  expect(screen.getByText('Select a task to view its assembled Final Report Versions.')).toBeInTheDocument();
+  expect(screen.getByText('请选择任务以查看已生成的最终报告版本。')).toBeInTheDocument();
   expect(getFinalReports).not.toHaveBeenCalled();
   expect(getFinalReport).not.toHaveBeenCalled();
 });
@@ -109,13 +109,13 @@ test('shows task selection state and performs no request without task id', () =>
 test('opens citation trace from the immutable report manifest without another request', async () => {
   render(<MemoryRouter initialEntries={['/investigation/report?task_id=task-a']}><FinalReportViewer /></MemoryRouter>);
 
-  await waitFor(() => expect(screen.getByText('Selected Report Version: v3')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText('所选报告版本: v3')).toBeInTheDocument());
   fireEvent.click(screen.getByRole('button', { name: 'CIT-001' }));
 
-  expect(screen.getByText('Report Citation')).toBeInTheDocument();
+  expect(screen.getByText('报告引用')).toBeInTheDocument();
   expect(screen.getByText('(task-a, file:/a)')).toBeInTheDocument();
-  expect(screen.getByText('Report-bound Evidence Snapshot')).toBeInTheDocument();
-  expect(screen.getByText('Pinned Analysis')).toBeInTheDocument();
+  expect(screen.getByText('报告绑定证据快照')).toBeInTheDocument();
+  expect(screen.getByText('固定分析')).toBeInTheDocument();
   expect(screen.getByText('claim-1')).toBeInTheDocument();
   expect(getClaimProvenance).not.toHaveBeenCalled();
 });
@@ -123,27 +123,27 @@ test('opens citation trace from the immutable report manifest without another re
 test('opens exact historical Claim trace and joins report usage by evidence key', async () => {
   render(<MemoryRouter initialEntries={['/investigation/report?task_id=task-a']}><FinalReportViewer /></MemoryRouter>);
 
-  await waitFor(() => expect(screen.getByText('Selected Report Version: v3')).toBeInTheDocument());
-  fireEvent.click(screen.getByRole('button', { name: 'Claim claim-1' }));
+  await waitFor(() => expect(screen.getByText('所选报告版本: v3')).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: '论断 claim-1' }));
 
-  await waitFor(() => expect(screen.getByText('Historical Claim')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText('历史论断')).toBeInTheDocument());
   expect(getClaimProvenance).toHaveBeenCalledWith('task-a', 'claim-1');
   expect(screen.getByText('Historical claim text')).toBeInTheDocument();
-  expect(screen.getByText('Current historical Claim row status')).toBeInTheDocument();
+  expect(screen.getByText('当前历史论断行状态')).toBeInTheDocument();
   expect(screen.getByText('supports')).toBeInTheDocument();
   expect(screen.getByText('contradicts')).toBeInTheDocument();
-  expect(screen.getByText('CIT-001 · Used in this report')).toBeInTheDocument();
-  expect(screen.getByText('Claim provenance, not cited in this report')).toBeInTheDocument();
+  expect(screen.getByText('已在本报告中引用 · CIT-001')).toBeInTheDocument();
+  expect(screen.getByText('论断溯源，未在本报告中引用')).toBeInTheDocument();
 });
 
 test('shows opaque Claim not-found without falling back to current claims', async () => {
   getClaimProvenance.mockRejectedValueOnce({ status: 404, message: 'hidden' });
   render(<MemoryRouter initialEntries={['/investigation/report?task_id=task-a']}><FinalReportViewer /></MemoryRouter>);
 
-  await waitFor(() => expect(screen.getByText('Selected Report Version: v3')).toBeInTheDocument());
-  fireEvent.click(screen.getByRole('button', { name: 'Claim claim-1' }));
+  await waitFor(() => expect(screen.getByText('所选报告版本: v3')).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: '论断 claim-1' }));
 
-  await waitFor(() => expect(screen.getByText('Claim provenance not found.')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText('论断溯源未找到。')).toBeInTheDocument());
   expect(screen.queryByText('hidden')).not.toBeInTheDocument();
 });
 

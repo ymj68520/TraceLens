@@ -59,18 +59,18 @@ const Distributed = () => {
           type="text"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          placeholder="username"
+          placeholder="用户名"
           style={{ padding: 6, fontFamily: 'monospace' }}
         />
         <input
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="password"
+          placeholder="密码"
           style={{ padding: 6, fontFamily: 'monospace' }}
         />
         <button type="submit" disabled={busy} style={{ padding: '6px 12px' }}>
-          {busy ? 'Working...' : 'Login & fetch clients'}
+          {busy ? '处理中...' : '登录并获取客户端'}
         </button>
         <button type="button" onClick={handleClear} style={{ padding: '6px 12px' }}>
           Clear token

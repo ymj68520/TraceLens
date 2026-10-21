@@ -66,8 +66,8 @@ const Login = () => {
                     >
                         <Shield size={28} className="text-white" />
                     </motion.div>
-                    <h1 className="text-3xl font-bold text-white tracking-tight">Forensics Lab</h1>
-                    <p className="mt-2 text-slate-400 text-sm">Digital Forensics Analysis Platform</p>
+                    <h1 className="text-3xl font-bold text-white tracking-tight">取证实验室</h1>
+                    <p className="mt-2 text-slate-400 text-sm">数字取证分析平台</p>
                 </div>
 
                 {/* Login Card */}
@@ -82,7 +82,7 @@ const Login = () => {
                                     value={credentials.username}
                                     onChange={(e) => setCredentials({ ...credentials, username: e.target.value })}
                                     className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500/50 transition-all"
-                                    placeholder="Enter username"
+                                    placeholder="请输入用户名"
                                 />
                             </div>
                         </div>
@@ -95,7 +95,7 @@ const Login = () => {
                                     value={credentials.password}
                                     onChange={(e) => setCredentials({ ...credentials, password: e.target.value })}
                                     className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500/50 transition-all"
-                                    placeholder="Enter password"
+                                    placeholder="请输入密码"
                                 />
                             </div>
                         </div>

@@ -955,8 +955,8 @@ const Timeline = () => {
                         <tr>
                           <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('timeline.stats.matches')}</th>
                           <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('timeline.filter.type')}</th>
-                          <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Path</th>
-                          <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Size</th>
+                          <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">路径</th>
+                          <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">大小</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-slate-100">
@@ -978,11 +978,11 @@ const Timeline = () => {
 
           {/* Sticky Footer Pagination */}
           {viewMode !== 'summary' && <footer className="flex-shrink-0 flex items-center justify-between border-t border-slate-100 p-3 bg-slate-50/80 backdrop-blur-sm">
-                <Button variant="ghost" size="sm" disabled={currentPage === 1} onClick={() => updateParams({ page: currentPage - 1 })} icon={ChevronLeft} className="hover:bg-white shadow-sm">PREV</Button>
+                <Button variant="ghost" size="sm" disabled={currentPage === 1} onClick={() => updateParams({ page: currentPage - 1 })} icon={ChevronLeft} className="hover:bg-white shadow-sm">上一页</Button>
                 <div className="text-[10px] text-slate-500 font-black bg-white px-4 py-1.5 rounded-full border border-slate-200 shadow-sm tracking-widest uppercase">
                     {t('timeline.stats.navigator')} {currentPage} / {totalPages || 1}
                 </div>
-                <Button variant="ghost" size="sm" disabled={currentPage === totalPages || totalPages === 0} onClick={() => updateParams({ page: currentPage + 1 })} icon={ChevronRight} iconPosition="right" className="hover:bg-white shadow-sm">NEXT</Button>
+                <Button variant="ghost" size="sm" disabled={currentPage === totalPages || totalPages === 0} onClick={() => updateParams({ page: currentPage + 1 })} icon={ChevronRight} iconPosition="right" className="hover:bg-white shadow-sm">下一页</Button>
           </footer>}
         </main>
       </div>

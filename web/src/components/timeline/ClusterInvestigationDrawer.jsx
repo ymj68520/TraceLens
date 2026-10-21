@@ -102,7 +102,7 @@ const ClusterInvestigationDrawer = ({
                                         <CheckCircle size={16} className="text-green-500" />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <h4 className="text-xs font-bold text-slate-700 mb-1">AI Analysis</h4>
+                                        <h4 className="text-xs font-bold text-slate-700 mb-1">AI 分析</h4>
                                         <p className="text-[11px] text-slate-600 mb-1.5 whitespace-pre-wrap break-words">{selectedCluster.llm_summary}</p>
                                         {selectedCluster.llm_description && selectedCluster.llm_description !== selectedCluster.llm_summary && (
                                             <details className="mt-2">
@@ -120,7 +120,7 @@ const ClusterInvestigationDrawer = ({
                                             </div>
                                         )}
                                         {selectedCluster.llm_is_relevant && (
-                                            <Badge variant="green" className="mt-1.5">Relevant to investigation</Badge>
+                                            <Badge variant="green" className="mt-1.5">与调查相关</Badge>
                                         )}
                                     </div>
                                 </div>
@@ -133,7 +133,7 @@ const ClusterInvestigationDrawer = ({
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-primary-500 transition-colors" />
                                 <input
                                     type="text"
-                                    placeholder="Filter by path in this cluster..."
+                                    placeholder="按该簇内文件路径过滤…"
                                     value={drawerSearch}
                                     onChange={(e) => setDrawerSearch(e.target.value)}
                                     className="w-full pl-9 pr-4 py-2 bg-slate-100/50 border-none rounded-xl text-sm focus:ring-2 focus:ring-primary-500 transition-all"

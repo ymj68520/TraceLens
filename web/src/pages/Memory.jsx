@@ -88,7 +88,7 @@ const Memory = () => {
         </h1>
         {currentTask && (
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Task: {currentTask.name || currentTask.id}
+            任务: {currentTask.name || currentTask.id}
           </p>
         )}
       </div>
@@ -102,25 +102,25 @@ const Memory = () => {
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
-            <div className="text-xs text-slate-500 dark:text-slate-400">Processes</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">进程</div>
             <div className="text-2xl font-bold text-slate-800 dark:text-slate-100">
               {summary.processes ?? 0}
             </div>
           </Card>
           <Card>
-            <div className="text-xs text-slate-500 dark:text-slate-400">Network Connections</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">网络连接</div>
             <div className="text-2xl font-bold text-slate-800 dark:text-slate-100">
               {summary.network_connections ?? 0}
             </div>
           </Card>
           <Card>
-            <div className="text-xs text-slate-500 dark:text-slate-400">Bash History</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">Bash 历史</div>
             <div className="text-2xl font-bold text-slate-800 dark:text-slate-100">
               {summary.bash_history ?? 0}
             </div>
           </Card>
           <Card>
-            <div className="text-xs text-slate-500 dark:text-slate-400">Sockets</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">套接字</div>
             <div className="text-2xl font-bold text-slate-800 dark:text-slate-100">
               {summary.sockets ?? 0}
             </div>
@@ -129,7 +129,7 @@ const Memory = () => {
       )}
 
       <Card>
-        <h2 className="font-semibold mb-3 text-slate-800 dark:text-slate-100">Boot Info</h2>
+        <h2 className="font-semibold mb-3 text-slate-800 dark:text-slate-100">启动信息</h2>
         <table className="w-full text-sm">
           <tbody>
             {boot.map((b, i) => (
@@ -216,7 +216,7 @@ const Memory = () => {
             value={kw}
             onChange={(e) => setKw(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && searchBash()}
-            placeholder="filter (e.g. rm, zfs)"
+            placeholder="过滤（例如 rm、zfs）"
             className="border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 px-3 py-1 rounded text-sm"
           />
           <button

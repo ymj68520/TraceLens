@@ -205,7 +205,7 @@ const Android = () => {
       <AndroidCoverageCard taskId={taskId} />
       <AndroidArtifactsCard taskId={taskId} />
       <div className="border-b border-slate-200 overflow-x-auto">
-        <nav className="-mb-px flex space-x-8 min-w-max" aria-label="Tabs">
+        <nav className="-mb-px flex space-x-8 min-w-max" aria-label="页签">
           {[
             { id: 'overview', label: '📦 备份概览', hasData: tabData.overview },
             { id: 'apps', label: '📱 已备份应用', hasData: tabData.apps },

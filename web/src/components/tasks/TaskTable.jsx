@@ -9,7 +9,7 @@ import { Link } from 'react-router-dom';
 import Badge from '../common/Badge';
 import ProgressBar from '../common/ProgressBar';
 import { useTranslation } from '../../hooks/useTranslation';
-import { STATUS_COLORS, PRIORITY_COLORS } from '../../utils/constants';
+import { STATUS_COLORS, PRIORITY_COLORS, taskStatusZh, taskPriorityZh } from '../../utils/constants';
 
 /** Helper: convert timestamp (ms or s) to locale string */
 function formatDate(timestamp) {
@@ -20,12 +20,12 @@ function formatDate(timestamp) {
 
 function StatusBadge({ status }) {
   const color = STATUS_COLORS[status?.toLowerCase()]?.split('-')[1] || 'gray';
-  return <Badge variant={color}>{status}</Badge>;
+  return <Badge variant={color}>{taskStatusZh(status)}</Badge>;
 }
 
 function PriorityBadge({ priority }) {
   const color = PRIORITY_COLORS[priority?.toLowerCase()]?.split('-')[1] || 'gray';
-  return <Badge variant={color}>{priority}</Badge>;
+  return <Badge variant={color}>{taskPriorityZh(priority)}</Badge>;
 }
 
 function ProgressCell({ task }) {
@@ -40,7 +40,7 @@ function ProgressCell({ task }) {
     <div className="w-full">
       <ProgressBar value={task.progress?.overall_percentage || 0} showLabel={false} size="xs" />
       <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 truncate">
-        {task.progress?.phase_description || 'Processing...'}
+        {task.progress?.phase_description || '处理中...'}
       </p>
     </div>
   );
@@ -58,9 +58,9 @@ function ActionsCell({ task, onCancel, onDelete, onJoinCase }) {
       )}
       {status === 'completed' && (
         <>
-          <Link to={`/timeline?task_id=${task.id}`} className="text-primary-600 hover:underline">Timeline</Link>
-          <Link to={`/files?task_id=${task.id}`} className="text-green-600 hover:underline ml-1">Files</Link>
-          <Link to={`/reports/task/${task.id}`} className="text-teal-600 hover:underline ml-1">Report</Link>
+          <Link to={`/timeline?task_id=${task.id}`} className="text-primary-600 hover:underline">时间线</Link>
+          <Link to={`/files?task_id=${task.id}`} className="text-green-600 hover:underline ml-1">文件</Link>
+          <Link to={`/reports/task/${task.id}`} className="text-teal-600 hover:underline ml-1">报告</Link>
           {onJoinCase && (
             <button onClick={() => onJoinCase(task.id)} className="text-indigo-600 hover:underline ml-1" title="将此任务加入多镜像案件">
               加入案件
@@ -69,7 +69,7 @@ function ActionsCell({ task, onCancel, onDelete, onJoinCase }) {
         </>
       )}
       {finished && (
-        <button onClick={() => onDelete(task.id)} className="text-slate-400 hover:text-red-600 ml-2" title="Delete task">
+        <button onClick={() => onDelete(task.id)} className="text-slate-400 hover:text-red-600 ml-2" title="删除任务">
           🗑️
         </button>
       )}
@@ -109,7 +109,7 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskC
                 />
               </th>
             )}
-            {['ID', 'Image Path', 'Status', 'Priority', 'Timeline', 'Progress', 'Actions'].map((h, i) => (
+            {['ID', '镜像路径', '状态', '优先级', '时间线', '进度', '操作'].map((h, i) => (
               <th key={h} className={`px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase tracking-wider ${i === 0 ? 'w-20' : i === 2 ? 'w-28' : i === 3 ? 'w-24' : i === 4 ? 'w-44' : i === 5 ? 'w-40' : i === 6 ? 'w-48' : ''}`}>
                 {h}
               </th>
@@ -161,7 +161,7 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskC
                 {task.metadata?.source_verification === 'UNVERIFIED_SOURCE' &&
                   <span className="block mt-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400" title="未经过 Android 镜像完整哈希及文件系统预检">UNVERIFIED_SOURCE</span>}
                 {task.metadata?.android_coverage_status === 'COMPLETED_WITH_LOCKED_USERDATA' &&
-                  <span className="block mt-1 text-[10px] font-semibold text-orange-700 dark:text-orange-400">LOCKED USERDATA</span>}
+                  <span className="block mt-1 text-[10px] font-semibold text-orange-700 dark:text-orange-400">用户数据已锁定</span>}
                 {task.metadata?.android_coverage_status === 'SUPER_NORMALIZED_NO_USERDATA' &&
                   <span className="block mt-1 text-[10px] font-semibold text-violet-700 dark:text-violet-400">SUPER NORMALIZED · NO USERDATA</span>}
               </td>

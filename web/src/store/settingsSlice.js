@@ -5,7 +5,7 @@ const DEFAULT_SETTINGS = {
   refreshInterval: 5000,
   autoRefresh: true,
   theme: 'light',
-  language: 'en',
+  language: 'zh',
   itemsPerPage: 20,
   showTerminal: false,
 };

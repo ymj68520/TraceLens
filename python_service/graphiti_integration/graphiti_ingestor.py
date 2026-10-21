@@ -21,6 +21,7 @@ from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig
 from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
 
 from . import episode_gate
+from .chinese_prompts import chinese_prompt_library
 from .config import GraphitiConfig
 from .exceptions import IngestionError
 from .toon_transformer import EpisodeData, TOONTransformer
@@ -281,6 +282,7 @@ class GraphitiIngestor:
                     llm_client=llm_client,
                     embedder=embedder,
                     cross_encoder=cross_encoder,
+                    prompt_library=chinese_prompt_library(),
                 )
             else:
                 # Default OpenAI-based configuration
@@ -288,6 +290,7 @@ class GraphitiIngestor:
                     uri=self.config.neo4j_uri,
                     user=self.config.neo4j_user,
                     password=self.config.neo4j_password,
+                    prompt_library=chinese_prompt_library(),
                 )
         
         # Build indices and constraints
@@ -321,6 +324,7 @@ class GraphitiIngestor:
                 client=self._owned_llm_client,
                 config=llm_config,
             ),
+            prompt_library=chinese_prompt_library(),
         )
         await client.build_indices_and_constraints()
         return client

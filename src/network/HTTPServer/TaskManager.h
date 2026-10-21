@@ -140,6 +140,7 @@ public:
      *         timeout, cancellation, or exhausted retries.
      */
     bool wait_for_graphiti_ingestion(const std::string& task_id, const std::string& job_id);
+    bool wait_for_pipeline_report(const std::string& task_id);
 
     /**
      * @brief Update task progress

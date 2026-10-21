@@ -148,7 +148,7 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
       <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
-          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Create New Task</h2>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">创建新任务</h2>
           <button onClick={() => { dispatch(closeModal()); onClose(); }} className="text-slate-400 hover:text-slate-500 dark:hover:text-slate-300">✕</button>
         </div>
 
@@ -327,8 +327,8 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
 
           {/* Actions */}
           <div className="flex justify-end space-x-3 pt-2">
-            <Button type="button" variant="secondary" onClick={() => { dispatch(closeModal()); onClose(); }} disabled={isCreating}>Cancel</Button>
-            <Button type="submit" disabled={isCreating || (isRaid && !raidSource)}>{isCreating ? 'Creating...' : 'Create Task'}</Button>
+            <Button type="button" variant="secondary" onClick={() => { dispatch(closeModal()); onClose(); }} disabled={isCreating}>取消</Button>
+            <Button type="submit" disabled={isCreating || (isRaid && !raidSource)}>{isCreating ? '创建中...' : '创建任务'}</Button>
           </div>
         </form>
       </div>

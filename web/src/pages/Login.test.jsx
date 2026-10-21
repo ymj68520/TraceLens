@@ -17,8 +17,8 @@ test('field login uses server-issued bearer and never writes a mock token', asyn
   pythonApi.post.mockResolvedValue({ access_token: 'signed-synthetic-token', token_type: 'bearer',
     principal: { id: 'analyst', role: 'analyst' } });
   render(<MemoryRouter><Login /></MemoryRouter>);
-  fireEvent.change(screen.getByPlaceholderText('Enter username'), { target: { value: 'analyst' } });
-  fireEvent.change(screen.getByPlaceholderText('Enter password'), { target: { value: 'synthetic-password' } });
+  fireEvent.change(screen.getByPlaceholderText('请输入用户名'), { target: { value: 'analyst' } });
+  fireEvent.change(screen.getByPlaceholderText('请输入密码'), { target: { value: 'synthetic-password' } });
   fireEvent.click(screen.getByRole('button', { name: /登录/ }));
   await waitFor(() => expect(setFieldSession).toHaveBeenCalledWith(
     'signed-synthetic-token', { id: 'analyst', role: 'analyst' }));
@@ -29,8 +29,8 @@ test('field login uses server-issued bearer and never writes a mock token', asyn
 test('invalid login remains on page and does not create a session', async () => {
   pythonApi.post.mockRejectedValue(new Error('invalid credentials'));
   render(<MemoryRouter><Login /></MemoryRouter>);
-  fireEvent.change(screen.getByPlaceholderText('Enter username'), { target: { value: 'analyst' } });
-  fireEvent.change(screen.getByPlaceholderText('Enter password'), { target: { value: 'wrong-password' } });
+  fireEvent.change(screen.getByPlaceholderText('请输入用户名'), { target: { value: 'analyst' } });
+  fireEvent.change(screen.getByPlaceholderText('请输入密码'), { target: { value: 'wrong-password' } });
   fireEvent.click(screen.getByRole('button', { name: /登录/ }));
   expect(await screen.findByText('登录失败，请重试')).toBeInTheDocument();
   expect(setFieldSession).not.toHaveBeenCalled();

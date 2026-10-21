@@ -60,3 +60,22 @@ export const POLLING_INTERVALS = {
   normal: 5000,
   slow: 10000,
 };
+
+// Display names (zh) for task enums — values stay canonical for filtering/API.
+export const TASK_STATUS_ZH = {
+  pending: '等待中',
+  running: '运行中',
+  completed: '已完成',
+  failed: '失败',
+  cancelled: '已取消',
+};
+
+export const TASK_PRIORITY_ZH = {
+  low: '低',
+  normal: '普通',
+  high: '高',
+  critical: '紧急',
+};
+
+export const taskStatusZh = (s) => TASK_STATUS_ZH[(s || '').toLowerCase()] || s;
+export const taskPriorityZh = (p) => TASK_PRIORITY_ZH[(p || '').toLowerCase()] || p;

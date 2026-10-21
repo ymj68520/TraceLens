@@ -663,6 +663,7 @@ class ServiceManager:
                 evidence_service=evidence_service,
                 admission=admission,
                 executor=executor,
+                cpp_backend=self.cpp_backend,
             )
             logger.info(
                 "Pipeline report tail finished for task %s: %s",

@@ -10,7 +10,7 @@ import Button from '../components/common/Button';
 import Spinner from '../components/common/Spinner';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import { useToast } from '../components/common/ToastContext';
-import { TASK_STATUS, TASK_PRIORITY } from '../utils/constants';
+import { TASK_STATUS, TASK_PRIORITY, taskStatusZh, taskPriorityZh } from '../utils/constants';
 import TaskTable from '../components/tasks/TaskTable';
 import CreateTaskModal from '../components/tasks/CreateTaskModal';
 import AddTasksToCaseModal from '../components/tasks/AddTasksToCaseModal';
@@ -132,7 +132,7 @@ const Tasks = () => {
           >
             Tasks
           </motion.h1>
-          <p className="mt-2 text-slate-600 dark:text-slate-300">Manage and monitor analysis tasks</p>
+          <p className="mt-2 text-slate-600 dark:text-slate-300">管理并监控镜像分析任务</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => setShowPreflight((value) => !value)}>🔍 检材预检</Button>
@@ -142,7 +142,7 @@ const Tasks = () => {
           <Button variant="outline" onClick={() => setShowCompose(true)} disabled={selectedTaskIds.size === 0}>
             📂 组建案件（{selectedTaskIds.size}）
           </Button>
-          <Button onClick={() => { setTaskSourcePrefill(null); dispatch(openModal({ type: 'createTask' })); }}>➕ Create Task</Button>
+          <Button onClick={() => { setTaskSourcePrefill(null); dispatch(openModal({ type: 'createTask' })); }}>➕ 创建任务</Button>
         </div>
       </div>
 
@@ -154,13 +154,13 @@ const Tasks = () => {
       {/* Filters */}
       <Card>
         <div className="flex flex-wrap gap-4">
-          <FilterSelect label="Status" value={filters.status} onChange={(v) => handleFilterChange('status', v)}>
-            <option value="all">All</option>
-            {Object.values(TASK_STATUS).map((s) => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+          <FilterSelect label="状态" value={filters.status} onChange={(v) => handleFilterChange('status', v)}>
+            <option value="all">全部</option>
+            {Object.values(TASK_STATUS).map((s) => <option key={s} value={s}>{taskStatusZh(s)}</option>)}
           </FilterSelect>
-          <FilterSelect label="Priority" value={filters.priority} onChange={(v) => handleFilterChange('priority', v)}>
-            <option value="all">All</option>
-            {Object.values(TASK_PRIORITY).map((p) => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
+          <FilterSelect label="优先级" value={filters.priority} onChange={(v) => handleFilterChange('priority', v)}>
+            <option value="all">全部</option>
+            {Object.values(TASK_PRIORITY).map((p) => <option key={p} value={p}>{taskPriorityZh(p)}</option>)}
           </FilterSelect>
         </div>
       </Card>

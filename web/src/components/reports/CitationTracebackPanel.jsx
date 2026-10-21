@@ -147,7 +147,7 @@ const CitationTracebackPanel = ({
                 <div className="flex items-center gap-3">
                     <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"><FileSearch size={18} aria-hidden /></span>
                     <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-300">Evidence Traceback</p>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-300">证据溯源</p>
                         <h4 className="mt-0.5 text-base font-bold text-slate-900 dark:text-slate-100">引用溯源 · <span className="font-mono text-blue-700 dark:text-blue-300">{citation.citation_id}</span></h4>
                     </div>
                 </div>

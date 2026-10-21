@@ -68,7 +68,7 @@ const TaskSelector = () => {
     return (
         <div className="flex items-center gap-2">
             <span className="text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap hidden md:inline">
-                Task:
+                任务:
             </span>
             <select
                 value={currentTaskId || ''}

@@ -78,12 +78,12 @@ const Search = () => {
     <div className="space-y-6">
       <div>
         <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="text-3xl font-bold text-slate-900 dark:text-white">Full-Text Search</motion.h1>
-        <p className="mt-2 text-slate-600 dark:text-slate-300">Search indexed file contents</p>
+        <p className="mt-2 text-slate-600 dark:text-slate-300">检索已建立索引的文件内容</p>
         {currentTask && (
           <div className="mt-2">
             <Badge variant="blue">{currentTask.status}</Badge>
             <span className="ml-2 text-sm text-slate-600 dark:text-slate-400">
-              Task: {currentTask.image_path?.split('/').pop() || taskId}
+              任务: {currentTask.image_path?.split('/').pop() || taskId}
             </span>
           </div>
         )}
@@ -94,14 +94,14 @@ const Search = () => {
         <Card className="bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800">
           <div className="flex items-center space-x-2 text-sm text-blue-800 dark:text-blue-200">
             <span className="font-medium">📋 Task Context:</span>
-            <span>Searching files from task {taskId.substring(0, 8)}...</span>
+            <span>正在检索任务 {taskId.substring(0, 8)} 的文件索引…</span>
           </div>
         </Card>
       )}
 
       {/* Tabs */}
       <div className="border-b border-slate-200 dark:border-slate-700">
-        <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+        <nav className="-mb-px flex space-x-8" aria-label="页签">
           <button
             onClick={() => setActiveTab('search')}
             className={`${activeTab === 'search'
@@ -136,7 +136,7 @@ const Search = () => {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-700 dark:text-white dark:placeholder-gray-400"
-                placeholder="Enter search terms... (e.g., 'forensics', 'password', 'error')"
+                placeholder="输入检索关键词（例如：密码、转账、登录）"
               />
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 Supports boolean operators: AND, OR, NOT (e.g., &apos;forensics AND password&apos;)
@@ -171,7 +171,7 @@ const Search = () => {
 
       {/* Create Index Tab */}
       {activeTab === 'index' && (
-        <Card title="Create Search Index">
+        <Card title="创建检索索引">
           <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
             Before searching, you need to create a search index from extracted files.
             {taskId && (
@@ -278,8 +278,8 @@ const Search = () => {
             </div>
           ) : (
             <div className="text-center py-12 text-slate-500 dark:text-slate-400">
-              <p className="text-lg">No results found</p>
-              <p className="text-sm mt-2">Try different search terms or create a new index</p>
+              <p className="text-lg">未找到结果</p>
+              <p className="text-sm mt-2">请更换关键词，或先为该任务建立索引</p>
             </div>
           )}
         </Card>

@@ -31,7 +31,8 @@ describe('two-stage report UI', () => {
             taskLoader={taskLoader} fetchGeneration={vi.fn()} />);
         fireEvent.change(screen.getByTestId('generate-actor-input'), { target: { value: 'analyst' } });
         fireEvent.click(screen.getByTestId('generate-submit'));
-        await waitFor(() => expect(generate).toHaveBeenCalledWith('T', { requestedBy: 'analyst', analysisMode: 'evidence_only' }));
+        // 9502116f 后首次研判默认走分类叙事契约（narrative），断言随现行默认更新。
+        await waitFor(() => expect(generate).toHaveBeenCalledWith('T', { requestedBy: 'analyst', analysisMode: 'narrative' }));
         expect(screen.queryByLabelText('本次案情描述')).toBeNull();
     });
 

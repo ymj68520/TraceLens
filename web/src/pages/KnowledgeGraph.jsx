@@ -23,7 +23,7 @@ import {
 } from '../services/graphitiService';
 
 // Shared graph constants (node colors) extracted to a reusable module
-import { NODE_COLORS, getNodeColor } from '../components/knowledge-graph/graphConstants';
+import { NODE_COLORS, getNodeColor, getNodeLabelZh } from '../components/knowledge-graph/graphConstants';
 // Knowledge graph subcomponents (split for maintainability)
 import SearchTab from '../components/knowledge-graph/SearchTab';
 import EntitiesTab from '../components/knowledge-graph/EntitiesTab';
@@ -848,7 +848,7 @@ export default function KnowledgeGraph() {
                                     <div className="flex items-start justify-between mb-3">
                                         <div className="flex items-center gap-2">
                                             <div className="w-3 h-3 rounded-full" style={{ background: getNodeColor(selectedNode.label) }} />
-                                            <Badge variant="blue">{selectedNode.label}</Badge>
+                                            <Badge variant="blue">{getNodeLabelZh(selectedNode.label)}</Badge>
                                         </div>
                                         <button
                                             onClick={() => { setSelectedNode(null); setHighlightNodes(new Set()); setHighlightLinks(new Set()); }}
@@ -879,7 +879,7 @@ export default function KnowledgeGraph() {
                                         {Object.entries(NODE_COLORS).filter(([k]) => k !== 'default').map(([label, color]) => (
                                             <div key={label} className="flex items-center gap-2">
                                                 <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />
-                                                <span className="text-xs text-slate-500">{label}</span>
+                                                <span className="text-xs text-slate-500">{getNodeLabelZh(label)}</span>
                                             </div>
                                         ))}
                                     </div>

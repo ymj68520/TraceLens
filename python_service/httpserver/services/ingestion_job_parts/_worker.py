@@ -264,24 +264,20 @@ class IngestionJobWorkerMixin:
                 )
             else:
                 await self._update_job_status(job_id, JobStatus.COMPLETED, progress=100)
-                # Initial-analysis-flow tail: the pipeline's ingestion is the
-                # last stage — fire the report-tail callback independently of
-                # the job result. The pipeline now triggers ANALYZED_ONLY
-                # (LLM_MAX_FILES caps what was described) and marks itself via
-                # trigger_source so manual UI re-ingests skip the tail.
+                # Manual re-ingest tail: a FULL (manual UI) ingestion that
+                # finishes without a report fires the best-effort tail. The
+                # pipeline path is NOT served here anymore — the C++ task
+                # manager drives POST /api/reports/pipeline-tail itself and
+                # gates task completion on its result, so an async duplicate
+                # generation would race the gate.
                 is_pipeline_trigger = (
                     queue_data.get("trigger_source") == "pipeline"
                 )
                 if (
                     task_id
                     and self.on_ingestion_completed is not None
-                    and (
-                        mode == IngestionMode.FULL
-                        or (
-                            mode == IngestionMode.ANALYZED_ONLY
-                            and is_pipeline_trigger
-                        )
-                    )
+                    and mode == IngestionMode.FULL
+                    and not is_pipeline_trigger
                 ):
                     asyncio.create_task(self._notify_report_tail(task_id))
 

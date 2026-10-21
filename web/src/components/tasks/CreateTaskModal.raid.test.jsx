@@ -18,10 +18,10 @@ test('RAID uses existing task creation, case description and ordinary image scen
   fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'raid' } });
   expect(screen.getByText('Existing filter profile')).toBeInTheDocument();
   expect(screen.queryByPlaceholderText('/path/to/disk_image.dd or /path/to/image.E01')).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Create Task' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '创建任务' })).toBeDisabled();
   fireEvent.change(screen.getByPlaceholderText(/请输入案情描述/), { target: { value: 'Synthetic RAID case' } });
   fireEvent.click(screen.getByRole('button', { name: 'Synthetic prepared source' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Create Task' }));
+  fireEvent.click(screen.getByRole('button', { name: '创建任务' }));
   await waitFor(() => expect(mocks.createTask).toHaveBeenCalledOnce());
   expect(mocks.createTask.mock.calls[0][0]).toMatchObject({ android_source: 'tsk', image_source: 'raid',
     image_path: '/synthetic/prepared/logical.img', scenarios: [], case_description: 'Synthetic RAID case' });

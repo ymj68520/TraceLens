@@ -93,7 +93,7 @@ const InvestigationNodeDetailPanel = ({ node }) => {
                     </span>
                 </div>
                 <div className="flex items-baseline justify-between gap-3 py-1">
-                    <span className="text-xs text-slate-500 dark:text-slate-400 shrink-0">namespace</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 shrink-0">命名空间</span>
                     <span className="text-xs font-mono text-slate-700 dark:text-slate-200">{namespace}</span>
                 </div>
                 {namespace !== 'base_kg' && (
@@ -105,7 +105,7 @@ const InvestigationNodeDetailPanel = ({ node }) => {
                     </div>
                 )}
                 <div className="flex items-baseline justify-between gap-3 py-1">
-                    <span className="text-xs text-slate-500 dark:text-slate-400 shrink-0">source</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 shrink-0">来源</span>
                     <span className="text-xs font-mono text-slate-700 dark:text-slate-200">{node.source}</span>
                 </div>
             </div>

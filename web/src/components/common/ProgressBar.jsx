@@ -20,7 +20,7 @@ const ProgressBar = ({ value = 0, max = 100, size = 'md', color = 'blue', showLa
       {(showLabel || label) && (
         <div className="flex justify-between mb-1.5">
           <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
-            {label || 'Progress'}
+            {label || '进度'}
           </span>
           <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
             {percentage.toFixed(1)}%

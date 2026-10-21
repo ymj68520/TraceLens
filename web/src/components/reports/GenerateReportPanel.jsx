@@ -242,10 +242,10 @@ const GenerateReportPanel = ({
             {summary && analysisMode !== 'case_guided' && (
                 <div className="text-xs text-slate-600 dark:text-slate-300 space-y-1" data-testid="generate-source-summary">
                     <div className="flex flex-wrap gap-3">
-                        <span data-testid="summary-main">Main Evidence: {summary.main}</span>
-                        <span data-testid="summary-appendix">Appendix Evidence: {summary.appendix}</span>
-                        <span data-testid="summary-original">Original-only: {summary.originalOnly}</span>
-                        <span data-testid="summary-bound">Bound accepted analyses: {summary.bound}</span>
+                        <span data-testid="summary-main">正文证据: {summary.main}</span>
+                        <span data-testid="summary-appendix">附录证据: {summary.appendix}</span>
+                        <span data-testid="summary-original">仅原始报告: {summary.originalOnly}</span>
+                        <span data-testid="summary-bound">已采纳分析绑定: {summary.bound}</span>
                     </div>
                     {summary.newer.map((row) => (
                         <p

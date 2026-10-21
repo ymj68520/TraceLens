@@ -137,7 +137,7 @@ export default function ForensicReportPage({
   }, []);
 
   return (
-    <section aria-label="Forensic report" className="space-y-5">
+    <section aria-label="取证报告" className="space-y-5">
       <ReportToolbar
         manifest={state.manifest}
         version={state.selectedVersion}

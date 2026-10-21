@@ -81,7 +81,7 @@ const Layout = ({ children }) => {
           className="p-2 rounded-xl text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-colors"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
         >
-          <span className="sr-only">Open sidebar</span>
+          <span className="sr-only">打开侧栏</span>
           {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
         <h1 className="ml-3 text-lg font-bold text-slate-900 dark:text-white tracking-tight">

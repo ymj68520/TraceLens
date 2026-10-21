@@ -285,7 +285,7 @@ export default function OSS() {
                                     <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
                                         <thead className="bg-slate-50 dark:bg-slate-800">
                                             <tr>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">Key</th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">对象键</th>
                                                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">大小</th>
                                                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">存储类型</th>
                                                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">修改时间</th>
@@ -319,7 +319,7 @@ export default function OSS() {
                                             <tr>
                                                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">时间</th>
                                                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">操作</th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">Key</th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">对象键</th>
                                                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">IP</th>
                                                 <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-300 uppercase">状态</th>
                                             </tr>

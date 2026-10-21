@@ -37,9 +37,9 @@ export default function EvidencePicker({ taskId, eventId, open, onClose, onLinke
       <p className="text-sm text-slate-500">MVP 支持 File Evidence。输入 files.db 中的完整取证路径，服务端会在当前 task 内验证并生成稳定 Evidence Key。</p>
       <label className="mt-4 block text-sm font-medium">取证文件路径</label>
       <input value={path} onChange={(e) => setPath(e.target.value)} placeholder="C:\\Users\\Alice\\secret.xlsx 或 /docs/secret.xlsx" className="mt-1 w-full rounded-xl border-slate-300 dark:border-slate-700 dark:bg-slate-900/50" />
-      <label className="mt-4 block text-sm font-medium">Evidence Role</label>
+      <label className="mt-4 block text-sm font-medium">证据角色</label>
       <select value={role} onChange={(e) => setRole(e.target.value)} className="mt-1 w-full rounded-xl border-slate-300 dark:border-slate-700 dark:bg-slate-900/50">
-        <option value="primary">Primary</option><option value="supporting">Supporting</option><option value="context">Context</option><option value="contradicting">Contradicting</option>
+        <option value="primary">主要</option><option value="supporting">支持</option><option value="context">背景</option><option value="contradicting">矛盾</option>
       </select>
       <label className="mt-4 block text-sm font-medium">关联理由（可选）</label>
       <textarea value={rationale} onChange={(e) => setRationale(e.target.value)} rows={3} className="mt-1 w-full rounded-xl border-slate-300 dark:border-slate-700 dark:bg-slate-900/50" />
