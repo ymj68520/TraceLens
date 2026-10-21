@@ -554,6 +554,9 @@ export default function AgentWorkbench() {
   // Selected Evidence modal / preview
   const [previewEvidence, setPreviewEvidence] = useState(null);
 
+  // Member Matrix presentation state (compact / collapsed)
+  const [isMatrixCollapsed, setIsMatrixCollapsed] = useState(false);
+
   // Fetch Agent State
   const loadAgentState = useCallback(async () => {
     if (!currentTaskId || isTaskRunning) return;
@@ -1645,80 +1648,178 @@ export default function AgentWorkbench() {
       {isCrossImageMode && caseMembers.length > 0 && (
         <div
           data-testid="case-member-matrix"
-          className="rounded-2xl glass-strong border border-purple-200/70 dark:border-purple-900/50 p-4 shadow-sm bg-gradient-to-r from-purple-50/40 via-indigo-50/20 to-transparent dark:from-purple-950/20 dark:via-indigo-950/10"
+          className="rounded-2xl glass-strong border border-purple-200/70 dark:border-purple-900/50 p-3 shadow-xs bg-gradient-to-r from-purple-50/40 via-indigo-50/20 to-transparent dark:from-purple-950/20 dark:via-indigo-950/10 transition-all duration-300"
         >
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-purple-100 dark:border-purple-900/40">
+          {/* Header Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-purple-100 dark:border-purple-900/40">
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-lg bg-purple-600 text-white flex items-center justify-center text-xs font-bold shadow-sm">
-                <Layers className="w-3.5 h-3.5" />
+              <div className="w-5 h-5 rounded-md bg-purple-600 text-white flex items-center justify-center text-xs font-bold shadow-xs">
+                <Layers className="w-3 h-3" />
               </div>
               <span className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider flex items-center gap-1.5">
                 涉案设备镜像协同矩阵 (Member Devices Matrix)
-                <span className="text-[10px] font-normal text-purple-700 dark:text-purple-300 font-mono bg-purple-100/70 dark:bg-purple-900/50 px-1.5 py-0.5 rounded">
+                <span className="text-[10px] font-normal text-purple-700 dark:text-purple-300 font-mono bg-purple-100/70 dark:bg-purple-900/50 px-1.5 py-0.2 rounded">
                   共 {caseMembers.length} 台协同源
                 </span>
               </span>
             </div>
-            <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+            <div className="flex items-center gap-2.5 text-xs text-slate-500 dark:text-slate-400">
               {focusedTaskId && (
                 <button
                   type="button"
                   data-testid="btn-cancel-device-focus-matrix"
                   onClick={handleCancelFocus}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-white dark:bg-slate-800 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-700 shadow-xs hover:bg-purple-50 dark:hover:bg-purple-950 transition-colors"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-800 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-700 shadow-2xs hover:bg-purple-50 dark:hover:bg-purple-950 transition-colors"
                   title="取消单机聚焦，查看全案所有设备联合研判全景"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <X className="w-3 h-3" />
                   <span>取消单机聚焦 · 返回全案全景</span>
                 </button>
               )}
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
-                <span>点击卡片可聚焦单机或取消聚焦</span>
+              <span className="hidden md:inline-flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
+                <span>点击卡片聚焦单机或取消</span>
               </span>
+              <button
+                type="button"
+                data-testid="btn-toggle-matrix-collapse"
+                onClick={() => setIsMatrixCollapsed((prev) => !prev)}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:text-purple-600 dark:hover:text-purple-300 hover:bg-white/80 dark:hover:bg-slate-800/80 transition-colors"
+                title={isMatrixCollapsed ? '展开完整设备矩阵' : '收起设备矩阵以节省垂直工作区'}
+              >
+                {isMatrixCollapsed ? (
+                  <>
+                    <span>展开</span>
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  </>
+                ) : (
+                  <>
+                    <span>收起</span>
+                    <ChevronUp className="w-3.5 h-3.5" />
+                  </>
+                )}
+              </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-3">
-            {/* Global Overview Card (All Devices in Case) */}
-            <div
-              data-testid="case-member-card-all"
-              onClick={handleCancelFocus}
-              className={`p-3 rounded-xl border transition-all cursor-pointer select-none flex flex-col justify-between gap-2.5 ${
-                !focusedTaskId
-                  ? 'border-purple-500/90 bg-gradient-to-br from-purple-100/90 via-white to-indigo-50/70 dark:from-purple-950/60 dark:via-slate-800 dark:to-indigo-950/40 shadow-md ring-2 ring-purple-500/40'
-                  : 'border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50 hover:border-purple-300 hover:bg-slate-50 dark:hover:bg-slate-800/80'
-              }`}
-              title="点击查看全案多设备联合研判全景"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2.5 min-w-0">
+          {/* Collapsed Ribbon Mode (Ultra-compact ~34px) */}
+          {isMatrixCollapsed ? (
+            <div className="flex items-center gap-2 pt-2 overflow-x-auto no-scrollbar">
+              <button
+                type="button"
+                data-testid="case-member-card-all"
+                onClick={handleCancelFocus}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium transition-all shrink-0 cursor-pointer ${
+                  !focusedTaskId
+                    ? 'border-purple-500 bg-purple-100/90 dark:bg-purple-900/60 text-purple-900 dark:text-purple-100 ring-2 ring-purple-500/30 font-semibold shadow-xs'
+                    : 'border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:border-purple-300 hover:bg-slate-50'
+                }`}
+                title="全案多设备协同全景"
+              >
+                <Network className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                <span>🌐 全案协同全景</span>
+                <span className="text-[10px] font-mono px-1 rounded bg-purple-200/70 dark:bg-purple-800/60">
+                  ALL ({caseMembers.length}台)
+                </span>
+                {!focusedTaskId && (
+                  <span className="text-[10px] font-bold text-purple-700 dark:text-purple-300 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-600 animate-ping" />
+                    当前全景
+                  </span>
+                )}
+              </button>
+
+              {caseMembers.map((member) => {
+                const { Icon } = member;
+                const isFocus = member.isCurrent;
+                return (
                   <div
-                    className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                    key={member.id}
+                    data-testid={`case-member-card-${member.id}`}
+                    onClick={() => handleMemberCardClick(member.id)}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs transition-all shrink-0 cursor-pointer ${
+                      isFocus
+                        ? 'border-purple-500 bg-purple-100/90 dark:bg-purple-900/60 text-purple-900 dark:text-purple-100 ring-2 ring-purple-500/30 font-semibold shadow-xs'
+                        : 'border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:border-purple-300 hover:bg-slate-50'
+                    }`}
+                    title={`${member.roleLabel} (${member.imageName}) - 点击聚焦或取消聚焦`}
+                  >
+                    <Icon className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                    <span className="font-semibold">{member.roleLabel}</span>
+                    <span className="text-[10px] font-mono text-slate-400">({member.scope})</span>
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        member.status === 'completed'
+                          ? 'bg-emerald-500'
+                          : member.status === 'running'
+                          ? 'bg-amber-500 animate-ping'
+                          : 'bg-slate-400'
+                      }`}
+                      title={`状态: ${member.status === 'completed' ? '就绪' : member.status}`}
+                    />
+                    {isFocus ? (
+                      <span className="text-[10px] font-bold text-purple-700 dark:text-purple-300 flex items-center gap-1 ml-0.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-purple-600 animate-ping" />
+                        聚焦中
+                        <button
+                          type="button"
+                          data-testid={`btn-cancel-focus-${member.id}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCancelFocus();
+                          }}
+                          className="ml-0.5 p-0.5 hover:text-purple-900 dark:hover:text-purple-100 rounded"
+                          title="取消聚焦"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* Expanded Sleek Cards Grid (Compact ~46px per card) */
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2.5 pt-2.5">
+              {/* Global Overview Card (All Devices in Case) */}
+              <div
+                data-testid="case-member-card-all"
+                onClick={handleCancelFocus}
+                className={`px-3 py-2 rounded-xl border transition-all cursor-pointer select-none flex items-center justify-between gap-2 ${
+                  !focusedTaskId
+                    ? 'border-purple-500/90 bg-gradient-to-r from-purple-100/90 via-white to-indigo-50/70 dark:from-purple-950/70 dark:via-slate-800 dark:to-indigo-950/40 shadow-xs ring-2 ring-purple-500/30'
+                    : 'border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/50 hover:border-purple-300 hover:bg-slate-50 dark:hover:bg-slate-800/80'
+                }`}
+                title="点击查看全案多设备联合研判全景"
+              >
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  <div
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
                       !focusedTaskId
-                        ? 'bg-purple-600 text-white shadow-sm'
+                        ? 'bg-purple-600 text-white shadow-2xs'
                         : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
                     }`}
                   >
-                    <Network className="w-4 h-4" />
+                    <Network className="w-3.5 h-3.5" />
                   </div>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                      <span className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
                         🌐 全案协同全景
                       </span>
-                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 font-semibold">
+                      <span className="text-[10px] font-mono px-1 py-0.2 rounded bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 font-semibold">
                         ALL ({caseMembers.length}台)
                       </span>
                     </div>
-                    <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                      跨镜像全局协同与因果推导
+                    <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate">
+                      跨镜像全局因果推导
                     </div>
                   </div>
                 </div>
 
                 {!focusedTaskId ? (
-                  <span className="shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-700 flex items-center gap-1">
+                  <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-700 flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-purple-600 animate-ping" />
                     当前全景
                   </span>
@@ -1730,53 +1831,53 @@ export default function AgentWorkbench() {
                 )}
               </div>
 
-              <div className="flex items-center justify-between pt-1.5 border-t border-slate-100 dark:border-slate-800/60 text-[10px] text-slate-400 font-mono">
-                <span className="flex items-center gap-1 text-purple-600 dark:text-purple-400">
-                  <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
-                  <span>全局汇总模式</span>
-                </span>
-                <span>跨设备联动</span>
-              </div>
-            </div>
-
-            {/* Individual Device Cards */}
-            {caseMembers.map((member) => {
-              const { Icon } = member;
-              const isFocus = member.isCurrent;
-              return (
-                <div
-                  key={member.id}
-                  data-testid={`case-member-card-${member.id}`}
-                  onClick={() => handleMemberCardClick(member.id)}
-                  className={`p-3 rounded-xl border transition-all cursor-pointer select-none flex flex-col justify-between gap-2.5 ${
-                    isFocus
-                      ? 'border-purple-500/80 bg-white dark:bg-slate-800 shadow-md ring-2 ring-purple-500/30'
-                      : 'border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50 hover:border-purple-300 hover:bg-slate-50 dark:hover:bg-slate-800/80'
-                  }`}
-                  title={isFocus ? '再次点击取消聚焦' : '点击聚焦研判此设备'}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5 min-w-0">
+              {/* Individual Device Cards */}
+              {caseMembers.map((member) => {
+                const { Icon } = member;
+                const isFocus = member.isCurrent;
+                return (
+                  <div
+                    key={member.id}
+                    data-testid={`case-member-card-${member.id}`}
+                    onClick={() => handleMemberCardClick(member.id)}
+                    className={`px-3 py-2 rounded-xl border transition-all cursor-pointer select-none flex items-center justify-between gap-2 ${
+                      isFocus
+                        ? 'border-purple-500/90 bg-white dark:bg-slate-800 shadow-xs ring-2 ring-purple-500/30'
+                        : 'border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/50 hover:border-purple-300 hover:bg-slate-50 dark:hover:bg-slate-800/80'
+                    }`}
+                    title={isFocus ? '再次点击取消聚焦' : '点击聚焦研判此设备'}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       <div
-                        className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
                           isFocus
-                            ? 'bg-purple-600 text-white shadow-sm'
+                            ? 'bg-purple-600 text-white shadow-2xs'
                             : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
                         }`}
                       >
-                        <Icon className="w-4 h-4" />
+                        <Icon className="w-3.5 h-3.5" />
                       </div>
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
                             {member.roleLabel}
                           </span>
-                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                          <span className="text-[10px] font-mono px-1 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
                             {member.scope}
                           </span>
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              member.status === 'completed'
+                                ? 'bg-emerald-500'
+                                : member.status === 'running'
+                                ? 'bg-amber-500 animate-ping'
+                                : 'bg-slate-400'
+                            }`}
+                            title={`状态: ${member.status === 'completed' ? '就绪' : member.status}`}
+                          />
                         </div>
                         <div
-                          className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate mt-0.5"
+                          className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate"
                           title={member.imageName}
                         >
                           {member.imageName}
@@ -1786,7 +1887,7 @@ export default function AgentWorkbench() {
 
                     {isFocus ? (
                       <div className="flex items-center gap-1 shrink-0">
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-700 flex items-center gap-1">
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-700 flex items-center gap-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-purple-600 animate-ping" />
                           聚焦中
                         </span>
@@ -1800,36 +1901,19 @@ export default function AgentWorkbench() {
                           className="p-0.5 text-slate-400 hover:text-purple-600 dark:hover:text-purple-300 rounded hover:bg-purple-100 dark:hover:bg-purple-900/40"
                           title="取消聚焦"
                         >
-                          <X className="w-3.5 h-3.5" />
+                          <X className="w-3 h-3" />
                         </button>
                       </div>
                     ) : (
                       <span className="shrink-0 text-[10px] text-slate-400 hover:text-purple-600 flex items-center gap-0.5">
-                        <span>点击聚焦</span>
                         <ChevronRight className="w-3 h-3" />
                       </span>
                     )}
                   </div>
-
-                  <div className="flex items-center justify-between pt-1.5 border-t border-slate-100 dark:border-slate-800/60 text-[10px] text-slate-400 font-mono">
-                    <span className="flex items-center gap-1">
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          member.status === 'completed'
-                            ? 'bg-emerald-500'
-                            : member.status === 'running'
-                            ? 'bg-amber-500 animate-ping'
-                            : 'bg-slate-400'
-                        }`}
-                      />
-                      <span>状态: {member.status === 'completed' ? '就绪' : member.status}</span>
-                    </span>
-                    <span className="truncate max-w-[120px]">{member.id.slice(0, 8)}...</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

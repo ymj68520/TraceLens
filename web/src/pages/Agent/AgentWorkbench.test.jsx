@@ -348,3 +348,27 @@ test('R10: All-devices global view displays global overview card as active and h
   expect(screen.queryByTestId('btn-cancel-device-focus-matrix')).not.toBeInTheDocument();
   expect(screen.queryByTestId('btn-cancel-device-focus-header')).not.toBeInTheDocument();
 });
+
+test('R11: Member matrix collapse toggle allows toggling between expanded grid and compact ribbon', async () => {
+  const mockCase = {
+    id: 'case-01',
+    name: '杀猪盘团伙专案',
+    task_ids: ['task-test-01', 'task-test-02'],
+  };
+
+  renderAgentWorkbench('/agent?case_id=case-01', [mockCase]);
+
+  expect(await screen.findByTestId('btn-toggle-matrix-collapse')).toHaveTextContent('收起');
+
+  // Click collapse button
+  fireEvent.click(screen.getByTestId('btn-toggle-matrix-collapse'));
+  expect(screen.getByTestId('btn-toggle-matrix-collapse')).toHaveTextContent('展开');
+
+  // Both cards are still accessible in collapsed ribbon
+  expect(screen.getByTestId('case-member-card-all')).toBeInTheDocument();
+  expect(screen.getByTestId('case-member-card-task-test-01')).toBeInTheDocument();
+
+  // Click expand button to restore
+  fireEvent.click(screen.getByTestId('btn-toggle-matrix-collapse'));
+  expect(screen.getByTestId('btn-toggle-matrix-collapse')).toHaveTextContent('收起');
+});
