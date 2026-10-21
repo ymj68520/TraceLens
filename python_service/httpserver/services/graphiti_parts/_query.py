@@ -362,6 +362,56 @@ class GraphitiQueryMixin:
             "episodes": episodes,
         }
 
+    async def get_priority_snapshot(self, task_id: str, limit: int = 500) -> dict:
+        """Strict, stable relationship enumeration before any viewport limit.
+
+        Read only. Failures propagate; an unavailable graph is not an empty graph.
+        Historical invalidated facts are not assessed as current relationships.
+        """
+        limit = max(1, min(int(limit), 2000))
+        counts = await self._run_read_query(
+            "MATCH ()-[r:RELATES_TO]->() WHERE r.group_id=$gid AND r.invalid_at IS NULL "
+            "RETURN count(r) AS total", {"gid": task_id})
+        rows = await self._run_read_query(
+            "MATCH (s:Entity)-[r:RELATES_TO]->(t:Entity) "
+            "WHERE r.group_id=$gid AND r.invalid_at IS NULL "
+            "RETURN r.uuid AS id,r.name AS label,r.fact AS fact,r.episodes AS episode_ids,"
+            "s.uuid AS source,s.name AS source_name,t.uuid AS target,t.name AS target_name "
+            "ORDER BY r.uuid LIMIT $lim", {"gid": task_id, "lim": limit})
+        relations = []
+        for row in rows:
+            if not row.get("id") or not row.get("source") or not row.get("target"):
+                continue
+            relations.append({
+                "id": row["id"], "source": row["source"], "target": row["target"],
+                "source_name": row.get("source_name") or row["source"],
+                "target_name": row.get("target_name") or row["target"],
+                "label": row.get("label") or "RELATES_TO", "fact": row.get("fact") or "",
+                "episode_ids": sorted({v for v in row.get("episode_ids") or [] if isinstance(v, str)}),
+            })
+        ids = sorted({eid for r in relations for eid in r["episode_ids"]})
+        selected = ids[:2000]
+        episodes = await self._run_read_query(
+            "MATCH (e:Episodic {group_id:$gid}) WHERE e.uuid IN $ids "
+            "RETURN e.uuid AS id,e.content AS text,e.source_description AS source_description "
+            "ORDER BY e.uuid", {"gid": task_id, "ids": selected}) if selected else []
+        captured, budget = [], 1_000_000
+        for row in episodes:
+            text = row.get("text") or ""
+            excerpt = text[:min(4000, budget)]
+            budget -= len(excerpt)
+            description = row.get("source_description") or ""
+            captured.append({"id": row["id"], "text": excerpt, "source_description": description,
+                "kind": "case_description" if description.startswith("用户提供的案情描述") else
+                        "initial_analysis" if description.startswith("LLM分析结果") else "graph_input",
+                "truncated": len(excerpt) < len(text), "original_characters": len(text)})
+        return {"relations": relations, "episodes": captured,
+                "coverage": {"total_relations": int(counts[0]["total"]) if counts else 0,
+                             "captured_relations": len(relations), "relation_limit": limit,
+                             "total_episode_refs": len(ids), "captured_episodes": len(captured),
+                             "unread_or_missing_episodes": len(ids) - len(captured),
+                             "episode_text_truncated": sum(e["truncated"] for e in captured)}}
+
     async def get_local_graph_data(
         self, task_id: str, evidence_path: str, max_nodes: int = 50
     ) -> tuple[list[dict], list[dict]]:

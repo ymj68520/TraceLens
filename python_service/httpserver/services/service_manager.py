@@ -54,6 +54,7 @@ class ServiceManager:
         self._investigation_event_service = None
         self._investigation_graph_service = None
         self._investigation_read_service = None
+        self._people_graph_service = None
         self._report_evidence_service = None
         self._report_generation_service = None
         self._report_generation_executor = None
@@ -360,6 +361,7 @@ class ServiceManager:
 
     def _service_cleanup_plan(self) -> tuple[tuple[object | None, str], ...]:
         return (
+            (self._people_graph_service, "shutdown"),
             (self._event_refresh_executor, "shutdown"),
             (self._report_generation_executor, "shutdown"),
             (self._secondary_analysis_executor, "shutdown"),
@@ -379,6 +381,7 @@ class ServiceManager:
         self._investigation_event_service = None
         self._investigation_graph_service = None
         self._investigation_read_service = None
+        self._people_graph_service = None
         self._report_evidence_service = None
         self._report_generation_service = None
         self._event_refresh_executor = None
@@ -569,6 +572,15 @@ class ServiceManager:
         if not self._cpp_backend_ready or self._cpp_backend is None:
             raise RuntimeError("C++ backend is not initialized")
         return ReportEvidenceService(cpp_backend=self._cpp_backend)
+
+    @property
+    def people_graph_service(self):
+        self._require_service_access()
+        if self._people_graph_service is None:
+            from .people_graph.service import PeopleGraphService
+            self._people_graph_service = PeopleGraphService(
+                self.cpp_backend, self.llm_service, lambda: self.graphiti_service)
+        return self._people_graph_service
 
     @property
     def report_evidence_service(self):

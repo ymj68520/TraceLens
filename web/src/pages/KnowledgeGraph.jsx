@@ -29,6 +29,7 @@ import SearchTab from '../components/knowledge-graph/SearchTab';
 import EntitiesTab from '../components/knowledge-graph/EntitiesTab';
 import RelationshipsTab from '../components/knowledge-graph/RelationshipsTab';
 import RelationshipTracePanel from '../components/knowledge-graph/RelationshipTracePanel';
+import PeopleGraphPanel from '../components/knowledge-graph/PeopleGraphPanel';
 
 const escapeGraphTooltip = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -93,9 +94,14 @@ export default function KnowledgeGraph() {
     const [graphWidth, setGraphWidth] = useState(900);
 
     const [activeTab, setActiveTab] = useState('graph');
+    const [peopleSelection, setPeopleSelection] = useState({ taskId: null, runId: '' });
+    const selectPeopleRun = useCallback((runId) => setPeopleSelection(previous =>
+        previous.taskId === taskId && previous.runId === runId ? previous : { taskId, runId }), [taskId]);
+    const selectedPeopleRun = peopleSelection.taskId === taskId ? peopleSelection.runId : '';
     const PAGE_SIZE = 20;
     const currentTask = tasks.find((t) => t.id === taskId);
     const graphConnected = Boolean(taskId) && status?.task_id === taskId && status?.neo4j_connected === true;
+    const hasSelectedRelationship = Boolean(selectedRelationship);
 
     useEffect(() => {
         const container = graphContainerRef.current;
@@ -106,7 +112,7 @@ export default function KnowledgeGraph() {
         const observer = new ResizeObserver(measure);
         observer.observe(container);
         return () => observer.disconnect();
-    }, [graphData.nodes.length, Boolean(selectedRelationship)]);
+    }, [graphData.nodes.length, hasSelectedRelationship]);
 
     useEffect(() => {
         if (!graphData.nodes.length) return undefined;
@@ -131,7 +137,7 @@ export default function KnowledgeGraph() {
         try {
             const result = await listTaskGraphs();
             setTaskGraphs(result.task_ids || []);
-        } catch { }
+        } catch { /* Preserve the existing graph list when the status lookup is unavailable. */ }
     }, []);
 
     useEffect(() => {
@@ -260,9 +266,12 @@ export default function KnowledgeGraph() {
     }, [taskId, maxNodes, graphConnected]);
 
     // Auto-load graph when tab switches to graph
+    const graphLoaderRef = useRef(null);
+    graphLoaderRef.current = { fetchGraphData, nodeCount: graphData.nodes.length, loading: graphLoading };
     useEffect(() => {
-        if (activeTab === 'graph' && graphConnected && graphData.nodes.length === 0 && !graphLoading) {
-            fetchGraphData();
+        const current = graphLoaderRef.current;
+        if (activeTab === 'graph' && graphConnected && current.nodeCount === 0 && !current.loading) {
+            current.fetchGraphData();
         }
     }, [activeTab, taskId, graphConnected]);
 
@@ -490,10 +499,12 @@ export default function KnowledgeGraph() {
 
     const handleTaskChange = (newId) => setSearchParams({ task_id: newId });
 
+    const tabReadersRef = useRef(null);
+    tabReadersRef.current = { fetchEntities, fetchRelationships };
     useEffect(() => {
         if (!taskId) return;
-        if (activeTab === 'entities') fetchEntities(1);
-        else if (activeTab === 'relationships') fetchRelationships(1);
+        if (activeTab === 'entities') tabReadersRef.current.fetchEntities(1);
+        else if (activeTab === 'relationships') tabReadersRef.current.fetchRelationships(1);
     }, [activeTab, taskId]);
 
     // ── Render helpers ────────────────────────────────────────────────────────────
@@ -638,13 +649,15 @@ export default function KnowledgeGraph() {
 
     const tabs = [
         { id: 'graph', label: '🕸️ 图谱可视化' },
+        { id: 'people', label: '人员关系图' },
+        { id: 'priorities', label: '优先级关系网' },
         { id: 'search', label: '🔍 搜索' },
         { id: 'entities', label: '📦 实体' },
         { id: 'relationships', label: '🔗 关系' },
     ];
 
     const renderTabs = () => (
-        <div className="flex border-b border-slate-200 dark:border-slate-700 mb-6 gap-1">
+        <div className="flex flex-wrap border-b border-slate-200 dark:border-slate-700 mb-6 gap-1">
             {tabs.map((tab) => (
                 <button
                     key={tab.id}
@@ -722,7 +735,7 @@ export default function KnowledgeGraph() {
                     <div className="flex flex-col items-center justify-center h-80 text-slate-400">
                         <span className="text-5xl mb-3">📭</span>
                         <p className="mb-2">暂无图谱数据</p>
-                        <p className="text-sm">请先点击"导入数据"，再点击"加载图谱"</p>
+                        <p className="text-sm">请先点击“导入数据”，再点击“加载图谱”</p>
                     </div>
                 ) : (
                     <div className="flex gap-4">
@@ -910,7 +923,7 @@ export default function KnowledgeGraph() {
     );
 
     return (
-        <div className="p-6">
+        <div className="p-6" aria-busy={loading}>
             <div className="mb-6">
                 <motion.h1
                     initial={{ opacity: 0, y: -10 }}
@@ -939,6 +952,8 @@ export default function KnowledgeGraph() {
 
             <Card>
                 {activeTab === 'graph' && renderGraph()}
+                {activeTab === 'people' && <PeopleGraphPanel key={`${taskId}:people`} taskId={taskId} view="people" initialRunId={selectedPeopleRun} onRunChange={selectPeopleRun} />}
+                {activeTab === 'priorities' && <PeopleGraphPanel key={`${taskId}:relations`} taskId={taskId} view="relations" initialRunId={selectedPeopleRun} onRunChange={selectPeopleRun} />}
                 {activeTab === 'search' && renderSearch()}
                 {activeTab === 'entities' && renderEntities()}
                 {activeTab === 'relationships' && renderRelationships()}

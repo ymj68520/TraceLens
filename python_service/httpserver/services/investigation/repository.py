@@ -803,6 +803,17 @@ class InvestigationRepository:
         conn.execute("PRAGMA foreign_keys = ON")
         return conn
 
+    def prepare_graph_analysis_storage(self) -> None:
+        """Explicit analysis admission only: additive component tables.
+
+        Existing snapshot/review schema and its user_version are unchanged.
+        Read endpoints never construct this repository or install tables.
+        """
+        from ..people_graph.storage import install
+        with closing(self._connect()) as conn, conn:
+            conn.execute("BEGIN IMMEDIATE")
+            install(conn)
+
     def _ensure_schema(self) -> None:
         with self._connect() as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
