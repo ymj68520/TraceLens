@@ -73,7 +73,6 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/csapi/, ''),
         },
-        '/tasks': { target: cppTarget, changeOrigin: true },
         '/api/reports': { target: pythonTarget, changeOrigin: true },
         '/api/graphiti': { target: pythonTarget, changeOrigin: true },
         '/api/llm': { target: pythonTarget, changeOrigin: true },

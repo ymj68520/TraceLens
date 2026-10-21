@@ -18,6 +18,7 @@ import AnalysisCenter from './pages/AnalysisCenter';
 import Investigation from './pages/Investigation/Investigation';
 import InvestigationGraphRedirect from './pages/InvestigationGraphRedirect';
 import FinalReportViewer from './pages/Investigation/FinalReportViewer';
+import AgentWorkbench from './pages/Agent/AgentWorkbench';
 import LegacyReportRedirect, { TaskReportRedirect, CaseReportRedirect } from './pages/LegacyReportRedirect';
 import {
   WeChatForensicsRedirect, QQForensicsRedirect, WeChatGraphRedirect,
@@ -144,6 +145,14 @@ export const appRoutes = [
       {
         path: 'investigation',
         element: <Investigation />,
+      },
+      {
+        path: 'agent',
+        element: <AgentWorkbench />,
+      },
+      {
+        path: 'agent-investigation',
+        element: <Navigate to="/agent" replace />,
       },
       {
         path: 'investigation-graph',

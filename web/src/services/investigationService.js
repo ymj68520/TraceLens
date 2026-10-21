@@ -264,9 +264,10 @@ export const submitAgentReviewDecision = async (payload) => {
 /**
  * 触发一次有界 Agent 调查循环 (PLAN -> EXECUTE -> INTEGRATE -> EVALUATE)
  */
-export const executeAgentCycle = async (payload, taskIdQuery = null) => {
+export const executeAgentCycle = async (payload, taskIdQuery = null, customTimeout = 600000) => {
     return await pythonApi.post('/api/investigation/agent/cycle', payload, {
         params: taskIdQuery ? { task_id: taskIdQuery } : undefined,
+        timeout: customTimeout,
     });
 };
 
@@ -278,6 +279,19 @@ export const getAgentState = async (taskId, investigationId = null) => {
         params: {
             task_id: taskId,
             ...(investigationId ? { investigation_id: investigationId } : {}),
+        },
+    });
+};
+
+/**
+ * 查询 Agent 执行审计轨迹事件流
+ */
+export const getAgentTrajectory = async (taskId, investigationId = null, limit = 50) => {
+    return await pythonApi.get('/api/investigation/agent/trajectory', {
+        params: {
+            task_id: taskId,
+            ...(investigationId ? { investigation_id: investigationId } : {}),
+            limit,
         },
     });
 };
@@ -336,4 +350,5 @@ export default {
     submitAgentReviewDecision,
     executeAgentCycle,
     getAgentState,
+    getAgentTrajectory,
 };
