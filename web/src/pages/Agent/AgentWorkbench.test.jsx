@@ -12,6 +12,7 @@ vi.mock('../../services/featuresService', () => ({
 
 vi.mock('../../services/investigationService', () => ({
   getAgentState: vi.fn(),
+  getAgentTrajectory: vi.fn(),
   listAgentReviewCandidates: vi.fn(),
   getAgentReviewCandidate: vi.fn(),
   getAgentReviewHistory: vi.fn(),
@@ -83,6 +84,25 @@ const mockCandidates = [
   },
 ];
 
+const mockTrajectoryEvents = [
+  {
+    seq: 1,
+    event_id: 'evt-01',
+    event_type: 'supervisor_planning_cycle_started',
+    title: 'Supervisor 目标制定',
+    description: '制定调查目标',
+    created_at: '2026-10-17T15:30:00Z',
+  },
+  {
+    seq: 2,
+    event_id: 'evt-02',
+    event_type: 'grounding_validator_passed',
+    title: 'GroundingValidator 接地校验',
+    description: '事实校验通过',
+    created_at: '2026-10-17T15:31:00Z',
+  },
+];
+
 function renderAgentWorkbench(route = '/agent?task_id=task-test-01&investigation_id=inv_wo_dian_002') {
   const store = configureStore({
     reducer: {
@@ -105,6 +125,12 @@ function renderAgentWorkbench(route = '/agent?task_id=task-test-01&investigation
 beforeEach(() => {
   vi.clearAllMocks();
   service.getAgentState.mockResolvedValue(mockAgentState);
+  service.getAgentTrajectory.mockResolvedValue({
+    task_id: 'task-test-01',
+    investigation_id: 'inv_wo_dian_002',
+    total: 2,
+    events: mockTrajectoryEvents,
+  });
   service.listAgentReviewCandidates.mockResolvedValue(mockCandidates);
   service.getAgentReviewCandidate.mockImplementation((taskId, candId) => {
     const found = mockCandidates.find((c) => c.candidate_id === candId);
@@ -141,8 +167,8 @@ test('R2: Left column renders 7 investigation pillars and supports trajectory ta
 
   // Switch to execution trajectory tab
   fireEvent.click(screen.getByRole('button', { name: '执行轨迹' }));
-  expect(screen.getByText(/Supervisor 目标制定/)).toBeInTheDocument();
-  expect(screen.getByText(/GroundingValidator 接地校验/)).toBeInTheDocument();
+  expect(screen.getAllByText(/Supervisor 目标制定/)[0]).toBeInTheDocument();
+  expect(screen.getAllByText(/GroundingValidator 接地校验/)[0]).toBeInTheDocument();
 });
 
 test('R3: Middle column renders metric counters and candidate items', async () => {
