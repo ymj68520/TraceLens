@@ -53,12 +53,23 @@ class NarrativeReportResponse(BaseModel):
 )
 async def get_narrative_report_version(
     report_id: str,
-    task_id: str = Query(min_length=1, max_length=256),
+    task_id: str | None = Query(default=None, max_length=256),
+    case_id: str | None = Query(default=None, max_length=256),
 ):
-    """Exact-ID, task-scoped strict read of one narrative report version."""
+    """Exact-ID, task- or case-scoped strict read of one narrative report version."""
+    if not task_id and not case_id:
+        raise HTTPException(status_code=400, detail="task_id or case_id required")
+
+    scope_type = "case" if case_id else "task"
+    scope_id = case_id if case_id else task_id
     try:
         result = read_narrative_version_strict(
-            _report_root() / "reports.db", _report_root(), task_id, report_id
+            _report_root() / "reports.db",
+            _report_root(),
+            scope_id,
+            report_id,
+            scope_type=scope_type,
+            scope_id=scope_id,
         )
     except EvidenceStoreError as exc:
         raise HTTPException(

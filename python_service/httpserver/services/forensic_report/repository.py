@@ -96,7 +96,7 @@ class ReportRepository:
                     failed_at TEXT,
                     error_code TEXT,
                     error_message TEXT,
-                    CHECK (scope_type = 'task' AND scope_id = task_id)
+                    CHECK ((scope_type = 'task' AND scope_id = task_id) OR (scope_type = 'case' AND scope_id IS NOT NULL))
                 );
                 CREATE INDEX IF NOT EXISTS idx_report_generation_task
                     ON report_generation_inputs(task_id, created_at);
@@ -125,6 +125,7 @@ class ReportRepository:
             )
             self._add_generation_execution_columns(conn)
             self._add_report_kind_column(conn)
+            self._migrate_generation_inputs_check_constraint(conn)
             conn.executescript(
                 """
                 -- R2c state machine: admitted(=queued) -> running ->
@@ -225,6 +226,59 @@ class ReportRepository:
                 "UPDATE report_versions SET report_kind = 'llm_generation' "
                 "WHERE manifest_path IS NOT NULL "
                 "AND manifest_path LIKE 'snapshots/%'"
+            )
+
+    def _migrate_generation_inputs_check_constraint(self, conn: sqlite3.Connection) -> None:
+        """Allow scope_type = 'case' in report_generation_inputs check constraint."""
+        sql_row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='report_generation_inputs'"
+        ).fetchone()
+        if not sql_row or not sql_row[0]:
+            return
+        sql = sql_row[0]
+        if "CHECK (scope_type = 'task' AND scope_id = task_id)" in sql and "scope_type = 'case'" not in sql:
+            # Drop triggers referencing report_generation_inputs
+            for trg in (
+                "trg_report_generation_input_frozen",
+                "trg_report_generation_input_no_delete",
+                "trg_report_generation_status_transition",
+                "trg_report_generation_completed_invariants",
+                "trg_report_generation_failed_invariants",
+                "trg_report_generation_terminal_immutable",
+            ):
+                conn.execute(f"DROP TRIGGER IF EXISTS {trg}")
+
+            conn.execute("ALTER TABLE report_generation_inputs RENAME TO _report_generation_inputs_old")
+            conn.execute(
+                """CREATE TABLE report_generation_inputs (
+                    generation_id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL,
+                    scope_type TEXT NOT NULL,
+                    scope_id TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'admitted',
+                    requested_by TEXT NOT NULL,
+                    input_schema_version INTEGER NOT NULL,
+                    prompt_version TEXT NOT NULL,
+                    input_envelope_json TEXT NOT NULL,
+                    input_hash TEXT NOT NULL,
+                    report_id TEXT,
+                    produced_version INTEGER,
+                    model TEXT,
+                    created_at TEXT NOT NULL,
+                    started_at TEXT,
+                    completed_at TEXT,
+                    failed_at TEXT,
+                    error_code TEXT,
+                    error_message TEXT,
+                    CHECK ((scope_type = 'task' AND scope_id = task_id) OR (scope_type = 'case' AND scope_id IS NOT NULL))
+                )"""
+            )
+            conn.execute(
+                "INSERT INTO report_generation_inputs SELECT * FROM _report_generation_inputs_old"
+            )
+            conn.execute("DROP TABLE _report_generation_inputs_old")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_report_generation_task ON report_generation_inputs(task_id, created_at)"
             )
 
     def create_version(
@@ -390,8 +444,10 @@ class ReportRepository:
         prompt_version: str,
         input_envelope_json: str,
         input_hash: str,
+        scope_type: ScopeType = ScopeType.TASK,
+        scope_id: str | None = None,
     ) -> ReportGenerationInput:
-        """Persist one frozen report generation admission (R2b).
+        """Persist one frozen report generation admission (R2b/Cross-Case).
 
         The row is insert-only: identity, scope, requester, prompt version,
         envelope bytes, and hash are frozen by trigger after admission;
@@ -400,6 +456,7 @@ class ReportRepository:
         """
         generation_id = f"rg_{uuid.uuid4().hex}"
         created_at = datetime.now(timezone.utc).isoformat()
+        target_scope_id = scope_id or task_id
         with self._connect() as conn:
             conn.execute(
                 """INSERT INTO report_generation_inputs
@@ -410,8 +467,8 @@ class ReportRepository:
                 (
                     generation_id,
                     task_id,
-                    ScopeType.TASK.value,
-                    task_id,
+                    scope_type.value,
+                    target_scope_id,
                     requested_by,
                     input_schema_version,
                     prompt_version,
@@ -511,7 +568,7 @@ class ReportRepository:
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             generation_row = conn.execute(
-                "SELECT task_id FROM report_generation_inputs "
+                "SELECT task_id, scope_type, scope_id, input_envelope_json FROM report_generation_inputs "
                 "WHERE generation_id = ?",
                 (generation_id,),
             ).fetchone()
@@ -519,10 +576,22 @@ class ReportRepository:
                 conn.rollback()
                 raise KeyError(generation_id)
             task_id = generation_row["task_id"]
+            scope_type = generation_row["scope_type"]
+            scope_id = generation_row["scope_id"]
+
+            task_ids = [task_id]
+            if scope_type == ScopeType.CASE.value:
+                try:
+                    envelope_data = json.loads(generation_row["input_envelope_json"])
+                    devs = envelope_data.get("devices", [])
+                    task_ids = [d.get("task_id") for d in devs if d.get("task_id")] or [task_id]
+                except Exception:
+                    task_ids = [task_id]
+
             version_row = conn.execute(
                 "SELECT COALESCE(MAX(version), 0) + 1 AS next_version "
                 "FROM report_versions WHERE scope_type = ? AND scope_id = ?",
-                (ScopeType.TASK.value, task_id),
+                (scope_type, scope_id),
             ).fetchone()
             version = int(version_row["next_version"])
             conn.execute(
@@ -535,11 +604,11 @@ class ReportRepository:
                 (
                     report_id,
                     version,
-                    ScopeType.TASK.value,
-                    task_id,
+                    scope_type,
+                    scope_id,
                     ReportStatus.READY.value,
                     title,
-                    json.dumps([task_id]),
+                    json.dumps(task_ids),
                     now,
                     manifest_path,
                     now,
@@ -563,60 +632,6 @@ class ReportRepository:
             raise RuntimeError(
                 f"completed report generation {generation_id} disappeared"
             )
-        return completed
-
-    def complete_prevalidated_publication(
-        self,
-        *,
-        task_id: str,
-        report_id: str,
-        title: str,
-        manifest_path: str,
-        model: str,
-        input_hash: str,
-    ) -> ReportVersion:
-        """P7B Adapter B publication primitive.
-
-        Reuses the R2 version allocator / READY row transaction without
-        requiring an R2 ``report_generation_inputs`` row or a second LLM.
-        The caller publishes the immutable manifest first; this transaction
-        then makes the Viewer-visible version atomically.
-        """
-        now = datetime.now(timezone.utc).isoformat()
-        with self._connect() as conn:
-            conn.execute("BEGIN IMMEDIATE")
-            version_row = conn.execute(
-                "SELECT COALESCE(MAX(version), 0) + 1 AS next_version "
-                "FROM report_versions WHERE scope_type = ? AND scope_id = ?",
-                (ScopeType.TASK.value, task_id),
-            ).fetchone()
-            version = int(version_row["next_version"])
-            report_kind = "agent_aware_generation"
-            conn.execute(
-                """INSERT INTO report_versions
-                   (report_id, version, scope_type, scope_id, status, title,
-                    task_ids_json, stage, progress, generated_at,
-                    manifest_path, warnings_json, created_at, report_kind)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', 100, ?, ?, '[]',
-                           ?, ?)""",
-                (
-                    report_id,
-                    version,
-                    ScopeType.TASK.value,
-                    task_id,
-                    ReportStatus.READY.value,
-                    title,
-                    json.dumps([task_id]),
-                    now,
-                    manifest_path,
-                    now,
-                    report_kind,
-                ),
-            )
-            conn.commit()
-        completed = self.get(report_id)
-        if completed is None:
-            raise RuntimeError("prevalidated report version disappeared")
         return completed
 
     def list_stale_generations(self) -> list[ReportGenerationInput]:

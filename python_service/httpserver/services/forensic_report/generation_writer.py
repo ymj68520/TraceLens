@@ -34,19 +34,36 @@ class GenerationReportWriter:
     def __init__(self, report_root: Path):
         self.report_root = Path(report_root)
 
-    def final_dir(self, task_id: str, report_id: str) -> Path:
+    def final_dir(
+        self,
+        task_id: str,
+        report_id: str,
+        *,
+        scope_type: str = "task",
+        scope_id: str | None = None,
+    ) -> Path:
+        resolved_scope = scope_id or task_id
         return (
             self.report_root
             / "snapshots"
-            / "task"
-            / safe_segment(task_id)
+            / safe_segment(scope_type)
+            / safe_segment(resolved_scope)
             / safe_segment(report_id)
         )
 
     def publish(
-        self, *, task_id: str, report_id: str, manifest: GenerationReportManifest
+        self,
+        *,
+        report_id: str,
+        manifest: GenerationReportManifest,
+        task_id: str | None = None,
+        scope_type: str = "task",
+        scope_id: str | None = None,
     ) -> Path:
-        final_dir = self.final_dir(task_id, report_id)
+        resolved_scope = scope_id or task_id or manifest.scope_id or manifest.task_id
+        final_dir = self.final_dir(
+            resolved_scope, report_id, scope_type=scope_type, scope_id=resolved_scope
+        )
         if final_dir.exists():
             raise FileExistsError("immutable report already exists")
         staging = self.report_root / ".staging" / safe_segment(report_id)
@@ -65,13 +82,23 @@ class GenerationReportWriter:
             shutil.rmtree(staging, ignore_errors=True)
             raise
 
-    def read_manifest(self, task_id: str, report_id: str) -> dict:
+    def read_manifest(
+        self,
+        task_id: str,
+        report_id: str,
+        *,
+        scope_type: str = "task",
+        scope_id: str | None = None,
+    ) -> dict:
         """Strictly read a published manifest (pure file read, confined).
 
         The resolved path must stay inside this writer's snapshot root and
         must be a regular file; anything else fails closed.
         """
-        final_dir = self.final_dir(task_id, report_id)
+        resolved_scope = scope_id or task_id
+        final_dir = self.final_dir(
+            resolved_scope, report_id, scope_type=scope_type, scope_id=resolved_scope
+        )
         manifest_path = final_dir / "manifest.json"
         root = (self.report_root / "snapshots").resolve()
         resolved = manifest_path.resolve()

@@ -57,6 +57,8 @@ class ServiceManager:
         self._investigation_read_service = None
         self._report_evidence_service = None
         self._report_generation_service = None
+        self._cross_image_report_admission_service = None
+        self._cross_image_report_admission_service = None
         self._report_generation_executor = None
         self._secondary_analysis_executor = None
         self._event_refresh_executor = None
@@ -449,6 +451,7 @@ class ServiceManager:
         self._investigation_read_service = None
         self._report_evidence_service = None
         self._report_generation_service = None
+        self._cross_image_report_admission_service = None
         self._agent_orchestrator = None
         self._specialist_delegation_executor = None
         self._graph_materialization_executor = None
@@ -698,6 +701,28 @@ class ServiceManager:
                 self._create_report_generation_service()
             )
         return self._report_generation_service
+
+    @property
+    def cross_image_report_admission_service(self):
+        """Get the cross-image case report admission service."""
+        self._require_service_access()
+        if (os.environ.get("TRACELENS_REQUIRE_RELEASE_LAYOUT") == "1" and
+                os.environ.get("FIELD_OUTBOUND_POLICY") == "disabled"):
+            raise RuntimeError("R2 generation is disabled in the read-only field release profile")
+        if self._cross_image_report_admission_service is None:
+            from pathlib import Path
+            from ..config import get_project_root
+            from .forensic_report.cross_image_admission import CrossImageReportAdmissionService
+            from .forensic_report.repository import ReportRepository
+
+            root = Path(self.settings.report_output_dir)
+            if not root.is_absolute():
+                root = get_project_root() / root
+            self._cross_image_report_admission_service = CrossImageReportAdmissionService(
+                cpp_backend=self._cpp_backend,
+                repository=ReportRepository(root / "reports.db"),
+            )
+        return self._cross_image_report_admission_service
 
     async def _auto_generate_report_after_ingestion(self, task_id: str) -> None:
         """Pipeline tail: produce the final report when analysis finishes.

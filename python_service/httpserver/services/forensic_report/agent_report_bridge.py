@@ -193,4 +193,77 @@ async def trigger_agent_cycle_report(
         return None
 
 
-__all__ = ["AGENT_CYCLE_REQUESTER", "sync_agent_evidence_sync", "trigger_agent_cycle_report"]
+async def trigger_case_cycle_report(
+    case_id: str,
+    *,
+    manager: Any,
+    requested_by: str = AGENT_CYCLE_REQUESTER,
+    override_description: Optional[str] = None,
+) -> Optional[str]:
+    """Background entrypoint to sync evidence across member tasks and trigger cross-image report generation."""
+    try:
+        case = await manager.cpp_backend.get_case(case_id)
+        if not isinstance(case, dict) or case.get("id") != case_id:
+            logger.warning("Case %s not found; skipping case report generation", case_id)
+            return None
+
+        task_ids = case.get("task_ids") or []
+        for tid in task_ids:
+            try:
+                task = await manager.cpp_backend.get_task(tid)
+                if task and isinstance(task, dict):
+                    db_p = investigation_db_path_for_task(task)
+                    files_db = task.get("output_files_db")
+                    if db_p.exists():
+                        await asyncio.to_thread(sync_agent_evidence_sync, tid, db_p, files_db)
+            except Exception as e:
+                logger.warning("Failed to sync evidence for sub-task %s in case %s: %s", tid, case_id, e)
+
+        from ...config import get_project_root
+        root = Path(manager.settings.report_output_dir)
+        if not root.is_absolute():
+            root = get_project_root() / root
+        reports_db = root / "reports.db"
+        if reports_db.exists():
+            with sqlite3.connect(str(reports_db), timeout=10) as rconn:
+                active = rconn.execute(
+                    "SELECT 1 FROM report_generation_inputs WHERE scope_type = 'case' AND scope_id = ? AND status IN ('admitted', 'running')",
+                    (case_id,),
+                ).fetchone()
+                if active:
+                    logger.info("Case %s already has an active report generation in progress; skipping duplicate trigger", case_id)
+                    return None
+
+        admission = manager.cross_image_report_admission_service
+        executor = manager.report_generation_executor
+
+        generation = await admission.admit_case(
+            case_id,
+            requested_by=requested_by,
+            override_description=override_description,
+        )
+        await executor.submit(generation.generation_id)
+        logger.info(
+            "Auto cross-image narrative report generation %s submitted for case %s (requested_by=%s)",
+            generation.generation_id,
+            case_id,
+            requested_by,
+        )
+        return generation.generation_id
+
+    except Exception as exc:
+        logger.warning(
+            "Non-fatal error in cross-image report generation for case %s: %s",
+            case_id,
+            exc,
+            exc_info=True,
+        )
+        return None
+
+
+__all__ = [
+    "AGENT_CYCLE_REQUESTER",
+    "sync_agent_evidence_sync",
+    "trigger_agent_cycle_report",
+    "trigger_case_cycle_report",
+]

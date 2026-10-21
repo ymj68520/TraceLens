@@ -64,11 +64,21 @@ class GenerateReportRequest(BaseModel):
     requested_by: str = Field(min_length=1, max_length=256)
 
 
+class GenerateCaseReportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    case_id: str = Field(min_length=1, max_length=256)
+    requested_by: str = Field(min_length=1, max_length=256)
+    override_description: Optional[str] = None
+
+
 class GenerationStatusResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     generation_id: str
     task_id: str
+    scope_type: Optional[str] = "task"
+    scope_id: Optional[str] = None
     status: str
     requested_by: str
     prompt_version: str
@@ -127,18 +137,55 @@ async def generate_report(
     return _status_response(current, include_report=False)
 
 
+@router.post("/generate/case", status_code=202, response_model=GenerationStatusResponse)
+async def generate_case_report(
+    request: GenerateCaseReportRequest,
+    http_request: Request,
+    manager: ServiceManager = Depends(_get_service_manager),
+    executor: ReportGenerationExecutor = Depends(get_report_generation_executor),
+):
+    """Admit one frozen cross-image generation from the case's member tasks (202)."""
+    service = manager.cross_image_report_admission_service
+    try:
+        row = await service.admit_case(
+            request.case_id,
+            requested_by=audit_actor(http_request, request.requested_by),
+            override_description=request.override_description,
+        )
+    except ReportGenerationInputError as exc:
+        raise HTTPException(
+            status_code=409, detail=f"Case report generation rejected: {exc}"
+        ) from exc
+    except EvidenceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Case or tasks not found") from exc
+    except EvidenceStoreError as exc:
+        raise HTTPException(
+            status_code=503, detail="Report generation store is unavailable"
+        ) from exc
+    await executor.submit(row.generation_id)
+    refreshed = read_generation_strict(_report_root() / "reports.db", row.generation_id)
+    current = refreshed or row
+    return _status_response(current, include_report=False)
+
+
 @router.get(
     "/generations/{generation_id}", response_model=GenerationStatusResponse
 )
 async def get_report_generation(
     generation_id: str,
-    task_id: str = Query(min_length=1, max_length=256),
+    task_id: str | None = Query(default=None, max_length=256),
+    case_id: str | None = Query(default=None, max_length=256),
     manager: ServiceManager = Depends(_get_service_manager),
 ):
-    """Exact-ID generation poll (strict read; task scope enforced)."""
+    """Exact-ID generation poll (strict read; task or case scope enforced)."""
     del manager  # dependency only pins lifecycle; the read itself is strict
     row = read_generation_strict(_report_root() / "reports.db", generation_id)
-    if row is None or row.task_id != task_id:
+    target_id = case_id or task_id
+    if row is None:
+        raise HTTPException(
+            status_code=404, detail="report generation not found"
+        )
+    if target_id and row.scope_id != target_id and row.task_id != target_id:
         raise HTTPException(
             status_code=404, detail="report generation not found"
         )
@@ -147,10 +194,12 @@ async def get_report_generation(
 
 def _status_response(row, *, include_report: bool) -> GenerationStatusResponse:
     report = None
+    scope_type = getattr(row, "scope_type", "task")
+    scope_id = getattr(row, "scope_id", row.task_id)
     if include_report and row.report_id is not None:
         try:
             report = GenerationReportWriter(_report_root()).read_manifest(
-                row.task_id, row.report_id
+                scope_id, row.report_id, scope_type=scope_type, scope_id=scope_id
             )
         except (OSError, ValueError, KeyError):
             raise HTTPException(
@@ -160,6 +209,8 @@ def _status_response(row, *, include_report: bool) -> GenerationStatusResponse:
     return GenerationStatusResponse(
         generation_id=row.generation_id,
         task_id=row.task_id,
+        scope_type=scope_type,
+        scope_id=scope_id,
         status=row.status,
         requested_by=row.requested_by,
         prompt_version=row.prompt_version,

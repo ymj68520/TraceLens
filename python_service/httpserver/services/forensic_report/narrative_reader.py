@@ -46,14 +46,21 @@ def _read_version_row(conn: sqlite3.Connection, report_id: str):
 
 
 def read_narrative_version_strict(
-    db_path, report_root, task_id: str, report_id: str
+    db_path,
+    report_root,
+    task_id: str,
+    report_id: str,
+    *,
+    scope_type: str = "task",
+    scope_id: str | None = None,
 ) -> tuple[ReportVersion, GenerationReportManifest] | None:
     """Exact strict read of one published narrative report version.
 
-    ``None`` means "no such narrative version for this task" (missing
-    store/table/row, foreign task scope, or a deterministic snapshot id).
+    ``None`` means "no such narrative version for this task/case" (missing
+    store/table/row, foreign scope, or a deterministic snapshot id).
     Anything that exists but cannot be trusted raises ``EvidenceStoreError``.
     """
+    target_scope_id = scope_id or task_id
     path = Path(db_path)
     if not path.is_file():
         return None
@@ -75,46 +82,26 @@ def read_narrative_version_strict(
         # carry the narrative marker, so every exact read is a plain miss.
         return None
     if (
-        row["scope_type"] != "task"
-        or row["scope_id"] != task_id
-        or row["report_kind"] not in (
-            "llm_generation", "agent_aware_generation"
-        )
+        row["scope_type"] != scope_type
+        or row["scope_id"] != target_scope_id
+        or row["report_kind"] != "llm_generation"
     ):
-        # Opaque miss: cross-task ids and deterministic snapshot ids look
+        # Opaque miss: cross-scope ids and deterministic snapshot ids look
         # exactly like "not found" -- no scope information is disclosed.
         return None
 
     version = ReportRepository._to_model(row)
     writer = GenerationReportWriter(report_root)
     try:
-        manifest_payload = writer.read_manifest(task_id, report_id)
-        manifest = _validate_manifest_payload(manifest_payload)
+        manifest_payload = writer.read_manifest(
+            target_scope_id, report_id, scope_type=scope_type, scope_id=target_scope_id
+        )
+        manifest = GenerationReportManifest.model_validate(manifest_payload)
     except (OSError, ValueError, KeyError) as exc:
         raise EvidenceStoreError("report narrative record is unavailable") from exc
     if (
         manifest.report_id != report_id
-        or manifest.task_id != task_id
-        or manifest.scope_id != task_id
+        or manifest.scope_id != target_scope_id
     ):
         raise EvidenceStoreError("report narrative record is unavailable")
     return version, manifest
-
-
-def _validate_manifest_payload(manifest_payload: dict):
-    """Schema-dispatch on the persisted manifest bytes (P7B §54/§56).
-
-    v1/v2 manifests keep validating against the strict v1 model; the
-    P7B agent-aware V3 manifest validates against its own model.  An
-    unknown schema_version fails closed.  The shared identity contract
-    (report_id/task_id/scope_id + sections/citations surface) is
-    identical across versions, so callers keep one code path.
-    """
-    schema_version = str(manifest_payload.get("schema_version", ""))
-    if schema_version == "3.0":
-        from ..report_runtime.report_publication import (
-            GenerationReportManifestV3,
-        )
-
-        return GenerationReportManifestV3.model_validate(manifest_payload)
-    return GenerationReportManifest.model_validate(manifest_payload)
