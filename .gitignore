@@ -477,12 +477,27 @@ python_service/models/
 
 # 运行时产物（案件库/任务库根目录与本地状态标记），不入库
 /data/
-/reports/
-/testimg/
-/web/.audit-pages*.cjs
 python_service/investigation.db
 python_service/.deps_installed
 
-# P8B benchmark mini images (reproducible via benchmarks/images/README.md)
-python_service/benchmarks/images/*.img
+# 本地 SQLite 运行时/测试数据库与 WAL 缓存
+/*.db
+/*.db-shm
+/*.db-wal
+/*.sqlite
+/*.sqlite-shm
+/*.sqlite-wal
+/database.sqlite
+python_service/*.db
+python_service/*.db-shm
+python_service/*.db-wal
+python_service/tracelens_dev.db
+
+# 测试镜像与临时生成报告/测试产物
+/testimg/
+/reports/
+python_service/benchmarks/scratch/
+
+# 临时网页审查脚本
+/web/.audit-pages*.cjs
 
