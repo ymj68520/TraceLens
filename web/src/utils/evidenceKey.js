@@ -9,12 +9,29 @@
 
 export const FILE_KEY_PREFIX = 'file:';
 
-// file: 前缀证据键 → 裸路径；非 file: 键返回 null（时间线没有对应文件落点）。
-export const stripFileKeyPrefix = (evidenceKey) => (
-    typeof evidenceKey === 'string' && evidenceKey.startsWith(FILE_KEY_PREFIX)
-        ? evidenceKey.slice(FILE_KEY_PREFIX.length)
-        : null
-);
+// 解析可能带设备作用域的证据引用 (FQER: [scope:]type:path_or_id)
+export const parseEvidenceReference = (evidenceKey) => {
+    if (typeof evidenceKey !== 'string') return { scope: null, localKey: evidenceKey, path: null };
+    let scope = null;
+    let localKey = evidenceKey;
+    const match = evidenceKey.match(/^([a-zA-Z0-9_\-]+):((?:file|cluster|android_artifact):.*)$/);
+    if (match) {
+        scope = match[1];
+        localKey = match[2];
+    }
+    const path = localKey.startsWith('file:') ? localKey.slice(5) : null;
+    return { scope, localKey, path };
+};
+
+// file: 前缀证据键 → 裸路径；支持 FQER (src_pc:file:/path)。非 file: 键返回 null。
+export const stripFileKeyPrefix = (evidenceKey) => {
+    if (typeof evidenceKey !== 'string') return null;
+    if (evidenceKey.startsWith(FILE_KEY_PREFIX)) {
+        return evidenceKey.slice(FILE_KEY_PREFIX.length);
+    }
+    const { path } = parseEvidenceReference(evidenceKey);
+    return path;
+};
 
 // 与后端 normalize_evidence_path 相同的冻结规则，用于深链参数与时间线
 // path 的容错匹配（时间线 path 本已是规范形，此函数主要兜底 URL 传入形）。
@@ -37,15 +54,25 @@ export const investigationFileUrl = (taskId, evidenceKey, { reportId, citationId
 };
 
 // Only the exact frozen Android key can be linked: never replace it with a
-// current-row ID or a file timeline path.
+// current-row ID or a file timeline path. Supports FQER scoped links.
 export const investigationEvidenceUrl = (taskId, evidenceKey, options = {}) => {
-    if (evidenceKey?.startsWith('file:')) return investigationFileUrl(taskId, evidenceKey, options);
-    if (!taskId || typeof evidenceKey !== 'string' ||
-        !evidenceKey.startsWith(`android_artifact:v1:${taskId}:`)) return null;
-    let url = `/investigation?task_id=${encodeURIComponent(taskId)}&evidence_key=${encodeURIComponent(evidenceKey)}`;
-    if (options.reportId) url += `&report_id=${encodeURIComponent(options.reportId)}`;
-    if (options.citationId) url += `&citation_id=${encodeURIComponent(options.citationId)}`;
-    return url;
+    if (!evidenceKey || typeof evidenceKey !== 'string') return null;
+    const { scope, localKey, path } = parseEvidenceReference(evidenceKey);
+    if (path) {
+        let url = `/investigation?task_id=${encodeURIComponent(taskId)}&file=${encodeURIComponent(path)}`;
+        if (scope) url += `&source_scope=${encodeURIComponent(scope)}`;
+        if (options.reportId) url += `&report_id=${encodeURIComponent(options.reportId)}`;
+        if (options.citationId) url += `&citation_id=${encodeURIComponent(options.citationId)}`;
+        return url;
+    }
+    if (!taskId) return null;
+    if (localKey.startsWith(`android_artifact:v1:${taskId}:`) || localKey.startsWith('android_artifact:')) {
+        let url = `/investigation?task_id=${encodeURIComponent(taskId)}&evidence_key=${encodeURIComponent(evidenceKey)}`;
+        if (options.reportId) url += `&report_id=${encodeURIComponent(options.reportId)}`;
+        if (options.citationId) url += `&citation_id=${encodeURIComponent(options.citationId)}`;
+        return url;
+    }
+    return null;
 };
 
 export const reportCitationUrl = (taskId, reportId, citationId) => {

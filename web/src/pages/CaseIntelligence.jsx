@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { ArrowLeft } from 'lucide-react';
 import IntelligenceReportReader from '../components/case-intelligence/report-reader/IntelligenceReportReader';
 import CrossImageReport from '../components/case-intelligence/CrossImageReport';
 import ForensicReportPage from './ForensicReportPage';
 import { getCase } from '../services/caseGroupService';
+import { fetchCases } from '../store/caseSlice';
 
 /**
  * 证据研判 (Case Intelligence)
@@ -21,6 +22,7 @@ import { getCase } from '../services/caseGroupService';
  * case 上下文下先解析案件的 task_ids 并让用户在案件任务间切换。
  */
 const CaseIntelligence = () => {
+    const dispatch = useDispatch();
     const [searchParams, setSearchParams] = useSearchParams();
     const caseId = searchParams.get('case_id');
     const urlTaskId = searchParams.get('taskId') || searchParams.get('task_id');
@@ -28,6 +30,19 @@ const CaseIntelligence = () => {
     const focusCitationId = searchParams.get('citation_id');
     const activeContextId = caseId || urlTaskId;
     const { tasks: allTasks } = useSelector((state) => state.tasks);
+    const { cases } = useSelector((state) => state.cases);
+
+    useEffect(() => {
+        if (!cases || cases.length === 0) {
+            dispatch(fetchCases());
+        }
+    }, [dispatch, cases]);
+
+    const associatedCase = useMemo(() => {
+        if (caseId) return cases?.find((c) => c.id === caseId);
+        if (urlTaskId) return cases?.find((c) => c.task_ids?.includes(urlTaskId));
+        return null;
+    }, [caseId, urlTaskId, cases]);
 
     // 案件默认读取跨镜像报告；单任务默认进入当前版本化取证报告。
     const requestedTab = searchParams.get('tab');
@@ -184,16 +199,42 @@ const CaseIntelligence = () => {
                 >
                     📋 取证报告
                 </button>
-                {/* R2d：task 上下文时返回调查工作台（同一全局 TaskSelector task）。 */}
+                {associatedCase && (
+                    <div className="flex items-center gap-2 pl-2 border-l border-slate-300 dark:border-slate-700">
+                        <span className="text-xs text-slate-500 font-medium">所属案件:</span>
+                        <span className="px-2 py-0.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-semibold">
+                            🗂 {associatedCase.name}
+                        </span>
+                        <Link
+                            to={`/agent?task_id=${encodeURIComponent(urlTaskId || associatedCase.task_ids?.[0])}&case_id=${associatedCase.id}`}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-semibold shadow-sm transition-all"
+                            title="进入该案件的 Agent 跨镜像协同研判工作台"
+                        >
+                            🤖 进入多镜像 Agent 研判
+                        </Link>
+                    </div>
+                )}
+
+                {/* R2d：task 上下文时返回调查工作台或 Agent 研判中心 */}
                 {urlTaskId && (
-                    <Link
-                        to={`/investigation?task_id=${encodeURIComponent(urlTaskId)}${requestedReportId ? `&report_id=${encodeURIComponent(requestedReportId)}` : ''}`}
-                        data-testid="back-to-investigation"
-                        className="ml-auto inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-                    >
-                        <ArrowLeft size={12} />
-                        返回调查工作台
-                    </Link>
+                    <div className="ml-auto flex items-center gap-2">
+                        {!associatedCase && (
+                            <Link
+                                to={`/agent?task_id=${encodeURIComponent(urlTaskId)}`}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/30 text-xs font-semibold text-purple-700 dark:text-purple-300 hover:bg-purple-100 transition-all shadow-sm"
+                            >
+                                🤖 Agent 研判中心
+                            </Link>
+                        )}
+                        <Link
+                            to={`/investigation?task_id=${encodeURIComponent(urlTaskId)}${requestedReportId ? `&report_id=${encodeURIComponent(requestedReportId)}` : ''}`}
+                            data-testid="back-to-investigation"
+                            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                        >
+                            <ArrowLeft size={12} />
+                            返回调查工作台
+                        </Link>
+                    </div>
                 )}
             </div>
 

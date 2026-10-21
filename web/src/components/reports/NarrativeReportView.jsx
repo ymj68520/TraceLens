@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, ChevronDown, FileSearch, FileText } from 'lucide-react';
 import CitationTracebackPanel from './CitationTracebackPanel';
 import { getInvestigationSnapshot } from '../../services/investigationService';
-import { investigationEvidenceUrl } from '../../utils/evidenceKey';
+import { investigationEvidenceUrl, parseEvidenceReference } from '../../utils/evidenceKey';
 import { FIELD_AUTH_ENABLED } from '../../config/runtime';
 import { Link } from 'react-router-dom';
 import { placeNarrativeCitations } from './narrativeCitationPlacement';
@@ -23,9 +23,11 @@ function CitationMarker({ taskId, reportId, citationId, citation, inline, focuse
     const [hovered, setHovered] = useState(false);
     const [popupPlacement, setPopupPlacement] = useState({ left: 0, below: false });
     const markerRef = useRef(null);
-    const isAndroid = citation?.evidence_key?.startsWith('android_artifact:');
-    const filename = isAndroid ? `Android 工件 ${citation?.evidence_key?.split(':').slice(-2).join(' #')}`
-        : citation?.evidence_key?.slice(5).split(/[\\/]/).pop() || citationId;
+    const parsedRef = parseEvidenceReference(citation?.evidence_key);
+    const isAndroid = parsedRef.localKey?.startsWith('android_artifact:');
+    const filename = isAndroid ? `Android 工件 ${parsedRef.localKey?.split(':').slice(-2).join(' #')}`
+        : (parsedRef.path?.split(/[\\/]/).pop() || citationId);
+    const scopeLabel = parsedRef.scope ? `[${parsedRef.scope}] ` : '';
     const evidenceUrl = investigationEvidenceUrl(taskId, citation?.evidence_key, { reportId, citationId });
     const showPreview = () => {
         const bounds = markerRef.current?.getBoundingClientRect();
@@ -63,6 +65,11 @@ function CitationMarker({ taskId, reportId, citationId, citation, inline, focuse
                 <span role="tooltip" data-testid={`citation-tooltip-${citationId}`} style={{ left: popupPlacement.left }} className={`absolute z-40 block w-80 max-w-[80vw] overflow-hidden rounded-2xl border border-slate-200 bg-white text-left text-xs normal-case shadow-[0_16px_40px_rgba(15,23,42,0.18)] ring-1 ring-white/70 dark:border-slate-600 dark:bg-slate-800 dark:ring-slate-700 ${popupPlacement.below ? 'top-full mt-2' : 'bottom-full mb-2'}`}>
                     <span className="flex items-start gap-2.5 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-indigo-50/40 px-3.5 py-3 dark:border-slate-700 dark:from-blue-950/50 dark:to-slate-800">
                         <span className="inline-flex shrink-0 items-center rounded-md bg-blue-600 px-1.5 py-0.5 font-mono font-bold text-white">{citationId}</span>
+                        {parsedRef.scope && (
+                            <span className="inline-flex shrink-0 items-center rounded bg-purple-100 dark:bg-purple-900/40 px-1.5 py-0.5 font-mono text-[10px] font-bold text-purple-700 dark:text-purple-300">
+                                {parsedRef.scope}
+                            </span>
+                        )}
                         <span className="min-w-0 break-all font-semibold leading-5 text-slate-800 dark:text-slate-100">{preview?.title || filename}</span>
                     </span>
                     {preview?.loading ? <span className="block px-3.5 py-3 text-slate-500">正在读取证据简介…</span> : preview?.error ? <span className="block px-3.5 py-3 text-amber-700 dark:text-amber-300">证据简介暂不可用，点击仍可查看引用溯源。</span> : (

@@ -174,6 +174,19 @@ const CitationTracebackPanel = ({
                     <span className="text-slate-400">evidence_key: </span>
                     <EvidenceKeyLink value={citation.evidence_key} taskId={taskId} reportId={reportId} citationId={citation.citation_id} />
                 </p>
+                {citation.evidence_key && citation.evidence_key.includes(':') && !citation.evidence_key.startsWith('file:') && !citation.evidence_key.startsWith('cluster:') && !citation.evidence_key.startsWith('android_artifact:') && (
+                    <div className="flex items-center gap-1.5 py-0.5">
+                        <span className="text-slate-400 text-[10px]">来源实体设备:</span>
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 font-mono">
+                            {
+                                citation.evidence_key.startsWith('src_server:') ? '涉案服务器 (src_server: Linux)' :
+                                citation.evidence_key.startsWith('src_pc:') ? '嫌疑人计算机 (src_pc: Windows)' :
+                                citation.evidence_key.startsWith('src_phone:') ? '移动终端备份 (src_phone: Android)' :
+                                citation.evidence_key.split(':')[0]
+                            }
+                        </span>
+                    </div>
+                )}
                 <Field label="captured_at" value={citation.evidence_captured_at ?? '—'} />
                 {snapshot && (
                     <>
