@@ -571,15 +571,15 @@ class StructuredOutlineSection(BaseModel):
 class StructuredOutlineResponse(BaseModel):
     """Strict structured LLM output for the v2 outline stage.
 
-    Lower bound is 3 so small evidence sets (a handful of files) still map
-    to a legal outline; the prompt asks the model to scale the count to the
-    evidence at hand instead of padding filler chapters.
+    Lower bound is 1 so small evidence sets (a handful of files) or concise
+    outlines still map to a legal outline; the prompt asks the model to scale
+    the count to the evidence at hand instead of padding filler chapters.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     title: str = Field(min_length=1, max_length=500)
-    sections: tuple[StructuredOutlineSection, ...] = Field(min_length=3, max_length=15)
+    sections: tuple[StructuredOutlineSection, ...] = Field(min_length=1, max_length=15)
 
 
 class StructuredSectionResponse(BaseModel):

@@ -258,7 +258,7 @@ def project_evidence_item(item: EnvelopeEvidenceItemV1, *, include_bound_analysi
         "is_deleted": bool(described.get("is_deleted")),
         "summary": described.get("initial_summary"),
         "keywords": described.get("initial_keywords"),
-        "description": description[:600],
+        "description": description[:2400],
     }
     if include_bound_analysis:
         projected["bound_analysis"] = _bound_projection(item)

@@ -555,10 +555,36 @@ def _resolve_integration_action(
             )
         if violations:
             return None
+
+        text = (action.text or "").strip()
+        text_lower = text.lower()
+
+        # 1. Reject Meta-debugging / Software Engineering / Developer Tool errors:
+        meta_debug_keywords = [
+            "adapter", "tool_adapter", "tool_adapter_failed", "search_files",
+            "get_evidence", "find_related_evidence", "unfilterable", "evidence scope",
+            "indexing gap", "acquisition gap", "queryable", "systemic issue",
+            "internal error", "codebase", "pipeline", "tsk"
+        ]
+        if any(kw in text_lower for kw in meta_debug_keywords):
+            # Reject meta-system debugging questions
+            return None
+
+        # 2. Forensic language requirement: must contain Chinese text
+        chinese_char_count = sum(1 for ch in text if '\u4e00' <= ch <= '\u9fff')
+        if chinese_char_count < 4:
+            # Reject non-Chinese / pure ASCII debugging sentences
+            return None
+
+        # 3. Deduplication against existing active questions
+        for existing_q in state.questions:
+            if existing_q.text.strip() == text:
+                return None
+
         question_id = _server_assigned_id(
             "q",
             {
-                "text": action.text,
+                "text": text,
                 "source": action.source.value,
                 "priority": action.priority.value,
                 "parent": parent_id,
@@ -576,7 +602,7 @@ def _resolve_integration_action(
         return CreateQuestion(
             question=WorkingQuestion(
                 question_id=question_id,
-                text=action.text,
+                text=text,
                 source=action.source,
                 priority=action.priority,
                 parent_question_id=parent_id,
@@ -604,6 +630,13 @@ def _resolve_integration_action(
         )
 
     if isinstance(action, CreateHypothesisActionV2):
+        text_lower = action.text.lower()
+        if any(err_kw in text_lower for err_kw in [
+            "gap", "indexing", "acquisition", "adapter", "unfilterable", "evidence scope",
+            "search_files", "systemic"
+        ]):
+            # Reject meta-system debugging hypotheses
+            return None
         supporting = _resolve_handles(
             table, action.supporting_handles, BindingKind.evidence,
             f"{location}.supporting_handles", violations,
@@ -1122,10 +1155,11 @@ def render_plan_context_v2(
         "attention_items": attention_items,
         "questions": [
             {
-                "handle": q_map.get(entry.question_id, entry.question_id),
+                "handle": q_map[entry.question_id],
                 "status": entry.status,
             }
             for entry in pack.question_index
+            if entry.question_id in q_map
         ],
         "coverage_digests": list(pack.coverage_digests),
         "contradiction_digests": list(pack.contradiction_digests),

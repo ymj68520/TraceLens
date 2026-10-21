@@ -196,7 +196,9 @@ class AgentAnalystReviewService:
         self._settings = settings
         self._finding_review_service = FindingReviewService()
 
-    async def _resolve_task_and_db(self, task_id: str) -> tuple[dict[str, Any], Path]:
+    async def _resolve_task_and_db(
+        self, task_id: str, *, allow_missing_db: bool = False
+    ) -> tuple[dict[str, Any], Path]:
         """Resolves task and validates database path fail-closed."""
         task = await self._cpp_backend.get_task(task_id)
         if not isinstance(task, dict) or task.get("id") != task_id:
@@ -204,7 +206,7 @@ class AgentAnalystReviewService:
         if not task.get("output_files_db") and not task.get("output_events_db"):
             raise EvidenceNotFoundError(f"task not found: {task_id}")
         db_path = investigation_db_path_for_task(task)
-        if not db_path.exists():
+        if not db_path.exists() and not allow_missing_db:
             raise EvidenceNotFoundError(f"investigation database not found for task {task_id}")
         return task, db_path
 
@@ -244,7 +246,9 @@ class AgentAnalystReviewService:
         self, task_id: str, investigation_id: Optional[str] = None
     ) -> list[ReviewCandidateProjection]:
         """Read all review candidates from SQLite."""
-        _, db_path = await self._resolve_task_and_db(task_id)
+        _, db_path = await self._resolve_task_and_db(task_id, allow_missing_db=True)
+        if not db_path.exists():
+            return []
         return await asyncio.to_thread(
             self._sync_list_candidates, db_path, task_id, investigation_id
         )
@@ -353,7 +357,9 @@ class AgentAnalystReviewService:
         investigation_id: Optional[str] = None,
     ) -> list[ReviewHistoryItem]:
         """Query append-only review history."""
-        _, db_path = await self._resolve_task_and_db(task_id)
+        _, db_path = await self._resolve_task_and_db(task_id, allow_missing_db=True)
+        if not db_path.exists():
+            return []
         return await asyncio.to_thread(
             self._sync_get_history, db_path, task_id, candidate_id, investigation_id
         )
