@@ -1,47 +1,71 @@
 import { useEffect, useState } from 'react';
+import ForensicReportPage from '../../pages/ForensicReportPage';
 import { getCaseReportByCase } from '../../services/caseGroupService';
+import { ChevronDown, ChevronRight, FileText } from 'lucide-react';
 
-export default function CrossImageReport({ caseId, loadReport = getCaseReportByCase }) {
-  const [result, setResult] = useState({ loading: true, report: null, error: null });
-  const [retry, setRetry] = useState(0);
+export default function CrossImageReport({
+  caseId,
+  requestedReportId = null,
+  focusCitationId = null,
+  onVersionChange,
+  loadReport = getCaseReportByCase,
+}) {
+  const [legacyResult, setLegacyResult] = useState({ loading: true, report: null, error: null });
+  const [showLegacy, setShowLegacy] = useState(false);
 
   useEffect(() => {
     let active = true;
-    setResult({ loading: true, report: null, error: null });
-    const load = async () => {
-      try {
-        const data = await loadReport(caseId);
-        if (active) setResult({ loading: false, report: data, error: null });
-      } catch (error) {
-        if (active) setResult({ loading: false, report: null, error });
-      }
-    };
-    void load();
+    setLegacyResult({ loading: true, report: null, error: null });
+    loadReport(caseId)
+      .then((data) => {
+        if (active) setLegacyResult({ loading: false, report: data, error: null });
+      })
+      .catch((error) => {
+        if (active) setLegacyResult({ loading: false, report: null, error });
+      });
     return () => { active = false; };
-  }, [caseId, loadReport, retry]);
-
-  if (result.loading) return <div className="p-8 text-sm text-slate-500">正在读取跨镜像报告…</div>;
-
-  const missing = result.error?.status === 404 || (!result.error && !result.report?.report?.trim());
-  if (missing) {
-    return (
-      <div role="alert" className="rounded-2xl border border-amber-300 bg-amber-50 p-6 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/20 dark:text-amber-200">
-        <h2 className="text-lg font-semibold">跨镜像报告缺失</h2>
-        <p className="mt-2">案件状态为“完成”不代表历史报告已成功保存。现有案件数据不会自动重生成；如需补报，请先确认可写副本与 LLM 调用。</p>
-        <button type="button" className="mt-4 rounded-lg border border-amber-500 px-3 py-1.5 font-medium" onClick={() => setRetry((value) => value + 1)}>重试读取</button>
-      </div>
-    );
-  }
-  if (result.error) {
-    return <div role="alert" className="rounded-2xl border border-rose-300 bg-rose-50 p-6 text-sm text-rose-800">读取跨镜像报告失败：{result.error?.data?.detail || result.error.message || String(result.error)}</div>;
-  }
+  }, [caseId, loadReport]);
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800">
-      <h2 className="text-xl font-bold text-slate-900 dark:text-white">跨镜像研判报告</h2>
-      <p className="mt-1 text-xs text-slate-500">历史格式 · 案件 {caseId} · 生成时间 {result.report.generated_at || '未知'}</p>
-      {result.report.case_description && <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">案情：{result.report.case_description}</p>}
-      <pre className="mt-6 whitespace-pre-wrap break-words font-sans text-sm leading-7 text-slate-800 dark:text-slate-200">{result.report.report}</pre>
-    </article>
+    <div className="space-y-6" data-testid="cross-image-report-container">
+      {/* 现代版本化跨镜像综合研判报告体系 */}
+      <ForensicReportPage
+        scopeType="case"
+        scopeId={caseId}
+        requestedReportId={requestedReportId}
+        focusCitationId={focusCitationId}
+        onVersionChange={onVersionChange}
+      />
+
+      {/* 历史格式纯文本折叠区（如果存在） */}
+      {legacyResult.report?.report?.trim() && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setShowLegacy(!showLegacy)}
+            className="w-full flex items-center justify-between text-left text-sm font-semibold text-slate-700 dark:text-slate-300 hover:text-slate-900"
+          >
+            <span className="flex items-center gap-2">
+              <FileText size={16} className="text-slate-400" />
+              <span>📜 历史纯文本分析记录（参考归档）</span>
+              <span className="text-xs font-normal text-slate-400">
+                生成时间: {legacyResult.report.generated_at || '早期'}
+              </span>
+            </span>
+            {showLegacy ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          </button>
+          {showLegacy && (
+            <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+              {legacyResult.report.case_description && (
+                <p className="text-xs text-slate-500 mb-2">案情描述：{legacyResult.report.case_description}</p>
+              )}
+              <pre className="whitespace-pre-wrap break-words font-sans text-xs leading-6 text-slate-700 dark:text-slate-300 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                {legacyResult.report.report}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

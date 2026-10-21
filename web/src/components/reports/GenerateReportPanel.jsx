@@ -52,6 +52,8 @@ function summarize(rows) {
 
 const GenerateReportPanel = ({
     taskId,
+    scopeType = 'task',
+    scopeId = null,
     onAdmitted,
     onComplete,
     pollIntervalMs = 2000,
@@ -76,6 +78,10 @@ const GenerateReportPanel = ({
         setSummaryError(null);
         setSubmission(null);
         setAdmissionError(null);
+        if (scopeType === 'case') {
+            setSummary({ total: 1, main: 1, appendix: 0, originalOnly: 1, bound: 0, newer: [] });
+            return undefined;
+        }
         let cancelled = false;
         evidenceLoader(taskId)
             .then((rows) => {
@@ -85,12 +91,15 @@ const GenerateReportPanel = ({
                 if (!cancelled && taskIdRef.current === taskId) setSummaryError(error);
             });
         return () => { cancelled = true; };
-    }, [taskId, evidenceLoader]);
+    }, [taskId, evidenceLoader, scopeType]);
 
     const polling = useReportGenerationPolling(submission ? {
         taskId: submission.taskId,
         generationId: submission.generationId,
-    } : null, { intervalMs: pollIntervalMs, fetchGeneration });
+    } : null, {
+        intervalMs: pollIntervalMs,
+        fetchGeneration: (id, gid) => fetchGeneration(id, gid, { scopeType }),
+    });
 
     // completed 只对每个 generation 通知一次；父级决定是否打开 exact 版本。
     useEffect(() => {
@@ -160,7 +169,7 @@ const GenerateReportPanel = ({
                         <span data-testid="summary-original">Original-only: {summary.originalOnly}</span>
                         <span data-testid="summary-bound">Bound accepted analyses: {summary.bound}</span>
                     </div>
-                    {summary.newer.map((row) => (
+                    {(summary.newer || []).map((row) => (
                         <p
                             key={row.evidence_key}
                             className="text-amber-600 dark:text-amber-400"
@@ -198,7 +207,11 @@ const GenerateReportPanel = ({
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-500/90 text-white hover:bg-primary-500 disabled:opacity-50"
                     >
                         {submitting && <Loader2 size={12} className="animate-spin" />}
-                        {durableFailed ? 'Generate Again' : (submission ? '生成新版本' : 'Generate Report')}
+                        {durableFailed
+                            ? (scopeType === 'case' ? '重新生成跨镜像报告' : 'Generate Again')
+                            : (submission
+                                ? (scopeType === 'case' ? '生成新版本跨镜像报告' : '生成新版本')
+                                : (scopeType === 'case' ? '🤖 生成跨镜像综合研判报告' : 'Generate Report'))}
                     </button>
                 )}
             </div>

@@ -6,13 +6,14 @@
 // Graph Entity / Event / Timeline Cluster 作为来源（§24），也绝不因
 // current 库变化而改写 frozen identity（§16）。
 import { useEffect, useRef, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { ExternalLink, FileSearch, X } from 'lucide-react';
 import {
     getInvestigationAnalysis,
     getInvestigationSnapshot,
     listInvestigationAnalysisClaims,
 } from '../../services/investigationService';
-import { investigationEvidenceUrl } from '../../utils/evidenceKey';
+import { investigationEvidenceUrl, parseEvidenceReference } from '../../utils/evidenceKey';
 import { FIELD_AUTH_ENABLED } from '../../config/runtime';
 import { Link } from 'react-router-dom';
 
@@ -81,10 +82,24 @@ const CitationTracebackPanel = ({
         claims: listInvestigationAnalysisClaims,
     },
 }) => {
-    // identity 绑定 {taskId, reportId, citationId}：task 切换 / 报告切换 /
+    const { tasks: allTasks } = useSelector((state) => state.tasks);
+    const parsedRef = parseEvidenceReference(citation?.evidence_key);
+    const matchedTask = allTasks?.find((t) => {
+        if (!parsedRef.scope) return false;
+        const img = (t.image_path || '').toLowerCase();
+        const sc = t.metadata?.device_scope || (
+            img.includes('服务器') || img.includes('server') ? 'src_server' :
+            img.includes('android') || img.includes('phone') || img.includes('miui') ? 'src_phone' :
+            'src_pc'
+        );
+        return sc === parsedRef.scope;
+    });
+    const targetTaskId = matchedTask?.id || taskId;
+
+    // identity 绑定 {targetTaskId, reportId, citationId}：task 切换 / 报告切换 /
     // citation 切换后，旧的晚返回响应绝不写入当前面板（§23）。
-    const identity = taskId && reportId && citation
-        ? `${taskId}|${reportId}|${citation.citation_id}`
+    const identity = targetTaskId && reportId && citation
+        ? `${targetTaskId}|${reportId}|${citation.citation_id}`
         : null;
     const [enrichment, setEnrichment] = useState(null);
     const [enrichmentError, setEnrichmentError] = useState(null);
@@ -101,19 +116,40 @@ const CitationTracebackPanel = ({
 
         (async () => {
             try {
-                const snapshot = await loaders.snapshot(taskId, citation.evidence_key);
+                let snapshot = null;
+                try {
+                    snapshot = await loaders.snapshot(targetTaskId, citation.evidence_key);
+                } catch {
+                    if (parsedRef.localKey) {
+                        try {
+                            snapshot = await loaders.snapshot(targetTaskId, parsedRef.localKey);
+                        } catch {
+                            snapshot = null;
+                        }
+                    }
+                }
                 if (!isCurrent()) return;
                 setEnrichment({ snapshot: snapshot || null, analysis: null, claim: null });
 
                 // Original-only citation：绝不自动补 Analysis（§17）。
                 if (!citation.analysis_id) return;
 
-                const analysis = await loaders.analysis(taskId, citation.analysis_id);
+                let analysis = null;
+                try {
+                    analysis = await loaders.analysis(targetTaskId, citation.analysis_id);
+                } catch {
+                    analysis = null;
+                }
                 if (!isCurrent()) return;
                 setEnrichment((prev) => ({ ...prev, analysis: analysis || null }));
 
                 if (citation.claim_id) {
-                    const claims = await loaders.claims(taskId, citation.analysis_id);
+                    let claims = [];
+                    try {
+                        claims = await loaders.claims(targetTaskId, citation.analysis_id);
+                    } catch {
+                        claims = [];
+                    }
                     if (!isCurrent()) return;
                     // exact claim_id 过滤；同文不同 id 绝不合并（§18）。
                     const claim = (claims || []).find(
@@ -172,7 +208,7 @@ const CitationTracebackPanel = ({
             >
                 <p className="text-[11px] text-slate-600 dark:text-slate-300 break-all">
                     <span className="text-slate-400">evidence_key: </span>
-                    <EvidenceKeyLink value={citation.evidence_key} taskId={taskId} reportId={reportId} citationId={citation.citation_id} />
+                    <EvidenceKeyLink value={citation.evidence_key} taskId={targetTaskId} reportId={reportId} citationId={citation.citation_id} />
                 </p>
                 {citation.evidence_key && citation.evidence_key.includes(':') && !citation.evidence_key.startsWith('file:') && !citation.evidence_key.startsWith('cluster:') && !citation.evidence_key.startsWith('android_artifact:') && (
                     <div className="flex items-center gap-1.5 py-0.5">
@@ -249,7 +285,7 @@ const CitationTracebackPanel = ({
                                     claim.evidence_refs.map((ref, index) => (
                                         <span key={ref}>
                                             {index > 0 && <span className="text-slate-400">, </span>}
-                                            <EvidenceKeyLink value={ref} taskId={taskId} reportId={reportId} citationId={citation.citation_id} allowTimeline={ref === citation.evidence_key} />
+                                            <EvidenceKeyLink value={ref} taskId={targetTaskId} reportId={reportId} citationId={citation.citation_id} allowTimeline={ref === citation.evidence_key} />
                                         </span>
                                     ))
                                 ) : (

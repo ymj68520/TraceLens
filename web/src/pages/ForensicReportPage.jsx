@@ -8,7 +8,7 @@ import ReportWorkspace from '../components/reports/ReportWorkspace';
 import VersionHistory from '../components/reports/VersionHistory';
 import { useReportSearch } from '../hooks/useReportSearch';
 import { useReportVersion } from '../hooks/useReportVersion';
-import { getNarrativeReport } from '../services/reportGenerationService';
+import { getNarrativeReport, generateCaseReport, generateReport } from '../services/reportGenerationService';
 import { reportDataSource } from '../services/reportService';
 import { fetchTaskById } from '../services/taskService';
 import AndroidCoverageCard from '../components/AndroidCoverageCard';
@@ -132,9 +132,12 @@ export default function ForensicReportPage({
         onRefresh={() => { void state.refresh(); }}
       />
       {state.error && <div role="alert">{reportErrorMessage(state.error)}</div>}
-      {scopeType === 'task' && resolvedScopeId && (
+      {resolvedScopeId && (
         <GenerateReportPanel
           taskId={resolvedScopeId}
+          scopeType={scopeType}
+          scopeId={resolvedScopeId}
+          generate={scopeType === 'case' ? generateCaseReport : generateReport}
           pollIntervalMs={generationPollIntervalMs}
           onAdmitted={handleGenerationAdmitted}
           onComplete={handleGenerationComplete}
@@ -161,8 +164,10 @@ export default function ForensicReportPage({
       {!requestedVersionMissing && !awaitingRequestedVersion && selectedIsNarrative && resolvedScopeId ? (
         <NarrativeReportView
           taskId={resolvedScopeId}
+          scopeType={scopeType}
+          scopeId={resolvedScopeId}
           reportId={reportId}
-          fetchNarrative={narrativeLoader}
+          fetchNarrative={(id, rId) => narrativeLoader(id, rId, { scopeType })}
           focusCitationId={focusCitationId}
         />
       ) : (

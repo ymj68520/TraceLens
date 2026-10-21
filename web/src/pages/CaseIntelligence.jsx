@@ -238,7 +238,15 @@ const CaseIntelligence = () => {
                 )}
             </div>
 
-            {reportTab === 'cross-image' && caseId ? <CrossImageReport key={caseId} caseId={caseId} /> : reportTab === 'intelligence' ? renderIntelligence() : (
+            {reportTab === 'cross-image' && caseId ? (
+                <CrossImageReport
+                    key={caseId}
+                    caseId={caseId}
+                    requestedReportId={requestedReportId}
+                    focusCitationId={focusCitationId}
+                    onVersionChange={selectReportVersion}
+                />
+            ) : reportTab === 'intelligence' ? renderIntelligence() : (
                 <ForensicReportPage
                     key={`${forensicScopeType}-${forensicScopeId}`}
                     scopeType={forensicScopeType}

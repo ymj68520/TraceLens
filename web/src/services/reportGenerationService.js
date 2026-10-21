@@ -24,12 +24,24 @@ export const generateReport = async (taskId, { requestedBy }) => {
 };
 
 /**
- * 按 exact generation_id 读取一个 generation 的当前状态。
+ * 发起一次案件维度的跨镜像综合报告 generation admission（202）。
  */
-export const getReportGeneration = async (taskId, generationId) => {
+export const generateCaseReport = async (caseId, { requestedBy, overrideDescription }) => {
+    return await pythonApi.post('/api/reports/generate/case', {
+        case_id: caseId,
+        requested_by: requestedBy,
+        override_description: overrideDescription,
+    });
+};
+
+/**
+ * 按 exact generation_id 读取一个 generation 的当前状态（支持 task 或 case 作用域）。
+ */
+export const getReportGeneration = async (scopeId, generationId, { scopeType = 'task' } = {}) => {
+    const params = scopeType === 'case' ? { case_id: scopeId } : { task_id: scopeId };
     return await pythonApi.get(
         `/api/reports/generations/${encodeURIComponent(generationId)}`,
-        { params: { task_id: taskId } },
+        { params },
     );
 };
 
@@ -37,11 +49,17 @@ export const getReportGeneration = async (taskId, generationId) => {
  * 按 exact report_id 读取一个已发布 narrative report version
  * （版本行 + persisted manifest：sections + citation manifest + audit 元数据）。
  */
-export const getNarrativeReport = async (taskId, reportId) => {
+export const getNarrativeReport = async (scopeId, reportId, { scopeType = 'task' } = {}) => {
+    const params = scopeType === 'case' ? { case_id: scopeId } : { task_id: scopeId };
     return await pythonApi.get(
         `/api/reports/narrative/versions/${encodeURIComponent(reportId)}`,
-        { params: { task_id: taskId } },
+        { params },
     );
 };
 
-export default { generateReport, getReportGeneration, getNarrativeReport };
+export default {
+    generateReport,
+    generateCaseReport,
+    getReportGeneration,
+    getNarrativeReport,
+};
