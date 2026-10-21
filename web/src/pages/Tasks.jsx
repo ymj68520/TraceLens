@@ -142,6 +142,16 @@ const Tasks = () => {
           <Button variant="outline" onClick={() => setShowCompose(true)} disabled={selectedTaskIds.size === 0}>
             📂 组建案件（{selectedTaskIds.size}）
           </Button>
+          <Button
+            variant="secondary"
+            className="border-purple-300 dark:border-purple-800 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/40 font-medium"
+            onClick={() => {
+              setTaskSourcePrefill({ workflow_type: 'agent' });
+              dispatch(openModal({ type: 'createTask' }));
+            }}
+          >
+            🤖 创建 Agent 研判任务
+          </Button>
           <Button onClick={() => { setTaskSourcePrefill(null); dispatch(openModal({ type: 'createTask' })); }}>➕ Create Task</Button>
         </div>
       </div>

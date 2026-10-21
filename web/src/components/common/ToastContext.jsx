@@ -1,4 +1,4 @@
-import { useContext, useState, useCallback, useRef } from 'react';
+import { useContext, useState, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, XCircle, Info, AlertTriangle, X } from 'lucide-react';
 // context 单一来源：所有入口都从 toastContextBase.js 共享同一个实例，
@@ -28,12 +28,12 @@ export function ToastProvider({ children }) {
         return id;
     }, [removeToast]);
 
-    const toast = {
+    const toast = useMemo(() => ({
         success: (msg, dur) => addToast('success', msg, dur),
         error: (msg, dur) => addToast('error', msg, dur ?? 8000),
         info: (msg, dur) => addToast('info', msg, dur),
         warning: (msg, dur) => addToast('warning', msg, dur ?? 6000),
-    };
+    }), [addToast]);
 
     const iconMap = {
         success: <CheckCircle size={18} className="text-emerald-400" />,

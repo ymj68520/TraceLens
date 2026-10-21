@@ -49,6 +49,7 @@ function ProgressCell({ task }) {
 function ActionsCell({ task, onCancel, onDelete, onJoinCase }) {
   const status = task.status?.toLowerCase();
   const finished = ['completed', 'failed', 'cancelled'].includes(status);
+  const isAgentTask = task.metadata?.workflow_type === 'agent' || task.metadata?.agent_enabled === 'true';
   return (
     <div className="flex items-center space-x-1 text-xs font-medium">
       {status === 'running' && (
@@ -58,7 +59,18 @@ function ActionsCell({ task, onCancel, onDelete, onJoinCase }) {
       )}
       {status === 'completed' && (
         <>
-          <Link to={`/timeline?task_id=${task.id}`} className="text-primary-600 hover:underline">Timeline</Link>
+          <Link
+            to={`/agent?task_id=${task.id}`}
+            className={`hover:underline flex items-center gap-0.5 ${
+              isAgentTask
+                ? 'text-purple-600 dark:text-purple-400 font-bold'
+                : 'text-purple-600/80 dark:text-purple-400/80'
+            }`}
+            title="进入 Agent 智能研判中心"
+          >
+            🤖 Agent
+          </Link>
+          <Link to={`/timeline?task_id=${task.id}`} className="text-primary-600 hover:underline ml-1">Timeline</Link>
           <Link to={`/files?task_id=${task.id}`} className="text-green-600 hover:underline ml-1">Files</Link>
           <Link to={`/reports/task/${task.id}`} className="text-teal-600 hover:underline ml-1">Report</Link>
           {onJoinCase && (
@@ -158,6 +170,11 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskC
               </td>
               <td className="px-4 py-4 whitespace-nowrap">
                 <StatusBadge status={task.status} />
+                {(task.metadata?.workflow_type === 'agent' || task.metadata?.agent_enabled === 'true') && (
+                  <span className="block mt-1 text-[10px] font-semibold text-purple-700 dark:text-purple-300">
+                    🤖 Agent 研判
+                  </span>
+                )}
                 {task.metadata?.source_verification === 'UNVERIFIED_SOURCE' &&
                   <span className="block mt-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400" title="未经过 Android 镜像完整哈希及文件系统预检">UNVERIFIED_SOURCE</span>}
                 {task.metadata?.android_coverage_status === 'COMPLETED_WITH_LOCKED_USERDATA' &&

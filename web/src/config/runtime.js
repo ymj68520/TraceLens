@@ -45,9 +45,9 @@ export const CPP_WS_BASE_URL = FIELD_AUTH_ENABLED
   : (env.VITE_CPP_WS_URL || CPP_BASE_URL.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:'));
 
 export const SERVICE_TIMEOUTS = {
-  cpp: Number(env.VITE_CPP_TIMEOUT_MS || 30000),
-  python: Number(env.VITE_PYTHON_TIMEOUT_MS || 120000),
-  cs: Number(env.VITE_CS_TIMEOUT_MS || 30000),
+  cpp: Number(env.VITE_CPP_TIMEOUT_MS || 60000),
+  python: Number(env.VITE_PYTHON_TIMEOUT_MS || 600000),
+  cs: Number(env.VITE_CS_TIMEOUT_MS || 60000),
 };
 
 export const SERVICE_PORTS = {

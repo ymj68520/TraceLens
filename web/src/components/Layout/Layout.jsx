@@ -8,7 +8,7 @@ import { useFeatures } from '../../hooks/useFeatures';
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard, ListTodo, Clock, FolderOpen, Network, FileSearch,
-  Smartphone, Cloud, Search, BarChart3, Settings, Menu, X, ChevronLeft, ChevronRight, FileText, Briefcase, MessageCircle, Cpu, ClipboardCheck
+  Smartphone, Cloud, Search, BarChart3, Settings, Menu, X, ChevronLeft, ChevronRight, FileText, Briefcase, MessageCircle, Cpu, ClipboardCheck, Bot
 } from 'lucide-react';
 
 const Layout = ({ children }) => {
@@ -34,6 +34,7 @@ const Layout = ({ children }) => {
     { name: t('nav.evidence_review'), href: '/analysis-center', icon: ClipboardCheck },
     { name: t('nav.case_intelligence'), href: '/case-intelligence', icon: FileText },
     { name: t('nav.investigation_workbench'), href: '/investigation', icon: FileSearch },
+    { name: t('nav.agent_investigation'), href: '/agent', icon: Bot },
     { name: t('nav.knowledge_graph'), href: '/knowledge-graph', icon: Network },
     { name: t('nav.android'), href: '/android', icon: Smartphone },
     { name: t('nav.memory'), href: '/memory', icon: Cpu },
@@ -62,10 +63,11 @@ const Layout = ({ children }) => {
     (location.pathname.startsWith('/reports/') && path.startsWith('/reports/')) ||
     (path === '/knowledge-graph' && location.pathname === '/graph-source-file') ||
     // 子路由页（如 /investigation/report）高亮所属导航并保持顶栏标题正确
-    (path === '/investigation' && location.pathname.startsWith('/investigation'));
+    (path === '/investigation' && (location.pathname === '/investigation' || location.pathname.startsWith('/investigation/'))) ||
+    (path === '/agent' && location.pathname.startsWith('/agent'));
 
   const getLinkUrl = (href) => {
-    const taskContextPages = ['/timeline', '/files', '/case-intelligence', '/analysis-center', '/knowledge-graph', '/investigation', '/android', '/memory', '/im-forensics', '/oss', '/search', '/statistics'];
+    const taskContextPages = ['/timeline', '/files', '/case-intelligence', '/analysis-center', '/knowledge-graph', '/investigation', '/agent', '/android', '/memory', '/im-forensics', '/oss', '/search', '/statistics'];
     if (currentTaskId && taskContextPages.includes(href)) {
       return `${href}?task_id=${currentTaskId}`;
     }

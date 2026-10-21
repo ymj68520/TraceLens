@@ -10,6 +10,7 @@ export default {
     'nav.case_intelligence': 'Case Intelligence',
     'nav.investigation': 'Investigation',
     'nav.investigation_workbench': 'Investigation Workbench',
+    'nav.agent_investigation': 'Agent Investigation',
     'nav.knowledge_graph': 'Knowledge Graph',
     'nav.android': 'Android',
     'nav.im_forensics': 'IM Forensics',

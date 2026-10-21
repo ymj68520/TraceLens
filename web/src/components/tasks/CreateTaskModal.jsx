@@ -17,6 +17,7 @@ import { useCallback, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { createTask, fetchTasks } from '../../store/taskSlice';
 import { closeModal } from '../../store/uiSlice';
+import { Bot, FolderOpen } from 'lucide-react';
 import Button from '../common/Button';
 import { useToast } from '../common/ToastContext';
 import FilterProfileSelector from '../filters/FilterProfileSelector';
@@ -39,6 +40,7 @@ const DATA_SOURCES = [
 ];
 
 const INITIAL_FORM = {
+  workflow_type: 'standard',
   image_path: '',
   android_source: 'tsk',
   backup_password: '',
@@ -111,15 +113,21 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
       // skips the TSK disk-image pipeline.
       if (isRaid && !raidSource) throw new Error('请先完成 RAID 布局确认和系统镜像准备');
       const isLogical = form.android_source !== 'tsk' && !isRaid;
+      const isAgent = form.workflow_type === 'agent';
       const payload = {
         ...form,
         ...(isRaid ? raidSource : {}),
         scenarios: isLogical ? ['android'] : form.scenarios,
-        llm_analyze: true,
+        llm_analyze: isAgent ? false : true,
         llm_event_analyze: false,
         llm_mode: 'smart',
         // 平台分析任务级开关（创建时选择；默认开启）
         platform_analyze: isArchive || form.platform_analyze !== false,
+        metadata: {
+          ...(form.metadata || {}),
+          workflow_type: form.workflow_type || 'standard',
+          ...(isAgent ? { agent_enabled: 'true' } : {}),
+        },
       };
       // Only send backup_password when non-empty (keeps it runtime-only / sparse).
       if (!payload.backup_password) delete payload.backup_password;
@@ -128,7 +136,7 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
       onClose();
       setForm(INITIAL_FORM);
       dispatch(fetchTasks({}));
-      toast.success('Task created successfully!');
+      toast.success(isAgent ? 'Task created! AI Agent 智能研判流程已就绪。' : 'Task created successfully!');
     } catch (err) {
       // rejectWithValue payloads arrive either as the raw axios data object
       // ({error: "..."} from the backend's 4xx JSON) or as a plain string.
@@ -158,6 +166,50 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
               <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
             </div>
           )}
+
+          {/* Workflow Selection — Peer Conventional vs Agent Investigation */}
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+              处理流程 *
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => set('workflow_type', 'standard')}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  form.workflow_type !== 'agent'
+                    ? 'border-primary-500 bg-primary-50/70 dark:bg-primary-950/30 ring-2 ring-primary-500/20'
+                    : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 bg-slate-50/50 dark:bg-slate-800/40'
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <FolderOpen className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+                  <span className="font-semibold text-sm text-slate-900 dark:text-white">常规分析流程</span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  经典取证流水线：TSK/Android 工件提取、文件哈希与确定性场景分类。
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => set('workflow_type', 'agent')}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  form.workflow_type === 'agent'
+                    ? 'border-purple-500 bg-purple-50/70 dark:bg-purple-950/30 ring-2 ring-purple-500/20'
+                    : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 bg-slate-50/50 dark:bg-slate-800/40'
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Bot className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                  <span className="font-semibold text-sm text-slate-900 dark:text-white">AI Agent 智能研判流程</span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  自主多专家研判闭环：假说生成、深度证据检索与人工复核。
+                </p>
+              </button>
+            </div>
+          </div>
 
           {/* Data Source Type — selects the analysis backend */}
           <Field label="数据源类型 *" hint="Android userdata、sparse/super 与 TAR/7z/AB 必须先完成完整哈希预检；旧式 TSK 任务未经过镜像预检。">

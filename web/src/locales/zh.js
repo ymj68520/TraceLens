@@ -10,6 +10,7 @@ export default {
     'nav.case_intelligence': '证据研判',
     'nav.investigation': '二次调查分析',
     'nav.investigation_workbench': '调查工作台',
+    'nav.agent_investigation': 'Agent 智能研判',
     'nav.knowledge_graph': '知识图谱',
     'nav.android': '安卓取证',
     'nav.im_forensics': '即时通讯取证',
