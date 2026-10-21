@@ -334,11 +334,22 @@ def build_source_capability_manifest(
         str(item) for item in (task.get("scenarios") or ())
     }
     scenario_dbs = dict(task.get("scenario_databases") or {})
-    families = family_registry.families_for_platform(source_scope_id)
+
+    # Resolve platform alias (e.g. src_server -> linux, src_pc -> windows, src_phone -> android)
+    target_platform = source_scope_id
+    scope_lower = source_scope_id.lower()
+    if "server" in scope_lower or "linux" in scope_lower:
+        target_platform = "linux"
+    elif "android" in scope_lower or "phone" in scope_lower:
+        target_platform = "android"
+    elif "pc" in scope_lower or "windows" in scope_lower:
+        target_platform = "windows"
+
+    families = family_registry.families_for_platform(target_platform)
     capabilities: list[FamilyCapability] = []
     limitations: list[str] = []
 
-    if source_scope_id not in scenarios:
+    if source_scope_id not in scenarios and target_platform not in scenarios:
         caps = tuple(
             FamilyCapability(
                 family_id=f.family_id,
@@ -352,8 +363,8 @@ def build_source_capability_manifest(
         return SourceCapabilityManifest(
             task_id=str(task.get("id") or ""),
             source_scope_id=source_scope_id,
-            source_type=source_scope_id,
-            platform=source_scope_id,
+            source_type=target_platform,
+            platform=target_platform,
             artifact_families=caps,
             available_tool_ids=tuple(sorted(set(available_tool_ids))),
             limitations=(
@@ -361,7 +372,7 @@ def build_source_capability_manifest(
             ),
         )
 
-    db_path = scenario_dbs.get(source_scope_id)
+    db_path = scenario_dbs.get(source_scope_id) or scenario_dbs.get(target_platform)
     if not db_path:
         caps = tuple(
             FamilyCapability(

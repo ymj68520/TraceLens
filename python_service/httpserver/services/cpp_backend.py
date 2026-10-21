@@ -216,6 +216,28 @@ class CppBackendService:
         """Get databases associated with a task."""
         result = await self._request("GET", f"/api/tasks/{task_id}/databases")
         return result.get("databases", [])
+
+    # Case Management
+
+    async def list_cases(self) -> Dict[str, Any]:
+        """List all forensic cases from C++ backend."""
+        result = await self._request("GET", "/api/cases")
+        if isinstance(result, dict):
+            return result
+        return {
+            "cases": result if isinstance(result, list) else [],
+            "total": len(result) if isinstance(result, list) else 0,
+        }
+
+    async def get_case(self, case_id: str) -> Optional[Dict[str, Any]]:
+        """Get case detail by case_id."""
+        if not case_id or case_id in {".", ".."}:
+            return None
+        case_segment = quote(case_id, safe="")
+        result = await self._request("GET", f"/api/cases/{case_segment}")
+        if isinstance(result, dict) and result.get("id") == case_id:
+            return result
+        return None
     
     # File Operations
     

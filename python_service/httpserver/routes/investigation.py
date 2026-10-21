@@ -906,6 +906,36 @@ async def execute_agent_cycle(
                         expected_revision=latest_state_rev.revision,
                     )
 
+            # Dynamically resolve multi-image case scopes if not explicitly specified
+            effective_source_scopes = list(request.source_scope_ids or [])
+            if not effective_source_scopes:
+                try:
+                    cases_res = await manager.cpp_backend.list_cases()
+                    cases = cases_res.get("cases", []) if isinstance(cases_res, dict) else []
+                    for c in cases:
+                        c_task_ids = c.get("task_ids", [])
+                        if request.task_id in c_task_ids and len(c_task_ids) > 1:
+                            for tid in c_task_ids:
+                                t_info = await manager.cpp_backend.get_task(tid)
+                                if t_info:
+                                    img = t_info.get("image_name") or t_info.get("image_path") or ""
+                                    if "服务器" in img or "server" in img.lower():
+                                        effective_source_scopes.extend([tid, "src_server"])
+                                    elif "计算机" in img or "pc" in img.lower() or "嫌疑人" in img:
+                                        effective_source_scopes.extend([tid, "src_pc"])
+                                    elif "android" in img.lower() or "phone" in img.lower() or t_info.get("android_analyze") or "android" in t_info.get("scenarios", []):
+                                        effective_source_scopes.extend([tid, "src_phone"])
+                                    else:
+                                        effective_source_scopes.append(tid)
+                            break
+                except Exception as exc:
+                    logger.warning(f"Failed to auto-resolve multi-image case scopes: {exc}")
+
+            if not effective_source_scopes:
+                effective_source_scopes = [request.task_id, "windows", "linux", "android", "src_event_logs"]
+            else:
+                effective_source_scopes = list(dict.fromkeys(effective_source_scopes))
+
             # Canonical input fingerprint for durable idempotency
             effective_guidance = (
                 request.enable_experimental_guidance
@@ -921,7 +951,7 @@ async def execute_agent_cycle(
                 "task_id": request.task_id,
                 "investigation_id": investigation_id,
                 "expected_working_state_revision": request.expected_working_state_revision,
-                "source_scope_ids": sorted(request.source_scope_ids or []),
+                "source_scope_ids": sorted(effective_source_scopes),
                 "max_steps": request.max_steps,
                 "effective_execution_options": {
                     "enable_experimental_guidance": bool(effective_guidance),

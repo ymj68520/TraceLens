@@ -220,8 +220,13 @@ class DeterministicGroundingValidator:
             # 5. visibility from durable provenance. A ref that resolves but
             # was never exposed to the producing agent is NOT a valid
             # grounding ref (§56: well-formed same-task invisible ->
-            # ungrounded, never silently grounded).
-            if ref not in allowed_evidence_ids:
+            # ungrounded, never silently grounded). Supports FQER scoped and canonical matching.
+            is_visible = (
+                ref in allowed_evidence_ids
+                or parsed.canonical_key in allowed_evidence_ids
+                or (parsed.source_scope_id and parsed.canonical_key.split(":", 1)[1] in allowed_evidence_ids)
+            )
+            if not is_visible:
                 invisible.append(ref)
                 continue
             valid.append(ref)
