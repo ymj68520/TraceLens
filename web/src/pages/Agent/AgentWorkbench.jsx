@@ -1925,8 +1925,13 @@ export default function AgentWorkbench() {
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 dark:text-slate-300">
                   <div className="p-2 rounded-lg bg-slate-100/70 dark:bg-slate-800/40">
-                    <span className="text-slate-400 block">检材来源:</span>
-                    <span>wo_dian.E01 (RAW/E01 镜像分区)</span>
+                    <span className="text-slate-400 block">检材来源设备:</span>
+                    <span className="font-semibold text-purple-700 dark:text-purple-300">{
+                      previewEvidence?.startsWith('src_server:') ? '服务器镜像.E01 [src_server: Linux]' :
+                      previewEvidence?.startsWith('src_phone:') ? '移动终端备份 [src_phone: Android]' :
+                      previewEvidence?.startsWith('src_pc:') ? '窝点嫌疑人计算机镜像.E01 [src_pc: Windows]' :
+                      (selectedTask?.image_name || selectedTask?.image_path || '当前镜像检材')
+                    }</span>
                   </div>
                   <div className="p-2 rounded-lg bg-slate-100/70 dark:bg-slate-800/40">
                     <span className="text-slate-400 block">校验结果:</span>
@@ -1937,11 +1942,14 @@ export default function AgentWorkbench() {
 
               <div className="flex justify-end gap-2 pt-2">
                 <Link
-                  to={`/files?task_id=${currentTaskId}&search=${encodeURIComponent(previewEvidence.replace(/^file:/, ''))}`}
+                  to={`/files?task_id=${
+                    previewEvidence?.startsWith('src_server:') ? '442400ab-4de1-4188-8912-5ac3f31ac468' :
+                    (currentTaskId || '60dedf82-7f35-48be-a104-b4d283a4fe92')
+                  }&search=${encodeURIComponent(previewEvidence?.replace(/^.*?:file:/, '').replace(/^file:/, '') || '')}`}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium hover:bg-slate-200"
                 >
                   <FolderOpen className="w-3.5 h-3.5" />
-                  <span>在文件管理器中定位</span>
+                  <span>在源设备文件视图中定位</span>
                 </Link>
                 <Button size="sm" variant="primary" onClick={() => setPreviewEvidence(null)}>
                   关闭

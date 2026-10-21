@@ -97,6 +97,8 @@ def default_profiles() -> dict[str, SourceSpecialistProfile]:
             "get_existing_analyses",
             "get_existing_claims",
             "query_platform_artifacts",
+            "search_shared_indicators",
+            "correlate_timeline",
         ),
         available_skill_ids=(
             "windows.authentication",
@@ -135,6 +137,8 @@ def default_profiles() -> dict[str, SourceSpecialistProfile]:
             "get_existing_analyses",
             "get_existing_claims",
             "query_platform_artifacts",
+            "search_shared_indicators",
+            "correlate_timeline",
         ),
         available_skill_ids=(
             "android.communication",
@@ -170,6 +174,8 @@ def default_profiles() -> dict[str, SourceSpecialistProfile]:
             "get_existing_analyses",
             "get_existing_claims",
             "query_platform_artifacts",
+            "search_shared_indicators",
+            "correlate_timeline",
         ),
         available_skill_ids=(
             "linux.auth",

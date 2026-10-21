@@ -6,6 +6,7 @@ from ..registry import ForensicToolRegistry
 from .base import ToolCatalogConfig
 from .services import ForensicToolServices
 from . import (
+    cross_image,
     evidence,
     files,
     investigation_reads,
@@ -29,6 +30,8 @@ def read_only_catalog_builders() -> list[ToolBuildFunc]:
         timeline.build_find_temporal_neighbors_tool,
         investigation_reads.build_get_existing_analyses_tool,
         investigation_reads.build_get_existing_claims_tool,
+        cross_image.build_search_shared_indicators_tool,
+        cross_image.build_correlate_timeline_tool,
     ]
 
 
