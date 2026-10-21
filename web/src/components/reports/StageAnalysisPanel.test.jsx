@@ -32,8 +32,8 @@ describe('two-stage report UI', () => {
         fireEvent.change(screen.getByTestId('generate-actor-input'), { target: { value: 'analyst' } });
         fireEvent.click(screen.getByLabelText('首次：材料自主研判'));
         fireEvent.click(screen.getByTestId('generate-submit'));
-        // 9502116f 后首次研判默认走分类叙事契约（narrative），断言随现行默认更新。
-        await waitFor(() => expect(generate).toHaveBeenCalledWith('T', { requestedBy: 'analyst', analysisMode: 'narrative' }));
+        // 测试显式选择"首次：材料自主研判"（evidence_only）；默认仍为 narrative。
+        await waitFor(() => expect(generate).toHaveBeenCalledWith('T', { requestedBy: 'analyst', analysisMode: 'evidence_only' }));
         expect(screen.queryByLabelText('本次案情描述')).toBeNull();
     });
 

@@ -9,8 +9,11 @@ import logging
 
 from .generation_sources import digest, material
 from .generation_structured import _loads_strict
-from .generation_prompts import STAGE_DISCOVERY_SYSTEM_V1, STAGE_COMPARE_SYSTEM_V1, NEUTRAL_IMAGE_PROMPT_V1
+from .generation_prompts import (STAGE_DISCOVERY_SYSTEM_V1, STAGE_COMPARE_SYSTEM_V1,
+                                 STAGE_NARRATIVE_SYSTEM_V1, NEUTRAL_IMAGE_PROMPT_V1)
 from .generation_prompts import STAGE_DISCOVERY_SYSTEM_V2, STAGE_COMPARE_SYSTEM_V2
+logger = logging.getLogger(__name__)
+
 from .models import (
     DirectionBatch, InvestigationDirection, MaterialSpan, ComparisonSuggestion,
     DirectionComparison, StageAnalysis, StructuredReportResponse, StructuredReportSection,
