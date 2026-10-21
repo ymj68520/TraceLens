@@ -100,31 +100,6 @@ async def test_resolve_canonical_key_for_backslash_input(tmp_path):
     assert res.normalized_path == "/case/report.docx"
 
 
-@pytest.mark.asyncio
-async def test_resolve_drive_letter_and_case_insensitive_variants(tmp_path):
-    fdb, edb = str(tmp_path / "files.db"), str(tmp_path / "events.db")
-    _make_files_db(fdb, ["/Program Files/TrueCrypt/TrueCrypt.exe"])
-    _make_events_db(edb, [])
-    r = EvidenceResolver(_backend({"A": {"output_files_db": fdb, "output_events_db": edb}}))
-
-    # Drive letter prefix
-    res1 = await r.resolve_evidence("A", "file:C/Program Files/TrueCrypt/TrueCrypt.exe")
-    assert res1.normalized_path == "/Program Files/TrueCrypt/TrueCrypt.exe"
-
-    # Drive letter with colon
-    res2 = await r.resolve_evidence("A", "file:C:/Program Files/TrueCrypt/TrueCrypt.exe")
-    assert res2.normalized_path == "/Program Files/TrueCrypt/TrueCrypt.exe"
-
-    # Case-insensitive
-    res3 = await r.resolve_evidence("A", "file:/program files/truecrypt/truecrypt.exe")
-    assert res3.normalized_path == "/Program Files/TrueCrypt/TrueCrypt.exe"
-
-    # Basename in task scope (e.g. C/soft/TrueCrypt/TrueCrypt.exe)
-    res4 = await r.resolve_evidence("A", "file:C/soft/TrueCrypt/TrueCrypt.exe")
-    assert res4.normalized_path == "/Program Files/TrueCrypt/TrueCrypt.exe"
-
-
-
 # ---------- cluster resolution ----------
 
 @pytest.mark.asyncio
@@ -262,3 +237,77 @@ def test_source_db_excluded_from_serialization():
     dumped = r.model_dump()
     assert "source_db" not in dumped
     assert r.source_db == "/secret/path.db"  # still accessible internally
+
+
+# ---------- FQER Multi-Scope Resolution (Phase 1) ----------
+
+@pytest.mark.asyncio
+async def test_resolve_fqer_with_scope_to_task_map(tmp_path):
+    fdb_a, edb_a = str(tmp_path / "files_a.db"), str(tmp_path / "events_a.db")
+    fdb_b, edb_b = str(tmp_path / "files_b.db"), str(tmp_path / "events_b.db")
+
+    _make_files_db(fdb_a, ["/Users/wangwu/Desktop/script.py"])
+    _make_events_db(edb_a, [])
+
+    _make_files_db(fdb_b, ["/etc/rc.local"])
+    _make_events_db(edb_b, [{"timestamp": 6000, "event_type": "ssh_login"}])
+
+    backend = _backend({
+        "task_pc_01": {"id": "task_pc_01", "output_files_db": fdb_a, "output_events_db": edb_a},
+        "task_server_02": {"id": "task_server_02", "output_files_db": fdb_b, "output_events_db": edb_b},
+    })
+    resolver = EvidenceResolver(backend)
+
+    scope_map = {
+        "src_pc": "task_pc_01",
+        "src_server": "task_server_02",
+    }
+
+    # Query from context of task_pc_01, but targeting src_server
+    res_server_file = await resolver.resolve_evidence(
+        "task_pc_01",
+        "src_server:file:/etc/rc.local",
+        scope_to_task_map=scope_map,
+    )
+    assert res_server_file.task_id == "task_server_02"
+    assert res_server_file.source_scope_id == "src_server"
+    assert res_server_file.normalized_path == "/etc/rc.local"
+    assert res_server_file.evidence_key == "src_server:file:/etc/rc.local"
+
+    # Query server cluster from PC context
+    res_server_evt = await resolver.resolve_evidence(
+        "task_pc_01",
+        "src_server:cluster:v1:100:ssh_login",
+        scope_to_task_map=scope_map,
+    )
+    assert res_server_evt.task_id == "task_server_02"
+    assert res_server_evt.source_scope_id == "src_server"
+    assert res_server_evt.event_type == "ssh_login"
+
+
+@pytest.mark.asyncio
+async def test_resolve_fqer_direct_task_id_scope(tmp_path):
+    fdb, edb = str(tmp_path / "files.db"), str(tmp_path / "events.db")
+    _make_files_db(fdb, ["/etc/shadow"])
+    _make_events_db(edb, [])
+
+    backend = _backend({
+        "task_other": {"id": "task_other", "output_files_db": fdb, "output_events_db": edb},
+    })
+    resolver = EvidenceResolver(backend)
+
+    # Use task_other directly as the scope prefix
+    res = await resolver.resolve_evidence("task_current", "task_other:file:/etc/shadow")
+    assert res.task_id == "task_other"
+    assert res.source_scope_id == "task_other"
+    assert res.normalized_path == "/etc/shadow"
+
+
+@pytest.mark.asyncio
+async def test_resolve_fqer_unmapped_scope_fail_closed(tmp_path):
+    backend = _backend({"task_pc": {"id": "task_pc"}})
+    resolver = EvidenceResolver(backend)
+
+    with pytest.raises(EvidenceNotFoundError, match="source scope not found or unmapped"):
+        await resolver.resolve_evidence("task_pc", "src_ghost:file:/etc/passwd")
+

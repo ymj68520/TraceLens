@@ -24,6 +24,7 @@ class ParsedEvidenceKey(BaseModel):
 
     evidence_type: Literal["file", "cluster", "android_artifact"]
     canonical_key: str
+    source_scope_id: Optional[str] = None
 
     # file
     normalized_path: Optional[str] = None
@@ -76,6 +77,7 @@ class ResolvedEvidence(BaseModel):
     task_id: str
     evidence_key: str  # canonical
     evidence_type: Literal["file", "cluster", "android_artifact"]
+    source_scope_id: Optional[str] = None
 
     # file
     normalized_path: Optional[str] = None

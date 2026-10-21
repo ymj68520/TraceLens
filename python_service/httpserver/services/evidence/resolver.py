@@ -183,26 +183,61 @@ def _cluster_lookup(events_db: str, unix_minute: int, event_type: str) -> Option
 
 
 class EvidenceResolver:
-    """Resolve an evidence_key within the scope of a single task.
+    """Resolve an evidence_key within the scope of a task or across multi-task scopes.
 
     Constructed with a ``cpp_backend`` (injected, like ``SourceResolver``). Only
     the task's own databases (from ``get_task``) are consulted; nothing is
     written and the returned ``evidence_key`` is always canonical.
+    Supports FQER (Fully Qualified Evidence References) with ``source_scope_id`` routing.
     """
 
-    def __init__(self, cpp_backend):
+    def __init__(self, cpp_backend, scope_resolver=None):
         self._cpp_backend = cpp_backend
+        self._scope_resolver = scope_resolver
 
-    async def resolve_evidence(self, task_id: str, evidence_key: str) -> ResolvedEvidence:
+    async def resolve_evidence(
+        self,
+        task_id: str,
+        evidence_key: str,
+        *,
+        scope_to_task_map: Optional[dict[str, str]] = None,
+    ) -> ResolvedEvidence:
         parsed = parse_evidence_key(evidence_key)  # ValueError on malformed key
 
+        target_task_id = task_id
+        if parsed.source_scope_id:
+            # 1. Direct match in provided scope_to_task_map
+            if scope_to_task_map and parsed.source_scope_id in scope_to_task_map:
+                target_task_id = scope_to_task_map[parsed.source_scope_id]
+            # 2. Scope resolver hook
+            elif self._scope_resolver is not None:
+                resolved = await self._scope_resolver(task_id, parsed.source_scope_id)
+                if resolved:
+                    target_task_id = resolved
+                else:
+                    raise EvidenceNotFoundError(
+                        f"source scope not found or unmapped: {parsed.source_scope_id!r}"
+                    )
+            # 3. If source_scope_id matches current task_id
+            elif parsed.source_scope_id == task_id:
+                target_task_id = task_id
+            # 4. Check if source_scope_id is directly a valid task_id
+            else:
+                candidate_task = await self._cpp_backend.get_task(parsed.source_scope_id)
+                if candidate_task is not None:
+                    target_task_id = parsed.source_scope_id
+                else:
+                    raise EvidenceNotFoundError(
+                        f"source scope not found or unmapped: {parsed.source_scope_id!r}"
+                    )
+
         # R1/R2/R3: task must exist; DB paths come ONLY from get_task.
-        task = await self._cpp_backend.get_task(task_id)
-        if not isinstance(task, dict) or not task or (task.get("id") is not None and task.get("id") != task_id):
-            raise EvidenceNotFoundError(f"task not found: {task_id}")
+        task = await self._cpp_backend.get_task(target_task_id)
+        if not isinstance(task, dict) or not task or (task.get("id") is not None and task.get("id") != target_task_id):
+            raise EvidenceNotFoundError(f"task not found: {target_task_id}")
 
         if parsed.evidence_type == "android_artifact":
-            if parsed.artifact_task_id != task_id:
+            if parsed.artifact_task_id != target_task_id:
                 raise EvidenceNotFoundError("Android artifact belongs to another task")
             try:
                 manifest, db = await asyncio.to_thread(read_result_set, task, parsed.result_set_id)
@@ -212,18 +247,23 @@ class EvidenceResolver:
             except (ArtifactUnavailable, sqlite3.DatabaseError, OSError) as exc:
                 raise EvidenceStoreError("Android artifact result set is unavailable") from exc
             return ResolvedEvidence(
-                task_id=task_id, evidence_key=parsed.canonical_key,
-                evidence_type="android_artifact", result_set_id=parsed.result_set_id,
-                artifact_kind=parsed.artifact_kind, artifact_record_id=parsed.artifact_record_id,
-                source_db=str(db), result_manifest=manifest,
+                task_id=target_task_id,
+                evidence_key=parsed.canonical_key,
+                evidence_type="android_artifact",
+                source_scope_id=parsed.source_scope_id,
+                result_set_id=parsed.result_set_id,
+                artifact_kind=parsed.artifact_kind,
+                artifact_record_id=parsed.artifact_record_id,
+                source_db=str(db),
+                result_manifest=manifest,
             )
 
         files_db = task.get("output_files_db") or ""
         events_db = task.get("output_events_db") or ""
 
         if parsed.evidence_type == "file":
-            return await self._resolve_file(task_id, parsed, files_db)
-        return await self._resolve_cluster(task_id, parsed, events_db)
+            return await self._resolve_file(target_task_id, parsed, files_db)
+        return await self._resolve_cluster(target_task_id, parsed, events_db)
 
     async def _resolve_file(
         self, task_id: str, parsed: ParsedEvidenceKey, files_db: str
@@ -239,6 +279,7 @@ class EvidenceResolver:
             task_id=task_id,
             evidence_key=parsed.canonical_key,
             evidence_type="file",
+            source_scope_id=parsed.source_scope_id,
             normalized_path=matched_path,
             source_db=files_db,
         )
@@ -259,6 +300,7 @@ class EvidenceResolver:
             task_id=task_id,
             evidence_key=parsed.canonical_key,
             evidence_type="cluster",
+            source_scope_id=parsed.source_scope_id,
             version=parsed.version,
             unix_minute=parsed.unix_minute,
             event_type=parsed.event_type,

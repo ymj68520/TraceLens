@@ -51,6 +51,14 @@ def _decode_event_type(encoded_event_type: str) -> str:
 def parse_evidence_key(evidence_key: str) -> ParsedEvidenceKey:
     """Parse an evidence_key into a canonical ParsedEvidenceKey.
 
+    Supports FQER (Fully Qualified Evidence Reference) syntax:
+      [<source_scope>:]<evidence_key>
+    e.g.:
+      file:/path/to/file
+      src_pc:file:/path/to/file
+      src_server:cluster:v1:100:ssh_login
+      src_phone:android_artifact:v1:task-01:...
+
     Raises:
         ValueError: malformed key (unknown type, missing fields, unsupported
             version, non-integer unix_minute, empty event_type, ...).
@@ -58,25 +66,45 @@ def parse_evidence_key(evidence_key: str) -> ParsedEvidenceKey:
     if not isinstance(evidence_key, str) or not evidence_key:
         raise InvalidEvidenceKeyError("evidence_key must be a non-empty string")
 
-    if evidence_key.startswith(_FILE_PREFIX):
-        raw_path = evidence_key[len(_FILE_PREFIX):]
+    scope: Optional[str] = None
+    inner_key = evidence_key
+
+    if not (
+        evidence_key.startswith(_FILE_PREFIX)
+        or evidence_key.startswith(_CLUSTER_PREFIX)
+        or evidence_key.startswith(_ANDROID_PREFIX)
+    ):
+        if ":" in evidence_key:
+            candidate_scope, _, remainder = evidence_key.partition(":")
+            if re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", candidate_scope) and (
+                remainder.startswith(_FILE_PREFIX)
+                or remainder.startswith(_CLUSTER_PREFIX)
+                or remainder.startswith(_ANDROID_PREFIX)
+            ):
+                scope = candidate_scope
+                inner_key = remainder
+
+    if inner_key.startswith(_FILE_PREFIX):
+        raw_path = inner_key[len(_FILE_PREFIX):]
         if not raw_path:
             raise InvalidEvidenceKeyError("file evidence key missing path")
         normalized_path = normalize_evidence_path(raw_path)
         if not normalized_path:
             raise InvalidEvidenceKeyError("file evidence key has empty normalized path")
+        canonical_key = f"{scope}:file:{normalized_path}" if scope else f"file:{normalized_path}"
         return ParsedEvidenceKey(
             evidence_type="file",
-            canonical_key=f"file:{normalized_path}",
+            canonical_key=canonical_key,
+            source_scope_id=scope,
             normalized_path=normalized_path,
         )
 
-    if evidence_key.startswith(_CLUSTER_PREFIX):
+    if inner_key.startswith(_CLUSTER_PREFIX):
         # rest == "v1:<unix_minute>:<encoded_event_type>"
-        rest = evidence_key[len(_CLUSTER_PREFIX):]
+        rest = inner_key[len(_CLUSTER_PREFIX):]
         parts = rest.split(":", 2)
         if len(parts) != 3:
-            raise InvalidEvidenceKeyError(f"malformed cluster evidence key: {evidence_key!r}")
+            raise InvalidEvidenceKeyError(f"malformed cluster evidence key: {inner_key!r}")
         version, minute_str, encoded_event_type = parts
         if version != _SUPPORTED_CLUSTER_VERSION:
             raise InvalidEvidenceKeyError(f"unsupported cluster evidence key version: {version!r}")
@@ -90,16 +118,19 @@ def parse_evidence_key(evidence_key: str) -> ParsedEvidenceKey:
             ) from exc
         event_type = _decode_event_type(encoded_event_type)
         canonical_encoded = quote(event_type, safe="")  # idempotent re-encode
+        cluster_canonical = f"cluster:v1:{unix_minute}:{canonical_encoded}"
+        canonical_key = f"{scope}:{cluster_canonical}" if scope else cluster_canonical
         return ParsedEvidenceKey(
             evidence_type="cluster",
-            canonical_key=f"cluster:v1:{unix_minute}:{canonical_encoded}",
+            canonical_key=canonical_key,
+            source_scope_id=scope,
             version=version,
             unix_minute=unix_minute,
             event_type=event_type,
         )
 
-    if evidence_key.startswith(_ANDROID_PREFIX):
-        parts = evidence_key.split(":")
+    if inner_key.startswith(_ANDROID_PREFIX):
+        parts = inner_key.split(":")
         if len(parts) != 6 or parts[1] != "v1":
             raise InvalidEvidenceKeyError("malformed Android artifact evidence key")
         _, _, task_id, result_set_id, artifact_kind, record_text = parts
@@ -115,9 +146,12 @@ def parse_evidence_key(evidence_key: str) -> ParsedEvidenceKey:
         if record_id > 2**63 - 1:
             raise InvalidEvidenceKeyError("Android artifact record ID exceeds SQLite range")
         result_set_id = result_set_id.lower()
+        android_canonical = f"android_artifact:v1:{task_id}:{result_set_id}:{artifact_kind}:{record_id}"
+        canonical_key = f"{scope}:{android_canonical}" if scope else android_canonical
         return ParsedEvidenceKey(
             evidence_type="android_artifact",
-            canonical_key=f"android_artifact:v1:{task_id}:{result_set_id}:{artifact_kind}:{record_id}",
+            canonical_key=canonical_key,
+            source_scope_id=scope,
             artifact_task_id=task_id,
             result_set_id=result_set_id,
             artifact_kind=artifact_kind,

@@ -125,3 +125,47 @@ def test_C21_strict_decode_rejects_malformed_event_type(bad_encoded):
     # Malformed escapes / invalid UTF-8 must NOT be "repaired" into another identity.
     with pytest.raises(ValueError):
         parse_evidence_key(f"cluster:v1:1:{bad_encoded}")
+
+
+# --- FQER (Fully Qualified Evidence Reference with Source Scope) ---
+
+def test_fqer_file_parse_with_scope():
+    p = parse_evidence_key("src_pc_wangwu:file:/Users/Administrator/Desktop/script.py")
+    assert p.evidence_type == "file"
+    assert p.source_scope_id == "src_pc_wangwu"
+    assert p.normalized_path == "/Users/Administrator/Desktop/script.py"
+    assert p.canonical_key == "src_pc_wangwu:file:/Users/Administrator/Desktop/script.py"
+
+
+def test_fqer_file_backslash_normalization_with_scope():
+    p = parse_evidence_key(r"src_server_bt:file:\etc\rc.local")
+    assert p.evidence_type == "file"
+    assert p.source_scope_id == "src_server_bt"
+    assert p.normalized_path == "/etc/rc.local"
+    assert p.canonical_key == "src_server_bt:file:/etc/rc.local"
+
+
+def test_fqer_cluster_parse_with_scope():
+    p = parse_evidence_key("src_server_bt:cluster:v1:100:ssh_login")
+    assert p.evidence_type == "cluster"
+    assert p.source_scope_id == "src_server_bt"
+    assert p.unix_minute == 100
+    assert p.event_type == "ssh_login"
+    assert p.canonical_key == "src_server_bt:cluster:v1:100:ssh_login"
+
+
+def test_fqer_android_artifact_with_scope():
+    key = "src_phone_01:android_artifact:v1:task-01:" + "a" * 64 + ":sms:100"
+    p = parse_evidence_key(key)
+    assert p.evidence_type == "android_artifact"
+    assert p.source_scope_id == "src_phone_01"
+    assert p.artifact_task_id == "task-01"
+    assert p.artifact_kind == "sms"
+    assert p.artifact_record_id == 100
+    assert p.canonical_key == key
+
+
+def test_fqer_invalid_scope_rejection():
+    with pytest.raises(InvalidEvidenceKeyError):
+        parse_evidence_key("invalid scope:file:/path/to/file")
+
