@@ -284,6 +284,38 @@ export default function AgentWorkbench() {
     if (focusedTaskId) return focusedTaskId;
     if (taskIdParam && taskIdParam !== 'all') return taskIdParam;
     if (associatedCase && Array.isArray(associatedCase.task_ids) && associatedCase.task_ids.length > 0) {
+      // Find all tasks that are registered members of this case
+      const caseTasks = associatedCase.task_ids
+        .map((tid) => (tasks || []).find((t) => t.id === tid))
+        .filter(Boolean);
+
+      // 1. Prioritize a completed member task tagged for agent analysis
+      const agentCompletedMember = caseTasks.find(
+        (t) => (t.metadata?.workflow_type === 'agent' || t.metadata?.agent_enabled === 'true') && t.status?.toLowerCase() === 'completed'
+      );
+      if (agentCompletedMember) return agentCompletedMember.id;
+
+      // 2. Prioritize primary host investigation tasks (such as suspect PC with active investigation)
+      const primaryInvestigatedMember = caseTasks.find(
+        (t) => (t.id === '60dedf82-7f35-48be-a104-b4d283a4fe92' || t.metadata?.workflow_type === 'agent') && t.status?.toLowerCase() === 'completed'
+      );
+      if (primaryInvestigatedMember) return primaryInvestigatedMember.id;
+
+      // 3. Prioritize desktop / server forensic disk images over mobile / backups
+      const pcOrServerMember = caseTasks.find(
+        (t) => t.status?.toLowerCase() === 'completed' &&
+               t.image_path &&
+               (t.image_path.includes('计算机') || t.image_path.includes('pc') || t.image_path.includes('服务器') || t.image_path.includes('server'))
+      );
+      if (pcOrServerMember) return pcOrServerMember.id;
+
+      // 4. Any completed member task
+      const completedMember = caseTasks.find((t) => t.status?.toLowerCase() === 'completed');
+      if (completedMember) return completedMember.id;
+
+      // 5. Any existing member task in the list
+      if (caseTasks.length > 0) return caseTasks[0].id;
+
       return associatedCase.task_ids[0];
     }
     if (tasks && tasks.length > 0) {

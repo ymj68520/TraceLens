@@ -764,10 +764,13 @@ async def execute_agent_cycle(
         ) from exc
 
     if not db_path.parent.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"task not found or investigation db unavailable for {request.task_id}",
-        )
+        try:
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=404,
+                detail=f"task not found or investigation db unavailable for {request.task_id}",
+            ) from exc
 
     # Concurrency control: task-scoped claim/lock
     if request.task_id in _agent_task_running:
