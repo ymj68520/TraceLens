@@ -186,6 +186,39 @@ test('does not bootstrap an initialized investigation', async () => {
   expect(service.bootstrapInvestigation).not.toHaveBeenCalled();
 });
 
+test('refresh preserves the selected file while the timeline is temporarily empty', async () => {
+  renderPage();
+  fireEvent.click(await screen.findByTestId('file-node-/case/b.txt'));
+  expect(screen.getByTestId('file-event-panel-name')).toHaveTextContent('b.txt');
+  let finish;
+  service.getInvestigationFileTimeline.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+  fireEvent.click(screen.getByRole('button', { name: '刷新' }));
+  await waitFor(() => expect(finish).toBeTypeOf('function'));
+  await act(async () => finish({ files, total_count: 2 }));
+  expect(await screen.findByTestId('file-event-panel-name')).toHaveTextContent('b.txt');
+});
+
+test('report resolution gap does not clear selection before the next timeline request starts', async () => {
+  const view = renderPage();
+  fireEvent.click(await screen.findByTestId('file-node-/case/b.txt'));
+  const rerender = () => view.rerender(
+    <MemoryRouter initialEntries={['/investigation?task_id=t1']}>
+      <ToastProvider><Investigation /></ToastProvider>
+    </MemoryRouter>);
+  reportScope.reportId = null;
+  reportScope.loading = true;
+  rerender();
+  await waitFor(() => expect(screen.queryByTestId('file-node-/case/b.txt')).not.toBeInTheDocument());
+  let finish;
+  service.getInvestigationFileTimeline.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+  reportScope.reportId = 'rep-1';
+  reportScope.loading = false;
+  rerender();
+  await waitFor(() => expect(finish).toBeTypeOf('function'));
+  await act(async () => finish({ files, total_count: 2 }));
+  expect(await screen.findByTestId('file-event-panel-name')).toHaveTextContent('b.txt');
+});
+
 test('timeline nodes are files sorted by latest MACB time; first file opens the evidence analysis workspace', async () => {
   renderPage();
   await screen.findByTestId('file-node-/case/a.txt');

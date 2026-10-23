@@ -1160,6 +1160,20 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 add_audit_log(task_id, "ERROR", "Analysis failed at the Graphiti ingestion gate");
                 return;
             }
+            // The first-stage report belongs to the initial analysis pipeline.
+            // Its worker callback is deliberately disabled to avoid racing this gate.
+            if (task.llm_analyze && !noOptionalIntelligence &&
+                forensics::ConfigManager::instance().getBool("REPORT_AUTO_GENERATE_ENABLED", true)) {
+                const bool report_ok = wait_for_pipeline_report(task_id);
+                if (is_task_cancelled(task_id)) { return; }
+                if (!report_ok) {
+                    update_status(task_id, TaskStatus::FAILED,
+                                  "首次材料自主研判报告未完成",
+                                  "报告生成失败或超时；分析产物仍可浏览，请查看报告任务状态。");
+                    add_audit_log(task_id, "ERROR", "Analysis failed at the report completion gate");
+                    return;
+                }
+            }
             const std::string completionMessage = harmonyBackup && harmonyCoverageIncomplete
                 ? "HarmonyOS backup analyzed; some sources are absent or unsupported. Review mobile source coverage."
                 : "Analysis completed successfully";

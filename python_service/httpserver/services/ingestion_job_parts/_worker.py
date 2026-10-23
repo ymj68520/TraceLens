@@ -666,6 +666,9 @@ class IngestionJobWorkerMixin:
                 **ep_stats,
             }
         )
+        gate_error = self._episode_gate_error(ep_stats)
+        if gate_error:
+            raise RuntimeError(gate_error)
 
     async def _ingest_episodes_path_a(
         self,
@@ -686,8 +689,8 @@ class IngestionJobWorkerMixin:
         the shared cluster_analyzer ingestor, so the extractor can build
         entities/relationships.
 
-        Failures here are non-fatal: the path-B :File entities are still valid.
-        Returns a stats dict.
+        Returns statistics even on failure so callers can retain valid :File
+        artifacts while failing the completion gate when no episode landed.
         """
         stats = {"episodes_successful": 0, "episodes_total": 0, "episodes_failed": 0, "error": None}
         try:

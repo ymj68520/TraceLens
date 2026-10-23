@@ -11,6 +11,7 @@ text so accidental edits are caught immediately.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Union
 
 from .models import (
@@ -114,14 +115,14 @@ def build_event_refresh_user_prompt(
 # Version registry
 # ---------------------------------------------------------------------------
 
-CURRENT_PROMPT_VERSION = "investigation-evidence-analysis:v5"
+CURRENT_PROMPT_VERSION = "investigation-evidence-analysis:v7"
 ANDROID_PROMPT_VERSION = "investigation-evidence-analysis:v6"
 
 # Input envelope compatibility. V2 input is shared by historical legacy v2
 # and current structured v3 output contracts.
 ENVELOPE_PROMPT_COMPAT: dict[int, frozenset[str]] = {
     1: frozenset({"investigation-evidence-analysis:v1"}),
-    2: frozenset({"investigation-evidence-analysis:v2", "investigation-evidence-analysis:v3", CURRENT_PROMPT_VERSION}),
+    2: frozenset({"investigation-evidence-analysis:v2", "investigation-evidence-analysis:v3", "investigation-evidence-analysis:v5", CURRENT_PROMPT_VERSION}),
     3: frozenset({"investigation-evidence-analysis:v4", ANDROID_PROMPT_VERSION}),
 }
 PROMPT_OUTPUT_CONTRACT: dict[str, str] = {
@@ -129,6 +130,7 @@ PROMPT_OUTPUT_CONTRACT: dict[str, str] = {
     "investigation-evidence-analysis:v2": "legacy_text",
     "investigation-evidence-analysis:v3": "structured_claims_v1",
     "investigation-evidence-analysis:v4": "structured_claims_v1",
+    "investigation-evidence-analysis:v5": "structured_claims_v1",
     CURRENT_PROMPT_VERSION: "structured_claims_v1",
     ANDROID_PROMPT_VERSION: "structured_claims_v1",
 }
@@ -272,7 +274,7 @@ PROMPT_REGISTRY: dict[str, tuple[str, str]] = {
 }
 
 
-PROMPT_REGISTRY[CURRENT_PROMPT_VERSION] = (
+PROMPT_REGISTRY["investigation-evidence-analysis:v5"] = (
     SECONDARY_ANALYSIS_SYSTEM_V3 + CHINESE_OUTPUT_RULE,
     SECONDARY_ANALYSIS_USER_TEMPLATE_V3,
 )
@@ -280,6 +282,32 @@ PROMPT_REGISTRY[ANDROID_PROMPT_VERSION] = (
     PROMPT_REGISTRY["investigation-evidence-analysis:v4"][0] + CHINESE_OUTPUT_RULE,
     SECONDARY_ANALYSIS_USER_TEMPLATE_V3,
 )
+PROMPT_REGISTRY[CURRENT_PROMPT_VERSION] = (
+    PROMPT_REGISTRY["investigation-evidence-analysis:v5"][0]
+    + "\n文件时间以程序换算的 UTC ISO 8601 值为准，引用时逐字复制，不得自行换算 Unix 秒或推断本地时区。"
+      "ctime 是元数据变更时间，不是创建时间；仅 crtime 可标为创建时间。"
+      "初始分析中的时间表述若与快照的程序换算结果冲突，以快照为准，并明确纠正。",
+    SECONDARY_ANALYSIS_USER_TEMPLATE_V3,
+)
+
+
+def _utc_timestamp(value) -> str:
+    """Render Unix seconds deterministically; never guess units or local time."""
+    try:
+        if isinstance(value, bool):
+            raise ValueError("boolean timestamp")
+        return datetime.fromtimestamp(float(value), tz=timezone.utc).isoformat().replace("+00:00", "Z")
+    except (ValueError, TypeError, OverflowError, OSError):
+        return "未知（无效 Unix 秒）"
+
+
+def _file_time_lines(payload: dict) -> list[str]:
+    return [
+        f"{label}: {_utc_timestamp(payload[key])}（UTC；原始 Unix 秒: {payload[key]}）"
+        for key, label in (("mtime", "修改时间"), ("ctime", "元数据变更时间"),
+                           ("crtime", "创建时间"), ("atime", "访问时间"))
+        if payload.get(key) is not None
+    ]
 
 
 def get_prompt(version: str) -> tuple[str, str]:
@@ -327,10 +355,14 @@ def _format_snapshot_text(
             lines.append(f"大小: {payload['size']} 字节")
         if payload.get("md5"):
             lines.append(f"MD5: {payload['md5']}")
-        if payload.get("mtime") is not None:
-            lines.append(f"修改时间: {payload['mtime']}")
-        if payload.get("ctime") is not None:
-            lines.append(f"创建时间: {payload['ctime']}")
+        if envelope.prompt_version == "investigation-evidence-analysis:v7":
+            lines.extend(_file_time_lines(payload))
+        else:
+            # Keep historical prompt rendering stable for frozen envelopes.
+            if payload.get("mtime") is not None:
+                lines.append(f"修改时间: {payload['mtime']}")
+            if payload.get("ctime") is not None:
+                lines.append(f"创建时间: {payload['ctime']}")
         if payload.get("is_deleted") is not None:
             lines.append(f"已删除: {'是' if payload['is_deleted'] else '否'}")
         if payload.get("scene_type"):
@@ -372,7 +404,7 @@ def _format_snapshot_text(
     return evidence_type, evidence_key, "\n".join(lines), initial_summary, initial_description
 
 
-def _format_related_evidence_text(entries: tuple) -> str:
+def _format_related_evidence_text(entries: tuple, *, format_times: bool = False) -> str:
     """Format V2 related evidence entries into human-readable text."""
     if not entries:
         return "无"
@@ -385,6 +417,8 @@ def _format_related_evidence_text(entries: tuple) -> str:
         if evidence_type == "file":
             lines.append(f"  文件路径: {payload.get('normalized_path', '未知')}")
             lines.append(f"  文件名: {payload.get('name', '未知')}")
+            if format_times:
+                lines.extend(f"  {line}" for line in _file_time_lines(payload))
             if payload.get("size") is not None:
                 lines.append(f"  大小: {payload['size']} 字节")
             desc = payload.get("initial_description")
@@ -432,7 +466,8 @@ def build_user_prompt(
             params["case_context"] = envelope.case_context
         if envelope.related_evidence:
             params["related_evidence_text"] = _format_related_evidence_text(
-                envelope.related_evidence
+                envelope.related_evidence,
+                format_times=envelope.prompt_version == "investigation-evidence-analysis:v7",
             )
 
     return user_template.format(**params)

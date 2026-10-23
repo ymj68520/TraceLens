@@ -127,3 +127,23 @@ def test_A5_missing_db_fails_closed(tmp_path):
 
     assert ok is False
     assert not Path(db).exists()          # must not create the target DB
+
+
+def test_concurrent_writes_keep_a_single_complete_version_chain(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    db = str(tmp_path / "files.db")
+    _make_files_db(db, ["/A/report.docx"])
+    barrier = Barrier(8)
+    def write(index):
+        barrier.wait(timeout=10)
+        return _make_service().persist_to_files_db(
+            db_path=db, file_path="/A/report.docx", task_id="T",
+            description=f"revision-{index}", summary="S", keywords="k", model_used="m")
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        assert all(pool.map(write, range(8)))
+    with sqlite3.connect(db) as conn:
+        rows = conn.execute("SELECT id, analysis_id_upstream FROM file_analyses ORDER BY id").fetchall()
+        assert len(rows) == 8
+        assert [r[1] for r in rows] == [None] + [r[0] for r in rows[:-1]]
+        assert conn.execute("PRAGMA quick_check").fetchone()[0] == "ok"

@@ -76,7 +76,7 @@ def test_parser_empty_claims_valid():
 def test_prompt_v3_contract_and_hash():
     import hashlib
     expected = "65b923b6d5cc09e5e3afbb2624ee1b02a88c2cce1812578ed69a3dd90be2f8f9"
-    assert CURRENT_PROMPT_VERSION == "investigation-evidence-analysis:v5"
+    assert CURRENT_PROMPT_VERSION == "investigation-evidence-analysis:v7"
     assert PROMPT_OUTPUT_CONTRACT[CURRENT_PROMPT_VERSION] == "structured_claims_v1"
     assert hashlib.sha256((SECONDARY_ANALYSIS_SYSTEM_V3 + SECONDARY_ANALYSIS_USER_TEMPLATE_V3).encode()).hexdigest() == expected
     assert "grounding_status" in SECONDARY_ANALYSIS_SYSTEM_V3

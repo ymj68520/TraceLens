@@ -191,6 +191,10 @@ class LLMService:
             ensure_file_analysis_schema(db_path)
 
             with sqlite3.connect(db_path, timeout=10) as conn:
+                # Acquire the writer reservation before reading the version
+                # chain. A deferred read transaction cannot safely upgrade
+                # while another writer commits (SQLITE_BUSY_SNAPSHOT).
+                conn.execute("BEGIN IMMEDIATE")
                 cur = conn.cursor()
 
                 # 0) Identity gate + snapshot: the Evidence row must really

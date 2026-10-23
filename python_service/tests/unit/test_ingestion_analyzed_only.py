@@ -148,6 +148,9 @@ def job_manager(mock_settings):
     # Mock component services
     manager._file_ingestor = AsyncMock()
     manager._entity_builder = AsyncMock()
+    manager._ingest_episodes_path_a = AsyncMock(return_value={
+        "episodes_total": 2, "episodes_successful": 2, "episodes_failed": 0,
+    })
 
     # Ensure event attachment path can construct EventRecord objects
     manager._EventRecord = EventRecord
@@ -226,6 +229,28 @@ def sample_events():
 # =============================================================================
 # Test 1: test_process_analyzed_only_with_analyzed_files
 # =============================================================================
+
+@pytest.mark.asyncio
+async def test_analyzed_only_total_episode_failure_is_not_success(job_manager, sample_file_records):
+    job_manager._find_database = Mock(return_value="/tmp/files.db")
+    db = job_manager._ForensicsDatabase.return_value
+    db.get_analysis_stats.return_value = {"analyzed_files": 2}
+    db.iter_files_batched.return_value = [sample_file_records]
+    job_manager._EventsDatabase.return_value.get_events.return_value = []
+    job_manager._file_ingestor.batch_ensure_files.return_value = FileIngestionResult(files_created=2)
+    job_manager._file_ingestor.merge_duplicate_files.return_value = 0
+    job_manager._create_mentioned_in_edges = AsyncMock(return_value=RelationBuildResult())
+    job_manager._ingest_episodes_path_a = AsyncMock(return_value={
+        "episodes_total": 2, "episodes_successful": 0, "episodes_failed": 2,
+        "error": "embedding unavailable",
+    })
+    job_manager._update_job_status = AsyncMock()
+    with pytest.raises(RuntimeError, match="embedding unavailable"):
+        await job_manager._process_analyzed_only("J", "T")
+    stats = job_manager._update_job_status.await_args.kwargs["result"]
+    assert stats["files_created"] == 2
+    assert stats["episodes_failed"] == 2
+
 
 @pytest.mark.asyncio
 async def test_process_analyzed_only_with_analyzed_files(

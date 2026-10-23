@@ -242,8 +242,10 @@ JobStatus LLMPythonProxy::get_job_status(const std::string& job_id) {
             status.progress = response.value("progress", 0);
             status.current_phase = response.value("current_phase", "");
             status.created_at = response.value("created_at", "");
-            status.started_at = response.value("started_at", "");
-            status.completed_at = response.value("completed_at", "");
+            status.started_at = response.contains("started_at") && response["started_at"].is_string()
+                ? response["started_at"].get<std::string>() : "";
+            status.completed_at = response.contains("completed_at") && response["completed_at"].is_string()
+                ? response["completed_at"].get<std::string>() : "";
             // The python job endpoint returns "error": null on success;
             // value("error", "") would throw type_error.302 on null and lose
             // the whole status (surfaced live by the FINALIZING wait loop).
@@ -356,9 +358,12 @@ LLMPythonProxy::ReportTailStatus LLMPythonProxy::get_report_tail_status(const st
         if (res && res->status == 200) {
             auto response = nlohmann::json::parse(res->body);
             status.state = response.value("state", "unknown");
-            status.generation_id = response.value("generation_id", "");
-            status.report_id = response.value("report_id", "");
-            status.error_code = response.value("error_code", "");
+            status.generation_id = response.contains("generation_id") && response["generation_id"].is_string()
+                ? response["generation_id"].get<std::string>() : "";
+            status.report_id = response.contains("report_id") && response["report_id"].is_string()
+                ? response["report_id"].get<std::string>() : "";
+            status.error_code = response.contains("error_code") && response["error_code"].is_string()
+                ? response["error_code"].get<std::string>() : "";
         }
     } catch (...) {
     }

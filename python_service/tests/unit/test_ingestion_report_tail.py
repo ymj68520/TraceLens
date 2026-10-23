@@ -1,7 +1,8 @@
 """Ingestion completion fires the pipeline-tail report callback (and only then).
 
-Covers both completion paths: the self-running kg_sync job and the worker
-loop's FULL ingestion (the initial analysis pipeline's own tail).
+Covers the self-running kg_sync job and manual FULL ingestion. Pipeline
+ingestion delegates report generation to the C++ completion gate and must
+not schedule a second, competing report.
 """
 
 from __future__ import annotations
@@ -134,10 +135,9 @@ async def test_worker_non_full_mode_does_not_fire_tail(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_worker_pipeline_analyzed_only_fires_tail(monkeypatch):
-    """The pipeline triggers ANALYZED_ONLY since the ANALYZED_ONLY switch —
-    that job must still fire the report tail, but only when it carries the
-    pipeline trigger_source marker."""
+@pytest.mark.parametrize("mode", ["analyzed_only", "full"])
+async def test_worker_pipeline_ingestion_does_not_duplicate_report_tail(monkeypatch, mode):
+    """C++ owns the pipeline report gate; neither ingestion mode may race it."""
     manager = _make_manager(monkeypatch)
     rec = _Rec()
     manager.on_ingestion_completed = rec
@@ -150,9 +150,10 @@ async def test_worker_pipeline_analyzed_only_fires_tail(monkeypatch):
 
     monkeypatch.setattr(manager, "_job_force_flag", _force)
     monkeypatch.setattr(manager, "_process_analyzed_only", _analyzed_only)
+    monkeypatch.setattr(manager, "_process_full_ingestion", _analyzed_only)
     await manager._process_job({
-        "job_id": "job-6", "task_id": "task-F", "mode": "analyzed_only",
+        "job_id": "job-6", "task_id": "task-F", "mode": mode,
         "trigger_source": "pipeline",
     })
     await asyncio.sleep(0.05)
-    assert rec.tasks == ["task-F"]
+    assert rec.tasks == []

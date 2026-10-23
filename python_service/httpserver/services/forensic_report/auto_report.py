@@ -39,29 +39,40 @@ async def ensure_evidence_copies(task_id: str, *, cpp_backend, evidence_service,
                     if item.evidence_key.startswith("file:") and len(item.evidence_key) > 5})
     if not paths:
         return {"task_id": task_id, "skipped": "no_file_evidence"}
-    if len(",".join(paths)) > 60000:
-        # Name-mode wildcards also match on plain file names; fall back to
-        # basenames when the joined path list would exceed the request budget.
-        paths = sorted({path.split("/")[-1] for path in paths})
-    job = await cpp_backend.extract_files(task_id, paths)
-    job_id = (job or {}).get("job_id")
-    if not job_id:
-        return {"task_id": task_id, "extracted": None, "error": "extraction_trigger_failed"}
+    # Keep full path identity even for a large evidence set. Basename fallback
+    # can extract a different file when several partitions contain the same name.
+    batches, batch, size = [], [], 0
+    for path in paths:
+        path_size = len(path.encode("utf-8")) + 1
+        if batch and size + path_size > 60000:
+            batches.append(batch)
+            batch, size = [], 0
+        batch.append(path)
+        size += path_size
+    if batch:
+        batches.append(batch)
     waited = 0.0
-    status: dict = {}
-    while waited < timeout_s:
-        await asyncio.sleep(10)
-        waited += 10
-        try:
-            status = await cpp_backend.get_extraction_status(job_id)
-        except Exception:
-            continue
-        if str(status.get("status")) in ("completed", "failed"):
-            break
-    if str(status.get("status")) != "completed":
-        return {"task_id": task_id, "extracted": None,
-                "error": f"extraction_{status.get('status') or 'timeout'}"}
-    return {"task_id": task_id, "extracted": status.get("extracted_files")}
+    extracted = 0
+    for batch in batches:
+        job = await cpp_backend.extract_files(task_id, batch)
+        job_id = (job or {}).get("job_id")
+        if not job_id:
+            return {"task_id": task_id, "extracted": None, "error": "extraction_trigger_failed"}
+        status: dict = {}
+        while waited < timeout_s:
+            try:
+                status = await cpp_backend.get_extraction_status(job_id)
+            except Exception:
+                status = {}
+            if str(status.get("status")) in ("completed", "failed"):
+                break
+            await asyncio.sleep(10)
+            waited += 10
+        if str(status.get("status")) != "completed":
+            return {"task_id": task_id, "extracted": None,
+                    "error": f"extraction_{status.get('status') or 'timeout'}"}
+        extracted += status.get("extracted_files") or 0
+    return {"task_id": task_id, "extracted": extracted}
 
 
 async def auto_generate_pipeline_report(
@@ -90,6 +101,11 @@ async def auto_generate_pipeline_report(
         )
         return {"task_id": task_id, "skipped": "report_exists"}
 
+    # Register the actual analyzed-file scope before listing it for extraction.
+    # A fresh task otherwise has no Report Evidence and freezes missing sources.
+    seed = await evidence_service.seed_analyzed_files(
+        task_id, added_by=AUTO_REPORT_REQUESTER
+    )
     copy_summary = None
     if cpp_backend is not None:
         try:
@@ -104,9 +120,6 @@ async def auto_generate_pipeline_report(
                 "Evidence copies unavailable for task %s: %s",
                 task_id, copy_summary["error"])
 
-    seed = await evidence_service.seed_analyzed_files(
-        task_id, added_by=AUTO_REPORT_REQUESTER
-    )
     generation = await admission.admit(
         task_id, requested_by=AUTO_REPORT_REQUESTER, analysis_mode="evidence_only",
     )

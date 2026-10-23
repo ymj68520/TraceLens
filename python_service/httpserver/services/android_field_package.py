@@ -183,11 +183,19 @@ def _export_rows(snapshot: Path, target: Path, tables: tuple[str, ...]) -> dict:
     return counts
 
 
-def _commit() -> str | None:
+def _git_output(*args: str, timeout: int = 10) -> str | None:
+    """Optional build metadata must not abort an otherwise valid export."""
     root = Path(__file__).resolve().parents[3]
-    result = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"],
-                            capture_output=True, text=True, timeout=5, check=False)
+    try:
+        result = subprocess.run(["git", "-C", str(root), *args],
+                                capture_output=True, text=True, timeout=timeout, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
     return result.stdout.strip() if result.returncode == 0 else None
+
+
+def _commit() -> str | None:
+    return _git_output("rev-parse", "HEAD", timeout=5)
 
 
 def _toolchain_inventory() -> dict:
@@ -215,9 +223,8 @@ def _toolchain_inventory() -> dict:
             packages[name] = {"version": dist.version, "license": dist.metadata.get("License") or "see installed metadata"}
         except importlib.metadata.PackageNotFoundError:
             packages[name] = {"version": None, "license": "not installed"}
-    dirty = subprocess.run(["git", "-C", str(root), "status", "--porcelain"],
-                           capture_output=True, text=True, timeout=10, check=False)
-    return {"commit": _commit(), "worktree_dirty": bool(dirty.stdout.strip()) if dirty.returncode == 0 else None,
+    dirty = _git_output("status", "--porcelain")
+    return {"commit": _commit(), "worktree_dirty": bool(dirty) if dirty is not None else None,
             "file_sha256": hashes, "python_dependencies": packages,
             "license_notice": "THIRD_PARTY_LICENSES.md (hash above); not a complete SBOM",
             "unlisted_dependencies": "Use an approved build/release SBOM before formal redistribution"}

@@ -135,7 +135,25 @@ def projection(snapshot, filters, associations=None):
         nodes = [n for n in nodes if n["id"] in ids]
     names = {n["id"]: n["name"] for n in nodes}
     links = [{**e, "source_name": names[e["source"]], "target_name": names[e["target"]]} for e in links]
-    shown = nodes[:filters.max_nodes]
+    # Reserve endpoints together. Events are sorted first in the snapshot;
+    # slicing that list can discard every evidence endpoint and hide all links.
+    node_map = {n["id"]: n for n in nodes}
+    neighbours = defaultdict(list)
+    for link in links:
+        neighbours[link["source"]].append(link["target"])
+        neighbours[link["target"]].append(link["source"])
+    selected = {}
+    seeds = sorted(nodes, key=lambda n: (
+        not (n["id"] == filters.focus_id or
+             (filters.query and filters.query.casefold() in n["name"].casefold())),
+        not bool(neighbours[n["id"]]),
+    ))
+    for node in seeds:
+        for node_id in (node["id"], *neighbours[node["id"]]):
+            if len(selected) >= filters.max_nodes:
+                break
+            selected.setdefault(node_id, node_map[node_id])
+    shown = list(selected.values())
     shown_ids = {n["id"] for n in shown}
     rendered = [e for e in links if e["source"] in shown_ids and e["target"] in shown_ids]
     items = [{**n, "item_type": "node"} for n in nodes] + [{**e, "item_type": "link", "name": e["label"]} for e in links]

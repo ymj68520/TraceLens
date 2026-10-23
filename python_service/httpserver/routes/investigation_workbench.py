@@ -12,9 +12,10 @@ import hashlib
 import html
 import json
 import sqlite3
+import asyncio
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import logging
 
@@ -82,7 +83,7 @@ class WorkbenchReportEvidenceRequest(BaseModel):
 class WorkbenchNoteRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    target_type: str = Field(min_length=1)
+    target_type: Literal["evidence", "event"]
     target_key: str = Field(min_length=1)
     content: str = Field(max_length=20_000)
     author: str | None = None
@@ -418,7 +419,9 @@ async def workbench_evidence_detail(task_id: str, evidence_key: str = Query(...)
         analyses = await manager.investigation_read_service.list_analyses(task_id, resolved.evidence_key)
         report_items = await manager.report_evidence_service.list(task_id)
         report_item = next((item for item in report_items if item.evidence_key == resolved.evidence_key), None)
-        return {"success": True, "evidence": _evidence_detail(resolved, snapshot, analyses, report_item)}
+        detail = _evidence_detail(resolved, snapshot, analyses, report_item)
+        detail["analyst_note"] = await _read_note(manager, task_id, "evidence", resolved.evidence_key)
+        return {"success": True, "evidence": detail}
     except Exception as exc:
         raise _error(exc, "evidence not found") from exc
 
@@ -487,9 +490,14 @@ async def workbench_start_analysis(
             if not isinstance(task, dict) or task.get("id") != task_id:
                 raise EvidenceNotFoundError("task not found")
             case_context = str(task.get("case_description") or "")
+        analyst_note = request.analyst_note
+        if analyst_note is None:
+            saved = await _read_note(manager, task_id, "evidence",
+                                     parse_evidence_key(request.evidence_key).canonical_key)
+            analyst_note = saved["content"] if saved else None
         analysis = await manager.secondary_analysis_executor.submit(
             task_id, request.evidence_key,
-            analyst_note=request.analyst_note,
+            analyst_note=analyst_note,
             case_context=case_context if request.include_case_context else None,
             related_evidence=tuple(request.related_evidence) if request.include_related_evidence else (),
         )
@@ -603,15 +611,47 @@ async def workbench_claim_provenance(task_id: str, claim_id: str):
 
 
 @router.post("/{task_id}/notes")
-async def workbench_save_note(task_id: str, request: WorkbenchNoteRequest):
-    del task_id, request
-    raise HTTPException(status_code=409, detail="analyst notes require an explicit canonical schema decision")
+async def workbench_save_note(task_id: str, request: WorkbenchNoteRequest,
+                              http_request: Request, manager=Depends(_manager)):
+    from ..services.investigation.notes import save_note
+    from ..services.investigation.repository import InvestigationRepository
+    try:
+        key = _note_key(request.target_type, request.target_key)
+        db_path = await _note_path(manager, task_id)
+        repo = await asyncio.to_thread(InvestigationRepository, db_path, task_id)
+        note = await asyncio.to_thread(save_note, repo, request.target_type, key,
+                                       request.content, audit_actor(http_request, request.author or "workbench"))
+        return {"success": True, "note": note}
+    except Exception as exc:
+        raise _error(exc, "note target not found") from exc
 
 
 @router.get("/{task_id}/notes")
-async def workbench_get_note(task_id: str, target_type: str = Query(...), target_key: str = Query(...)):
-    del task_id, target_type, target_key
-    return {"success": True, "note": None}
+async def workbench_get_note(task_id: str, target_type: Literal["evidence", "event"] = Query(...),
+                             target_key: str = Query(...), manager=Depends(_manager)):
+    try:
+        return {"success": True, "note": await _read_note(manager, task_id, target_type,
+                                                         _note_key(target_type, target_key))}
+    except Exception as exc:
+        raise _error(exc, "note target not found") from exc
+
+
+def _note_key(target_type, target_key):
+    return parse_evidence_key(target_key).canonical_key if target_type == "evidence" else target_key
+
+
+async def _note_path(manager, task_id):
+    from ..services.investigation.paths import investigation_db_path_for_task
+    task = await manager.cpp_backend.get_task(task_id)
+    if not isinstance(task, dict) or task.get("id") != task_id:
+        raise EvidenceNotFoundError("task not found")
+    return investigation_db_path_for_task(task)
+
+
+async def _read_note(manager, task_id, target_type, target_key):
+    from ..services.investigation.notes import read_note
+    db_path = await _note_path(manager, task_id)
+    return await asyncio.to_thread(read_note, db_path, task_id, target_type, target_key)
 
 
 @router.put("/{task_id}/report-evidence")

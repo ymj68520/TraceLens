@@ -76,6 +76,9 @@ function InvestigationForTask({ taskId, searchParams }) {
 
   // 文件选择有效性：文件列表变化后失效的选择回落到第一个文件。
   useEffect(() => {
+    // A refresh temporarily clears the projection. Preserve the user's
+    // selection until the new list actually arrives.
+    if (!fileTimeline || fileTimelineLoading || reportLoading) return;
     if (!files.length) {
       if (selectedFileKey) setSelectedFileKey(null);
       return;
@@ -83,7 +86,7 @@ function InvestigationForTask({ taskId, searchParams }) {
     if (!selectedFileKey || !files.some((file) => file.path === selectedFileKey)) {
       setSelectedFileKey(files[0].path);
     }
-  }, [filesSignature, selectedFileKey]);
+  }, [filesSignature, selectedFileKey, fileTimeline, fileTimelineLoading, reportLoading]);
 
   // 深链定位：文件时间线首次到达时落到目标文件。
   // ?event= 切到承载该事件的文件；?file=（裸路径或 file: 证据键）直接定位

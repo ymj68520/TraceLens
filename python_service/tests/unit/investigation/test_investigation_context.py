@@ -438,6 +438,7 @@ def test_envelope_prompt_compat_map():
         "investigation-evidence-analysis:v2",
         "investigation-evidence-analysis:v3",
         "investigation-evidence-analysis:v5",
+        "investigation-evidence-analysis:v7",
     })
-    assert CURRENT_PROMPT_VERSION == "investigation-evidence-analysis:v5"
+    assert CURRENT_PROMPT_VERSION == "investigation-evidence-analysis:v7"
     assert CURRENT_PROMPT_VERSION in PROMPT_REGISTRY

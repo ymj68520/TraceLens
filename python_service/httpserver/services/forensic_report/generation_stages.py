@@ -301,16 +301,23 @@ async def compose_stage_narrative(envelope, materials, directions, comparisons, 
 
     sections = []
     for index, batch in enumerate(batches):
+        # name_rows scales with the whole material set (~70 chars/row), so for
+        # wide scopes it alone can overflow the request budget; a batch only
+        # needs the materials its own directions can name.
+        cited_names = {ref["file"] for row in batch
+                       for ref in (*row["supporting"], *row["counter"])}
+        batch_name_rows = [row for row in name_rows if row["name"] in cited_names]
         request = json.dumps({
             "analysis_mode": envelope.analysis_mode,
             "case_context": envelope.case_description or None,
-            "materials": name_rows,
+            "materials": batch_name_rows,
             "part": f"{index + 1}/{len(batches)}",
             "validated_directions": batch,
             "case_comparison_counts": comparison_summary if index == 0 else [],
         }, ensure_ascii=False)
         if len(request) > REQUEST_CHAR_LIMIT * 2:
-            return None
+            logger.warning("Stage narrative batch %d over request budget; skipped", index + 1)
+            continue
         try:
             response = await llm.chat_completion(STAGE_NARRATIVE_SYSTEM_V1, request,
                                                  max_tokens=8192, temperature=0.0)

@@ -101,6 +101,7 @@ def test_auto_report_pulls_copies_when_backend_present(monkeypatch):
     evidence, admission, executor = _FakeEvidence(), _FakeAdmission(), _FakeExecutor()
 
     async def _fake_copies(task_id, *, cpp_backend, evidence_service):
+        assert evidence_service.calls == [("T", "pipeline")]
         return {"task_id": task_id, "extracted": 3}
 
     monkeypatch.setattr(
@@ -144,3 +145,19 @@ def test_auto_report_propagates_seed_failure():
             admission=_FakeAdmission(),
             executor=_FakeExecutor(),
         ))
+
+
+def test_extraction_batches_preserve_exact_unicode_paths():
+    from httpserver.services.forensic_report.auto_report import ensure_evidence_copies
+    from unittest.mock import AsyncMock
+    paths = [f"/{i}/" + "中文目录/" * 80 + "same.docx" for i in range(100)]
+    evidence = SimpleNamespace(list=AsyncMock(return_value=[
+        SimpleNamespace(evidence_key="file:" + path) for path in paths]))
+    backend = SimpleNamespace(
+        extract_files=AsyncMock(return_value={"job_id": "extract"}),
+        get_extraction_status=AsyncMock(return_value={"status": "completed", "extracted_files": 1}))
+    asyncio.run(ensure_evidence_copies("T", cpp_backend=backend, evidence_service=evidence))
+    batches = [call.args[1] for call in backend.extract_files.await_args_list]
+    assert len(batches) > 1
+    assert sorted(path for batch in batches for path in batch) == sorted(paths)
+    assert all(len(",".join(batch).encode()) <= 60000 for batch in batches)

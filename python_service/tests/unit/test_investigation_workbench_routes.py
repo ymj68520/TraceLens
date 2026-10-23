@@ -291,9 +291,10 @@ def test_event_evidence_returns_derived_card_views():
     assert body["evidence"][0]["role"] == "primary"
 
 
-def test_secondary_analysis_includes_saved_context_only_when_requested():
+def test_secondary_analysis_includes_saved_context_only_when_requested(monkeypatch):
     from types import SimpleNamespace
     manager = _manager()
+    monkeypatch.setattr(investigation_workbench, "_read_note", AsyncMock(return_value=None))
     manager.cpp_backend.get_task.return_value = {"id": "T1", "case_description": "任务中保存的案情"}
     manager.secondary_analysis_executor.submit = AsyncMock(
         return_value=SimpleNamespace(analysis_id="analysis-1", version=1))
@@ -309,3 +310,20 @@ def test_secondary_analysis_includes_saved_context_only_when_requested():
     assert client.post(url, json={"evidence_key": "file:/a", "case_context": "明确提交的案情"}).status_code == 200
     assert manager.secondary_analysis_executor.submit.call_args.kwargs["case_context"] == "明确提交的案情"
     manager.cpp_backend.get_task.assert_not_called()
+
+
+def test_saved_note_is_used_unless_explicitly_overridden(monkeypatch):
+    from types import SimpleNamespace
+    manager = _manager()
+    read = AsyncMock(return_value={"content": "已保存的调查方向"})
+    monkeypatch.setattr(investigation_workbench, "_read_note", read)
+    manager.secondary_analysis_executor.submit = AsyncMock(return_value=SimpleNamespace(analysis_id="a", version=1))
+    client = _client(manager)
+    client.app.dependency_overrides[investigation_workbench.get_settings] = lambda: SimpleNamespace(secondary_analysis_active=True)
+    url = "/api/investigation/workbench/T1/evidence/analyze"
+    assert client.post(url, json={"evidence_key": "file:/a", "include_case_context": False}).status_code == 200
+    assert manager.secondary_analysis_executor.submit.call_args.kwargs["analyst_note"] == "已保存的调查方向"
+    read.reset_mock()
+    assert client.post(url, json={"evidence_key": "file:/a", "include_case_context": False, "analyst_note": ""}).status_code == 200
+    assert manager.secondary_analysis_executor.submit.call_args.kwargs["analyst_note"] == ""
+    read.assert_not_awaited()
