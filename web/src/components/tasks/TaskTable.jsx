@@ -30,10 +30,24 @@ function PriorityBadge({ priority }) {
 }
 
 function ProgressCell({ task }) {
-  if (task.status?.toLowerCase() !== 'running') {
+  const status = task.status?.toLowerCase();
+  // A resumable stop keeps its progress: showing "-" would suggest the work was
+  // lost, and the whole point of the ledger is that it was not.
+  if (status === 'interrupted' || status === 'paused') {
+    const pct = task.progress?.overall_percentage || 0;
+    return (
+      <div className="w-full">
+        <ProgressBar value={pct} showLabel={false} size="xs" />
+        <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-1 truncate">
+          {pct}% · 已完成阶段保留，可从断点继续
+        </p>
+      </div>
+    );
+  }
+  if (status !== 'running') {
     return (
       <span className="text-xs text-slate-500 dark:text-slate-400">
-        {task.status?.toLowerCase() === 'completed' ? '100%' : '-'}
+        {status === 'completed' ? '100%' : '-'}
       </span>
     );
   }
@@ -49,14 +63,41 @@ function ProgressCell({ task }) {
   );
 }
 
-function ActionsCell({ task, onCancel, onDelete, onJoinCase }) {
+function ActionsCell({ task, onCancel, onDelete, onJoinCase, onResume, onPause }) {
   const status = task.status?.toLowerCase();
-  const finished = ['completed', 'failed', 'cancelled'].includes(status);
+  const finished = ['completed', 'failed', 'cancelled', 'interrupted', 'paused'].includes(status);
+  // resumable comes from the backend (it checks the stage ledger + evidence
+  // presence); fall back to status alone so an older server still shows the
+  // action for interrupted tasks.
+  const canResume = (task.resumable ?? ['failed', 'cancelled', 'interrupted', 'paused'].includes(status)) &&
+    ['failed', 'cancelled', 'interrupted', 'paused'].includes(status);
   return (
     <div className="flex items-center space-x-1 text-xs font-medium">
       {status === 'running' && (
-        <button onClick={() => onCancel(task.id)} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300">
-          取消
+        <>
+          <button onClick={() => onCancel(task.id)} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300">
+            取消
+          </button>
+          {onPause && !task.pause_requested && (
+            <button
+              onClick={() => onPause(task.id)}
+              className="text-sky-600 hover:text-sky-800 dark:text-sky-400 ml-2"
+              title="当前阶段结束后暂停，之后可从此处继续"
+            >
+              暂停
+            </button>
+          )}
+        </>
+      )}
+      {canResume && onResume && (
+        <button
+          onClick={() => onResume(task.id)}
+          className="text-amber-700 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-300"
+          title={task.resume_stage
+            ? `从「${taskPhaseLabel(task.resume_stage)}」继续，已完成阶段直接跳过`
+            : '从上次完成的阶段继续，已完成阶段直接跳过'}
+        >
+          ▶ 继续分析
         </button>
       )}
       {status === 'completed' && (
@@ -80,7 +121,7 @@ function ActionsCell({ task, onCancel, onDelete, onJoinCase }) {
   );
 }
 
-export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskCaseMap = {}, selectedTaskIds, onToggleSelect, onToggleSelectAll }) {
+export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, onResume, onPause, taskCaseMap = {}, selectedTaskIds, onToggleSelect, onToggleSelectAll }) {
   const { t } = useTranslation();
   // Multi-select is opt-in: only rendered when selectedTaskIds is provided.
   const selectable = Array.isArray(selectedTaskIds) || selectedTaskIds instanceof Set;
@@ -128,6 +169,16 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskC
               ? [
                   `[${formatDate(task.timestamps?.completed)}] [失败] ${task.message || '任务失败'}`,
                   task.error_details ? `  └─ ${task.error_details}` : null,
+                ].filter(Boolean).join('\n')
+              : null;
+            // An interrupted/paused task is not a failure: the detail line states
+            // what was preserved and how to continue, in neutral wording.
+            const isResumable = ['interrupted', 'paused'].includes(task.status?.toLowerCase());
+            const resumeLog = isResumable
+              ? [
+                  `[${formatDate(task.timestamps?.completed)}] ${forensicLabel(task.status)}`,
+                  task.resume_count > 0 ? `  ├─ 已续跑 ${task.resume_count} 次` : null,
+                  `  └─ 已完成的阶段产物保留在任务目录，点击"继续分析"从断点续跑`,
                 ].filter(Boolean).join('\n')
               : null;
             const selected = isSel(task.id);
@@ -194,7 +245,8 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskC
                 <ProgressCell task={task} />
               </td>
               <td className="px-4 py-4 whitespace-nowrap">
-                <ActionsCell task={task} onCancel={onCancel} onDelete={onDelete} onJoinCase={onJoinCase} />
+                <ActionsCell task={task} onCancel={onCancel} onDelete={onDelete}
+                             onJoinCase={onJoinCase} onResume={onResume} onPause={onPause} />
               </td>
             </tr>
             {failureLog && (
@@ -202,6 +254,15 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskC
                 <td colSpan={(selectable ? 1 : 0) + 7} className="px-4 py-2">
                   <pre className="font-mono text-[11px] leading-5 whitespace-pre-wrap break-all text-rose-700 dark:text-rose-300">
 {failureLog}
+                  </pre>
+                </td>
+              </tr>
+            )}
+            {resumeLog && (
+              <tr className="bg-amber-50/60 dark:bg-amber-950/20 hover:bg-amber-50/60">
+                <td colSpan={(selectable ? 1 : 0) + 7} className="px-4 py-2">
+                  <pre className="font-mono text-[11px] leading-5 whitespace-pre-wrap break-all text-amber-800 dark:text-amber-300">
+{resumeLog}
                   </pre>
                 </td>
               </tr>

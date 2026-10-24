@@ -1,10 +1,14 @@
 // Task statuses
+// interrupted / paused are the resumable stops: the task keeps its id, output
+// directory and configuration, and can continue from its stage ledger.
 export const TASK_STATUS = {
   PENDING: 'pending',
   RUNNING: 'running',
   COMPLETED: 'completed',
   FAILED: 'failed',
   CANCELLED: 'cancelled',
+  INTERRUPTED: 'interrupted',
+  PAUSED: 'paused',
 };
 
 // Task priorities
@@ -41,6 +45,9 @@ export const STATUS_COLORS = {
   completed: 'bg-green-100 text-green-800',
   failed: 'bg-red-100 text-red-800',
   cancelled: 'bg-gray-100 text-gray-800',
+  // Amber/warning: not a terminal failure — work is preserved and resumable.
+  interrupted: 'bg-amber-100 text-amber-800',
+  paused: 'bg-sky-100 text-sky-800',
 };
 
 // Phase labels
@@ -68,6 +75,8 @@ export const TASK_STATUS_ZH = {
   completed: '已完成',
   failed: '失败',
   cancelled: '已取消',
+  interrupted: '已中断（可继续）',
+  paused: '已暂停',
 };
 
 export const TASK_PRIORITY_ZH = {

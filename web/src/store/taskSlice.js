@@ -96,6 +96,32 @@ export const fetchTaskStatistics = createAsyncThunk(
   }
 );
 
+// 从阶段账本继续任务：复用原任务 ID 与输出目录，跳过已完成阶段。
+export const resumeTask = createAsyncThunk(
+  'tasks/resume',
+  async (taskId, { rejectWithValue }) => {
+    try {
+      const response = await taskService.resumeTask(taskId);
+      return { taskId, ...response };
+    } catch (error) {
+      return rejectWithValue(error.data || error.response?.data || error.message);
+    }
+  }
+);
+
+// 协作式暂停：当前阶段结束后停到 PAUSED。
+export const pauseTask = createAsyncThunk(
+  'tasks/pause',
+  async ({ taskId, reason }, { rejectWithValue }) => {
+    try {
+      const response = await taskService.pauseTask(taskId, reason);
+      return { taskId, ...response };
+    } catch (error) {
+      return rejectWithValue(error.data || error.response?.data || error.message);
+    }
+  }
+);
+
 // ── Slice ────────────────────────────────────────────────────────────────────
 
 const taskSlice = createSlice({
@@ -159,6 +185,36 @@ const taskSlice = createSlice({
       // deleteTask
       .addCase(deleteTask.fulfilled, (state, action) => {
         state.tasks = state.tasks.filter((t) => t.id !== action.payload.taskId);
+      })
+
+      // resumeTask — optimistic: the backend re-enqueues immediately, so the row
+      // flips to running without waiting for the next 5s list poll.
+      .addCase(resumeTask.fulfilled, (state, action) => {
+        const idx = state.tasks.findIndex((t) => t.id === action.payload.taskId);
+        if (idx !== -1) {
+          state.tasks[idx] = {
+            ...state.tasks[idx],
+            status: action.payload.status || 'pending',
+            resume_count: action.payload.resume_count,
+            message: action.payload.message || state.tasks[idx].message,
+            error_details: '',
+            interrupted_by_restart: false,
+          };
+        }
+      })
+
+      // pauseTask — the current stage still has to finish, so keep the row
+      // running and let the poll observe the PAUSED transition.
+      .addCase(pauseTask.fulfilled, (state, action) => {
+        const idx = state.tasks.findIndex((t) => t.id === action.payload.taskId);
+        if (idx !== -1) {
+          state.tasks[idx] = {
+            ...state.tasks[idx],
+            pause_requested: true,
+            status: action.payload.status || state.tasks[idx].status,
+            message: action.payload.message || state.tasks[idx].message,
+          };
+        }
       })
 
       // fetchTaskStatistics

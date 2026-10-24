@@ -33,6 +33,17 @@ export const deleteTask = async (taskId) => {
   return await api.delete(`/api/tasks/${taskId}`);
 };
 
+// 从阶段账本继续：同一任务 ID、同一输出目录，已完成且输入未变的阶段直接跳过。
+// 仅对 failed/cancelled/interrupted/paused 任务有效，其它状态后端返回 409。
+export const resumeTask = async (taskId) => {
+  return await api.post(`/api/tasks/${taskId}/resume`);
+};
+
+// 协作式暂停：当前阶段跑完后停到 PAUSED，可再次 resume。
+export const pauseTask = async (taskId, reason = '') => {
+  return await api.post(`/api/tasks/${taskId}/pause`, { reason });
+};
+
 export const getTaskStatistics = async () => {
   return await api.get('/api/tasks/statistics');
 };

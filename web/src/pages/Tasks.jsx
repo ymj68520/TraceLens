@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
-import { fetchTasks, cancelTask, deleteTask, setFilters } from '../store/taskSlice';
+import { fetchTasks, cancelTask, deleteTask, resumeTask, pauseTask, setFilters } from '../store/taskSlice';
 import { fetchCases } from '../store/caseSlice';
 import { openModal } from '../store/uiSlice';
 import Card from '../components/common/Card';
@@ -110,6 +110,43 @@ const Tasks = () => {
     }
   };
 
+  // --- Resume flow ---
+  // 续跑是不可逆的（会重新占用分析资源），所以走一次确认；确认文案说明
+  // 哪些阶段会被跳过，避免分析师以为要从头再跑一遍。
+  const handleResume = (taskId) => {
+    setConfirmState({ open: true, type: 'resume', taskId, loading: false });
+  };
+
+  const doResume = async () => {
+    const { taskId } = confirmState;
+    setConfirmState((s) => ({ ...s, loading: true }));
+    try {
+      const res = await dispatch(resumeTask(taskId)).unwrap();
+      const stage = res?.resume_stage;
+      toast.success(stage && stage !== '(start)'
+        ? `任务已从「${stage}」继续，已完成阶段将跳过`
+        : '任务已继续，已完成阶段将跳过');
+      dispatch(fetchTasks(filters));
+    } catch (err) {
+      // 409 带 reason，直接把后端判定讲清楚（例如"没有已完成阶段可复用"）。
+      const reason = err?.reason || err?.message || err;
+      toast.error('无法继续: ' + reason);
+    } finally {
+      setConfirmState({ open: false, type: null, taskId: null, loading: false });
+    }
+  };
+
+  // --- Pause flow ---
+  const handlePause = async (taskId) => {
+    try {
+      await dispatch(pauseTask({ taskId, reason: '用户暂停' })).unwrap();
+      toast.success('已请求暂停，当前阶段结束后生效');
+      dispatch(fetchTasks(filters));
+    } catch (err) {
+      toast.error('暂停失败: ' + (err?.message || err));
+    }
+  };
+
   const filteredTasks = tasks.filter((t) => {
     const ts = t.status?.toLowerCase();
     const tp = t.priority?.toLowerCase();
@@ -178,6 +215,8 @@ const Tasks = () => {
           onCancel={handleCancel}
           onDelete={handleDelete}
           onJoinCase={setJoinTaskId}
+          onResume={handleResume}
+          onPause={handlePause}
           taskCaseMap={taskCaseMap}
           selectedTaskIds={selectedTaskIds}
           onToggleSelect={toggleSelect}
@@ -224,6 +263,19 @@ const Tasks = () => {
         confirmText="永久删除"
         cancelText="取消"
         variant="danger"
+        loading={confirmState.loading}
+      />
+
+      {/* Resume confirmation dialog */}
+      <ConfirmDialog
+        open={confirmState.open && confirmState.type === 'resume'}
+        onConfirm={doResume}
+        onCancel={() => setConfirmState({ open: false, type: null, taskId: null, loading: false })}
+        title="继续分析"
+        message="将从该任务上次完成的阶段继续：已完成且输入未变的阶段（检材解析、过滤、时间线、文件分类、智能分析、平台解析）直接复用，不会重跑。任务 ID、输出目录与配置保持不变。确定继续吗？"
+        confirmText="继续分析"
+        cancelText="返回"
+        variant="warning"
         loading={confirmState.loading}
       />
     </div>
