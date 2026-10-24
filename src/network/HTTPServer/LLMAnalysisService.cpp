@@ -34,6 +34,25 @@ namespace {
 // padded with it. Shared by the full-database candidate scan and the
 // deterministic ranking so both apply the same floor.
 constexpr int kMinSelectablePriority = 10;
+
+// TSK exposes NTFS metafiles under names starting with "$". Most are storage
+// bookkeeping, but two are primary evidence:
+//   $MFT             the master file table (every file record and timestamp)
+//   $UsnJrnl         the USN change journal (create/write/delete/rename trail)
+//   $Secure:$SDS     the security descriptor stream (ACL history)
+// Returning true here means "keep this entry as a candidate".
+bool isForensicDollarEntry(const std::string& name) {
+    static const std::vector<std::string> keep = {
+        "$mft", "$usnjrnl", "$secure:$sds", "$logfile", "$i30",
+    };
+    std::string lower;
+    lower.reserve(name.size());
+    for (char c : name) lower += static_cast<char>(::tolower(static_cast<unsigned char>(c)));
+    for (const auto& k : keep) {
+        if (lower == k) return true;
+    }
+    return false;
+}
 }  // namespace
 
 LLMAnalysisService::LLMAnalysisService() = default;
@@ -318,9 +337,13 @@ std::vector<std::string> LLMAnalysisService::selectImportantFiles(const std::str
         return {};
     }
 
-    // Nothing to select when everything fits the budget.
+    // When everything fits the budget the candidate set IS the selection, but
+    // it still has to be the *best* files, not an arbitrary slice. Rank first so
+    // the cheap path applies the same priority ordering as the LLM path; the
+    // old shortcut returned the candidate set verbatim, which is how a PC.E01
+    // run spent 68% of its budget on uniformly grey JPGs.
     if (maxFiles > 0 && candidates.size() <= maxFiles) {
-        return candidates;
+        return selectByHeuristic(std::move(candidates), candidates.size());
     }
 
     // Bound the prompt sent to the LLM: on real images (thousands of files) an
@@ -374,7 +397,11 @@ Format: [12, 45, 301]
 Do not include any explanation, only the JSON array of integers.)";
 
     try {
-        auto response = router_->chat(prompt);
+        // Selection is a deterministic ranking task, so it must not sample.
+        // At the configured temperature 0.7 the same PC.E01 image produced 368
+        // files on one run and 1000 on the next, with completely different
+        // artifact coverage — two analyses of one case could not be compared.
+        auto response = router_->chat(prompt, "", 0.0);
 
         if (!response.success) {
             std::cerr << "LLM request failed: " << response.errorMessage
@@ -642,7 +669,13 @@ std::vector<std::string> LLMAnalysisService::getPrioritizedCandidates(
         // stops them from consuming the budget.
         std::filesystem::path p(value);
         std::string name = p.filename().string();
-        if (!name.empty() && name[0] == '$') continue;
+        // TSK virtual entries ($AttrDef, $BadClus, $Bitmap, $Boot) are
+        // filesystem bookkeeping and carry no case evidence. Two names in the
+        // same "$" namespace do: $MFT is the full filesystem metadata table and
+        // $UsnJrnl is the change journal that records every create/write/delete.
+        // Skipping the whole prefix made the two most valuable filesystem-level
+        // artifacts permanently unreachable on every NTFS image.
+        if (!name.empty() && name[0] == '$' && !isForensicDollarEntry(name)) continue;
 
         int priority = forensicPathPriority(value);
         if (priority < kMinSelectablePriority) continue;
@@ -904,6 +937,19 @@ int LLMAnalysisService::forensicPathPriority(const std::string& path) {
         lower.find("/documents/") != std::string::npos ||
         lower.find("/downloads/") != std::string::npos;
     if (inUserTree || inUserFolder) {
+        // A directory full of same-shaped images is the cheapest way to burn the
+        // analysis budget: on PC.E01, 248 of 368 selected files were JPGs from
+        // one Documents/VM_Config folder, and 83% of them described themselves
+        // as uniformly grey or unreadable. Images stay selectable (a screenshot
+        // can be the evidence) but rank below documents in the same tree.
+        static const std::vector<std::string> imageSuffixesForRank = {
+            ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tif", ".tiff", ".webp"};
+        for (const auto& suffix : imageSuffixesForRank) {
+            if (lower.size() >= suffix.size() &&
+                lower.compare(lower.size() - suffix.size(), suffix.size(), suffix) == 0) {
+                return 60;
+            }
+        }
         return 90;
     }
     // System logs and journals. The journal term must be a real journal

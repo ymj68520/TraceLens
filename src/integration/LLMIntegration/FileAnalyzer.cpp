@@ -80,6 +80,51 @@ bool isMarkitdownSupportedExt(const std::string& ext) {
     return markitdownSupportedExtensions().count(ext) > 0;
 }
 
+// Artifacts that markitdown cannot convert but the Python extractor registry
+// handles with a purpose-built parser. They must still go through the Python
+// /api/markitdown/convert endpoint: that endpoint routes by extension to
+// EvtxExtractor, PrefetchExtractor, RegistryExtractor, SrumExtractor and
+// friends. Treating them as "unsupported" sent them to the raw-byte reader,
+// which handed the LLM binary noise, so every event log and hive in a report
+// came back as "binary format, needs a dedicated tool" — 373 event logs with
+// zero extractable facts. Kept in sync with
+// python_service/config/extractor_mapping.json.
+const std::set<std::string>& forensicExtractorExtensions() {
+    static const std::set<std::string> exts = {
+        // Windows event logs, execution traces, registry hives
+        ".evtx", ".pf", ".hve", ".edb",
+        // Shortcut / jumplist / shell item containers
+        ".lnk", ".automaticdestinations-ms", ".customdestinations-ms",
+        // Browser and mail stores
+        ".sqlite", ".sqlite3",
+        // Linux journal and auth logs
+        ".journal", ".wtmp", ".btmp",
+        // Mobile / container artifacts
+        ".ab", ".tar", ".gz",
+    };
+    return exts;
+}
+
+bool isForensicExtractorExt(const std::string& ext) {
+    if (ext.empty()) return false;
+    return forensicExtractorExtensions().count(ext) > 0;
+}
+
+// Files with no extension that the Python registry still recognises by name
+// (registry hives: SAM, SYSTEM, SOFTWARE, SECURITY, DEFAULT, COMPONENTS, BBI).
+bool isForensicExtractorFilename(const std::string& filename) {
+    static const std::set<std::string> names = {
+        "sam", "system", "software", "security", "default", "components",
+        "bbi", "ntuser.dat", "usrclass.dat", "amcache.hve", "syscache.hve",
+        "srudb.dat", "windows.edb", "history", "web data", "cookies",
+        "login data", "places.sqlite", "cookies.sqlite",
+    };
+    std::string lower;
+    lower.reserve(filename.size());
+    for (char c : filename) lower += static_cast<char>(::tolower(static_cast<unsigned char>(c)));
+    return names.count(lower) > 0;
+}
+
 // Image extensions routed to the multimodal model (llm-throughput-hardening
 // SPEC D). Everything the vision branch handles is exempted from the
 // markitdown/raw-read text flow, which previously fed binary pixels to the
@@ -257,8 +302,16 @@ AnalysisResult FileAnalyzer::analyzeFile(const std::string& filePath,
     // PE files, ElfExtractor + GrubModuleExtractor for Linux, E01Metadata
     // for evidence images, etc.).
     bool useMarkitdown = isMarkitdownSupportedExt(ext);
+    // Event logs, prefetch files, registry hives and browser stores are not
+    // markitdown formats, but the Python endpoint still knows how to parse them
+    // because it dispatches by extension into the forensic extractor registry.
+    // Without this branch they fell through to the raw-byte reader and the LLM
+    // only ever saw binary noise.
+    const std::string baseName = std::filesystem::path(filePath).filename().string();
+    const bool useForensicExtractor =
+        isForensicExtractorExt(ext) || isForensicExtractorFilename(baseName);
 
-    if (useMarkitdown) {
+    if (useMarkitdown || useForensicExtractor) {
         auto& markitdown = MarkitdownProxy::instance();
         if (markitdown.isServiceAvailable()) {
             content = markitdown.convertToMarkdown(filePath);
