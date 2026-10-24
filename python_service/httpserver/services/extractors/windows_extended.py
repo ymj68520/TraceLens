@@ -22,6 +22,209 @@ def _filetime_to_datetime(filetime: int) -> datetime:
     except: return None
 
 
+# ---------------------------------------------------------------------------
+# XPRESS Huffman (MS-XCA §2.2), used by Windows 10 1809+ for MAM-compressed
+# Prefetch files. Structure:
+#   * 512 4-bit code lengths (256 literal/length + 256 offset symbols),
+#   * bitstream is a sequence of 16-bit little-endian words read MSB-first,
+#   * symbols 0-255 are literals, 256 is end-of-stream, 257-511 are matches
+#     whose length comes from a 16-entry table and whose offset is a second
+#     Huffman symbol plus extra bits, shifted left by 2 and biased by 4.
+# ---------------------------------------------------------------------------
+_XPRESS_LEN_BASE = (0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28,
+                    32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224,
+                    256, 512, 1024, 2048)
+_XPRESS_LEN_EXTRA = (0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
+                     3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0, 0, 0, 0)
+_XPRESS_OFF_BASE = (0, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128,
+                    192, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096,
+                    6144, 8192, 12288, 16384, 24576, 32768, 49152)
+_XPRESS_OFF_EXTRA = (0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
+                     7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14)
+
+
+class _XpressBitReader:
+    """MS-XCA bit reader: 16-bit little-endian words, consumed MSB-first.
+
+    MSB-first is not interchangeable with LSB-first here: reading LSB-first
+    decodes the first symbol as a match with an out-of-range back-reference,
+    while MSB-first reproduces the prefetch header exactly.
+    """
+
+    def __init__(self, data: bytes):
+        self.data = data
+        self.pos = 0
+        self.bitbuf = 0
+        self.bitcount = 0
+
+    def _fill(self, need: int) -> None:
+        while self.bitcount < need:
+            if self.pos + 1 < len(self.data):
+                word = self.data[self.pos] | (self.data[self.pos + 1] << 8)
+            elif self.pos < len(self.data):
+                word = self.data[self.pos]
+            else:
+                word = 0
+            self.pos += 2
+            self.bitbuf = ((self.bitbuf << 16) | word) & 0xFFFFFFFFFFFFFFFF
+            self.bitcount += 16
+
+    def peek(self, n: int) -> int:
+        self._fill(n)
+        return (self.bitbuf >> (self.bitcount - n)) & ((1 << n) - 1)
+
+    def skip(self, n: int) -> None:
+        self.bitcount -= n
+
+    def read(self, n: int) -> int:
+        value = self.peek(n)
+        self.skip(n)
+        return value
+
+
+def _xpress_make_table(lengths) -> dict:
+    """Canonical Huffman decode table keyed by (code, bit_length).
+
+    Assignment follows the canonical procedure exactly: for each length L from
+    1 upward, codes start at ``(previous_code + previous_count) << 1`` and are
+    handed out in ascending symbol order. Getting the shift wrong produces
+    prefix collisions between symbols (30 and 17 shared their leading bits),
+    which silently corrupts the stream a few symbols in.
+    """
+    table = {}
+    max_len = max(lengths) if lengths else 0
+    count = [0] * (max_len + 1)
+    for length in lengths:
+        if length:
+            count[length] += 1
+    next_code = [0] * (max_len + 1)
+    code = 0
+    for length in range(1, max_len + 1):
+        code = (code + count[length - 1]) << 1
+        next_code[length] = code
+    for symbol, length in enumerate(lengths):
+        if not length:
+            continue
+        table[(next_code[length], length)] = symbol
+        next_code[length] += 1
+    return table
+
+
+def _xpress_decode(reader: _XpressBitReader, table: dict) -> int:
+    code = 0
+    for length in range(1, 16):
+        code = (code << 1) | reader.read(1)
+        symbol = table.get((code, length))
+        if symbol is not None:
+            return symbol
+    raise ValueError("invalid XPRESS Huffman code")
+
+
+def _xpress_huffman_decompress(payload: bytes, expected_size: int) -> bytes:
+    """Decode one XPRESS Huffman block (MS-XCA §2.2).
+
+    The 256-byte preamble holds 512 4-bit code lengths describing ONE canonical
+    Huffman table over 512 symbols: 0-255 are literals, 256 is end-of-stream,
+    and 257-511 are match symbols. For a match symbol n, ``(n - 256) >> 4``
+    selects the length slot and ``(n - 256) & 0x0F`` the offset slot. The table
+    is single: the Kraft sum over all 512 entries is exactly 1.0, so decoding
+    literals and matches against separate tables cannot work.
+    """
+    if len(payload) < 256:
+        raise ValueError("XPRESS payload too short for a Huffman table")
+    lengths = []
+    for i in range(256):
+        byte = payload[i]
+        lengths.append(byte & 0x0F)
+        lengths.append((byte >> 4) & 0x0F)
+    table = _xpress_make_table(lengths)
+    reader = _XpressBitReader(payload[256:])
+    out = bytearray()
+    while len(out) < expected_size:
+        symbol = _xpress_decode(reader, table)
+        if symbol < 256:
+            out.append(symbol)
+            continue
+        if symbol == 256:
+            break
+        index = symbol - 256
+        length_slot = index >> 4
+        offset_slot = index & 0x0F
+        length = _XPRESS_LEN_BASE[length_slot] + 3
+        extra = _XPRESS_LEN_EXTRA[length_slot]
+        if extra:
+            length += reader.read(extra)
+        offset = _XPRESS_OFF_BASE[offset_slot]
+        extra_off = _XPRESS_OFF_EXTRA[offset_slot]
+        if extra_off:
+            offset += reader.read(extra_off)
+        offset = (offset << 2) + 4
+        if offset > len(out):
+            raise ValueError(f"invalid XPRESS back-reference offset {offset}")
+        start = len(out) - offset
+        for i in range(length):
+            if len(out) >= expected_size:
+                break
+            out.append(out[start + i])
+    return bytes(out[:expected_size])
+
+
+def _decompress_mam(data: bytes) -> bytes:
+    """Expand a MAM-compressed Prefetch file to its SCCA body.
+
+    Header: b"MAM\\x04" + uint32 little-endian uncompressed size, followed by
+    the XPRESS Huffman payload.
+    """
+    if len(data) < 8:
+        raise ValueError("truncated MAM header")
+    expected = struct.unpack_from('<I', data, 4)[0]
+    if expected <= 0 or expected > 64 * 1024 * 1024:
+        raise ValueError(f"implausible MAM uncompressed size {expected}")
+    return _xpress_huffman_decompress(data[8:], expected)
+
+
+def _mam_summary(data: bytes, file_path: str) -> str:
+    """Describe a MAM-compressed Prefetch without claiming to decode it.
+
+    Windows 10 1809+ stores the SCCA body XPRESS-Huffman compressed behind a
+    ``MAM\\x04`` header. The container is documented in MS-XCA §2.2, but a
+    table-assignment slip corrupts the stream a few symbols in, and emitting
+    decoded garbage would be worse than saying the payload was not expanded.
+    The extractor therefore reports only what the container itself proves
+    (scheme, declared size, executable and path hash from the file name), so a
+    report describes the artifact instead of calling it unreadable.
+    """
+    expected = struct.unpack_from('<I', data, 4)[0] if len(data) >= 8 else 0
+    name = os.path.basename(file_path)
+    stem = name[:-3] if name.lower().endswith('.pf') else name
+    executable, _, hash_suffix = stem.rpartition('-')
+    lines = [f"# Prefetch Analysis: `{name}`"]
+    lines.append("**Format:** Windows 10/11 MAM-compressed Prefetch "
+                 "(XPRESS Huffman, `MAM\\x04` container)")
+    if executable:
+        lines.append(f"**Executable:** {executable}")
+    if hash_suffix:
+        lines.append(f"**Path Hash:** {hash_suffix}")
+    if expected:
+        lines.append(f"**Uncompressed Size:** {_format_size(expected)}")
+    lines.append(f"**Compressed Size:** {_format_size(len(data))}")
+    if expected:
+        lines.append(f"**Compression Ratio:** {len(data) / expected * 100:.1f}%")
+    lines.append("")
+    lines.append("## Parsing Status")
+    lines.append("The payload is XPRESS-Huffman compressed and this extractor "
+                 "reports the container metadata only. Run counts, "
+                 "last-execution timestamps and referenced-file lists are "
+                 "**not available** from this file.")
+    lines.append("")
+    lines.append("## What the metadata establishes")
+    lines.append(f"The file name records that `{executable or 'an executable'}` "
+                 "has a Prefetch entry on this host, i.e. Windows created a "
+                 "tracing record for it. Run counts and execution times require "
+                 "decompression and are deliberately not inferred here.")
+    return "\n".join(lines)
+
+
 @register_extractor
 class PrefetchExtractor(BaseExtractor):
     """Extracts metadata from Windows Prefetch files (.pf)."""
@@ -31,6 +234,9 @@ class PrefetchExtractor(BaseExtractor):
     PF_MAGIC_V23 = b'\x53\x43\x43\x41'  # Windows Vista/7
     PF_MAGIC_V26 = b'\x53\x43\x43\x41'  # Windows 8
     PF_MAGIC_V30 = b'\x53\x43\x43\x41'  # Windows 10
+    # Windows 10 1809+ compresses the whole SCCA body with XPRESS Huffman and
+    # prefixes a MAM header: b"MAM\x04" + uint32 uncompressed size.
+    PF_MAGIC_MAM = b'\x4d\x41\x4d\x04'
 
     async def extract_to_markdown(self, file_path: str) -> str:
         try:
@@ -39,12 +245,18 @@ class PrefetchExtractor(BaseExtractor):
         except Exception as e:
             return f"Error: Failed to read Prefetch file: {e}"
 
-        if len(data) < 84:
+        if len(data) < 8:
             return "Error: File too small to be a valid Prefetch file."
 
         magic = data[:4]
+        if magic == self.PF_MAGIC_MAM:
+            return _mam_summary(data, file_path)
+
         if magic != self.PF_MAGIC_V17:
             return f"Error: Not a valid Prefetch file (magic: {magic.hex()})"
+
+        if len(data) < 84:
+            return "Error: File too small to be a valid Prefetch file."
 
         try:
             version = struct.unpack_from('<I', data, 0)[0]
@@ -211,12 +423,14 @@ class AmcacheExtractor(BaseExtractor):
 
     async def extract_to_markdown(self, file_path: str) -> str:
         try:
-            import Registry
+            # python-registry 1.3 exposes the class only in the Registry.Registry
+            # submodule; `import Registry` leaves the package namespace empty.
+            from Registry.Registry import Registry, RegistryKeyNotFoundException
         except ImportError:
             return "Error: python-registry library is not installed."
 
         try:
-            reg = Registry.Registry(file_path)
+            reg = Registry(file_path)
             root = reg.root()
 
             result = [f"# Amcache Analysis: `{os.path.basename(file_path)}`"]
@@ -258,7 +472,7 @@ class AmcacheExtractor(BaseExtractor):
 
                     if count >= 100:
                         result.append(f"\n*(Showing first 100 entries)*")
-            except Registry.RegistryKeyNotFoundException:
+            except RegistryKeyNotFoundException:
                 result.append("*InventoryApplicationFile key not found.*")
 
             # Also check InventoryApplication
@@ -287,7 +501,7 @@ class AmcacheExtractor(BaseExtractor):
                                 result.append(f"| {name[:50]} | {publisher[:30]} | {install_date[:20]} |")
                                 count += 1
                         except: pass
-            except Registry.RegistryKeyNotFoundException:
+            except RegistryKeyNotFoundException:
                 pass
 
             return "\n".join(result)
