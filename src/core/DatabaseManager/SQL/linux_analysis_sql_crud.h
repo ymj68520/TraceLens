@@ -186,8 +186,9 @@ inline constexpr const char* INSERT_APACHE_VHOST =
 
 inline constexpr const char* INSERT_NGINX_ACCESS_LOG =
     "INSERT INTO linux_nginx_access_logs "
-    "(timestamp, remote_ip, method, url, status_code, response_size, referer, user_agent, request_time, upstream_addr) "
-    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+    "(timestamp, remote_ip, method, url, status_code, response_size, referer, user_agent, request_time, upstream_addr, "
+    "source_file,source_line,source_offset,source_inode,source_partition,source_hash,raw_record,parser_version) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
 inline constexpr const char* INSERT_NGINX_SERVER_BLOCK =
     "INSERT INTO linux_nginx_server_blocks "

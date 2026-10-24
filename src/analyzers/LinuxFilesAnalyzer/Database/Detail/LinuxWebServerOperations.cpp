@@ -241,6 +241,14 @@ bool LinuxAnalysisDatabase::insertNginxAccessLog(const NginxAccessLogEntry& entr
     BIND_TEXT(stmt, 8, entry.userAgent);
     BIND_DOUBLE(stmt, 9, entry.requestTime);
     BIND_TEXT(stmt, 10, entry.upstreamAddr);
+    BIND_TEXT(stmt, 11, entry.provenance.sourceFile);
+    BIND_INT64(stmt, 12, entry.provenance.sourceLine);
+    BIND_INT64(stmt, 13, entry.provenance.sourceOffset);
+    BIND_INT64(stmt, 14, entry.provenance.sourceInode);
+    BIND_INT(stmt, 15, entry.sourcePartition);
+    BIND_TEXT(stmt, 16, entry.provenance.sourceHash);
+    BIND_TEXT(stmt, 17, entry.provenance.rawRecord);
+    BIND_TEXT(stmt, 18, entry.provenance.parserVersion);
 
     bool success = sqlite3_step(stmt) == SQLITE_DONE;
     if (!success) {

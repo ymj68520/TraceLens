@@ -26,3 +26,7 @@ AndroidPreflightAdmissionResult admitAndroidContainerSource(
 
 bool sourceMatchesPreflightHash(const std::string& path,
                                 const std::string& expectedSha256);
+
+AndroidPreflightAdmissionResult admitAliyunImage(
+    const std::string& path, const std::string& jobId,
+    const std::string& claimedHash, const std::string& claimedKind);

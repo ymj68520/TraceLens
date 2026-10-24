@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 from . import android_archive_preflight, android_image_preflight, android_container_pipeline
+from . import aliyun_image
 from .android_sparse_image import validate_sparse
 
 from ..config import get_data_root, get_project_root
@@ -110,6 +111,11 @@ def _probe(path: Path) -> dict:
     if (header.startswith(b"\x1f\x8b") and path.name.lower().endswith((".tar.gz", ".tgz"))) or (
         header.startswith(b"\xfd7zXZ\x00") and path.name.lower().endswith(".tar.xz")
     ):
+        if header.startswith(b"\x1f\x8b"):
+            cloud = aliyun_image.inspect_header(path)
+            if cloud.get("candidate"):
+                return {"kind": "aliyun_raw_export", "adapter": "aliyun-image", "confidence": "high",
+                        "reason": "RAW 系统盘导出包候选；解包时继续校验完整容器和来源"}
         return {"kind": "tar_container", "adapter": None, "confidence": "medium"}
     if suffix in {".mfc", ".m01", ".mf", ".bcp"}:
         return {"kind": "vendor_container_unknown", "adapter": None, "confidence": "extension_only"}
@@ -269,6 +275,10 @@ def _run_job(job_id: str, path: Path, full_hash: bool, cancelled: threading.Even
             result["source_size"] = path.stat().st_size
             if full_hash:
                 result["sha256"], _ = _hash_file(path, cancelled, advance)
+            if result["detected"]["kind"] == "aliyun_raw_export":
+                result["aliyun_image"] = aliyun_image.inspect_header(path)
+                if not result["aliyun_image"].get("ready"):
+                    raise PreflightError("阿里云镜像导出包头部校验失败")
             if result["detected"]["kind"] == "zip_container":
                 result["archive"] = _zip_summary(path)
                 severe = {"archive_path_escape", "archive_symlink", "extreme_compression_ratio"}

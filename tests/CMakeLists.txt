@@ -1454,3 +1454,11 @@ add_test(NAME HarmonyBackupCliEndToEndTests
 add_test(NAME HarmonyBackupHttpEndToEndTests
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_harmony_backup_http.py
     --analyzer $<TARGET_FILE:forensic_analyzer>)
+if(UNIX)
+  add_test(NAME AliyunImageHttpEndToEndTests
+    COMMAND ${CMAKE_SOURCE_DIR}/python_service/.venv/bin/python
+      ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_aliyun_image_http.py
+      --analyzer $<TARGET_FILE:forensic_analyzer>)
+  set_tests_properties(AliyunImageHttpEndToEndTests PROPERTIES
+    ENVIRONMENT "PYTHONPATH=${CMAKE_SOURCE_DIR}/python_service" TIMEOUT 240)
+endif()

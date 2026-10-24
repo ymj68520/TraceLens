@@ -10,6 +10,7 @@
 #include "AndroidPreflightAdmission.h"
 #include "RaidTaskAdmission.h"
 #include "AndroidContainerNormalization.h"
+#include "AliyunImagePreparation.h"
 #include "LLMPythonProxy.h"
 #include "../../integration/LLMIntegration/LLMClient.h"
 #include "EventClusterAnalyzer.h"
@@ -530,7 +531,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 tasks_[task_id].metadata["source_identity_kind"] = "logical_file_id_not_inode";
             }
             std::filesystem::path p(imagePath);
-            std::string baseName = p.stem().string();
+            std::string baseName = task.android_source == "aliyun-image" ? "system" : p.stem().string();
 
             // Use PathManager for per-task directory (HTTP Server mode)
             auto& pm = forensics::PathManager::instance();
@@ -580,6 +581,59 @@ void TaskManager::start_analysis(const std::string& task_id) {
             }
 
             update_progress(task_id, TaskPhase::INITIALIZING, 30, "分析环境已初始化");
+
+            if (task.android_source == "aliyun-image") {
+                const auto admission = admitAliyunImage(imagePath, task.metadata["preflight_job_id"],
+                    task.metadata["preflight_source_sha256"], task.metadata["preflight_detected_kind"]);
+                if (!admission.accepted) {
+                    update_status(task_id, TaskStatus::FAILED, admission.detail, admission.code);
+                    return;
+                }
+                const auto taskRoot = pm.getTaskDir(task_id);
+                const auto work = taskRoot / "work" / "aliyun_image";
+                if (std::filesystem::is_symlink(taskRoot) || std::filesystem::is_symlink(taskRoot / "work") ||
+                    std::filesystem::weakly_canonical(taskRoot).parent_path() !=
+                        std::filesystem::weakly_canonical(pm.getDataDir() / "tasks"))
+                    throw std::runtime_error("阿里云镜像任务目录越界");
+                std::filesystem::create_directories(work);
+                if (std::filesystem::weakly_canonical(work).lexically_relative(
+                        std::filesystem::weakly_canonical(taskRoot)).string().rfind("..", 0) == 0 ||
+                    std::filesystem::is_symlink(work))
+                    throw std::runtime_error("阿里云镜像输出目录越界");
+                const auto prepared = prepareAliyunImage(imagePath, work.string(),
+                    admission.metadata.at("preflight_source_sha256"),
+                    [this, task_id](uint64_t done, uint64_t total) {
+                        update_progress(task_id, TaskPhase::INITIALIZING,
+                            total ? 30 + static_cast<int>(60 * done / total) : 30,
+                            "正在校验并解包阿里云系统盘（" + std::to_string(done / (1024 * 1024)) + " MiB）");
+                    }, [this, task_id]() { return is_task_cancelled(task_id); });
+                if (is_task_cancelled(task_id)) {
+                    update_status(task_id, TaskStatus::CANCELLED, "阿里云镜像任务已取消"); return;
+                }
+                if (!prepared.okay) {
+                    update_status(task_id, TaskStatus::FAILED, "阿里云镜像校验或解包失败", prepared.code); return;
+                }
+                const std::string original = imagePath;
+                imagePath = prepared.manifest.at("derived_path").get<std::string>();
+                task.image_path = imagePath;
+                {
+                    std::lock_guard<std::mutex> lock(mtx_);
+                    auto& saved = tasks_.at(task_id);
+                    // All existing readers (extraction, previews, LLM, reports)
+                    // now resolve the verified disk; the original archive is retained in provenance.
+                    saved.image_path = imagePath;
+                    saved.metadata["aliyun_original_source"] = original;
+                    saved.metadata["aliyun_manifest_path"] = (work / "source_manifest.json").string();
+                    saved.metadata["aliyun_manifest_sha256"] = hashAndroidOutputFile(work / "source_manifest.json");
+                    saved.metadata["aliyun_raw_sha256"] = prepared.manifest.at("raw_sha256").get<std::string>();
+                    saved.metadata["aliyun_member_name"] = prepared.manifest.at("member_name").get<std::string>();
+                    saved.metadata["aliyun_prepared"] = "true";
+                    saved.metadata["source_verification"] = "VERIFIED_ARCHIVE_AND_RAW";
+                    task.metadata = saved.metadata;
+                    save_tasks_internal();
+                }
+                update_progress(task_id, TaskPhase::INITIALIZING, 100, "阿里云 RAW 校验完成，进入原有 Linux 取证流程");
+            }
 
             // ── Logical Android analysis short-circuit ───────────────────────
             // A logical data source (directory / zip / MIUI backup) is NOT a TSK
@@ -740,6 +794,22 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 return;
             }
             update_progress(task_id, TaskPhase::IMAGE_ANALYSIS, 100, "检材结构分析与元数据提取已完成");
+            if (task.android_source == "aliyun-image") {
+                sqlite3* probe = nullptr;
+                sqlite3_stmt* statement = nullptr;
+                bool linuxMarkers = false;
+                if (sqlite3_open_v2(rawDbPath.c_str(), &probe, SQLITE_OPEN_READONLY, nullptr) == SQLITE_OK &&
+                    sqlite3_prepare_v2(probe, "SELECT 1 FROM files WHERE is_deleted=0 AND path IN "
+                        "('/etc/os-release','/usr/lib/os-release','/etc/passwd') LIMIT 1", -1,
+                        &statement, nullptr) == SQLITE_OK)
+                    linuxMarkers = sqlite3_step(statement) == SQLITE_ROW;
+                sqlite3_finalize(statement);
+                if (probe) sqlite3_close(probe);
+                if (!linuxMarkers) {
+                    update_status(task_id, TaskStatus::FAILED, "未发现 Linux 系统标识，请核对镜像类型", "ALIYUN_NOT_LINUX_IMAGE");
+                    return;
+                }
+            }
 
             // 1.4b. Auto-detect platform scenarios when the user did not pick any.
             // Probes the *un-filtered* raw DB for tell-tale artifact paths and
@@ -1040,6 +1110,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                                 auto dbManager = std::make_unique<DatabaseManager>(effectiveRawDb);
                                 if (!dbManager->initialize()) {
                                     std::cerr << "Warning: Failed to initialize DatabaseManager for Linux analysis" << std::endl;
+                                    if (task.android_source == "aliyun-image") throw std::runtime_error("阿里云 Linux 分析数据库初始化失败");
                                     break;
                                 }
                                 auto linuxAnalyzer = std::make_unique<LinuxFilesAnalyzer>(imagePath, dbManager.get());
@@ -1049,7 +1120,10 @@ void TaskManager::start_analysis(const std::string& task_id) {
                                                                per_scenario_progress, scenario_name);
                                 if (linuxAnalyzer->initialize()) {
                                     linuxAnalyzer->analyzeLinuxData();
+                                    if (task.android_source == "aliyun-image" && !eventExtractor->importLinuxArtifacts(linuxDbPath))
+                                        throw std::runtime_error("阿里云 Linux 事件导入时间线失败");
                                 } else {
+                                    if (task.android_source == "aliyun-image") throw std::runtime_error("阿里云 Linux 分析器初始化失败");
                                     std::cerr << "Warning: Failed to initialize Linux analyzer" << std::endl;
                                 }
                                 break;
@@ -1076,7 +1150,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     } catch (const std::exception& e) {
                         std::cerr << "Warning: " << scenario_name << " analysis failed: " << e.what() << std::endl;
                         add_audit_log(task_id, "WARNING", scenario_name + " analysis failed: " + std::string(e.what()));
-                        if (harmonyBackup) throw;
+                        if (harmonyBackup || task.android_source == "aliyun-image") throw;
                     }
 
                     scenario_index++;

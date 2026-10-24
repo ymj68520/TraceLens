@@ -136,7 +136,7 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
         {
             const std::string source_kind = body.value("android_source", "tsk");
             static const std::set<std::string> supportedSources{
-                "tsk", "dir", "zip", "miui-backup", "harmony-backup", "tar", "seven-zip", "android-backup", "filesystem-image", "android-container"};
+                "tsk", "dir", "zip", "miui-backup", "harmony-backup", "tar", "seven-zip", "android-backup", "filesystem-image", "android-container", "aliyun-image"};
             if (!supportedSources.count(source_kind)) {
                 res.code = 400;
                 res.set_header("Content-Type", "application/json");
@@ -296,11 +296,11 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
         // disk-image pipeline; "dir" / "zip" / "miui-backup" short-circuit
         // straight to the Android analyzer (no _raw.db produced).
         std::string android_source = body.value("android_source", "tsk");
-        if (android_source == "android-container" &&
+        if ((android_source == "android-container" || android_source == "aliyun-image") &&
             !body.value("db_output_dir", std::string()).empty()) {
             res.code = 400;
             res.set_header("Content-Type", "application/json");
-            res.write(json{{"error", "Android container Task outputs must stay in its Task directory"},
+            res.write(json{{"error", android_source == "aliyun-image" ? "阿里云镜像任务输出须保存在本任务目录" : "Android container Task outputs must stay in its Task directory"},
                            {"error_code", "TASK_WORKDIR_REQUIRED"}}.dump());
             return res;
         }
@@ -338,6 +338,25 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
             for (const auto& [key, value] : admission.metadata) metadata[key] = value;
             metadata["source_verification"] = "VERIFIED_PREFLIGHT";
         }
+        if (android_source == "aliyun-image") {
+            for (auto it = metadata.begin(); it != metadata.end();) {
+                if (it->first.rfind("aliyun_", 0) == 0) it = metadata.erase(it);
+                else ++it;
+            }
+            const auto admission = admitAliyunImage(image_path,
+                body.value("preflight_job_id", std::string()),
+                body.value("preflight_source_sha256", std::string()),
+                body.value("preflight_detected_kind", std::string()));
+            if (!admission.accepted) {
+                res.code = admission.code == "EVIDENCE_CHANGED_AFTER_PREFLIGHT" ? 409 : 400;
+                res.set_header("Content-Type", "application/json");
+                res.write(json{{"error", admission.detail}, {"error_code", admission.code}, {"status", "rejected"}}.dump());
+                return res;
+            }
+            for (const auto& [key, value] : admission.metadata) metadata[key] = value;
+            metadata["source_verification"] = "VERIFIED_PREFLIGHT";
+            scenarios = {ForensicScenario::LINUX};
+        }
         // MIUI / Android backup AES-256 password (runtime-only, never persisted).
         std::string backup_password = body.value("backup_password", "");
         body.erase("backup_password");
@@ -349,6 +368,13 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
         // Platform artifact analysis (Android/Windows/Linux/ServerCloud stage).
         // Task-level switch, selected by the user at creation; on by default.
         bool platform_analyze = body.value("platform_analyze", true);
+        if (android_source == "aliyun-image" && !platform_analyze) {
+            res.code = 400;
+            res.set_header("Content-Type", "application/json");
+            res.write(json{{"error", "阿里云系统盘须启用 Linux 平台分析"},
+                           {"error_code", "ALIYUN_LINUX_ANALYSIS_REQUIRED"}}.dump());
+            return res;
+        }
         if (newContainer && !platform_analyze) {
             res.code = 400;
             res.set_header("Content-Type", "application/json");

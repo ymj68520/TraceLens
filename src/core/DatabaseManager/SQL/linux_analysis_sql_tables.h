@@ -612,7 +612,10 @@ inline constexpr const char* CREATE_ALL_TABLES = R"(
         referer TEXT,
         user_agent TEXT,
         request_time REAL,
-        upstream_addr TEXT
+        upstream_addr TEXT,
+        source_file TEXT, source_line INTEGER, source_offset INTEGER,
+        source_inode INTEGER, source_partition INTEGER, source_hash TEXT,
+        raw_record TEXT, parser_version TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_nginx_access_timestamp ON linux_nginx_access_logs(timestamp);
     CREATE INDEX IF NOT EXISTS idx_nginx_access_ip ON linux_nginx_access_logs(remote_ip);

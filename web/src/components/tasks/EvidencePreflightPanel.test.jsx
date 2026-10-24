@@ -25,6 +25,42 @@ beforeEach(() => {
   }] });
 });
 
+test('Aliyun export uses verified preflight and prefills the existing Linux task flow', async () => {
+  const user = userEvent.setup();
+  const onCreateTask = vi.fn();
+  listEvidenceCandidates.mockResolvedValue({ candidates: [{ id: 'cloud', name: 'system.raw.tar.gz', kind: 'aliyun_raw_export' }] });
+  startEvidencePreflight.mockResolvedValue({ job: {
+    id: 'c'.repeat(32), status: 'completed', integrity_status: 'verified',
+    source_path: '/evidence/system.raw.tar.gz', sha256: 'd'.repeat(64),
+    detected: { kind: 'aliyun_raw_export', adapter: 'aliyun-image' },
+    aliyun_image: { ready: true, member_name: 'system.raw', raw_size: 40 * 1024 ** 3 },
+  } });
+  render(<EvidencePreflightPanel onCreateTask={onCreateTask} />);
+  await screen.findByRole('combobox', { name: '候选检材' });
+  await user.click(screen.getByRole('button', { name: '后台计算完整 SHA-256' }));
+  await user.click(await screen.findByRole('button', { name: '按此来源新建阿里云分析任务' }));
+  expect(onCreateTask).toHaveBeenCalledWith(expect.objectContaining({
+    android_source: 'aliyun-image', scenarios: ['linux'], platform_analyze: true,
+    preflight_job_id: 'c'.repeat(32), preflight_source_sha256: 'd'.repeat(64),
+    preflight_detected_kind: 'aliyun_raw_export',
+  }));
+  expect(screen.getByText(/40.00 GiB/)).toBeInTheDocument();
+  expect(screen.getByText(/完整容器、gzip 校验和/)).toBeInTheDocument();
+});
+
+test('quick Aliyun identification cannot create an unverified task', async () => {
+  startEvidencePreflight.mockResolvedValue({ job: {
+    id: 'quick', status: 'completed', integrity_status: 'not_calculated',
+    detected: { kind: 'aliyun_raw_export', adapter: 'aliyun-image' },
+    aliyun_image: { ready: true, member_name: 'system.raw', raw_size: 4096 },
+  } });
+  render(<EvidencePreflightPanel onCreateTask={vi.fn()} />);
+  await screen.findByRole('combobox', { name: '候选检材' });
+  await userEvent.click(screen.getByRole('button', { name: '快速识别' }));
+  await screen.findByTestId('evidence-preflight-result');
+  expect(screen.queryByRole('button', { name: '按此来源新建阿里云分析任务' })).toBeNull();
+});
+
 test('quick preflight keeps proprietary evidence unsupported and does not claim analysis', async () => {
   const user = userEvent.setup();
   startEvidencePreflight.mockResolvedValue({ job: {

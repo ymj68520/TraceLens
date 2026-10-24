@@ -426,6 +426,7 @@ set(LIB_SOURCES
     src/network/HTTPServer/AndroidPreflightAdmission.cpp
     src/network/HTTPServer/RaidTaskAdmission.cpp
     src/network/HTTPServer/AndroidContainerNormalization.cpp
+    src/network/HTTPServer/AliyunImagePreparation.cpp
     # Xiaomi MIUI backup source (offline .bak analysis, bypassing TSK)
     src/analyzers/AndroidAnalyzer/MiuiBackupManifest.cpp
     src/analyzers/AndroidAnalyzer/AndroidBackupHeader.cpp
@@ -614,6 +615,8 @@ set(TRACELENS_RUNTIME_SOURCE_ROOT "${CMAKE_SOURCE_DIR}" CACHE PATH
 set_source_files_properties(src/analyzers/AndroidAnalyzer/FilesystemEvidenceSource.cpp
     PROPERTIES COMPILE_DEFINITIONS "TRACELENS_SOURCE_ROOT=\"${TRACELENS_RUNTIME_SOURCE_ROOT}\"")
 set_source_files_properties(src/network/HTTPServer/AndroidContainerNormalization.cpp
+    PROPERTIES COMPILE_DEFINITIONS "TRACELENS_SOURCE_ROOT=\"${TRACELENS_RUNTIME_SOURCE_ROOT}\"")
+set_source_files_properties(src/network/HTTPServer/AliyunImagePreparation.cpp
     PROPERTIES COMPILE_DEFINITIONS "TRACELENS_SOURCE_ROOT=\"${TRACELENS_RUNTIME_SOURCE_ROOT}\"")
 
 # Link libraries

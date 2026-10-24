@@ -49,6 +49,45 @@ bool sourceMatchesPreflightHash(const std::string& path, const std::string& expe
     return sha256(path) == expectedSha256;
 }
 
+AndroidPreflightAdmissionResult admitAliyunImage(
+    const std::string& path, const std::string& jobId,
+    const std::string& claimedHash, const std::string& claimedKind) {
+    AndroidPreflightAdmissionResult result;
+    result.code = "PREFLIGHT_REQUIRED";
+    result.detail = "阿里云镜像导出包须先完成完整 SHA-256 预检";
+    if (!isHex(jobId, 32) || !isHex(claimedHash, 64) || claimedKind != "aliyun_raw_export") return result;
+    try {
+        const auto root = forensics::PathManager::instance().getDataDir() / "evidence_preflight";
+        const auto file = root / jobId / "job.json";
+        if (!fs::is_regular_file(file) || fs::is_symlink(file) || fs::is_symlink(file.parent_path()) ||
+            fs::file_size(file) > 8 * 1024 * 1024 || fs::is_symlink(path)) return result;
+        nlohmann::json job;
+        std::ifstream stream(file);
+        stream >> job;
+        if (job.at("id") != jobId || job.at("status") != "completed" ||
+            job.at("integrity_status") != "verified" || !job.at("full_hash").get<bool>() ||
+            job.at("sha256") != claimedHash || job.at("detected").at("kind") != claimedKind ||
+            job.at("detected").at("adapter") != "aliyun-image" ||
+            !job.at("aliyun_image").at("ready").get<bool>()) return result;
+        const auto source = fs::canonical(path);
+        if (source != fs::canonical(job.at("source_path").get<std::string>()) ||
+            fs::file_size(source) != job.at("source_size").get<uint64_t>()) {
+            result.code = "EVIDENCE_CHANGED_AFTER_PREFLIGHT";
+            result.detail = "镜像来源已变化，请重新预检";
+            return result;
+        }
+        // Rehash while unpacking in the worker. Do not block HTTP admission on
+        // a multi-GB read; no filesystem analysis begins before that check passes.
+        result.metadata = {{"preflight_job_id", jobId}, {"preflight_source_sha256", claimedHash},
+            {"source_kind", "aliyun-image"}, {"source_label", source.filename().string()},
+            {"aliyun_original_source", source.string()}, {"preflight_detected_kind", claimedKind}};
+        result.accepted = true;
+        result.code = "ACCEPTED";
+        result.detail = "预检已通过，任务将完整校验并解包 RAW";
+    } catch (...) {}
+    return result;
+}
+
 AndroidPreflightAdmissionResult admitAndroidContainerSource(
     const std::string& path, const std::string& jobId,
     const std::string& claimedHash, const std::string& claimedKind,

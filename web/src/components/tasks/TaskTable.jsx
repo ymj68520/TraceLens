@@ -41,7 +41,9 @@ function ProgressCell({ task }) {
     <div className="w-full">
       <ProgressBar value={task.progress?.overall_percentage || 0} showLabel={false} size="xs" />
       <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 truncate">
-        {taskPhaseLabel(task.progress?.current_phase || task.progress?.phase)}
+        {task.android_source === 'aliyun-image' && task.progress?.current_phase === 'initializing'
+          ? (task.progress?.phase_description || '正在校验并解包阿里云镜像…')
+          : taskPhaseLabel(task.progress?.current_phase || task.progress?.phase)}
       </p>
     </div>
   );
@@ -149,6 +151,10 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, taskC
               </td>
               <td className="px-4 py-4 text-sm text-slate-900 dark:text-white truncate max-w-[200px]" title={task.image_path}>
                 <div className="truncate">{task.metadata?.source_label || task.image_path}</div>
+                {task.android_source === 'aliyun-image' && <span className="mt-1 block text-[10px] text-indigo-600"
+                  title={task.metadata?.aliyun_prepared === 'true' ? `原包 SHA-256：${task.metadata.preflight_source_sha256}；RAW SHA-256：${task.metadata.aliyun_raw_sha256}` : '任务将校验并解包 RAW 后进入 Linux 分析'}>
+                  {task.metadata?.aliyun_prepared === 'true' ? '阿里云镜像 · RAW 已校验' : '阿里云镜像 · 待解包校验'}
+                </span>}
                 {forensicCase && (
                   <Link to={`/reports/case/${forensicCase.id}`}
                     className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700 text-[10px] text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-800/40 transition-colors"

@@ -101,8 +101,40 @@ bool EventExtractor::importWindowsArtifacts(const std::string& windowsDbPath) {
 
 bool EventExtractor::importLinuxArtifacts(const std::string& linuxDbPath) {
     AuditLog::instance().log("SYSTEM", "TIMELINE_MERGE", "Importing Linux artifacts from: " + linuxDbPath);
-    std::string attachSql = "ATTACH DATABASE '" + linuxDbPath + "' AS lin_db;";
-    sqlite3_exec(eventDb_, attachSql.c_str(), nullptr, nullptr, nullptr);
+    sqlite3_stmt* linuxAttach = nullptr;
+    if (sqlite3_prepare_v2(eventDb_, "ATTACH DATABASE ? AS lin_db", -1, &linuxAttach, nullptr) != SQLITE_OK) return false;
+    sqlite3_bind_text(linuxAttach, 1, linuxDbPath.c_str(), -1, SQLITE_TRANSIENT);
+    const bool linuxAttached = sqlite3_step(linuxAttach) == SQLITE_DONE;
+    sqlite3_finalize(linuxAttach);
+    if (!linuxAttached) return false;
+
+    // New Nginx records carry exact source paths/lines. Older databases remain readable.
+    sqlite3_stmt* nginxColumns = nullptr;
+    bool nginxProvenance = false;
+    if (sqlite3_prepare_v2(eventDb_, "PRAGMA lin_db.table_info(linux_nginx_access_logs)", -1,
+                           &nginxColumns, nullptr) == SQLITE_OK) {
+        while (sqlite3_step(nginxColumns) == SQLITE_ROW) {
+            const auto* name = reinterpret_cast<const char*>(sqlite3_column_text(nginxColumns, 1));
+            if (name && std::string(name) == "source_file") nginxProvenance = true;
+        }
+    }
+    sqlite3_finalize(nginxColumns);
+    if (nginxProvenance) {
+        const char* nginxSql = R"SQL(
+            DELETE FROM events WHERE event_type='NGINX_ACCESS' AND event_source='LINUX_SYSLOG';
+            INSERT INTO events(timestamp,event_type,file_path,inode,description,file_size,file_type,system_context,
+                priority,severity,event_source,event_category,normalized_type,source_id)
+            SELECT timestamp,'NGINX_ACCESS',source_file,source_inode,
+                'Web 请求：'||method||' '||url||'；状态码：'||status_code,0,'LOG',
+                '来源行号：'||source_line||'；分区：'||source_partition,
+                'LOW','INFO','LINUX_SYSLOG','NETWORK_ACTIVITY','','nginx:'||id
+            FROM lin_db.linux_nginx_access_logs WHERE timestamp>0;
+        )SQL";
+        if (sqlite3_exec(eventDb_, nginxSql, nullptr, nullptr, nullptr) != SQLITE_OK) {
+            sqlite3_exec(eventDb_, "DETACH DATABASE lin_db", nullptr, nullptr, nullptr);
+            return false;
+        }
+    }
 
     // Import system logs
     const char* importSyslogSql = R"(

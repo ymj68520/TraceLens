@@ -8,6 +8,7 @@
 #include "DatabaseManager/SQL/file_classifier_sql.h"
 #include <sstream>
 #include <mutex>
+#include <set>
 
 using namespace LinuxAnalysis;
 
@@ -63,6 +64,19 @@ bool LinuxAnalysisDatabase::createTables() {
     if (!executeSQL(CREATE_ALL_TABLES)) {
         setError(ErrorCode::DATABASE_CREATE_TABLE_FAILED);
         return false;
+    }
+    std::set<std::string> columns;
+    sqlite3_stmt* info = nullptr;
+    if (sqlite3_prepare_v2(db_, "PRAGMA table_info(linux_nginx_access_logs)", -1, &info, nullptr) != SQLITE_OK) return false;
+    while (sqlite3_step(info) == SQLITE_ROW)
+        columns.insert(reinterpret_cast<const char*>(sqlite3_column_text(info, 1)));
+    sqlite3_finalize(info);
+    for (const auto& column : std::vector<std::pair<std::string, std::string>>{
+            {"source_file", "TEXT"}, {"source_line", "INTEGER"}, {"source_offset", "INTEGER"},
+            {"source_inode", "INTEGER"}, {"source_partition", "INTEGER"}, {"source_hash", "TEXT"},
+            {"raw_record", "TEXT"}, {"parser_version", "TEXT"}}) {
+        if (!columns.count(column.first) && !executeSQL("ALTER TABLE linux_nginx_access_logs ADD COLUMN " +
+                column.first + " " + column.second)) return false;
     }
     return true;
 }

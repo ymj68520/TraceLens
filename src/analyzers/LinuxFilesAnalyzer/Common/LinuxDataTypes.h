@@ -431,6 +431,7 @@ struct ApacheVHostConfig {
 };
 
 struct NginxAccessLogEntry {
+    int sourcePartition = -1;
     int64_t timestamp = 0;
     std::string remoteIp;
     std::string method;

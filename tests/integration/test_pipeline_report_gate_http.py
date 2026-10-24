@@ -36,7 +36,11 @@ def main(binary):
         def do_POST(self):
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
             calls.append((self.path, body))
-            if self.path == "/api/graphiti/ingest":
+            if self.path.endswith("/chat/completions"):
+                self.send_json({"choices": [{"message": {"content": json.dumps({
+                    "summary": "合成门控验证", "description": "仅用于本地集成测试", "keywords": ["测试"]
+                }, ensure_ascii=False)}, "finish_reason": "stop"}], "usage": {"total_tokens": 20}})
+            elif self.path == "/api/graphiti/ingest":
                 self.send_json({"job_id": "job-" + body["task_id"], "status": "pending"})
             elif self.path == "/api/reports/pipeline-tail":
                 report_started.set()
@@ -45,7 +49,9 @@ def main(binary):
                 self.send_json({"success": True})
 
         def do_GET(self):
-            if self.path.startswith("/api/graphiti/jobs/"):
+            if self.path.startswith("/v1/models"):
+                self.send_json({"data": [{"id": "synthetic-gate-model"}]})
+            elif self.path.startswith("/api/graphiti/jobs/"):
                 count = ingestion_polls.get(self.path, 0) + 1
                 ingestion_polls[self.path] = count
                 self.send_json({"status": "RUNNING" if count == 1 else "COMPLETED",
@@ -70,6 +76,9 @@ def main(binary):
             base = f"http://127.0.0.1:{port}"
             env = dict(os.environ, DATA_DIR=str(root / "data"), LLM_ENABLED="false",
                        PYTHON_SERVICE_URL=f"http://127.0.0.1:{stub.server_port}",
+                       LLM_BASE_URL=f"http://127.0.0.1:{stub.server_port}",
+                       LLM_TEXT_BASE_URL=f"http://127.0.0.1:{stub.server_port}",
+                       LLM_MODEL="synthetic-gate-model", LLM_TEXT_MODEL="synthetic-gate-model", LLM_MAX_FILES="1",
                        REPORT_AUTO_GENERATE_ENABLED="true", REPORT_TAIL_WAIT_TIMEOUT_MIN="1",
                        REPORT_TAIL_POLL_SECONDS="1", REPORT_TAIL_RETRIES="0",
                        GRAPHITI_INGEST_WAIT_TIMEOUT_MIN="1", GRAPHITI_INGEST_POLL_SECONDS="1",

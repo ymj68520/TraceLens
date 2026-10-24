@@ -28,6 +28,7 @@ import RaidImageSource from './RaidImageSource';
 // selects the AndroidAnalyzer backend / analysis pipeline branch.
 const DATA_SOURCES = [
   { value: 'tsk', label: '磁盘镜像', desc: '.dd / .E01 / raw 镜像（走 TSK 文件系统解析）' },
+  { value: 'aliyun-image', label: '阿里云服务器镜像', desc: 'Linux 系统盘 .raw.tar.gz 导出包，校验解包后走原取证流程' },
   { value: 'raid', label: 'RAID 系统镜像', desc: '选择成员镜像，准备后按普通磁盘镜像分析' },
   { value: 'dir', label: 'Android 目录', desc: '已解压的逻辑提取目录树' },
   { value: 'zip', label: 'Android ZIP', desc: '逻辑提取打包成的单个 .zip' },
@@ -66,15 +67,19 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
   const [raidSource, setRaidSource] = useState(null);
   const handleRaidSource = useCallback((value) => setRaidSource(value), []);
 
-  const set = (key, val) => setForm((f) => ({ ...f, [key]: val }));
+  const set = (key, val) => setForm((f) => ({ ...f, [key]: val,
+    ...(['image_path', 'android_source'].includes(key) && f[key] !== val
+      ? { preflight_job_id: undefined, preflight_source_sha256: undefined, preflight_detected_kind: undefined } : {}),
+  }));
 
   const isRaid = form.android_source === 'raid';
-  const isLogical = form.android_source !== 'tsk' && !isRaid;
+  const isAliyun = form.android_source === 'aliyun-image';
+  const isLogical = form.android_source !== 'tsk' && !isRaid && !isAliyun;
   const isMiui = form.android_source === 'miui-backup';
   const isArchive = ['tar', 'seven-zip', 'android-backup', 'filesystem-image', 'android-container'].includes(form.android_source);
 
   // Label / placeholder for the path input changes with the data source.
-  const pathLabel = form.android_source === 'harmony-backup' ? '鸿蒙备份目录 *' : isMiui
+  const pathLabel = isAliyun ? '阿里云系统盘导出包 *' : form.android_source === 'harmony-backup' ? '鸿蒙备份目录 *' : isMiui
     ? 'MIUI 备份目录 *'
     : form.android_source === 'dir'
     ? 'Android 提取目录 *'
@@ -85,7 +90,7 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
     : isArchive
     ? 'Android 归档/备份文件 *'
     : '检材路径 *';
-  const pathPlaceholder = form.android_source === 'harmony-backup' ? '/path/to/已解密鸿蒙备份/' : isMiui
+  const pathPlaceholder = isAliyun ? '/path/to/file_m-xxx_system.raw.tar.gz' : form.android_source === 'harmony-backup' ? '/path/to/已解密鸿蒙备份/' : isMiui
     ? '/path/to/MIUI备份目录（含 descript.xml + .bak）'
     : form.android_source === 'dir'
     ? '/path/to/android_logical_extraction/'
@@ -112,16 +117,17 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
       // force the scenario so the backend runs the Android analyzer path and
       // skips the TSK disk-image pipeline.
       if (isRaid && !raidSource) throw new Error('请先完成 RAID 布局确认和系统镜像准备');
-      const isLogical = form.android_source !== 'tsk' && !isRaid;
+      const isLogical = form.android_source !== 'tsk' && !isRaid && !isAliyun;
+      if (isAliyun && !form.preflight_job_id) throw new Error('请先在检材预检中完成完整 SHA-256，再按此来源创建任务');
       const payload = {
         ...form,
         ...(isRaid ? raidSource : {}),
-        scenarios: isLogical ? ['android'] : form.scenarios,
+        scenarios: isAliyun ? ['linux'] : isLogical ? ['android'] : form.scenarios,
         llm_analyze: true,
         llm_event_analyze: false,
         llm_mode: 'smart',
         // 平台分析任务级开关（创建时选择；默认开启）
-        platform_analyze: isArchive || form.platform_analyze !== false,
+        platform_analyze: isAliyun || isArchive || form.platform_analyze !== false,
       };
       // Only send backup_password when non-empty (keeps it runtime-only / sparse).
       if (!payload.backup_password) delete payload.backup_password;
@@ -162,7 +168,7 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
           )}
 
           {/* Data Source Type — selects the analysis backend */}
-          <Field label="数据源类型 *" hint="Android userdata、sparse/super 与 TAR/7z/AB 必须先完成完整哈希预检；旧式 TSK 任务未经过镜像预检。">
+          <Field label="数据源类型 *" hint="阿里云导出包及 Android 容器须先完成完整 SHA-256 预检；已解出的 RAW 可选择磁盘镜像。">
             <select
               disabled={isCreating}
               value={form.android_source}
@@ -189,6 +195,10 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
           }
 
           {/* Runtime-only password; never persisted in Task serialization. */}
+          {isAliyun && <p className="rounded-lg bg-indigo-50 p-3 text-sm text-indigo-900">
+            先在任务页面的“检材预检”中计算完整 SHA-256，再点击“按此来源新建阿里云分析任务”。
+            任务会校验并解包 RAW，保留来源哈希，沿用文件、时间线、调查与报告流程；已解出的 RAW 可直接选“磁盘镜像”。
+          </p>}
           {(isMiui || form.android_source === 'seven-zip' || form.android_source === 'android-backup') && (
             <Field label="归档/备份密码（可选）" hint="仅本次运行使用，不写入 Task 持久化或命令行；密码错误或不支持的变体会明确失败。">
               <input
@@ -257,14 +267,14 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
                 <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
                   <input
                     type="checkbox"
-                    checked={isArchive || form.platform_analyze !== false}
-                    disabled={isArchive}
+                    checked={isAliyun || isArchive || form.platform_analyze !== false}
+                    disabled={isAliyun || isArchive}
                     onChange={(e) => set('platform_analyze', e.target.checked)}
                     className="w-4 h-4 rounded border-slate-300"
                   />
                   平台分析（Android / Windows / Linux 工件级分析，默认开启）
                 </label>
-                {isLogical ? (
+                {isAliyun ? <p className="text-xs text-slate-600">阿里云系统盘固定执行 Linux 平台分析，继续原有磁盘取证流程。</p> : isLogical ? (
                   // Logical Android source → platform is fixed to Android; the
                   // TSK pipeline (and thus XFS mode / scene auto-detect) does
                   // not apply. Show an informational note instead of overrides.
