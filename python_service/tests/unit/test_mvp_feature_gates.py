@@ -9,6 +9,8 @@ Per-feature behavior tests enable the flags in their own fixtures.
 """
 
 import sqlite3
+import tempfile
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
@@ -186,8 +188,23 @@ def test_secondary_analysis_flag_opens_only_that_route(monkeypatch):
         async def submit(self, *args, **kwargs):
             return _Analysis()
 
+    class _CppBackend:
+        # The analyze route resolves the task and derives the investigation DB
+        # from the task's database paths before submitting. The fake task must
+        # therefore expose paths that share one parent directory, or path
+        # resolution fails closed with "no trusted database path".
+        async def get_task(self, task_id):
+            base = tempfile.mkdtemp(prefix="mvp-gate-")
+            return {
+                "id": task_id,
+                "output_files_db": str(Path(base) / "files.db"),
+                "output_events_db": str(Path(base) / "events.db"),
+                "output_raw_db": str(Path(base) / "raw.db"),
+            }
+
     app.dependency_overrides[_manager] = lambda: type(
-        "Manager", (), {"secondary_analysis_executor": _Executor()}
+        "Manager", (),
+        {"secondary_analysis_executor": _Executor(), "cpp_backend": _CppBackend()},
     )()
     try:
         client = TestClient(app)

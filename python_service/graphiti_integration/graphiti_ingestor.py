@@ -360,7 +360,11 @@ class GraphitiIngestor:
         failure must not prevent the other resources from being released.
         """
         errors = []
-        for worker in self._worker_clients:
+        # getattr, not direct access: close() must be safe on a partially
+        # initialized ingestor. Tests build instances via __new__ and callers
+        # may reach cleanup after an exception before __init__ finished;
+        # raising AttributeError here would mask the real cleanup work.
+        for worker in getattr(self, "_worker_clients", []):
             try:
                 await worker.close()
             except Exception as exc:

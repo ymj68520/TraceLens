@@ -94,6 +94,14 @@ class TestReadEpisodeSourceRows:
         assert file_descs[0]["success"] is True
 
     def test_missing_descriptions_table_is_nonfatal(self, tmp_path):
+        """A missing file_descriptions table is an empty state, not an error.
+
+        Tasks with llm_analyze=false never create the table (it is added
+        lazily by the analysis stage). Treating that as an error made the
+        ingestion job report a failure for a legitimately empty graph, so the
+        reader returns no rows and no error; the caller emits the standard
+        "no analyzed descriptions to ingest" message instead.
+        """
         files_db = tmp_path / "files.db"
         _make_files_db(files_db, with_descriptions=False)
 
@@ -102,7 +110,7 @@ class TestReadEpisodeSourceRows:
         )
 
         assert file_descs == []
-        assert error == "file_descriptions table missing"
+        assert error is None
 
     def test_analyzed_only_filters_empty_descriptions(self, tmp_path):
         files_db = tmp_path / "files.db"
