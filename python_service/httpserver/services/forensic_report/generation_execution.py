@@ -819,18 +819,55 @@ class ReportGenerationExecutor:
                 system_prompt, section_prompt
             )
             model = result.get("model") or model
-            response = await asyncio.to_thread(
-                self._parse_section,
-                result.get("content", ""),
-                set(scope_keys),
-                index,
-                model,
+            bound_by_key = {item.evidence_key: (
+                item.bound_analysis.analysis_id,
+                {claim.claim_id for claim in item.bound_analysis.claims},
+            ) for item in scope_items if item.bound_analysis is not None}
+            parse_kwargs = dict(
                 allow_derived=envelope.schema_version >= 3,
-                bound_by_key={item.evidence_key: (
-                    item.bound_analysis.analysis_id,
-                    {claim.claim_id for claim in item.bound_analysis.claims},
-                ) for item in scope_items if item.bound_analysis is not None},
+                bound_by_key=bound_by_key,
             )
+            try:
+                response = await asyncio.to_thread(
+                    self._parse_section, result.get("content", ""),
+                    set(scope_keys), index, model, **parse_kwargs,
+                )
+            except _StageFailure as exc:
+                if exc.code not in ("citation_invalid", "section_invalid"):
+                    raise
+                # One out-of-scope key used to discard the outline and every
+                # section already generated. Ask once more with the violation
+                # spelled out, then fall back to dropping only the bad
+                # citations; the strict parse still gates the final report.
+                logger.warning(
+                    "Section %d rejected (%s); retrying once with a correction",
+                    index, exc.message,
+                )
+                correction_prompt = section_prompt + (
+                    "\n\n上一次输出未通过校验：" + exc.message
+                    + "。只能引用白名单内 allowed_ids 中列出的 evidence_key，"
+                      "citation_id 章内不得重复；请严格按 JSON 契约重新输出本章。"
+                )
+                retry = await self._llm_service.chat_completion(
+                    system_prompt, correction_prompt
+                )
+                model = retry.get("model") or model
+                try:
+                    response = await asyncio.to_thread(
+                        self._parse_section, retry.get("content", ""),
+                        set(scope_keys), index, model, **parse_kwargs,
+                    )
+                except _StageFailure as second:
+                    if second.code not in ("citation_invalid", "section_invalid"):
+                        raise
+                    logger.warning(
+                        "Section %d rejected again (%s); dropping only the "
+                        "invalid citations", index, second.message,
+                    )
+                    response = await asyncio.to_thread(
+                        self._parse_section, retry.get("content", ""),
+                        set(scope_keys), index, model, repair=True, **parse_kwargs,
+                    )
             section_ids: list[str] = []
             for citation in response.citations:
                 counter += 1
@@ -946,7 +983,17 @@ class ReportGenerationExecutor:
         *,
         allow_derived: bool = False,
         bound_by_key: dict[str, tuple[str, set[str]]] | None = None,
+        repair: bool = False,
     ) -> StructuredSectionResponse:
+        """Parse and validate one section's citations.
+
+        ``repair=False`` is the strict contract: any violation raises, so the
+        caller can retry with a correction. ``repair=True`` is the deterministic
+        fallback: only the offending citations are dropped (and an unbound
+        analysis/claim identity is stripped, keeping the evidence reference),
+        because a section with one bad key used to discard the whole report at
+        the final validation step.
+        """
         try:
             response = parse_structured_section_response(content)
         except StructuredReportOutputError:
@@ -957,36 +1004,68 @@ class ReportGenerationExecutor:
                 model=model,
             ) from None
         seen: set[str] = set()
+        kept: list[StructuredReportCitation] = []
+        dropped = 0
         for citation in response.citations:
             if not allow_derived and (citation.analysis_id is not None or citation.claim_id is not None):
-                raise _StageFailure(
-                    "section_invalid",
-                    f"section {index} cited a non-null analysis/claim identity",
-                    model=model,
-                )
+                if not repair:
+                    raise _StageFailure(
+                        "section_invalid",
+                        f"section {index} cited a non-null analysis/claim identity",
+                        model=model,
+                    )
+                citation = citation.model_copy(
+                    update={"analysis_id": None, "claim_id": None})
             if allow_derived and (citation.analysis_id is not None or citation.claim_id is not None):
                 bound = (bound_by_key or {}).get(citation.evidence_key)
                 if (bound is None or citation.analysis_id != bound[0] or
                         (citation.claim_id is not None and citation.claim_id not in bound[1])):
+                    if not repair:
+                        raise _StageFailure(
+                            "citation_invalid",
+                            f"section {index} referenced an unbound analysis or claim",
+                            model=model,
+                        )
+                    # Keep the evidence reference, drop the unsupported identity.
+                    citation = citation.model_copy(
+                        update={"analysis_id": None, "claim_id": None})
+            if citation.citation_id in seen:
+                if not repair:
                     raise _StageFailure(
-                        "citation_invalid",
-                        f"section {index} referenced an unbound analysis or claim",
+                        "section_invalid",
+                        f"section {index} reused citation_id {citation.citation_id}",
                         model=model,
                     )
-            if citation.citation_id in seen:
-                raise _StageFailure(
-                    "section_invalid",
-                    f"section {index} reused citation_id {citation.citation_id}",
-                    model=model,
-                )
-            seen.add(citation.citation_id)
+                dropped += 1
+                continue
             if citation.evidence_key not in scope:
-                raise _StageFailure(
-                    "citation_invalid",
-                    f"section {index} cited evidence outside its section scope",
-                    model=model,
-                )
-        return response
+                if not repair:
+                    raise _StageFailure(
+                        "citation_invalid",
+                        f"section {index} cited evidence outside its section scope",
+                        model=model,
+                    )
+                dropped += 1
+                continue
+            seen.add(citation.citation_id)
+            kept.append(citation)
+        if dropped:
+            logger.warning(
+                "Section %d: dropped %d out-of-scope or duplicate citations "
+                "(kept %d) instead of failing the report",
+                index, dropped, len(kept),
+            )
+        if repair and response.citations and not kept:
+            # Every citation was invalid: the section argues from material it
+            # was not given. That is not repairable by deletion.
+            raise _StageFailure(
+                "citation_invalid",
+                f"section {index} cited only evidence outside its section scope",
+                model=model,
+            )
+        if kept == list(response.citations):
+            return response
+        return response.model_copy(update={"citations": tuple(kept)})
 
     async def _fail(
         self,

@@ -294,15 +294,98 @@ def test_v2_citation_renumbering_is_global(tmp_path):
     assert cited_keys == {KEY_SCRIPT, KEY_PASSWD, KEY_CASE_A}
 
 
-def test_v2_section_scope_violation_fails(tmp_path):
+# Regression (PC.E01): one out-of-scope citation in section 7 discarded the
+# outline and all six sections already generated (error citation_invalid). The
+# pipeline now retries the section once with the violation spelled out, then
+# drops only the offending citations instead of failing the whole report.
+def test_v2_section_scope_violation_retries_then_succeeds(tmp_path):
     root, repo = _store(tmp_path)
     llm = ScriptedLLM([
         _outline_json(_standard_outline()),
         _section_json("案件背景与检材概况"),
-        # the 话术 section cites a system file outside its group scope
+        # first attempt: the 话术 section cites a system file outside its scope
         _section_json("话术体系分析", [
             {"citation_id": "c001", "evidence_key": KEY_PASSWD},
         ]),
+        # retry after the correction prompt: cites only its own material
+        _section_json("话术体系分析", [
+            {"citation_id": "c001", "evidence_key": KEY_SCRIPT},
+        ]),
+        _section_json("系统账户与配置", [
+            {"citation_id": "c001", "evidence_key": KEY_PASSWD},
+        ]),
+        _section_json("系统组件与软件产物清单"),
+        _section_json("综合结论"),
+    ])
+
+    async def scenario():
+        repository, executor = _make_executor(tmp_path, llm)
+        row = _admit_v2(repository, root, case_description=CASE_BACKGROUND)
+        await executor.submit(row.generation_id)
+        terminal = await _wait_terminal(repository, row.generation_id)
+        await executor.shutdown()
+        return terminal
+
+    terminal = asyncio.run(scenario())
+    assert terminal.status == "completed"
+    # The correction prompt names the actual violation and the whitelist rule.
+    assert any("上一次输出未通过校验" in user for _system, user in llm.calls)
+    assert any("allowed_ids" in user for _system, user in llm.calls)
+
+
+def test_v2_section_scope_violation_drops_only_bad_citations(tmp_path):
+    root, repo = _store(tmp_path)
+    bad = _section_json("话术体系分析", [
+        {"citation_id": "c001", "evidence_key": KEY_PASSWD},   # out of scope
+        {"citation_id": "c002", "evidence_key": KEY_SCRIPT},   # valid
+    ])
+    llm = ScriptedLLM([
+        _outline_json(_standard_outline()),
+        _section_json("案件背景与检材概况"),
+        bad,   # attempt 1 rejected
+        bad,   # retry rejected too → deterministic repair keeps c002 only
+        _section_json("系统账户与配置", [
+            {"citation_id": "c001", "evidence_key": KEY_PASSWD},
+        ]),
+        _section_json("系统组件与软件产物清单"),
+        _section_json("综合结论"),
+    ])
+
+    async def scenario():
+        repository, executor = _make_executor(tmp_path, llm)
+        row = _admit_v2(repository, root, case_description=CASE_BACKGROUND)
+        await executor.submit(row.generation_id)
+        terminal = await _wait_terminal(repository, row.generation_id)
+        await executor.shutdown()
+        return terminal
+
+    terminal = asyncio.run(scenario())
+    assert terminal.status == "completed"
+    manifest_files = sorted(
+        (tmp_path / "report_root" / "snapshots").rglob("manifest.json"))
+    assert manifest_files, "published manifest missing"
+    report = json.loads(manifest_files[-1].read_text(encoding="utf-8"))
+    script_section = next(
+        s for s in report["sections"] if s["heading"] == "话术体系分析")
+    cited_keys = {
+        c["evidence_key"] for c in report["citations"]
+        if c["citation_id"] in script_section["citation_ids"]
+    }
+    assert cited_keys == {KEY_SCRIPT}
+
+
+# A section that cites nothing but out-of-scope material is arguing from
+# evidence it was never given; deletion cannot repair that, so it must still
+# fail rather than publish an unsupported section.
+def test_v2_section_all_citations_out_of_scope_still_fails(tmp_path):
+    root, repo = _store(tmp_path)
+    bad = _section_json("话术体系分析", [
+        {"citation_id": "c001", "evidence_key": KEY_PASSWD},
+    ])
+    llm = ScriptedLLM([
+        _outline_json(_standard_outline()),
+        _section_json("案件背景与检材概况"),
+        bad, bad,
     ])
 
     async def scenario():
