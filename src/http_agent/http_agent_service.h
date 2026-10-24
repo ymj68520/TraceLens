@@ -46,7 +46,8 @@ public:
                      int poll_interval_seconds,
                      int reindex_interval_seconds,
                      const std::string& client_id,
-                     ILogger& logger);
+                     ILogger& logger,
+                     bool resume_interrupted_commands = false);
 
     // Runs until stop is requested (request_stop() / g_request_stop / SIGINT).
     // Returns 0 on a clean stop, non-zero only if the loop never started.
@@ -70,6 +71,10 @@ private:
     int reindex_interval_;
     std::string client_id_;
     ILogger& logger_;
+    // When true, recover() re-executes crash-orphans instead of failing them.
+    // The analyzer is safe to re-enter because it resumes from its own stage
+    // ledger (skip conditions: unchanged inputs + present artifacts).
+    bool resume_interrupted_commands_ = false;
     std::atomic<bool> stop_requested_{false};
 
     // Tracks wall-clock time of the last re-index (Task 23). Initialized to

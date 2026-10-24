@@ -14,6 +14,13 @@ struct ClientConfig {
     std::string server_base_url;       // https://host[:port]
     int poll_interval_seconds = 10;    // 5..30 (plan: 10s default, 5-30 range)
     int reindex_interval_seconds = 1800;  // 0 disables periodic re-indexing (Task 23); default 30m
+    // Crash recovery: when true, an in-flight command found on startup is
+    // re-executed instead of reported FAILED. The analyzer resumes safely —
+    // the CLI keeps a per-database stage ledger and skips stages whose inputs
+    // and artifacts are unchanged — so a re-execution continues rather than
+    // redoing the expensive work. Off by default: re-running spends compute
+    // without the operator asking, which the agent must not decide unilaterally.
+    bool resume_interrupted_commands = false;
     std::string token_path;            // path to the 30d client JWT file
     std::string hostname;              // informational (reported hostname)
     std::string analyzer_path;         // path to the local forensics_analyzer binary
@@ -36,8 +43,8 @@ struct ClientConfig {
 
     // Reads TRACELENS_SERVER_URL / TRACELENS_POLL_INTERVAL /
     // TRACELENS_TOKEN_PATH / TRACELENS_HOSTNAME / TRACELENS_ANALYZER_PATH /
-    // TRACELENS_WORK_DIR / TRACELENS_STATE_DB / TRACELENS_IMAGE_DIRS. Sets `err`
-    // on failure.
+    // TRACELENS_WORK_DIR / TRACELENS_STATE_DB / TRACELENS_IMAGE_DIRS /
+    // TRACELENS_RESUME_INTERRUPTED. Sets `err` on failure.
     static ClientConfig load_from_env(std::string& err);
 };
 

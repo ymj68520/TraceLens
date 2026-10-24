@@ -35,6 +35,11 @@ class ICommandExecutor {
 public:
     virtual ~ICommandExecutor() = default;
     virtual ExecutionResult execute(const Command& cmd) = 0;
+
+    // Optional: executors that can continue an interrupted run from its own
+    // checkpoint enable it here. Default is a no-op so simple executors (stubs,
+    // non-analyze bridges) need no changes.
+    virtual void set_resume_from_ledger(bool /*enabled*/) {}
 };
 
 // No-op executor: acknowledges and succeeds. Kept for non-analyze command types
@@ -55,7 +60,8 @@ struct AnalyzerArgv {
 };
 AnalyzerArgv build_analyzer_argv(const Command& cmd,
                                  const std::string& analyzer_path,
-                                 const std::string& db_dir);
+                                 const std::string& db_dir,
+                                 bool resume_from_ledger = false);
 
 // The image's base name (filename without extension) used to glob output DBs.
 std::string image_base_name(const std::string& image_path);
@@ -81,11 +87,18 @@ public:
 
     ExecutionResult execute(const Command& cmd) override;
 
+    // Resume mode: omit --overwrite so the analyzer keeps its stage ledger and
+    // continues from the last completed stage instead of restarting. Set by the
+    // service only while re-executing crash-orphaned commands (see
+    // HttpAgentService::recover); a normal polled command always runs clean.
+    void set_resume_from_ledger(bool enabled) override { resume_from_ledger_ = enabled; }
+
 private:
     IProcessRunner& runner_;
     std::string analyzer_path_;
     std::string work_base_dir_;
     std::string hostname_;
+    bool resume_from_ledger_ = false;
 };
 
 }  // namespace tracelens

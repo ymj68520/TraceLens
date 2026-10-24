@@ -126,7 +126,8 @@ int main(int argc, char** argv) {
 
     tracelens::HttpAgentService service(poller, reporter, executor, uploader, store,
                                         indexer, index_uploader, cfg.poll_interval_seconds,
-                                        cfg.reindex_interval_seconds, cid, logger);
+                                        cfg.reindex_interval_seconds, cid, logger,
+                                        cfg.resume_interrupted_commands);
     try {
         return service.run(/*single_iteration=*/once);
     } catch (const std::exception& e) {

@@ -97,6 +97,9 @@ ClientConfig ClientConfig::load_from_file(const std::string& path, std::string& 
         else if (key == "work_base_dir")     c.work_base_dir = val;
         else if (key == "state_db_path")     c.state_db_path = val;
         else if (key == "image_dirs")        c.image_dirs = split_dirs(val);
+        else if (key == "resume_interrupted_commands") {
+            c.resume_interrupted_commands = (val == "1" || val == "true" || val == "yes");
+        }
     }
     return c;
 }
@@ -113,6 +116,10 @@ ClientConfig ClientConfig::load_from_env(std::string& err) {
     if (const char* v = std::getenv("TRACELENS_WORK_DIR"))        c.work_base_dir = v;
     if (const char* v = std::getenv("TRACELENS_STATE_DB"))        c.state_db_path = v;
     if (const char* v = std::getenv("TRACELENS_IMAGE_DIRS"))     c.image_dirs = split_dirs(v);
+    if (const char* v = std::getenv("TRACELENS_RESUME_INTERRUPTED")) {
+        const std::string s = v;
+        c.resume_interrupted_commands = (s == "1" || s == "true" || s == "yes");
+    }
     return c;
 }
 

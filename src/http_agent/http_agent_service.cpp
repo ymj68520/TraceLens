@@ -21,7 +21,8 @@ HttpAgentService::HttpAgentService(Poller& poller,
                                    int poll_interval_seconds,
                                    int reindex_interval_seconds,
                                    const std::string& client_id,
-                                   ILogger& logger)
+                                   ILogger& logger,
+                                   bool resume_interrupted_commands)
     : poller_(poller),
       reporter_(reporter),
       executor_(executor),
@@ -32,21 +33,79 @@ HttpAgentService::HttpAgentService(Poller& poller,
       interval_(poll_interval_seconds),
       reindex_interval_(reindex_interval_seconds),
       client_id_(client_id),
-      logger_(logger) {}
+      logger_(logger),
+      resume_interrupted_commands_(resume_interrupted_commands) {}
 
 void HttpAgentService::recover() {
-    // Report any in-flight command left over from a prior (crashed) run as
-    // FAILED, then clear it. We do NOT re-run the analysis: a crash leaves
-    // on-disk state of unknown integrity, so re-execution would be unreliable.
-    // The terminal transition is idempotent (Task 15b guard), so re-reporting on
-    // a crash-during-recovery is harmless, and clear()-after-report (not before)
-    // means we never drop a failure signal.
     std::string err;
     auto orphans = store_.recover_orphans(err);
     if (!err.empty()) {
         logger_.warn("recover: could not read local in-flight store: " + err);
         return;  // unreadable store: don't guess; let normal polling proceed
     }
+
+    // Opt-in re-execution: the analyzer resumes from its stage ledger, so a
+    // re-run continues where the crash left off instead of redoing the
+    // expensive stages. Off by default — re-running spends compute the
+    // operator did not ask for, and the failure report below is always correct.
+    if (resume_interrupted_commands_) {
+        // Tell the executor to keep the analyzer's stage ledger (omit
+        // --overwrite) for the duration of this recovery pass, then restore the
+        // clean-run behaviour so later polled commands are unaffected.
+        executor_.set_resume_from_ledger(true);
+        for (const auto& cmd : orphans) {
+            logger_.info("recover: re-executing interrupted command " + cmd.id +
+                         " (resume_interrupted_commands enabled)");
+            StatusUpdate up;
+            up.status = CommandStatus::InProgress;
+            up.message = "agent restarted; resuming analysis from stage ledger";
+            std::string re;
+            if (!reporter_.report(cmd.id, up, re)) {
+                // Losing the in_progress signal is not fatal: the terminal
+                // report below carries the outcome. Log and continue.
+                logger_.warn("recover: could not report in_progress for " + cmd.id + ": " + re);
+            }
+
+            auto res = executor_.execute(cmd);
+            if (res.success && !res.task_id.empty() && !res.artifacts.empty()) {
+                std::string ue;
+                if (!uploader_.upload(res.task_id, res.artifacts, ue)) {
+                    logger_.warn("recover: artifact upload failed for " + cmd.id + ": " + ue);
+                    res.success = false;
+                    res.message = "artifact upload failed after resume: " + ue;
+                }
+            }
+
+            StatusUpdate term;
+            term.status = res.success ? CommandStatus::Completed : CommandStatus::Failed;
+            term.message = res.success ? "completed after agent restart (resumed)"
+                                       : ("resume failed: " + res.message);
+            std::string te;
+            if (!reporter_.report(cmd.id, term, te)) {
+                logger_.warn("recover: could not report terminal status for " + cmd.id +
+                             ": " + te + " (left in store for next restart)");
+                continue;
+            }
+            std::string ce;
+            if (!store_.clear(cmd.id, ce)) {
+                logger_.warn("recover: reported " + cmd.id + " but could not clear it: " + ce);
+            }
+        }
+        executor_.set_resume_from_ledger(false);
+        if (!orphans.empty()) {
+            logger_.info("recovered (re-executed) " + std::to_string(orphans.size()) +
+                         " orphaned command(s) from a prior run");
+        }
+        return;
+    }
+
+    // Default: report any in-flight command left over from a prior (crashed) run
+    // as FAILED, then clear it. We do NOT re-run the analysis here: re-execution
+    // spends compute the operator did not ask for, so it stays behind the
+    // resume_interrupted_commands switch above. The terminal transition is
+    // idempotent (Task 15b guard), so re-reporting on a crash-during-recovery is
+    // harmless, and clear()-after-report (not before) means we never drop a
+    // failure signal.
     for (const auto& cmd : orphans) {
         StatusUpdate u;
         u.status = CommandStatus::Failed;

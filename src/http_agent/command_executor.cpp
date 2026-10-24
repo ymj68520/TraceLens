@@ -55,7 +55,8 @@ std::string image_base_name(const std::string& image_path) {
 
 AnalyzerArgv build_analyzer_argv(const Command& cmd,
                                  const std::string& analyzer_path,
-                                 const std::string& db_dir) {
+                                 const std::string& db_dir,
+                                 bool resume_from_ledger) {
     AnalyzerArgv out;
     if (analyzer_path.empty()) {
         out.error = "analyzer binary path is not configured";
@@ -73,7 +74,14 @@ AnalyzerArgv build_analyzer_argv(const Command& cmd,
     a.push_back("--db-dir");
     a.push_back(db_dir);
     a.push_back("--no-ai");               // INVARIANT: client never runs the LLM.
-    a.push_back("--overwrite");           // fresh dir, but always regenerate cleanly.
+    // --overwrite deletes the analyzer's stage ledger, forcing a full re-run.
+    // That is what a first execution wants (a clean, reproducible result), but
+    // it is exactly wrong when we are resuming an interrupted command: the
+    // ledger IS the checkpoint we want to continue from. The caller decides via
+    // resume_from_ledger, which only recover() sets.
+    if (!resume_from_ledger) {
+        a.push_back("--overwrite");
+    }
 
     const std::string atype = to_lower(param_string(cmd.parameters, "analysis_type"));
     if (atype == "windows")      a.push_back("--windows-analyze");
@@ -176,7 +184,8 @@ ExecutionResult AnalyzeDiskExecutor::execute(const Command& cmd) {
         return r;
     }
 
-    const auto built = build_analyzer_argv(cmd, analyzer_path_, work_dir.string());
+    const auto built = build_analyzer_argv(cmd, analyzer_path_, work_dir.string(),
+                                           resume_from_ledger_);
     if (!built.valid()) {
         r.success = false;
         r.message = built.error;

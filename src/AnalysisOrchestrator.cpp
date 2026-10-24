@@ -19,9 +19,12 @@
 #include "export/TextDumpExporter.h"
 #include "export/TextDumpAdapters.h"
 #include "PathManager/PathManager.h"
+#include "HTTPServer/TaskStageLedger.h"
+#include <nlohmann/json.hpp>
 #include <iostream>
 #include <array>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <openssl/crypto.h>
 
@@ -152,6 +155,95 @@ std::string AnalysisOrchestrator::getDatabaseDir(const CommandLineArgs& args) {
     return dir.string() + "/";
 }
 
+namespace {
+namespace ledger = forensics::stage_ledger;
+
+/**
+ * CLI stage ledger: a sidecar JSON file next to the produced databases, keyed
+ * by the same "stage.<NAME>" vocabulary the HTTP task ledger uses (see
+ * TaskStageLedger.h). The CLI has no task-state store, so the sidecar IS its
+ * state: deleting it forces a full re-run, keeping it makes the next invocation
+ * resume.
+ *
+ * st_ = stat fingerprint of the artifact a stage produced, so a stage is only
+ * reused when the databases on disk are the ones the ledger describes.
+ */
+class CliStageLedger {
+public:
+    explicit CliStageLedger(std::string path, bool force_rerun)
+        : path_(std::move(path)), force_rerun_(force_rerun) {
+        if (force_rerun_) {
+            std::error_code ec;
+            fs::remove(path_, ec);
+            return;
+        }
+        std::ifstream in(path_);
+        if (!in.is_open()) return;
+        try {
+            nlohmann::json j;
+            in >> j;
+            if (j.is_object()) entries_ = j.get<std::map<std::string, std::string>>();
+        } catch (const std::exception& e) {
+            // A corrupt ledger is treated as absent: re-running is always safe,
+            // trusting an unreadable claim is not.
+            std::cerr << "Warning: ignoring unreadable CLI stage ledger " << path_
+                      << ": " << e.what() << std::endl;
+            entries_.clear();
+        }
+    }
+
+    /** True when `stage` completed with exactly this fingerprint. */
+    bool reusable(const std::string& stage, const std::string& fingerprint) const {
+        if (force_rerun_ || fingerprint.empty()) return false;
+        const auto it = entries_.find("stage." + stage);
+        if (it == entries_.end()) return false;
+        const auto parsed = ledger::parse(it->second);
+        return parsed.state == "done" && parsed.detail == fingerprint;
+    }
+
+    void mark(const std::string& stage, const std::string& fingerprint) {
+        entries_["stage." + stage] = ledger::done(fingerprint);
+        save();
+    }
+
+    /** Drop this stage and everything after it (explicit order list). */
+    void invalidateFrom(const std::string& stage, const std::vector<std::string>& order) {
+        auto it = std::find(order.begin(), order.end(), stage);
+        if (it == order.end()) return;
+        for (auto downstream = it; downstream != order.end(); ++downstream) {
+            entries_.erase("stage." + *downstream);
+        }
+        save();
+    }
+
+private:
+    void save() const {
+        std::ofstream out(path_, std::ios::trunc);
+        if (!out.is_open()) {
+            std::cerr << "Warning: could not persist CLI stage ledger " << path_ << std::endl;
+            return;
+        }
+        out << nlohmann::json(entries_).dump(2);
+    }
+
+    std::string path_;
+    bool force_rerun_ = false;
+    std::map<std::string, std::string> entries_;
+};
+
+const std::vector<std::string>& cli_stage_order() {
+    // The CLI has its own order, distinct from the HTTP pipeline: it classifies
+    // and runs the scene/platform analyzers BEFORE building the timeline (because
+    // the platform artifacts are merged into events.db). Downstream
+    // invalidation follows this list, so it must match the execution order
+    // below exactly.
+    static const std::vector<std::string> order = {
+        ledger::kImageAnalysis, ledger::kFilter, ledger::kFileClassification,
+        ledger::kPlatformAnalysis, ledger::kEventExtraction, ledger::kFileCarving};
+    return order;
+}
+} // namespace
+
 int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
     if (args.android_source == "harmony-backup" && !HarmonyBackupExtractor::recognizes(args.image_path)) {
         std::cerr << "INVALID_HARMONY_BACKUP: expected .info.json and files directory" << std::endl;
@@ -222,22 +314,38 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
     std::string eventDbPath = prefix + baseName + "_events.db";
     std::string fileDbPath = prefix + baseName + "_files.db";
 
+    // Resume ledger: lives beside the products it describes. --overwrite forces
+    // a full re-run (it deletes the ledger), which finally gives that flag the
+    // meaning its help text always implied.
+    CliStageLedger stageLedger(prefix + baseName + "_stages.json", args.overwrite);
+
     try {
         // Step 1: Analyze image
-        std::cout << "[1/4] Analyzing image..." << std::endl;
-        auto analyzer = std::make_unique<ImageAnalyzer>(args.image_path);
-        analyzer->setXFSMode(args.xfs_mode);
-        if (args.enable_decryption) {
-            analyzer->setEnableDecryption(true);
-            if (!args.key_file_dir.empty()) analyzer->setKeyFileDir(args.key_file_dir);
-            if (!decryptPassword.empty()) analyzer->setDecryptPassword(decryptPassword);
-        }
+        const std::string imageFp = ledger::combine({
+            args.image_path, std::to_string(static_cast<int>(args.xfs_mode)),
+            args.enable_decryption ? "decrypt" : "plain", args.android_source});
+        if (stageLedger.reusable(ledger::kImageAnalysis, imageFp) &&
+            !ledger::fingerprintSqlite(rawDbPath).empty()) {
+            std::cout << "[1/4] Analyzing image... skipped (raw database already complete)\n"
+                      << "✓ Raw database: " << rawDbPath << "\n" << std::endl;
+        } else {
+            stageLedger.invalidateFrom(ledger::kImageAnalysis, cli_stage_order());
+            std::cout << "[1/4] Analyzing image..." << std::endl;
+            auto analyzer = std::make_unique<ImageAnalyzer>(args.image_path);
+            analyzer->setXFSMode(args.xfs_mode);
+            if (args.enable_decryption) {
+                analyzer->setEnableDecryption(true);
+                if (!args.key_file_dir.empty()) analyzer->setKeyFileDir(args.key_file_dir);
+                if (!decryptPassword.empty()) analyzer->setDecryptPassword(decryptPassword);
+            }
 
-        if (!analyzer->analyze() || !analyzer->extractToDatabase(rawDbPath)) {
-            std::cerr << "Error: Failed to analyze image" << std::endl;
-            return 1;
+            if (!analyzer->analyze() || !analyzer->extractToDatabase(rawDbPath)) {
+                std::cerr << "Error: Failed to analyze image" << std::endl;
+                return 1;
+            }
+            std::cout << "✓ Raw database: " << rawDbPath << "\n" << std::endl;
+            stageLedger.mark(ledger::kImageAnalysis, imageFp);
         }
-        std::cout << "✓ Raw database: " << rawDbPath << "\n" << std::endl;
 
         // Step 2: Apply file filter (default: general_forensics)
         // The filtered database is used by all downstream processors
@@ -245,55 +353,127 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
         std::string effectiveProfile = args.filter_profile.empty()
             ? "general_forensics" : args.filter_profile;
 
-        std::cout << "[2/4] Applying file filter: " << effectiveProfile << "..." << std::endl;
         std::string filteredDbPath = prefix + baseName + "_filtered.db";
+        const std::string filterFp = ledger::combine({
+            ledger::fingerprintSqlite(rawDbPath), effectiveProfile});
+        if (stageLedger.reusable(ledger::kFilter, filterFp) &&
+            !ledger::fingerprintSqlite(filteredDbPath).empty()) {
+            effectiveRawDb = filteredDbPath;
+            std::cout << "[2/4] Applying file filter: " << effectiveProfile
+                      << "... skipped (filtered database already complete)\n"
+                      << "✓ Filtered database: " << filteredDbPath << "\n" << std::endl;
+        } else {
+            stageLedger.invalidateFrom(ledger::kFilter, cli_stage_order());
+            std::cout << "[2/4] Applying file filter: " << effectiveProfile << "..." << std::endl;
+            try {
+                FileFilter filter;
+                auto stats = filter.applyFilterByName(rawDbPath, filteredDbPath, effectiveProfile);
 
-        try {
-            FileFilter filter;
-            auto stats = filter.applyFilterByName(rawDbPath, filteredDbPath, effectiveProfile);
-
-            if (stats.included_files > 0) {
-                effectiveRawDb = filteredDbPath;
-                std::cout << "✓ Filtered database: " << filteredDbPath
-                          << " (" << stats.included_files << "/" << stats.total_files
-                          << " files)\n" << std::endl;
-            } else {
-                std::cerr << "Warning: Filter excluded all files. Using unfiltered data." << std::endl;
+                if (stats.included_files > 0) {
+                    effectiveRawDb = filteredDbPath;
+                    std::cout << "✓ Filtered database: " << filteredDbPath
+                              << " (" << stats.included_files << "/" << stats.total_files
+                              << " files)\n" << std::endl;
+                    stageLedger.mark(ledger::kFilter, filterFp);
+                } else {
+                    std::cerr << "Warning: Filter excluded all files. Using unfiltered data." << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "Warning: Filter failed: " << e.what() << std::endl;
+                std::cerr << "Continuing with unfiltered data." << std::endl;
             }
-        } catch (const std::exception& e) {
-            std::cerr << "Warning: Filter failed: " << e.what() << std::endl;
-            std::cerr << "Continuing with unfiltered data." << std::endl;
         }
 
         // Step 3: Classify files with scene-aware context
-        std::cout << "[3/4] Classifying files..." << std::endl;
-        auto classifier = std::make_unique<FileClassifier>(effectiveRawDb, fileDbPath);
-
-        // Determine scene type from analysis flags
         SceneType sceneType = SceneType::NONE;
         if (args.android_analyze) sceneType = SceneType::ANDROID;
         else if (args.windows_analyze) sceneType = SceneType::WINDOWS;
         else if (args.linux_analyze) sceneType = SceneType::LINUX;
 
-        if (sceneType != SceneType::NONE) {
-            classifier->setSceneType(sceneType);
-            std::cout << "  Scene type: "
-                      << (sceneType == SceneType::ANDROID ? "Android" :
-                          sceneType == SceneType::WINDOWS ? "Windows" :
-                          sceneType == SceneType::LINUX ? "Linux" : "None")
-                      << std::endl;
-        }
+        const std::string classifyFp = ledger::combine({
+            ledger::fingerprintSqlite(effectiveRawDb),
+            std::to_string(static_cast<int>(sceneType))});
+        // Set when Step 3 rebuilt files.db. Step 4 must not rebuild it again:
+        // classification and the platform analyzers share this one artifact, so
+        // a fresh copy from Step 3 is already the correct input for them.
+        bool filesDbRebuiltInStep3 = false;
+        if (stageLedger.reusable(ledger::kFileClassification, classifyFp) &&
+            !ledger::fingerprintSqlite(fileDbPath).empty()) {
+            std::cout << "[3/4] Classifying files... skipped (file database already complete)\n"
+                      << "✓ File database: " << fileDbPath << "\n" << std::endl;
+        } else {
+            stageLedger.invalidateFrom(ledger::kFileClassification, cli_stage_order());
+            std::cout << "[3/4] Classifying files..." << std::endl;
+            // FileClassifier only INSERTs, so a partial files.db from an
+            // interrupted run would double every row on the retry.
+            for (const char* suffix : {"", "-wal", "-shm", "-journal"}) {
+                std::error_code ec;
+                fs::remove(fileDbPath + suffix, ec);
+            }
+            auto classifier = std::make_unique<FileClassifier>(effectiveRawDb, fileDbPath);
 
-        if (!classifier->classifyAndExtract()) {
-            std::cerr << "Error: Failed to classify files" << std::endl;
-            return 1;
-        }
-        std::cout << "✓ File database: " << fileDbPath << "\n" << std::endl;
+            if (sceneType != SceneType::NONE) {
+                classifier->setSceneType(sceneType);
+                std::cout << "  Scene type: "
+                          << (sceneType == SceneType::ANDROID ? "Android" :
+                              sceneType == SceneType::WINDOWS ? "Windows" :
+                              sceneType == SceneType::LINUX ? "Linux" : "None")
+                          << std::endl;
+            }
 
-        // Release classifier's database lock before platform analyzers write to files.db
-        classifier.reset();
+            if (!classifier->classifyAndExtract()) {
+                std::cerr << "Error: Failed to classify files" << std::endl;
+                return 1;
+            }
+            std::cout << "✓ File database: " << fileDbPath << "\n" << std::endl;
+            stageLedger.mark(ledger::kFileClassification, classifyFp);
+            filesDbRebuiltInStep3 = true;
+
+            // Release classifier's database lock before platform analyzers write to files.db
+            classifier.reset();
+        }
 
         // Step 4: Scene-specific analysis (writes artifacts into files.db)
+        //
+        // Unlike the HTTP pipeline (where each platform analyzer owns a separate
+        // windows.db/android.db/linux.db), the CLI writes platform artifacts
+        // INTO files.db. So files.db carries two stages' work, and its validity
+        // depends on both claims: classification AND platform analysis must each
+        // still hold for the platform artifacts to be reusable. Any gap means
+        // files.db has to be rebuilt once, then the requested analyzers run.
+        const std::string platformFp = ledger::combine({
+            ledger::fingerprintSqlite(effectiveRawDb),
+            args.android_analyze ? "android" : "",
+            args.windows_analyze ? "windows" : "",
+            args.linux_analyze ? "linux" : "",
+            args.skip_ai ? "noai" : "ai"});
+        const bool platformRequested = args.android_analyze || args.windows_analyze || args.linux_analyze;
+        const bool filesDbPresent = !ledger::fingerprintSqlite(fileDbPath).empty();
+        const bool platformReusable = platformRequested &&
+            stageLedger.reusable(ledger::kPlatformAnalysis, platformFp) && filesDbPresent;
+
+        if (platformRequested && !platformReusable && !filesDbRebuiltInStep3) {
+            // Rebuilding classification + platform together is the only correct
+            // move once files.db must be rewritten: classification's output and
+            // the platform analyzers' output share one artifact. (When Step 3
+            // already rebuilt it for the same reason, that copy is the input.)
+            std::cout << "[Scene] Rebuilding file database (classification + platform artifacts)...\n";
+            for (const char* suffix : {"", "-wal", "-shm", "-journal"}) {
+                std::error_code ec;
+                fs::remove(fileDbPath + suffix, ec);
+            }
+            // Dropping the claims before the rebuild keeps the ledger honest if
+            // the process dies in the middle of re-deriving files.db.
+            stageLedger.invalidateFrom(ledger::kFileClassification, cli_stage_order());
+            auto classifier = std::make_unique<FileClassifier>(effectiveRawDb, fileDbPath);
+            if (sceneType != SceneType::NONE) classifier->setSceneType(sceneType);
+            if (!classifier->classifyAndExtract()) {
+                std::cerr << "Error: Failed to classify files" << std::endl;
+                return 1;
+            }
+            classifier.reset();
+            stageLedger.mark(ledger::kFileClassification, classifyFp);
+
         if (args.android_analyze) {
             std::cout << "[Android] Analyzing..." << std::endl;
             auto dbMgr = std::make_unique<DatabaseManager>(effectiveRawDb);
@@ -350,19 +530,42 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
                 }
             }
         }
+        if (platformRequested) {
+            stageLedger.mark(ledger::kPlatformAnalysis, platformFp);
+        }
+        } else if (platformReusable) {
+            std::cout << "[Scene] Platform analysis... skipped (artifacts already complete)\n" << std::endl;
+        }
 
         // Step 5: Generate timeline (uses effective raw db)
-        std::cout << "[4/4] Generating timeline..." << std::endl;
-        auto eventExtractor = std::make_unique<EventExtractor>(effectiveRawDb, eventDbPath);
-        if (eventExtractor->extractEvents()) {
-            // Import scene artifacts from files.db (where platform analyzers wrote)
-            if (args.android_analyze && fs::exists(fileDbPath))
-                eventExtractor->importAndroidArtifacts(fileDbPath);
-            if (args.windows_analyze && fs::exists(fileDbPath))
-                eventExtractor->importWindowsArtifacts(fileDbPath);
-            if (args.linux_analyze && fs::exists(fileDbPath))
-                eventExtractor->importLinuxArtifacts(fileDbPath);
-            std::cout << "✓ Timeline: " << eventDbPath << "\n" << std::endl;
+        // The timeline depends on the platform artifacts above (they are merged
+        // into events.db), so its fingerprint covers both inputs.
+        const std::string eventsFp = ledger::combine({
+            ledger::fingerprintSqlite(effectiveRawDb),
+            ledger::fingerprintSqlite(fileDbPath)});
+        if (stageLedger.reusable(ledger::kEventExtraction, eventsFp) &&
+            !ledger::fingerprintSqlite(eventDbPath).empty()) {
+            std::cout << "[4/4] Generating timeline... skipped (timeline already complete)\n" << std::endl;
+        } else {
+            stageLedger.invalidateFrom(ledger::kEventExtraction, cli_stage_order());
+            std::cout << "[4/4] Generating timeline..." << std::endl;
+            // EventExtractor appends into an existing events table.
+            for (const char* suffix : {"", "-wal", "-shm", "-journal"}) {
+                std::error_code ec;
+                fs::remove(eventDbPath + suffix, ec);
+            }
+            auto eventExtractor = std::make_unique<EventExtractor>(effectiveRawDb, eventDbPath);
+            if (eventExtractor->extractEvents()) {
+                // Import scene artifacts from files.db (where platform analyzers wrote)
+                if (args.android_analyze && fs::exists(fileDbPath))
+                    eventExtractor->importAndroidArtifacts(fileDbPath);
+                if (args.windows_analyze && fs::exists(fileDbPath))
+                    eventExtractor->importWindowsArtifacts(fileDbPath);
+                if (args.linux_analyze && fs::exists(fileDbPath))
+                    eventExtractor->importLinuxArtifacts(fileDbPath);
+                std::cout << "✓ Timeline: " << eventDbPath << "\n" << std::endl;
+                stageLedger.mark(ledger::kEventExtraction, eventsFp);
+            }
         }
 
         // Step 4: DLL analysis
