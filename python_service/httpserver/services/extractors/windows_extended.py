@@ -22,328 +22,184 @@ def _filetime_to_datetime(filetime: int) -> datetime:
     except: return None
 
 
-# ---------------------------------------------------------------------------
-# XPRESS Huffman (MS-XCA §2.2), used by Windows 10 1809+ for MAM-compressed
-# Prefetch files. Structure:
-#   * 512 4-bit code lengths (256 literal/length + 256 offset symbols),
-#   * bitstream is a sequence of 16-bit little-endian words read MSB-first,
-#   * symbols 0-255 are literals, 256 is end-of-stream, 257-511 are matches
-#     whose length comes from a 16-entry table and whose offset is a second
-#     Huffman symbol plus extra bits, shifted left by 2 and biased by 4.
-# ---------------------------------------------------------------------------
-_XPRESS_LEN_BASE = (0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28,
-                    32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224,
-                    256, 512, 1024, 2048)
-_XPRESS_LEN_EXTRA = (0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
-                     3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0, 0, 0, 0)
-_XPRESS_OFF_BASE = (0, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128,
-                    192, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096,
-                    6144, 8192, 12288, 16384, 24576, 32768, 49152)
-_XPRESS_OFF_EXTRA = (0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
-                     7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14)
-
-
-class _XpressBitReader:
-    """MS-XCA bit reader: 16-bit little-endian words, consumed MSB-first.
-
-    MSB-first is not interchangeable with LSB-first here: reading LSB-first
-    decodes the first symbol as a match with an out-of-range back-reference,
-    while MSB-first reproduces the prefetch header exactly.
-    """
-
-    def __init__(self, data: bytes):
-        self.data = data
-        self.pos = 0
-        self.bitbuf = 0
-        self.bitcount = 0
-
-    def _fill(self, need: int) -> None:
-        while self.bitcount < need:
-            if self.pos + 1 < len(self.data):
-                word = self.data[self.pos] | (self.data[self.pos + 1] << 8)
-            elif self.pos < len(self.data):
-                word = self.data[self.pos]
-            else:
-                word = 0
-            self.pos += 2
-            self.bitbuf = ((self.bitbuf << 16) | word) & 0xFFFFFFFFFFFFFFFF
-            self.bitcount += 16
-
-    def peek(self, n: int) -> int:
-        self._fill(n)
-        return (self.bitbuf >> (self.bitcount - n)) & ((1 << n) - 1)
-
-    def skip(self, n: int) -> None:
-        self.bitcount -= n
-
-    def read(self, n: int) -> int:
-        value = self.peek(n)
-        self.skip(n)
-        return value
-
-
-def _xpress_make_table(lengths) -> dict:
-    """Canonical Huffman decode table keyed by (code, bit_length).
-
-    Assignment follows the canonical procedure exactly: for each length L from
-    1 upward, codes start at ``(previous_code + previous_count) << 1`` and are
-    handed out in ascending symbol order. Getting the shift wrong produces
-    prefix collisions between symbols (30 and 17 shared their leading bits),
-    which silently corrupts the stream a few symbols in.
-    """
-    table = {}
-    max_len = max(lengths) if lengths else 0
-    count = [0] * (max_len + 1)
-    for length in lengths:
-        if length:
-            count[length] += 1
-    next_code = [0] * (max_len + 1)
-    code = 0
-    for length in range(1, max_len + 1):
-        code = (code + count[length - 1]) << 1
-        next_code[length] = code
-    for symbol, length in enumerate(lengths):
-        if not length:
-            continue
-        table[(next_code[length], length)] = symbol
-        next_code[length] += 1
-    return table
-
-
-def _xpress_decode(reader: _XpressBitReader, table: dict) -> int:
-    code = 0
-    for length in range(1, 16):
-        code = (code << 1) | reader.read(1)
-        symbol = table.get((code, length))
-        if symbol is not None:
-            return symbol
-    raise ValueError("invalid XPRESS Huffman code")
-
-
-def _xpress_huffman_decompress(payload: bytes, expected_size: int) -> bytes:
-    """Decode one XPRESS Huffman block (MS-XCA §2.2).
-
-    The 256-byte preamble holds 512 4-bit code lengths describing ONE canonical
-    Huffman table over 512 symbols: 0-255 are literals, 256 is end-of-stream,
-    and 257-511 are match symbols. For a match symbol n, ``(n - 256) >> 4``
-    selects the length slot and ``(n - 256) & 0x0F`` the offset slot. The table
-    is single: the Kraft sum over all 512 entries is exactly 1.0, so decoding
-    literals and matches against separate tables cannot work.
-    """
-    if len(payload) < 256:
-        raise ValueError("XPRESS payload too short for a Huffman table")
-    lengths = []
-    for i in range(256):
-        byte = payload[i]
-        lengths.append(byte & 0x0F)
-        lengths.append((byte >> 4) & 0x0F)
-    table = _xpress_make_table(lengths)
-    reader = _XpressBitReader(payload[256:])
-    out = bytearray()
-    while len(out) < expected_size:
-        symbol = _xpress_decode(reader, table)
-        if symbol < 256:
-            out.append(symbol)
-            continue
-        if symbol == 256:
-            break
-        index = symbol - 256
-        length_slot = index >> 4
-        offset_slot = index & 0x0F
-        length = _XPRESS_LEN_BASE[length_slot] + 3
-        extra = _XPRESS_LEN_EXTRA[length_slot]
-        if extra:
-            length += reader.read(extra)
-        offset = _XPRESS_OFF_BASE[offset_slot]
-        extra_off = _XPRESS_OFF_EXTRA[offset_slot]
-        if extra_off:
-            offset += reader.read(extra_off)
-        offset = (offset << 2) + 4
-        if offset > len(out):
-            raise ValueError(f"invalid XPRESS back-reference offset {offset}")
-        start = len(out) - offset
-        for i in range(length):
-            if len(out) >= expected_size:
-                break
-            out.append(out[start + i])
-    return bytes(out[:expected_size])
-
-
-def _decompress_mam(data: bytes) -> bytes:
-    """Expand a MAM-compressed Prefetch file to its SCCA body.
-
-    Header: b"MAM\\x04" + uint32 little-endian uncompressed size, followed by
-    the XPRESS Huffman payload.
-    """
-    if len(data) < 8:
-        raise ValueError("truncated MAM header")
-    expected = struct.unpack_from('<I', data, 4)[0]
-    if expected <= 0 or expected > 64 * 1024 * 1024:
-        raise ValueError(f"implausible MAM uncompressed size {expected}")
-    return _xpress_huffman_decompress(data[8:], expected)
-
-
-def _mam_summary(data: bytes, file_path: str) -> str:
-    """Describe a MAM-compressed Prefetch without claiming to decode it.
-
-    Windows 10 1809+ stores the SCCA body XPRESS-Huffman compressed behind a
-    ``MAM\\x04`` header. The container is documented in MS-XCA §2.2, but a
-    table-assignment slip corrupts the stream a few symbols in, and emitting
-    decoded garbage would be worse than saying the payload was not expanded.
-    The extractor therefore reports only what the container itself proves
-    (scheme, declared size, executable and path hash from the file name), so a
-    report describes the artifact instead of calling it unreadable.
-    """
-    expected = struct.unpack_from('<I', data, 4)[0] if len(data) >= 8 else 0
-    name = os.path.basename(file_path)
-    stem = name[:-3] if name.lower().endswith('.pf') else name
-    executable, _, hash_suffix = stem.rpartition('-')
-    lines = [f"# Prefetch Analysis: `{name}`"]
-    lines.append("**Format:** Windows 10/11 MAM-compressed Prefetch "
-                 "(XPRESS Huffman, `MAM\\x04` container)")
-    if executable:
-        lines.append(f"**Executable:** {executable}")
-    if hash_suffix:
-        lines.append(f"**Path Hash:** {hash_suffix}")
-    if expected:
-        lines.append(f"**Uncompressed Size:** {_format_size(expected)}")
-    lines.append(f"**Compressed Size:** {_format_size(len(data))}")
-    if expected:
-        lines.append(f"**Compression Ratio:** {len(data) / expected * 100:.1f}%")
-    lines.append("")
-    lines.append("## Parsing Status")
-    lines.append("The payload is XPRESS-Huffman compressed and this extractor "
-                 "reports the container metadata only. Run counts, "
-                 "last-execution timestamps and referenced-file lists are "
-                 "**not available** from this file.")
-    lines.append("")
-    lines.append("## What the metadata establishes")
-    lines.append(f"The file name records that `{executable or 'an executable'}` "
-                 "has a Prefetch entry on this host, i.e. Windows created a "
-                 "tracing record for it. Run counts and execution times require "
-                 "decompression and are deliberately not inferred here.")
-    return "\n".join(lines)
-
-
 @register_extractor
 class PrefetchExtractor(BaseExtractor):
-    """Extracts metadata from Windows Prefetch files (.pf)."""
+    """Extracts execution history from Windows Prefetch files (.pf).
 
-    # Prefetch magic: SCCA (0x41434353)
-    PF_MAGIC_V17 = b'\x53\x43\x43\x41'  # Windows XP
-    PF_MAGIC_V23 = b'\x53\x43\x43\x41'  # Windows Vista/7
-    PF_MAGIC_V26 = b'\x53\x43\x43\x41'  # Windows 8
-    PF_MAGIC_V30 = b'\x53\x43\x43\x41'  # Windows 10
-    # Windows 10 1809+ compresses the whole SCCA body with XPRESS Huffman and
-    # prefixes a MAM header: b"MAM\x04" + uint32 uncompressed size.
+    Parsing goes through libscca (pyscca), which handles both the plain SCCA
+    format and the MAM-compressed container Windows 10 1809+ writes. A
+    hand-rolled XPRESS Huffman decoder was attempted first and could not be
+    made correct — it reproduced the SCCA header but diverged a few symbols
+    later — so the library is a hard dependency rather than an optional
+    upgrade. Without it the extractor reports the container metadata only,
+    which is honest but loses run counts and execution timestamps.
+    """
+
+    PF_MAGIC_SCCA = b'\x53\x43\x43\x41'
     PF_MAGIC_MAM = b'\x4d\x41\x4d\x04'
 
     async def extract_to_markdown(self, file_path: str) -> str:
         try:
             with open(file_path, 'rb') as f:
-                data = f.read()
+                head = f.read(8)
         except Exception as e:
             return f"Error: Failed to read Prefetch file: {e}"
 
-        if len(data) < 8:
+        if len(head) < 8:
             return "Error: File too small to be a valid Prefetch file."
 
-        magic = data[:4]
-        if magic == self.PF_MAGIC_MAM:
-            return _mam_summary(data, file_path)
-
-        if magic != self.PF_MAGIC_V17:
-            return f"Error: Not a valid Prefetch file (magic: {magic.hex()})"
-
-        if len(data) < 84:
-            return "Error: File too small to be a valid Prefetch file."
+        # A plain SCCA file starts with "SCCA"; a MAM container starts with
+        # "MAM\x04". Anything else is not a prefetch file.
+        if head[:4] != self.PF_MAGIC_SCCA and head[:4] != self.PF_MAGIC_MAM:
+            return f"Error: Not a valid Prefetch file (magic: {head[:4].hex()})"
 
         try:
-            version = struct.unpack_from('<I', data, 0)[0]
+            import pyscca
+        except ImportError:
+            return _prefetch_metadata_only(file_path, head,
+                                           reason="libscca-python (pyscca) is not installed")
 
-            result = [f"# Prefetch Analysis: `{os.path.basename(file_path)}`"]
-
-            # Parse based on version
-            if version == 0x11:  # v17 (XP)
-                result.append("**Version:** Windows XP (v17)")
-                filename_offset = 0x10
-                filename_size = 60
-                run_count_offset = 0x90
-                last_run_offset = 0x78
-            elif version == 0x17:  # v23 (Vista/7)
-                result.append("**Version:** Windows Vista/7 (v23)")
-                filename_offset = 0x10
-                filename_size = 60
-                run_count_offset = 0x98
-                last_run_offset = 0x80
-            elif version == 0x1A:  # v26 (Win8)
-                result.append("**Version:** Windows 8 (v26)")
-                filename_offset = 0x10
-                filename_size = 60
-                run_count_offset = 0xD0
-                last_run_offset = 0x80
-            elif version == 0x1E:  # v30 (Win10)
-                result.append("**Version:** Windows 10 (v30)")
-                filename_offset = 0x10
-                filename_size = 60
-                run_count_offset = 0xD0
-                last_run_offset = 0x80
-            else:
-                result.append(f"**Version:** Unknown ({version})")
-
-            # Extract filename (UTF-16LE)
-            try:
-                fn_bytes = data[filename_offset:filename_offset + filename_size]
-                filename = fn_bytes.decode('utf-16-le').rstrip('\x00')
-                result.append(f"**Executable:** {filename}")
-            except:
-                filename = "Unknown"
-
-            # Run count
-            if run_count_offset + 4 <= len(data):
-                run_count = struct.unpack_from('<I', data, run_count_offset)[0]
-                result.append(f"**Run Count:** {run_count}")
-
-            # Last run time
-            if last_run_offset + 8 <= len(data):
-                last_run_ft = struct.unpack_from('<Q', data, last_run_offset)[0]
-                last_run = _filetime_to_datetime(last_run_ft)
-                if last_run:
-                    result.append(f"**Last Run:** {last_run.strftime('%Y-%m-%d %H:%M:%S')}")
-
-            # File size
-            result.append(f"**File Size:** {_format_size(os.path.getsize(file_path))}")
-            result.append("")
-
-            # Extract referenced filenames
-            result.append("## Referenced Files")
-            # Look for filename strings in the file
-            filenames = []
-            try:
-                # Prefetch files contain referenced filenames as UTF-16LE strings
-                text = data.decode('utf-16-le', errors='replace')
-                # Look for common Windows paths
-                import re
-                paths = re.findall(r'[A-Z]:\\[^\x00]{5,200}', text)
-                seen = set()
-                for p in paths:
-                    p_clean = p.rstrip('\x00').strip()
-                    if p_clean and p_clean not in seen and '\\' in p_clean:
-                        seen.add(p_clean)
-                        filenames.append(p_clean)
-            except: pass
-
-            if filenames:
-                for fn in filenames[:50]:
-                    result.append(f"- `{fn}`")
-                if len(filenames) > 50:
-                    result.append(f"\n*(Showing first 50 of {len(filenames)} referenced files)*")
-            else:
-                result.append("*Could not extract referenced filenames.*")
-
-            return "\n".join(result)
+        try:
+            return self._extract_with_libscca(pyscca, file_path)
         except Exception as e:
-            return f"Error: Failed to parse Prefetch file: {e}"
+            logger.error(f"Error parsing Prefetch file {file_path}: {e}")
+            return _prefetch_metadata_only(
+                file_path, head, reason=f"libscca could not parse it: {e}")
+
+    def _extract_with_libscca(self, pyscca, file_path: str) -> str:
+        scca = pyscca.file()
+        scca.open(file_path)
+        try:
+            return self._render(scca, file_path)
+        finally:
+            scca.close()
+
+    def _render(self, scca, file_path: str) -> str:
+        name = os.path.basename(file_path)
+        result = [f"# Prefetch Analysis: `{name}`"]
+        result.append(f"**Format Version:** {scca.get_format_version()}")
+
+        executable = scca.get_executable_filename() or ""
+        if executable:
+            result.append(f"**Executable:** {executable}")
+
+        try:
+            result.append(f"**Prefetch Hash:** 0x{scca.get_prefetch_hash():08x}")
+        except Exception:
+            pass
+
+        run_count = scca.get_run_count()
+        result.append(f"**Run Count:** {run_count}")
+
+        # Run timestamps: index 0 is the most recent execution. This is the
+        # field that makes prefetch evidence: it dates program execution even
+        # when the filesystem timestamps have been altered.
+        timestamps = []
+        for index in range(min(run_count, 8)):
+            try:
+                filetime = scca.get_last_run_time_as_integer(index)
+            except Exception:
+                continue
+            if not filetime:
+                continue
+            parsed = _filetime_to_datetime(filetime)
+            if parsed:
+                timestamps.append((index, parsed))
+        if timestamps:
+            result.append("")
+            result.append("## Last Execution Times")
+            result.append("| # | UTC Time |")
+            result.append("| --- | --- |")
+            for index, parsed in timestamps:
+                result.append(f"| {index} | {parsed.strftime('%Y-%m-%d %H:%M:%S')} |")
+        elif run_count:
+            result.append("*Run timestamps unavailable (device may be a solid-state "
+                          "drive with timestamp recording disabled).*")
+
+        # Volume information ties the prefetch record to the filesystem it ran
+        # on, including the volume creation time.
+        try:
+            volume_count = scca.get_number_of_volumes()
+        except Exception:
+            volume_count = 0
+        if volume_count:
+            result.append("")
+            result.append("## Volumes")
+            result.append("| # | Device Path | Serial | Creation Time |")
+            result.append("| --- | --- | --- | --- |")
+            for index in range(volume_count):
+                try:
+                    volume = scca.get_volume_information(index)
+                    device = volume.get_device_path() or ""
+                    serial = volume.get_serial_number()
+                    created = volume.get_creation_time()
+                    created_text = created.strftime("%Y-%m-%d %H:%M:%S") if created else ""
+                    result.append(f"| {index} | `{device}` | 0x{serial:08x} | {created_text} |")
+                except Exception as exc:
+                    logger.debug("volume %s unreadable: %s", index, exc)
+
+        # Referenced files show which DLLs, data files and documents the
+        # process touched. Bounded so one prefetch file cannot dominate the
+        # analysis budget.
+        try:
+            filename_count = scca.get_number_of_filenames()
+        except Exception:
+            filename_count = 0
+        if filename_count:
+            limit = 60
+            result.append("")
+            result.append(f"## Referenced Files (first {min(limit, filename_count)} of {filename_count})")
+            for index in range(min(limit, filename_count)):
+                try:
+                    entry = scca.get_filename(index)
+                except Exception:
+                    continue
+                if entry:
+                    result.append(f"- `{entry}`")
+
+        result.append("")
+        result.append("## Forensic Reading")
+        result.append(f"This record establishes that `{executable or name}` executed on this "
+                      f"host{(' ' + str(run_count) + ' time(s)') if run_count else ''}"
+                      f"{(': most recently at ' + timestamps[0][1].strftime('%Y-%m-%d %H:%M:%S') + ' UTC') if timestamps else ''}. "
+                      "Prefetch is created by the Windows prefetcher, so the record is "
+                      "system-generated rather than user-supplied.")
+        return "\n".join(result)
+
+
+def _prefetch_metadata_only(file_path: str, head: bytes, reason: str) -> str:
+    """Fallback when libscca is unavailable or rejects the file.
+
+    Reports the container facts and states plainly which fields are missing,
+    so a report never presents an unparsed prefetch file as analysed content.
+    """
+    name = os.path.basename(file_path)
+    stem = name[:-3] if name.lower().endswith('.pf') else name
+    executable, _, hash_suffix = stem.rpartition('-')
+    compressed = head[:4] == b'MAM\x04'
+    lines = [f"# Prefetch Analysis: `{name}`"]
+    lines.append("**Format:** " + ("MAM-compressed Prefetch (XPRESS Huffman)"
+                                   if compressed else "SCCA Prefetch"))
+    if executable:
+        lines.append(f"**Executable:** {executable}")
+    if hash_suffix:
+        lines.append(f"**Path Hash:** {hash_suffix}")
+    if compressed and len(head) >= 8:
+        expected = struct.unpack_from('<I', head, 4)[0]
+        if expected:
+            lines.append(f"**Declared Uncompressed Size:** {_format_size(expected)}")
+    lines.append("")
+    lines.append("## Parsing Status")
+    lines.append(f"The payload was not decoded: {reason}.")
+    lines.append("Run counts, execution timestamps and referenced files are "
+                 "**not available** for this file.")
+    lines.append("")
+    lines.append("## What the metadata establishes")
+    lines.append(f"The file name records that `{executable or 'an executable'}` has a "
+                 "Prefetch entry on this host, i.e. Windows created a tracing record "
+                 "for it. Execution timing requires a decoded payload and is not "
+                 "inferred here.")
+    return "\n".join(lines)
 
 
 @register_extractor

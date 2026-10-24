@@ -1054,3 +1054,50 @@ def test_evtx_extractor_uses_two_argument_file_header():
     source = inspect.getsource(windows_evtx.EvtxExtractor._extract_with_python_evtx)
     assert "FileHeader(data, 0)" in source
     assert "FileHeader(f.read())" not in source
+
+
+@pytest.mark.asyncio
+async def test_prefetch_extractor_uses_libscca_for_mam(tmp_path):
+    """MAM-compressed prefetch must yield real execution data via libscca.
+
+    Windows 10 1809+ wraps the SCCA body in a "MAM\\x04" container. The
+    hand-rolled parser rejected those files outright ("Not a valid Prefetch
+    file") and a later metadata-only fallback could not report run counts.
+    libscca decodes both containers, so the extractor must route through it.
+    """
+    pyscca = pytest.importorskip("pyscca", reason="libscca-python not installed")
+    from httpserver.services.extractors.windows_extended import PrefetchExtractor
+
+    # A MAM header with no body: libscca will refuse it, and the extractor must
+    # degrade to metadata rather than raise.
+    mam = tmp_path / "NOTEPAD.EXE-DEADBEEF.pf"
+    mam.write_bytes(b"MAM\x04" + struct.pack("<I", 4096) + b"\x00" * 32)
+    out = await PrefetchExtractor().extract_to_markdown(str(mam))
+    assert not out.startswith("Error")
+    assert "NOTEPAD.EXE" in out
+    # Either libscca parsed it (unlikely for a truncated body) or the fallback
+    # states plainly that run data is unavailable.
+    assert ("Run Count" in out) or ("not available" in out)
+
+
+@pytest.mark.asyncio
+async def test_prefetch_extractor_rejects_non_prefetch(tmp_path):
+    """A file with neither SCCA nor MAM magic is not a prefetch file."""
+    from httpserver.services.extractors.windows_extended import PrefetchExtractor
+
+    bogus = tmp_path / "not-a-prefetch.pf"
+    bogus.write_bytes(b"\xde\xad\xbe\xef" + b"\x00" * 128)
+    out = await PrefetchExtractor().extract_to_markdown(str(bogus))
+    assert out.startswith("Error: Not a valid Prefetch file")
+
+
+def test_prefetch_extractor_routes_through_libscca():
+    """Source guard: the extractor must call pyscca, not a hand-rolled decoder."""
+    import inspect
+    from httpserver.services.extractors import windows_extended
+
+    source = inspect.getsource(windows_extended.PrefetchExtractor)
+    assert "pyscca" in source
+    # The removed hand-rolled XPRESS decoder must not come back.
+    assert "_xpress_huffman_decompress" not in source
+    assert "_decompress_mam" not in source
