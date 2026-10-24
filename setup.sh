@@ -333,6 +333,10 @@ APT_PACKAGES=(
     libbfio-dev           # Basic File I/O (used by evtx/esedb/olecf)
     libewf-dev            # E01/EnCase image format
     libfsntfs-dev         # NTFS MFT metadata parsing (Windows forensics)
+    # systemd journal parsing (systemd-python is built from source and needs
+    # the libsystemd headers; without them the journal extractor silently
+    # falls back to header-only output)
+    libsystemd-dev
     # Full-text search
     libxapian-dev
     # PDF analysis
@@ -898,6 +902,66 @@ ensure_large_python_package "pydicom"            pydicom
 ensure_large_python_package "ctranslate2==4.8.2"   ctranslate2
 ensure_large_python_package "sentencepiece==0.2.2" sentencepiece
 ensure_large_python_package "sherpa-onnx==1.13.8"  sherpa_onnx
+
+# ------------------------------------------------------------------------
+# Forensic parser bindings (check-then-install).
+#
+# These are the Python bindings behind the artifact extractors. They are in
+# requirements.txt, but a network hiccup there leaves the extractor silently
+# degrading: the C++ backend still asks for the file, the extractor returns
+# "content unavailable", and the report quietly loses that evidence class
+# (this is how 373 event logs once came back with zero facts). Installing them
+# individually and reporting the result makes a missing binding visible at
+# setup time instead of at report time.
+# ------------------------------------------------------------------------
+info "Verifying forensic parser bindings..."
+FORENSIC_BINDINGS_OK=1
+for binding in \
+    "python-evtx:Evtx:Windows Event Log (.evtx)" \
+    "python-registry:Registry:Windows Registry hives" \
+    "libscca-python:pyscca:Windows Prefetch (.pf, MAM/XPRESS)" \
+    "libewf-python:pyewf:E01/EnCase images" \
+    "pypdf:pypdf:PDF metadata" \
+    "psd-tools:psd_tools:Photoshop .psd" \
+    "olefile:olefile:OLE2 (.msg, jump lists)" \
+    "defusedxml:defusedxml:Safe XML parsing"
+do
+    IFS=':' read -r pip_name module description <<< "$binding"
+    if "$PYTHON_EXEC" -c "import $module" 2>/dev/null; then
+        ok "  $description ($pip_name)"
+        continue
+    fi
+    info "  Installing $pip_name ($description) ..."
+    if "$PYTHON_EXEC" -m pip install --retries 5 --timeout 120 -q "$pip_name" 2>/dev/null \
+        && "$PYTHON_EXEC" -c "import $module" 2>/dev/null; then
+        ok "  $description ($pip_name) installed"
+    else
+        warn "  $description unavailable: $pip_name could not be installed."
+        warn "    Artifacts of this type will report 'content unavailable' instead of being parsed."
+        FORENSIC_BINDINGS_OK=0
+    fi
+done
+if [ "$FORENSIC_BINDINGS_OK" != "1" ]; then
+    warn "One or more forensic parser bindings are missing; affected evidence types will not be analyzed."
+    warn "Install them manually: $PYTHON_EXEC -m pip install -r $REQUIREMENTS_HTTPSERVER"
+fi
+
+# systemd journal (Linux .journal files). systemd-python has no wheel: it builds
+# against libsystemd headers, so it only succeeds once libsystemd-dev is present
+# (installed in step 1). Optional — the extractor degrades to header-only output
+# without it — so a build failure here warns instead of aborting setup.
+if "$PYTHON_EXEC" -c "import systemd.journal" 2>/dev/null; then
+    ok "  systemd journal parsing (systemd-python)"
+else
+    info "  Installing systemd-python (systemd journal parsing) ..."
+    if "$PYTHON_EXEC" -m pip install --retries 3 --timeout 120 -q systemd-python 2>/dev/null \
+        && "$PYTHON_EXEC" -c "import systemd.journal" 2>/dev/null; then
+        ok "  systemd journal parsing (systemd-python) installed"
+    else
+        warn "  systemd journal parsing unavailable (systemd-python needs libsystemd-dev)."
+        warn "    Linux .journal artifacts will report header-only metadata."
+    fi
+fi
 
 # ------------------------------------------------------------------------
 # Local CPU models (checksum-pinned installers, tolerant of network failure).

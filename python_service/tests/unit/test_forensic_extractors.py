@@ -1101,3 +1101,61 @@ def test_prefetch_extractor_routes_through_libscca():
     # The removed hand-rolled XPRESS decoder must not come back.
     assert "_xpress_huffman_decompress" not in source
     assert "_decompress_mam" not in source
+
+
+# ---------------------------------------------------------------------------
+# Library API contracts for the optional forensic bindings.
+#
+# Each of these was a silently-broken call: the import succeeded, the call
+# raised, and the extractor's broad except turned it into an empty result. The
+# artifact then reached the LLM as "content unavailable" with no error anywhere.
+# ---------------------------------------------------------------------------
+
+
+def test_e01_extractor_passes_segment_list_to_pyewf():
+    """pyewf.open() iterates its argument; a bare string is walked per character.
+
+    libewf then reports "filename: / is too small" and the E01 extractor
+    silently fell back to header-only metadata (no media size, no acquisition
+    details). It must hand pyewf the glob-expanded segment list.
+    """
+    import inspect
+    from httpserver.services.extractors import disk_image
+
+    source = inspect.getsource(disk_image.E01MetadataExtractor._try_pyewf)
+    assert "pyewf.open(pyewf.glob(" in source
+    assert "pyewf.open(file_path)" not in source
+
+
+def test_journal_extractor_does_not_use_add_file():
+    """systemd.journal.Reader has no add_file(); files=[path] is the API.
+
+    path= accepts only a journal *directory*, so neither old form works on a
+    single .journal file. The AttributeError was swallowed by the extractor's
+    except clause and every Linux journal came back as header-only.
+    """
+    import inspect
+    from httpserver.services.extractors import linux_journal
+
+    source = inspect.getsource(linux_journal.JournalExtractor._extract_with_systemd)
+    assert "add_file" not in source
+    assert "files=[file_path]" in source
+
+
+@pytest.mark.asyncio
+async def test_journal_extractor_parses_a_real_journal_file():
+    """End-to-end guard: a readable journal must yield entries, not just a header."""
+    pytest.importorskip("systemd.journal", reason="systemd-python not installed")
+    from httpserver.services.extractors.linux_journal import JournalExtractor
+
+    import glob
+    import os
+
+    candidates = sorted(glob.glob("/var/log/journal/**/*.journal", recursive=True))
+    if not candidates:
+        pytest.skip("no readable journal files on this host")
+
+    out = await JournalExtractor().extract_to_markdown(candidates[0])
+    assert "Total Entries" in out
+    assert "Recent Entries" in out
+    assert "(No entries found)" not in out

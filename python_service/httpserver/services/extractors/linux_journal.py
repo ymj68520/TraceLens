@@ -190,8 +190,12 @@ class JournalExtractor(BaseExtractor):
 
     def _extract_with_systemd(self, file_path: str) -> str:
         from systemd import journal
-        j = journal.Reader()
-        j.add_file(file_path)
+        # Reader exposes no per-file method: a single journal file is passed as
+        # files=[path] — despite the docstring claiming open file objects, the
+        # C binding expects path strings — while path= only accepts a journal
+        # *directory*. The previous per-file call raised AttributeError on every
+        # .journal file, so the extractor never produced entry data.
+        j = journal.Reader(files=[file_path])
         entries = []
         for entry in j:
             entries.append({'timestamp': entry.get('__REALTIME_TIMESTAMP', ''), 'priority': entry.get('PRIORITY', 6), 'unit': entry.get('_SYSTEMD_UNIT', entry.get('SYSLOG_IDENTIFIER', '')), 'message': entry.get('MESSAGE', '')})

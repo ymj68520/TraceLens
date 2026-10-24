@@ -23,7 +23,11 @@ class E01MetadataExtractor(BaseExtractor):
         except ImportError: return ""
 
         try:
-            ewf_handle = pyewf.open(file_path)
+            # pyewf.open() takes the whole segment sequence, not one path: it
+            # iterates its argument, so a plain string is walked character by
+            # character and libewf reports the nonsensical "filename: / is too
+            # small". pyewf.glob() expands the .E01/.E02... segment set.
+            ewf_handle = pyewf.open(pyewf.glob(file_path))
             result = [f"# E01 Forensic Image Metadata: `{os.path.basename(file_path)}`"]
             header_values = ewf_handle.get_header_values()
             if header_values:
