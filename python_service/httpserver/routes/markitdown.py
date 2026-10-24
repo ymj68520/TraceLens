@@ -52,6 +52,55 @@ class ConvertRequest(BaseModel):
     file_path: str = Field(..., description="Absolute path to the file to convert")
 
 
+# Formats markitdown itself converts well. Everything else goes to the
+# specialized extractor registry first (see _convert_via_extractor). Kept in
+# sync with the C++ FileAnalyzer markitdown allow-list so both sides agree on
+# which files belong to markitdown and which to the forensic parsers.
+_MARKITDOWN_NATIVE_EXTENSIONS = frozenset({
+    ".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt",
+    ".html", ".htm", ".ipynb", ".rss",
+    ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".tif",
+    ".mp3", ".wav",
+    ".txt", ".md", ".markdown", ".csv", ".tsv", ".json", ".xml",
+    ".yaml", ".yml", ".rst", ".log",
+})
+
+
+async def _convert_via_extractor(file_path: Path) -> "tuple[str, str]":
+    """Convert a forensic artifact with its purpose-built extractor.
+
+    Returns ``(markdown, title)``; ``("", "")`` means "let markitdown try".
+    markitdown-native document formats are skipped so their conversion quality
+    is unchanged — only artifacts markitdown cannot read (event logs, prefetch,
+    registry hives, browser stores, archives...) take this path.
+    """
+    ext = file_path.suffix.lower()
+    if ext in _MARKITDOWN_NATIVE_EXTENSIONS:
+        return "", ""
+
+    try:
+        locator = get_document_extractor_locator()
+        extractor = locator.get_extractor(str(file_path))
+    except Exception as exc:
+        logger.warning(f"Extractor lookup failed for {file_path}: {exc}")
+        return "", ""
+
+    if extractor is None:
+        return "", ""
+
+    try:
+        markdown = await extractor.extract_to_markdown(str(file_path))
+    except Exception as exc:
+        logger.error(f"{type(extractor).__name__} failed for {file_path}: {exc}")
+        return "", ""
+
+    if not markdown or not markdown.strip():
+        logger.warning(f"{type(extractor).__name__} produced empty output for {file_path}")
+        return "", ""
+
+    return markdown, ""
+
+
 async def _task_conversion_anchors(
     task_id: str | None, workspace_root: str | None
 ):
@@ -180,14 +229,23 @@ async def convert_file(request: ConvertRequest):
         )
 
     try:
-        md = _get_markitdown()
+        # Route through the extractor registry first: event logs, prefetch,
+        # registry hives, browser stores and other forensic artifacts have
+        # purpose-built parsers there, and markitdown cannot read any of them
+        # (it raises UnsupportedFormatException, which surfaced as HTTP 500).
+        # The C++ backend sends those extensions here, so without this dispatch
+        # every .pf/.evtx/hive in a case came back as "conversion failed".
+        markdown, title = await _convert_via_extractor(file_path)
 
-        # Offload the synchronous, IO/CPU-heavy conversion so it doesn't block
-        # the event loop (and stall every other request) for large files.
-        result = await asyncio.to_thread(md.convert, str(file_path))
+        if not markdown:
+            md = _get_markitdown()
 
-        markdown = result.markdown if result else ""
-        title = getattr(result, 'title', None) or ""
+            # Offload the synchronous, IO/CPU-heavy conversion so it doesn't block
+            # the event loop (and stall every other request) for large files.
+            result = await asyncio.to_thread(md.convert, str(file_path))
+
+            markdown = result.markdown if result else ""
+            title = getattr(result, 'title', None) or ""
 
         processing_time = (time.time() - start_time) * 1000
 

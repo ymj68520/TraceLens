@@ -28,6 +28,17 @@ class ExtractorLocator:
         """Locates the appropriate extractor for the given file path."""
         path = Path(file_path)
 
+        # Filename-based routing must come first: registry hives (SAM, SYSTEM,
+        # SOFTWARE, SECURITY, DEFAULT, NTUSER.DAT) and Linux logs (wtmp, btmp)
+        # have no extension, so the empty-extension branch below used to return
+        # None before their names were ever consulted. The hives then fell
+        # through to markitdown, which cannot read them, and every registry
+        # artifact in a case failed with HTTP 500.
+        extractor = get_extractor_by_filename(path.name)
+        if extractor:
+            logger.info(f"Routed '{path.name}' to {extractor.__class__.__name__} (by filename)")
+            return extractor
+
         # Special fallback for LevelDB directories
         if path.is_dir() and (path / "CURRENT").exists():
             ext = "leveldb"
@@ -46,12 +57,6 @@ class ExtractorLocator:
                 return None
         else:
             ext = path.suffix.lower()
-
-        # Try filename-based routing first (for auth.log, wtmp, SAM, etc.)
-        extractor = get_extractor_by_filename(path.name)
-        if extractor:
-            logger.info(f"Routed '{path.name}' to {extractor.__class__.__name__} (by filename)")
-            return extractor
 
         # Fall back to extension-based routing
         extractor = get_extractor(ext)

@@ -589,3 +589,145 @@ def test_batch_convert_uses_shared_primitive_with_bounded_concurrency_and_error_
     assert len(calls) == 53
     assert all(call[1:] == (input_root, output_root) for call in calls)
     assert max_active == 4
+
+
+# ---------------------------------------------------------------------------
+# /convert extractor dispatch
+#
+# The C++ backend sends forensic artifacts (.pf/.evtx/hives) to /convert, not
+# only documents. That endpoint used to call markitdown unconditionally, so
+# every prefetch file, event log and registry hive came back as HTTP 500
+# "conversion failed" — markitdown raises UnsupportedFormatException for them.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_convert_uses_specialized_extractor_for_forensic_artifact(
+    tmp_path, monkeypatch
+):
+    prefetch = tmp_path / "CMD.EXE-DEADBEEF.pf"
+    prefetch.write_bytes(b"MAM\x04" + b"\x00" * 64)
+
+    class FakeExtractor:
+        async def extract_to_markdown(self, file_path):
+            return "# Prefetch Analysis\n**Run Count:** 3\n"
+
+    locator = MagicMock()
+    locator.get_extractor.return_value = FakeExtractor()
+    monkeypatch.setattr(markitdown, "get_document_extractor_locator", lambda: locator)
+
+    markitdown._md_instance = None
+    monkeypatch.setattr(
+        markitdown, "_get_markitdown", lambda: pytest.fail("markitdown must not run")
+    )
+
+    response = _client().post(
+        "/api/markitdown/convert",
+        json={"task_id": "t1", "file_path": str(prefetch)},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert "Run Count" in body["content"]
+
+
+@pytest.mark.asyncio
+async def test_convert_falls_back_to_markitdown_for_documents(tmp_path, monkeypatch):
+    document = tmp_path / "report.pdf"
+    document.write_bytes(b"%PDF-1.4\n")
+
+    locator = MagicMock()
+    locator.get_extractor.side_effect = AssertionError(
+        "markitdown-native formats must not hit the extractor registry"
+    )
+    monkeypatch.setattr(markitdown, "get_document_extractor_locator", lambda: locator)
+
+    class FakeMd:
+        def convert(self, file_path):
+            return MagicMock(markdown="# Converted PDF", title="report")
+
+    monkeypatch.setattr(markitdown, "_get_markitdown", lambda: FakeMd())
+
+    response = _client().post(
+        "/api/markitdown/convert",
+        json={"task_id": "t1", "file_path": str(document)},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["content"] == "# Converted PDF"
+    assert body["title"] == "report"
+
+
+@pytest.mark.asyncio
+async def test_convert_falls_back_to_markitdown_when_extractor_raises(
+    tmp_path, monkeypatch
+):
+    artifact = tmp_path / "weird.evtx"
+    artifact.write_bytes(b"ElfFile\x00" + b"\x00" * 32)
+
+    class BrokenExtractor:
+        async def extract_to_markdown(self, file_path):
+            raise RuntimeError("corrupt log")
+
+    locator = MagicMock()
+    locator.get_extractor.return_value = BrokenExtractor()
+    monkeypatch.setattr(markitdown, "get_document_extractor_locator", lambda: locator)
+
+    class FakeMd:
+        def convert(self, file_path):
+            return MagicMock(markdown="# Recovered", title="")
+
+    monkeypatch.setattr(markitdown, "_get_markitdown", lambda: FakeMd())
+
+    response = _client().post(
+        "/api/markitdown/convert",
+        json={"task_id": "t1", "file_path": str(artifact)},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["content"] == "# Recovered"
+
+
+# ---------------------------------------------------------------------------
+# ExtractorLocator filename routing
+#
+# Registry hives (SAM, SYSTEM, SOFTWARE, SECURITY, DEFAULT, NTUSER.DAT) and the
+# Linux login records (wtmp/btmp) have no extension. The locator used to bail
+# out of the empty-extension branch before consulting the filename map, so all
+# of them were reported as unsupported and every hive in a case failed.
+# ---------------------------------------------------------------------------
+
+
+def test_locator_routes_extensionless_registry_hive_by_filename(tmp_path):
+    from httpserver.services.document_extractor import get_document_extractor_locator
+
+    hive = tmp_path / "SAM"
+    hive.write_bytes(b"regf" + b"\x00" * 60)
+
+    extractor = get_document_extractor_locator().get_extractor(str(hive))
+
+    assert extractor is not None
+    assert type(extractor).__name__ == "RegistryExtractor"
+
+
+def test_locator_still_rejects_unknown_extensionless_binary(tmp_path):
+    from httpserver.services.document_extractor import get_document_extractor_locator
+
+    blob = tmp_path / "randomblob"
+    blob.write_bytes(b"\x00\x01\x02\x03\x04\x05\x06\x07")
+
+    assert get_document_extractor_locator().get_extractor(str(blob)) is None
+
+
+def test_locator_routes_extensionless_plain_text_by_content(tmp_path):
+    from httpserver.services.document_extractor import get_document_extractor_locator
+
+    note = tmp_path / "notes"
+    note.write_text("#!/bin/sh\necho hello\n", encoding="utf-8")
+
+    extractor = get_document_extractor_locator().get_extractor(str(note))
+
+    assert extractor is not None
+    assert type(extractor).__name__ == "TextDumpExtractor"
