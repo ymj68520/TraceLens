@@ -1,6 +1,7 @@
 #include "TaskPersistence.h"
 #include "TaskSerialization.h"
 #include "PathManager/PathManager.h"
+#include <algorithm>
 #include <fstream>
 #include <filesystem>
 #include <iostream>
@@ -51,12 +52,34 @@ void TaskPersistence::load_tasks(
             AnalysisTask task;
             from_json(element, task);
 
-            // Fix up state for restarted tasks (Recovery Logic)
+            // Fix up state for restarted tasks (Recovery Logic).
+            //
+            // A task interrupted mid-run is no longer reported as FAILED when it
+            // left a stage ledger behind: that ledger is exactly the record of
+            // what was finished, so the task is INTERRUPTED — resumable with the
+            // same id and directory. Tasks without a ledger (or whose ledger is
+            // empty) keep the old, honest FAILED treatment: there is nothing to
+            // resume from, so they must be recreated.
             if (task.status == TaskStatus::RUNNING || task.status == TaskStatus::PENDING) {
-                task.status = TaskStatus::FAILED;
-                task.message = "Interrupted by server restart";
-                task.error_details = "The server was restarted while this task was in queue or running. Please delete and recreate if necessary.";
+                const bool hasLedger = std::any_of(
+                    task.metadata.begin(), task.metadata.end(),
+                    [](const auto& kv) {
+                        return kv.first.rfind("stage.", 0) == 0 && !kv.second.empty();
+                    });
                 task.interrupted_by_restart = true;
+                if (hasLedger) {
+                    task.status = TaskStatus::INTERRUPTED;
+                    task.message = "Interrupted by server restart (resumable)";
+                    task.error_details =
+                        "The server was restarted while this task was running. Completed stages "
+                        "were preserved; use \"continue analysis\" to resume from the last "
+                        "finished stage.";
+                    runningTaskIds.insert(task.id);
+                } else {
+                    task.status = TaskStatus::FAILED;
+                    task.message = "Interrupted by server restart";
+                    task.error_details = "The server was restarted while this task was in queue or running. Please delete and recreate if necessary.";
+                }
 
                 // completed_time 记录的是"系统中断于该时刻"（非任务真实运行
                 // 时长终点），前端据此以"中断于"语义展示。

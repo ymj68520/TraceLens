@@ -51,6 +51,7 @@ void TaskWatchdog::run() {
         for (auto& [id, task] : tasks_) {
             // Case A: PENDING tasks stuck beyond the pending threshold (scheduler loss)
             if (task.status == TaskStatus::PENDING) {
+                if (task.pause_requested.load()) continue;
                 auto elapsed = std::chrono::duration_cast<std::chrono::minutes>(
                     now_system - task.created_time).count();
                 if (elapsed > pending_minutes) {
@@ -68,6 +69,10 @@ void TaskWatchdog::run() {
             // threshold (C++ thread hang). LLM-heavy phases emit per-file /
             // per-cluster heartbeats, so this only trips on genuine hangs.
             if (task.status == TaskStatus::RUNNING) {
+                // A pause request is a deliberate stop: a stage boundary the
+                // worker is unwinding at does not touch the heartbeat. Killing it
+                // as "hung" would convert an intentional pause into a FAILED task.
+                if (task.pause_requested.load()) continue;
                 auto elapsed = std::chrono::duration_cast<std::chrono::minutes>(
                     now_steady - task.progress.phase_start_time).count();
                 if (elapsed > stale_minutes) {
