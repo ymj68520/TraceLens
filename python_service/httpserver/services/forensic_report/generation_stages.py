@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 
 import logging
 
@@ -319,8 +320,10 @@ async def compose_stage_narrative(envelope, materials, directions, comparisons, 
             logger.warning("Stage narrative batch %d over request budget; skipped", index + 1)
             continue
         try:
-            response = await llm.chat_completion(STAGE_NARRATIVE_SYSTEM_V1, request,
-                                                 max_tokens=8192, temperature=0.0)
+            response = await llm.chat_completion(
+                STAGE_NARRATIVE_SYSTEM_V1.replace(
+                    "__PART__", f"{index + 1}/{len(batches)}"),
+                request, max_tokens=8192, temperature=0.0)
             content = response.get("content")
             if not isinstance(content, str) or len(content) > 60000:
                 raise ValueError("NARRATIVE_OUTPUT_UNUSABLE")
@@ -335,12 +338,150 @@ async def compose_stage_narrative(envelope, materials, directions, comparisons, 
                 if (not isinstance(heading, str) or not 2 <= len(heading.strip()) <= 40
                         or not isinstance(text, str) or not 50 <= len(text) <= 9000):
                     raise ValueError("NARRATIVE_SECTION_SIZE")
-                sections.append({"heading": heading.strip(), "content": text.strip()})
+                heading = strip_material_ids(heading.strip())
+                text = strip_material_ids(text.strip())
+                if len(heading) < 2 or len(text) < 50:
+                    raise ValueError("NARRATIVE_SECTION_SIZE")
+                sections.append({"heading": heading, "content": text})
         except ValueError:
             # One unusable batch does not sink the rest; a narrative covering
             # the remaining batches still beats falling back to fragments.
             logger.warning("Stage narrative batch %d rejected; skipped", index + 1)
     return sections or None
+
+
+# Internal identifiers (m0012, e003) address the prompt's material list; they
+# are meaningless to a reader and the prompt forbids them. A PC.E01 run leaked
+# 55 of them into published prose because nothing enforced the rule.
+_MATERIAL_ID_RE = re.compile(r"(?<![A-Za-z0-9_])m\d{3,4}(?![A-Za-z0-9_])")
+_SENTENCE_LEAD_ID_RE = re.compile(
+    r"(?:(?<=[。；;，,、\n])|^)\s*m\d{3,4}\s*[、,，]?\s*")
+
+
+def strip_material_ids(text: str) -> str:
+    """Remove prompt-internal material ids from prose the reader will see."""
+    if not _MATERIAL_ID_RE.search(text):
+        return text
+    cleaned = _SENTENCE_LEAD_ID_RE.sub(lambda m: m.group(0)[:1] if m.group(0)[:1] else "", text)
+    cleaned = _MATERIAL_ID_RE.sub("", cleaned)
+    # Collapse the spacing/punctuation scars the deletion leaves behind.
+    cleaned = re.sub(r"[（(]\s*[)）]", "", cleaned)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"\s+([，。；：、])", r"\1", cleaned)
+    return cleaned.strip()
+
+
+# The four headings the prompt used to prescribe. A batch that repeats one of
+# them is re-titled from its own content instead of being numbered.
+_SKELETON_HEADINGS = (
+    "检材范围与构成", "材料反映的活动与体系",
+    "异常与待核线索", "信息缺口与核查建议",
+)
+_SKELETON_PREFIX_RE = re.compile(
+    r"^(?:%s)\s*(?:[（(]\s*\d+\s*[)）])?\s*$" % "|".join(_SKELETON_HEADINGS))
+
+
+def _derived_heading(heading: str, content: str) -> str:
+    """Replace a generic skeleton heading with a content-derived label.
+
+    Only skeleton headings are touched: a model that followed the prompt and
+    wrote a topic heading keeps it verbatim. The label comes from the first
+    clause, cut at a natural boundary and trimmed to the 24-character budget
+    the prompt sets, so it is reproducible from the frozen text rather than
+    invented. A hard 24-character cut is only the last resort: it used to
+    produce labels like "default_cloud_config.jso".
+    """
+    if not _SKELETON_PREFIX_RE.match(heading.strip()):
+        return heading
+    first = re.split(r"[。；;！!？?\n]", content.strip(), maxsplit=1)[0].strip()
+    first = re.sub(r"^(?:从材料内容看|综合现有材料)[，,]?", "", first)
+    first = re.sub(r"^材料中(?!心)", "", first)
+    first = first.strip("，,、 ")
+    if len(first) < 4:
+        return heading
+    # A sentence that opens with a file name ("default_cloud_config.json 与 …")
+    # yields a bare-filename label, which tells the reader nothing. Start the
+    # label after that opening name instead.
+    leading = re.match(r"^([A-Za-z0-9_.\-]+\.(?:json|xml|db|log|txt|ini|dat|evtx|hve|lnk))"
+                       r"\s*(?:与|和|、|及|,|，)?\s*", first)
+    if leading:
+        remainder = first[leading.end():].strip("，,、 ")
+        if len(remainder) >= 8:
+            first = remainder
+    # A bare filename followed directly by its description ("X.json显示…")
+    # leaves the same unusable label; strip the name and keep the predicate.
+    inline = re.match(r"^([A-Za-z0-9_.\-]+\.(?:json|xml|db|log|txt|ini|dat|evtx|hve|lnk))"
+                      r"(?=[\u4e00-\u9fff])", first)
+    if inline:
+        remainder = first[inline.end():].strip("，,、 ")
+        if len(remainder) >= 8:
+            first = remainder
+    # A preposition followed by a file name ("针对X.json的…") makes the label
+    # start with a dangling connective; drop both.
+    preposition = re.match(
+        r"^(?:针对|关于|根据|依据|结合)\s*"
+        r"[A-Za-z0-9_.\-]+\.(?:json|xml|db|log|txt|ini|dat|evtx|hve|lnk)"
+        r"\s*(?:的|中|里|与|和|、|,|，)?\s*", first)
+    if preposition:
+        remainder = first[preposition.end():].strip("，,、 ")
+        if len(remainder) >= 8:
+            first = remainder
+    if len(first) <= 24:
+        return first
+    # Prefer a clause boundary inside the budget. A bare filename is not a
+    # usable label, so a boundary is only accepted when it leaves a real
+    # phrase behind; otherwise fall back to the sentence's leading phrase.
+    for boundary in ("，", ",", "、", "：", ":"):
+        cut = first.rfind(boundary, 0, 24)
+        if cut >= 8:
+            candidate = first[:cut].strip()
+            if not _looks_like_bare_filename(candidate):
+                return candidate
+    clipped = first[:24]
+    # Never stop mid-identifier: back off to the last space when the cut falls
+    # inside a token ("话术培训文档 7要素" must not become "…7要素").
+    if clipped[-1].isalnum() and len(first) > 24 and (
+            first[24].isalnum() or first[24] in "._-"):
+        space = clipped.rfind(" ")
+        if space >= 8:
+            clipped = clipped[:space]
+    clipped = clipped.strip()
+    if _looks_like_bare_filename(clipped):
+        # Give up on this sentence: the next clause usually names the topic.
+        tail = re.split(r"[，,；;]", first, maxsplit=1)
+        if len(tail) > 1 and len(tail[1].strip()) >= 8:
+            return _trim_heading_label(tail[1].strip())
+        return heading
+    return _trim_heading_label(clipped)
+
+
+# A label cut mid-identifier ("load_statistics.d", "default_cloud_config.j")
+# or ending on a dangling connective ("…包括以") reads as a typo. Repair by
+# stepping back to the last complete token/phrase, then give up to the caller.
+_DANGLING_TAIL = ("以", "包括", "为", "的", "和", "与", "及", "在", "对")
+
+
+def _trim_heading_label(text: str) -> str:
+    """Drop a dangling identifier/fragment; keep the label readable."""
+    original = text.strip("，,、：:；; ")
+    text = original
+    if re.search(r"[A-Za-z0-9_.\-]\.[A-Za-z]{1,2}$", text):
+        # Ends on a filename fragment: drop the whole trailing identifier.
+        text = re.sub(r"[A-Za-z0-9_.\-]+$", "", text).strip("，,、：: ")
+    for word in _DANGLING_TAIL:
+        if text.endswith(word) and len(text) - len(word) >= 6:
+            text = text[: -len(word)].strip("，,、：: ")
+            break
+    # Repair must never turn a usable label into a stub ("针对", "材料观察层面"
+    # is still a real phrase, but "针对" alone is not).
+    if len(text) < 6:
+        return original
+    return text
+
+
+def _looks_like_bare_filename(text: str) -> bool:
+    """True when a label is nothing but a file name (no descriptive words)."""
+    return bool(re.fullmatch(r"[A-Za-z0-9_.\-]+", text))
 
 
 def _narrative_citations(text: str, materials) -> tuple[str, ...]:
@@ -369,11 +510,14 @@ def render_stage_report(envelope, materials, directions, comparisons, warnings, 
     if not phase_a:
         sections.append(StructuredReportSection(heading="本次案情（待核语境）", content=envelope.case_description))
     if narrative:
-        # Batches repeat the chapter skeleton; number repeated headings so
-        # the reader shows one ordered narrative instead of duplicates.
+        # A batch may still answer with the generic skeleton even though the
+        # prompt asks for topic headings. Repeating "检材范围与构成（2）（3）…"
+        # eight times reads as eight reports stapled together, so repeated
+        # skeleton headings are re-titled from the batch's own first sentence
+        # (a deterministic, evidence-derived label) and only then numbered.
         seen = {}
         for row in narrative:
-            heading = row["heading"]
+            heading = _derived_heading(row["heading"], row["content"])
             seen[heading] = seen.get(heading, 0) + 1
             if seen[heading] > 1:
                 heading = f"{heading}（{seen[heading]}）"
