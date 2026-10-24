@@ -214,8 +214,32 @@ DELETE /api/tasks/{id} 或 batch-cancel → 置 `cancellation_requested`。流�
 后台线程发现 RUNNING 超 `TASK_WATCHDOG_STALE_MINUTES` 无进度变化（或 PENDING 超时）→ 直接改状态为 FAILED，错误详情写明 inactivity 分钟数。任务线程**并不知道**自己被判死——它会继续跑完当前阶段，然后在下一次 update 时发现状态已变（TaskManager 的状态机以先到者为准）。排障时看到"任务还在写库但状态已 FAILED"不要惊讶，这是该设计的已知表象（TaskInfrastructure §6）。
 
 ### 重启恢复（第四条分支）
-进程崩溃 → 重启时 `TaskPersistence::load_tasks` 把 RUNNING/PENDING 一律标 FAILED（"宁可信其坏"——进度无法恢复就不假装在跑）。孤儿任务目录清理**不校验 UUID 形态**（会删 tasks/ 下任何不在字典里的目录——运维别往里放私人物品，TaskPersistence.cpp:85 注释与实现的偏差已记录）。
+进程崩溃 → 重启时 `TaskPersistence::load_tasks` 检查任务的阶段账本：**有账本**的 RUNNING/PENDING 任务改判 `INTERRUPTED`（可续跑，`runningTaskIds` 收集其 ID 并写审计日志）；**无账本**的仍一律标 FAILED（"宁可信其坏"——没有任何已完成阶段可复用，就不假装还能接着跑）。孤儿任务目录清理**不校验 UUID 形态**（会删 tasks/ 下任何不在字典里的目录——运维别往里放私人物品，TaskPersistence.cpp:85 注释与实现的偏差已记录）。
 
-### 失败后的"重跑"语义
-没有断点续跑。重跑=新任务（新目录）。已提取的大文件想复用的话，属人工操作范围（拷回 extracted_files/ 不受支持也不禁止——注意 LLMScratch 临时目录是另一回事，任务结束会清理）。
-**最后更新**: 2026-08-23（技术深化：叙事主线保留，补 4 段核心源码逐块走读）
+### 断点续跑（阶段账本）
+
+任务不再只有"重跑=新任务"一条路。每个阶段在**出口**把自己的完成事实写入 `AnalysisTask::metadata["stage.<NAME>"]`，值形如 `done:<输入指纹>`；阶段在**入口**读取该记录，只有同时满足"标记 done + 记录的指纹等于当前输入指纹 + 产物存在且非空"才跳过。
+
+账本载体是 `metadata`（随 `tasks.json` 一起持久化，零 schema 变更），值语法与指纹工具在 [TaskStageLedger.h](../../src/network/HTTPServer/TaskStageLedger.h)。
+
+关键设计约束（都是踩过的坑）：
+
+- **指纹必须覆盖 SQLite 的 `-wal` 侧车**。分析器统一开 `PRAGMA journal_mode=WAL`，未 checkpoint 的写入只改 `-wal`，主库的 size/mtime 完全不变；只哈希主库会对"刚被重写"的库报"没变"——这正是让续跑复用陈旧产物的假阴性。`-shm` 反而必须排除：它在**只读打开**时就会被创建，纳入会让"有人读过这个库"也变成指纹变化，把每次续跑都变成误判失效。
+- **上游变化必须连带作废下游**。`clear_downstream_stages()` 按 `pipeline_stage_order()` 清掉后续阶段的账本并删除它们拥有的产物（events.db / files.db）。CLI 的阶段顺序与 HTTP 不同（CLI 先分类+平台分析、后建时间线，因为平台工件要并入 events.db），所以两边各有一份顺序表，必须与实际执行顺序一致。
+- **重跑前必须清产物**。`ImageAnalyzer` / `FileClassifier` / `EventExtractor` / 平台分析器全是 `CREATE TABLE IF NOT EXISTS` + `INSERT`（追加语义），不清库重跑会产生重复行。清理由 `remove_sqlite_artifacts()`（含 `-wal/-shm/-journal` 侧车）在阶段入口完成。
+- **天然幂等的阶段不记指纹**。文件级 LLM 分析的候选查询自带 `llm_analyzed_at IS NULL`，平台工件 LLM 的 SQL 同样带该条件，图谱摄取靠 `ingested_at` 水印——这些阶段中断后重跑本身只会补缺口，账本只记一个裸 `done` 用于表达"这一阶段整体完成过"。
+
+对外接口：
+
+| 方法 | 端点 | 语义 |
+|---|---|---|
+| POST | `/api/tasks/{id}/resume` | 从账本继续（同 ID、同目录、同配置）。仅 FAILED / CANCELLED / INTERRUPTED / PAUSED 且账本非空；否则 409 并返回具体原因 |
+| POST | `/api/tasks/{id}/pause` | 协作式暂停：当前阶段跑完后停到 PAUSED（与取消同样的粒度），之后可 resume |
+
+`TaskHelpers::is_resumable()` 是唯一判据（任务状态 + 镜像仍可读 + 账本非空 + 未被标记 `resume.exhausted`），`GET /api/tasks` 把它作为 `resumable` 字段透出给前端按钮。
+
+**可复核性**：每次续跑写一条 `TASK_RESUMED` 审计日志，记录续跑次数与下一个待跑阶段；任务上的 `resume_count` / `last_resumed_time` 持久化。被跳过的阶段各写一条 `STAGE_SKIPPED`，被作废的写 `STAGE_INVALIDATED`——终版报告可以自证"这个任务被续跑过，哪些阶段是复用而非重算"。
+
+CLI 走同一套账本语义，但载体是产物旁的 sidecar `<base>_stages.json`（CLI 没有任务状态库）。`--overwrite` 现在有真实含义：删除该账本、强制全量重跑（此前它被解析但无消费者）。C/S agent 的 `--overwrite` 因此与续跑联动：`resume_interrupted_commands` 开启时，崩溃后重执行的命令不再传该参数，从而保留账本继续跑。
+
+**最后更新**: 2026-10-24（新增断点续跑：阶段账本、resume/pause API、CLI/agent 续跑）

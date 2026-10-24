@@ -1462,3 +1462,23 @@ if(UNIX)
   set_tests_properties(AliyunImageHttpEndToEndTests PROPERTIES
     ENVIRONMENT "PYTHONPATH=${CMAKE_SOURCE_DIR}/python_service" TIMEOUT 240)
 endif()
+
+# Resumable-task stage ledger (TaskStageLedger.h): value grammar and the
+# change-detection rules that decide which stages a resumed run may skip.
+add_executable(test_stage_ledger_gtest
+  UnitTest/test_stage_ledger_gtest.cpp)
+target_include_directories(test_stage_ledger_gtest PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_stage_ledger_gtest ${GTEST_LIBRARIES} gtest_main OpenSSL::Crypto)
+add_test(NAME StageLedgerTests COMMAND test_stage_ledger_gtest)
+
+# Resumable-task end-to-end acceptance: the CLI stage ledger (skip / invalidate /
+# rebuild / --overwrite) and the HTTP resume lifecycle (complete -> restart ->
+# INTERRUPTED -> resume -> audit).
+add_test(NAME CliResumeEndToEndTests
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli_resume_e2e.py
+    --analyzer $<TARGET_FILE:forensic_analyzer>)
+set_tests_properties(CliResumeEndToEndTests PROPERTIES TIMEOUT 1200)
+add_test(NAME TaskResumeHttpEndToEndTests
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_task_resume_http.py
+    --analyzer $<TARGET_FILE:forensic_analyzer>)
+set_tests_properties(TaskResumeHttpEndToEndTests PROPERTIES TIMEOUT 1800)
