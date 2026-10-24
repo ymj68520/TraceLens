@@ -10,7 +10,11 @@
 #include <sstream>
 #include <algorithm>
 #include <unordered_set>
+#include <unordered_map>
+#include <queue>
+#include <functional>
 #include <cctype>
+#include <cstdlib>
 #include <ctime>
 #include <cstring>
 #include <fstream>
@@ -22,6 +26,15 @@
 namespace fs = std::filesystem;
 
 namespace forensics {
+
+namespace {
+// Lowest path priority that still counts as evidence. Priority 5 is the noise
+// bucket (temp dirs, registry transaction logs, binaries demoted by the header
+// check); a budget larger than the evidence stays unfilled rather than being
+// padded with it. Shared by the full-database candidate scan and the
+// deterministic ranking so both apply the same floor.
+constexpr int kMinSelectablePriority = 10;
+}  // namespace
 
 LLMAnalysisService::LLMAnalysisService() = default;
 LLMAnalysisService::~LLMAnalysisService() {
@@ -280,35 +293,34 @@ std::vector<std::string> LLMAnalysisService::selectImportantFiles(const std::str
         }
     }
 
-    // 候选扫描范围由 LLM_SMART_CANDIDATE_FILES 控制（0 = 全量），替代原先的硬编码扫描上限。
+    // 候选扫描范围由 LLM_SMART_CANDIDATE_FILES 控制（0 = 全量）。
+    // 这里按全库优先级预筛，而不是按插入序取前 N 行：真实镜像里注册表、
+    // 事件日志等关键工件往往排在表尾，LIMIT 窗口会让它们永远进不了候选。
     auto& configManager = ConfigManager::instance();
     if (!configManager.isLoaded()) {
         configManager.load();
     }
-    AnalysisOptions opts;
-    opts.maxFiles = static_cast<size_t>(configManager.getLLMSmartCandidateFiles());
-    auto allFiles = getFilesFromDatabase(filesDbPath, opts);
-    if (allFiles.empty()) {
+    const size_t candidateBudget =
+        static_cast<size_t>(configManager.getLLMSmartCandidateFiles());
+    const bool skipBinary = configManager.getLLMSkipBinary();
+
+    std::vector<std::string> candidates;
+    if (candidateBudget == 0) {
+        // Explicit unlimited opt-in: fall back to the raw scan.
+        AnalysisOptions opts;
+        opts.maxFiles = 0;
+        opts.skipBinaryFiles = skipBinary;
+        candidates = getFilesFromDatabase(filesDbPath, opts);
+    } else {
+        candidates = getPrioritizedCandidates(filesDbPath, candidateBudget, skipBinary);
+    }
+    if (candidates.empty()) {
         return {};
     }
 
     // Nothing to select when everything fits the budget.
-    if (allFiles.size() <= maxFiles) {
-        return allFiles;
-    }
-
-    // Drop TSK virtual entries ($MFT-style pseudo files): they are filesystem
-    // metadata, not analysable evidence for the LLM file-description stage.
-    std::vector<std::string> candidates;
-    candidates.reserve(allFiles.size());
-    for (auto& f : allFiles) {
-        std::filesystem::path p(f);
-        std::string name = p.filename().string();
-        if (!name.empty() && name[0] == '$') continue;
-        candidates.push_back(std::move(f));
-    }
-    if (candidates.empty()) {
-        candidates = std::move(allFiles);
+    if (maxFiles > 0 && candidates.size() <= maxFiles) {
+        return candidates;
     }
 
     // Bound the prompt sent to the LLM: on real images (thousands of files) an
@@ -319,7 +331,7 @@ std::vector<std::string> LLMAnalysisService::selectImportantFiles(const std::str
     const size_t kMaxSummaryChars = 48000;
     size_t summaryFiles = 0, summaryChars = 0;
     for (const auto& f : ranked) {
-        summaryChars += f.size() + 8;  // path + "- " + newline overhead
+        summaryChars += f.size() + 16;  // "NNNN " prefix + newline overhead
         if (summaryChars > kMaxSummaryChars) break;
         summaryFiles++;
     }
@@ -354,12 +366,12 @@ Consider:
 - Communication-related files (emails, messages, contacts)
 - Browser history and cache
 
-File list:
+File list (index path, one per line):
 )" + fileListSummary + R"(
 
-Return ONLY a JSON array of file paths that should be analyzed, )" + selectionLimitClause + R"(
-Format: ["path1", "path2", ...]
-Do not include any explanation, only the JSON array.)";
+Return ONLY a JSON array of the INDEX NUMBERS of the files that should be analyzed, )" + selectionLimitClause + R"(
+Format: [12, 45, 301]
+Do not include any explanation, only the JSON array of integers.)";
 
     try {
         auto response = router_->chat(prompt);
@@ -370,13 +382,20 @@ Do not include any explanation, only the JSON array.)";
             return selectByHeuristic(candidates, fallbackBudget);
         }
 
-        auto selected = parseImportantFiles(response.content, allFiles);
+        // The model answers with indices into summaryList (stable, unambiguous).
+        // Full paths and bare file names are still accepted for older prompts
+        // and for models that echo the path instead of the index.
+        auto selected = parseImportantFiles(response.content, summaryList);
         if (selected.empty() || (maxFiles > 0 && selected.size() < maxFiles / 4)) {
             // The model responded but returned (nearly) nothing usable —
             // its selection is unreliable, prefer the deterministic ranking.
+            // Log enough of the response to diagnose a prompt/format mismatch:
+            // without it a whole-image run only shows "1 usable path".
+            std::string snippet = response.content.substr(0, 600);
             std::cerr << "LLM selection returned only " << selected.size()
-                      << " usable paths (budget " << maxFiles
-                      << ") — falling back to heuristic file selection" << std::endl;
+                      << " usable paths (budget " << maxFiles << ", listed "
+                      << summaryList.size() << ") — falling back to heuristic "
+                      << "file selection. Response head: " << snippet << std::endl;
             return selectByHeuristic(candidates, fallbackBudget);
         }
         if (maxFiles > 0 && selected.size() > maxFiles) {
@@ -572,6 +591,82 @@ std::vector<std::string> LLMAnalysisService::getFilesFromDatabase(const std::str
     return files;
 }
 
+std::vector<std::string> LLMAnalysisService::getPrioritizedCandidates(
+        const std::string& dbPath, size_t budget, bool skipBinaryFiles) {
+    // Smart selection needs the *best* candidates in the whole database, not
+    // the first N rows. On the PC.E01 Windows image the previous LIMIT 5000
+    // over insertion order covered 1.6% of 305,716 files and missed every
+    // registry hive, all 370 .evtx logs and Amcache: the interesting artefacts
+    // were unreachable by construction. Scan every row, score it, and keep a
+    // bounded top-budget set.
+    std::vector<std::string> files;
+    if (budget == 0) {
+        return files;
+    }
+
+    sqlite3* db = nullptr;
+    if (sqlite3_open(dbPath.c_str(), &db) != SQLITE_OK) {
+        return files;
+    }
+
+    // "Unknown Files" is not a reliable binary signal: it is exactly where TSK
+    // puts .evtx logs, registry hives (.hve) and other opaque-but-critical
+    // artefacts. Only true executables are excluded here; anything else is
+    // scored, and forensicPathPriority demotes genuine noise.
+    std::string sql = "SELECT path FROM files";
+    if (skipBinaryFiles) {
+        sql += " WHERE category != 'Executables'";
+    }
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        sqlite3_close(db);
+        return files;
+    }
+
+    // Min-heap on (priority, slot): the root is the weakest kept entry, so a
+    // stronger candidate evicts it. The slot index (not a sequence number)
+    // lets an eviction replace exactly the entry the heap points at.
+    using Entry = std::pair<int, size_t>;
+    std::priority_queue<Entry, std::vector<Entry>, std::greater<Entry>> heap;
+    std::vector<std::string> kept;
+    kept.reserve(budget);
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char* path = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        if (!path || !*path) continue;
+        std::string value(path);
+
+        // TSK virtual entries ($MFT-style pseudo files) are filesystem
+        // metadata, not analysable evidence; dropping them before scoring also
+        // stops them from consuming the budget.
+        std::filesystem::path p(value);
+        std::string name = p.filename().string();
+        if (!name.empty() && name[0] == '$') continue;
+
+        int priority = forensicPathPriority(value);
+        if (priority < kMinSelectablePriority) continue;
+
+        if (kept.size() < budget) {
+            heap.emplace(priority, kept.size());
+            kept.push_back(std::move(value));
+            continue;
+        }
+        if (priority <= heap.top().first) continue;
+        size_t slot = heap.top().second;
+        heap.pop();
+        kept[slot] = std::move(value);
+        heap.emplace(priority, slot);
+    }
+
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+
+    // The heap orders by priority only; restore the deterministic priority
+    // ordering the rest of the pipeline expects.
+    return selectByHeuristic(std::move(kept), budget);
+}
+
 int LLMAnalysisService::forensicPathPriority(const std::string& path) {
     // Key-material filenames are data whatever directory they sit in: an
     // authorized_keys copy inside a vendored tree is still evidence.
@@ -591,6 +686,50 @@ int LLMAnalysisService::forensicPathPriority(const std::string& path) {
     std::string lower;
     lower.reserve(path.size());
     for (char c : path) lower += static_cast<char>(::tolower(static_cast<unsigned char>(c)));
+
+    // Core forensic artefacts outrank everything else. They are routinely
+    // classified as "Unknown Files"/"Executables" (evtx, hve, registry hives),
+    // so the skip-binary category filter drops them and no later rule ever
+    // sees them: on PC.E01 all 370 .evtx logs and Amcache were unreachable.
+    // These paths are the reason to run the analysis, whatever their category.
+    // Markers are path-shaped on purpose: a bare "/system" would match every
+    // /Windows/System32 file and collapse the ranking.
+    static const std::vector<std::string> coreArtefactMarkers = {
+        // Windows event logs and registry hives
+        "/winevt/logs/", ".evtx",
+        "/system32/config/", "/appcompat/programs/", "amcache.hve", "syscache.hve",
+        "ntuser.dat", "usrclass.dat",
+        // execution / persistence / user-activity artefacts
+        "/windows/prefetch/", "sruedb", "/srum/", "/recentdocs/",
+        "automaticdestinations", "customdestinations",
+        // Linux credentials stay top-tier; logs keep their existing 80 band
+        // (see the /var/log rule below) so established rankings do not shift.
+        "/etc/shadow", "/etc/passwd",
+        ".bash_history", ".zsh_history",
+    };
+    // Registry transaction logs and companions are storage internals, not the
+    // hive itself: a plain "ntuser.dat" substring also hits NTUSER.DAT.LOG,
+    // .blf and .regtrans-ms (the 窝点嫌疑人 image listed 10 of them ahead of real
+    // evidence). The existing .log1/.log2 rule demotes those to noise, so the
+    // core marker must not claim them first.
+    const bool registryCompanion =
+        lower.find(".log1") != std::string::npos ||
+        lower.find(".log2") != std::string::npos ||
+        lower.find(".blf") != std::string::npos ||
+        lower.find(".regtrans-ms") != std::string::npos ||
+        (lower.size() > 4 && lower.compare(lower.size() - 4, 4, ".log") == 0);
+    for (const auto& p : coreArtefactMarkers) {
+        if (lower.find(p) != std::string::npos) {
+            if (registryCompanion) continue;
+            // /Windows/System32/config/systemprofile/... is a per-service
+            // profile tree (95 files on PC.E01), not the hive directory.
+            if (p == "/system32/config/" &&
+                lower.find("/system32/config/systemprofile/") != std::string::npos) {
+                continue;
+            }
+            return 100;
+        }
+    }
 
     // Non-document binaries and UI resource packs: no text for the LLM, and a
     // credential word inside them is an identifier (WPS Shadow_Settings.kuip,
@@ -649,6 +788,18 @@ int LLMAnalysisService::forensicPathPriority(const std::string& path) {
     static const std::vector<std::string> distroJunkTrees = {
         "/usr/share/", "/usr/lib", "/usr/include", "/var/lib/yum", "/var/lib/dnf",
         "/var/lib/docker", "/var/lib/snapd", "/snap/", "/lost+found",
+        // Compiled SELinux policy modules are binary policy blobs (1,756 under
+        // /etc/selinux/targeted/active/modules on the 服务器镜像). They sit in
+        // /etc and so inherited the 60-point config score, spending over a
+        // third of the Linux budget on distro policy rather than evidence.
+        "/etc/selinux/",
+        // Upstream test suites shipped by packages (mysql-test holds thousands
+        // of fixture .test/.result files under /www/server/mysql on the same
+        // image); they are vendor fixtures, never case data.
+        "/mysql-test/",
+        // Kernel headers and module build trees (15,138 files under
+        // /usr/src/kernels on the 服务器镜像) are distro source, not evidence.
+        "/usr/src/kernels/", "/usr/src/debug/", "/lib/modules/",
     };
     const std::size_t lastSlashEarly = lower.find_last_of('/');
     const std::string baseEarly =
@@ -739,15 +890,30 @@ int LLMAnalysisService::forensicPathPriority(const std::string& path) {
     if (!lower.empty() && lower.back() == '~') return 5;        // emacs/gedit backups
     if (lower.find(".~lock") != std::string::npos) return 5;    // office lock files
     if (lower.find(".ds_store") != std::string::npos) return 5; // macOS finder droppings
-    // User data areas beat system areas
-    if (lower.find("/home/") != std::string::npos || lower.rfind("/home/", 0) == 0 ||
-        lower.find("/users/") != std::string::npos || lower.find("/root/") != std::string::npos ||
-        lower.find("desktop") != std::string::npos || lower.find("documents") != std::string::npos ||
-        lower.find("downloads") != std::string::npos) {
+    // User data areas beat system areas. The Desktop/Documents/Downloads terms
+    // must be real path segments: as bare substrings they also matched
+    // "Microsoft.DesktopAppInstaller…xml" and ".../DesktopSpotlight/..." under
+    // ProgramData, which put 13,632 system-package files in the user tier on
+    // PC.E01 and pushed actual desktop evidence out of the budget.
+    const bool inUserTree =
+        lower.find("/home/") != std::string::npos || lower.rfind("/home/", 0) == 0 ||
+        lower.find("/users/") != std::string::npos ||
+        lower.find("/root/") != std::string::npos;
+    const bool inUserFolder =
+        lower.find("/desktop/") != std::string::npos ||
+        lower.find("/documents/") != std::string::npos ||
+        lower.find("/downloads/") != std::string::npos;
+    if (inUserTree || inUserFolder) {
         return 90;
     }
-    // System logs and journals
-    if (lower.find("/var/log/") != std::string::npos || lower.find("journal") != std::string::npos) {
+    // System logs and journals. The journal term must be a real journal
+    // artefact: as a bare substring it also matched package-database stubs
+    // (yumdb .../x86_64/journalc) and promoted 68 of them to the log band,
+    // bypassing the /var/lib/yum demotion.
+    if (lower.find("/var/log/") != std::string::npos ||
+        lower.find("/var/log/journal/") != std::string::npos ||
+        lower.find("/journal/") != std::string::npos ||
+        lower.find("imjournal") != std::string::npos) {
         return 80;
     }
     // Browser / mail / chat profiles
@@ -836,7 +1002,6 @@ std::vector<std::string> LLMAnalysisService::selectByHeuristic(std::vector<std::
     // every evidence band, so a sparse image still keeps its real files. The
     // filter uses the scores above: recomputing the path priority here would
     // undo the header demotion.
-    const int kMinSelectablePriority = 10;
     std::vector<std::string> ranked;
     for (size_t index : order) {
         if (static_cast<int>(ranked.size()) >= static_cast<int>(maxFiles)) {
@@ -851,25 +1016,15 @@ std::vector<std::string> LLMAnalysisService::selectByHeuristic(std::vector<std::
 }
 
 std::string LLMAnalysisService::buildFileListSummary(const std::vector<std::string>& files) {
+    // One indexed full path per line. The previous directory-grouped layout
+    // listed bare file names under a heading, so a model asked for "paths"
+    // could not reproduce any entry that parseImportantFiles could match
+    // (observed on a Windows image: 1 of 1000 paths matched). Indices make the
+    // reply unambiguous and let one index select exactly one database row.
     std::stringstream ss;
-    
-    // Group files by directory and extension for a compact summary
-    std::map<std::string, std::vector<std::string>> byDir;
-    
-    for (const auto& file : files) {
-        std::filesystem::path p(file);
-        std::string dir = p.parent_path().string();
-        std::string name = p.filename().string();
-        byDir[dir].push_back(name);
+    for (size_t i = 0; i < files.size(); ++i) {
+        ss << (i + 1) << ' ' << files[i] << '\n';
     }
-
-    for (const auto& [dir, names] : byDir) {
-        ss << dir << "/\n";
-        for (const auto& name : names) {
-            ss << "  - " << name << "\n";
-        }
-    }
-
     return ss.str();
 }
 
@@ -877,46 +1032,87 @@ std::vector<std::string> LLMAnalysisService::parseImportantFiles(const std::stri
                                                                    const std::vector<std::string>& allFiles) {
     std::vector<std::string> importantFiles;
 
-    // Try to parse JSON array from response
+    // The prompt now hands the model an indexed list, so the canonical reply is
+    // a JSON array of integers. Three reply shapes are accepted, in order of
+    // reliability: (1) indices into allFiles, (2) full paths, (3) bare file
+    // names matched against the basename of each candidate. Every match is
+    // resolved to an exact element of allFiles so the caller can never receive
+    // a path that does not exist in the database.
+    std::unordered_set<std::string> known(allFiles.begin(), allFiles.end());
+
+    // basename -> first full path; built lazily only when a name needs it.
+    std::unordered_map<std::string, std::string> byBasename;
+    auto resolveName = [&](const std::string& raw) -> std::string {
+        if (byBasename.empty()) {
+            for (const auto& f : allFiles) {
+                std::filesystem::path p(f);
+                byBasename.emplace(p.filename().string(), f);
+            }
+        }
+        auto it = byBasename.find(raw);
+        return it == byBasename.end() ? std::string() : it->second;
+    };
+
     try {
-        // Find JSON array in response
         size_t start = llmResponse.find('[');
         size_t end = llmResponse.rfind(']');
-        
         if (start != std::string::npos && end != std::string::npos && end > start) {
             std::string jsonStr = llmResponse.substr(start, end - start + 1);
-            
-            // Simple parsing - look for quoted strings
+
+            // Single pass so the model's ranking order is preserved: whichever
+            // shape it answers in, the first entries it names are the ones the
+            // budget keeps when the reply exceeds maxFiles.
             size_t pos = 0;
-            while ((pos = jsonStr.find('"', pos)) != std::string::npos) {
-                size_t endQuote = jsonStr.find('"', pos + 1);
-                if (endQuote == std::string::npos) break;
-                
-                std::string path = jsonStr.substr(pos + 1, endQuote - pos - 1);
+            while (pos < jsonStr.size()) {
+                size_t quote = jsonStr.find('"', pos);
+                size_t tokenEnd = jsonStr.find_first_of(",[]", pos);
+                // A quoted entry starts before the next separator: read it.
+                if (quote != std::string::npos &&
+                    (tokenEnd == std::string::npos || quote < tokenEnd)) {
+                    size_t endQuote = jsonStr.find('"', quote + 1);
+                    if (endQuote == std::string::npos) break;
 
-                // Reject junk entries the model sometimes emits ("", "/").
-                // An empty needle would partial-match EVERY file below.
-                if (path.size() < 2 || path == "/") {
+                    std::string entry = jsonStr.substr(quote + 1, endQuote - quote - 1);
                     pos = endQuote + 1;
-                    continue;
-                }
 
-                // Check if this path exists in our file list
-                auto it = std::find(allFiles.begin(), allFiles.end(), path);
-                if (it != allFiles.end()) {
-                    importantFiles.push_back(path);
-                } else {
-                    // Try partial match (only for meaningful path fragments)
+                    // Reject junk entries the model sometimes emits ("", "/").
+                    // An empty needle would partial-match EVERY file below.
+                    if (entry.size() < 2 || entry == "/") continue;
+
+                    if (known.count(entry)) {
+                        importantFiles.push_back(entry);
+                        continue;
+                    }
+                    std::string byName = resolveName(entry);
+                    if (!byName.empty()) {
+                        importantFiles.push_back(std::move(byName));
+                        continue;
+                    }
+                    // Partial match (only for meaningful path fragments).
                     for (const auto& f : allFiles) {
-                        if (f.find(path) != std::string::npos ||
-                            path.find(f) != std::string::npos) {
+                        if (f.find(entry) != std::string::npos ||
+                            entry.find(f) != std::string::npos) {
                             importantFiles.push_back(f);
                             break;
                         }
                     }
+                    continue;
                 }
-                
-                pos = endQuote + 1;
+                if (tokenEnd == std::string::npos) break;
+
+                // Unquoted token: an index, or structural punctuation.
+                std::string token = jsonStr.substr(pos, tokenEnd - pos);
+                pos = tokenEnd + 1;
+                size_t b = token.find_first_not_of(" \t\r\n");
+                size_t e = token.find_last_not_of(" \t\r\n");
+                if (b == std::string::npos || e == std::string::npos) continue;
+                token = token.substr(b, e - b + 1);
+                char* endPtr = nullptr;
+                long value = std::strtol(token.c_str(), &endPtr, 10);
+                if (endPtr && *endPtr == '\0' && value >= 1 &&
+                    static_cast<size_t>(value) <= allFiles.size()) {
+                    importantFiles.push_back(allFiles[value - 1]);
+                }
             }
         }
     } catch (...) {

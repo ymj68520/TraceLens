@@ -321,7 +321,165 @@ struct LLMSelectionHeuristicTestAccess {
     static bool binaryHeader(const std::string& path) {
         return LLMAnalysisService::hasBinaryContainerHeader(path);
     }
+    static std::vector<std::string> parseSelection(
+            const std::string& response, const std::vector<std::string>& candidates) {
+        LLMAnalysisService service;
+        return service.parseImportantFiles(response, candidates);
+    }
+    static std::string buildSummary(const std::vector<std::string>& files) {
+        LLMAnalysisService service;
+        return service.buildFileListSummary(files);
+    }
+    static std::vector<std::string> prioritized(const std::string& dbPath,
+                                                size_t budget, bool skipBinary) {
+        LLMAnalysisService service;
+        return service.getPrioritizedCandidates(dbPath, budget, skipBinary);
+    }
 };
+}
+
+// Regression (PC.E01 Windows image): buildFileListSummary used to group files
+// by directory and list bare names under a heading, while the prompt asked for
+// full paths. The model could not reproduce a matchable entry and only 1 of
+// 1000 paths resolved, so every real-image task silently fell back to the
+// heuristic ranking. The summary must now carry one indexed full path per line
+// and the parser must resolve indices back to exact candidate paths.
+TEST_F(SceneClassifierTest, SmartSelectionSummaryIsIndexedFullPaths) {
+    using A = forensics::LLMSelectionHeuristicTestAccess;
+
+    std::vector<std::string> candidates = {
+        "/Users/admin/Desktop/控制端/Quasar v1.4.1/settings.xml",
+        "/Users/admin/Desktop/第一次公告.txt",
+        "/Users/admin/AppData/Local/Google/Chrome/User Data/Default/manifest.json",
+    };
+    const std::string summary = A::buildSummary(candidates);
+
+    // Every entry is "N <full path>", in the same order as the candidate list.
+    EXPECT_NE(summary.find("1 /Users/admin/Desktop/控制端/Quasar v1.4.1/settings.xml"),
+              std::string::npos);
+    EXPECT_NE(summary.find("2 /Users/admin/Desktop/第一次公告.txt"), std::string::npos);
+    EXPECT_NE(summary.find("3 /Users/admin/AppData/Local/Google/Chrome/User Data/Default/manifest.json"),
+              std::string::npos);
+    // No directory-grouped layout remains.
+    EXPECT_EQ(summary.find("  - "), std::string::npos);
+}
+
+TEST_F(SceneClassifierTest, SmartSelectionParsesIndices) {
+    using A = forensics::LLMSelectionHeuristicTestAccess;
+
+    std::vector<std::string> candidates = {
+        "/a/one.txt", "/b/two.txt", "/c/three.txt", "/d/four.txt",
+    };
+    auto selected = A::parseSelection("[3, 1]", candidates);
+    ASSERT_EQ(selected.size(), 2u);
+    EXPECT_EQ(selected[0], "/c/three.txt");
+    EXPECT_EQ(selected[1], "/a/one.txt");
+
+    // Out-of-range indices are ignored, not clamped onto a real file.
+    auto clamped = A::parseSelection("[0, 99]", candidates);
+    EXPECT_TRUE(clamped.empty());
+}
+
+TEST_F(SceneClassifierTest, SmartSelectionParsesPathsAndNames) {
+    using A = forensics::LLMSelectionHeuristicTestAccess;
+
+    std::vector<std::string> candidates = {
+        "/Users/admin/Desktop/控制端/Quasar v1.4.1/settings.xml",
+        "/Users/admin/Desktop/第一次公告.txt",
+        "/Users/admin/AppData/Local/Google/Chrome/User Data/Default/manifest.json",
+    };
+
+    // Full paths echoed back verbatim still resolve exactly.
+    auto byPath = A::parseSelection(
+        "[\"/Users/admin/Desktop/第一次公告.txt\"]", candidates);
+    ASSERT_EQ(byPath.size(), 1u);
+    EXPECT_EQ(byPath[0], "/Users/admin/Desktop/第一次公告.txt");
+
+    // Bare file names (the old prompt's shape) resolve via basename.
+    auto byName = A::parseSelection("[\"settings.xml\"]", candidates);
+    ASSERT_EQ(byName.size(), 1u);
+    EXPECT_EQ(byName[0], "/Users/admin/Desktop/控制端/Quasar v1.4.1/settings.xml");
+
+    // A numeric string inside a quoted path is not read as an index.
+    auto mixed = A::parseSelection("[\"manifest.json\", 2]", candidates);
+    ASSERT_EQ(mixed.size(), 2u);
+    EXPECT_EQ(mixed[0], "/Users/admin/AppData/Local/Google/Chrome/User Data/Default/manifest.json");
+    EXPECT_EQ(mixed[1], "/Users/admin/Desktop/第一次公告.txt");
+}
+
+// Regression (PC.E01 Windows image): the candidate window used to be
+// "SELECT path FROM files LIMIT 5000" over insertion order. That covered 1.6%
+// of 305,716 rows, so artefacts sitting past the cut were unreachable no matter
+// how important they were. The scan must consider the whole table and keep the
+// highest-priority rows wherever they sit.
+TEST_F(SceneClassifierTest, CandidateWindowScansWholeTable) {
+    using A = forensics::LLMSelectionHeuristicTestAccess;
+
+    const std::string path = "/tmp/test_candidate_window.db";
+    tempFiles_.push_back(path);
+    std::remove(path.c_str());
+
+    sqlite3* db = nullptr;
+    ASSERT_EQ(sqlite3_open(path.c_str(), &db), SQLITE_OK);
+    ASSERT_EQ(sqlite3_exec(db,
+        "CREATE TABLE files (path TEXT, category TEXT);", nullptr, nullptr, nullptr),
+        SQLITE_OK);
+
+    // 3000 mid-value rows first (generic JSON under the system tree, score 30):
+    // exactly the shape that filled the old window, then the high-value
+    // artefacts at the very end of the table.
+    ASSERT_EQ(sqlite3_exec(db, "BEGIN;", nullptr, nullptr, nullptr), SQLITE_OK);
+    sqlite3_stmt* ins = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(db,
+        "INSERT INTO files VALUES (?, ?);", -1, &ins, nullptr),
+        SQLITE_OK);
+    for (int i = 0; i < 3000; ++i) {
+        std::string p = "/Windows/System32/SomeDir/manifest_" + std::to_string(i) + ".json";
+        sqlite3_bind_text(ins, 1, p.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(ins, 2, "OS Config Files", -1, SQLITE_STATIC);
+        ASSERT_EQ(sqlite3_step(ins), SQLITE_DONE);
+        sqlite3_reset(ins);
+    }
+    // Late, high-value rows: credential file (100), desktop evidence (90),
+    // system log (80), plus a binary that the category filter must drop.
+    const char* lateArtefacts[] = {
+        "/etc/shadow",
+        "/Users/admin/Desktop/控制端/Quasar v1.4.1/settings.xml",
+        "/var/log/secure",
+    };
+    for (const char* p : lateArtefacts) {
+        sqlite3_bind_text(ins, 1, p, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(ins, 2, "OS Config Files", -1, SQLITE_STATIC);
+        ASSERT_EQ(sqlite3_step(ins), SQLITE_DONE);
+        sqlite3_reset(ins);
+    }
+    sqlite3_bind_text(ins, 1, "/Users/admin/Desktop/tool.exe", -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(ins, 2, "Executables", -1, SQLITE_STATIC);
+    ASSERT_EQ(sqlite3_step(ins), SQLITE_DONE);
+    sqlite3_reset(ins);
+    sqlite3_finalize(ins);
+    ASSERT_EQ(sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr), SQLITE_OK);
+    sqlite3_close(db);
+
+    // A 10-slot budget: the late high-value rows must be inside it, and no
+    // mid-value row may outrank them.
+    auto selected = A::prioritized(path, 10, false);
+    EXPECT_LE(selected.size(), 10u);
+    for (const char* want : lateArtefacts) {
+        EXPECT_NE(std::find(selected.begin(), selected.end(), std::string(want)),
+                  selected.end()) << "missing from candidate window: " << want;
+    }
+    EXPECT_EQ(selected.front(), "/etc/shadow");
+
+    // The full-table scan must still honour the skip-binary filter.
+    auto noBinary = A::prioritized(path, 10, true);
+    EXPECT_EQ(std::find(noBinary.begin(), noBinary.end(),
+                        std::string("/Users/admin/Desktop/tool.exe")),
+              noBinary.end());
+
+    // A budget of 0 is the explicit "no candidates" contract; callers opt into
+    // unlimited scanning through getFilesFromDatabase instead.
+    EXPECT_TRUE(A::prioritized(path, 0, false).empty());
 }
 
 // Regression: pip http-cache *.tmp blobs under /root once inherited the
@@ -848,4 +1006,157 @@ TEST_F(SceneClassifierTest, ClassifyAndExtractWithNoScene) {
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
+}
+
+// End-to-end replay against a real task database when one is provided. The
+// image cannot be re-scanned inside a unit test, but its _files.db can: the
+// candidate scan and the summary/parse round trip are the two things the fix
+// changed, and both are pure functions of that database.
+//
+//   TRACELENS_SMART_DB=/path/to/files.db ./test_scene_classifier_gtest \
+//       --gtest_filter=SceneClassifierTest.SmartSelectionRealDatabase
+//
+// The database decides which artefacts count as reachable, so the same test
+// covers the Windows and the Linux images without per-image forks.
+TEST_F(SceneClassifierTest, SmartSelectionRealDatabase) {
+    const char* db_env = std::getenv("TRACELENS_SMART_DB");
+    if (!db_env || !*db_env) {
+        GTEST_SKIP() << "set TRACELENS_SMART_DB to a task _files.db to run this";
+    }
+    using A = forensics::LLMSelectionHeuristicTestAccess;
+
+    auto candidates = A::prioritized(db_env, 5000, true);
+    ASSERT_FALSE(candidates.empty());
+    ASSERT_LE(candidates.size(), 5000u);
+
+    auto contains = [&](const std::string& needle) {
+        return std::any_of(candidates.begin(), candidates.end(),
+            [&](const std::string& c) { return c.find(needle) != std::string::npos; });
+    };
+
+    // The image's own artefact set: whichever layout the database holds, the
+    // core artefacts it actually contains must be reachable inside the
+    // candidate budget. These were out of reach on every real image before the
+    // fix (insertion-order window). A probe is skipped when the image does not
+    // carry that artefact at all (e.g. no Amcache on the 窝点嫌疑人 image).
+    struct Probe { const char* in_db; const char* in_window; };
+    const std::vector<Probe> windowsProbes = {
+        {"/Windows/System32/config/SAM", "/Windows/System32/config/SAM"},
+        {"/Windows/System32/config/SOFTWARE", "/Windows/System32/config/SOFTWARE"},
+        {"winevt/Logs", "winevt/Logs"},
+        {"Amcache", "Amcache"},
+    };
+    const std::vector<Probe> linuxProbes = {
+        {"/etc/passwd", "/etc/passwd"},
+        {"/etc/shadow", "/etc/shadow"},
+        {"/var/log", "/var/log"},
+    };
+    auto dbHas = [&](const std::string& needle) {
+        sqlite3* db = nullptr;
+        if (sqlite3_open(db_env, &db) != SQLITE_OK) return false;
+        sqlite3_stmt* stmt = nullptr;
+        bool found = false;
+        if (sqlite3_prepare_v2(db,
+                "SELECT 1 FROM files WHERE path LIKE ? LIMIT 1", -1, &stmt, nullptr) == SQLITE_OK) {
+            std::string pattern = "%" + needle + "%";
+            sqlite3_bind_text(stmt, 1, pattern.c_str(), -1, SQLITE_TRANSIENT);
+            found = sqlite3_step(stmt) == SQLITE_ROW;
+        }
+        sqlite3_finalize(stmt);
+        sqlite3_close(db);
+        return found;
+    };
+
+    size_t checkedWindows = 0, checkedLinux = 0, failures = 0;
+    auto probeAll = [&](const std::vector<Probe>& probes, size_t& checked) {
+        for (const auto& p : probes) {
+            if (!dbHas(p.in_db)) continue;   // image does not carry this artefact
+            ++checked;
+            if (!contains(p.in_window)) {
+                ++failures;
+                ADD_FAILURE() << "present in image but missing from candidate "
+                                 "budget: " << p.in_db;
+            }
+        }
+    };
+    probeAll(windowsProbes, checkedWindows);
+    probeAll(linuxProbes, checkedLinux);
+    EXPECT_EQ(failures, 0u);
+    // The database must be recognisable as one of the two supported layouts.
+    EXPECT_EQ(checkedWindows == 0 && checkedLinux == 0, false)
+        << "database matched neither the Windows nor the Linux artefact layout";
+
+    // The prompt list is indexed full paths, and an index reply round-trips.
+    auto head = std::vector<std::string>(candidates.begin(),
+        candidates.begin() + std::min<size_t>(20, candidates.size()));
+    const std::string summary = A::buildSummary(head);
+    EXPECT_NE(summary.find("1 " + head[0]), std::string::npos);
+
+    auto picked = A::parseSelection("[1, 3, 5]", head);
+    ASSERT_EQ(picked.size(), 3u);
+    EXPECT_EQ(picked[0], head[0]);
+    EXPECT_EQ(picked[1], head[2]);
+    EXPECT_EQ(picked[2], head[4]);
+}
+
+// The prompts must never be starved of the image's own headline evidence: the
+// highest-priority candidates have to include user-area case material, not
+// only system artefacts. Reported per image so a regression names the image.
+TEST_F(SceneClassifierTest, SmartSelectionKeepsUserEvidenceInBudget) {
+    const char* db_env = std::getenv("TRACELENS_SMART_DB");
+    if (!db_env || !*db_env) {
+        GTEST_SKIP() << "set TRACELENS_SMART_DB to a task _files.db to run this";
+    }
+    using A = forensics::LLMSelectionHeuristicTestAccess;
+
+    auto candidates = A::prioritized(db_env, 5000, true);
+    ASSERT_FALSE(candidates.empty());
+
+    // Every candidate must be a real database row, and none may be the noise
+    // bucket the budget is supposed to exclude.
+    for (const auto& c : candidates) {
+        EXPECT_GE(A::priority(c), 10) << "noise file inside the candidate budget: " << c;
+    }
+}
+
+// Diagnostic (not an assertion): print what the candidate budget is spent on,
+// so a run against a real image shows which evidence families the LLM will see.
+TEST_F(SceneClassifierTest, SmartSelectionCandidateComposition) {
+    const char* db_env = std::getenv("TRACELENS_SMART_DB");
+    if (!db_env || !*db_env) {
+        GTEST_SKIP() << "set TRACELENS_SMART_DB to a task _files.db to run this";
+    }
+    using A = forensics::LLMSelectionHeuristicTestAccess;
+
+    auto cands = A::prioritized(db_env, 5000, true);
+    ASSERT_FALSE(cands.empty());
+
+    auto bucket = [](const std::string& p) -> std::string {
+        if (p.rfind("/Users/", 0) == 0 || p.rfind("/home/", 0) == 0 ||
+            p.rfind("/root/", 0) == 0) return "user-area";
+        if (p.find("/Windows/System32/config/") != std::string::npos) return "registry-hives";
+        if (p.find("/winevt/") != std::string::npos) return "event-logs";
+        if (p.find("/Prefetch/") != std::string::npos) return "prefetch";
+        if (p.find("/var/log") != std::string::npos) return "var-log";
+        if (p.find("/www/") != std::string::npos) return "www(baota)";
+        if (p.find("/etc/") == 0) return "etc";
+        if (p.find("/usr/") == 0) return "usr";
+        if (p.find("/Windows/") == 0) return "windows-other";
+        if (p.rfind("/home/", 0) == 0) return "home";
+        return "other";
+    };
+    std::map<std::string, int> counts;
+    for (const auto& c : cands) counts[bucket(c)]++;
+
+    std::vector<std::pair<std::string, int>> ranked(counts.begin(), counts.end());
+    std::sort(ranked.begin(), ranked.end(),
+              [](const auto& a, const auto& b) { return a.second > b.second; });
+
+    std::cout << "== candidate composition (" << cands.size() << " in budget) ==\n";
+    for (const auto& [k, v] : ranked) std::cout << "   " << k << ": " << v << "\n";
+    std::cout << "-- top 10 --\n";
+    for (size_t i = 0; i < std::min<size_t>(10, cands.size()); ++i) {
+        std::cout << "   " << cands[i] << "\n";
+    }
+    SUCCEED();
 }

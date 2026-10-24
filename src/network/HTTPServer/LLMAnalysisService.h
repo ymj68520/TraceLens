@@ -180,6 +180,17 @@ private:
                           const std::string& modelUsed);
     std::vector<std::string> getFilesFromDatabase(const std::string& dbPath,
                                                    const AnalysisOptions& options);
+    /**
+     * @brief Best `budget` candidate paths in the whole database by forensic priority
+     *
+     * Scans every row (no insertion-order LIMIT), drops TSK `$`-virtual entries
+     * and the noise bucket, and keeps a bounded top-N. Smart selection must see
+     * registry hives, event logs and other late-table artefacts that a
+     * LIMIT-based window never reaches on a real image.
+     */
+    std::vector<std::string> getPrioritizedCandidates(const std::string& dbPath,
+                                                      size_t budget,
+                                                      bool skipBinaryFiles);
     // True when the file's first bytes are a PE image or a zip container.
     // Suffix rules cannot see a dll renamed to .old; this can.
     static bool hasBinaryContainerHeader(const std::string& path);
