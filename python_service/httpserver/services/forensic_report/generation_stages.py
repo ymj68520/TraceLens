@@ -24,6 +24,22 @@ from .models import (
 BATCH_SIZE = 3
 READING_CHARS = 4000
 REQUEST_CHAR_LIMIT = 26000
+# Narrative shape limits. The prompt asks for 3-6 sections per batch of 400-1200
+# characters; the validator enforces a slightly wider window so a compliant
+# answer is never rejected, while still refusing the degenerate "one 50-char
+# section" that used to pass and let a report grow to 50 chapters.
+_MAX_SECTIONS_PER_BATCH = 8
+# Floor on a single section. The prompt asks for 400+ characters, but a batch
+# covering one narrow artifact can legitimately be shorter, so the floor only
+# rejects stubs. 80 characters still rules out the degenerate one-liner that the
+# old 50-character floor accepted.
+_MIN_SECTION_CHARS = 80
+# Total narrative budget across all batches. 50 chapters x ~1000 chars was the
+# observed runaway; a readable report stays well under this ceiling.
+_MAX_TOTAL_NARRATIVE_CHARS = 30000
+# Hard ceiling on rendered chapters, so the final report cannot exceed a
+# length a reader can actually work through even when every batch is full.
+_MAX_REPORT_CHAPTERS = 20
 GENERIC_QUESTIONS = (
     ("g_funds", "材料中的资金活动、金额或业务安排有哪些需要核查的差异与缺口？"),
     ("g_identity", "材料中的人员、账号和设备关系有哪些有依据的线索与未知信息？"),
@@ -329,20 +345,30 @@ async def compose_stage_narrative(envelope, materials, directions, comparisons, 
                 raise ValueError("NARRATIVE_OUTPUT_UNUSABLE")
             parsed = _loads_strict(content)
             rows = parsed.get("sections") if isinstance(parsed, dict) else None
-            if not isinstance(rows, list) or not 1 <= len(rows) <= 8:
+            # The prompt asks for 3-6 sections per batch and 400-1200 characters
+            # each. The validator used to accept 1-8 sections of 50-9000 chars,
+            # so a batch could ship one 50-character section and still pass; a
+            # PC.E01 report then grew to 50 chapters of near-identical prose.
+            # Keep a small tolerance around the prompt's bounds rather than the
+            # old open range.
+            if not isinstance(rows, list) or not 2 <= len(rows) <= _MAX_SECTIONS_PER_BATCH:
                 raise ValueError("NARRATIVE_SECTIONS_INVALID")
             for row in rows:
                 if not isinstance(row, dict):
                     raise ValueError("NARRATIVE_SECTION_INVALID")
                 heading, text = row.get("heading"), row.get("content")
-                if (not isinstance(heading, str) or not 2 <= len(heading.strip()) <= 40
-                        or not isinstance(text, str) or not 50 <= len(text) <= 9000):
+                if (not isinstance(heading, str) or not 2 <= len(heading.strip()) <= 24
+                        or not isinstance(text, str)
+                        or not _MIN_SECTION_CHARS <= len(text) <= 9000):
                     raise ValueError("NARRATIVE_SECTION_SIZE")
                 heading = strip_material_ids(heading.strip())
                 text = strip_material_ids(text.strip())
-                if len(heading) < 2 or len(text) < 50:
+                if len(heading) < 2 or len(text) < _MIN_SECTION_CHARS:
                     raise ValueError("NARRATIVE_SECTION_SIZE")
                 sections.append({"heading": heading, "content": text})
+            total = sum(len(s["content"]) for s in sections)
+            if total > _MAX_TOTAL_NARRATIVE_CHARS:
+                raise ValueError("NARRATIVE_TOTAL_TOO_LONG")
         except ValueError:
             # One unusable batch does not sink the rest; a narrative covering
             # the remaining batches still beats falling back to fragments.
@@ -354,18 +380,40 @@ async def compose_stage_narrative(envelope, materials, directions, comparisons, 
 # are meaningless to a reader and the prompt forbids them. A PC.E01 run leaked
 # 55 of them into published prose because nothing enforced the rule.
 _MATERIAL_ID_RE = re.compile(r"(?<![A-Za-z0-9_])m\d{3,4}(?![A-Za-z0-9_])")
-_SENTENCE_LEAD_ID_RE = re.compile(
-    r"(?:(?<=[。；;，,、\n])|^)\s*m\d{3,4}\s*[、,，]?\s*")
+# A run of ids joined by enumeration marks ("m003、m004 均指向…") must go as one
+# unit: deleting each id separately left the connector behind ("mm均指向…").
+# The run absorbs the enumeration mark *after* it, and a leading preposition
+# whose only object was the run ("根据 m0001，…" / "见 m001、m002") so the
+# sentence keeps its own subject instead of starting with an orphan.
+_ID_RUN_RE = re.compile(
+    r"(?:(?:根据|依据|参照|按照|结合|基于|如|见)\s*)?"
+    r"(?<![A-Za-z0-9_])m\d{3,4}(?:[ \t]*[、,，/和与及][ \t]*m\d{3,4})*"
+    r"[ \t]*[、,，]?[ \t]*")
+# After an id run is removed, a conjunction with nothing left on its left
+# ("根据 与，攻击者") or a doubled separator is a scar, not content.
+_DANGLING_CONJUNCTION_RE = re.compile(
+    r"(?:根据|依据|参照|按照|结合|如|见)\s*[与和及、,，]\s*")
+# A preposition whose only object was the id run ("根据 m0001，…" -> "根据 ，…")
+# also loses its purpose; drop the preposition with the ids.
+_ORPHANED_LEAD_RE = re.compile(
+    r"(?:根据|依据|参照|按照|结合|依据于|基于)\s+(?=[，。；：、])")
+_DOUBLED_SEPARATOR_RE = re.compile(r"[、,，]{2,}")
+# An empty pair of brackets is left where an id used to sit alone.
+_EMPTY_BRACKETS_RE = re.compile(r"[（(]\s*[)）]")
 
 
 def strip_material_ids(text: str) -> str:
     """Remove prompt-internal material ids from prose the reader will see."""
     if not _MATERIAL_ID_RE.search(text):
         return text
-    cleaned = _SENTENCE_LEAD_ID_RE.sub(lambda m: m.group(0)[:1] if m.group(0)[:1] else "", text)
+    # Runs first (ids plus their connectors), then any lone id left over.
+    cleaned = _ID_RUN_RE.sub("", text)
     cleaned = _MATERIAL_ID_RE.sub("", cleaned)
     # Collapse the spacing/punctuation scars the deletion leaves behind.
-    cleaned = re.sub(r"[（(]\s*[)）]", "", cleaned)
+    cleaned = _DANGLING_CONJUNCTION_RE.sub("", cleaned)
+    cleaned = _ORPHANED_LEAD_RE.sub("", cleaned)
+    cleaned = _DOUBLED_SEPARATOR_RE.sub("、", cleaned)
+    cleaned = _EMPTY_BRACKETS_RE.sub("", cleaned)
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
     cleaned = re.sub(r"\s+([，。；：、])", r"\1", cleaned)
     return cleaned.strip()
@@ -396,6 +444,14 @@ def _derived_heading(heading: str, content: str) -> str:
     first = re.split(r"[。；;！!？?\n]", content.strip(), maxsplit=1)[0].strip()
     first = re.sub(r"^(?:从材料内容看|综合现有材料)[，,]?", "", first)
     first = re.sub(r"^材料中(?!心)", "", first)
+    # Narrative batches habitually open with a chapter self-reference ("本章围绕
+    # 本机账号…"). Kept verbatim it becomes the label "本章围绕本机账号", which
+    # reads as a sentence fragment rather than a topic. Drop the lead-in and
+    # the verb that introduces the topic, so the label names the subject.
+    first = re.sub(
+        r"^(?:本章|本节|本文|该章|这一章|此章|本批材料|该批材料|本批|该批)\s*"
+        r"(?:围绕|依据|基于|根据|汇总|承接|梳理|说明|介绍|描述|分析|记录|涵盖|涉及|显示|表明)?"
+        r"\s*", "", first)
     first = first.strip("，,、 ")
     if len(first) < 4:
         return heading
@@ -513,14 +569,39 @@ def render_stage_report(envelope, materials, directions, comparisons, warnings, 
         # A batch may still answer with the generic skeleton even though the
         # prompt asks for topic headings. Repeating "检材范围与构成（2）（3）…"
         # eight times reads as eight reports stapled together, so repeated
-        # skeleton headings are re-titled from the batch's own first sentence
-        # (a deterministic, evidence-derived label) and only then numbered.
+        # headings are re-titled from the batch's own first sentence (a
+        # deterministic, evidence-derived label). The same applies to any
+        # repeated topic label: "材料观察（2）" is still a stapled-report tell,
+        # and the second batch has its own content to name it by.
         seen = {}
         for row in narrative:
+            # Cap the chapter count. The narrative is assembled from one batch
+            # per group of directions, so a wide evidence scope produced 50
+            # near-identical chapters on PC.E01. Beyond the cap, keep merging
+            # the remaining batches into the last chapter rather than dropping
+            # their content outright.
+            if len(sections) >= _MAX_REPORT_CHAPTERS:
+                extra = strip_material_ids(row["content"].strip())
+                if extra:
+                    sections[-1] = StructuredReportSection(
+                        heading=sections[-1].heading,
+                        content=sections[-1].content + "\n\n" + extra,
+                        citation_ids=tuple(dict.fromkeys(
+                            (*sections[-1].citation_ids,
+                             *_narrative_citations(row["content"], materials)))),
+                    )
+                continue
             heading = _derived_heading(row["heading"], row["content"])
             seen[heading] = seen.get(heading, 0) + 1
             if seen[heading] > 1:
-                heading = f"{heading}（{seen[heading]}）"
+                derived = _derived_heading(_SKELETON_HEADINGS[0], row["content"])
+                # Only adopt the derived label when it says something new; a
+                # short batch would otherwise fall back to the same heading.
+                if derived and derived not in seen:
+                    heading = derived
+                    seen[heading] = 1
+                else:
+                    heading = f"{heading}（{seen[heading]}）"
             sections.append(StructuredReportSection(
                 heading=heading, content=row["content"],
                 citation_ids=_narrative_citations(row["content"], materials)))

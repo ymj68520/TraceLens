@@ -24,8 +24,33 @@ logger = logging.getLogger(__name__)
 
 GENERATION_TIMEOUT_S = 3600
 POLL_INTERVAL_S = 10
+# A "running" entry whose generation stopped advancing is a zombie: the
+# in-memory record survives, but nothing is executing behind it. Without this
+# check the status endpoint reported "running" forever, so the C++ completion
+# gate could only fail the task after its own 60-minute timeout, and every
+# retry reused the same dead generation (observed on PC.E01).
+STALE_RUNNING_S = 900
 
 _TAILS: dict[str, dict] = {}
+
+
+def _is_stale(entry: dict) -> bool:
+    """True when a running entry has not progressed for STALE_RUNNING_S."""
+    if entry.get("state") != "running":
+        return False
+    updated = entry.get("updated_at")
+    if not updated:
+        return True
+    return (time.time() - updated) > STALE_RUNNING_S
+
+
+def _reset_stale_entry(task_id: str, entry: dict) -> None:
+    logger.warning(
+        "Pipeline tail for task %s was stale (generation %s idle > %ss); resetting",
+        task_id, entry.get("generation_id"), STALE_RUNNING_S,
+    )
+    entry.update({"state": "idle", "generation_id": None, "report_id": None,
+                  "error_code": "stale_generation_reset", "updated_at": time.time()})
 
 
 class TailRequest(BaseModel):
@@ -60,6 +85,11 @@ async def _wait_generation(task_id: str, generation_id: str) -> dict:
             if row.status in ("failed", "cancelled"):
                 return {"state": "failed", "generation_id": generation_id,
                         "report_id": None, "error_code": row.error_code or "report_failed"}
+        # This loop is the only thing proving the tail is alive; refresh the
+        # timestamp so the staleness check does not reset a healthy wait.
+        entry = _TAILS.get(task_id)
+        if entry is not None and entry.get("state") == "running":
+            entry["updated_at"] = time.time()
         await asyncio.sleep(POLL_INTERVAL_S)
     return {"state": "failed", "generation_id": generation_id,
             "report_id": None, "error_code": "report_tail_timeout"}
@@ -110,6 +140,9 @@ async def start_pipeline_tail(payload: TailRequest, request: Request):
     if not manager.settings.report_auto_generate_enabled:
         raise HTTPException(status_code=503, detail="report tail generation is disabled")
     entry = _state(payload.task_id)
+    if _is_stale(entry):
+        # Reset instead of reporting the dead generation as still running.
+        _reset_stale_entry(payload.task_id, entry)
     if entry["state"] == "running":
         return {"task_id": payload.task_id, "state": "running",
                 "generation_id": entry["generation_id"]}
@@ -128,4 +161,6 @@ async def pipeline_tail_status(task_id: str):
     entry = _TAILS.get(task_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="pipeline tail not started for this task")
+    if _is_stale(entry):
+        _reset_stale_entry(task_id, entry)
     return {"task_id": task_id, **entry}
