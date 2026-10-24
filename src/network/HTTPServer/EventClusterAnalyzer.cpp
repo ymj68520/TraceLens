@@ -267,12 +267,37 @@ std::vector<std::tuple<int64_t, std::string, std::string>> EventClusterAnalyzer:
 
     // 构建事件簇列表摘要。没有隐藏的固定 100 条上限；调用方的
     // LLM_MAX_EVENT_CLUSTERS 配置只限制最终分析数量。
+    //
+    // The list is bounded by characters, not by cluster count. A PC.E01 image
+    // produced enough clusters with long parent-directory paths to build a
+    // 27 MB prompt, which the provider rejected four times with "input exceeds
+    // the context limit" and the whole selection call was lost. Paths are
+    // clipped and the list stops at the prompt budget; clusters beyond it keep
+    // their natural order and remain eligible through the truncation fallback.
+    constexpr size_t kMaxClusterPromptChars = 48000;
+    constexpr size_t kMaxDirectoryChars = 200;
+    auto clipDir = [](const std::string& value, size_t limit) {
+        if (value.size() <= limit) return value;
+        std::string out = value.substr(0, limit);
+        while (!out.empty() && (static_cast<unsigned char>(out.back()) & 0xC0) == 0x80) {
+            out.pop_back();
+        }
+        return out + "…";
+    };
     std::stringstream ss;
+    size_t listedClusters = 0;
     for (size_t i = 0; i < allClusters.size(); ++i) {
         auto [timeWindow, eventType, parentDirectory] = allClusters[i];
-        ss << "Cluster " << i + 1 << ": Time window=" << timeWindow 
-           << ", Event type=" << eventType 
-           << ", Directory=" << (parentDirectory.empty() ? "/" : parentDirectory) << "\n";
+        ss << "Cluster " << i + 1 << ": Time window=" << timeWindow
+           << ", Event type=" << eventType
+           << ", Directory=" << (parentDirectory.empty() ? "/" : clipDir(parentDirectory, kMaxDirectoryChars))
+           << "\n";
+        listedClusters++;
+        if (ss.str().size() >= kMaxClusterPromptChars) {
+            ss << "... (" << (allClusters.size() - listedClusters)
+               << " more clusters omitted from the selection prompt)\n";
+            break;
+        }
     }
 
     // 生成选择重要事件簇的提示
@@ -294,7 +319,9 @@ Do not include any explanation, only the JSON array.)";
 
     try {
         // 调用LLM选择重要事件簇
-        auto response = router_->chat(prompt);
+        // Cluster selection is a ranking task; sampling made the chosen set
+        // differ between runs over the same database.
+        auto response = router_->chat(prompt, "", 0.0);
         if (!response.success) {
             std::cerr << "LLM request failed: " << response.errorMessage << std::endl;
             return truncateToConfiguredLimit();
@@ -354,13 +381,6 @@ bool EventClusterAnalyzer::storeClusterDescription(const std::string& dbPath,
                                                const std::vector<std::string>& keywords, 
                                                const std::string& modelUsed, 
                                                bool isRelevant) {
-    sqlite3* db = nullptr;
-    int rc = sqlite3_open(dbPath.c_str(), &db);
-    if (rc != SQLITE_OK) {
-        std::cerr << "Failed to open database: " << dbPath << std::endl;
-        return false;
-    }
-
     // Convert keywords to comma-separated string
     std::stringstream ss;
     for (size_t i = 0; i < keywords.size(); ++i) {
@@ -372,42 +392,66 @@ bool EventClusterAnalyzer::storeClusterDescription(const std::string& dbPath,
     // Get current timestamp
     int64_t currentTime = static_cast<int64_t>(std::time(nullptr));
 
-    // Use UPDATE_EVENT_CLUSTER_LLM_ANALYSIS from event_extractor_sql.h
-    sqlite3_stmt* stmt = nullptr;
-    rc = sqlite3_prepare_v2(db, EventExtractorSQL::UPDATE_EVENT_CLUSTER_LLM_ANALYSIS, -1, &stmt, nullptr);
-    if (rc != SQLITE_OK) {
-        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
+    // Event clustering runs 32 workers against the same events.db while the
+    // file-analysis writers are still finishing. Without a busy timeout and a
+    // retry, a SQLITE_BUSY here discarded the cluster analysis outright: a
+    // PC.E01 run lost 122 clusters with "Failed to update LLM analysis for
+    // event cluster". A contended database must delay a result, never drop it.
+    constexpr int kBusyTimeoutMs = 30000;
+    constexpr int kAttempts = 5;
+    constexpr int kBaseSleepMs = 250;
+
+    for (int attempt = 1; attempt <= kAttempts; ++attempt) {
+        sqlite3* db = nullptr;
+        if (sqlite3_open(dbPath.c_str(), &db) != SQLITE_OK) {
+            std::cerr << "Failed to open database: " << dbPath << std::endl;
+            if (db) sqlite3_close(db);
+            return false;
+        }
+        sqlite3_busy_timeout(db, kBusyTimeoutMs);
+
+        sqlite3_stmt* stmt = nullptr;
+        int rc = sqlite3_prepare_v2(db, EventExtractorSQL::UPDATE_EVENT_CLUSTER_LLM_ANALYSIS,
+                                    -1, &stmt, nullptr);
+        if (rc != SQLITE_OK) {
+            std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
+            sqlite3_close(db);
+            return false;
+        }
+
+        sqlite3_bind_text(stmt, 1, summary.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, description.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 3, keywordsStr.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int64(stmt, 4, currentTime);
+        sqlite3_bind_text(stmt, 5, modelUsed.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int(stmt, 6, isRelevant ? 1 : 0);
+        sqlite3_bind_int64(stmt, 7, timeWindow);
+        sqlite3_bind_text(stmt, 8, eventType.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 9, parentDirectory.c_str(), -1, SQLITE_TRANSIENT);
+
+        rc = sqlite3_step(stmt);
+        int changes = sqlite3_changes(db);
+        sqlite3_finalize(stmt);
         sqlite3_close(db);
-        return false;
+
+        if (rc == SQLITE_DONE) {
+            if (changes == 0) {
+                std::cerr << "Warning: No rows updated for event cluster" << std::endl;
+                return false;
+            }
+            return true;
+        }
+
+        const bool retryable = (rc == SQLITE_BUSY || rc == SQLITE_LOCKED);
+        if (!retryable || attempt == kAttempts) {
+            std::cerr << "Failed to update LLM analysis for event cluster"
+                      << " (rc=" << rc << ", attempt " << attempt << "/" << kAttempts << ")"
+                      << std::endl;
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(kBaseSleepMs * attempt));
     }
-
-    // Bind parameters
-    sqlite3_bind_text(stmt, 1, summary.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 2, description.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 3, keywordsStr.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int64(stmt, 4, currentTime);
-    sqlite3_bind_text(stmt, 5, modelUsed.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int(stmt, 6, isRelevant ? 1 : 0);
-    sqlite3_bind_int64(stmt, 7, timeWindow);
-    sqlite3_bind_text(stmt, 8, eventType.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 9, parentDirectory.c_str(), -1, SQLITE_TRANSIENT);
-
-    rc = sqlite3_step(stmt);
-    int changes = sqlite3_changes(db);
-    sqlite3_finalize(stmt);
-    sqlite3_close(db);
-
-    if (rc != SQLITE_DONE) {
-        std::cerr << "Failed to update LLM analysis for event cluster" << std::endl;
-        return false;
-    }
-
-    if (changes == 0) {
-        std::cerr << "Warning: No rows updated for event cluster" << std::endl;
-        return false;
-    }
-
-    return true;
+    return false;
 }
 
 std::vector<std::tuple<int64_t, std::string, std::string, int64_t, std::string>> EventClusterAnalyzer::getClusterEvents(
@@ -480,23 +524,50 @@ std::string EventClusterAnalyzer::buildClusterSummary(
         ss << "Time range: " << firstTimestamp << " to " << lastTimestamp << "\n";
     }
 
+    // Each field is clipped before it reaches the prompt. Only the event count
+    // was bounded before, so a cluster whose event descriptions carried large
+    // payloads produced a 27 MB request that the provider rejected four times
+    // with "input exceeds the context limit" and the cluster analysis was lost.
+    // A prompt is a summary: long fields are truncated, not passed through.
+    constexpr size_t kMaxPathChars = 512;
+    constexpr size_t kMaxDescriptionChars = 512;
+    constexpr size_t kMaxSummaryChars = 24000;
+    auto clip = [](const std::string& value, size_t limit) {
+        if (value.size() <= limit) return value;
+        std::string out = value.substr(0, limit);
+        // Do not split a UTF-8 sequence in half.
+        while (!out.empty() && (static_cast<unsigned char>(out.back()) & 0xC0) == 0x80) {
+            out.pop_back();
+        }
+        out += "…";
+        return out;
+    };
+
     ss << "Events:\n";
     for (size_t i = 0; i < events.size() && i < 20; ++i) {
         auto [timestamp, eventType, filePath, fileSize, description] = events[i];
-        ss << "- Timestamp: " << timestamp << ", Type: " << eventType 
-           << ", Path: " << filePath 
+        ss << "- Timestamp: " << timestamp << ", Type: " << clip(eventType, 64)
+           << ", Path: " << clip(filePath, kMaxPathChars)
            << ", Size: " << fileSize;
         if (!description.empty()) {
-            ss << ", Description: " << description;
+            ss << ", Description: " << clip(description, kMaxDescriptionChars);
         }
         ss << "\n";
+        if (ss.str().size() >= kMaxSummaryChars) {
+            ss << "... summary truncated at the prompt budget\n";
+            break;
+        }
     }
 
     if (events.size() > 20) {
         ss << "... and " << (events.size() - 20) << " more events\n";
     }
 
-    return ss.str();
+    std::string summary = ss.str();
+    if (summary.size() > kMaxSummaryChars) {
+        summary = clip(summary, kMaxSummaryChars);
+    }
+    return summary;
 }
 
 std::vector<std::tuple<int64_t, std::string, std::string>> EventClusterAnalyzer::getAllEventClusters(

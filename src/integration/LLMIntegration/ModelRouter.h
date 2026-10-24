@@ -2,6 +2,7 @@
 
 #include "LLMDataTypes.h"
 #include "LLMClient.h"
+#include <optional>
 #include <memory>
 #include <vector>
 #include <map>
@@ -60,13 +61,15 @@ public:
      * @return LLM response
      */
     LLMResponse chat(const std::vector<ChatMessage>& messages,
-                     ModelCapability requiredCapability = ModelCapability::TextGeneration);
+                     ModelCapability requiredCapability = ModelCapability::TextGeneration,
+                     std::optional<double> temperatureOverride = std::nullopt);
     
     /**
      * @brief Simple chat with automatic routing
      */
     LLMResponse chat(const std::string& prompt, 
-                     const std::string& systemPrompt = "");
+                     const std::string& systemPrompt = "",
+                     std::optional<double> temperatureOverride = std::nullopt);
     
     /**
      * @brief Get list of registered models

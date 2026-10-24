@@ -4,6 +4,7 @@
 #include <memory>
 #include <mutex>
 #include <functional>
+#include <optional>
 
 // Forward declarations for httplib
 namespace httplib {
@@ -47,10 +48,14 @@ public:
      * @brief Send chat completion request
      * @param messages Conversation history
      * @param tools Optional tool definitions for function calling
+     * @param temperatureOverride When set, replaces the configured temperature
+     *        for this call. Deterministic work (file selection, classification)
+     *        passes 0.0 so repeated runs over one image produce the same result.
      * @return LLM response with content or tool calls
      */
     LLMResponse chat(const std::vector<ChatMessage>& messages,
-                     const std::string& toolsJson = "");
+                     const std::string& toolsJson = "",
+                     std::optional<double> temperatureOverride = std::nullopt);
     
     /**
      * @brief Simple single-message chat
@@ -122,7 +127,8 @@ private:
     
     void initHttpClient();
     std::string buildRequestBody(const std::vector<ChatMessage>& messages,
-                                  const std::string& toolsJson);
+                                  const std::string& toolsJson,
+                                  std::optional<double> temperatureOverride = std::nullopt);
     LLMResponse parseResponse(const std::string& responseBody);
 };
 

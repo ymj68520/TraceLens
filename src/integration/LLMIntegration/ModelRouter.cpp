@@ -49,7 +49,8 @@ RoutingStrategy ModelRouter::getStrategy() const {
 }
 
 LLMResponse ModelRouter::chat(const std::vector<ChatMessage>& messages,
-                              ModelCapability requiredCapability) {
+                              ModelCapability requiredCapability,
+                              std::optional<double> temperatureOverride) {
     LLMResponse response;
     const auto localizedMessages = chineseOutputMessages(messages);
     
@@ -92,7 +93,7 @@ LLMResponse ModelRouter::chat(const std::vector<ChatMessage>& messages,
                 entry->currentLoad++;
             }
             
-            response = entry->client->chat(localizedMessages);
+            response = entry->client->chat(localizedMessages, "", temperatureOverride);
             
             {
                 std::lock_guard<std::mutex> lock(mutex_);
@@ -146,17 +147,18 @@ LLMResponse ModelRouter::chat(const std::vector<ChatMessage>& messages,
         return response;
     }
     
-    return client->chat(localizedMessages);
+    return client->chat(localizedMessages, "", temperatureOverride);
 }
 
 LLMResponse ModelRouter::chat(const std::string& prompt, 
-                              const std::string& systemPrompt) {
+                              const std::string& systemPrompt,
+                              std::optional<double> temperatureOverride) {
     std::vector<ChatMessage> messages;
     if (!systemPrompt.empty()) {
         messages.emplace_back("system", systemPrompt);
     }
     messages.emplace_back("user", prompt);
-    return chat(messages);
+    return chat(messages, ModelCapability::TextGeneration, temperatureOverride);
 }
 
 std::vector<std::string> ModelRouter::getModelNames() const {

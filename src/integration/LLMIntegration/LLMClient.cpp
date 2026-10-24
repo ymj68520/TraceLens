@@ -186,7 +186,8 @@ bool LLMClient::testConnection() {
 }
 
 LLMResponse LLMClient::chat(const std::vector<ChatMessage>& messages,
-                            const std::string& toolsJson) {
+                            const std::string& toolsJson,
+                            std::optional<double> temperatureOverride) {
     LLMResponse response;
     
     if (!ready_ || !httpClient_) {
@@ -194,7 +195,7 @@ LLMResponse LLMClient::chat(const std::vector<ChatMessage>& messages,
         return response;
     }
     
-    std::string requestBody = buildRequestBody(messages, toolsJson);
+    std::string requestBody = buildRequestBody(messages, toolsJson, temperatureOverride);
 
     // Cloud providers require the key; local servers (LM Studio) ignore it.
     httplib::Headers requestHeaders;
@@ -332,7 +333,8 @@ std::string LLMClient::getLastError() const {
 }
 
 std::string LLMClient::buildRequestBody(const std::vector<ChatMessage>& messages,
-                                         const std::string& toolsJson) {
+                                         const std::string& toolsJson,
+                                         std::optional<double> temperatureOverride) {
     json body;
     
     // Set model if specified
@@ -341,7 +343,11 @@ std::string LLMClient::buildRequestBody(const std::vector<ChatMessage>& messages
     }
     
     body["max_tokens"] = config_.maxTokens;
-    body["temperature"] = config_.temperature;
+    // Deterministic callers (file selection, classification) pass 0.0: the same
+    // image must yield the same evidence set on every run. Sampling at the
+    // configured 0.7 made two runs over one PC.E01 image pick 368 and 1000
+    // files respectively, so forensic results could not be reconciled.
+    body["temperature"] = temperatureOverride.value_or(config_.temperature);
 
     // DeepSeek-style thinking switch; empty mode keeps the body pure OpenAI
     if (!config_.thinkingMode.empty()) {

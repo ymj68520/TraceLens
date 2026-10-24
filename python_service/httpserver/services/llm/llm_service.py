@@ -37,6 +37,16 @@ WRITE_BUSY_TIMEOUT_S = 30.0
 WRITE_RETRY_ATTEMPTS = 5
 WRITE_RETRY_BASE_SLEEP_S = 0.25
 
+# HTTP connection pool sizing for the LLM clients. Three workloads share these
+# clients (file analysis, event clustering, Graphiti ingestion), each fanning
+# out 32 requests, while httpx's default pool is 100 connections total. Under
+# that default a PC.E01 run exhausted the pool, blocked in
+# httpcore.wait_for_connection and never recovered (the report hung for the
+# full 60-minute timeout). Keep max_connections above the combined fan-out so
+# a worker always gets a connection.
+_LLM_POOL_MAX_CONNECTIONS = 256
+_LLM_POOL_MAX_KEEPALIVE = 64
+
 
 class LLMService:
     """
@@ -72,20 +82,38 @@ class LLMService:
         if self._initialized:
             return
 
+        # httpx defaults to max_connections=100 per client, and the analysis
+        # pipeline runs file analysis, event clustering and Graphiti ingestion
+        # concurrently (32 workers each). The pool then starves: callers block
+        # inside httpcore's wait_for_connection until PoolTimeout, which is what
+        # froze a PC.E01 report run for 60 minutes. Keep the pool generous and
+        # the keep-alive pool sized to the worker count so a released connection
+        # is reused instead of being closed and re-dialled.
+        limits = httpx.Limits(
+            max_connections=_LLM_POOL_MAX_CONNECTIONS,
+            max_keepalive_connections=_LLM_POOL_MAX_KEEPALIVE,
+            keepalive_expiry=30.0,
+        )
+
         # Text model client
         self._text_client = httpx.AsyncClient(
             base_url=self.settings.llm_text_base_url,
             timeout=httpx.Timeout(self.settings.llm_timeout_seconds),
+            limits=limits,
         )
 
         # Vision model client
         self._vision_client = httpx.AsyncClient(
             base_url=self.settings.llm_vision_base_url,
             timeout=httpx.Timeout(self.settings.llm_timeout_seconds),
+            limits=limits,
         )
 
         self._initialized = True
-        logger.info("LLM service initialized")
+        logger.info(
+            "LLM service initialized (pool max_connections=%d, keepalive=%d)",
+            _LLM_POOL_MAX_CONNECTIONS, _LLM_POOL_MAX_KEEPALIVE,
+        )
 
     async def shutdown(self):
         """Close HTTP clients."""
