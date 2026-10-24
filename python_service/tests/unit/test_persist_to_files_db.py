@@ -147,3 +147,70 @@ def test_concurrent_writes_keep_a_single_complete_version_chain(tmp_path):
         assert len(rows) == 8
         assert [r[1] for r in rows] == [None] + [r[0] for r in rows[:-1]]
         assert conn.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+
+
+def test_busy_writer_is_retried_not_dropped(tmp_path, monkeypatch):
+    """A locked database must delay the write, never discard it.
+
+    On PC.E01 a 32-way fan-out hit "database is locked" 81 times and each
+    result was lost: the old code had a 10s busy timeout and no retry. The
+    first attempt here raises the same error; the retry must persist the row.
+    """
+    import sqlite3 as _sqlite3
+
+    from httpserver.services.llm import llm_service as module
+
+    db = str(tmp_path / "files.db")
+    _make_files_db(db, ["/A/report.docx"])
+    real_connect = _sqlite3.connect
+    calls = {"n": 0}
+
+    def flaky_connect(*args, **kwargs):
+        # Let the schema-ensure connection through, then fail the first
+        # transaction with the exact error the production run produced.
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise _sqlite3.OperationalError("database is locked")
+        return real_connect(*args, **kwargs)
+
+    monkeypatch.setattr(module.sqlite3, "connect", flaky_connect)
+    monkeypatch.setattr(module, "WRITE_RETRY_BASE_SLEEP_S", 0.0)
+
+    ok = _make_service().persist_to_files_db(
+        db_path=db, file_path="/A/report.docx", task_id="T",
+        description="survives-a-busy-writer", summary="S",
+        keywords="k", model_used="m",
+    )
+
+    assert ok is True
+    with sqlite3.connect(db) as conn:
+        desc = conn.execute(
+            "SELECT llm_description FROM files WHERE path='/A/report.docx'"
+        ).fetchone()[0]
+    assert desc == "survives-a-busy-writer"
+
+
+def test_non_busy_sqlite_error_is_not_retried(tmp_path, monkeypatch):
+    """Only busy/locked errors are retryable; a real schema error must fail fast."""
+    import sqlite3 as _sqlite3
+
+    from httpserver.services.llm import llm_service as module
+
+    db = str(tmp_path / "files.db")
+    _make_files_db(db, ["/A/report.docx"])
+    calls = {"n": 0}
+
+    def broken_schema(_db_path):
+        calls["n"] += 1
+        raise _sqlite3.OperationalError("no such table: files")
+
+    # Patch the schema helper itself: it owns its own sqlite3 import, so
+    # patching module.sqlite3 would not reach it.
+    monkeypatch.setattr(module, "ensure_file_analysis_schema", broken_schema)
+    monkeypatch.setattr(module, "WRITE_RETRY_BASE_SLEEP_S", 0.0)
+
+    assert _make_service().persist_to_files_db(
+        db_path=db, file_path="/A/report.docx", description="D",
+        summary="S", keywords="k", model_used="m") is False
+    # A non-busy error must not enter the retry loop.
+    assert calls["n"] == 1

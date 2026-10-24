@@ -28,6 +28,15 @@ from .event_analyzer import EventAnalyzer
 
 logger = logging.getLogger(__name__)
 
+# A 32-way file-analysis fan-out writes every result through this service, so
+# the files.db writer lock is contended by design. A 10s busy timeout expired
+# mid-run on PC.E01 and 81 finished analyses were dropped (the C++ direct-write
+# fallback lost the same race). Wait longer, then retry the whole transaction
+# with backoff: a busy database must delay a result, never discard it.
+WRITE_BUSY_TIMEOUT_S = 30.0
+WRITE_RETRY_ATTEMPTS = 5
+WRITE_RETRY_BASE_SLEEP_S = 0.25
+
 
 class LLMService:
     """
@@ -185,12 +194,12 @@ class LLMService:
                 analysis_id_upstream, created_at, ingested_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
         """
-        try:
+        def _attempt() -> bool:
             # Schema ensure is idempotent and runs outside the write
             # transaction; the truth table must exist before the first row.
             ensure_file_analysis_schema(db_path)
 
-            with sqlite3.connect(db_path, timeout=10) as conn:
+            with sqlite3.connect(db_path, timeout=WRITE_BUSY_TIMEOUT_S) as conn:
                 # Acquire the writer reservation before reading the version
                 # chain. A deferred read transaction cannot safely upgrade
                 # while another writer commits (SQLITE_BUSY_SNAPSHOT).
@@ -298,9 +307,35 @@ class LLMService:
                     f"(normalized: {norm_path!r})"
                 )
                 return True
-        except Exception as e:
-            logger.error(f"persist_to_files_db failed for {file_path!r}: {e}", exc_info=True)
-            return False
+
+        # A busy writer is a timing problem, not a data problem: retry the
+        # whole transaction instead of dropping a completed analysis.
+        for attempt in range(1, WRITE_RETRY_ATTEMPTS + 1):
+            try:
+                return _attempt()
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc).lower() and "busy" not in str(exc).lower():
+                    logger.error(
+                        f"persist_to_files_db failed for {file_path!r}: {exc}",
+                        exc_info=True)
+                    return False
+                if attempt == WRITE_RETRY_ATTEMPTS:
+                    logger.error(
+                        f"persist_to_files_db gave up after {attempt} attempts "
+                        f"for {file_path!r}: {exc}", exc_info=True)
+                    return False
+                sleep_s = WRITE_RETRY_BASE_SLEEP_S * (2 ** (attempt - 1))
+                logger.warning(
+                    f"persist_to_files_db busy for {file_path!r} "
+                    f"(attempt {attempt}/{WRITE_RETRY_ATTEMPTS}); retrying in "
+                    f"{sleep_s:.2f}s")
+                time.sleep(sleep_s)
+            except Exception as exc:
+                logger.error(
+                    f"persist_to_files_db failed for {file_path!r}: {exc}",
+                    exc_info=True)
+                return False
+        return False
 
     def _ensure_events_schema(self, conn: sqlite3.Connection):
         """Ensure the events table has AI-related columns."""
@@ -331,8 +366,8 @@ class LLMService:
             logger.debug(f"persist_to_events_db: db not found at {db_path!r}, skipping")
             return False
 
-        try:
-            with sqlite3.connect(db_path, timeout=10) as conn:
+        def _attempt() -> bool:
+            with sqlite3.connect(db_path, timeout=WRITE_BUSY_TIMEOUT_S) as conn:
                 self._ensure_events_schema(conn)
 
                 cur = conn.cursor()
@@ -363,9 +398,24 @@ class LLMService:
 
                 logger.warning(f"persist_to_events_db: no row matched event_id={event_id} in {db_path!r}")
                 return False
-        except Exception as e:
-            logger.error(f"persist_to_events_db failed for event_id={event_id}: {e}", exc_info=True)
-            return False
+
+        for attempt in range(1, WRITE_RETRY_ATTEMPTS + 1):
+            try:
+                return _attempt()
+            except sqlite3.OperationalError as exc:
+                busy = ("locked" in str(exc).lower() or "busy" in str(exc).lower())
+                if not busy or attempt == WRITE_RETRY_ATTEMPTS:
+                    logger.error(
+                        f"persist_to_events_db failed for event_id={event_id}: {exc}",
+                        exc_info=True)
+                    return False
+                time.sleep(WRITE_RETRY_BASE_SLEEP_S * (2 ** (attempt - 1)))
+            except Exception as exc:
+                logger.error(
+                    f"persist_to_events_db failed for event_id={event_id}: {exc}",
+                    exc_info=True)
+                return False
+        return False
 
     def set_file_relevance(self, db_path: str, file_path: str, is_relevant: bool) -> bool:
         """
