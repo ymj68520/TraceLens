@@ -7,6 +7,7 @@
 #include "TaskPersistence.h"
 #include "TaskWatchdog.h"
 #include "TaskSerialization.h"
+#include "TaskStageLedger.h"
 #include "AndroidPreflightAdmission.h"
 #include "RaidTaskAdmission.h"
 #include "AndroidContainerNormalization.h"
@@ -31,6 +32,10 @@
 #include <array>
 #include <iomanip>
 #include <sstream>
+
+// TaskManager is declared at global scope, so the ledger's namespace (nested in
+// forensics) needs qualifying at every use site.
+namespace stage_ledger = forensics::stage_ledger;
 
 
 using forensics::TaskPersistence;
@@ -327,6 +332,10 @@ bool TaskManager::wait_for_graphiti_ingestion(const std::string& task_id, const 
 
         while (std::chrono::steady_clock::now() < deadline) {
             if (is_task_cancelled(task_id)) return false;
+            // A pause during the ingestion wait stops the task here. The graph
+            // job keeps running server-side and its completion is recorded in
+            // the ledger on the next attempt, so nothing is lost by leaving.
+            if (is_task_paused(task_id)) return false;
             // Watchdog liveness: refresh only phase_start_time.
             touch_heartbeat(task_id);
             const auto status = proxy.get_job_status(active_job);
@@ -469,6 +478,10 @@ void TaskManager::start_analysis(const std::string& task_id) {
             
             if (is_task_cancelled(task_id)) {
                 update_status(task_id, TaskStatus::CANCELLED, "任务开始前已取消");
+                return;
+            }
+            if (is_task_paused(task_id)) {
+                update_status(task_id, TaskStatus::PAUSED, "任务开始前已暂停");
                 return;
             }
 
@@ -749,6 +762,45 @@ void TaskManager::start_analysis(const std::string& task_id) {
 
             // 1. Image Analysis
             if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "任务已取消"); return; }
+            if (is_task_paused(task_id)) { update_status(task_id, TaskStatus::PAUSED, "已暂停（检材分析前）"); return; }
+
+            // Resume fast path: a previous run already produced raw.db from this
+            // same image with the same configuration, and that database is still
+            // on disk. Re-walking a multi-hundred-GB image is the single most
+            // expensive thing the pipeline does, so this is the highest-value
+            // skip in the ledger.
+            const std::string imageConfigFp = stage_ledger::combine({
+                task.image_path,
+                std::to_string(static_cast<int>(task.xfs_mode)),
+                task.enable_decryption ? "decrypt" : "plain",
+                task.android_source});
+            bool imageStageReused = false;
+            {
+                const auto parsed = stage_ledger::parse(
+                    get_stage_entry(task_id, stage_ledger::kImageAnalysis));
+                const std::string rawFingerprint = stage_ledger::fingerprintSqlite(rawDbPath);
+                std::error_code sizeEc;
+                const auto rawSize = std::filesystem::exists(rawDbPath, sizeEc)
+                    ? std::filesystem::file_size(rawDbPath, sizeEc) : 0;
+                if (parsed.state == "done" && !rawFingerprint.empty() && !sizeEc &&
+                    parsed.detail == imageConfigFp && rawSize > 0) {
+                    imageStageReused = true;
+                    add_audit_log(task_id, "STAGE_SKIPPED",
+                                  "IMAGE_ANALYSIS reused: raw.db matches the completed stage fingerprint");
+                    update_progress(task_id, TaskPhase::IMAGE_ANALYSIS, 100,
+                                    "检材结构分析与元数据提取已完成（续跑复用）");
+                } else if (parsed.state == "done") {
+                    // The ledger claims done but raw.db changed, is unusable, or
+                    // the configuration differs. The claim is void and every
+                    // stage derived from raw.db must be re-derived too.
+                    add_audit_log(task_id, "STAGE_INVALIDATED",
+                                  "IMAGE_ANALYSIS ledger claim dropped (raw.db changed or configuration differs); "
+                                  "downstream stages will re-run");
+                    clear_downstream_stages(task_id, stage_ledger::kImageAnalysis);
+                }
+            }
+
+            if (!imageStageReused) {
             update_progress(task_id, TaskPhase::IMAGE_ANALYSIS, 10, "正在分析检材结构…");
             auto analyzer = std::make_unique<ImageAnalyzer>(imagePath);
             analyzer->setXFSMode(task.xfs_mode);
@@ -810,6 +862,13 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     return;
                 }
             }
+            // Ledger write happens only after the artifact is complete and any
+            // post-conditions (e.g. the aliyun Linux-marker probe) passed:
+            // a "done" entry must never describe a database we would reject.
+            mark_stage_complete(task_id, stage_ledger::kImageAnalysis, imageConfigFp,
+                                task.filter_profile.empty() ? stage_ledger::kEventExtraction
+                                                            : stage_ledger::kFilter);
+            } // end !imageStageReused
 
             // 1.4b. Auto-detect platform scenarios when the user did not pick any.
             // Probes the *un-filtered* raw DB for tell-tale artifact paths and
@@ -847,32 +906,68 @@ void TaskManager::start_analysis(const std::string& task_id) {
 
             // 1.5. Apply file filter (if profile specified)
             std::string effectiveRawDb = rawDbPath;
+            std::string filteredDbPath;
             if (!task.filter_profile.empty()) {
                 if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "任务已取消"); return; }
-                update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 5, "Applying file filter: " + task.filter_profile + "...");
+                if (is_task_paused(task_id)) { update_status(task_id, TaskStatus::PAUSED, "已暂停（过滤前）"); return; }
 
-                try {
-                    FileFilter filter;
-                    std::string filteredDbPath = rawDbPath;
-                    size_t pos = filteredDbPath.rfind("_raw.db");
-                    if (pos != std::string::npos) {
-                        filteredDbPath.replace(pos, 7, "_filtered.db");
-                    } else {
-                        filteredDbPath += ".filtered";
-                    }
+                filteredDbPath = rawDbPath;
+                size_t pos = filteredDbPath.rfind("_raw.db");
+                if (pos != std::string::npos) {
+                    filteredDbPath.replace(pos, 7, "_filtered.db");
+                } else {
+                    filteredDbPath += ".filtered";
+                }
 
-                    auto filterStats = filter.applyFilterByName(rawDbPath, filteredDbPath, task.filter_profile);
-                    if (filterStats.included_files > 0) {
-                        effectiveRawDb = filteredDbPath;
-                        update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 10,
-                            "Filter applied: " + std::to_string(filterStats.included_files) + "/" +
-                            std::to_string(filterStats.total_files) + " files selected");
-                    } else {
-                        std::cerr << "Warning: Filter excluded all files for task " << task_id << std::endl;
+                // Filter fingerprints the raw DB it copied from and the profile
+                // it applied; either changing invalidates the filtered copy and
+                // everything derived from it.
+                const std::string filterFp = stage_ledger::combine({
+                    stage_ledger::fingerprintSqlite(rawDbPath), task.filter_profile});
+                const auto filterEntry = stage_ledger::parse(
+                    get_stage_entry(task_id, stage_ledger::kFilter));
+                const bool filterUsable = filterEntry.state == "done" &&
+                                          filterEntry.detail == filterFp &&
+                                          !stage_ledger::fingerprintSqlite(filteredDbPath).empty();
+                if (filterUsable) {
+                    effectiveRawDb = filteredDbPath;
+                    add_audit_log(task_id, "STAGE_SKIPPED",
+                                  "FILE_FILTER reused: filtered DB matches the completed stage fingerprint");
+                    update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 10,
+                                    "文件过滤已完成（续跑复用：" + task.filter_profile + "）");
+                } else {
+                    if (filterEntry.state == "done") {
+                        add_audit_log(task_id, "STAGE_INVALIDATED",
+                                      "FILE_FILTER ledger claim dropped (raw DB or profile changed)");
+                        clear_downstream_stages(task_id, stage_ledger::kFilter);
                     }
-                } catch (const std::exception& e) {
-                    std::cerr << "Warning: Filter failed for task " << task_id << ": " << e.what() << std::endl;
-                    // Continue with unfiltered data
+                    update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 5, "Applying file filter: " + task.filter_profile + "...");
+
+                    try {
+                        FileFilter filter;
+                        auto filterStats = filter.applyFilterByName(rawDbPath, filteredDbPath, task.filter_profile);
+                        if (filterStats.included_files > 0) {
+                            effectiveRawDb = filteredDbPath;
+                            update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 10,
+                                "Filter applied: " + std::to_string(filterStats.included_files) + "/" +
+                                std::to_string(filterStats.total_files) + " files selected");
+                            mark_stage_complete(task_id, stage_ledger::kFilter, filterFp,
+                                                stage_ledger::kEventExtraction);
+                        } else {
+                            // Filter excluded everything: stay on the unfiltered
+                            // DB (honest degradation, same as the original
+                            // pipeline) and record no filter claim so a later
+                            // resume re-attempts the filter rather than
+                            // inheriting a silently unfiltered view.
+                            std::cerr << "Warning: Filter excluded all files for task " << task_id << std::endl;
+                            add_audit_log(task_id, "WARNING",
+                                          "Filter profile '" + task.filter_profile +
+                                          "' excluded every file; continuing unfiltered");
+                        }
+                    } catch (const std::exception& e) {
+                        std::cerr << "Warning: Filter failed for task " << task_id << ": " << e.what() << std::endl;
+                        // Continue with unfiltered data
+                    }
                 }
             }
 
@@ -886,20 +981,49 @@ void TaskManager::start_analysis(const std::string& task_id) {
 
             // 2. Event Extraction
             if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "任务已取消"); return; }
-            update_progress(task_id, TaskPhase::EVENT_EXTRACTION, 10, "正在提取时间线事件…");
+            if (is_task_paused(task_id)) { update_status(task_id, TaskStatus::PAUSED, "已暂停（时间线提取前）"); return; }
             auto eventExtractor = std::make_unique<EventExtractor>(effectiveRawDb, eventDbPath);
-            if (!eventExtractor->extractEvents()) {
-                std::cerr << "Error: Failed to extract events from " << effectiveRawDb << std::endl;
-                update_status(task_id, TaskStatus::FAILED, "Failed to extract timeline events",
-                              "EventExtractor::extractEvents() failed on raw DB '" + effectiveRawDb +
-                                  "' (events DB: " + eventDbPath + "). See cpp_server.log.");
-                return;
+            {
+                // events.db is a pure derivation of the effective raw DB, so the
+                // input fingerprint is that database's stat fingerprint.
+                const std::string eventsFp = stage_ledger::fingerprintSqlite(effectiveRawDb);
+                if (stage_is_reusable(task_id, stage_ledger::kEventExtraction, eventsFp,
+                                      {eventDbPath})) {
+                    add_audit_log(task_id, "STAGE_SKIPPED",
+                                  "EVENT_EXTRACTION reused: events DB matches the completed stage fingerprint");
+                    update_progress(task_id, TaskPhase::EVENT_EXTRACTION, 100,
+                                    "时间线事件提取已完成（续跑复用）");
+                    // The device-artifact merges below run against eventDb_; on
+                    // this path extractEvents() never opened it.
+                    if (!eventExtractor->openEventDatabaseForImports()) {
+                        update_status(task_id, TaskStatus::FAILED,
+                                      "Failed to reopen events DB for artifact import",
+                                      "events.db existed and matched its fingerprint but could not be "
+                                      "opened for the platform artifact merge (events DB: " + eventDbPath + ").");
+                        return;
+                    }
+                } else {
+                    update_progress(task_id, TaskPhase::EVENT_EXTRACTION, 10, "正在提取时间线事件…");
+                    // extractEvents() appends rows into an existing events table
+                    // (CREATE TABLE IF NOT EXISTS + INSERT), so a partial database
+                    // from an interrupted attempt must go before the re-run.
+                    remove_sqlite_artifacts({eventDbPath});
+                    if (!eventExtractor->extractEvents()) {
+                        std::cerr << "Error: Failed to extract events from " << effectiveRawDb << std::endl;
+                        update_status(task_id, TaskStatus::FAILED, "Failed to extract timeline events",
+                                      "EventExtractor::extractEvents() failed on raw DB '" + effectiveRawDb +
+                                          "' (events DB: " + eventDbPath + "). See cpp_server.log.");
+                        return;
+                    }
+                    update_progress(task_id, TaskPhase::EVENT_EXTRACTION, 100, "时间线事件提取已完成");
+                    mark_stage_complete(task_id, stage_ledger::kEventExtraction, eventsFp,
+                                        stage_ledger::kFileClassification);
+                }
             }
-            update_progress(task_id, TaskPhase::EVENT_EXTRACTION, 100, "时间线事件提取已完成");
 
             // 3. File Classification (scene-aware)
             if (is_task_cancelled(task_id)) { return; }
-            update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 10, "正在按类型分类文件…");
+            if (is_task_paused(task_id)) { update_status(task_id, TaskStatus::PAUSED, "已暂停（文件分类前）"); return; }
             auto fileClassifier = std::make_unique<FileClassifier>(effectiveRawDb, fileDbPath);
 
             // Map ForensicScenario to SceneType for scene-aware classification
@@ -914,13 +1038,34 @@ void TaskManager::start_analysis(const std::string& task_id) {
             }
             fileClassifier->setSceneType(sceneType);
 
-            if (!fileClassifier->classifyAndExtract()) {
-                update_status(task_id, TaskStatus::FAILED, "Failed to classify files",
-                              "FileClassifier::classifyAndExtract() failed (raw DB: " + effectiveRawDb +
-                                  ", files DB: " + fileDbPath + "). See cpp_server.log.");
-                return;
+            {
+                const int sceneInt = static_cast<int>(sceneType);
+                const std::string classifyFp = stage_ledger::combine({
+                    stage_ledger::fingerprintSqlite(effectiveRawDb), std::to_string(sceneInt)});
+                if (stage_is_reusable(task_id, stage_ledger::kFileClassification, classifyFp,
+                                      {fileDbPath})) {
+                    add_audit_log(task_id, "STAGE_SKIPPED",
+                                  "FILE_CLASSIFICATION reused: files DB matches the completed stage fingerprint");
+                    update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 100,
+                                    "文件分类已完成（续跑复用）");
+                } else {
+                    update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 10, "正在按类型分类文件…");
+                    // A stale files DB from an interrupted earlier attempt would
+                    // collect duplicate rows (FileClassifier only INSERTs), so
+                    // the artifact is removed before the re-run.
+                    remove_sqlite_artifacts({fileDbPath});
+                    if (!fileClassifier->classifyAndExtract()) {
+                        update_status(task_id, TaskStatus::FAILED, "Failed to classify files",
+                                      "FileClassifier::classifyAndExtract() failed (raw DB: " + effectiveRawDb +
+                                          ", files DB: " + fileDbPath + "). See cpp_server.log.");
+                        return;
+                    }
+                    update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 100, "文件分类已完成");
+                    mark_stage_complete(task_id, stage_ledger::kFileClassification, classifyFp,
+                                        task.llm_analyze ? stage_ledger::kLlmAnalysis
+                                                         : stage_ledger::kPlatformAnalysis);
+                }
             }
-            update_progress(task_id, TaskPhase::FILE_CLASSIFICATION, 100, "文件分类已完成");
 
             // Publish the files DB path as soon as it exists: SPEC E record
             // calls arrive during LLM analysis and resolve the write target
@@ -929,8 +1074,15 @@ void TaskManager::start_analysis(const std::string& task_id) {
             set_result_db(task_id, fileDbPath);
 
             // 4. LLM Analysis (Optional) - Stores descriptions directly in _files.db
+            // This stage needs no artifact reset on re-run: every candidate query
+            // filters on "llm_analyzed_at IS NULL" (LLMAnalysisService.cpp
+            // getScenePrioritizedFiles / getFilesFromDatabase), so a resumed run
+            // re-analyzes only the files that never got a description. That is
+            // also why it records a completion entry without a fingerprint: its
+            // progress is carried by the per-row markers in files.db itself.
             if (task.llm_analyze) {
                 if (is_task_cancelled(task_id)) { return; }
+                if (is_task_paused(task_id)) { update_status(task_id, TaskStatus::PAUSED, "已暂停（智能分析前）"); return; }
                 update_progress(task_id, TaskPhase::LLM_ANALYSIS, 10, "正在生成文件智能分析说明…");
                 
                 forensics::LLMAnalysisService llmService;
@@ -953,12 +1105,20 @@ void TaskManager::start_analysis(const std::string& task_id) {
                         analyzedCount = llmService.analyzeAllFiles(fileDbPath, llmOpts,
                             [this, task_id](int current, int total, const std::string& file) -> bool {
                                 if (is_task_cancelled(task_id)) return false;
+                                if (is_task_paused(task_id)) return false;
                                 int progress = 30;
                                 if (total > 0) {
                                     progress += (current * 60 / total);
                                 }
                                 update_progress(task_id, TaskPhase::LLM_ANALYSIS, progress,
                                     "Analyzing file " + std::to_string(current) + "/" + std::to_string(total));
+                                // Partial ledger entry: how many of the selected
+                                // files have descriptions, so an interrupted run
+                                // reports a truthful "继续将处理剩余 N 个" position.
+                                if (current % 25 == 0 || current == total) {
+                                    mark_stage_partial(task_id, stage_ledger::kLlmAnalysis,
+                                        std::to_string(current) + "/" + std::to_string(total) + ":full");
+                                }
                                 return true;
                             });
                     } else {
@@ -972,18 +1132,25 @@ void TaskManager::start_analysis(const std::string& task_id) {
                         analyzedCount = llmService.analyzeSmartFiles(fileDbPath, llmOpts,
                             [this, task_id](int current, int total, const std::string& file) -> bool {
                                 if (is_task_cancelled(task_id)) return false;
+                                if (is_task_paused(task_id)) return false;
                                 int progress = 30;
                                 if (total > 0) {
                                     progress += (current * 60 / total);
                                 }
                                 update_progress(task_id, TaskPhase::LLM_ANALYSIS, progress,
                                     "Analyzing important file " + std::to_string(current) + "/" + std::to_string(total));
+                                if (current % 25 == 0 || current == total) {
+                                    mark_stage_partial(task_id, stage_ledger::kLlmAnalysis,
+                                        std::to_string(current) + "/" + std::to_string(total) + ":smart");
+                                }
                                 return true;
                             });
                     }
                     
                     update_progress(task_id, TaskPhase::LLM_ANALYSIS, 100, 
                         "LLM analysis completed: " + std::to_string(analyzedCount) + " files analyzed (stored in _files.db)");
+                    mark_stage_complete(task_id, stage_ledger::kLlmAnalysis, "",
+                                        stage_ledger::kPlatformAnalysis);
                 } else {
                     std::cerr << "Warning: Failed to initialize LLM analysis service" << std::endl;
                 }
@@ -1048,13 +1215,49 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 int scenario_index = 0;
                 for (auto scenario : task.scenarios) {
                     if (is_task_cancelled(task_id)) { return; }
+                    if (is_task_paused(task_id)) { update_status(task_id, TaskStatus::PAUSED, "已暂停（平台分析中）"); return; }
 
                     int base_progress = (scenario_index * 100) / total_scenarios;
                     int per_scenario_progress = std::max(1, 100 / total_scenarios);
                     std::string scenario_name = scenario_to_string(scenario);
+
+                    // Per-scenario ledger entry: a multi-scenario task that died
+                    // between scenarios keeps the finished ones. The artifact is
+                    // the scenario's own database (android.db / windows.db /
+                    // linux.db / oss.db), keyed by the raw DB it derives from.
+                    const std::string scenarioStage = "PLATFORM_ANALYSIS." + scenario_name;
+                    std::string scenarioDbPath;
+                    switch (scenario) {
+                        case ForensicScenario::ANDROID:
+                            scenarioDbPath = pm.getTaskDbPaths(task_id, baseName).androidDb.string(); break;
+                        case ForensicScenario::WINDOWS:
+                            scenarioDbPath = pm.getTaskDbPaths(task_id, baseName).windowsDb.string(); break;
+                        case ForensicScenario::LINUX:
+                            scenarioDbPath = pm.getTaskDbPaths(task_id, baseName).linuxDb.string(); break;
+                        case ForensicScenario::SERVER_CLOUD:
+                            scenarioDbPath = pm.getTaskDbPaths(task_id, baseName).ossDb.string(); break;
+                    }
+                    const std::string scenarioFp = stage_ledger::combine({
+                        stage_ledger::fingerprintSqlite(effectiveRawDb), scenario_name,
+                        task.llm_analyze ? "llm" : "nollm"});
+                    if (stage_is_reusable(task_id, scenarioStage, scenarioFp, {scenarioDbPath})) {
+                        add_audit_log(task_id, "STAGE_SKIPPED",
+                                      scenarioStage + " reused: scenario DB matches the completed fingerprint");
+                        scenario_index++;
+                        update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS,
+                                        (scenario_index * 100) / total_scenarios,
+                                        scenario_name + " analysis reused (续跑复用)");
+                        continue;
+                    }
+
                     update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, base_progress,
                         "Analyzing " + scenario_name + " artifacts...");
 
+                    // Set only when the scenario ran without throwing. The
+                    // artifact-existence check below is not enough on its own: a
+                    // leftover database from a previous attempt would otherwise
+                    // let a soft-failed scenario be recorded as complete.
+                    bool scenarioSucceeded = false;
                     try {
                         switch (scenario) {
                             case ForensicScenario::ANDROID: {
@@ -1065,6 +1268,10 @@ void TaskManager::start_analysis(const std::string& task_id) {
                                 }
                                 auto androidAnalyzer = std::make_unique<AndroidAnalyzer>(imagePath, dbManager.get());
                                 std::string androidDbPath = pm.getTaskDbPaths(task_id, baseName).androidDb.string();
+                                // Platform analyzers only INSERT (CREATE TABLE IF
+                                // NOT EXISTS), so a partial database from the
+                                // interrupted attempt must be cleared first.
+                                remove_sqlite_artifacts({androidDbPath});
                                 androidAnalyzer->setOutputDatabasePath(androidDbPath);
                                 androidAnalyzer->setSkipAI(!task.llm_analyze);
                                 androidAnalyzer->setSourceCallbacks([this, task_id](std::size_t) { touch_heartbeat(task_id); },
@@ -1096,6 +1303,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                                 }
                                 auto windowsAnalyzer = std::make_unique<WindowsFilesAnalyzer>(imagePath, dbManager.get());
                                 std::string windowsDbPath = pm.getTaskDbPaths(task_id, baseName).windowsDb.string();
+                                remove_sqlite_artifacts({windowsDbPath});
                                 windowsAnalyzer->setOutputDatabasePath(windowsDbPath);
                                 attachPlatformProgressCallback(*windowsAnalyzer, task_id, base_progress,
                                                                per_scenario_progress, scenario_name);
@@ -1115,6 +1323,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                                 }
                                 auto linuxAnalyzer = std::make_unique<LinuxFilesAnalyzer>(imagePath, dbManager.get());
                                 std::string linuxDbPath = pm.getTaskDbPaths(task_id, baseName).linuxDb.string();
+                                remove_sqlite_artifacts({linuxDbPath});
                                 linuxAnalyzer->setOutputDatabasePath(linuxDbPath);
                                 attachPlatformProgressCallback(*linuxAnalyzer, task_id, base_progress,
                                                                per_scenario_progress, scenario_name);
@@ -1136,6 +1345,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                                 }
                                 auto serverAnalyzer = std::make_unique<LinuxFilesAnalyzer>(imagePath, dbManager.get());
                                 std::string serverDbPath = pm.getTaskDbPaths(task_id, baseName).ossDb.string();
+                                remove_sqlite_artifacts({serverDbPath});
                                 serverAnalyzer->setOutputDatabasePath(serverDbPath);
                                 attachPlatformProgressCallback(*serverAnalyzer, task_id, base_progress,
                                                                per_scenario_progress, scenario_name);
@@ -1147,10 +1357,23 @@ void TaskManager::start_analysis(const std::string& task_id) {
                                 break;
                             }
                         }
+                        scenarioSucceeded = true;
                     } catch (const std::exception& e) {
                         std::cerr << "Warning: " << scenario_name << " analysis failed: " << e.what() << std::endl;
                         add_audit_log(task_id, "WARNING", scenario_name + " analysis failed: " + std::string(e.what()));
                         if (harmonyBackup || task.android_source == "aliyun-image") throw;
+                        // Soft failure: the scenario is intentionally left
+                        // unrecorded in the ledger so a resume retries it,
+                        // matching the original pipeline's tolerance for
+                        // per-scenario errors.
+                    }
+
+                    // Record only when the scenario actually ran to completion
+                    // AND produced its database: a scenario that soft-failed
+                    // must stay unclaimed so a later resume re-attempts it.
+                    if (scenarioSucceeded &&
+                        !stage_ledger::fingerprintSqlite(scenarioDbPath).empty()) {
+                        mark_stage_complete(task_id, scenarioStage, scenarioFp);
                     }
 
                     scenario_index++;
@@ -1158,13 +1381,37 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, done_progress,
                         scenario_name + " analysis completed");
                 }
+                // Platform phase is complete once every scenario has a claim.
+                bool allScenariosDone = true;
+                for (auto scenario : task.scenarios) {
+                    const auto entry = stage_ledger::parse(
+                        get_stage_entry(task_id, "PLATFORM_ANALYSIS." + scenario_to_string(scenario)));
+                    if (entry.state != "done") { allScenariosDone = false; break; }
+                }
+                if (allScenariosDone) {
+                    mark_stage_complete(task_id, stage_ledger::kPlatformAnalysis, "",
+                                        task.file_carving ? stage_ledger::kFileCarving
+                                                          : stage_ledger::kFinalizing);
+                }
             }
 
             // 7. File Carving (Optional) — signature-based recovery from unallocated space
             if (task.file_carving && !harmonyBackup && !is_task_cancelled(task_id)) {
+              if (is_task_paused(task_id)) { update_status(task_id, TaskStatus::PAUSED, "已暂停（文件恢复前）"); return; }
+              auto carvedEntry = stage_ledger::parse(
+                  get_stage_entry(task_id, stage_ledger::kFileCarving));
+              const std::string carveFp = stage_ledger::fingerprintStat(imagePath);
+              std::filesystem::path carveDir = pm.getTaskDir(task_id) / "carved_files";
+              const bool carvingReusable = carvedEntry.state == "done" &&
+                  !carveFp.empty() && carvedEntry.detail == carveFp &&
+                  std::filesystem::exists(carveDir);
+              if (carvingReusable) {
+                  add_audit_log(task_id, "STAGE_SKIPPED",
+                                "FILE_CARVING reused: recovered files match the completed stage fingerprint");
+                  update_progress(task_id, TaskPhase::FILE_CARVING, 100, "文件恢复已完成（续跑复用）");
+              } else {
                 update_progress(task_id, TaskPhase::FILE_CARVING, 0, "正在恢复文件…");
                 try {
-                    std::filesystem::path carveDir = pm.getTaskDir(task_id) / "carved_files";
                     std::filesystem::create_directories(carveDir);
                     FileCarver carver;
                     carver.setCancelCallback([this, task_id]() {
@@ -1181,16 +1428,20 @@ void TaskManager::start_analysis(const std::string& task_id) {
                         "Recovered " + std::to_string(carved) + " files to " + carveDir.string());
                     update_progress(task_id, TaskPhase::FILE_CARVING, 100,
                         "File carving completed: " + std::to_string(carved) + " files recovered");
+                    mark_stage_complete(task_id, stage_ledger::kFileCarving, carveFp,
+                                        stage_ledger::kFinalizing);
                 } catch (const std::exception& e) {
                     std::cerr << "Warning: File carving failed: " << e.what() << std::endl;
                     add_audit_log(task_id, "WARNING", std::string("File carving failed: ") + e.what());
                 }
+              } // end !carvingReusable
             }
 
             // 8. Graphiti Knowledge Graph Ingestion — MVP completion gate.
             // mvp-phase1-acceptance SPEC §5: the task is COMPLETED only once
             // ingestion has finished; failure after retries fails the task.
             if (is_task_cancelled(task_id)) { return; }
+            if (is_task_paused(task_id)) { update_status(task_id, TaskStatus::PAUSED, "已暂停（知识图谱摄取前）"); return; }
             update_progress(task_id, TaskPhase::FINALIZING, 10, "Triggering knowledge graph ingestion...");
 
             std::string graphiti_job_id;
@@ -1198,7 +1449,16 @@ void TaskManager::start_analysis(const std::string& task_id) {
             const char* outbound = std::getenv("FIELD_OUTBOUND_POLICY");
             const bool noOptionalIntelligence = fieldMode && std::string(fieldMode) == "enabled" &&
                 (!outbound || std::string(outbound) == "disabled");
-            if (!noOptionalIntelligence) {
+
+            // Resume fast path: a previous attempt that already finished
+            // ingestion must not re-wait for it — the graph is idempotent
+            // server-side (file-episode dedupe + ingested_at watermark), but the
+            // wait itself costs hours on a real image. Only the report gate is
+            // retried in that case.
+            const bool ingestionAlreadyDone = stage_ledger::parse(
+                get_stage_entry(task_id, "FINALIZING.ingestion")).state == "done";
+
+            if (!noOptionalIntelligence && !ingestionAlreadyDone) {
                 try {
                     auto& proxy = forensics::LLMPythonProxy::instance();
                     // LLM_MAX_FILES caps which files were described. The tail must
@@ -1210,6 +1470,12 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     add_audit_log(task_id, "WARNING", "Graphiti ingestion failed: " + std::string(e.what()));
                 }
             }
+            if (graphiti_job_id.empty() && !noOptionalIntelligence && ingestionAlreadyDone) {
+                add_audit_log(task_id, "STAGE_SKIPPED",
+                              "FINALIZING ingestion reused: knowledge graph ingestion already completed");
+                update_progress(task_id, TaskPhase::FINALIZING, 50,
+                                "知识图谱摄取已完成（续跑复用），正在检查研判报告…");
+            }
             if (!graphiti_job_id.empty()) {
                 add_audit_log(task_id, "GRAPHITI_INGESTION",
                     "Triggered Graphiti knowledge graph ingestion (job_id: " + graphiti_job_id + ")");
@@ -1219,7 +1485,8 @@ void TaskManager::start_analysis(const std::string& task_id) {
 
             // Finalization — gated on ingestion (budget: GRAPHITI_INGEST_WAIT_TIMEOUT_MIN,
             // 0 restores the legacy fire-and-forget completion).
-            const bool ingestion_ok = noOptionalIntelligence || wait_for_graphiti_ingestion(task_id, graphiti_job_id);
+            const bool ingestion_ok = noOptionalIntelligence || ingestionAlreadyDone ||
+                                      wait_for_graphiti_ingestion(task_id, graphiti_job_id);
             if (is_task_cancelled(task_id)) { return; }
 
             set_result_db(task_id, fileDbPath);
@@ -1234,6 +1501,14 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 add_audit_log(task_id, "ERROR", "Analysis failed at the Graphiti ingestion gate");
                 return;
             }
+            // The ingestion ledger entry is written as soon as the gate passes,
+            // so a later failure in the report stage resumes straight to the
+            // report instead of re-waiting hours for an already-built graph.
+            if (!noOptionalIntelligence && !ingestionAlreadyDone) {
+                mark_stage_complete(task_id, "FINALIZING.ingestion", "",
+                                    "FINALIZING.report");
+            }
+
             // The first-stage report belongs to the initial analysis pipeline.
             // Its worker callback is deliberately disabled to avoid racing this gate.
             if (task.llm_analyze && !noOptionalIntelligence &&
@@ -1251,6 +1526,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
             const std::string completionMessage = harmonyBackup && harmonyCoverageIncomplete
                 ? "HarmonyOS backup analyzed; some sources are absent or unsupported. Review mobile source coverage."
                 : "Analysis completed successfully";
+            mark_stage_complete(task_id, stage_ledger::kFinalizing, "");
             update_progress(task_id, TaskPhase::FINALIZING, 100, completionMessage);
             update_status(task_id, TaskStatus::COMPLETED, completionMessage);
 

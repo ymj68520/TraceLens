@@ -100,6 +100,21 @@ public:
 
 	bool extractEvents();
 
+    /**
+     * @brief Open the event database without extracting filesystem events.
+     *
+     * Used on a resumed run where EVENT_EXTRACTION was skipped because
+     * events.db already matches its fingerprint: the artifact imports
+     * (importLinuxArtifacts / importAndroidArtifacts / importSceneArtifacts)
+     * run against eventDb_, which extractEvents() normally opens. Calling this
+     * keeps the device-event merge available without re-walking the raw DB.
+     *
+     * Do not call after extractEvents(): that path opens the handles itself, and
+     * a second open would replace the pointers without closing them. This entry
+     * point exists for the skip path, where extractEvents() never ran.
+     */
+    bool openEventDatabaseForImports() { return openDatabases(); }
+
     bool importWindowsArtifacts(const std::string& windowsDbPath);
     bool importLinuxArtifacts(const std::string& linuxDbPath);
     bool importAndroidArtifacts(const std::string& androidDbPath);
