@@ -12,6 +12,32 @@ from httpserver.services.android_sparse_image import (
 )
 from httpserver.services.android_lp_image import inspect_super, tool_root
 
+# These probes drive the real AOSP LP toolchain (lpmake/lpunpack/libsparse)
+# built by scripts/install_android_container_tools.sh from pinned sources.
+# The toolchain is a build prerequisite of this suite, not an optional extra:
+# the installer resolves the host's Android library packages by name (their
+# versions differ per distro release) and records the resulting sources and
+# binaries in the bundle manifest that verify_tools() checks. A missing
+# toolchain therefore fails loudly with the command to run, instead of turning
+# the LP coverage into silent skips.
+def _aosp_tools_available() -> bool:
+    bin_dir = tool_root() / "bin"
+    return all((bin_dir / name).is_file()
+               for name in ("lpmake", "lpunpack", "liblp.so", "lp_inventory"))
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _require_aosp_toolchain():
+    if not _aosp_tools_available():
+        pytest.fail(
+            "AOSP LP toolchain missing; build it with "
+            "./scripts/install_android_container_tools.sh",
+            pytrace=False,
+        )
+
+
+requires_aosp_tools = pytest.mark.usefixtures("_require_aosp_toolchain")
+
 
 def sparse_bytes(*, blocks=3, chunks=None):
     if chunks is None:
@@ -64,6 +90,26 @@ def test_sparse_expanded_size_limit(tmp_path):
     assert validate_sparse(source)["error"] == "SPARSE_BOMB_OR_EXPANDED_LIMIT"
 
 
+@requires_aosp_tools
+def test_sparse_normalizes_validated_image_to_exact_expanded_bytes(tmp_path):
+    # The happy path had no coverage: only pre-conversion refusals were probed,
+    # so a crash in the success record (a stale tool-version reference) went
+    # unnoticed. This drives simg2img end to end and checks the bytes.
+    source = tmp_path / "fixture.sparse"
+    source.write_bytes(sparse_bytes())
+    inventory = validate_sparse(source)
+    target = tmp_path / "derived.raw"
+    record = normalize_sparse(source, target, inventory,
+                              expected_sha256=file_sha256(source))
+    expected = b"A" * 4096 + b"B" * 4096 + bytes(4096)
+    assert target.read_bytes() == expected
+    assert record["derived_size"] == len(expected) == inventory["expanded_size"]
+    assert record["source_sha256"] == file_sha256(source)
+    assert record["derived_sha256"] == file_sha256(target)
+    assert record["tool"] == "simg2img" and record["tool_version"]
+
+
+@requires_aosp_tools
 def test_sparse_refuses_insufficient_workspace_before_conversion(tmp_path, monkeypatch):
     source = tmp_path / "fixture.sparse"
     source.write_bytes(sparse_bytes())
@@ -99,6 +145,7 @@ def super_image(tmp_path):
     return super_file
 
 
+@requires_aosp_tools
 def test_lp_metadata_inventory_and_slot(super_image):
     row = inspect_super(super_image, 0)
     assert row["status"] == "ANDROID_SUPER" and row["ready"]
@@ -171,6 +218,7 @@ def test_lp_unsupported_metadata_version_fails_closed(super_image):
     assert inspect_super(super_image)["status"] == "MALFORMED_SUPER"
 
 
+@requires_aosp_tools
 def test_lp_multi_device_requires_companion_input(tmp_path):
     source = tmp_path / "system_a.img"
     with source.open("wb") as sink:

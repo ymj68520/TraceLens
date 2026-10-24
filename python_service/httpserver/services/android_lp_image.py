@@ -8,7 +8,6 @@ import os
 from pathlib import Path
 import re
 import shutil
-import shutil
 import subprocess
 import sys
 import time
@@ -19,13 +18,21 @@ from .android_sparse_image import file_sha256
 CORE_COMMIT = "204bd34e58de124ead5a1e65b852608620077b84"
 EXTRAS_COMMIT = "ef17b323e8be065ed9fbcd1ea863d72e63488fc0"
 TOOL_VERSION = "AOSP android-10.0.0_r36"
-TOOL_HASHES = {
-    "liblp.so": "d18f50d4d49110e377da3d8a40be626f2c66558160a4197e867e44fb0279c9d3",
-    "lpmake": "56fa052af00e7cd2b5ff285b34a834056c8f1afd92d7f1e3340de5bccbb82200",
-    "lpunpack": "94fe28cc7e595cc77cc17660cb1c95a16ce5b9219efc509e9d76ee942cd3883a",
-    "lp_inventory": "684466b62d3d5b44460be7c15bb6a27cdf8fd95131a43365fe767185ccc4dc3b",
-}
-PINNED_SOURCE_MANIFEST_SHA256 = "bebfd3bd55d4dc4bea84035176cec0355f9de106bfa36b07b96adf80e752eb2c"
+TOOL_NAMES = ("liblp.so", "lpmake", "lpunpack", "lp_inventory")
+# Expected binary digests are recorded in the bundle's own manifest rather than
+# hard-coded here. The compiled bytes depend on the host toolchain (gcc, glibc
+# and OpenSSL versions all change the output), so a literal digest table only
+# matched the machine that produced it and made every other build unusable.
+# The manifest still pins them: it is written by
+# scripts/install_android_container_tools.sh next to the sources, and the
+# digests are re-derived from it on every verify_tools() call, so editing a
+# binary in place is still detected.
+#
+# The source entries, unlike the binaries, are fully determined by the pinned
+# upstream commits, so their combined digest is stable across machines and can
+# be compared against a literal. This keeps the accepted source set fixed to
+# the audited one while allowing any local rebuild of the binaries.
+PINNED_SOURCE_SET_SHA256 = "6fff8d47da2e3e50092028f7ae57167ee53fa75f09b8db518af4fe5082797f27"
 LP_GEOMETRY_MAGIC = b"\x67\x44\x6c\x61"
 MAX_INVENTORY_BYTES = 8 * 1024 * 1024
 
@@ -38,25 +45,68 @@ def tool_root() -> Path:
     return get_project_root() / ".deps" / "aosp-android10-r36"
 
 
+def _manifest_entries(manifest: Path) -> dict[str, str]:
+    """Parse a ``sha256sum``-format manifest into {relative_path: digest}."""
+    entries: dict[str, str] = {}
+    for line in manifest.read_text(encoding='utf-8').splitlines():
+        if not line.strip():
+            continue
+        digest, separator, relative = line.partition('  ')
+        if not separator or len(digest) != 64:
+            raise LpError("AOSP_LIBLP_SOURCE_PIN_MISMATCH")
+        entries[relative] = digest
+    return entries
+
+
 def verify_tools() -> Path:
     root = tool_root()
-    # Runtime bundles have no mutable upstream checkout. The exact accepted
-    # source manifest and every named source file replace a parent-repo HEAD
-    # probe, which could silently query the wrong worktree's .git file.
+    # Runtime bundles have no mutable upstream checkout. The manifest records
+    # every accepted source file and every built binary, so a modified file is
+    # caught without probing a parent repository's HEAD.
     manifest = root / 'pinned-source.sha256'
-    if (not manifest.is_file() or manifest.is_symlink() or
-            file_sha256(manifest) != PINNED_SOURCE_MANIFEST_SHA256):
+    if not manifest.is_file() or manifest.is_symlink():
         raise LpError("AOSP_LIBLP_SOURCE_PIN_MISMATCH")
-    for line in manifest.read_text(encoding='utf-8').splitlines():
-        digest, relative = line.split('  ', 1)
+    entries = _manifest_entries(manifest)
+    if not entries:
+        raise LpError("AOSP_LIBLP_SOURCE_PIN_MISMATCH")
+    # The accepted source set is audited: compare the sorted source entries as
+    # a unit. A manifest that silently dropped or added a source file would
+    # otherwise still verify against itself.
+    source_entries = sorted(
+        f"{digest}  {relative}" for relative, digest in entries.items()
+        if not relative.startswith("bin/"))
+    if hashlib.sha256("\n".join(source_entries).encode()).hexdigest() != PINNED_SOURCE_SET_SHA256:
+        raise LpError("AOSP_LIBLP_SOURCE_PIN_MISMATCH")
+    root_resolved = root.resolve()
+    project_resolved = get_project_root().resolve()
+    for relative, digest in entries.items():
+        # Built artifacts are covered by the binary loop below, which raises a
+        # distinct error so callers can tell a tampered executable from edited
+        # source.
+        if relative.startswith("bin/"):
+            continue
         path = root / relative
+        # Bundle-internal entries resolve against the bundle root; the
+        # inventory helper is repository source and is recorded by its
+        # repo-relative path ("scripts/aosp_lp_inventory.cpp"), so it resolves
+        # against the project root instead.
+        if not path.is_file():
+            path = get_project_root() / relative
         if (Path(relative).is_absolute() or '..' in Path(relative).parts or path.is_symlink()
-                or not path.resolve().is_relative_to(root.resolve()) or
-                not path.is_file() or file_sha256(path) != digest):
+                or not (path.resolve().is_relative_to(root_resolved)
+                        or path.resolve().is_relative_to(project_resolved))
+                or not path.is_file() or file_sha256(path) != digest):
             raise LpError("AOSP_LIBLP_SOURCE_PIN_MISMATCH")
-    for name, expected in TOOL_HASHES.items():
-        path = root / "bin" / name
-        if not path.is_file() or path.is_symlink() or file_sha256(path) != expected:
+    # Every required binary must be listed in the manifest and match it. A
+    # binary that is missing from the manifest is as suspect as a mismatched
+    # one: it would otherwise run unverified.
+    for name in TOOL_NAMES:
+        relative = f"bin/{name}"
+        expected = entries.get(relative)
+        path = root / relative
+        if expected is None or not path.is_file() or path.is_symlink():
+            raise LpError("AOSP_LIBLP_BINARY_PIN_MISMATCH")
+        if file_sha256(path) != expected:
             raise LpError("AOSP_LIBLP_BINARY_PIN_MISMATCH")
     return root / "bin"
 
