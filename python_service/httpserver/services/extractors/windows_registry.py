@@ -35,7 +35,12 @@ class RegistryExtractor(BaseExtractor):
 
     async def extract_to_markdown(self, file_path: str) -> str:
         try:
-            import Registry
+            # python-registry 1.3 keeps the class inside the Registry.Registry
+            # submodule; the package __init__ exports nothing. `import Registry`
+            # followed by `Registry.Registry(...)` raised "module 'Registry' has
+            # no attribute 'Registry'" on every hive, so every registry artifact
+            # in a report came back as unavailable material.
+            from Registry.Registry import Registry, RegistryKeyNotFoundException
         except ImportError:
             return "Error: python-registry library is not installed."
 
@@ -48,7 +53,7 @@ class RegistryExtractor(BaseExtractor):
             return f"Error: Failed to read file: {e}"
 
         try:
-            reg = Registry.Registry(file_path)
+            reg = Registry(file_path)
         except Exception as e:
             return f"Error: Failed to open Registry hive: {e}"
 
@@ -83,12 +88,18 @@ class RegistryExtractor(BaseExtractor):
                                 if len(vdata) > 100:
                                     vdata = vdata[:97] + "..."
                                 vdata = vdata.replace('|', '\\|').replace('\n', ' ')
-                                result.append(f"| {v.name()} | {v.type_str()} | {vdata} |")
+                                # python-registry 1.3 names this
+                                # value_type_str(); type_str() only existed in
+                                # older releases. Every value row used to be
+                                # dropped by the surrounding except handler,
+                                # leaving empty tables for the hives that matter
+                                # most (SAM users, Run keys, ComputerName).
+                                result.append(f"| {v.name()} | {v.value_type_str()} | {vdata} |")
                         subkeys = list(key.subkeys())
                         if subkeys:
                             result.append(f"\n*Subkeys: {', '.join(sk.name() for sk in subkeys[:10])}*")
                         result.append("")
-                except Registry.RegistryKeyNotFoundException:
+                except RegistryKeyNotFoundException:
                     pass
                 except Exception as e:
                     logger.warning(f"Error reading registry key {key_path}: {e}")

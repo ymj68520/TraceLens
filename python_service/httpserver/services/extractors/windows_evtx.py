@@ -65,7 +65,13 @@ class EvtxExtractor(BaseExtractor):
         from defusedxml import ElementTree as ET
 
         with open(file_path, 'rb') as f:
-            fh = FileHeader(f.read())
+            data = f.read()
+        # python-evtx >= 0.8 takes the buffer plus the offset of the file
+        # header (always 0 for a standalone .evtx). The one-argument call this
+        # used to make raises "missing 1 required positional argument:
+        # 'offset'" on every file, which silently turned all 373 event logs in
+        # a PC.E01 report into "content unavailable" material.
+        fh = FileHeader(data, 0)
 
         events = []
         event_id_counter = Counter()
