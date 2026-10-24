@@ -16,8 +16,14 @@ enum class XFSMode;
 
 /**
  * @brief Task execution phases
+ *
+ * INTERRUPTED is the resumable counterpart of FAILED: the process died (or the
+ * host rebooted) mid-run and the stage ledger records how far the pipeline got.
+ * PAUSED is a user-requested stop at a stage boundary that resumes with the same
+ * task id. Both leave the worker thread, but both are resumable via
+ * POST /api/tasks/{id}/resume.
  */
-enum class TaskStatus { PENDING, RUNNING, COMPLETED, FAILED, CANCELLED };
+enum class TaskStatus { PENDING, RUNNING, COMPLETED, FAILED, CANCELLED, INTERRUPTED, PAUSED };
 enum class TaskPriority { LOW = 0, NORMAL = 1, HIGH = 2, CRITICAL = 3 };
 enum class TaskPhase {
     INITIALIZING,
@@ -136,6 +142,13 @@ struct AnalysisTask {
     // 服务重启时任务处于 PENDING/RUNNING 而被标记为失败。此时 completed_time
     // 只表示"系统中断于该时刻"，不是任务实际运行的结束时间，前端按此区分展示。
     bool interrupted_by_restart = false;
+    // 用户显式请求暂停（POST /api/tasks/{id}/pause）。与 cancellation_requested
+    // 分开：取消不可恢复，暂停在阶段边界停下来后可 resume。
+    std::atomic<bool> pause_requested{false};
+    // 该任务被续跑的次数与最近一次续跑时间戳（可复核性：终版报告需自证
+    // "这个任务被续跑过，跳过了哪些阶段"）。
+    int resume_count = 0;
+    std::chrono::system_clock::time_point last_resumed_time{};
     std::map<std::string, std::string> metadata;
 
     // LLM analysis options. llm_analyze covers only file description
@@ -175,6 +188,40 @@ struct AnalysisTask {
     // MIUI / Android backup AES-256 password. Runtime-only — never persisted.
     std::string backup_password;
 
+    // ── Stage ledger (resumable tasks) ──────────────────────────────────────
+    // Per-stage checkpoint entries live in metadata under "stage.<NAME>".
+    // See TaskStageLedger.h for the value grammar. These helpers keep the key
+    // convention in one place so CLI and HTTP paths cannot drift.
+
+    /** Ledger value for a stage, or empty when the stage never completed. */
+    std::string stage_entry(const std::string& stage) const {
+        const auto it = metadata.find("stage." + stage);
+        return it == metadata.end() ? std::string() : it->second;
+    }
+
+    /** True when the stage recorded a terminal success (any fingerprint). */
+    bool stage_done(const std::string& stage) const {
+        const std::string v = stage_entry(stage);
+        return v.rfind("done", 0) == 0;
+    }
+
+    /** Record a terminal success for a stage along with its input fingerprint. */
+    void set_stage_done(const std::string& stage, const std::string& fingerprint) {
+        metadata["stage." + stage] = fingerprint.empty()
+            ? std::string("done")
+            : "done:" + fingerprint;
+    }
+
+    /** Record partial progress (used by the long LLM phases). */
+    void set_stage_partial(const std::string& stage, const std::string& detail) {
+        metadata["stage." + stage] = "partial:" + detail;
+    }
+
+    /** Drop a stage claim; used when a stage must re-run from scratch. */
+    void clear_stage(const std::string& stage) {
+        metadata.erase("stage." + stage);
+    }
+
     // Make it copyable and movable by handling the atomic properly
     AnalysisTask() = default;
     AnalysisTask(const AnalysisTask& other)
@@ -189,7 +236,10 @@ struct AnalysisTask {
           xfs_mode(other.xfs_mode),
           db_output_dir(other.db_output_dir),
           cancellation_requested(other.cancellation_requested.load()),
-          error_details(other.error_details), interrupted_by_restart(other.interrupted_by_restart), metadata(other.metadata),
+          error_details(other.error_details), interrupted_by_restart(other.interrupted_by_restart),
+          pause_requested(other.pause_requested.load()),
+          resume_count(other.resume_count), last_resumed_time(other.last_resumed_time),
+          metadata(other.metadata),
           llm_analyze(other.llm_analyze), llm_event_analyze(other.llm_event_analyze), llm_mode(other.llm_mode),
           output_descriptions_db(other.output_descriptions_db),
           case_description(other.case_description),
@@ -228,6 +278,9 @@ struct AnalysisTask {
             cancellation_requested.store(other.cancellation_requested.load());
             error_details = other.error_details;
             interrupted_by_restart = other.interrupted_by_restart;
+            pause_requested.store(other.pause_requested.load());
+            resume_count = other.resume_count;
+            last_resumed_time = other.last_resumed_time;
             metadata = other.metadata;
             llm_analyze = other.llm_analyze;
             llm_event_analyze = other.llm_event_analyze;
@@ -261,7 +314,10 @@ struct AnalysisTask {
           xfs_mode(other.xfs_mode),
           db_output_dir(std::move(other.db_output_dir)),
           cancellation_requested(other.cancellation_requested.load()),
-          error_details(std::move(other.error_details)), interrupted_by_restart(other.interrupted_by_restart), metadata(std::move(other.metadata)),
+          error_details(std::move(other.error_details)), interrupted_by_restart(other.interrupted_by_restart),
+          pause_requested(other.pause_requested.load()),
+          resume_count(other.resume_count), last_resumed_time(other.last_resumed_time),
+          metadata(std::move(other.metadata)),
           llm_analyze(other.llm_analyze), llm_event_analyze(other.llm_event_analyze), llm_mode(std::move(other.llm_mode)),
           output_descriptions_db(std::move(other.output_descriptions_db)),
           case_description(std::move(other.case_description)),
@@ -300,6 +356,9 @@ struct AnalysisTask {
             cancellation_requested.store(other.cancellation_requested.load());
             error_details = std::move(other.error_details);
             interrupted_by_restart = other.interrupted_by_restart;
+            pause_requested.store(other.pause_requested.load());
+            resume_count = other.resume_count;
+            last_resumed_time = other.last_resumed_time;
             metadata = std::move(other.metadata);
             llm_analyze = other.llm_analyze;
             llm_event_analyze = other.llm_event_analyze;

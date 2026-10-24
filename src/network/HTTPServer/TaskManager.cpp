@@ -1,6 +1,7 @@
 #include "TaskManager.h"
 #include <openssl/crypto.h>
 #include "TaskPersistence.h"
+#include "TaskStageLedger.h"
 #include "TaskWatchdog.h"
 #include "TaskSerialization.h"
 #include "LLMPythonProxy.h"
@@ -12,11 +13,16 @@
 #include "FileFilter/FileFilter.h"
 #include "../../analyzers/WindowsFilesAnalyzer/Common/WindowsAnalyzerDeclarations.h"
 #include "../../analyzers/LinuxFilesAnalyzer/Common/LinuxAnalyzerDeclarations.h"
+#include <algorithm>
 #include <fstream>
 
 using forensics::TaskPersistence;
 using forensics::TaskWatchdog;
 using forensics::FileFilter;
+
+// TaskManager is declared at global scope, so the ledger's namespace (nested in
+// forensics) needs qualifying at every use site.
+namespace stage_ledger = forensics::stage_ledger;
 
 // JSON serialization is now in TaskSerialization.cpp
 
@@ -69,6 +75,22 @@ void TaskManager::load_tasks() {
 
     TaskPersistence::load_tasks(tasks_, tasksPath, runningTaskIds);
     TaskPersistence::cleanup_orphan_directories(tasks_);
+
+    // Interrupted-but-resumable tasks stay parked in INTERRUPTED: the operator
+    // decides when to spend the compute again (see resume_task). We record the
+    // count so the audit trail states what the restart left behind instead of
+    // silently presenting a task list that looks fully terminal.
+    if (!runningTaskIds.empty()) {
+        for (const auto& id : runningTaskIds) {
+            auto it = tasks_.find(id);
+            if (it == tasks_.end()) continue;
+            AuditLog::instance().log(id, "INTERRUPTED",
+                                     "Task interrupted by server restart; resumable from stage ledger "
+                                     "(resume_count=" + std::to_string(it->second.resume_count) + ")");
+        }
+        std::cout << "[TaskManager] " << runningTaskIds.size()
+                  << " interrupted task(s) are resumable (stage ledger present)." << std::endl;
+    }
 }
 
 // Enhanced task creation with priority and metadata - Atomic version
@@ -166,6 +188,12 @@ void TaskManager::update_status(const std::string& id, TaskStatus status, const 
         if (status == TaskStatus::FAILED && tasks_[id].cancellation_requested) {
             status = TaskStatus::CANCELLED;
         }
+        // Same rule for pauses: a pipeline stage that returns its failure code
+        // because it observed the pause flag must not turn a deliberate pause
+        // into a FAILED task (which would hide the "continue analysis" action).
+        if (status == TaskStatus::FAILED && tasks_[id].pause_requested) {
+            status = TaskStatus::PAUSED;
+        }
         tasks_[id].status = status;
         if (!msg.empty()) tasks_[id].message = msg;
         if (!error_details.empty()) tasks_[id].error_details = error_details;
@@ -176,7 +204,9 @@ void TaskManager::update_status(const std::string& id, TaskStatus status, const 
         if (status == TaskStatus::RUNNING && tasks_[id].started_time == tasks_[id].created_time) {
             tasks_[id].started_time = now_system;
             tasks_[id].execution_start_time = now_steady;
-        } else if (status == TaskStatus::COMPLETED || status == TaskStatus::FAILED || status == TaskStatus::CANCELLED) {
+        } else if (status == TaskStatus::COMPLETED || status == TaskStatus::FAILED ||
+                   status == TaskStatus::CANCELLED || status == TaskStatus::INTERRUPTED ||
+                   status == TaskStatus::PAUSED) {
             tasks_[id].completed_time = now_system;
             tasks_[id].decrypt_password.clear();
             tasks_[id].backup_password.clear();
@@ -335,7 +365,8 @@ bool TaskManager::cancel_task(const std::string& id, const std::string& reason) 
     if (it == tasks_.end()) return false;
 
     auto& task = it->second;
-    if (task.status != TaskStatus::RUNNING && task.status != TaskStatus::PENDING) {
+    if (task.status != TaskStatus::RUNNING && task.status != TaskStatus::PENDING &&
+        task.status != TaskStatus::PAUSED) {
         return false;
     }
 
@@ -430,6 +461,7 @@ nlohmann::json TaskManager::get_task_statistics() {
 
     int total = tasks_.size();
     int pending = 0, running = 0, completed = 0, failed = 0, cancelled = 0;
+    int interrupted = 0, paused = 0;
     std::map<TaskPriority, int> priority_counts;
     std::map<TaskPhase, int> phase_counts;
 
@@ -446,6 +478,8 @@ nlohmann::json TaskManager::get_task_statistics() {
             case TaskStatus::COMPLETED: completed++; break;
             case TaskStatus::FAILED: failed++; break;
             case TaskStatus::CANCELLED: cancelled++; break;
+            case TaskStatus::INTERRUPTED: interrupted++; break;
+            case TaskStatus::PAUSED: paused++; break;
         }
 
         priority_counts[task.priority]++;
@@ -467,7 +501,9 @@ nlohmann::json TaskManager::get_task_statistics() {
             {"running", running},
             {"completed", completed},
             {"failed", failed},
-            {"cancelled", cancelled}
+            {"cancelled", cancelled},
+            {"interrupted", interrupted},
+            {"paused", paused}
         }},
         {"by_priority", {
             {"low", priority_counts[TaskPriority::LOW]},
@@ -582,6 +618,224 @@ bool TaskManager::is_task_cancelled(const std::string& id) {
         return true; // Not found, so we should stop
     }
     return tasks_[id].cancellation_requested.load();
+}
+
+bool TaskManager::is_task_paused(const std::string& id) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    if (tasks_.count(id) == 0) {
+        return true; // Not found, so we should stop
+    }
+    return tasks_[id].pause_requested.load();
+}
+
+// ── Stage ledger ────────────────────────────────────────────────────────────
+
+const std::vector<std::string>& TaskManager::pipeline_stage_order() {
+    // Canonical stage order. INITIALIZING is included so a task that dies
+    // before producing anything still records a ledger position; every other
+    // entry maps to a TaskPhase plus the FILE_FILTER sub-stage, which has no
+    // TaskPhase of its own.
+    static const std::vector<std::string> order = {
+        "INITIALIZING",
+        "IMAGE_ANALYSIS",
+        "FILE_FILTER",
+        "EVENT_EXTRACTION",
+        "FILE_CLASSIFICATION",
+        "LLM_ANALYSIS",
+        "PLATFORM_ANALYSIS",
+        "FILE_CARVING",
+        "FINALIZING"
+    };
+    return order;
+}
+
+void TaskManager::mark_stage_complete(const std::string& id, const std::string& stage,
+                                      const std::string& fingerprint,
+                                      const std::string& next_stage) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    auto it = tasks_.find(id);
+    if (it == tasks_.end()) return;
+
+    it->second.metadata["stage." + stage] =
+        fingerprint.empty() ? std::string("done") : "done:" + fingerprint;
+    if (!next_stage.empty()) {
+        it->second.metadata["resume.next_stage"] = next_stage;
+    }
+    // Reaching another stage boundary means there is work again, so a prior
+    // "nothing left to do" verdict must not block a future resume.
+    it->second.metadata.erase("resume.exhausted");
+    save_tasks_internal();
+}
+
+void TaskManager::mark_stage_partial(const std::string& id, const std::string& stage,
+                                     const std::string& detail) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    auto it = tasks_.find(id);
+    if (it == tasks_.end()) return;
+
+    it->second.metadata["stage." + stage] = "partial:" + detail;
+    save_tasks_internal();
+}
+
+std::string TaskManager::get_stage_entry(const std::string& id, const std::string& stage) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    auto it = tasks_.find(id);
+    if (it == tasks_.end()) return "";
+    const auto entry = it->second.metadata.find("stage." + stage);
+    return entry == it->second.metadata.end() ? std::string() : entry->second;
+}
+
+bool TaskManager::stage_is_reusable(const std::string& task_id, const std::string& stage,
+                                    const std::string& expected_fingerprint,
+                                    const std::vector<std::string>& artifact_paths) {
+    const auto parsed = stage_ledger::parse(get_stage_entry(task_id, stage));
+    if (parsed.state != "done") return false;
+    // A fingerprint we could not compute (unreadable input) never validates a
+    // skip; nor does a claim recorded under a different input set.
+    if (expected_fingerprint.empty() || parsed.detail != expected_fingerprint) return false;
+    // The claim is only as good as the artifacts it describes.
+    for (const auto& path : artifact_paths) {
+        std::error_code ec;
+        if (!std::filesystem::exists(path, ec) || ec) return false;
+        const auto size = std::filesystem::file_size(path, ec);
+        if (ec || size == 0) return false;
+    }
+    return true;
+}
+
+void TaskManager::remove_sqlite_artifacts(const std::vector<std::string>& paths) {
+    for (const auto& path : paths) {
+        if (path.empty()) continue;
+        for (const char* suffix : {"", "-wal", "-shm", "-journal"}) {
+            std::error_code ec;
+            std::filesystem::remove(path + suffix, ec);
+        }
+    }
+}
+
+void TaskManager::clear_downstream_stages(const std::string& task_id, const std::string& stage) {
+    const auto& order = pipeline_stage_order();
+    const auto it = std::find(order.begin(), order.end(), stage);
+    if (it == order.end()) return;
+
+    std::vector<std::string> artifactsToRemove;
+    for (auto downstream = it + 1; downstream != order.end(); ++downstream) {
+        {
+            std::lock_guard<std::mutex> lock(mtx_);
+            auto task_it = tasks_.find(task_id);
+            if (task_it == tasks_.end()) return;  // task deleted mid-run
+            auto& task = task_it->second;
+            task.clear_stage(*downstream);
+            task.metadata.erase("resume.next_stage");
+            // Artifacts owned by the stage being invalidated. Their removal is
+            // what makes the re-run correct: the analyzers append rows
+            // (CREATE TABLE IF NOT EXISTS + INSERT), so re-running against a
+            // populated database would duplicate every record.
+            if (*downstream == stage_ledger::kEventExtraction) {
+                artifactsToRemove.push_back(task.output_events_db);
+            } else if (*downstream == stage_ledger::kFileClassification) {
+                artifactsToRemove.push_back(task.output_files_db);
+            }
+        }
+    }
+    remove_sqlite_artifacts(artifactsToRemove);
+}
+
+bool TaskManager::pause_task(const std::string& id, const std::string& reason) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    auto it = tasks_.find(id);
+    if (it == tasks_.end()) return false;
+
+    auto& task = it->second;
+    if (task.status != TaskStatus::RUNNING && task.status != TaskStatus::PENDING) {
+        return false;
+    }
+
+    task.pause_requested = true;
+    if (task.status == TaskStatus::PENDING) {
+        // A queued task never entered the pipeline: park it immediately
+        // instead of making the worker discover the flag on pickup.
+        task.status = TaskStatus::PAUSED;
+        task.message = reason.empty() ? "已暂停（尚未开始）" : reason;
+        task.completed_time = std::chrono::system_clock::now();
+    } else {
+        // RUNNING: the worker checks the flag at each stage boundary, exactly
+        // like cancellation, so the current stage finishes first.
+        task.message = reason.empty() ? "正在暂停（等待当前阶段结束）…" : reason;
+    }
+    add_audit_log(id, "PAUSE_REQUESTED",
+                  reason.empty() ? "Pause requested by user" : "Pause requested: " + reason);
+    save_tasks_internal();
+    return true;
+}
+
+bool TaskManager::resume_task(const std::string& id, std::string* reason) {
+    auto fail = [&](const std::string& why) {
+        if (reason) *reason = why;
+        return false;
+    };
+
+    {
+        std::lock_guard<std::mutex> lock(mtx_);
+        auto it = tasks_.find(id);
+        if (it == tasks_.end()) return fail("task not found");
+
+        auto& task = it->second;
+        if (task.status != TaskStatus::FAILED &&
+            task.status != TaskStatus::CANCELLED &&
+            task.status != TaskStatus::INTERRUPTED &&
+            task.status != TaskStatus::PAUSED) {
+            return fail("task is not in a resumable state");
+        }
+        if (task.metadata.count("resume.exhausted")) {
+            return fail("no remaining work: the pipeline completed every stage it had left");
+        }
+        std::error_code ec;
+        if (!std::filesystem::exists(task.image_path, ec) || ec) {
+            return fail("evidence image is no longer readable: " + task.image_path);
+        }
+        // A ledger entry proves the pipeline started; without one there is no
+        // partial work to reuse and the task must be recreated instead.
+        bool has_ledger = false;
+        for (const auto& [key, value] : task.metadata) {
+            if (key.rfind("stage.", 0) == 0 && !value.empty()) { has_ledger = true; break; }
+        }
+        if (!has_ledger) {
+            return fail("no completed stage recorded; recreate the task instead of resuming");
+        }
+
+        // Clear the terminal state and re-arm the worker. The stage ledger is
+        // intentionally preserved — it is what makes this a resume instead of
+        // a re-run.
+        task.status = TaskStatus::PENDING;
+        task.cancellation_requested = false;
+        task.pause_requested = false;
+        task.interrupted_by_restart = false;
+        task.error_details.clear();
+        task.message = "等待继续分析";
+        // Push completed_time back to the sentinel meaning "not finished":
+        // the task-list summary derives 中断于/结束 from the status, but a
+        // stale completion timestamp would misreport run duration.
+        task.completed_time = task.created_time;
+        task.progress.current_phase = TaskPhase::INITIALIZING;
+        task.progress.phase_percentage = 0;
+        task.progress.phase_description = "等待继续分析";
+        task.progress.phase_start_time = std::chrono::steady_clock::now();
+        task.execution_start_time = std::chrono::steady_clock::now();
+        task.resume_count += 1;
+        task.last_resumed_time = std::chrono::system_clock::now();
+
+        task_queue_.push({task.priority, id});
+        const std::string next_stage = task.metadata.count("resume.next_stage")
+            ? task.metadata.at("resume.next_stage") : std::string("(start)");
+        add_audit_log(id, "TASK_RESUMED",
+                      "Resumed from stage ledger (resume #" +
+                      std::to_string(task.resume_count) + ", next stage: " + next_stage + ")");
+        save_tasks_internal();
+    }
+
+    start_analysis(id);
+    return true;
 }
 
 // Enhanced start_analysis with progress tracking and controlled thread pool execution

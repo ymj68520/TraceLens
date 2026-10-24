@@ -316,6 +316,55 @@ public:
      */
     void start_analysis(const std::string& task_id);
 
+    // ── Resumable-task lifecycle ────────────────────────────────────────────
+    /**
+     * @brief Resume a stopped task from its stage ledger (same id, same dir).
+     *
+     * Valid for FAILED / CANCELLED / INTERRUPTED / PAUSED tasks that recorded at
+     * least one ledger entry. Clears the terminal state, records the resume in
+     * the audit log, and re-enqueues the task. Stages already marked done with
+     * unchanged input fingerprints are skipped by the pipeline.
+     *
+     * @param reason Optional out-param receiving why a resume was refused.
+     * @return true when the task was re-enqueued.
+     */
+    bool resume_task(const std::string& id, std::string* reason = nullptr);
+
+    /**
+     * @brief Request a cooperative pause at the next stage boundary.
+     *
+     * The worker thread stops after finishing the stage it is inside (the same
+     * granularity as cancellation) and writes TaskStatus::PAUSED. A paused task
+     * is resumable with resume_task().
+     */
+    bool pause_task(const std::string& id, const std::string& reason = "");
+
+    /**
+     * @brief Check whether a pause has been requested for a task.
+     * @return true if paused/pause requested or task not found.
+     */
+    bool is_task_paused(const std::string& id);
+
+    /**
+     * @brief Write a stage-ledger success entry (metadata["stage.<stage>"]).
+     *
+     * Called by the pipeline at each stage exit. `fingerprint` is the composite
+     * input hash the stage consumed; an empty fingerprint records a bare "done"
+     * that validates on file presence alone. When `next_stage` is non-empty it
+     * is stored as metadata["resume.next_stage"] so the UI and audit trail can
+     * show where a later resume would pick up.
+     */
+    void mark_stage_complete(const std::string& id, const std::string& stage,
+                             const std::string& fingerprint = "",
+                             const std::string& next_stage = "");
+
+    /** Record partial progress for a long phase (LLM_ANALYSIS). */
+    void mark_stage_partial(const std::string& id, const std::string& stage,
+                            const std::string& detail);
+
+    /** Read a stage's ledger entry ("done:<fp>" / "partial:<d>" / ""). */
+    std::string get_stage_entry(const std::string& id, const std::string& stage);
+
     // Persistence
     void save_tasks();
     void load_tasks();
@@ -348,6 +397,37 @@ private:
 
     // Helper methods
     int calculate_overall_percentage(TaskPhase phase, int phase_percentage);
+
+    // Resume support: stage names whose ledger says the stage is complete.
+    // Returns the first stage that must run, given the ledger and the task's
+    // configuration. Order follows the pipeline (see TaskManagerAnalysis.cpp).
+    // Declared here so both the pipeline and resume_task() agree on ordering.
+    static const std::vector<std::string>& pipeline_stage_order();
+
+    // ── Resume helpers used by the pipeline (TaskManagerAnalysis.cpp) ───────
+
+    /**
+     * @brief True when a stage may be skipped: its ledger entry says done, the
+     *        recorded fingerprint matches what the caller computed now, and
+     *        every artifact the stage produced still exists non-empty.
+     */
+    bool stage_is_reusable(const std::string& task_id, const std::string& stage,
+                           const std::string& expected_fingerprint,
+                           const std::vector<std::string>& artifact_paths);
+
+    /**
+     * @brief Drop every ledger claim downstream of `stage` (exclusive) and
+     *        remove the artifacts those stages own.
+     *
+     * Called when a stage is re-run, because its outputs feed the later
+     * stages: leaving their claims intact would let a resume skip a stage
+     * whose inputs just changed. Artifact removal is what keeps the
+     * append-only analyzers from producing duplicate rows on the re-run.
+     */
+    void clear_downstream_stages(const std::string& task_id, const std::string& stage);
+
+    /** Delete a SQLite database plus its -wal/-shm/-journal sidecars. */
+    static void remove_sqlite_artifacts(const std::vector<std::string>& paths);
 
     // Task queue for priority-based execution
     struct QueueItem {

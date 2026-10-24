@@ -16,6 +16,15 @@ public:
     static std::string phase_to_string(TaskPhase phase);
     static std::string priority_to_string(TaskPriority priority);
     static TaskPriority priority_from_string(const std::string& str);
+
+    /**
+     * @brief Whether this task can be resumed from its stage ledger.
+     *
+     * True for FAILED / CANCELLED / INTERRUPTED / PAUSED tasks whose evidence
+     * image is still readable and which recorded at least one completed stage.
+     * Exposed to the UI as the "continue analysis" affordance.
+     */
+    static bool is_resumable(const AnalysisTask& task);
 };
 
 } // namespace forensics

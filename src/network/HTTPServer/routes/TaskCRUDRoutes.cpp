@@ -114,6 +114,35 @@ TaskCRUDRoutes::TaskCRUDRoutes(HttpApp& app) : app_(app), task_manager_(TaskMana
         {{"id", "path", "Task ID", true}},
         {{200, "Database list"}, {404, "Task not found"}}
     );
+
+    // Resume a stopped task from its stage ledger (same id, same task dir).
+    CROW_ROUTE(app, "/api/tasks/<string>/resume").methods("POST"_method, "OPTIONS"_method)([this](const crow::request& req, const std::string& task_id) {
+        return handle_resume_task(req, task_id);
+    });
+    Swagger::instance().RegisterEndpoint(
+        "/api/tasks/{id}/resume", "POST",
+        "Resume a task",
+        "Resume a FAILED/CANCELLED/INTERRUPTED/PAUSED task from its stage ledger. "
+        "Completed stages whose inputs are unchanged are skipped; the task keeps its "
+        "id, output directory and configuration.",
+        {"Tasks"},
+        {{"id", "path", "Task ID", true}},
+        {{200, "Task resumed"}, {404, "Task not found"}, {409, "Task is not resumable"}}
+    );
+
+    // Cooperative pause at the next stage boundary.
+    CROW_ROUTE(app, "/api/tasks/<string>/pause").methods("POST"_method, "OPTIONS"_method)([this](const crow::request& req, const std::string& task_id) {
+        return handle_pause_task(req, task_id);
+    });
+    Swagger::instance().RegisterEndpoint(
+        "/api/tasks/{id}/pause", "POST",
+        "Pause a task",
+        "Request a cooperative pause: the running stage finishes, then the task is "
+        "parked as PAUSED and can be resumed later with the same id.",
+        {"Tasks"},
+        {{"id", "path", "Task ID", true}},
+        {{200, "Pause requested"}, {404, "Task not found"}, {409, "Task is not pausable"}}
+    );
 }
 
 crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
@@ -772,6 +801,131 @@ crow::response TaskCRUDRoutes::handle_get_task_databases(const crow::request& re
         {"count", databases.size()}
     };
 
+    res.set_header("Content-Type", "application/json");
+    res.write(response.dump());
+    return res;
+}
+
+crow::response TaskCRUDRoutes::handle_resume_task(const crow::request& req, const std::string& task_id) {
+    crow::response res;
+    RouteHelpers::add_cors_headers(res);
+
+    if (req.method == "OPTIONS"_method) {
+        res.code = 204;
+        return res;
+    }
+
+    // Same collision guard as the other /api/tasks/<string>/... handlers.
+    if (task_id == "list" || task_id == "statistics" || task_id == "cleanup" ||
+        task_id == "batch-create" || task_id == "batch-status" || task_id == "batch-cancel") {
+        json error = {{"error", "Task not found"}, {"task_id", task_id}};
+        res.code = 404;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    AnalysisTask task = task_manager_.get_task(task_id);
+    if (task.id.empty()) {
+        json error = {{"error", "Task not found"}, {"task_id", task_id}};
+        res.code = 404;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    std::string reason;
+    const bool resumed = task_manager_.resume_task(task_id, &reason);
+    if (!resumed) {
+        // 409: the task exists but its current state (or its artifacts) make a
+        // resume impossible. The reason is surfaced verbatim so the operator
+        // learns which condition failed instead of guessing.
+        json error = {
+            {"success", false},
+            {"task_id", task_id},
+            {"error", "Task cannot be resumed"},
+            {"reason", reason},
+            {"status", TaskHelpers::status_to_string(task.status)}
+        };
+        res.code = 409;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    AnalysisTask updated = task_manager_.get_task(task_id);
+    json response = {
+        {"success", true},
+        {"task_id", task_id},
+        {"status", TaskHelpers::status_to_string(updated.status)},
+        {"resume_count", updated.resume_count},
+        {"resume_stage", updated.metadata.count("resume.next_stage")
+            ? updated.metadata.at("resume.next_stage") : std::string("")},
+        {"message", "Task resumed from its stage ledger"}
+    };
+    res.set_header("Content-Type", "application/json");
+    res.write(response.dump());
+    return res;
+}
+
+crow::response TaskCRUDRoutes::handle_pause_task(const crow::request& req, const std::string& task_id) {
+    crow::response res;
+    RouteHelpers::add_cors_headers(res);
+
+    if (req.method == "OPTIONS"_method) {
+        res.code = 204;
+        return res;
+    }
+
+    if (task_id == "list" || task_id == "statistics" || task_id == "cleanup" ||
+        task_id == "batch-create" || task_id == "batch-status" || task_id == "batch-cancel") {
+        json error = {{"error", "Task not found"}, {"task_id", task_id}};
+        res.code = 404;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    AnalysisTask task = task_manager_.get_task(task_id);
+    if (task.id.empty()) {
+        json error = {{"error", "Task not found"}, {"task_id", task_id}};
+        res.code = 404;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    std::string reason;
+    if (req.body.size() > 0) {
+        try {
+            auto body = json::parse(req.body);
+            if (body.contains("reason")) reason = body["reason"].get<std::string>();
+        } catch (...) {
+            // A malformed body must not block the pause; the default reason is used.
+        }
+    }
+
+    if (!task_manager_.pause_task(task_id, reason)) {
+        json error = {
+            {"success", false},
+            {"task_id", task_id},
+            {"error", "Task cannot be paused"},
+            {"reason", "Only running or queued tasks can be paused"},
+            {"status", TaskHelpers::status_to_string(task.status)}
+        };
+        res.code = 409;
+        res.set_header("Content-Type", "application/json");
+        res.write(error.dump());
+        return res;
+    }
+
+    AnalysisTask updated = task_manager_.get_task(task_id);
+    json response = {
+        {"success", true},
+        {"task_id", task_id},
+        {"status", TaskHelpers::status_to_string(updated.status)},
+        {"message", "Pause requested; the current stage will finish first"}
+    };
     res.set_header("Content-Type", "application/json");
     res.write(response.dump());
     return res;

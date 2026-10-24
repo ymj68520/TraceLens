@@ -99,11 +99,46 @@ nlohmann::json TaskHelpers::task_to_json(const AnalysisTask& task) {
         {"db_output_dir", task.db_output_dir},
         {"extraction_directory", forensics::PathManager::instance().getTaskExtractDir(task.id).string()},
         {"cancellation_requested", task.cancellation_requested.load()},
+        {"pause_requested", task.pause_requested.load()},
+        {"resumable", TaskHelpers::is_resumable(task)},
+        {"resume_stage", task.metadata.count("resume.next_stage") ? task.metadata.at("resume.next_stage") : ""},
+        {"resume_count", task.resume_count},
         {"dependencies", dependencies_json},
         {"dependents_count", task.dependents.size()},
         {"metadata", task.metadata},
         {"error_details", task.error_details}
     };
+}
+
+bool TaskHelpers::is_resumable(const AnalysisTask& task) {
+    // Only a task that stopped with its artifacts intact can be resumed.
+    // COMPLETED is excluded because re-running the tail of a finished task is
+    // not a resume. RUNNING/PENDING are excluded because they are already live
+    // (or about to be): resuming them would double-run the pipeline.
+    if (task.status != TaskStatus::FAILED &&
+        task.status != TaskStatus::CANCELLED &&
+        task.status != TaskStatus::INTERRUPTED &&
+        task.status != TaskStatus::PAUSED) {
+        return false;
+    }
+    // The image must still be where the task left it; every input fingerprint
+    // in the ledger already covers the derived databases.
+    std::error_code ec;
+    if (!std::filesystem::exists(task.image_path, ec) || ec) {
+        return false;
+    }
+    if (task.metadata.count("resume.exhausted")) {
+        return false;
+    }
+    // A ledger entry for at least one stage proves the pipeline started;
+    // a task that failed during INITIALIZING (image missing, RAID admission
+    // rejected, ...) has nothing to resume from and must be recreated.
+    for (const auto& [key, value] : task.metadata) {
+        if (key.rfind("stage.", 0) == 0 && !value.empty()) {
+            return true;
+        }
+    }
+    return false;
 }
 
 TaskPriority TaskHelpers::priority_from_string(const std::string& str) {
@@ -131,6 +166,8 @@ std::string TaskHelpers::status_to_string(TaskStatus status) {
         case TaskStatus::COMPLETED: return "completed";
         case TaskStatus::FAILED: return "failed";
         case TaskStatus::CANCELLED: return "cancelled";
+        case TaskStatus::INTERRUPTED: return "interrupted";
+        case TaskStatus::PAUSED: return "paused";
         default: return "unknown";
     }
 }

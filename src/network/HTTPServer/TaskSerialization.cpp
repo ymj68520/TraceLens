@@ -11,7 +11,9 @@ NLOHMANN_JSON_SERIALIZE_ENUM(TaskStatus, {
     {TaskStatus::RUNNING, "RUNNING"},
     {TaskStatus::COMPLETED, "COMPLETED"},
     {TaskStatus::FAILED, "FAILED"},
-    {TaskStatus::CANCELLED, "CANCELLED"}
+    {TaskStatus::CANCELLED, "CANCELLED"},
+    {TaskStatus::INTERRUPTED, "INTERRUPTED"},
+    {TaskStatus::PAUSED, "PAUSED"}
 })
 
 NLOHMANN_JSON_SERIALIZE_ENUM(TaskPriority, {
@@ -28,6 +30,7 @@ NLOHMANN_JSON_SERIALIZE_ENUM(TaskPhase, {
     {TaskPhase::FILE_CLASSIFICATION, "FILE_CLASSIFICATION"},
     {TaskPhase::LLM_ANALYSIS, "LLM_ANALYSIS"},
     {TaskPhase::PLATFORM_ANALYSIS, "PLATFORM_ANALYSIS"},
+    {TaskPhase::FILE_CARVING, "FILE_CARVING"},
     {TaskPhase::FINALIZING, "FINALIZING"}
 })
 
@@ -84,6 +87,10 @@ void to_json(nlohmann::json& j, const AnalysisTask& t) {
     j["db_output_dir"] = t.db_output_dir;
     j["error_details"] = t.error_details;
     j["interrupted_by_restart"] = t.interrupted_by_restart;
+    j["pause_requested"] = t.pause_requested.load();
+    j["resume_count"] = t.resume_count;
+    j["last_resumed_time"] = std::chrono::duration_cast<std::chrono::seconds>(
+        t.last_resumed_time.time_since_epoch()).count();
     j["metadata"] = t.metadata;
     j["llm_analyze"] = t.llm_analyze;
     j["llm_event_analyze"] = t.llm_event_analyze;
@@ -140,6 +147,16 @@ void from_json(const nlohmann::json& j, AnalysisTask& t) {
     if(j.contains("db_output_dir")) j.at("db_output_dir").get_to(t.db_output_dir);
     if(j.contains("error_details")) j.at("error_details").get_to(t.error_details);
     if(j.contains("interrupted_by_restart")) j.at("interrupted_by_restart").get_to(t.interrupted_by_restart);
+    // pause_requested is runtime state, not intent: a process that restarts
+    // while a pause was pending must come back runnable (the operator can pause
+    // again), so it always starts false after reload. resume_count and
+    // last_resumed_time are audit facts and are restored.
+    t.pause_requested = false;
+    if(j.contains("resume_count")) j.at("resume_count").get_to(t.resume_count);
+    if(j.contains("last_resumed_time")) {
+        auto secs = j["last_resumed_time"].get<long long>();
+        t.last_resumed_time = std::chrono::system_clock::time_point(std::chrono::seconds(secs));
+    }
     if(j.contains("metadata")) j.at("metadata").get_to(t.metadata);
     if(j.contains("llm_analyze")) j.at("llm_analyze").get_to(t.llm_analyze);
     if(j.contains("llm_event_analyze")) j.at("llm_event_analyze").get_to(t.llm_event_analyze);

@@ -25,6 +25,8 @@ private:
     crow::response handle_list_tasks(const crow::request& req);
     crow::response handle_cancel_task(const crow::request& req, const std::string& task_id);
     crow::response handle_cleanup_tasks(const crow::request& req);
+    crow::response handle_resume_task(const crow::request& req, const std::string& task_id);
+    crow::response handle_pause_task(const crow::request& req, const std::string& task_id);
 };
 
 } // namespace forensics
