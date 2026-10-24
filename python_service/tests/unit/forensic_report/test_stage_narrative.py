@@ -110,18 +110,24 @@ def test_citation_name_handles_flat_and_nested_paths():
 # resolve them. Composition must scrub them before the section is accepted.
 @pytest.mark.asyncio
 async def test_material_ids_are_stripped_from_narrative():
+    # Two sections: the validator now enforces the prompt's "3 to 6" shape with
+    # a floor of 2, so a single-section answer is rejected as a stub.
     payload = {"sections": [
         {"heading": "检材范围与构成",
          "content": "本轮材料包括 7要素.docx（m0012）与账目.xlsx。m0013 为重复的空内容，"
                     "不构成独立佐证；m0014、m0015 的机器视觉描述近似，无法确认来源。"
                     "上述材料均通过来源哈希校验，未使用历史摘要替代原文。"},
+        {"heading": "信息缺口与核查建议",
+         "content": "7要素.docx（m0016）与账目.xlsx 的原始来源尚未提供，需人工调取完整文件核对；"
+                    "m0017 的机器视觉描述与 m0018 近似，不能计为独立佐证。"
+                    "两份材料的形成时间与流转路径均需补充，方可判断其与案件事实的关联。"},
     ]}
     model = NarrativeModel(payload)
     sections = await compose_stage_narrative(_envelope(), _materials(), _directions(), (), model)
     assert sections
-    body = sections[0]["content"]
-    assert "m0012" not in body and "m0013" not in body
-    assert "m0014" not in body and "m0015" not in body
+    body = "\n".join(s["content"] for s in sections)
+    for identifier in ("m0012", "m0013", "m0014", "m0015", "m0016", "m0017", "m0018"):
+        assert identifier not in body
     # The real file names survive, since they are how the reader locates evidence.
     assert "7要素.docx" in body and "账目.xlsx" in body
     # No empty brackets or doubled spaces left behind by the deletion.
@@ -133,6 +139,27 @@ def test_strip_material_ids_keeps_words_that_merely_contain_digits():
     # A token that only looks similar must not be touched.
     assert strip_material_ids("md5 为 abc123，m1 不是编号") == "md5 为 abc123，m1 不是编号"
     assert strip_material_ids("文件名 am0012.txt 保留") == "文件名 am0012.txt 保留"
+
+
+# Regression: ids are often enumerated in runs, and deleting each token on its
+# own left the connector behind ("m003、m004" -> "mm"). A run must be removed
+# as one unit together with the enumeration marks and the preposition that
+# introduced it, so the sentence keeps its own subject.
+def test_strip_material_ids_removes_enumerated_runs():
+    assert strip_material_ids("m003、m004 均指向同一来源。") == "均指向同一来源。"
+    assert strip_material_ids("m001、m002 与 m003 均一致。") == "均一致。"
+    assert strip_material_ids("m001 与 m002 记录了登录。") == "记录了登录。"
+    assert strip_material_ids("根据 m0001 与 m0002，攻击者使用了 RDP。") == "攻击者使用了 RDP。"
+    assert strip_material_ids("见 m001、m002、m003 三份材料。") == "三份材料。"
+    assert strip_material_ids("结合 m005 可判断存在横向移动。") == "可判断存在横向移动。"
+
+
+def test_strip_material_ids_handles_brackets_and_mid_sentence_ids():
+    assert strip_material_ids("（m012）该文件为事件日志。") == "该文件为事件日志。"
+    assert strip_material_ids("该日志（m007）显示异常。") == "该日志显示异常。"
+    assert strip_material_ids("m001 显示登录，m002 显示注销。") == "显示登录，显示注销。"
+    # Four-digit ids and sentence-initial ids are the same class.
+    assert strip_material_ids("m1234 是唯一的例外") == "是唯一的例外"
 
 
 # Regression: eight batches each answered with the prescribed skeleton, so the
@@ -177,3 +204,56 @@ def test_derived_heading_cuts_at_a_natural_boundary():
     heading = _derived_heading(
         "检材范围与构成", "本批材料覆盖 registry hive 与事件日志导出文件" + "x" * 30 + "。")
     assert not heading.endswith("x")
+
+
+# Regression: narrative batches habitually open with a chapter self-reference,
+# so the derived label read "本章围绕本机账号" — a sentence fragment, not a
+# topic. The lead-in and its introducing verb are dropped.
+def test_derived_heading_drops_chapter_self_reference():
+    assert (_derived_heading(
+        "检材范围与构成",
+        "本章围绕本机账号、凭据类文件与远控客户端账户日志，梳理与身份和账号活动相关的线索。")
+        == "本机账号、凭据类文件与远控客户端账户日志")
+    assert (_derived_heading(
+        "检材范围与构成",
+        "本章汇总检材中反映主机联网与访问行为的证据，按SSH已知主机记录组织。")
+        == "检材中反映主机联网与访问行为的证据")
+    assert (_derived_heading(
+        "检材范围与构成",
+        "本章承接前六章未能归入既定主题的材料，逐类说明其来源。")
+        == "前六章未能归入既定主题的材料，逐类说明其来源")
+    # A real topic heading is never rewritten.
+    assert _derived_heading("人员账号与身份信息", "本章围绕账号。") == "人员账号与身份信息"
+
+
+# Regression: a repeated *topic* heading ("材料观察") produced the same
+# "（2）（3）" stapling tell as the skeleton headings did. The second batch is
+# re-titled from its own content instead.
+def test_repeated_topic_headings_are_derived_from_content():
+    from httpserver.services.forensic_report.generation_stages import (
+        _SKELETON_HEADINGS,
+    )
+
+    batches = [
+        {"heading": "材料观察",
+         "content": "本批材料显示用户 admin 在 2025-05-19 登录系统，涉及账号活动。"},
+        {"heading": "材料观察",
+         "content": "本批材料显示 Quasar 控制端配置了 4782 监听端口。"},
+    ]
+    seen = {}
+    headings = []
+    for row in batches:
+        heading = _derived_heading(row["heading"], row["content"])
+        seen[heading] = seen.get(heading, 0) + 1
+        if seen[heading] > 1:
+            derived = _derived_heading(_SKELETON_HEADINGS[0], row["content"])
+            if derived and derived not in seen:
+                heading = derived
+                seen[heading] = 1
+            else:
+                heading = f"{heading}（{seen[heading]}）"
+        headings.append(heading)
+
+    assert headings[0] == "材料观察"
+    assert headings[1] == "Quasar 控制端配置了 4782 监听端口"
+    assert not any("（2）" in h for h in headings)

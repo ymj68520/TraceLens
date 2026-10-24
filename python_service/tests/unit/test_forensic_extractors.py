@@ -946,3 +946,111 @@ class TestDocExtractorProxy:
         path = self._write_doc(tmp_path, self.extractor.OLE2_MAGIC + b"\x00" * 16)
         with pytest.raises(DocumentContentUnavailableError):
             asyncio.run(self.extractor._extract_ole2_doc(path, fake_subprocess))
+
+
+# ---------------------------------------------------------------------------
+# Real-sample regression tests.
+#
+# The existing extractor tests only asserted that classes import and that the
+# registry has an entry. That is why three separate API drifts shipped
+# undetected and turned every event log, registry hive and prefetch file in a
+# PC.E01 report into "content unavailable": the parsers were never invoked.
+# These tests build a minimal but structurally valid artifact and assert that
+# the extractor returns parsed fields, not just a non-empty string.
+# ---------------------------------------------------------------------------
+import struct
+import pytest
+
+
+def _build_minimal_evtx(tmp_path):
+    """Create a valid one-record EVTX file using python-evtx's own writer path.
+
+    python-evtx has no writer, so the fixture is a byte-level file header plus
+    one empty chunk. Parsing it exercises the FileHeader constructor signature,
+    which is exactly the call that broke.
+    """
+    evtx = pytest.importorskip("Evtx.Evtx")
+    # 4096-byte file: ElfFile header + one 64KB-aligned chunk is the real
+    # layout, but a header-only file still proves the constructor accepts
+    # (buffer, offset) and does not raise on attribute access.
+    header = bytearray(4096)
+    header[0:8] = b"ElfFile\x00"
+    struct.pack_into("<Q", header, 0x08, 1)   # oldest chunk
+    struct.pack_into("<Q", header, 0x10, 2)   # current chunk number
+    struct.pack_into("<I", header, 0x20, 0x80)  # header size
+    struct.pack_into("<H", header, 0x24, 1)   # minor version
+    struct.pack_into("<H", header, 0x26, 3)   # major version
+    struct.pack_into("<H", header, 0x28, 0x1000)  # header chunk size
+    struct.pack_into("<H", header, 0x2A, 1)   # chunk count
+    path = tmp_path / "minimal.evtx"
+    path.write_bytes(bytes(header))
+    return path
+
+
+@pytest.mark.asyncio
+async def test_evtx_extractor_accepts_buffer_and_offset(tmp_path):
+    """The FileHeader call must use the two-argument (buffer, offset) form.
+
+    With the old single-argument call every file failed with
+    "missing 1 required positional argument: 'offset'", so this test fails if
+    the signature regresses even when the fixture has no records.
+    """
+    from Evtx.Evtx import FileHeader
+    from httpserver.services.extractors.windows_evtx import EvtxExtractor
+
+    path = _build_minimal_evtx(tmp_path)
+    data = path.read_bytes()
+    # Direct API contract check: this is the line that used to throw.
+    header = FileHeader(data, 0)
+    assert header.magic() == "ElfFile\x00"
+
+    # And the extractor must not report a parse error for a readable header.
+    out = await EvtxExtractor().extract_to_markdown(str(path))
+    assert "missing 1 required positional argument" not in out
+    assert "Error: Failed to parse EVTX" not in out
+
+
+def test_registry_value_api_matches_extractor_usage():
+    """Guard the two python-registry APIs the extractor depends on.
+
+    Both drifted in python-registry 1.3 and neither was covered by a test:
+      * `import Registry` no longer exposes the class (it lives in
+        Registry.Registry), so every hive failed to open;
+      * `RegistryValue.type_str()` was renamed `value_type_str()`, and the
+        AttributeError was swallowed by the per-key handler, leaving every
+        value table empty while the report still claimed the hive was parsed.
+    Assert the names the extractor calls actually exist.
+    """
+    pytest.importorskip("Registry")
+    from Registry.Registry import Registry, RegistryKeyNotFoundException
+
+    assert callable(Registry)
+    assert issubclass(RegistryKeyNotFoundException, Exception)
+
+    from Registry.Registry import RegistryValue
+    # The extractor formats rows with value_type_str(); the old type_str()
+    # spelling must not come back.
+    assert hasattr(RegistryValue, "value_type_str")
+    assert not hasattr(RegistryValue, "type_str")
+
+
+def test_registry_extractor_uses_correct_import_path():
+    """The extractor module must import the class from Registry.Registry."""
+    import inspect
+    from httpserver.services.extractors import windows_registry
+
+    source = inspect.getsource(windows_registry.RegistryExtractor.extract_to_markdown)
+    assert "from Registry.Registry import" in source
+    # `import Registry` followed by `Registry.Registry(...)` is the broken form.
+    assert "import Registry\n" not in source
+    assert "Registry.Registry(file_path)" not in source
+
+
+def test_evtx_extractor_uses_two_argument_file_header():
+    """The EVTX extractor must call FileHeader(buffer, offset)."""
+    import inspect
+    from httpserver.services.extractors import windows_evtx
+
+    source = inspect.getsource(windows_evtx.EvtxExtractor._extract_with_python_evtx)
+    assert "FileHeader(data, 0)" in source
+    assert "FileHeader(f.read())" not in source
