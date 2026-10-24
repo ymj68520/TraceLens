@@ -37,8 +37,12 @@ pytest>=7.4.0
 pytest-asyncio>=0.21.0
 pytest-cov>=4.1.0
 
-# Graphiti knowledge graph integration
-graphiti-core>=0.3.0
+# Graphiti knowledge graph integration.
+# Pinned: graphiti_integration/chinese_prompts.py imports ChatPromptLibrary and
+# create_prompt_library, which first appear in 0.31.x. A stale 0.29.3 venv made
+# every ingestion fail with ImportError on a real task, so the range is closed
+# at the next minor and the floor is the API the code actually needs.
+graphiti-core>=0.31.0,<0.32
 neo4j>=5.14.0
 
 # Optional: OpenAI client (uncomment if using official client)
