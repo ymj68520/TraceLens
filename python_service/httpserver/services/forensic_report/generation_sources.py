@@ -26,7 +26,17 @@ TEXT_LIMIT = 4000
 TEXT_EXTENSIONS = {".txt", ".csv", ".tsv", ".json", ".xml", ".html", ".htm", ".log",
                    ".md", ".ini", ".cfg", ".yaml", ".yml", ".sql", ".py", ".js", ".sh", ".ps1"}
 DOCUMENT_EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".rtf", ".odt",
-                       ".db", ".sqlite", ".sqlite3", ".eml", ".msg", ".lnk", ".evtx", ".reg"}
+                       ".db", ".sqlite", ".sqlite3", ".eml", ".msg", ".lnk", ".evtx", ".reg",
+                       # Forensic artifacts with a dedicated extractor. This set
+                       # gates the neutral freeze: an extension outside every set
+                       # raises NEUTRAL_FORMAT_NOT_SUPPORTED and the material is
+                       # frozen as unavailable. Prefetch was missing here, so all
+                       # 26 .pf files in a PC.E01 report carried zero characters
+                       # even though PrefetchExtractor parses them fine.
+                       ".pf", ".hve", ".edb", ".pfx",
+                       ".automaticdestinations-ms", ".customdestinations-ms",
+                       ".journal", ".wtmp", ".btmp", ".ab", ".pcap", ".pcapng",
+                       ".psd", ".ai", ".heic", ".heif", ".dmp", ".raw", ".mem", ".lime"}
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 MEDIA_EXTENSIONS = {".mp3", ".wav", ".m4a", ".amr", ".ogg", ".flac", ".mp4", ".avi", ".mkv", ".mov"}
 DERIVED_FIELDS = ("initial_summary", "initial_description", "initial_keywords", "initial_model",
