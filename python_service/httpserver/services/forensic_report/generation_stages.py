@@ -16,7 +16,9 @@ from .generation_prompts import (STAGE_DISCOVERY_SYSTEM_V1, STAGE_COMPARE_SYSTEM
 from .generation_prompts import STAGE_DISCOVERY_SYSTEM_V2, STAGE_COMPARE_SYSTEM_V2
 from .generation_prompts import (STAGE_DISCOVERY_AGGREGATE_V1,
                                  STAGE_THEME_LOCAL_SYSTEM_V1,
-                                 STAGE_THEME_MERGE_SYSTEM_V1)
+                                 STAGE_THEME_MERGE_SYSTEM_V1,
+                                 STAGE_CHAPTER_WRITE_SYSTEM_V1,
+                                 STAGE_CHAPTER_HEADING_SYSTEM_V1)
 logger = logging.getLogger(__name__)
 
 from .models import (
@@ -691,7 +693,8 @@ def _consolidate_themes(themes, warnings):
     return groups
 
 
-async def induce_themes(directions, llm, *, concurrency: int = 1):
+async def induce_themes(directions, llm, *, concurrency: int = 1,
+                        split_oversized: bool = True):
     """Group directions into report themes (stages 1-2 of the v3 shape).
 
     Stage 1 shards the directions by request budget and asks the model to group
@@ -811,6 +814,13 @@ async def induce_themes(directions, llm, *, concurrency: int = 1):
     # or anomaly their names share. Names that share no keyword with anything
     # else stay as they are only if they carry enough evidence.
     themes = _consolidate_themes(themes, warnings)
+    if not split_oversized:
+        # Chapter packing balances chapter sizes itself. Splitting here first
+        # would turn one theme into "（1/7）…（7/7）" fragments that the packer
+        # then scatters across chapters, so every chapter ended up holding a
+        # piece of the same few themes and no chapter could be named after one
+        # subject. Keep the semantic groups intact and let the packer decide.
+        return tuple(themes), tuple(warnings)
     # Split oversized themes deterministically. The prompt asks for small
     # themes, but one 218-direction theme survived it and then produced four
     # near-identical chapters. Splitting here keeps every chapter writable as
@@ -833,8 +843,344 @@ async def induce_themes(directions, llm, *, concurrency: int = 1):
             f"THEME_SPLIT_{theme['name']}_{len(members)}")
     return tuple(bounded), tuple(warnings)
 
+
+# ---------------------------------------------------------------------------
+# Chapter packing (report shape v4).
+#
+# The chapter count has to be a property of the code, not of the model. Asking
+# an LLM for "exactly 10 themes" produced 22/17/22/17/21 across five identical
+# temperature-0 calls — precise counts are not something it does reliably. So
+# induction groups the findings however it likes, and this stage packs those
+# groups into a fixed number of chapters deterministically.
+#
+# LPT (Longest Processing Time first) is the standard makespan heuristic: place
+# each group, largest first, into the currently lightest chapter. It keeps every
+# group (nothing is dropped), keeps related findings together, and produces a
+# balanced chapter size without any model involvement.
+# ---------------------------------------------------------------------------
+
+# Narrative chapters the report aims for. Total chapters are this plus the scope
+# chapter and the advisory chapter, so 10 -> 12 published chapters.
+_TARGET_NARRATIVE_CHAPTERS = 10
+# Below this many groups the packing cannot fill the target without splitting a
+# theme across chapters, so the target shrinks to the number of groups.
+_MIN_GROUPS_FOR_FULL_TARGET = 4
+# A theme larger than this multiple of the balanced chapter size is split, so
+# one huge theme cannot occupy a chapter alone while others carry a fraction.
+_THEME_SPLIT_FACTOR = 1.2
+
+
+def _piece_label(theme_name: str, piece, used: set[str] | None = None) -> str:
+    """A distinguishing label for one slice of a split theme.
+
+    Takes the executable or artifact name that appears most in this slice and
+    is absent from the parent name, so three slices of one 166-direction theme
+    get three different labels instead of repeating the parent heading.
+    ``used`` carries labels already assigned to sibling slices: when the most
+    common name is taken, the next one is used.
+    """
+    used = used if used is not None else set()
+    counts: dict[str, int] = {}
+    for direction in piece:
+        for match in re.findall(r"[A-Za-z][A-Za-z0-9_.\-]{2,}\.(?:EXE|exe|dll|DLL)",
+                                f"{direction.title} {direction.description}"):
+            key = match.upper()
+            counts[key] = counts.get(key, 0) + 1
+    if not counts:
+        return theme_name
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    for name, _count in ranked:
+        stem = name.rsplit(".", 1)[0]
+        if stem in theme_name.upper():
+            continue
+        label = f"{stem}相关执行"
+        if label in used:
+            continue
+        used.add(label)
+        return label
+    return theme_name
+
+
+def pack_themes_into_chapters(themes, target: int = _TARGET_NARRATIVE_CHAPTERS):
+    """Pack theme groups into at most ``target`` chapter bins.
+
+    Returns ``(chapters, warnings)`` where each chapter is
+    ``{"name": str, "themes": [theme, ...]}``. Every theme lands in exactly one
+    chapter; the chapter count is ``min(target, len(themes))``.
+
+    A theme far larger than a balanced chapter is split across chapters first.
+    Without that, four big themes (34/22/16/15 directions) each occupied a
+    chapter alone while the other six chapters carried 13-16 — a 21-direction
+    spread that makes one chapter four times another. Splitting at 1.2x the
+    ideal brings the spread to 7. The cost is that a split theme's findings can
+    appear in two chapters; each part keeps the theme name so the reader can
+    still see they belong together.
+
+    Deterministic: the same themes always produce the same chapters, which is
+    what makes the chapter count a testable property instead of a model trait.
+    """
+    groups = [theme for theme in themes if theme["directions"]]
+    if not groups:
+        return [], ()
+    warnings = []
+    bins = min(target, len(groups))
+    if bins < target:
+        warnings.append(f"CHAPTER_TARGET_REDUCED_{bins}_OF_{target}")
+
+    total = sum(len(theme["directions"]) for theme in groups)
+    ideal = total / bins
+    # Split oversized themes into near-ideal pieces so every chapter can carry
+    # a comparable amount of evidence.
+    pieces = []
+    for theme in groups:
+        members = theme["directions"]
+        if len(members) <= ideal * _THEME_SPLIT_FACTOR or len(members) < 2:
+            pieces.append(theme)
+            continue
+        count = max(2, round(len(members) / (ideal * _THEME_SPLIT_FACTOR)))
+        size = -(-len(members) // count)
+        parts = [members[index:index + size]
+                 for index in range(0, len(members), size)]
+        parts = [part for part in parts if part]
+        used_labels: set[str] = set()
+        for index, piece in enumerate(parts):
+            # Give each piece a distinguishing label. A 166-direction theme
+            # split three ways produced three chapters all named after the
+            # parent theme, so the reader saw the same heading repeated. The
+            # label comes from what that piece actually contains: its most
+            # common artifact name, which is what differs between the pieces.
+            pieces.append({"name": _piece_label(theme["name"], piece, used_labels),
+                           "directions": piece})
+        warnings.append(f"THEME_SPLIT_FOR_BALANCE_{theme['name']}_{len(parts)}")
+
+    # Largest first: LPT's bound depends on processing the big items early.
+    ordered = sorted(
+        range(len(pieces)),
+        key=lambda i: (-len(pieces[i]["directions"]), pieces[i]["name"]),
+    )
+    buckets: list[list[int]] = [[] for _ in range(bins)]
+    loads = [0] * bins
+    for index in ordered:
+        lightest = min(range(bins), key=lambda b: (loads[b], b))
+        buckets[lightest].append(index)
+        loads[lightest] += len(pieces[index]["directions"])
+    chapters = []
+    for bucket in buckets:
+        if not bucket:
+            continue
+        members = [pieces[i] for i in bucket]
+        # The chapter takes its name from its largest theme; the writer is told
+        # the other themes too and may synthesize a broader heading.
+        lead = max(members, key=lambda t: (len(t["directions"]), t["name"]))
+        chapters.append({"name": lead["name"], "themes": members})
+    return chapters, tuple(warnings)
+
+
+def chapter_directions(chapter):
+    """All directions in a chapter, in theme order."""
+    return tuple(
+        direction
+        for theme in chapter["themes"]
+        for direction in theme["directions"]
+    )
+
+
+# A chapter longer than this is written in parts that share the chapter title.
+# 600-2000 characters is the target body; the ceiling only rejects runaways.
+_CHAPTER_MIN_CHARS = 300
+_CHAPTER_MAX_CHARS = 4000
+
+
+def _chapter_write_row(direction, cid) -> dict:
+    """One direction as the chapter writer sees it: label, text, quotes."""
+    return {
+        "title": direction.title,
+        "kind": direction.finding_kind,
+        "description": direction.description,
+        "supporting": [
+            {"file": cid.get(ref.material_id, ""), "quote": ref.quote}
+            for ref in direction.supporting_refs
+        ],
+        "counter": [
+            {"file": cid.get(ref.material_id, ""), "quote": ref.quote}
+            for ref in direction.counter_refs
+        ],
+        "missing_information": list(direction.missing_information)[:3],
+        "alternative_explanations": list(direction.alternative_explanations)[:2],
+    }
+
+
+def _split_chapter_rows(rows, limit: int = REQUEST_CHAR_LIMIT):
+    """Split one chapter's rows into write requests that fit the budget."""
+    parts, current = [], []
+    for row in rows:
+        candidate = [*current, row]
+        if current and len(json.dumps({"directions": candidate}, ensure_ascii=False)) > limit:
+            parts.append(current)
+            current = [row]
+        else:
+            current = candidate
+    if current:
+        parts.append(current)
+    return parts
+
+
+def _parse_chapter_section(content: str):
+    """Parse one chapter answer into (heading, text), enforcing size limits."""
+    parsed = _loads_strict(content)
+    if not isinstance(parsed, dict):
+        raise ValueError("CHAPTER_SECTION_INVALID")
+    heading = parsed.get("heading")
+    text = parsed.get("content")
+    if not isinstance(text, str):
+        raise ValueError("CHAPTER_SECTION_INVALID")
+    text = strip_material_ids(text.strip())
+    if len(text) < _CHAPTER_MIN_CHARS:
+        raise ValueError("CHAPTER_SECTION_TOO_SHORT")
+    if len(text) > _CHAPTER_MAX_CHARS:
+        cut = text[:_CHAPTER_MAX_CHARS]
+        boundary = max(cut.rfind("。"), cut.rfind("；"), cut.rfind("\n"))
+        text = cut[:boundary + 1] if boundary >= _CHAPTER_MIN_CHARS else cut
+    heading = strip_material_ids(heading.strip()) if isinstance(heading, str) else ""
+    if len(heading) > _MAX_HEADING_CHARS:
+        heading = _shorten_heading(heading, _MAX_HEADING_CHARS)
+    return heading, text
+
+
+async def _chapter_heading(chapter, llm):
+    """Name a chapter from its themes; the largest theme is the fallback."""
+    names = [theme["name"] for theme in chapter["themes"]]
+    if len(names) <= 1:
+        return _shorten_heading(chapter["name"], _MAX_HEADING_CHARS)
+    try:
+        response = await llm.chat_completion(
+            STAGE_CHAPTER_HEADING_SYSTEM_V1,
+            json.dumps({"topics": names}, ensure_ascii=False),
+            max_tokens=80, temperature=0.0)
+        content = response.get("content")
+        if isinstance(content, str) and content.strip():
+            heading = content.strip().strip('"“”').split("\n")[0]
+            heading = strip_material_ids(heading).strip()
+            if 2 <= len(heading) <= _MAX_HEADING_CHARS:
+                return heading
+            if len(heading) > _MAX_HEADING_CHARS:
+                return _shorten_heading(heading, _MAX_HEADING_CHARS)
+    except (ValueError, KeyError, TypeError) as exc:
+        logger.warning("Chapter heading synthesis failed: %s", exc)
+    return _shorten_heading(chapter["name"], _MAX_HEADING_CHARS)
+
+
+async def write_chapters(chapters, materials, llm, *, concurrency: int = 1):
+    """Write one chapter per packed chapter (report shape v4).
+
+    Returns ``(sections, warnings)`` where each section is
+    ``{"heading": str, "content": str, "direction_ids": tuple[str, ...]}``.
+    A chapter that does not fit one request is written in parts; every part
+    keeps the chapter's heading so the report still has exactly one chapter
+    per packed chapter.
+    """
+    cid = {m.material_id: stage_citation_name(m.evidence_key) for m in materials}
+    jobs = []
+    for index, chapter in enumerate(chapters):
+        directions = chapter_directions(chapter)
+        rows = [_chapter_write_row(d, cid) for d in directions]
+        parts = _split_chapter_rows(rows)
+        cursor = 0
+        for part_index, part in enumerate(parts):
+            part_ids = tuple(
+                d.direction_id for d in directions[cursor:cursor + len(part)])
+            cursor += len(part)
+            jobs.append({
+                "chapter_index": index,
+                "part_index": part_index,
+                "parts_total": len(parts),
+                "topics": [t["name"] for t in chapter["themes"]],
+                "rows": part,
+                "direction_ids": part_ids,
+            })
+
+    async def write_one(job):
+        payload = json.dumps({
+            "chapter_topics": job["topics"],
+            "part": f"{job['part_index'] + 1}/{job['parts_total']}",
+            "directions": job["rows"],
+        }, ensure_ascii=False)
+        response = await llm.chat_completion(
+            STAGE_CHAPTER_WRITE_SYSTEM_V1, payload,
+            # A chapter body is up to 4000 characters of Chinese prose plus the
+            # JSON wrapper. 4096 tokens truncated long chapters mid-string, and
+            # the parse error dropped the whole chapter (one run lost 38
+            # directions to "Unterminated string").
+            max_tokens=8192, temperature=0.0)
+        content = response.get("content")
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("CHAPTER_SECTION_UNUSABLE")
+        heading, text = _parse_chapter_section(content)
+        return {**job, "heading": heading, "content": text}
+
+    results = await _gather_bounded([write_one(j) for j in jobs], concurrency)
+    warnings = []
+    written: dict[int, list[dict]] = {}
+    for index, outcome in enumerate(results):
+        job = jobs[index]
+        if isinstance(outcome, BaseException):
+            warnings.append(f"CHAPTER_SECTION_REJECTED_{job['chapter_index'] + 1}")
+            logger.warning("Chapter %d part %d rejected: %s",
+                           job["chapter_index"] + 1, job["part_index"] + 1, outcome)
+            continue
+        written.setdefault(job["chapter_index"], []).append(outcome)
+
+    sections = []
+    for index in sorted(written):
+        parts = sorted(written[index], key=lambda p: p["part_index"])
+        chapter = chapters[index]
+        # One chapter, one heading: parts of the same chapter must not each
+        # invent their own title, or the report gains chapters it does not have.
+        heading = await _chapter_heading(chapter, llm)
+        body = "\n\n".join(part["content"] for part in parts)
+        direction_ids = tuple(
+            direction_id for part in parts for direction_id in part["direction_ids"])
+        sections.append({"heading": heading, "content": body,
+                         "direction_ids": direction_ids})
+    return sections, tuple(warnings)
+
+
+async def _compose_chapter_narrative(envelope, materials, directions, llm, *,
+                                     concurrency: int = 1):
+    """Chapter-shaped narrative: induce themes, pack to a fixed chapter count, write.
+
+    The chapter count is decided by ``pack_themes_into_chapters`` before any
+    writing happens, so it cannot drift with the model's answer. Induction is
+    free to return any number of themes; the packer merges them into exactly
+    ``_TARGET_NARRATIVE_CHAPTERS`` chapters (or fewer when there are fewer
+    themes), keeping every direction.
+
+    Returns ``None`` when induction yields nothing usable so the caller can
+    fall back to the batch path or the fragment renderer.
+    """
+    try:
+        themes, theme_warnings = await induce_themes(
+            directions, llm, concurrency=concurrency, split_oversized=False)
+    except (ValueError, KeyError, TypeError) as exc:
+        logger.warning("Theme induction failed (%s); falling back to batch narrative", exc)
+        return None
+    if not themes:
+        return None
+    chapters, pack_warnings = pack_themes_into_chapters(themes)
+    if not chapters:
+        return None
+    sections, write_warnings = await write_chapters(
+        chapters, materials, llm, concurrency=concurrency)
+    if not sections:
+        logger.warning("Chapter writing produced no sections; falling back")
+        return None
+    for warning in theme_warnings + pack_warnings + write_warnings:
+        logger.info("Chapter narrative warning: %s", warning)
+    return sections
+
+
 async def compose_stage_narrative(envelope, materials, directions, comparisons, llm,
-                                  concurrency: int = 1):
+                                  concurrency: int = 1, chapter_shaped: bool = True):
     """Weave validated directions into chapter narrative for investigators.
 
     The LLM may only reorganize already-validated findings; quotes stay in
@@ -845,6 +1191,9 @@ async def compose_stage_narrative(envelope, materials, directions, comparisons, 
     """
     if not directions:
         return None
+    if chapter_shaped:
+        return await _compose_chapter_narrative(
+            envelope, materials, directions, llm, concurrency=concurrency)
     # One direction per readable material means a wide scope yields ~500
     # directions, and every one of them became prose: a PC.E01 report reached
     # 228 chapters / 155k characters. The report is a reading document, not a
@@ -1232,7 +1581,13 @@ def _looks_like_bare_filename(text: str) -> bool:
 
 
 def _narrative_citations(text: str, materials) -> tuple[str, ...]:
-    """Citation ids of the materials whose file name the section mentions."""
+    """Citation ids of the materials whose file name the section mentions.
+
+    Name matching is a fallback: a chapter that discusses an artifact without
+    naming the file gets no citation, and a passing mention attaches one.
+    Chapter-shaped sections carry their directions, so ``_direction_citations``
+    resolves them exactly instead.
+    """
     cited = []
     for index, m in enumerate(materials, 1):
         name = stage_citation_name(m.evidence_key)
@@ -1241,8 +1596,30 @@ def _narrative_citations(text: str, materials) -> tuple[str, ...]:
     return tuple(cited)
 
 
+def _direction_citations(direction_ids, directions_by_id, materials) -> tuple[str, ...]:
+    """Citation ids for a chapter, resolved from the directions it was built from.
+
+    Every material a direction quotes is evidence for that chapter, so the set
+    is exact and independent of how the prose names files.
+    """
+    material_ids = set()
+    for direction_id in direction_ids:
+        direction = directions_by_id.get(direction_id)
+        if direction is None:
+            continue
+        for ref in (*direction.supporting_refs, *direction.counter_refs):
+            material_ids.add(ref.material_id)
+    order = {m.material_id: index for index, m in enumerate(materials, 1)}
+    return tuple(
+        f"c{order[mid]:03}"
+        for mid in sorted(material_ids, key=lambda x: order.get(x, 10 ** 9))
+        if mid in order
+    )
+
+
 def render_stage_report(envelope, materials, directions, comparisons, warnings, narrative=None):
     phase_a = envelope.analysis_mode == "evidence_only"
+    directions_by_id = {d.direction_id: d for d in directions}
     warnings = list(warnings)
     citations = tuple(StructuredReportCitation(citation_id=f"c{i:03}", evidence_key=m.evidence_key)
                       for i, m in enumerate(materials, 1))
@@ -1312,9 +1689,18 @@ def render_stage_report(envelope, materials, directions, comparisons, warnings, 
                     suffix = f"（{seen[heading]}）"
                     heading = _shorten_heading(
                         heading, _MAX_HEADING_CHARS - len(suffix)) + suffix
+            # Chapter-shaped sections carry the directions they were written
+            # from; resolve citations exactly. The batch path has no such
+            # provenance and falls back to matching file names in prose.
+            direction_ids = row.get("direction_ids")
+            if direction_ids is not None:
+                citation_ids = _direction_citations(
+                    direction_ids, directions_by_id, materials)
+            else:
+                citation_ids = _narrative_citations(row["content"], materials)
             sections.append(StructuredReportSection(
                 heading=heading, content=row["content"],
-                citation_ids=_narrative_citations(row["content"], materials)))
+                citation_ids=citation_ids))
     else:
         for start in range(0, len(directions), 8):
             chosen = directions[start:start + 8]

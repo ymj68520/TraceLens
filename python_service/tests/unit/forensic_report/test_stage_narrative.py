@@ -78,7 +78,7 @@ async def test_narrative_sections_render_with_filename_citations():
     ]}
     model = NarrativeModel(payload)
     sections = await compose_stage_narrative(
-        _envelope(), _materials(), _directions(), (), model)
+        _envelope(), _materials(), _directions(), (), model, chapter_shaped=False)
     # Composition keeps the model's heading; skeleton retitling happens at render.
     assert sections and sections[0]["heading"] == "检材范围与构成"
 
@@ -100,7 +100,7 @@ async def test_narrative_sections_render_with_filename_citations():
 async def test_invalid_narrative_payload_returns_none_and_fragment_fallback():
     model = NarrativeModel({"sections": [{"heading": "x", "content": "短"}]})
     assert await compose_stage_narrative(
-        _envelope(), _materials(), _directions(), (), model) is None
+        _envelope(), _materials(), _directions(), (), model, chapter_shaped=False) is None
 
     response, _stage = render_stage_report(_envelope(), _materials(), _directions(), (), (), None)
     assert any(s.heading.startswith("材料自主发现") for s in response.sections)
@@ -130,7 +130,7 @@ async def test_material_ids_are_stripped_from_narrative():
     ]}
     model = NarrativeModel(payload)
     sections = await compose_stage_narrative(
-        _envelope(), _materials(), _directions(), (), model)
+        _envelope(), _materials(), _directions(), (), model, chapter_shaped=False)
     assert sections
     body = "\n".join(s["content"] for s in sections)
     for identifier in ("m0012", "m0013", "m0014", "m0015", "m0016", "m0017", "m0018"):
@@ -350,6 +350,7 @@ async def test_narrative_batches_are_bounded_by_direction_count():
     model = RecordingModel()
     await compose_stage_narrative(
         _envelope(), _materials(), tuple(directions), (), model,
+        chapter_shaped=False,
     )
 
     assert model.sizes, "no batches were composed"
