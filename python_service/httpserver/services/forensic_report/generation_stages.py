@@ -14,6 +14,8 @@ from .generation_structured import _loads_strict
 from .generation_prompts import (STAGE_DISCOVERY_SYSTEM_V1, STAGE_COMPARE_SYSTEM_V1,
                                  STAGE_NARRATIVE_SYSTEM_V1, NEUTRAL_IMAGE_PROMPT_V1)
 from .generation_prompts import STAGE_DISCOVERY_SYSTEM_V2, STAGE_COMPARE_SYSTEM_V2
+from .generation_prompts import (STAGE_THEME_LOCAL_SYSTEM_V1,
+                                 STAGE_THEME_MERGE_SYSTEM_V1)
 logger = logging.getLogger(__name__)
 
 from .models import (
@@ -443,6 +445,264 @@ def stage_citation_name(evidence_key: str) -> str:
     """File name used in narrative text; the reader places citation chips by it."""
     path = evidence_key[5:] if evidence_key.startswith("file:") else evidence_key
     return path.rsplit("/", 1)[-1] if "/" in path else path
+
+
+# ---------------------------------------------------------------------------
+# Theme induction (report shape v3, stages 1-2).
+#
+# The v2 narrative wrote one chapter per batch of directions. With one
+# direction per readable material that produced 21 chapters of per-file
+# inventory on PC.E01 — three of them about SVCHOST alone — because nothing
+# ever looked at the whole set before writing. These two stages add that
+# missing global step: directions are grouped into themes first, and the
+# writing stage (stage 3) then writes one chapter per theme.
+#
+# The model only ever returns direction_id membership. Quotes, evidence keys
+# and citation ids are re-attached by the caller from the frozen directions, so
+# a hallucinated id is discarded instead of becoming a fabricated citation.
+# ---------------------------------------------------------------------------
+
+_THEME_NAME_MAX_CHARS = 20
+_THEME_COUNT_MIN = 4
+_THEME_COUNT_MAX = 8
+# A single theme that carries more than this many directions cannot be written
+# as one readable chapter; stage 3 splits it further.
+_THEME_MAX_DIRECTIONS = 40
+
+
+def _direction_projection(direction) -> dict:
+    """Minimal per-direction row for induction: id, label, kind, short text.
+
+    Quotes and full descriptions stay out: induction only needs to recognize
+    what a direction is about, and including quotes tripled the payload.
+    """
+    return {
+        "id": direction.direction_id,
+        "title": direction.title[:60],
+        "kind": direction.finding_kind,
+        "description": direction.description[:120],
+    }
+
+
+def _chunk_directions(directions, limit: int = REQUEST_CHAR_LIMIT):
+    """Split directions into induction chunks that fit one request each.
+
+    Sizes are measured from the serialized payload the request actually sends.
+    Arithmetic estimates drifted (field order, escaping, separators) and let
+    chunks exceed the limit by tens of characters.
+    """
+    chunks, current, rows, size = [], [], [], 0
+    for direction in directions:
+        row = _direction_projection(direction)
+        candidate = [*rows, row]
+        candidate_size = len(_theme_payload(candidate))
+        if current and candidate_size > limit:
+            chunks.append(current)
+            current, rows, size = [], [], 0
+            candidate_size = len(_theme_payload([row]))
+        current.append(direction)
+        rows.append(row)
+        size = candidate_size
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _theme_payload(rows) -> str:
+    return json.dumps({"directions": rows}, ensure_ascii=False)
+
+
+def _parse_local_themes(content: str, allowed_ids: set[str]):
+    """Parse one induction answer into (themes, unassigned_ids).
+
+    Enforces the contract the prompt states: every id exactly once, no invented
+    ids, 1.._THEME_COUNT_MAX themes. Anything the model got wrong is recovered
+    rather than failing the whole stage — a missing id becomes unassigned, an
+    invented id is dropped, and a duplicate assignment keeps the first theme.
+    """
+    parsed = _loads_strict(content)
+    if not isinstance(parsed, dict):
+        raise ValueError("THEME_OUTPUT_INVALID")
+    raw_themes = parsed.get("themes")
+    raw_unassigned = parsed.get("no_theme") or []
+    if not isinstance(raw_themes, list):
+        raise ValueError("THEME_OUTPUT_INVALID")
+    seen: set[str] = set()
+    themes = []
+    for entry in raw_themes:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("name")
+        ids = entry.get("ids")
+        if not isinstance(name, str) or not name.strip() or not isinstance(ids, list):
+            continue
+        name = name.strip()[:_THEME_NAME_MAX_CHARS]
+        members = []
+        for direction_id in ids:
+            if not isinstance(direction_id, str):
+                continue
+            if direction_id not in allowed_ids:
+                continue  # invented id: never becomes a citation
+            if direction_id in seen:
+                continue  # duplicate assignment: first theme wins
+            seen.add(direction_id)
+            members.append(direction_id)
+        if members:
+            themes.append({"name": name, "ids": members})
+    unassigned = []
+    for direction_id in raw_unassigned:
+        if isinstance(direction_id, str) and direction_id in allowed_ids and direction_id not in seen:
+            seen.add(direction_id)
+            unassigned.append(direction_id)
+    # Anything the model silently dropped is still evidence; keep it addressable.
+    for direction_id in sorted(allowed_ids - seen):
+        unassigned.append(direction_id)
+    return themes, unassigned
+
+
+def _parse_merge_themes(content: str, local_themes):
+    """Parse the global merge answer into global themes over local themes.
+
+    Returns ``(global_themes, unmerged_local_indices)`` where each global theme
+    is ``{"name": str, "locals": [index, ...]}``.
+    """
+    parsed = _loads_strict(content)
+    if not isinstance(parsed, dict):
+        raise ValueError("THEME_MERGE_OUTPUT_INVALID")
+    raw_themes = parsed.get("themes")
+    if not isinstance(raw_themes, list):
+        raise ValueError("THEME_MERGE_OUTPUT_INVALID")
+    # (chunk, name) -> local index; names are unique per chunk by construction.
+    index_by_key = {(entry["chunk"], entry["name"]): i
+                    for i, entry in enumerate(local_themes)}
+    used: set[int] = set()
+    themes = []
+    for entry in raw_themes:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("name")
+        sources = entry.get("sources")
+        if not isinstance(name, str) or not name.strip() or not isinstance(sources, list):
+            continue
+        name = name.strip()[:_THEME_NAME_MAX_CHARS]
+        members = []
+        for source in sources:
+            if not isinstance(source, dict):
+                continue
+            try:
+                key = (int(source.get("chunk")), str(source.get("name")))
+            except (TypeError, ValueError):
+                continue
+            index = index_by_key.get(key)
+            if index is None or index in used:
+                continue
+            used.add(index)
+            members.append(index)
+        if members:
+            themes.append({"name": name, "locals": members})
+    unmerged = [i for i in range(len(local_themes)) if i not in used]
+    return themes, unmerged
+
+
+async def induce_themes(directions, llm, *, concurrency: int = 1):
+    """Group directions into report themes (stages 1-2 of the v3 shape).
+
+    Stage 1 shards the directions by request budget and asks the model to group
+    each shard. Stage 2 merges those local themes into one global set, which is
+    what prevents the same artifact (SVCHOST: 32 directions spread across
+    shards) from becoming several chapters.
+
+    Returns ``(themes, warnings)`` where each theme is
+    ``{"name": str, "directions": tuple[InvestigationDirection, ...]}``.
+    Raises ValueError only when no usable grouping exists at all.
+    """
+    directions = tuple(directions)
+    if not directions:
+        return (), ()
+    by_id = {d.direction_id: d for d in directions}
+    allowed = set(by_id)
+    warnings: list[str] = []
+    chunks = _chunk_directions(directions)
+
+    async def group_chunk(index, chunk):
+        rows = [_direction_projection(d) for d in chunk]
+        payload = _theme_payload(rows)
+        chunk_ids = {d.direction_id for d in chunk}
+        response = await llm.chat_completion(
+            STAGE_THEME_LOCAL_SYSTEM_V1, payload,
+            max_tokens=4096, temperature=0.0)
+        content = response.get("content")
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("THEME_OUTPUT_UNUSABLE")
+        return index, _parse_local_themes(content, chunk_ids)
+
+    results = await _gather_bounded(
+        [group_chunk(i, c) for i, c in enumerate(chunks)], concurrency)
+    local_themes = []          # [{"chunk": int, "name": str, "ids": [...]}]
+    unassigned_ids: list[str] = []
+    for index, outcome in enumerate(results):
+        if isinstance(outcome, BaseException):
+            warnings.append(f"THEME_LOCAL_REJECTED_{index + 1}")
+            unassigned_ids.extend(d.direction_id for d in chunks[index])
+            continue
+        _index, (themes, unassigned) = outcome
+        for theme in themes:
+            local_themes.append({"chunk": index + 1, "name": theme["name"],
+                                 "ids": theme["ids"]})
+        unassigned_ids.extend(unassigned)
+
+    if not local_themes:
+        # Nothing grouped: one fallback theme keeps every direction addressable.
+        return ({"name": "材料观察汇总",
+                 "directions": tuple(by_id[i] for i in sorted(allowed))},), tuple(warnings)
+
+    if len(chunks) == 1:
+        merged_themes = [{"name": t["name"], "locals": [i]}
+                         for i, t in enumerate(local_themes)]
+        unmerged: list[int] = []
+    else:
+        merge_payload = json.dumps({"groups": [
+            {"chunk": chunk_index,
+             "themes": [{"name": t["name"], "size": len(t["ids"])}
+                        for t in local_themes if t["chunk"] == chunk_index]}
+            for chunk_index in range(1, len(chunks) + 1)
+        ]}, ensure_ascii=False)
+        try:
+            response = await llm.chat_completion(
+                STAGE_THEME_MERGE_SYSTEM_V1, merge_payload,
+                max_tokens=4096, temperature=0.0)
+            content = response.get("content")
+            if not isinstance(content, str) or not content.strip():
+                raise ValueError("THEME_MERGE_OUTPUT_UNUSABLE")
+            merged_themes, unmerged = _parse_merge_themes(content, local_themes)
+        except (ValueError, KeyError, TypeError) as exc:
+            # The merge is an optimization; local themes are still a valid
+            # grouping, so degrade instead of losing the whole induction.
+            logger.warning("Theme merge rejected (%s); using local themes", exc)
+            warnings.append("THEME_MERGE_REJECTED")
+            merged_themes = [{"name": t["name"], "locals": [i]}
+                             for i, t in enumerate(local_themes)]
+            unmerged = []
+
+    themes = []
+    for theme in merged_themes:
+        ids = [direction_id for index in theme["locals"]
+               for direction_id in local_themes[index]["ids"]]
+        members = tuple(by_id[i] for i in dict.fromkeys(ids) if i in by_id)
+        if members:
+            themes.append({"name": theme["name"], "directions": members})
+    for index in unmerged:
+        members = tuple(by_id[i] for i in local_themes[index]["ids"] if i in by_id)
+        if members:
+            themes.append({"name": local_themes[index]["name"], "directions": members})
+    if unassigned_ids:
+        members = tuple(by_id[i] for i in dict.fromkeys(unassigned_ids) if i in by_id)
+        if members:
+            themes.append({"name": "未归类材料观察", "directions": members})
+            warnings.append(f"THEME_UNASSIGNED_{len(members)}")
+    if not themes:
+        raise ValueError("NO_VALIDATED_THEME")
+    return tuple(themes), tuple(warnings)
 
 
 async def compose_stage_narrative(envelope, materials, directions, comparisons, llm,

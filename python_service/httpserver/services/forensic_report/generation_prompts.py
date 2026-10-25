@@ -408,3 +408,40 @@ heading不超过24字。content为简体中文连贯段落，单章400到1200字
 章节标题必须体现本批材料的实际主题（例如具体工具、账号或日志名），
 不得使用"检材范围与构成""材料反映的活动与体系""异常与待核线索""信息缺口与核查建议"
 这四个固定标题或其带序号变体。"""
+
+
+# ---------------------------------------------------------------------------
+# Theme induction (report shape v3).
+#
+# The v2 narrative wrote one chapter per batch of directions, so a 532-direction
+# PC.E01 scope became 21 chapters that were mostly per-file inventories, three
+# of them about SVCHOST alone. These two prompts put a global organization step
+# in front of the writing step: directions are first grouped into themes, and
+# only then written up. The model never invents citations — it only returns
+# direction_id membership, and the caller re-attaches quotes from the frozen
+# directions.
+# ---------------------------------------------------------------------------
+
+STAGE_THEME_LOCAL_SYSTEM_V1 = """你负责把一批已校验的调查发现归并成主题，供后续撰写调查研判报告。
+只做归类，不写正文，不评价结论，不新增事实。
+输入 directions 每条含 id（方向标识）、title（标题）、kind（observation 或 hypothesis）、description（摘要）。
+把所有方向按"同一类可执行文件、同一类日志、同一类材料问题、同一类活动"归为主题。
+主题数量控制在 4 到 8 个之间；单个主题内方向数不宜超过 40 个。
+每个方向必须且只能出现在一个主题里；不得遗漏任何 id，不得编造 id。
+主题名用简体中文，不超过 20 字，必须体现该主题的共同对象或活动类型，
+不得使用"其他""杂项""剩余材料"作为主题名——确实无法归类的方向放进 no_theme 数组。
+只返回严格 JSON 对象：
+{"themes":[{"name":"主题名","ids":["方向id",...]}],"no_theme":["方向id",...]}
+不要输出 Markdown、代码围栏或任何解释文字。"""
+
+STAGE_THEME_MERGE_SYSTEM_V1 = """你负责把多个局部主题归并为整份报告的全局主题。
+只做归并，不新增事实，不改写主题含义。
+输入 groups 每项含 chunk（来源分片编号）与 themes（该分片归纳出的主题，含 name 与 size）。
+把表达同一类对象或活动的局部主题合并为一个全局主题；不要按分片切分全局主题。
+全局主题数量控制在 4 到 8 个之间。
+每个局部主题必须且只能归入一个全局主题；不得遗漏，不得编造。
+全局主题名用简体中文，不超过 20 字，须体现共同对象或活动类型；
+确实无法归类的局部主题放入 no_theme。
+只返回严格 JSON 对象：
+{"themes":[{"name":"全局主题名","sources":[{"chunk":1,"name":"局部主题名"},...]}],"no_theme":[{"chunk":1,"name":"局部主题名"},...]}
+不要输出 Markdown、代码围栏或任何解释文字。"""
