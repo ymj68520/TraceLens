@@ -21,6 +21,10 @@ class _Env:
         self.case_description = "" if mode == "evidence_only" else "案情语境"
         self.evidence_scope_hash = "0" * 64
         self.baseline = None
+        # discover_directions selects the v1/v2 prompt by suffix; without this
+        # the lookup raises AttributeError, which the batch guard records as a
+        # rejection and the whole discovery reports NO_VALIDATED_NEUTRAL_ANALYSIS.
+        self.prompt_version = "final-report:evidence-only:v2"
 
 
 def _envelope(mode="evidence_only"):
@@ -270,19 +274,19 @@ def test_repeated_topic_headings_are_derived_from_content():
 
 
 def test_scope_chapter_does_not_claim_every_citation():
-    """The scope chapter summarizes the set; it must not cite all of it.
+    """The scope chapter is a methods note; it carries no citations.
 
-    With every citation attached to chapter 1, a reader following citations
-    from there landed on 415 artifacts that no chapter discusses.
+    Attaching the readable set still put 645 ids on a 123-character paragraph
+    in a PC.E01 report, so chapter 1 claimed almost the whole evidence list
+    while the findings chapters carried the rest.
     """
     response, _stage = render_stage_report(
         _envelope(), _materials(), _directions(), (), ())
     scope = response.sections[0]
     assert scope.heading == "研判范围与方法"
-    # The scope chapter cites only the readable materials it summarizes, never
-    # the unavailable ones and never the full citation set.
-    readable = {f"c{i:03}" for i, m in enumerate(_materials(), 1) if m.text}
-    assert set(scope.citation_ids) == readable
+    assert scope.citation_ids == ()
+    # The findings still carry their citations.
+    assert any(s.citation_ids for s in response.sections[1:])
 
 
 def test_unreferenced_citations_are_not_published():
@@ -357,16 +361,161 @@ def test_overflow_chapters_are_not_merged_without_bound():
     """
     from httpserver.services.forensic_report import generation_stages
 
-    # Each overflow chapter is large enough that merging all of them would
-    # blow past the bound, so the surplus must be dropped and reported.
+    one_chapter = "材料显示存在待核活动。" * 400
     narrative = [
-        {"heading": f"主题{i}", "content": "材料显示存在待核活动。" * 400}
+        {"heading": f"主题{i}", "content": one_chapter}
         for i in range(generation_stages._MAX_REPORT_CHAPTERS + 6)
     ]
     response, stage = render_stage_report(
         _envelope(), _materials(), _directions(), (), (), narrative=narrative)
 
     assert len(response.sections) <= generation_stages._MAX_REPORT_CHAPTERS + 2
-    assert max(len(s.content) for s in response.sections) <= (
-        generation_stages._MAX_MERGED_CHAPTER_CHARS)
+    # Overflow is dropped, never merged into an unrelated chapter: merging
+    # produced a 7k-character chapter carrying two unrelated topics. No
+    # chapter may exceed what a single batch produced.
+    assert max(len(s.content) for s in response.sections) <= len(one_chapter)
     assert any("NARRATIVE_OVERFLOW_DROPPED" in w for w in stage.warnings)
+
+
+# ---------------------------------------------------------------------------
+# Report pipeline concurrency.
+#
+# The report stage was fully serial: 365 LLM round trips on a PC.E01 run, and
+# wall time tracked call count almost exactly. Batches within a stage are
+# independent, so they fan out to the shared LLM budget
+# (LLM_MAX_CONCURRENCY, already used by every analysis stage).
+# ---------------------------------------------------------------------------
+
+
+def test_report_concurrency_follows_shared_llm_budget():
+    from types import SimpleNamespace
+    from httpserver.services.forensic_report.generation_stages import (
+        DEFAULT_REPORT_CONCURRENCY, report_concurrency,
+    )
+
+    assert report_concurrency(SimpleNamespace(llm_max_concurrency=32)) == 32
+    # Absent or malformed settings fall back to the pipeline default.
+    assert report_concurrency(SimpleNamespace()) == DEFAULT_REPORT_CONCURRENCY
+    assert report_concurrency(None) == DEFAULT_REPORT_CONCURRENCY
+    assert report_concurrency(SimpleNamespace(llm_max_concurrency="bad")) == DEFAULT_REPORT_CONCURRENCY
+    # Never below one (a zero/negative budget would deadlock the semaphore).
+    assert report_concurrency(SimpleNamespace(llm_max_concurrency=0)) == 1
+    # Capped so a large env value cannot flood the provider.
+    assert report_concurrency(SimpleNamespace(llm_max_concurrency=1000)) == 32
+
+
+@pytest.mark.asyncio
+async def test_gather_bounded_respects_limit_and_keeps_order():
+    import asyncio
+    from httpserver.services.forensic_report.generation_stages import _gather_bounded
+
+    active = 0
+    peak = 0
+
+    async def job(value):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return value
+
+    results = await _gather_bounded([job(i) for i in range(20)], 4)
+
+    assert results == list(range(20))
+    assert peak <= 4, f"limit exceeded: {peak} concurrent"
+    assert peak > 1, "jobs never overlapped; fan-out did not happen"
+
+
+@pytest.mark.asyncio
+async def test_gather_bounded_isolates_a_failing_job():
+    from httpserver.services.forensic_report.generation_stages import _gather_bounded
+
+    async def ok():
+        return "ok"
+
+    async def boom():
+        raise ValueError("bad batch")
+
+    results = await _gather_bounded([ok(), boom(), ok()], 3)
+
+    assert results[0] == "ok" and results[2] == "ok"
+    assert isinstance(results[1], ValueError)
+
+
+@pytest.mark.asyncio
+async def test_discovery_batches_run_concurrently_and_merge_all_directions():
+    """Discovery must fan out, and every batch's directions must survive."""
+    import asyncio
+    from httpserver.services.forensic_report.generation_stages import (
+        BATCH_SIZE, discover_directions,
+    )
+
+    materials = tuple(
+        material(f"m{i:03}", f"file:/case/f{i}.txt", kind="text", status="ready",
+                 text=f"文件{i}的正文片段，包含足够长度用于引用校验。")
+        for i in range(1, BATCH_SIZE * 3 + 1))
+
+    active = 0
+    peak = 0
+
+    class LLM:
+        async def chat_completion(self, system, user, **kwargs):
+            nonlocal active, peak
+            active += 1
+            peak = max(peak, active)
+            await asyncio.sleep(0.01)
+            active -= 1
+            body = json.loads(user)
+            first = body["materials"][0]
+            quote = first["text"][:12]
+            return {"content": json.dumps({"directions": [{
+                "title": f"观察{first['material_id']}",
+                "description": "该材料包含可核查的记录。",
+                "finding_kind": "observation",
+                "supporting_refs": [{"material_id": first["material_id"], "quote": quote}],
+            }]}, ensure_ascii=False), "model": "synthetic"}
+
+    directions, warnings = await discover_directions(
+        _envelope(), materials, LLM(), concurrency=4)
+
+    assert peak > 1, "discovery ran serially"
+    assert peak <= 4
+    assert len(directions) >= 3, f"lost batch results: {len(directions)}"
+    assert not warnings
+
+
+@pytest.mark.asyncio
+async def test_discovery_reports_each_rejected_batch_separately():
+    """A rejected batch is recorded; the others still contribute."""
+    from httpserver.services.forensic_report.generation_stages import (
+        BATCH_SIZE, discover_directions,
+    )
+
+    materials = tuple(
+        material(f"m{i:03}", f"file:/case/f{i}.txt", kind="text", status="ready",
+                 text=f"文件{i}的正文片段，包含足够长度用于引用校验。")
+        for i in range(1, BATCH_SIZE * 2 + 1))
+
+    calls = {"n": 0}
+
+    class LLM:
+        async def chat_completion(self, system, user, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                return {"content": "not json", "model": "synthetic"}
+            body = json.loads(user)
+            first = body["materials"][0]
+            return {"content": json.dumps({"directions": [{
+                "title": f"观察{first['material_id']}",
+                "description": "该材料包含可核查的记录。",
+                "finding_kind": "observation",
+                "supporting_refs": [{"material_id": first["material_id"],
+                                     "quote": first["text"][:12]}],
+            }]}, ensure_ascii=False), "model": "synthetic"}
+
+    directions, warnings = await discover_directions(
+        _envelope(), materials, LLM(), concurrency=1)
+
+    assert len(directions) == 1, "the good batch must still contribute"
+    assert len(warnings) == 1 and warnings[0].startswith("DIRECTION_BATCH_REJECTED_")

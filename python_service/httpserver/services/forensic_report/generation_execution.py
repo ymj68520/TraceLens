@@ -630,13 +630,19 @@ class ReportGenerationExecutor:
                 return response
 
         provider = RecordedCalls()
+        from .generation_stages import report_concurrency
+        # One fan-out budget for every stage: the batches within a stage are
+        # independent, and the provider pool already allows this many requests.
+        concurrency = report_concurrency(getattr(self._llm_service, "settings", None))
         try:
             materials = await materialize_images(envelope, provider)
             if not any(m.text and m.status != "unavailable" for m in materials):
                 raise ValueError("NEUTRAL_SOURCES_UNAVAILABLE")
             classifications = await self._classify_evidence(envelope, materials=materials)
-            directions, warnings = await discover_directions(envelope, materials, provider)
-            comparisons, comparison_warnings = await compare_directions(envelope, materials, provider, directions)
+            directions, warnings = await discover_directions(
+                envelope, materials, provider, concurrency=concurrency)
+            comparisons, comparison_warnings = await compare_directions(
+                envelope, materials, provider, directions, concurrency=concurrency)
             warnings += comparison_warnings + tuple(
                 f"{m.material_id}:{note}" for m in materials for note in m.limitations)
             models.update(c.model for c in classifications.items if c.model)
@@ -645,7 +651,8 @@ class ReportGenerationExecutor:
                 warnings += ("TEXT_MODEL_CHANGED_OR_BASELINE_MODEL_UNKNOWN",)
             try:
                 narrative = await compose_stage_narrative(
-                    envelope, materials, directions, comparisons, provider)
+                    envelope, materials, directions, comparisons, provider,
+                    concurrency=concurrency)
             except Exception:
                 logger.warning("Stage narrative composition failed; using fragment sections",
                                exc_info=True)
@@ -701,44 +708,74 @@ class ReportGenerationExecutor:
         results = {v["evidence_key"]: unassessed_classification(v) for v in inputs}
         readable = [v for v in inputs if v["basis_text"].strip()]
         unavailable = False
-        for start in range(0, len(readable), BATCH_SIZE):
-            batch = readable[start:start + BATCH_SIZE]
+        system_prompt = CLASSIFICATION_SYSTEM_V1 + (
+            "\n本轮使用冻结材料投影，neutral_material不是历史摘要。"
+            "origin=generic的问题是通用材料核查维度，不是案件事实；只能据材料判断。"
+            if materials is not None else "")
+
+        async def classify_batch(batch):
+            """Classify one batch, retrying once with the validation error.
+
+            Returns the batch's values, or None when the provider itself is
+            unavailable. Batches are independent, so the caller fans them out;
+            keeping the retry inside means a malformed answer still costs one
+            extra request for that batch only.
+            """
             values = [unassessed_classification(v, failed=True) for v in batch]
-            if not unavailable:
-                correction = None
-                system_prompt = CLASSIFICATION_SYSTEM_V1 + (
-                    "\n本轮使用冻结材料投影，neutral_material不是历史摘要。"
-                    "origin=generic的问题是通用材料核查维度，不是案件事实；只能据材料判断。"
-                    if materials is not None else "")
-                for attempt in (1, 2):
-                    try:
-                        response = await self._llm_service.chat_completion(
-                            system_prompt,
-                            classification_user_payload(questions, batch, correction),
-                            max_tokens=4096 if attempt == 1 else 8192, temperature=0.0,
-                        )
-                        if response.get("finish_reason") == "length":
-                            logger.warning("Report classification output truncated at max_tokens")
-                        values = parse_classifications(
-                            response.get("content", ""), batch, questions, response.get("model"),
-                        )
-                        break
-                    except httpx.HTTPError as exc:
-                        unavailable = True
-                        logger.warning("Report classification provider unavailable (%s); "
-                                       "keeping unassessed items", exc)
-                        break
-                    except (ValueError, KeyError, TypeError) as exc:
-                        values = [unassessed_classification(v, failed=True) for v in batch]
-                        if attempt == 1:
-                            correction = ("上一次输出未通过协议校验：" + str(exc)[:400]
-                                          + "。请修正该问题后按规则重新输出全部材料的分类。")
-                            logger.warning("Report classification rejected (%s); retrying once",
-                                           str(exc)[:200])
-                        else:
-                            logger.warning("Report classification rejected again (%s); "
-                                           "keeping unassessed items", str(exc)[:200])
-            results.update((v.evidence_key, v) for v in values)
+            correction = None
+            for attempt in (1, 2):
+                try:
+                    response = await self._llm_service.chat_completion(
+                        system_prompt,
+                        classification_user_payload(questions, batch, correction),
+                        max_tokens=4096 if attempt == 1 else 8192, temperature=0.0,
+                    )
+                    if response.get("finish_reason") == "length":
+                        logger.warning("Report classification output truncated at max_tokens")
+                    return parse_classifications(
+                        response.get("content", ""), batch, questions, response.get("model"),
+                    )
+                except httpx.HTTPError as exc:
+                    logger.warning("Report classification provider unavailable (%s); "
+                                   "keeping unassessed items", exc)
+                    return None
+                except (ValueError, KeyError, TypeError) as exc:
+                    values = [unassessed_classification(v, failed=True) for v in batch]
+                    if attempt == 1:
+                        correction = ("上一次输出未通过协议校验：" + str(exc)[:400]
+                                      + "。请修正该问题后按规则重新输出全部材料的分类。")
+                        logger.warning("Report classification rejected (%s); retrying once",
+                                       str(exc)[:200])
+                    else:
+                        logger.warning("Report classification rejected again (%s); "
+                                       "keeping unassessed items", str(exc)[:200])
+            return values
+
+        batches = [readable[start:start + BATCH_SIZE]
+                   for start in range(0, len(readable), BATCH_SIZE)]
+        if batches:
+            from .generation_stages import _gather_bounded, report_concurrency
+
+            # The executor does not own settings; the LLM service does (it was
+            # built from them). Fall back to the pipeline default when a test
+            # double has none, so this stays usable with minimal fakes.
+            outcomes = await _gather_bounded(
+                [classify_batch(batch) for batch in batches],
+                report_concurrency(getattr(self._llm_service, "settings", None)))
+            for batch, outcome in zip(batches, outcomes):
+                if outcome is None:
+                    unavailable = True
+                    # Keep the unassessed defaults already seeded in `results`.
+                    continue
+                if isinstance(outcome, BaseException):
+                    # Only protocol failures are absorbed (as unassessed items,
+                    # inside classify_batch). Anything else — a non-HTTP
+                    # provider error, a bug — must reach the caller instead of
+                    # being reported as "classification unavailable": that
+                    # would publish a report whose evidence was silently never
+                    # assessed.
+                    raise outcome
+                results.update((v.evidence_key, v) for v in outcome)
         if aliases:
             results = {aliases[key]: value.model_copy(update={"evidence_key": aliases[key]})
                        for key, value in results.items()}
