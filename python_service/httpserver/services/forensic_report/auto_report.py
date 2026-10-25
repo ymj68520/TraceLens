@@ -100,6 +100,17 @@ async def auto_generate_pipeline_report(
             task_id,
         )
         return {"task_id": task_id, "skipped": "report_exists"}
+    # has_report_version() only sees finished versions. The ingestion tail
+    # callback and the /pipeline-tail route can both reach this point while the
+    # first generation is still running, and each then submitted a full
+    # generation (PC.E01 ran the whole report twice, wasting ~10 minutes of
+    # LLM work on the copy that was superseded).
+    if executor.has_inflight_generation(task_id):
+        logger.info(
+            "Task %s already has a report generation in flight; auto generation skipped",
+            task_id,
+        )
+        return {"task_id": task_id, "skipped": "generation_in_flight"}
 
     # Register the actual analyzed-file scope before listing it for extraction.
     # A fresh task otherwise has no Report Evidence and freezes missing sources.

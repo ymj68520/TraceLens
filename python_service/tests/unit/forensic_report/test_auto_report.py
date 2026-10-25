@@ -32,13 +32,17 @@ class _FakeAdmission:
 
 
 class _FakeExecutor:
-    def __init__(self, has_version: bool = False):
+    def __init__(self, has_version: bool = False, inflight: bool = False):
         self._has_version = has_version
+        self._inflight = inflight
         self.submitted: list[str] = []
 
     def has_report_version(self, task_id: str, *, analysis_mode: str) -> bool:
         assert analysis_mode == "evidence_only"
         return self._has_version
+
+    def has_inflight_generation(self, task_id: str) -> bool:
+        return self._inflight
 
     async def submit(self, generation_id: str) -> None:
         self.submitted.append(generation_id)

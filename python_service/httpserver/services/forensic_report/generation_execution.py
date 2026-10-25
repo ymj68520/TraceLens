@@ -200,13 +200,25 @@ def build_citation_manifest(
     Entries carry only identity and audit metadata (captured_at / analysis
     version / claim type) -- never narrative payload. The Viewer (R2d) reads
     this and never re-derives citation provenance.
+
+    Only citations a section actually references are published. The response
+    used to declare one citation per frozen material regardless of use, so a
+    PC.E01 report shipped 586 entries while its chapters referenced 171: the
+    reader's evidence list was 71% material nothing in the report discussed.
     """
+    referenced = {
+        citation_id
+        for section in response.sections
+        for citation_id in section.citation_ids
+    }
     items = {
         item.evidence_key: item
         for item in (*envelope.main_evidence, *envelope.appendix_evidence)
     }
     entries = []
     for citation in response.citations:
+        if citation.citation_id not in referenced:
+            continue
         item = items[citation.evidence_key]  # validated before this runs
         bound = item.bound_analysis
         analysis = (
@@ -330,6 +342,20 @@ class ReportGenerationExecutor:
                     return True
             except (OSError, ValueError, KeyError):
                 continue
+        return False
+
+    def has_inflight_generation(self, task_id: str) -> bool:
+        """True when a generation for this task is admitted or still running.
+
+        has_report_version() only sees *finished* versions, so two callers
+        racing to auto-generate (the ingestion tail callback and the
+        /pipeline-tail route) both passed the guard and submitted a full
+        generation each. On PC.E01 that ran the whole report twice — the
+        first one was superseded after ~10 minutes of LLM work.
+        """
+        for row in self._repository.list_stale_generations():
+            if row.task_id == task_id:
+                return True
         return False
 
     async def submit(self, generation_id: str) -> None:
