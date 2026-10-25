@@ -146,7 +146,14 @@ def parse_classifications(content, inputs, questions, model):
         if material_type not in ("image", "android_artifact"):
             material_type = suggestion.material_type
             if material_type == "android_artifact":
-                raise ValueError("file cannot be relabelled as an Android record")
+                # The prompt forbids this value for ordinary files, but the
+                # model still emitted it intermittently. Raising here rejected
+                # the whole batch, and the caller's single retry re-ran every
+                # classification (35 rejections in one PC.E01 run, each a full
+                # LLM round trip — a large share of the report's wall time).
+                # The enum is descriptive, not load-bearing: keep the input's
+                # own type instead of discarding every other material's work.
+                material_type = value["material_type"]
         results.append(ReportEvidenceClassification(
             evidence_key=suggestion.evidence_key, material_type=material_type,
             topics=suggestion.topics, relations=suggestion.relations,
