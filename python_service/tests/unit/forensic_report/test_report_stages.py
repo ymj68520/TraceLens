@@ -19,7 +19,14 @@ from httpserver.services.forensic_report.models import (
 )
 from httpserver.services.forensic_report.generation_sources import digest, material
 from httpserver.services.forensic_report.generation_stages import parse_directions, validate_materialized_sources
-from httpserver.services.forensic_report.generation_prompts import STAGE_DISCOVERY_SYSTEM_V1, STAGE_COMPARE_SYSTEM_V1
+from httpserver.services.forensic_report.generation_prompts import (
+    STAGE_DISCOVERY_SYSTEM_V1, STAGE_DISCOVERY_AGGREGATE_V1, STAGE_COMPARE_SYSTEM_V1)
+
+
+def _is_discovery_prompt(system: str) -> bool:
+    """True for both the per-file (v1) and aggregated (v3) discovery prompts."""
+    return system.startswith(STAGE_DISCOVERY_SYSTEM_V1) or system.startswith(
+        STAGE_DISCOVERY_AGGREGATE_V1[:40])
 from httpserver.services.investigation.acquisition import canonical_json
 
 CANARY = "CASE_SECRET_CANARY_不得出现在自主模型输入"
@@ -75,7 +82,7 @@ class Model:
     async def chat_completion(self, system, user, **kwargs):
         self.calls.append((system, user))
         body = json.loads(user)
-        if system.startswith(STAGE_DISCOVERY_SYSTEM_V1):
+        if _is_discovery_prompt(system):
             source = body["materials"][0]
             item = {"title": "资金活动待核线索", "description": "应核对材料中的业务背景和账户关系。",
                     "finding_kind": "hypothesis",
@@ -323,7 +330,7 @@ async def test_newly_linked_counter_material_can_revise_the_baseline(tmp_path):
     class CounterModel(Model):
         async def chat_completion(self, system, user, **kwargs):
             body = json.loads(user)
-            if system.startswith(STAGE_DISCOVERY_SYSTEM_V1):
+            if _is_discovery_prompt(system):
                 value = {"title": "执行情况存在差异", "description": "需要核对安排与实际执行。",
                          "finding_kind": "hypothesis",
                          "supporting_refs": [{"material_id": "m0001", "quote": RAW[:8]}],

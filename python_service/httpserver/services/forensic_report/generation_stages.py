@@ -15,7 +15,10 @@ from .generation_prompts import (STAGE_DISCOVERY_SYSTEM_V1, STAGE_COMPARE_SYSTEM
                                  STAGE_NARRATIVE_SYSTEM_V1, NEUTRAL_IMAGE_PROMPT_V1)
 from .generation_prompts import STAGE_DISCOVERY_SYSTEM_V2, STAGE_COMPARE_SYSTEM_V2
 from .generation_prompts import (STAGE_THEME_LOCAL_SYSTEM_V1,
-                                 STAGE_THEME_MERGE_SYSTEM_V1)
+                                 STAGE_THEME_MERGE_SYSTEM_V1,
+                                 STAGE_THEME_WRITE_SYSTEM_V1,
+                                 STAGE_REPORT_SUMMARY_SYSTEM_V1,
+                                 STAGE_DISCOVERY_AGGREGATE_V1)
 logger = logging.getLogger(__name__)
 
 from .models import (
@@ -310,7 +313,22 @@ async def discover_directions(envelope, materials, llm, concurrency: int = 1):
         }, ensure_ascii=False)
         if len(request) > REQUEST_CHAR_LIMIT:
             raise ValueError("STAGE_INPUT_BUDGET_EXCEEDED")
-        response = await llm.chat_completion(STAGE_DISCOVERY_SYSTEM_V2 if envelope.prompt_version.endswith(":v2") else STAGE_DISCOVERY_SYSTEM_V1, request, max_tokens=4096, temperature=0.0)
+        # Aggregated discovery asks the model to group the batch's materials by
+        # subject instead of writing one observation per file. That is what
+        # turns hundreds of near-duplicate directions into a few dozen
+        # substantive ones; the v1 prompt caps a batch at 4 directions and
+        # requires a quote per direction, which reads as "one file, one
+        # finding" (532 directions for 767 materials on PC.E01, 258 of them
+        # quoting exactly one file). Kept behind its own version string so
+        # already-admitted generations keep executing their recorded contract.
+        if envelope.prompt_version.endswith(":v3"):
+            system_prompt = STAGE_DISCOVERY_AGGREGATE_V1
+        elif envelope.prompt_version.endswith(":v2"):
+            system_prompt = STAGE_DISCOVERY_SYSTEM_V2
+        else:
+            system_prompt = STAGE_DISCOVERY_SYSTEM_V1
+        response = await llm.chat_completion(
+            system_prompt, request, max_tokens=4096, temperature=0.0)
         return parse_directions(response.get("content", ""), sent, full, envelope,
                                 {d.direction_id for d in prior})
 
@@ -463,11 +481,18 @@ def stage_citation_name(evidence_key: str) -> str:
 # ---------------------------------------------------------------------------
 
 _THEME_NAME_MAX_CHARS = 20
-_THEME_COUNT_MIN = 4
-_THEME_COUNT_MAX = 8
-# A single theme that carries more than this many directions cannot be written
-# as one readable chapter; stage 3 splits it further.
-_THEME_MAX_DIRECTIONS = 40
+# A theme is one chapter, so it must stay small enough to write as one. The
+# prompt asks for <=25 directions, but the model grouped 218 directions under
+# "系统进程与组件执行痕迹" on PC.E01, which then split into 4 parts that each
+# concluded "常规系统活动" — the same finding stated four times. Oversized
+# themes are split here rather than trusted to the prompt.
+_THEME_MAX_DIRECTIONS = 25
+# A theme smaller than this cannot carry a chapter; it is a fragment.
+_THEME_MIN_DIRECTIONS = 8
+# Folding only applies once the grouping is clearly fragmented; a report with a
+# handful of genuinely small themes should keep them.
+_THEME_FRAGMENT_FOLD_MIN_THEMES = 12
+_THEME_COUNT_MAX = 24
 
 
 def _direction_projection(direction) -> dict:
@@ -604,6 +629,70 @@ def _parse_merge_themes(content: str, local_themes):
     return themes, unmerged
 
 
+# Tokens that appear in almost every theme name and therefore say nothing about
+# what distinguishes it. Grouping on these would merge unrelated themes.
+_THEME_STOPWORDS = frozenset({
+    "事件", "记录", "执行", "活动", "材料", "日志", "系统", "组件", "解析",
+    "异常", "痕迹", "观察", "预取", "文件", "相关", "信息", "内容", "状态",
+    "多次", "集中", "常规", "指向", "显示", "出现", "存在", "报告", "数据",
+})
+
+
+def _theme_tokens(name: str) -> set[str]:
+    """Content tokens of a theme name, used to decide whether two belong together.
+
+    Splits on the separators the model uses, keeps ASCII identifiers whole, and
+    breaks CJK runs into overlapping 2-character grams: "事件日志时间倒置" and
+    "空事件日志" then share 事件/日志, which is what tells us they belong to one
+    subject. Generic words are dropped so they cannot merge unrelated themes.
+    """
+    tokens = set()
+    for raw in re.split(r"[\s、，,/|（）()与和及]+", name):
+        raw = raw.strip()
+        if not raw:
+            continue
+        for piece in re.findall(r"[A-Za-z0-9_.\-]+|[\u4e00-\u9fff]+", raw):
+            lowered = piece.lower()
+            if re.fullmatch(r"[a-z0-9_.\-]+", lowered):
+                if len(lowered) >= 2 and lowered not in _THEME_STOPWORDS:
+                    tokens.add(lowered)
+                continue
+            # CJK: bigrams plus the whole run when short.
+            grams = [lowered] if len(lowered) <= 4 else []
+            grams += [lowered[i:i + 2] for i in range(len(lowered) - 1)]
+            tokens.update(g for g in grams if g not in _THEME_STOPWORDS)
+    return tokens
+
+
+def _consolidate_themes(themes, warnings):
+    """Merge themes whose names share a distinguishing token.
+
+    The merge stage often returns its input unchanged, leaving one theme per
+    artifact ("DLLHOST外壳扩展" three times, 38 single-local themes). Those are
+    fragments of one subject, not separate chapters. Themes are joined when
+    their names share a content token; a theme that shares nothing stays on its
+    own so genuinely distinct subjects are not flattened together.
+    """
+    if len(themes) <= 1:
+        return themes
+    groups: list[dict] = []       # {"name": str, "tokens": set, "directions": list}
+    for theme in themes:
+        tokens = _theme_tokens(theme["name"])
+        target = None
+        for group in groups:
+            if tokens & group["tokens"]:
+                target = group
+                break
+        if target is None:
+            groups.append({"name": theme["name"], "tokens": set(tokens),
+                           "directions": list(theme["directions"])})
+            continue
+        target["directions"].extend(theme["directions"])
+        target["tokens"] |= tokens
+        warnings.append(f"THEME_CONSOLIDATED_{theme['name']}")
+    return groups
+
+
 async def induce_themes(directions, llm, *, concurrency: int = 1):
     """Group directions into report themes (stages 1-2 of the v3 shape).
 
@@ -686,9 +775,23 @@ async def induce_themes(directions, llm, *, concurrency: int = 1):
 
     themes = []
     for theme in merged_themes:
-        ids = [direction_id for index in theme["locals"]
+        local_indexes = theme["locals"]
+        ids = [direction_id for index in local_indexes
                for direction_id in local_themes[index]["ids"]]
-        members = tuple(by_id[i] for i in dict.fromkeys(ids) if i in by_id)
+        unique_ids = list(dict.fromkeys(ids))
+        # A global theme must stay writable as one chapter. When the merge
+        # combines local themes past that size, keep the merge but split along
+        # the LOCAL theme boundaries instead of slicing the direction list:
+        # slicing produced 13 chapters all named "系统组件Prefetch执行记录（n）",
+        # while local boundaries carry the distinctions induction already made.
+        if len(unique_ids) > _THEME_MAX_DIRECTIONS and len(local_indexes) > 1:
+            for index in local_indexes:
+                members = tuple(by_id[i] for i in local_themes[index]["ids"] if i in by_id)
+                if members:
+                    themes.append({"name": local_themes[index]["name"],
+                                   "directions": members})
+            continue
+        members = tuple(by_id[i] for i in unique_ids if i in by_id)
         if members:
             themes.append({"name": theme["name"], "directions": members})
     for index in unmerged:
@@ -702,12 +805,297 @@ async def induce_themes(directions, llm, *, concurrency: int = 1):
             warnings.append(f"THEME_UNASSIGNED_{len(members)}")
     if not themes:
         raise ValueError("NO_VALIDATED_THEME")
-    return tuple(themes), tuple(warnings)
+    # Consolidate fragments. The merge stage frequently returns the input
+    # unchanged (57 "global" themes, 38 of them a single local theme), so the
+    # grouping is effectively one theme per object. Rather than dump every
+    # fragment into the largest theme — which produced a 100+ direction theme
+    # that then split into near-identical chapters — group themes by the object
+    # or anomaly their names share. Names that share no keyword with anything
+    # else stay as they are only if they carry enough evidence.
+    themes = _consolidate_themes(themes, warnings)
+    # Split oversized themes deterministically. The prompt asks for small
+    # themes, but one 218-direction theme survived it and then produced four
+    # near-identical chapters. Splitting here keeps every chapter writable as
+    # one unit and gives each part a distinguishing suffix, so the reader sees
+    # four labelled sub-topics instead of four copies of the same heading.
+    bounded = []
+    for theme in themes:
+        members = theme["directions"]
+        if len(members) <= _THEME_MAX_DIRECTIONS:
+            bounded.append(theme)
+            continue
+        groups = -(-len(members) // _THEME_MAX_DIRECTIONS)  # ceil
+        for index in range(groups):
+            chunk = members[index * _THEME_MAX_DIRECTIONS:
+                            (index + 1) * _THEME_MAX_DIRECTIONS]
+            if chunk:
+                bounded.append({"name": f"{theme['name']}（{index + 1}/{groups}）",
+                                "directions": chunk})
+        warnings.append(
+            f"THEME_SPLIT_{theme['name']}_{len(members)}")
+    return tuple(bounded), tuple(warnings)
+
+
+# ---------------------------------------------------------------------------
+# Theme writing (report shape v3, stages 3-4).
+#
+# Stage 3 writes one chapter per theme. A theme larger than one request is
+# split further, but every part stays under the same theme so the reader sees
+# one topic with several sections instead of unrelated chapters.
+#
+# Stage 4 writes the opening summary from the finished chapter list, which is
+# what turns "here is everything we parsed" into "here is what matters".
+# ---------------------------------------------------------------------------
+
+_THEME_CHAPTER_MIN_CHARS = 200
+_THEME_CHAPTER_MAX_CHARS = 2400
+_MAX_THEME_PARTS = 4
+_SUMMARY_FINDINGS_MAX = 5
+_SUMMARY_LEADS_MAX = 4
+
+
+def _theme_write_row(direction, cid) -> dict:
+    """One direction as the writing stage sees it: label, text, and quotes."""
+    return {
+        "title": direction.title,
+        "kind": direction.finding_kind,
+        "description": direction.description,
+        "supporting": [
+            {"file": cid.get(ref.material_id, ""), "quote": ref.quote}
+            for ref in direction.supporting_refs
+        ],
+        "counter": [
+            {"file": cid.get(ref.material_id, ""), "quote": ref.quote}
+            for ref in direction.counter_refs
+        ],
+        "missing_information": list(direction.missing_information)[:3],
+        "alternative_explanations": list(direction.alternative_explanations)[:2],
+    }
+
+
+def _split_theme_parts(rows, limit: int = REQUEST_CHAR_LIMIT):
+    """Split one theme's rows into writing parts that fit one request each."""
+    parts, current = [], []
+    for row in rows:
+        candidate = [*current, row]
+        payload = json.dumps({"directions": candidate}, ensure_ascii=False)
+        if current and len(payload) > limit:
+            parts.append(current)
+            current = [row]
+        else:
+            current = candidate
+    if current:
+        parts.append(current)
+    return parts
+
+
+def _parse_theme_section(content: str):
+    """Parse one writing answer into (heading, text) with size enforcement."""
+    parsed = _loads_strict(content)
+    if not isinstance(parsed, dict):
+        raise ValueError("THEME_SECTION_INVALID")
+    heading = parsed.get("heading")
+    text = parsed.get("content")
+    if not isinstance(text, str):
+        raise ValueError("THEME_SECTION_INVALID")
+    text = strip_material_ids(text.strip())
+    if len(text) < _THEME_CHAPTER_MIN_CHARS:
+        raise ValueError("THEME_SECTION_TOO_SHORT")
+    if len(text) > _THEME_CHAPTER_MAX_CHARS:
+        # Keep the whole chapter rather than losing the batch: cut at the last
+        # sentence boundary inside the budget.
+        cut = text[:_THEME_CHAPTER_MAX_CHARS]
+        boundary = max(cut.rfind("。"), cut.rfind("；"), cut.rfind("\n"))
+        text = cut[:boundary + 1] if boundary >= _THEME_CHAPTER_MIN_CHARS else cut
+    heading = strip_material_ids(heading.strip()) if isinstance(heading, str) else ""
+    if len(heading) > _MAX_HEADING_CHARS:
+        heading = _shorten_heading(heading, _MAX_HEADING_CHARS)
+    if len(heading) < 2:
+        heading = _derived_heading(_SKELETON_HEADINGS[0], text)
+    if len(heading) < 2:
+        raise ValueError("THEME_HEADING_UNUSABLE")
+    return heading, text
+
+
+def _parse_report_summary(content: str):
+    """Parse the opening summary; returns (findings, leads, note) or None."""
+    parsed = _loads_strict(content)
+    if not isinstance(parsed, dict):
+        return None
+    findings = [str(x).strip()[:80] for x in (parsed.get("key_findings") or [])
+                if isinstance(x, str) and x.strip()]
+    leads = [str(x).strip()[:80] for x in (parsed.get("priority_leads") or [])
+             if isinstance(x, str) and x.strip()]
+    note = parsed.get("coverage_note")
+    note = str(note).strip()[:120] if isinstance(note, str) else ""
+    findings = findings[:_SUMMARY_FINDINGS_MAX]
+    leads = leads[:_SUMMARY_LEADS_MAX]
+    if not findings and not leads and not note:
+        return None
+    return findings, leads, note
+
+
+async def write_theme_chapters(themes, materials, llm, *, concurrency: int = 1):
+    """Write one chapter per theme (stage 3).
+
+    Returns ``(sections, warnings)`` where each section is
+    ``{"heading": str, "content": str, "direction_ids": tuple[str, ...]}``.
+    A theme that does not fit one request yields several sections under the
+    same theme, so the reader keeps one topic per chapter group.
+    """
+    cid = {m.material_id: stage_citation_name(m.evidence_key) for m in materials}
+    jobs = []  # (theme_name, part_index, parts_total, rows, direction_ids)
+    for theme in themes:
+        rows = [_theme_write_row(d, cid) for d in theme["directions"]]
+        ids = tuple(d.direction_id for d in theme["directions"])
+        parts = _split_theme_parts(rows)
+        if len(parts) > _MAX_THEME_PARTS:
+            # Extremely wide theme: keep the most-supported rows and record the
+            # omission rather than emitting a dozen near-identical sections.
+            keep = sorted(
+                range(len(rows)),
+                key=lambda i: (-len(rows[i]["supporting"]), i),
+            )[:_MAX_THEME_PARTS * max(1, len(rows) // _MAX_THEME_PARTS)]
+            keep_set = set(keep)
+            kept_rows, kept_ids = [], []
+            for index, row in enumerate(rows):
+                if index in keep_set:
+                    kept_rows.append(row)
+                    kept_ids.append(ids[index])
+            parts = _split_theme_parts(kept_rows)
+            ids = tuple(kept_ids)
+        cursor = 0
+        for part_index, part in enumerate(parts):
+            part_ids = ids[cursor:cursor + len(part)]
+            cursor += len(part)
+            jobs.append((theme["name"], part_index, len(parts), part, part_ids))
+
+    async def write_one(job):
+        theme_name, part_index, parts_total, rows, ids = job
+        payload = json.dumps({
+            "theme": theme_name,
+            "part": f"{part_index + 1}/{parts_total}",
+            "directions": rows,
+        }, ensure_ascii=False)
+        response = await llm.chat_completion(
+            STAGE_THEME_WRITE_SYSTEM_V1, payload,
+            max_tokens=4096, temperature=0.0)
+        content = response.get("content")
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("THEME_SECTION_UNUSABLE")
+        heading, text = _parse_theme_section(content)
+        # The theme name is the chapter's label, always. Letting the writer
+        # invent its own heading produced 13 of 26 chapters starting with
+        # "预取记录…" — the model named the material type instead of the topic,
+        # so the table of contents could not tell the chapters apart. The
+        # induction stage already decided what distinguishes this group; the
+        # writer's own sentence becomes the opening of the body.
+        heading = _shorten_heading(theme_name, _MAX_HEADING_CHARS)
+        if parts_total > 1:
+            suffix = f"（{part_index + 1}）"
+            heading = (_shorten_heading(theme_name, _MAX_HEADING_CHARS - len(suffix))
+                       + suffix)
+        return {"heading": heading, "content": text, "direction_ids": ids,
+                "theme": theme_name, "part": part_index, "parts": parts_total}
+
+    results = await _gather_bounded([write_one(j) for j in jobs], concurrency)
+    sections, warnings = [], []
+    for index, outcome in enumerate(results):
+        if isinstance(outcome, BaseException):
+            theme_name = jobs[index][0]
+            warnings.append(f"THEME_SECTION_REJECTED_{index + 1}")
+            logger.warning("Theme section %d (%s) rejected: %s",
+                           index + 1, theme_name, outcome)
+            continue
+        sections.append(outcome)
+    return sections, tuple(warnings)
+
+
+async def write_report_summary(sections, llm):
+    """Write the opening summary from the finished chapters (stage 4).
+
+    Returns ``(findings, leads, note)`` or ``None`` when the model's answer is
+    unusable; the caller then omits the summary rather than inventing one.
+    """
+    if not sections:
+        return None
+    digest_rows = []
+    for section in sections:
+        first = re.split(r"[。；!！?？\n]", section["content"].strip(), maxsplit=1)[0]
+        digest_rows.append({"heading": section["heading"],
+                            "opening": first[:120]})
+    payload = json.dumps({"sections": digest_rows}, ensure_ascii=False)
+    try:
+        response = await llm.chat_completion(
+            STAGE_REPORT_SUMMARY_SYSTEM_V1, payload,
+            max_tokens=1024, temperature=0.0)
+        content = response.get("content")
+        if not isinstance(content, str) or not content.strip():
+            return None
+        return _parse_report_summary(content)
+    except (ValueError, KeyError, TypeError) as exc:
+        logger.warning("Report summary rejected: %s", exc)
+        return None
+
+
+async def _compose_theme_narrative(envelope, materials, directions, llm, *,
+                                   concurrency: int = 1):
+    """Theme-shaped narrative: induce themes (1-2), write chapters (3), summarize (4).
+
+    Returns the same section list shape as the batch path, plus a
+    ``direction_ids`` tuple per section so the renderer can resolve citations
+    from the frozen directions instead of guessing file names in prose.
+
+    Returns ``None`` when induction cannot produce anything usable, so the
+    caller falls back to the batch path or the fragment renderer.
+    """
+    try:
+        themes, theme_warnings = await induce_themes(
+            directions, llm, concurrency=concurrency)
+    except (ValueError, KeyError, TypeError) as exc:
+        logger.warning("Theme induction failed (%s); falling back to batch narrative", exc)
+        return None
+    if not themes:
+        return None
+    sections, write_warnings = await write_theme_chapters(
+        themes, materials, llm, concurrency=concurrency)
+    if not sections:
+        logger.warning("Theme writing produced no sections; falling back")
+        return None
+    summary = await write_report_summary(sections, llm)
+    if summary is not None:
+        findings, leads, note = summary
+        # The summary opens the report: it is what makes the rest navigable.
+        # It carries no citations of its own — every claim in it comes from a
+        # chapter that already cites its evidence.
+        lines = []
+        if findings:
+            lines.append("核心发现：")
+            lines.extend(f"{index}. {text}" for index, text in enumerate(findings, 1))
+        if leads:
+            lines.append("优先核查线索：")
+            lines.extend(f"- {text}" for text in leads)
+        if note:
+            lines.append(f"覆盖说明：{note}")
+        if lines:
+            sections.insert(0, {"heading": "核心发现与优先线索",
+                                "content": "\n".join(lines),
+                                "direction_ids": (), "theme": "__summary__",
+                                "part": 0, "parts": 1})
+    for warning in theme_warnings + write_warnings:
+        logger.info("Theme narrative warning: %s", warning)
+    return sections
 
 
 async def compose_stage_narrative(envelope, materials, directions, comparisons, llm,
-                                  concurrency: int = 1):
+                                  concurrency: int = 1, theme_shaped: bool = True):
     """Weave validated directions into chapter narrative for investigators.
+
+    Two shapes exist. The default (``theme_shaped=True``) groups directions
+    into themes first and writes one chapter per theme — that is what keeps a
+    500-direction scope from becoming 21 per-file inventory chapters. The
+    batch-shaped path below is retained for callers that explicitly disable
+    induction, and as the fallback when induction yields nothing usable.
 
     The LLM may only reorganize already-validated findings; quotes stay in
     the directions (rendered in the stage panel) and section text names the
@@ -717,6 +1105,9 @@ async def compose_stage_narrative(envelope, materials, directions, comparisons, 
     """
     if not directions:
         return None
+    if theme_shaped:
+        return await _compose_theme_narrative(
+            envelope, materials, directions, llm, concurrency=concurrency)
     # One direction per readable material means a wide scope yields ~500
     # directions, and every one of them became prose: a PC.E01 report reached
     # 228 chapters / 155k characters. The report is a reading document, not a
@@ -956,7 +1347,23 @@ def _shorten_heading(heading: str, limit: int) -> str:
     natural boundary (separator, or the ASCII/Chinese script change) that fits;
     fall back to the hard limit only when no boundary exists.
     """
-    head = heading[:limit]
+    # A cut inside a bracketed suffix leaves an unclosed "（2" or "（1/3" —
+    # a split theme's part marker then reads as broken text. Drop the whole
+    # bracket group when it does not fit. Checked against the ORIGINAL string:
+    # once sliced to the limit, the closing bracket is already gone.
+    open_index = heading.rfind("（")
+    if open_index >= 4:
+        close_index = heading.find("）", open_index)
+        if close_index != -1 and close_index < limit:
+            # The whole "（n）" suffix fits: keep it verbatim. Without this the
+            # script-change rule below cut at the ASCII→CJK boundary just
+            # before "（", silently dropping the part marker that distinguishes
+            # split chapters.
+            return heading[:limit].rstrip(" 、，, /|：:")
+        head = heading[:open_index]
+    else:
+        head = heading[:limit]
+    head = head.rstrip(" 、，, /|：:")
     # Prefer cutting before a conjunction: "DRVINST 与 ELEVATION_SERVICE…"
     # becomes "DRVINST" rather than "DRVINST 与 ELEVATION_SERV".
     for conjunction in (" 与 ", " 和 ", " 及 ", "与", "和", "及"):
@@ -1088,7 +1495,14 @@ def _looks_like_bare_filename(text: str) -> bool:
 
 
 def _narrative_citations(text: str, materials) -> tuple[str, ...]:
-    """Citation ids of the materials whose file name the section mentions."""
+    """Citation ids of the materials whose file name the section mentions.
+
+    Legacy resolution used by the batch-shaped path: it matches file names in
+    the prose, so a chapter that discusses an artifact without naming the file
+    ends up with no citation, and a passing mention attaches one. The
+    theme-shaped path resolves citations from ``direction_ids`` instead (see
+    ``_theme_citations``), which is exact.
+    """
     cited = []
     for index, m in enumerate(materials, 1):
         name = stage_citation_name(m.evidence_key)
@@ -1097,12 +1511,34 @@ def _narrative_citations(text: str, materials) -> tuple[str, ...]:
     return tuple(cited)
 
 
+def _theme_citations(direction_ids, directions_by_id, materials) -> tuple[str, ...]:
+    """Citation ids for a theme section, resolved from its directions.
+
+    Every material a direction quotes is evidence for that section, so the
+    citation set is exact — no prose matching, no dependence on the model
+    naming a file. Order follows the material order so ids stay stable.
+    """
+    material_ids = set()
+    for direction_id in direction_ids:
+        direction = directions_by_id.get(direction_id)
+        if direction is None:
+            continue
+        for ref in (*direction.supporting_refs, *direction.counter_refs):
+            material_ids.add(ref.material_id)
+    order = {m.material_id: index for index, m in enumerate(materials, 1)}
+    return tuple(f"c{order[mid]:03}" for mid in sorted(material_ids, key=lambda x: order.get(x, 10**9))
+                 if mid in order)
+
+
 def render_stage_report(envelope, materials, directions, comparisons, warnings, narrative=None):
     phase_a = envelope.analysis_mode == "evidence_only"
     warnings = list(warnings)
     citations = tuple(StructuredReportCitation(citation_id=f"c{i:03}", evidence_key=m.evidence_key)
                       for i, m in enumerate(materials, 1))
     cid = {m.material_id: c.citation_id for m, c in zip(materials, citations)}
+    # Theme sections name the directions they were written from; this map turns
+    # those ids back into the frozen quotes so citations are exact.
+    directions_by_id = {d.direction_id: d for d in directions}
     available = sum(m.status != "unavailable" and bool(m.text) for m in materials)
     scope = (f"本轮在已入报的 {len(materials)} 份材料范围内研判，可用 {available} 份，"
              f"不可用 {len(materials) - available} 份。只使用冻结的解析片段或明确标记的机器观察，"
@@ -1168,9 +1604,18 @@ def render_stage_report(envelope, materials, directions, comparisons, warnings, 
                     suffix = f"（{seen[heading]}）"
                     heading = _shorten_heading(
                         heading, _MAX_HEADING_CHARS - len(suffix)) + suffix
+            # Theme-shaped sections carry the directions they were written
+            # from, so their citations are exact. The batch-shaped path has no
+            # such provenance and falls back to matching file names in prose.
+            direction_ids = row.get("direction_ids")
+            if direction_ids is not None:
+                citation_ids = _theme_citations(
+                    direction_ids, directions_by_id, materials)
+            else:
+                citation_ids = _narrative_citations(row["content"], materials)
             sections.append(StructuredReportSection(
                 heading=heading, content=row["content"],
-                citation_ids=_narrative_citations(row["content"], materials)))
+                citation_ids=citation_ids))
     else:
         for start in range(0, len(directions), 8):
             chosen = directions[start:start + 8]

@@ -13,6 +13,12 @@ from httpserver.services.forensic_report import generation_stages as gs
 from httpserver.services.forensic_report.models import InvestigationDirection, MaterialSpan
 
 
+def _material(index=1):
+    from httpserver.services.forensic_report.generation_sources import material
+    return material(f"m{index:03d}", f"file:/case/材料{index}.txt", kind="text",
+                    status="ready", text="材料正文" * 20)
+
+
 def _direction(index, title, *, refs=1, kind="observation"):
     quote = MaterialSpan(material_id=f"m{index:03d}", quote="片段" * 10,
                          character_start=0, character_end=20, ambiguous=False)
@@ -320,3 +326,305 @@ async def test_induction_returns_nothing_for_no_directions():
     themes, warnings = await gs.induce_themes((), FakeLLM([]))
     assert themes == ()
     assert warnings == ()
+
+
+# ---------------------------------------------------------------------------
+# Stage 3: theme writing
+# ---------------------------------------------------------------------------
+
+
+def _theme(name, directions):
+    return {"name": name, "directions": tuple(directions)}
+
+
+class WritingLLM:
+    """Returns a section per write call; records the payloads it received."""
+
+    def __init__(self, answer=None):
+        self.answer = answer
+        self.payloads = []
+
+    async def chat_completion(self, system, user, **kwargs):
+        self.payloads.append(json.loads(user))
+        if self.answer is not None:
+            return {"content": json.dumps(self.answer, ensure_ascii=False)}
+        body = json.loads(user)
+        names = [row["title"] for row in body["directions"]]
+        return {"content": json.dumps({
+            "heading": f"{body['theme']}的研判结论",
+            "content": "本批材料显示：" + "、".join(names) + "。" + "该结论仅基于冻结解析片段。" * 20,
+        }, ensure_ascii=False)}
+
+
+@pytest.mark.asyncio
+async def test_theme_writing_emits_one_section_per_theme():
+    themes = (_theme("程序执行", _directions(2)),
+              _theme("日志观察", (_direction(9, "日志观察"),)))
+    llm = WritingLLM()
+
+    sections, warnings = await gs.write_theme_chapters(
+        themes, (_material(),), llm)
+
+    assert len(sections) == 2
+    assert warnings == ()
+    # The theme name is the chapter label; the writer's own heading would
+    # otherwise name the material type instead of the topic.
+    assert sections[0]["heading"] == "程序执行"
+    assert sections[1]["heading"] == "日志观察"
+
+
+@pytest.mark.asyncio
+async def test_theme_writing_splits_an_oversized_theme():
+    """A theme too large for one request becomes several parts, same theme."""
+    themes = (_theme("程序执行", _directions(8)),)
+
+    parts = gs._split_theme_parts(
+        [gs._theme_write_row(d, {}) for d in themes[0]["directions"]], limit=900)
+
+    assert len(parts) > 1
+    assert sum(len(p) for p in parts) == 8
+
+
+@pytest.mark.asyncio
+async def test_theme_writing_truncates_an_overlong_section():
+    themes = (_theme("程序执行", _directions(1)),)
+    llm = WritingLLM({"heading": "结论", "content": "很长的正文。" * 2000})
+
+    sections, _ = await gs.write_theme_chapters(themes, (_material(),), llm)
+
+    assert len(sections) == 1
+    assert len(sections[0]["content"]) <= gs._THEME_CHAPTER_MAX_CHARS
+
+
+@pytest.mark.asyncio
+async def test_theme_writing_rejects_a_stub_section():
+    themes = (_theme("程序执行", _directions(1)),)
+    llm = WritingLLM({"heading": "结论", "content": "太短"})
+
+    sections, warnings = await gs.write_theme_chapters(themes, (_material(),), llm)
+
+    assert sections == []
+    assert any(w.startswith("THEME_SECTION_REJECTED") for w in warnings)
+
+
+@pytest.mark.asyncio
+async def test_theme_writing_isolates_one_failed_theme():
+    themes = (_theme("甲", _directions(1)), _theme("乙", (_direction(9, "乙观察"),)))
+
+    class HalfBroken:
+        def __init__(self):
+            self.calls = 0
+
+        async def chat_completion(self, system, user, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("provider down")
+            return {"content": json.dumps({
+                "heading": "乙的结论",
+                "content": "乙主题的材料观察。" * 30}, ensure_ascii=False)}
+
+    sections, warnings = await gs.write_theme_chapters(themes, (_material(),), HalfBroken())
+
+    assert len(sections) == 1
+    assert any(w.startswith("THEME_SECTION_REJECTED") for w in warnings)
+
+
+@pytest.mark.asyncio
+async def test_theme_sections_keep_the_directions_they_were_written_from():
+    """Provenance is what makes citations exact instead of name-matched."""
+    directions = _directions(2)
+    themes = (_theme("程序执行", directions),)
+
+    sections, _ = await gs.write_theme_chapters(
+        themes, (_material(),), WritingLLM())
+
+    assert sections[0]["direction_ids"] == tuple(d.direction_id for d in directions)
+
+
+# ---------------------------------------------------------------------------
+# Stage 4: opening summary
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_summary_parses_findings_and_leads():
+    sections = [{"heading": "甲", "content": "材料显示甲存在。后文略。",
+                 "direction_ids": ("d0001",)}]
+
+    class SummaryLLM:
+        async def chat_completion(self, system, user, **kwargs):
+            return {"content": json.dumps({
+                "key_findings": ["发现一", "发现二"],
+                "priority_leads": ["线索一"],
+                "coverage_note": "覆盖 10 份材料",
+            }, ensure_ascii=False)}
+
+    result = await gs.write_report_summary(sections, SummaryLLM())
+
+    assert result == (["发现一", "发现二"], ["线索一"], "覆盖 10 份材料")
+
+
+@pytest.mark.asyncio
+async def test_summary_returns_none_when_unusable():
+    sections = [{"heading": "甲", "content": "材料显示甲存在。", "direction_ids": ()}]
+
+    class Broken:
+        async def chat_completion(self, system, user, **kwargs):
+            return {"content": "not json"}
+
+    assert await gs.write_report_summary(sections, Broken()) is None
+
+
+@pytest.mark.asyncio
+async def test_summary_returns_none_for_no_sections():
+    assert await gs.write_report_summary([], WritingLLM()) is None
+
+
+@pytest.mark.asyncio
+async def test_summary_caps_findings_and_leads():
+    sections = [{"heading": "甲", "content": "材料显示甲存在。", "direction_ids": ()}]
+
+    class Verbose:
+        async def chat_completion(self, system, user, **kwargs):
+            return {"content": json.dumps({
+                "key_findings": [f"发现{i}" for i in range(20)],
+                "priority_leads": [f"线索{i}" for i in range(20)],
+                "coverage_note": "",
+            }, ensure_ascii=False)}
+
+    findings, leads, _note = await gs.write_report_summary(sections, Verbose())
+
+    assert len(findings) == gs._SUMMARY_FINDINGS_MAX
+    assert len(leads) == gs._SUMMARY_LEADS_MAX
+
+
+# ---------------------------------------------------------------------------
+# Citations resolved from direction provenance
+# ---------------------------------------------------------------------------
+
+
+def test_theme_citations_resolve_from_direction_refs():
+    materials = tuple(_material(i) for i in range(1, 4))
+    directions = (_direction(1, "甲", refs=1),)
+    by_id = {d.direction_id: d for d in directions}
+
+    citations = gs._theme_citations(
+        [d.direction_id for d in directions], by_id, materials)
+
+    # _direction(1) quotes m001, which is the first material.
+    assert citations == ("c001",)
+
+
+def test_theme_citations_ignore_unknown_direction_ids():
+    materials = (_material(1),)
+
+    assert gs._theme_citations(["d9999"], {}, materials) == ()
+
+
+def test_theme_citations_are_deduplicated_and_ordered():
+    materials = tuple(_material(i) for i in range(1, 4))
+    shared = MaterialSpan(material_id="m002", quote="共享片段", character_start=0,
+                          character_end=4, ambiguous=False)
+    first = _direction(1, "甲")
+    second = _direction(2, "乙")
+    first = first.model_copy(update={"supporting_refs": (shared,)})
+    second = second.model_copy(update={"supporting_refs": (shared,)})
+    by_id = {first.direction_id: first, second.direction_id: second}
+
+    citations = gs._theme_citations(
+        [first.direction_id, second.direction_id], by_id, materials)
+
+    assert citations == ("c002",)
+
+
+
+
+# ---------------------------------------------------------------------------
+# Oversized themes are split deterministically
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_oversized_theme_is_split_into_distinguishable_parts(monkeypatch):
+    """A 218-direction theme produced four chapters with the same conclusion.
+
+    The prompt asks for small themes, but one huge theme survived it. The
+    split must happen in code, and each part must be distinguishable.
+    """
+    directions = _directions(60)
+    llm = FakeLLM([{"themes": [{"name": "系统进程执行", "ids": [d.direction_id for d in directions]}],
+                    "no_theme": []}])
+
+    themes, warnings = await gs.induce_themes(directions, llm)
+
+    assert len(themes) == 3  # 60 / 25 -> 25 + 25 + 10
+    assert all(len(t["directions"]) <= gs._THEME_MAX_DIRECTIONS for t in themes)
+    names = [t["name"] for t in themes]
+    assert len(set(names)) == len(names)
+    assert any(w.startswith("THEME_SPLIT") for w in warnings)
+    # No direction is lost or duplicated by the split.
+    seen = [d.direction_id for t in themes for d in t["directions"]]
+    assert sorted(seen) == sorted(d.direction_id for d in directions)
+
+
+@pytest.mark.asyncio
+async def test_split_parts_use_the_theme_name_as_heading(monkeypatch):
+    """Parts of one theme must not each invent a competing conclusion title.
+
+    On PC.E01 a split theme produced four chapters whose independently written
+    headings all said "…指向常规活动". The theme name is the stable label.
+    """
+    directions = _directions(4)
+    themes = ({"name": "系统进程执行", "directions": directions},)
+    # Force the split without needing a huge fixture.
+    monkeypatch.setattr(gs, "_split_theme_parts",
+                        lambda rows, limit=gs.REQUEST_CHAR_LIMIT: [[r] for r in rows])
+    llm = WritingLLM()
+
+    sections, _ = await gs.write_theme_chapters(
+        themes, (_material(),), llm)
+
+    assert len(sections) == 4
+    headings = [s["heading"] for s in sections]
+    assert all(h.startswith("系统进程执行") for h in headings)
+    assert len(set(headings)) == 4
+
+
+# ---------------------------------------------------------------------------
+# Aggregated discovery (report shape v3, direction A)
+#
+# The v1 prompt asks for at most 4 directions per batch with a quote per
+# direction, which the model answered as "one observation per file": 532
+# directions for 767 materials, 258 quoting exactly one file. The aggregate
+# prompt asks for grouping by subject with several files per finding.
+# ---------------------------------------------------------------------------
+
+
+def test_aggregate_prompt_asks_for_grouping_not_per_file_findings():
+    from httpserver.services.forensic_report.generation_prompts import (
+        STAGE_DISCOVERY_AGGREGATE_V1,
+    )
+
+    prompt = STAGE_DISCOVERY_AGGREGATE_V1
+    assert "不得一份材料写一条观察" in prompt
+    assert "合并为一条方向" in prompt
+    # Multiple files may support one finding.
+    assert "最多 6 条" in prompt
+
+
+def test_shorten_heading_keeps_a_complete_bracket_suffix():
+    """A split theme's "（2）" marker must survive shortening.
+
+    The script-change rule cut at the ASCII→CJK boundary right before "（",
+    so chapters rendered as "CHROME.EXE多实例Prefetc（2" and could not be told
+    apart from their siblings.
+    """
+    for name in ("CHROME.EXE多实例Prefetch（2）", "系统宿主进程Prefetch执行（13）"):
+        assert gs._shorten_heading(name, 24) == name
+
+
+def test_shorten_heading_drops_an_incomplete_bracket_suffix():
+    """When "（n）" does not fit, drop the whole marker instead of half of it."""
+    result = gs._shorten_heading("很长很长很长很长很长很长很长很长（12）", 12)
+    assert "（" not in result
+    assert "12" not in result
