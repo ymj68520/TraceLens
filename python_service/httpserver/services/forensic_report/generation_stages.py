@@ -802,7 +802,12 @@ async def induce_themes(directions, llm, *, concurrency: int = 1,
     if unassigned_ids:
         members = tuple(by_id[i] for i in dict.fromkeys(unassigned_ids) if i in by_id)
         if members:
-            themes.append({"name": "未归类材料观察", "directions": members})
+            # Name the bucket after what it actually holds. "未归类材料观察" is
+            # an internal bookkeeping label, and it reached a published chapter
+            # title verbatim. The lead artifact names the bucket well enough.
+            lead = _piece_label("", members)
+            name = lead if lead else "未归类材料观察"
+            themes.append({"name": name, "directions": members})
             warnings.append(f"THEME_UNASSIGNED_{len(members)}")
     if not themes:
         raise ValueError("NO_VALIDATED_THEME")
@@ -870,6 +875,21 @@ _MIN_GROUPS_FOR_FULL_TARGET = 4
 _THEME_SPLIT_FACTOR = 1.2
 
 
+# Libraries every Windows process loads. Naming a chapter after one of them says
+# nothing about the chapter: a PC.E01 chapter was titled "KERNEL32相关执行"
+# because KERNEL32.DLL is the most-cited module across all prefetch records,
+# while the chapter actually covered SVCHOST, DLLHOST, RUNTIMEBROKER and more.
+_GENERIC_DEPENDENCIES = frozenset({
+    "KERNEL32", "NTDLL", "KERNELBASE", "USER32", "GDI32", "ADVAPI32", "RPCRT4",
+    "COMBASE", "SECHOST", "BCRYPT", "OLE32", "OLEAUT32", "MSVCP_WIN", "UCRTBASE",
+    "CLBCATQ", "SHELL32", "SHCORE", "CRYPT32", "DPAPI", "WININET", "WINHTTP",
+    "WS2_32", "IPHLPAPI", "NTASN1", "NCRYPT", "PROFAPI", "CRYPTBASE", "UXTHEME",
+    "IMM32", "WIN32U", "GDI32FULL", "MSCTF", "CFGMGR32", "SETUPAPI", "DEVOBJ",
+    "RPCSS", "WOW64", "WOW64BASE", "WOW64WIN", "WOW64CPU", "MSVCRT", "SHLWAPI",
+    "COMCTL32", "MSI", "WINTRUST", "PSAPI", "VERSION", "IMAGEHLP", "DBGHELP",
+})
+
+
 def _piece_label(theme_name: str, piece, used: set[str] | None = None) -> str:
     """A distinguishing label for one slice of a split theme.
 
@@ -885,6 +905,8 @@ def _piece_label(theme_name: str, piece, used: set[str] | None = None) -> str:
         for match in re.findall(r"[A-Za-z][A-Za-z0-9_.\-]{2,}\.(?:EXE|exe|dll|DLL)",
                                 f"{direction.title} {direction.description}"):
             key = match.upper()
+            if key.rsplit(".", 1)[0] in _GENERIC_DEPENDENCIES:
+                continue
             counts[key] = counts.get(key, 0) + 1
     if not counts:
         return theme_name
@@ -1025,6 +1047,18 @@ def _split_chapter_rows(rows, limit: int = REQUEST_CHAR_LIMIT):
     return parts
 
 
+# Phrases a chapter uses when it declares a topic has no evidence. Every
+# direction in the chapter was selected because it HAS evidence, so these
+# statements contradict the chapter's own contents — a PC.E01 chapter said
+# "18 份 Prefetch 记录" and then "未提供任何直接指向该组件的发现".
+_NO_EVIDENCE_CLAIM_RE = re.compile(
+    r"未提供任何.{0,30}?(?:发现|材料|记录|证据|引文)"
+    r"|无法就.{0,30}?作出任何结论"
+    r"|(?:本章|本批)(?:材料|方向)?(?:中)?(?:未|没有)(?:包含|提供|出现).{0,20}?(?:发现|记录|材料|证据)"
+    r"|(?:未|没有)(?:提供|包含).{0,12}?(?:相关|直接).{0,12}?(?:发现|材料|记录)"
+)
+
+
 def _parse_chapter_section(content: str):
     """Parse one chapter answer into (heading, text), enforcing size limits."""
     parsed = _loads_strict(content)
@@ -1037,6 +1071,10 @@ def _parse_chapter_section(content: str):
     text = strip_material_ids(text.strip())
     if len(text) < _CHAPTER_MIN_CHARS:
         raise ValueError("CHAPTER_SECTION_TOO_SHORT")
+    if _NO_EVIDENCE_CLAIM_RE.search(text):
+        # A chapter must not deny its own evidence. Retry rather than publish a
+        # self-contradicting chapter.
+        raise ValueError("CHAPTER_DENIES_OWN_EVIDENCE")
     if len(text) > _CHAPTER_MAX_CHARS:
         cut = text[:_CHAPTER_MAX_CHARS]
         boundary = max(cut.rfind("。"), cut.rfind("；"), cut.rfind("\n"))
@@ -1047,11 +1085,40 @@ def _parse_chapter_section(content: str):
     return heading, text
 
 
+def _names_generic_dependency(heading: str) -> bool:
+    """True when a heading is named after a library every process loads."""
+    upper = heading.upper()
+    return any(dep in upper for dep in _GENERIC_DEPENDENCIES)
+
+
+# A heading that ends on one of these is a fragment, not a title: "SVCHOST、WMI"
+# names two objects and stops, telling the reader nothing about the chapter.
+_HEADING_FRAGMENT_TAILS = ("、", "，", ",", "与", "和", "及", "的", "：", ":", "/")
+
+
+def _is_heading_fragment(heading: str) -> bool:
+    """True when a heading is a bare list of nouns rather than a statement."""
+    stripped = heading.strip()
+    if not stripped:
+        return True
+    if stripped.endswith(_HEADING_FRAGMENT_TAILS):
+        return True
+    # A pure enumeration ("SVCHOST、WMI") has no statement after its separators.
+    parts = [p for p in re.split(r"[、，,与和及]", stripped) if p.strip()]
+    return len(parts) >= 2 and all(len(p.strip()) <= 12 for p in parts) and \
+        not re.search(r"执行|异常|记录|解析|为空|失败|事件|活动|痕迹|重复|缺失|变化", stripped)
+
+
 async def _chapter_heading(chapter, llm):
-    """Name a chapter from its themes; the largest theme is the fallback."""
+    """Name a chapter from its themes; the largest theme is the fallback.
+
+    A single-theme chapter still goes through the namer: the theme name is a
+    grouping label ("OfficeHub", "EXPLORER"), which is too terse to be a chapter
+    title. Names built from a generic system library ("RPCSS执行…") or left as a
+    bare noun list ("SVCHOST、WMI") are rejected and re-derived.
+    """
     names = [theme["name"] for theme in chapter["themes"]]
-    if len(names) <= 1:
-        return _shorten_heading(chapter["name"], _MAX_HEADING_CHARS)
+    fallback = _shorten_heading(chapter["name"], _MAX_HEADING_CHARS)
     try:
         response = await llm.chat_completion(
             STAGE_CHAPTER_HEADING_SYSTEM_V1,
@@ -1061,13 +1128,30 @@ async def _chapter_heading(chapter, llm):
         if isinstance(content, str) and content.strip():
             heading = content.strip().strip('"“”').split("\n")[0]
             heading = strip_material_ids(heading).strip()
-            if 2 <= len(heading) <= _MAX_HEADING_CHARS:
-                return heading
             if len(heading) > _MAX_HEADING_CHARS:
-                return _shorten_heading(heading, _MAX_HEADING_CHARS)
+                heading = _shorten_heading(heading, _MAX_HEADING_CHARS)
+            if (len(heading) >= 2
+                    and not _names_generic_dependency(heading)
+                    and not _is_heading_fragment(heading)):
+                return heading
+            if len(heading) >= 2:
+                logger.info("Chapter heading %r unusable; retrying", heading)
     except (ValueError, KeyError, TypeError) as exc:
         logger.warning("Chapter heading synthesis failed: %s", exc)
-    return _shorten_heading(chapter["name"], _MAX_HEADING_CHARS)
+    if _names_generic_dependency(fallback) or _is_heading_fragment(fallback):
+        # The theme name itself is unusable: fall back to the largest theme
+        # that is not, so the chapter still gets a meaningful label.
+        for theme in sorted(chapter["themes"],
+                            key=lambda t: -len(t["directions"])):
+            candidate = _shorten_heading(theme["name"], _MAX_HEADING_CHARS)
+            if (not _names_generic_dependency(candidate)
+                    and not _is_heading_fragment(candidate)):
+                return candidate
+    # A bare process name ("RUNTIMEBROKER") is a label, not a title; it tells
+    # the reader what the chapter is about only if it says what happened.
+    if len(fallback) <= 16 and re.fullmatch(r"[A-Za-z0-9_.\- ]+", fallback):
+        return f"{fallback} 执行痕迹"
+    return fallback
 
 
 async def write_chapters(chapters, materials, llm, *, concurrency: int = 1):
@@ -1115,7 +1199,26 @@ async def write_chapters(chapters, materials, llm, *, concurrency: int = 1):
         content = response.get("content")
         if not isinstance(content, str) or not content.strip():
             raise ValueError("CHAPTER_SECTION_UNUSABLE")
-        heading, text = _parse_chapter_section(content)
+        try:
+            heading, text = _parse_chapter_section(content)
+        except ValueError as exc:
+            if str(exc) != "CHAPTER_DENIES_OWN_EVIDENCE":
+                raise
+            # One retry with an explicit reminder: the model declared part of
+            # its own input had no evidence. The reminder goes into the system
+            # prompt, never appended to the JSON payload — appending broke the
+            # payload the retry was supposed to resend.
+            retry_prompt = STAGE_CHAPTER_WRITE_SYSTEM_V1 + (
+                "\n\n注意：上一版错误地声明本章某个主题没有材料。"
+                "本章所有 directions 都有材料支撑，请把全部材料写成同一结论的不同侧面，"
+                "不得出现“未提供任何发现”“无法作出结论”这类表述。")
+            response = await llm.chat_completion(
+                retry_prompt, payload,
+                max_tokens=8192, temperature=0.0)
+            content = response.get("content")
+            if not isinstance(content, str) or not content.strip():
+                raise ValueError("CHAPTER_SECTION_UNUSABLE") from None
+            heading, text = _parse_chapter_section(content)
         return {**job, "heading": heading, "content": text}
 
     results = await _gather_bounded([write_one(j) for j in jobs], concurrency)

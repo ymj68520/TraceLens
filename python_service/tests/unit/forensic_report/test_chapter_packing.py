@@ -186,7 +186,9 @@ async def test_chapter_writing_uses_one_heading_per_chapter(monkeypatch):
         chapters, _materials(), _WriterLLM())
 
     assert len(sections) == 1
-    assert sections[0]["heading"] == "甲"
+    # A single-theme chapter still goes through the namer: the theme name is a
+    # grouping label ("OfficeHub"), too terse to be a chapter title.
+    assert sections[0]["heading"] == "综合命名标题"
 
 
 @pytest.mark.asyncio
@@ -255,3 +257,201 @@ def test_piece_label_prefers_a_name_the_parent_does_not_use():
     label = gs._piece_label("系统进程执行", piece)
     assert "SVCHOST" in label
     assert label != "系统进程执行"
+
+
+# ---------------------------------------------------------------------------
+# Generic system libraries must not name a chapter
+#
+# A PC.E01 chapter was titled "KERNEL32相关执行": KERNEL32.DLL is the most
+# cited module across every prefetch record, so the frequency-based label picked
+# it, while the chapter actually covered SVCHOST, DLLHOST and RUNTIMEBROKER.
+# ---------------------------------------------------------------------------
+
+
+def test_piece_label_ignores_generic_dependencies():
+    from httpserver.services.forensic_report.models import InvestigationDirection, MaterialSpan
+    quote = MaterialSpan(material_id="m001", quote="x", character_start=0,
+                         character_end=1, ambiguous=False)
+
+    def direction(title):
+        return InvestigationDirection(
+            direction_id=title, title=title, description=title,
+            finding_kind="observation", supporting_refs=(quote,),
+            counter_refs=(), missing_information=(),
+            alternative_explanations=(), baseline_direction_ids=(),
+            case_context_quote="", origin="material")
+
+    # KERNEL32 appears most often but says nothing about the slice.
+    piece = (
+        direction("KERNEL32.DLL 被引用"),
+        direction("KERNEL32.DLL 再次被引用"),
+        direction("KERNEL32.DLL 第三次引用"),
+        direction("SVCHOST.EXE 执行记录"),
+    )
+    label = gs._piece_label("系统进程执行", piece)
+
+    assert "KERNEL32" not in label
+    assert "SVCHOST" in label
+
+
+def test_piece_label_falls_back_when_only_generic_dependencies_exist():
+    from httpserver.services.forensic_report.models import InvestigationDirection, MaterialSpan
+    quote = MaterialSpan(material_id="m001", quote="x", character_start=0,
+                         character_end=1, ambiguous=False)
+    piece = tuple(InvestigationDirection(
+        direction_id=f"d{i}", title="KERNEL32.DLL 引用", description="KERNEL32.DLL 引用",
+        finding_kind="observation", supporting_refs=(quote,), counter_refs=(),
+        missing_information=(), alternative_explanations=(),
+        baseline_direction_ids=(), case_context_quote="", origin="material",
+    ) for i in range(3))
+
+    assert gs._piece_label("系统进程执行", piece) == "系统进程执行"
+
+
+def test_chapter_prompts_forbid_generic_dependency_naming():
+    from httpserver.services.forensic_report.generation_prompts import (
+        STAGE_CHAPTER_HEADING_SYSTEM_V1, STAGE_CHAPTER_WRITE_SYSTEM_V1,
+    )
+
+    for prompt in (STAGE_CHAPTER_HEADING_SYSTEM_V1, STAGE_CHAPTER_WRITE_SYSTEM_V1):
+        assert "KERNEL32" in prompt
+        assert "NTDLL" in prompt
+
+
+def test_chapter_write_prompt_forbids_filename_lists():
+    """43 file names in one 4,302-character chapter is an inventory, not prose."""
+    from httpserver.services.forensic_report.generation_prompts import (
+        STAGE_CHAPTER_WRITE_SYSTEM_V1,
+    )
+
+    assert "严禁连续罗列文件名清单" in STAGE_CHAPTER_WRITE_SYSTEM_V1
+    assert "共 N 份" in STAGE_CHAPTER_WRITE_SYSTEM_V1
+
+
+def test_chapter_write_prompt_limits_boilerplate_caveats():
+    """Every chapter ended with "需结合其他日志核实", which carries no information."""
+    from httpserver.services.forensic_report.generation_prompts import (
+        STAGE_CHAPTER_WRITE_SYSTEM_V1,
+    )
+
+    assert "限制性内容每章最多 2 句" in STAGE_CHAPTER_WRITE_SYSTEM_V1
+    assert "需结合其他日志进一步核实" in STAGE_CHAPTER_WRITE_SYSTEM_V1
+
+
+def test_bare_noun_list_is_a_fragment():
+    """A chapter titled "SVCHOST、WMI" names two objects and says nothing."""
+    assert gs._is_heading_fragment("SVCHOST、WMI")
+    assert gs._is_heading_fragment("SVCHOST与DLLHOST")
+    assert gs._is_heading_fragment("A、B、C")
+    assert gs._is_heading_fragment("事件日志与")
+
+
+def test_statement_headings_are_not_fragments():
+    for heading in ("EXPLORER执行与空XML根节点异常",
+                    "FTK Imager多次执行痕迹研判",
+                    "事件日志解析为空或重复",
+                    "SVCHOST多实例执行",
+                    "OfficeHub"):
+        assert not gs._is_heading_fragment(heading), heading
+
+
+def test_heading_rejects_generic_dependency_and_fragment(monkeypatch):
+    """Both rejection rules apply to the namer's answer, not only the fallback."""
+    from httpserver.services.forensic_report.models import InvestigationDirection, MaterialSpan
+    quote = MaterialSpan(material_id="m001", quote="x", character_start=0,
+                         character_end=1, ambiguous=False)
+    direction = InvestigationDirection(
+        direction_id="d1", title="SVCHOST 执行", description="SVCHOST 执行",
+        finding_kind="observation", supporting_refs=(quote,), counter_refs=(),
+        missing_information=(), alternative_explanations=(),
+        baseline_direction_ids=(), case_context_quote="", origin="material",
+    )
+    chapter = {"name": "系统进程执行",
+               "themes": [{"name": "系统进程执行", "directions": (direction,)}]}
+
+    class BadNamer:
+        def __init__(self, answer):
+            self.answer = answer
+
+        async def chat_completion(self, system, user, **kwargs):
+            return {"content": self.answer}
+
+    import asyncio as _asyncio
+    for bad in ("KERNEL32相关执行", "SVCHOST、WMI"):
+        result = _asyncio.run(gs._chapter_heading(chapter, BadNamer(bad)))
+        assert result != bad, bad
+        assert not gs._names_generic_dependency(result)
+        assert not gs._is_heading_fragment(result)
+
+
+# ---------------------------------------------------------------------------
+# A chapter must not deny its own evidence
+#
+# A PC.E01 chapter said "MSEDGEWEBVIEW2 的 Prefetch 记录共 18 份" and then
+# "未提供任何直接指向 MSEDGEWEBVIEW2 组件的发现与引文 … 无法作出任何结论".
+# Two unrelated themes had been packed into one chapter and the writer treated
+# them as mutually exclusive inputs.
+# ---------------------------------------------------------------------------
+
+
+def test_self_contradicting_chapter_is_rejected():
+    from httpserver.services.forensic_report.generation_stages import (
+        _NO_EVIDENCE_CLAIM_RE,
+    )
+
+    contradictions = (
+        "本章围绕 MSEDGEWEBVIEW2 展开，但输入材料中未提供任何直接指向该组件的发现与引文。",
+        "因此无法就 MSEDGEWEBVIEW2 的执行行为作出任何结论。",
+        "本批材料中未包含相关记录。",
+        "现有材料未提供相关发现。",
+    )
+    for text in contradictions:
+        assert _NO_EVIDENCE_CLAIM_RE.search(text), text
+
+
+def test_normal_caveats_are_not_contradictions():
+    from httpserver.services.forensic_report.generation_stages import (
+        _NO_EVIDENCE_CLAIM_RE,
+    )
+
+    acceptable = (
+        "本批材料显示 18 份 Prefetch 记录，运行次数 1 至 24 次。",
+        "缺少该程序的命令行参数，无法确认其调用目标。",
+        "材料未提供该程序的命令行参数。",
+        "本章材料覆盖内核、网络与远程桌面日志。",
+    )
+    for text in acceptable:
+        assert not _NO_EVIDENCE_CLAIM_RE.search(text), text
+
+
+@pytest.mark.asyncio
+async def test_chapter_denying_evidence_is_rewritten_once():
+    """One retry with a reminder, then the chapter is accepted."""
+    themes = [_theme("甲", 2)]
+    chapters, _ = gs.pack_themes_into_chapters(themes, 1)
+
+    class ContradictingThenFixed:
+        def __init__(self):
+            self.writes = 0
+
+        async def chat_completion(self, system, user, **kwargs):
+            body = json.loads(user)
+            if "topics" in body:
+                return {"content": "标题"}
+            self.writes += 1
+            if self.writes == 1:
+                return {"content": json.dumps({
+                    "heading": "标题",
+                    "content": "本章材料中未提供任何相关发现。" + ("补充说明。" * 60),
+                }, ensure_ascii=False)}
+            return {"content": json.dumps({
+                "heading": "标题",
+                "content": "材料显示存在多项执行痕迹。" * 30,
+            }, ensure_ascii=False)}
+
+    llm = ContradictingThenFixed()
+    sections, warnings = await gs.write_chapters(chapters, _materials(), llm)
+
+    assert llm.writes == 2
+    assert len(sections) == 1
+    assert warnings == ()
