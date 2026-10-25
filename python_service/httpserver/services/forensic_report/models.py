@@ -447,7 +447,13 @@ class NeutralMaterial(BaseModel):
 class MaterialQuote(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     material_id: str
-    quote: str = Field(min_length=1, max_length=300)
+    # The report shows at most 300 characters of a quote, but the model
+    # routinely returns a longer verbatim run. Capping the field here rejected
+    # the whole DirectionBatch over one over-long quote (30 of 52 discovery
+    # batches on a PC.E01 run); validate_refs now trims to the display limit at
+    # a boundary that still occurs verbatim in the source, so the stored quote
+    # stays exact evidence rather than a silently cut string.
+    quote: str = Field(min_length=1, max_length=4000)
 
 
 class MaterialSpan(MaterialQuote):

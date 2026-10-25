@@ -519,3 +519,58 @@ async def test_discovery_reports_each_rejected_batch_separately():
 
     assert len(directions) == 1, "the good batch must still contribute"
     assert len(warnings) == 1 and warnings[0].startswith("DIRECTION_BATCH_REJECTED_")
+
+
+def test_pack_batches_respects_both_count_and_prompt_budget():
+    """Batching must bound the serialized request, not just the item count.
+
+    Materials vary ~20x in prompt size, so packing 10 per batch produced
+    requests from 2.4k to 44k characters; 24 of 52 exceeded the 26k budget and
+    were dropped before any LLM call, losing nearly half the evidence.
+    """
+    from httpserver.services.forensic_report.generation_stages import (
+        REQUEST_CHAR_LIMIT, _pack_batches, prompt_material,
+    )
+
+    big = [material(f"m{i:03}", f"file:/case/big{i}.txt", kind="text", status="ready",
+                    text="大材料正文" * 600) for i in range(12)]
+    small = [material(f"m{100+i:03}", f"file:/case/s{i}.txt", kind="text", status="ready",
+                      text="小") for i in range(12)]
+
+    for label, group in (("large", big), ("small", small), ("mixed", big + small)):
+        batches = _pack_batches(group)
+        assert sum(len(b) for b in batches) == len(group), f"{label}: lost materials"
+        for batch in batches:
+            request = json.dumps({
+                "analysis_mode": "evidence_only", "case_context": "",
+                "materials": [prompt_material(m) for m in batch],
+                "baseline_directions": [], "derived_summaries_not_evidence": [],
+            }, ensure_ascii=False)
+            assert len(request) <= REQUEST_CHAR_LIMIT, (
+                f"{label}: batch of {len(batch)} is {len(request)} chars")
+
+
+def test_pack_batches_caps_item_count_for_tiny_materials():
+    """Size packing alone would put every tiny file in one request."""
+    from httpserver.services.forensic_report.generation_stages import (
+        BATCH_SIZE, _pack_batches,
+    )
+
+    tiny = [material(f"m{200+i:03}", f"file:/case/t{i}.txt", kind="text", status="ready",
+                     text="x") for i in range(BATCH_SIZE * 2 + 3)]
+    batches = _pack_batches(tiny)
+
+    assert all(len(b) <= BATCH_SIZE for b in batches)
+    assert len(batches) == 3
+    assert sum(len(b) for b in batches) == len(tiny)
+
+
+def test_pack_batches_keeps_an_oversized_material_alone():
+    """One over-budget material gets its own batch, not silently dropped."""
+    from httpserver.services.forensic_report.generation_stages import _pack_batches
+
+    huge = material("m999", "file:/case/huge.txt", kind="text", status="ready",
+                    text="超长正文" * 3000)
+    batches = _pack_batches([huge])
+
+    assert len(batches) == 1 and batches[0] == [huge]

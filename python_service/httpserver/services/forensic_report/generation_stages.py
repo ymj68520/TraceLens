@@ -161,17 +161,93 @@ def prompt_material(source, text=None):
             "coverage": source.status, "limitations": source.limitations}
 
 
+def _prompt_row_size(source) -> int:
+    """Serialized size of one material row in a discovery request."""
+    return len(json.dumps(prompt_material(source), ensure_ascii=False))
+
+
+def _pack_batches(materials, *, max_items=None, max_chars=None):
+    """Split materials into batches bounded by both item count and prompt size.
+
+    A material's prompt row is dominated by its excerpt, so sizes vary widely.
+    Packing by count alone overflows the request budget for a batch of large
+    excerpts and wastes it on a batch of tiny files; packing by size alone can
+    put 100 tiny files in one request. Bound both.
+
+    A single material larger than the budget still gets its own batch — the
+    request guard then rejects it honestly rather than silently shrinking the
+    evidence set.
+    """
+    max_items = BATCH_SIZE if max_items is None else max_items
+    max_chars = (REQUEST_CHAR_LIMIT - _REQUEST_OVERHEAD_CHARS if max_chars is None
+                 else max_chars)
+    batches, current, size = [], [], 0
+    for source in materials:
+        row_size = _prompt_row_size(source)
+        if current and (len(current) >= max_items or size + row_size > max_chars):
+            batches.append(current)
+            current, size = [], 0
+        current.append(source)
+        size += row_size
+    if current:
+        batches.append(current)
+    return batches
+
+
+# Envelope the discovery request adds around the material rows (mode, case
+# context, baseline directions, key names). Reserved so a full batch still
+# fits REQUEST_CHAR_LIMIT.
+_REQUEST_OVERHEAD_CHARS = 2000
+
+
 def validate_refs(refs, sent, full):
     result = []
     for ref in refs:
-        if (ref.material_id not in sent or not ref.quote.strip()
-                or ref.quote not in sent[ref.material_id] or ref.quote not in full[ref.material_id].text):
+        # A material outside the batch (or outside the frozen set) is a
+        # contract violation, not an imperfect quote: it cannot be rescued by
+        # prefix matching and must fail the batch as before.
+        if ref.material_id not in sent or ref.material_id not in full or not ref.quote.strip():
             raise ValueError("DIRECTION_SOURCE_QUOTE_INVALID")
-        start = full[ref.material_id].text.index(ref.quote)
-        result.append(MaterialSpan(material_id=ref.material_id, quote=ref.quote,
-                                   character_start=start, character_end=start + len(ref.quote),
-                                   ambiguous=full[ref.material_id].text.find(ref.quote, start + 1) >= 0))
+        if ref.quote not in sent[ref.material_id] or ref.quote not in full[ref.material_id].text:
+            # The model may have returned a quote longer than the display
+            # window whose tail does not match exactly (re-wrapped whitespace,
+            # a truncated JSON blob). Retry with the longest prefix that does
+            # occur verbatim, so one imperfect quote cannot discard the batch.
+            quote = _verbatim_prefix(ref.quote, sent[ref.material_id],
+                                     full[ref.material_id].text)
+            if quote is None:
+                raise ValueError("DIRECTION_SOURCE_QUOTE_INVALID")
+        else:
+            quote = ref.quote
+        start = full[ref.material_id].text.index(quote)
+        result.append(MaterialSpan(material_id=ref.material_id, quote=quote,
+                                   character_start=start, character_end=start + len(quote),
+                                   ambiguous=full[ref.material_id].text.find(quote, start + 1) >= 0))
     return tuple(result)
+
+
+# Longest quote the report renders; mirrors MaterialQuote's historical cap.
+_QUOTE_DISPLAY_CHARS = 300
+
+
+def _verbatim_prefix(quote, sent_text, full_text):
+    """Longest prefix of ``quote`` that appears verbatim in both texts.
+
+    Used only after the exact quote failed: it keeps the evidence binding real
+    (the returned string is genuinely in the source) instead of accepting text
+    the model paraphrased. Returns None when no usable prefix exists.
+    """
+    limit = min(len(quote), _QUOTE_DISPLAY_CHARS)
+    # Try the display window first, then fall back to shorter boundaries at
+    # whitespace so a mid-token cut does not force a much shorter quote.
+    candidates = [limit]
+    candidates.extend(index for index in range(limit - 1, 0, -1)
+                      if quote[index].isspace())
+    for end in candidates[:64]:
+        candidate = quote[:end].rstrip()
+        if (candidate and candidate in sent_text and candidate in full_text):
+            return candidate
+    return None
 
 
 def parse_directions(content, sent, full, envelope, allowed_baselines):
@@ -244,12 +320,16 @@ async def discover_directions(envelope, materials, llm, concurrency: int = 1):
     # materials), so the provider sees `concurrency` requests in flight
     # instead of one at a time.
     jobs, labels = [], []
-    for start in range(0, len(readable), BATCH_SIZE):
-        chosen = readable[start:start + BATCH_SIZE]
+    # Group by the serialized prompt budget, not by material count alone.
+    # Materials differ by ~20x in prompt size (a 4k-character excerpt vs a
+    # 39-character config file), so a fixed count of 10 produced requests from
+    # 2.4k to 44k characters: 24 of 52 batches exceeded REQUEST_CHAR_LIMIT and
+    # were dropped before any LLM call, losing nearly half the evidence.
+    for index, chosen in enumerate(_pack_batches(readable)):
         ids = {m.material_id for m in chosen}
         prior = [d for d in baseline if any(r.material_id in ids for r in (*d.supporting_refs, *d.counter_refs))][:4]
         jobs.append(run([prompt_material(m) for m in chosen], prior))
-        labels.append(f"DIRECTION_BATCH_REJECTED_{start // BATCH_SIZE + 1}")
+        labels.append(f"DIRECTION_BATCH_REJECTED_{index + 1}")
     successful = 0
     for label, outcome in zip(labels, await _gather_bounded(jobs, concurrency)):
         if isinstance(outcome, BaseException):
