@@ -159,3 +159,37 @@ describe('GenerateReportPanel', () => {
         expect(screen.getByText(/当前入报材料范围内独立阅读/)).toBeInTheDocument();
     });
 });
+
+describe('GenerateReportPanel 案情背景预设', () => {
+    const switchToCaseGuided = () => {
+        fireEvent.click(screen.getByRole('radio', { name: /二次：案情对照研判/ }));
+    };
+
+    test('二次研判入口可选择预设并把整段文本写入本轮案情', async () => {
+        makePanel();
+        switchToCaseGuided();
+
+        const textarea = await screen.findByLabelText('本次案情描述');
+        expect(textarea).toHaveValue('');
+
+        fireEvent.click(screen.getByRole('button', { name: /选择预设背景/ }));
+        fireEvent.click(screen.getByRole('button', { name: /电信网络诈骗/ }));
+
+        const { getPresetById } = await import('../../config/caseBackgroundPresets');
+        expect(textarea.value).toBe(getPresetById('telecom_fraud').background);
+        // 选中后应显示预设徽标
+        expect(screen.getByText('预设')).toBeInTheDocument();
+    });
+
+    test('手改预设文本后回退为自定义状态', async () => {
+        makePanel();
+        switchToCaseGuided();
+
+        fireEvent.click(screen.getByRole('button', { name: /选择预设背景/ }));
+        fireEvent.click(screen.getByRole('button', { name: /电信网络诈骗/ }));
+
+        const textarea = screen.getByLabelText('本次案情描述');
+        fireEvent.change(textarea, { target: { value: `${textarea.value}（补充）` } });
+        expect(screen.getByText('未使用预设，可手动输入')).toBeInTheDocument();
+    });
+});
