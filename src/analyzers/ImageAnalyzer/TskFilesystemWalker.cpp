@@ -240,6 +240,13 @@ bool TskFilesystemWalker::worthHashing(const std::string& path) {
         "/var/log/", "/var/spool/", "/var/lib/",
         "/etc/",
         "/Documents and Settings/",
+        // Windows forensic artifacts. Without this prefix the entire Windows
+        // tree went unhashed: event logs, prefetch, and every registry hive
+        // landed in the report with an empty MD5, and the report freeze
+        // downgraded all of them to "partial" with ORIGINAL_HASH_UNAVAILABLE
+        // (250 event logs in one PC.E01 run). Those artifacts are the
+        // primary evidence in a Windows case, so they must be deduplicable.
+        "/Windows/", "/windows/", "/ProgramData/", "/programdata/",
     };
     for (const char* prefix : kept) {
         if (path.find(prefix) != std::string::npos) {
