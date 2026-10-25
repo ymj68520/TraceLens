@@ -19,6 +19,7 @@ import Badge from '../common/Badge';
 import { createCaseWithTasks, fetchCases } from '../../store/caseSlice';
 import { fetchTasks } from '../../store/taskSlice';
 import { useToast } from '../common/ToastContext';
+import CaseBackgroundField from './CaseBackgroundField';
 
 export default function ComposeCaseModal({ preselectedTaskIds = [], onClose }) {
   const dispatch = useDispatch();
@@ -99,16 +100,16 @@ export default function ComposeCaseModal({ preselectedTaskIds = [], onClose }) {
               className={inputCls} placeholder="例：某某网络诈骗案" />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-              案情描述 *
-              <span className="text-xs text-slate-400">（用于后续跨镜像研判时定位关键证据）</span>
-            </label>
-            <textarea required disabled={submitting} value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3} className={`${inputCls} resize-none`}
-              placeholder="请描述案情背景、涉案行为、需要查找的关键信息..." />
-          </div>
+          <CaseBackgroundField
+            label="案情描述"
+            required
+            disabled={submitting}
+            value={description}
+            onChange={setDescription}
+            rows={4}
+            hint="用于后续跨镜像研判时定位关键证据；可直接选用预设背景，或手动输入"
+            placeholder="请描述案情背景、涉案行为、需要查找的关键信息..."
+          />
 
           {/* Task picker — only when no preselection, or always allow editing */}
           <div>

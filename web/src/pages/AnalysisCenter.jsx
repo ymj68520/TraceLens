@@ -11,6 +11,7 @@ import { useToast } from '../components/common/useToast';
 import { fetchTaskById } from '../services/taskService';
 import { saveCaseDescription } from '../services/caseAnalysisService';
 import { listReportEvidenceFileCandidates, seedAnalyzedReportEvidence } from '../services/investigationService';
+import CaseBackgroundField from '../components/tasks/CaseBackgroundField';
 
 /**
  * 证据判定 (Evidence Review) — /analysis-center
@@ -253,7 +254,15 @@ const EvidenceReviewPage = () => {
                             <p className="text-sm text-slate-500 dark:text-slate-400">
                                 逐个判定文件是否进入版本化取证报告：正文证据 / 附件证据 / 移出。判定结果即时生效于下一次报告生成。
                             </p>
-                            <textarea value={caseDescription} onChange={(e) => setCaseDescription(e.target.value)} className="w-full h-24 p-3 text-sm border border-slate-200 dark:border-slate-700 rounded-xl dark:bg-slate-900 resize-none focus:ring-2 focus:ring-purple-500" placeholder="描述案情关键词..." />
+                            <CaseBackgroundField
+                                label="案情背景"
+                                value={caseDescription}
+                                onChange={setCaseDescription}
+                                disabled={savingDescription}
+                                rows={4}
+                                hint="该背景会随任务保存，供 AI 筛选关键文件与生成报告时使用"
+                                placeholder="描述案情关键词，或选用预设背景..."
+                            />
                         </div>
                     </Card>
 

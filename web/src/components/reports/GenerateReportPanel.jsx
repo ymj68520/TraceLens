@@ -9,6 +9,7 @@ import { useReportGenerationPolling } from '../../hooks/useReportGenerationPolli
 import { listReportEvidence } from '../../services/investigationService';
 import { generateReport, getReportGeneration, getNarrativeReport } from '../../services/reportGenerationService';
 import { fetchTaskById } from '../../services/taskService';
+import { CaseBackgroundPresetPicker } from '../tasks/CaseBackgroundField';
 
 const ERROR_HINTS = {
     citation_invalid: '模型输出引用了报告证据边界之外的来源，生成已整体作废。',
@@ -225,11 +226,17 @@ const GenerateReportPanel = ({
                 <p className="text-xs text-slate-600 dark:text-slate-300">{baselineLoading ? '正在核对基线报告…' : baseline?.reportId
                     ? `基于首次报告 ${baseline.reportId} · 沿用 ${baseline.count} 份冻结材料`
                     : '请在下方版本历史中选择一份材料自主研判报告。历史案情报告不能作为中立基线。'}</p>
-                <label className="block text-xs text-slate-600 dark:text-slate-300">本次案情描述（调查语境，不作为已证实事实）
-                    <textarea aria-label="本次案情描述" value={caseDescription} maxLength={8000} disabled={busy}
+                <div className="space-y-2">
+                    <label htmlFor="case-guided-description" className="block text-xs text-slate-600 dark:text-slate-300">本次案情描述（调查语境，不作为已证实事实）</label>
+                    <CaseBackgroundPresetPicker
+                        value={caseDescription}
+                        onSelect={value => { contextEdited.current = true; setCaseDescription(value); }}
+                        disabled={busy}
+                    />
+                    <textarea id="case-guided-description" aria-label="本次案情描述" value={caseDescription} maxLength={8000} disabled={busy}
                         onChange={event => { contextEdited.current = true; setCaseDescription(event.target.value); }}
-                        className="mt-2 min-h-32 w-full rounded-lg border border-slate-300 bg-white p-3 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
-                </label>
+                        className="min-h-32 w-full rounded-lg border border-slate-300 bg-white p-3 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
+                </div>
                 <p className="text-xs text-slate-500">{caseDescription.length}/8000 字 · 仅冻结到本次研判，不覆盖任务案情或首次报告。</p>
                 {caseDescription.length > 8000 && <p role="alert" className="text-xs text-amber-700 dark:text-amber-300">已保存案情超过本轮8000字限制，请明确缩减后提交；不会自动截断。</p>}
             </div>}

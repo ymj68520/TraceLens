@@ -23,6 +23,7 @@ import { useToast } from '../common/ToastContext';
 import FilterProfileSelector from '../filters/FilterProfileSelector';
 import FilterProfileEditor from '../filters/FilterProfileEditor';
 import RaidImageSource from './RaidImageSource';
+import CaseBackgroundField from './CaseBackgroundField';
 
 // Data source kinds. The value is sent to the backend as android_source and
 // selects the AndroidAnalyzer backend / analysis pipeline branch.
@@ -77,6 +78,14 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
   const isLogical = form.android_source !== 'tsk' && !isRaid && !isAliyun;
   const isMiui = form.android_source === 'miui-backup';
   const isArchive = ['tar', 'seven-zip', 'android-backup', 'filesystem-image', 'android-container'].includes(form.android_source);
+
+  // 预设背景里的推荐场景/平台是可选联动：只覆盖预设明确给出的项，
+  // 其余保持用户当前选择。
+  const applyPresetRecommendation = (preset) => setForm((f) => ({
+    ...f,
+    ...(preset.filterProfiles?.length ? { filter_profile: preset.filterProfiles[0] } : {}),
+    ...(preset.scenarios?.length ? { scenarios: [...preset.scenarios] } : {}),
+  }));
 
   // Label / placeholder for the path input changes with the data source.
   const pathLabel = isAliyun ? '阿里云系统盘导出包 *' : form.android_source === 'harmony-backup' ? '鸿蒙备份目录 *' : isMiui
@@ -213,16 +222,17 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
           )}
 
           {/* Case Description — always visible, required for LLM analysis */}
-          <Field label="案情描述 *" hint="AI 将根据此描述筛选关键文件并生成分析报告">
-            <textarea
-              required disabled={isCreating}
-              value={form.case_description}
-              onChange={(e) => set('case_description', e.target.value)}
-              rows={3}
-              className={`${inputCls} resize-none`}
-              placeholder="请输入案情描述，例如：一起涉嫌网络诈骗案件，嫌疑人使用 Android 手机..."
-            />
-          </Field>
+          <CaseBackgroundField
+            label="案情描述"
+            required
+            disabled={isCreating}
+            value={form.case_description}
+            onChange={(val) => set('case_description', val)}
+            onApplyRecommendation={applyPresetRecommendation}
+            rows={4}
+            hint="AI 将根据此描述筛选关键文件并生成分析报告；可直接选用预设背景，或手动输入"
+            placeholder="请输入案情描述，例如：一起涉嫌网络诈骗案件，嫌疑人使用 Android 手机..."
+          />
 
           {/* Priority */}
           <Field label="优先级">

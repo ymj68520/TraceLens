@@ -38,6 +38,9 @@
 ### 📖 分析师教程（docs/tutorials/）
 端到端实操主线（命令全部核实）：[Linux 入侵排查](tutorials/LinuxIntrusion.md) · [Windows 取证](tutorials/WindowsCase.md) · [Android/微信取证](tutorials/AndroidWechat.md) · [内存取证](tutorials/MemoryForensics.md) · [知识图谱与报告](tutorials/KnowledgeGraphReports.md) · [分布式 C/S 实操](tutorials/DistributedCS.md) · [过滤画像](tutorials/FilterProfiles.md) · [全文搜索](tutorials/FullTextSearch.md) · [未知镜像分流](tutorials/IncidentTriage.md)
 
+### ✨ 功能说明
+- **[案情背景预设](case-background-presets.md)** — 28 个预制取证场景背景，创建任务/案件时可选用或手动输入；含文案写法约定与扩展指南
+
 ### 📋 实施 SPEC（docs/specs/）
 进行中的重构规范指南（评审锁定后作为实施唯一依据，完成后决策移交 schema/API 文档）：
 - **[事件簇分析重构](specs/event-cluster-analysis-redesign.md)** — 聚簇时间自适应（预算驱动）、分析记录一等实体（append-only 版本链）、"是否已分析"精确判定、时间窗本地对齐、全量 map-reduce（不采样）、Graphiti 统一摄入、C++ 遗留端点退役；含 Phase B1→B2→C→D 阶段划分与验收标准

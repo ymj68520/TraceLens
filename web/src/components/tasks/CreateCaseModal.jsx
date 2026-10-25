@@ -11,6 +11,7 @@
 import { useMemo, useState } from 'react';
 import Button from '../common/Button';
 import Badge from '../common/Badge';
+import CaseBackgroundField from './CaseBackgroundField';
 
 const INIT = {
   name:           '',
@@ -115,12 +116,16 @@ export default function CreateCaseModal({ onSubmit, onClose, existingTasks = [] 
               className={inputCls} placeholder="例：某某网络诈骗案" />
           </Field>
 
-          <Field label="案情描述 *" hint="LLM 将根据此描述跨镜像筛选关键文件">
-            <textarea required disabled={isCreating} value={form.description}
-              onChange={(e) => set('description', e.target.value)}
-              rows={3} className={`${inputCls} resize-none`}
-              placeholder="请描述案情背景、涉案行为、需要查找的关键信息..." />
-          </Field>
+          <CaseBackgroundField
+            label="案情描述"
+            required
+            disabled={isCreating}
+            value={form.description}
+            onChange={(val) => set('description', val)}
+            rows={4}
+            hint="LLM 将根据此描述跨镜像筛选关键文件；可直接选用预设背景，或手动输入"
+            placeholder="请描述案情背景、涉案行为、需要查找的关键信息..."
+          />
 
           {/* Image paths */}
           <div>
