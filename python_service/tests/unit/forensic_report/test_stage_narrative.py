@@ -257,3 +257,116 @@ def test_repeated_topic_headings_are_derived_from_content():
     assert headings[0] == "材料观察"
     assert headings[1] == "Quasar 控制端配置了 4782 监听端口"
     assert not any("（2）" in h for h in headings)
+
+
+# ---------------------------------------------------------------------------
+# Report shape regressions found in the PC.E01 end-to-end run.
+#
+# That report had 21 chapters, but the scope chapter claimed all 586 citations
+# while the narrative chapters used 171 of them; one chapter had absorbed
+# 30,543 characters of overflow; and 4 of 9 narrative batches were rejected
+# because each carried 31-36 directions.
+# ---------------------------------------------------------------------------
+
+
+def test_scope_chapter_does_not_claim_every_citation():
+    """The scope chapter summarizes the set; it must not cite all of it.
+
+    With every citation attached to chapter 1, a reader following citations
+    from there landed on 415 artifacts that no chapter discusses.
+    """
+    response, _stage = render_stage_report(
+        _envelope(), _materials(), _directions(), (), ())
+    scope = response.sections[0]
+    assert scope.heading == "研判范围与方法"
+    # The scope chapter cites only the readable materials it summarizes, never
+    # the unavailable ones and never the full citation set.
+    readable = {f"c{i:03}" for i, m in enumerate(_materials(), 1) if m.text}
+    assert set(scope.citation_ids) == readable
+
+
+def test_unreferenced_citations_are_not_published():
+    """Only citations a section references reach the manifest."""
+    from httpserver.services.forensic_report.generation_execution import (
+        build_citation_manifest,
+    )
+
+    response, _stage = render_stage_report(
+        _envelope(), _materials(), _directions(), (), ())
+    referenced = {c for s in response.sections for c in s.citation_ids}
+    snapshot = type("S", (), {"captured_at": 0})()
+    envelope = type("E", (), {
+        "main_evidence": tuple(
+            type("I", (), {"evidence_key": c.evidence_key, "bound_analysis": None,
+                           "snapshot": snapshot})()
+            for c in response.citations),
+        "appendix_evidence": (),
+    })()
+
+    entries = build_citation_manifest(response, envelope)
+
+    assert {e.citation_id for e in entries} == referenced
+
+
+@pytest.mark.asyncio
+async def test_narrative_batches_are_bounded_by_direction_count():
+    """A batch must stay small enough for one answer to cover.
+
+    Byte-only batching packed 36 directions into a batch; the model then
+    returned malformed sections and the batch was dropped entirely.
+    """
+    from httpserver.services.forensic_report import generation_stages
+
+    directions = []
+    for i in range(40):
+        quote = MaterialSpan(material_id="m001", quote="培训话术正文片段",
+                             character_start=0, character_end=8, ambiguous=False)
+        directions.append(InvestigationDirection(
+            direction_id=f"d{i}", title=f"方向{i}", description="材料包含话术培训文档。",
+            finding_kind="observation", supporting_refs=(quote,), counter_refs=(),
+            missing_information=(), alternative_explanations=(),
+            baseline_direction_ids=(), case_context_quote="", origin="material",
+        ))
+
+    class RecordingModel:
+        def __init__(self):
+            self.sizes = []
+
+        async def chat_completion(self, system, user, **kwargs):
+            body = json.loads(user)
+            self.sizes.append(len(body["validated_directions"]))
+            part = body["part"]
+            return {"content": json.dumps({"sections": [
+                {"heading": f"章节{part}", "content": "本轮材料显示存在多项待核活动，" * 6},
+            ]}, ensure_ascii=False), "model": "synthetic"}
+
+    model = RecordingModel()
+    await compose_stage_narrative(
+        _envelope(), _materials(), tuple(directions), (), model,
+    )
+
+    assert model.sizes, "no batches were composed"
+    assert max(model.sizes) <= generation_stages._MAX_DIRECTIONS_PER_BATCH
+
+
+def test_overflow_chapters_are_not_merged_without_bound():
+    """Merging past the chapter cap must stay bounded.
+
+    The unbounded merge produced a single 30,543-character chapter, six times
+    any other chapter and unreadable as a section.
+    """
+    from httpserver.services.forensic_report import generation_stages
+
+    # Each overflow chapter is large enough that merging all of them would
+    # blow past the bound, so the surplus must be dropped and reported.
+    narrative = [
+        {"heading": f"主题{i}", "content": "材料显示存在待核活动。" * 400}
+        for i in range(generation_stages._MAX_REPORT_CHAPTERS + 6)
+    ]
+    response, stage = render_stage_report(
+        _envelope(), _materials(), _directions(), (), (), narrative=narrative)
+
+    assert len(response.sections) <= generation_stages._MAX_REPORT_CHAPTERS + 2
+    assert max(len(s.content) for s in response.sections) <= (
+        generation_stages._MAX_MERGED_CHAPTER_CHARS)
+    assert any("NARRATIVE_OVERFLOW_DROPPED" in w for w in stage.warnings)

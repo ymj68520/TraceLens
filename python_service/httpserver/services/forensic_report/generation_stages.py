@@ -29,6 +29,9 @@ REQUEST_CHAR_LIMIT = 26000
 # answer is never rejected, while still refusing the degenerate "one 50-char
 # section" that used to pass and let a report grow to 50 chapters.
 _MAX_SECTIONS_PER_BATCH = 8
+# Heading length the prompt asks for. Over-long labels are shortened rather
+# than rejecting the batch; see the validation loop in compose_stage_narrative.
+_MAX_HEADING_CHARS = 24
 # Floor on a single section. The prompt asks for 400+ characters, but a batch
 # covering one narrow artifact can legitimately be shorter, so the floor only
 # rejects stubs. 80 characters still rules out the degenerate one-liner that the
@@ -40,6 +43,20 @@ _MAX_TOTAL_NARRATIVE_CHARS = 30000
 # Hard ceiling on rendered chapters, so the final report cannot exceed a
 # length a reader can actually work through even when every batch is full.
 _MAX_REPORT_CHAPTERS = 20
+# Directions per narrative batch. Batching used to be driven only by request
+# bytes, which packed 31-36 directions into each of 8 batches on PC.E01: the
+# model had to summarize 35 materials inside one 8192-token answer while
+# emitting 3-6 sections of 400-1200 characters, and batches 5-8 came back
+# malformed. A batch now carries a set a single answer can actually cover.
+_MAX_DIRECTIONS_PER_BATCH = 12
+# Findings the narrative actually writes up. The full direction list stays in
+# stage_analysis (the reader can drill into every material there); the prose
+# covers the best-supported subset so the report remains readable.
+_MAX_NARRATIVE_DIRECTIONS = 60
+# Upper bound on a chapter that absorbed the overflow batches. Beyond this the
+# chapter stops being a section and becomes an unreadable dump, so the surplus
+# is dropped (and reported) instead of merged.
+_MAX_MERGED_CHAPTER_CHARS = 8000
 GENERIC_QUESTIONS = (
     ("g_funds", "材料中的资金活动、金额或业务安排有哪些需要核查的差异与缺口？"),
     ("g_identity", "材料中的人员、账号和设备关系有哪些有依据的线索与未知信息？"),
@@ -280,6 +297,24 @@ async def compose_stage_narrative(envelope, materials, directions, comparisons, 
     """
     if not directions:
         return None
+    # One direction per readable material means a wide scope yields ~500
+    # directions, and every one of them became prose: a PC.E01 report reached
+    # 228 chapters / 155k characters. The report is a reading document, not a
+    # material inventory — the per-material detail stays in the stage panel.
+    # Keep the findings that carry the most evidence, in their original order
+    # so the narrative still follows the evidence layout.
+    if len(directions) > _MAX_NARRATIVE_DIRECTIONS:
+        ranked = sorted(
+            enumerate(directions),
+            key=lambda pair: (
+                -len(pair[1].supporting_refs),
+                -len(pair[1].counter_refs),
+                -len(pair[1].missing_information),
+                pair[0],
+            ),
+        )[:_MAX_NARRATIVE_DIRECTIONS]
+        keep = sorted(index for index, _ in ranked)
+        directions = tuple(directions[index] for index in keep)
     cid = {m.material_id: stage_citation_name(m.evidence_key) for m in materials}
     name_rows = [{"name": stage_citation_name(m.evidence_key), "kind": m.kind,
                   "coverage": m.status} for m in materials]
@@ -303,18 +338,30 @@ async def compose_stage_narrative(envelope, materials, directions, comparisons, 
 
     # Wide evidence scopes exceed one request budget; compose in batches and
     # concatenate the chapters, so narrative coverage never silently degrades
-    # to fragments just because the task has many directions.
+    # to fragments just because the task has many directions. Batch on both
+    # request bytes and direction count: bytes alone let a batch grow to 36
+    # directions, which no single 8192-token answer can summarize into valid
+    # sections.
     batches, current, size = [], [], 0
     for d in directions:
         row = direction_row(d)
         length = len(json.dumps(row, ensure_ascii=False))
-        if current and size + length > REQUEST_CHAR_LIMIT:
+        if current and (size + length > REQUEST_CHAR_LIMIT
+                        or len(current) >= _MAX_DIRECTIONS_PER_BATCH):
             batches.append(current)
             current, size = [], 0
         current.append(row)
         size += length
     if current:
         batches.append(current)
+
+    # The prompt makes each batch emit 3-6 sections, so batch count *drives*
+    # chapter count: 507 directions became 43 batches and 228 chapters, a
+    # 155k-character report nobody can read. Chapter count is the reader-facing
+    # constraint, so a wide run asks each batch for a single chapter instead of
+    # shrinking the batches (which only multiplied them). Narrow runs keep the
+    # richer 3-6 section contract.
+    single_chapter_batches = len(batches) > _MAX_REPORT_CHAPTERS // 3
 
     sections = []
     for index, batch in enumerate(batches):
@@ -336,9 +383,18 @@ async def compose_stage_narrative(envelope, materials, directions, comparisons, 
             logger.warning("Stage narrative batch %d over request budget; skipped", index + 1)
             continue
         try:
+            system_prompt = STAGE_NARRATIVE_SYSTEM_V1.replace(
+                "__PART__", f"{index + 1}/{len(batches)}")
+            if single_chapter_batches:
+                # Wide scope: one chapter per batch keeps the report inside a
+                # readable chapter count. The skeleton in the base prompt asks
+                # for 3-6, so override it explicitly.
+                system_prompt = system_prompt.replace(
+                    "sections为3到6个，按顺序组织为：",
+                    "sections只输出1个，用一章完整概括本批材料（宽范围报告按批分章）："
+                ).replace("单章400到1200字", "单章400到1200字")
             response = await llm.chat_completion(
-                STAGE_NARRATIVE_SYSTEM_V1.replace(
-                    "__PART__", f"{index + 1}/{len(batches)}"),
+                system_prompt,
                 request, max_tokens=8192, temperature=0.0)
             content = response.get("content")
             if not isinstance(content, str) or len(content) > 60000:
@@ -350,29 +406,56 @@ async def compose_stage_narrative(envelope, materials, directions, comparisons, 
             # so a batch could ship one 50-character section and still pass; a
             # PC.E01 report then grew to 50 chapters of near-identical prose.
             # Keep a small tolerance around the prompt's bounds rather than the
-            # old open range.
-            if not isinstance(rows, list) or not 2 <= len(rows) <= _MAX_SECTIONS_PER_BATCH:
+            # old open range. A single section is valid only when this run was
+            # explicitly told to emit one chapter per batch (wide scopes).
+            min_sections = 1 if single_chapter_batches else 2
+            if not isinstance(rows, list) or not min_sections <= len(rows) <= _MAX_SECTIONS_PER_BATCH:
                 raise ValueError("NARRATIVE_SECTIONS_INVALID")
+            # Validate the whole batch before mutating `sections`. Appending as
+            # each row passed meant a batch that failed on its last row had
+            # already contributed its earlier sections — the report carried
+            # content from batches the log called "rejected".
+            batch_sections = []
             for row in rows:
                 if not isinstance(row, dict):
                     raise ValueError("NARRATIVE_SECTION_INVALID")
                 heading, text = row.get("heading"), row.get("content")
-                if (not isinstance(heading, str) or not 2 <= len(heading.strip()) <= 24
-                        or not isinstance(text, str)
-                        or not _MIN_SECTION_CHARS <= len(text) <= 9000):
+                if not isinstance(text, str) or not _MIN_SECTION_CHARS <= len(text) <= 9000:
                     raise ValueError("NARRATIVE_SECTION_SIZE")
-                heading = strip_material_ids(heading.strip())
+                heading = strip_material_ids(heading.strip()) if isinstance(heading, str) else ""
                 text = strip_material_ids(text.strip())
-                if len(heading) < 2 or len(text) < _MIN_SECTION_CHARS:
+                if len(text) < _MIN_SECTION_CHARS:
                     raise ValueError("NARRATIVE_SECTION_SIZE")
-                sections.append({"heading": heading, "content": text})
-            total = sum(len(s["content"]) for s in sections)
-            if total > _MAX_TOTAL_NARRATIVE_CHARS:
-                raise ValueError("NARRATIVE_TOTAL_TOO_LONG")
-        except ValueError:
+                # An over-long heading is a formatting miss, not a reason to
+                # throw away the batch's prose. The prompt asks for <=24
+                # characters, but the model routinely writes a full executable
+                # name ("BACKGROUNDTASKHOST.EXE执行记录", 26 chars); rejecting
+                # on that dropped 4 of the first 6 batches while every section
+                # body was perfectly usable. Shorten the label instead.
+                if len(heading) > _MAX_HEADING_CHARS:
+                    heading = heading[:_MAX_HEADING_CHARS]
+                if len(heading) < 2:
+                    heading = _derived_heading(_SKELETON_HEADINGS[0], text)
+                if len(heading) < 2:
+                    raise ValueError("NARRATIVE_HEADING_UNUSABLE")
+                batch_sections.append({"heading": heading, "content": text})
+            # The budget is for the whole report, but testing the running total
+            # against it made every batch after the first overflow fail forever:
+            # once 30k characters were accumulated, no further batch could ever
+            # fit, so the remaining evidence produced no prose and the tail of
+            # the run was 100% rejections (run 5: 33 of 36 batches). Check the
+            # batch on its own; the chapter cap below bounds the final length.
+            batch_total = sum(len(s["content"]) for s in batch_sections)
+            if batch_total > _MAX_TOTAL_NARRATIVE_CHARS:
+                raise ValueError("NARRATIVE_BATCH_TOO_LONG")
+            sections.extend(batch_sections)
+        except ValueError as exc:
             # One unusable batch does not sink the rest; a narrative covering
             # the remaining batches still beats falling back to fragments.
-            logger.warning("Stage narrative batch %d rejected; skipped", index + 1)
+            # Log the reason: "rejected" alone made a 33-of-36 failure rate
+            # indistinguishable from a single malformed batch.
+            logger.warning(
+                "Stage narrative batch %d rejected (%s); skipped", index + 1, exc)
     return sections or None
 
 
@@ -552,6 +635,7 @@ def _narrative_citations(text: str, materials) -> tuple[str, ...]:
 
 def render_stage_report(envelope, materials, directions, comparisons, warnings, narrative=None):
     phase_a = envelope.analysis_mode == "evidence_only"
+    warnings = list(warnings)
     citations = tuple(StructuredReportCitation(citation_id=f"c{i:03}", evidence_key=m.evidence_key)
                       for i, m in enumerate(materials, 1))
     cid = {m.material_id: c.citation_id for m, c in zip(materials, citations)}
@@ -561,8 +645,18 @@ def render_stage_report(envelope, materials, directions, comparisons, warnings, 
              "不代表全镜像或全文穷尽分析。引用位置指向冻结文本字符，不是磁盘偏移。")
     scope += ("未使用案情描述、人工备注、历史 AI 摘要或已接受分析。" if phase_a else
               "本轮复用首次报告的同一批冻结材料，没有新增证据。人工案情仅作为调查语境。")
+    # The scope chapter describes the evidence set as a whole, so it must not
+    # claim every citation as its own. Attaching all 586 ids here made the
+    # first chapter look like it supported the entire report, while the
+    # narrative chapters that actually discuss the artifacts carried 171 of
+    # them; a reader following the citations from chapter 1 landed nowhere.
+    # It cites the readable materials it summarizes, nothing more.
+    scope_citation_ids = tuple(
+        c.citation_id for m, c in zip(materials, citations)
+        if m.status != "unavailable" and m.text
+    )
     sections = [StructuredReportSection(heading="研判范围与方法", content=scope,
-                                       citation_ids=tuple(c.citation_id for c in citations))]
+                                       citation_ids=scope_citation_ids)]
     if not phase_a:
         sections.append(StructuredReportSection(heading="本次案情（待核语境）", content=envelope.case_description))
     if narrative:
@@ -574,15 +668,20 @@ def render_stage_report(envelope, materials, directions, comparisons, warnings, 
         # repeated topic label: "材料观察（2）" is still a stapled-report tell,
         # and the second batch has its own content to name it by.
         seen = {}
+        dropped_chars = 0
         for row in narrative:
             # Cap the chapter count. The narrative is assembled from one batch
             # per group of directions, so a wide evidence scope produced 50
-            # near-identical chapters on PC.E01. Beyond the cap, keep merging
-            # the remaining batches into the last chapter rather than dropping
-            # their content outright.
+            # near-identical chapters on PC.E01. Beyond the cap, merge the
+            # remaining batches into the last chapter rather than dropping
+            # their content outright — but only up to a readable size. The
+            # unbounded merge turned that last chapter into a 30,543-character
+            # wall of prose (six times any other chapter), which is worse than
+            # omitting it: nothing in it can be found again.
             if len(sections) >= _MAX_REPORT_CHAPTERS:
                 extra = strip_material_ids(row["content"].strip())
-                if extra:
+                merged = len(sections[-1].content) + len(extra)
+                if extra and merged <= _MAX_MERGED_CHAPTER_CHARS:
                     sections[-1] = StructuredReportSection(
                         heading=sections[-1].heading,
                         content=sections[-1].content + "\n\n" + extra,
@@ -590,6 +689,8 @@ def render_stage_report(envelope, materials, directions, comparisons, warnings, 
                             (*sections[-1].citation_ids,
                              *_narrative_citations(row["content"], materials)))),
                     )
+                else:
+                    dropped_chars += len(extra)
                 continue
             heading = _derived_heading(row["heading"], row["content"])
             seen[heading] = seen.get(heading, 0) + 1
@@ -638,6 +739,8 @@ def render_stage_report(envelope, materials, directions, comparisons, warnings, 
                 content="\n\n".join(f"{titles[c.baseline_direction_id]}：{labels[c.status]}\n{c.reason}" for c in chosen),
                 citation_ids=tuple(dict.fromkeys(cid[r.material_id] for c in chosen
                                                  for r in (*c.supporting_refs, *c.counter_refs)))))
+    if narrative and dropped_chars:
+        warnings.append(f"NARRATIVE_OVERFLOW_DROPPED_{dropped_chars}_CHARS")
     sections.append(StructuredReportSection(heading="人工核查建议",
         content="逐项核对调查方向的支持材料、相反材料和缺失信息。材料记载、机器推断及案情假设分别处理；"
                 "没有人工复核的结论不得自动作为已确认事实。" +
