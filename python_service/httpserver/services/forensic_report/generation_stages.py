@@ -45,12 +45,21 @@ DEFAULT_REPORT_CONCURRENCY = 8
 
 
 def report_concurrency(settings) -> int:
-    """Fan-out for report LLM batches, bounded by the shared LLM budget."""
+    """Fan-out for report LLM batches, bounded by the shared LLM budget.
+
+    Capped well below LLM_MAX_CONCURRENCY: the report pipeline issues hundreds
+    of large requests back to back, and the gateway answers that sustained rate
+    with 429 windows even though the same concurrency succeeds in a short burst
+    (measured: 32 concurrent 14k-character requests all returned 200, while a
+    full generation hit a 33-second 429 window after ~490 calls). More
+    parallelism does not shorten the report — those seconds are spent waiting
+    out the limiter — so keep the sustained rate modest.
+    """
     try:
         value = int(getattr(settings, "llm_max_concurrency", DEFAULT_REPORT_CONCURRENCY))
     except (TypeError, ValueError):
         value = DEFAULT_REPORT_CONCURRENCY
-    return max(1, min(value, 32))
+    return max(1, min(value, DEFAULT_REPORT_CONCURRENCY))
 
 
 async def _gather_bounded(coros, limit: int):
@@ -878,6 +887,52 @@ _MIN_GROUPS_FOR_FULL_TARGET = 4
 # one huge theme cannot occupy a chapter alone while others carry a fraction.
 _THEME_SPLIT_FACTOR = 1.2
 
+# Directions that report the ABSENCE of content rather than a finding: an empty
+# event log, a failed parse, an empty XML/JSON object, a license file, a memory
+# dump with no strings. On PC.E01 they were 109 of 339 directions — a third of
+# the evidence — and size-balanced packing spread them across every chapter, so
+# the chapters carrying real findings were diluted until a Quasar RAT
+# configuration existed only in the citation list and never in the prose.
+# Pooling them keeps every direction reported while confining the material
+# limits to one honest chapter.
+_NO_FINDING_RE = re.compile(
+    r"解析(?:结果)?为空|解析失败|为空|空\s*XML|空\s*JSON|空哈希|空占位|无实质"
+    r"|未提取到|无显著|无法形成|无法就|未显示异常|无可用"
+    r"|(?:开源)?许可证|第三方组件声明|同源重复|重复副本|重复材料"
+    r"|解析器(?:格式|限制)|格式识别限制|手段限制"
+)
+_NO_FINDING_THEME_NAME = "材料解析限制与空记录"
+# Subjects a case is actually about. A direction naming one of these is not
+# "one observation among two hundred" — it is the finding the report exists to
+# deliver. On PC.E01 the only Quasar direction (a RAT client config with
+# 192.168.10.30:4782, Mutex and AddStartup) was packed into a chapter titled
+# "Edge与PrivaZer触发Defender", where no reader would ever find it. Themes
+# carrying such a direction get their own chapter, ahead of the bulk.
+_CASE_CRITICAL_RE = re.compile(
+    # Malware families and tool names: unambiguous on their own.
+    r"quasar|njrat|darkcomet|gh0st|remcos|asyncrat|xworm|cobalt\s*strike"
+    r"|meterpreter|mimikatz|beacon"
+    # Behavioural language that only a malicious reading uses. "网络能力"
+    # (network capability) and "提权" (privilege escalation) appear in benign
+    # driver descriptions too, so they are excluded; "远控/木马/后门" and a
+    # control-end/server-config pair are not.
+    r"|远控|木马|后门程序|恶意程序|恶意代码|勒索软件|窃密"
+    r"|控制端|受控端|服务端配置|客户端配置|监听端口"
+    r"|外联地址|回连|反弹\s*shell|C2\s*服务器|C&C",
+    re.IGNORECASE)
+_CRITICAL_THEME_NAME = "重点可疑对象"
+# Inferences are what an investigator reads first: they state what the evidence
+# may mean. They are few (5 of 339 on PC.E01), so size-balanced packing always
+# tucked them behind bulk observations, and the one Quasar inference lost the
+# chapter name to a larger, less specific theme. One dedicated chapter makes the
+# inferences the report's analytic core instead of a footnote.
+_HYPOTHESIS_THEME_NAME = "待验证推断与可疑关联"
+# Specific subjects handed to the heading namer alongside the theme names. A
+# chapter named only after its themes becomes "MATERIAL相关执行异常研判" even
+# when it also holds a named RAT configuration; the concrete subjects let the
+# namer title the chapter after what is actually in it.
+_MAX_HEADING_SUBJECTS = 4
+
 
 # Libraries every Windows process loads. Naming a chapter after one of them says
 # nothing about the chapter: a PC.E01 chapter was titled "KERNEL32相关执行"
@@ -892,6 +947,135 @@ _GENERIC_DEPENDENCIES = frozenset({
     "RPCSS", "WOW64", "WOW64BASE", "WOW64WIN", "WOW64CPU", "MSVCRT", "SHLWAPI",
     "COMCTL32", "MSI", "WINTRUST", "PSAPI", "VERSION", "IMAGEHLP", "DBGHELP",
 })
+
+
+def _is_no_finding(direction) -> bool:
+    """True when a direction reports missing content instead of a finding."""
+    return bool(_NO_FINDING_RE.search(f"{direction.title} {direction.description}"))
+
+
+def _is_case_critical(direction) -> bool:
+    """True when a direction names a subject the case is actually about.
+
+    Malware, remote-control configuration, exfiltration channels. These are few
+    and decisive; they must not be averaged into a chapter of browser prefetch
+    observations.
+    """
+    return bool(_CASE_CRITICAL_RE.search(f"{direction.title} {direction.description}"))
+
+
+def _split_case_critical(themes):
+    """Pull case-critical observations into one dedicated theme.
+
+    Returns ``(critical_theme, remaining_themes)``. The critical theme keeps its
+    own chapter so the RAT configuration is a heading a reader can find, rather
+    than a paragraph inside "Edge与PrivaZer触发Defender".
+
+    Only OBSERVATIONS move: a critical hypothesis already belongs to the
+    inference tier, which has its own chapter.
+    """
+    critical, remaining = [], []
+    for theme in themes:
+        rest = []
+        for direction in theme["directions"]:
+            if (direction.finding_kind != "hypothesis"
+                    and not _is_no_finding(direction)
+                    and _is_case_critical(direction)):
+                critical.append(direction)
+            else:
+                rest.append(direction)
+        if rest:
+            remaining.append({"name": theme["name"], "directions": tuple(rest)})
+    if not critical:
+        return None, themes
+    return {"name": _CRITICAL_THEME_NAME, "directions": tuple(critical)}, remaining
+
+
+def _subject_key(direction) -> str:
+    """A coarse identity for what a direction is about.
+
+    Used to keep two readings of the same object (one observation, one
+    hypothesis) in the same tier instead of splitting them across chapters.
+    The title carries the object and is stable across the two readings; the
+    description is free prose and names different parameters each time, so
+    reading it would give the twins different keys. Normalized to lowercase and
+    stripped of the finding vocabulary induction appends. Empty when the title
+    names no specific object.
+    """
+    tokens = set()
+    for match in _SUBJECT_TOKEN_RE.findall(direction.title):
+        stem = match.rsplit(".", 1)[0].lower()
+        if not stem or stem.upper() in _SUBJECT_STOPWORDS:
+            continue
+        if stem.upper() in _GENERIC_DEPENDENCIES:
+            continue
+        if _subject_rank(match) != 0:
+            continue
+        tokens.add(stem)
+    # One specific name identifies the object; requiring all of them fails
+    # whenever one reading rephrases its title.
+    return min(tokens) if tokens else ""
+
+
+def _split_no_finding_and_hypotheses(themes):
+    """Separate the two tiers that must not compete with bulk observations.
+
+    Returns ``(pooled, hypotheses, findings, warnings)``:
+
+    * ``pooled`` — one theme holding every direction that reports absent
+      content, or ``None`` when there are none.
+    * ``hypotheses`` — one theme holding every ``hypothesis`` direction, or
+      ``None``.
+    * ``findings`` — the remaining themes, with pooled/hypothesis directions
+      removed from them.
+
+    A theme that loses all of its directions disappears; one that keeps some
+    is returned with the remainder.
+
+    An observation is moved with its hypothesis twin. The pipeline emits both
+    readings of the same object under the SAME title ("Quasar类远控配置与监听
+    配置并存" once as an observation, once as a hypothesis); splitting them put
+    the RAT configuration in two chapters, and the heading then named neither
+    after it. The move is keyed on the exact normalized title, so the seven
+    ordinary PrivaZer observations — same subject, different findings — stay in
+    the findings tier where they belong.
+    """
+    warnings = []
+    pooled, hypotheses, findings = [], [], []
+    inferred_titles = {
+        _subject_key(d)
+        for theme in themes for d in theme["directions"]
+        if d.finding_kind == "hypothesis" and not _is_no_finding(d)
+    }
+    inferred_titles.discard("")
+    for theme in themes:
+        observations, inferences = [], []
+        for direction in theme["directions"]:
+            if _is_no_finding(direction):
+                pooled.append(direction)
+            elif direction.finding_kind == "hypothesis":
+                inferences.append(direction)
+            elif _subject_key(direction) and _subject_key(direction) in inferred_titles:
+                # The observation twin of a hypothesis: same object, same title.
+                # The explicit non-empty test matters: two hypothesis titles name
+                # no specific token and key to "", which would match every
+                # subject-less observation and drag 238 of them into the tier.
+                inferences.append(direction)
+            else:
+                observations.append(direction)
+        hypotheses.extend(inferences)
+        if observations:
+            findings.append({"name": theme["name"], "directions": tuple(observations)})
+    if pooled:
+        warnings.append(f"NO_FINDING_POOLED_{len(pooled)}")
+    if hypotheses:
+        warnings.append(f"HYPOTHESES_SEPARATED_{len(hypotheses)}")
+    return (
+        {"name": _NO_FINDING_THEME_NAME, "directions": tuple(pooled)} if pooled else None,
+        {"name": _HYPOTHESIS_THEME_NAME, "directions": tuple(hypotheses)} if hypotheses else None,
+        findings,
+        warnings,
+    )
 
 
 def _piece_label(theme_name: str, piece, used: set[str] | None = None) -> str:
@@ -949,12 +1133,37 @@ def pack_themes_into_chapters(themes, target: int = _TARGET_NARRATIVE_CHAPTERS):
     if not groups:
         return [], ()
     warnings = []
-    bins = min(target, len(groups))
+    pooled, hypotheses, groups, tier_warnings = _split_no_finding_and_hypotheses(groups)
+    warnings.extend(tier_warnings)
+    if not groups and len((pooled, hypotheses)) == 0:
+        return [], ()
+    # A tier that survives is a chapter in its own right, so it takes one bin
+    # before the findings compete for the rest. Both tiers are optional: a case
+    # whose materials are all readable has neither. They never consume the whole
+    # budget: at least one bin is left for the findings, otherwise a report of
+    # nothing but parse failures would be a wall of limitations.
+    critical, groups = _split_case_critical(groups)
+    if critical is not None:
+        warnings.append(f"CASE_CRITICAL_ISOLATED_{len(critical['directions'])}")
+    reserved = [tier for tier in (hypotheses, critical, pooled) if tier is not None]
+    if not groups:
+        # Only pooled/hypothesis/critical directions exist; they are the report.
+        chapters = [{"name": tier["name"], "themes": [tier]} for tier in reserved]
+        # Keep the analytic tiers first: inferences, then the critical objects.
+        order = {tier["name"]: i for i, tier in
+                 enumerate(t for t in (hypotheses, critical, pooled) if t is not None)}
+        chapters.sort(key=lambda c: order[c["name"]])
+        return chapters, tuple(warnings)
+    # Never let the tiers take the whole budget: at least one bin is left for
+    # the findings, otherwise a report of nothing but parse failures would be a
+    # wall of limitations with no findings at all.
+    finding_bins = max(1, min(target - len(reserved), len(groups)))
+    bins = len(reserved) + finding_bins
     if bins < target:
         warnings.append(f"CHAPTER_TARGET_REDUCED_{bins}_OF_{target}")
 
     total = sum(len(theme["directions"]) for theme in groups)
-    ideal = total / bins
+    ideal = total / finding_bins
     # Split oversized themes into near-ideal pieces so every chapter can carry
     # a comparable amount of evidence.
     pieces = []
@@ -984,13 +1193,18 @@ def pack_themes_into_chapters(themes, target: int = _TARGET_NARRATIVE_CHAPTERS):
         range(len(pieces)),
         key=lambda i: (-len(pieces[i]["directions"]), pieces[i]["name"]),
     )
-    buckets: list[list[int]] = [[] for _ in range(bins)]
-    loads = [0] * bins
+    buckets: list[list[int]] = [[] for _ in range(finding_bins)]
+    loads = [0] * len(buckets)
     for index in ordered:
-        lightest = min(range(bins), key=lambda b: (loads[b], b))
+        lightest = min(range(len(buckets)), key=lambda b: (loads[b], b))
         buckets[lightest].append(index)
         loads[lightest] += len(pieces[index]["directions"])
     chapters = []
+    # Reserved tiers lead the report: the reader meets the analytic claims and
+    # the materials that could not be parsed before the bulk observations, not
+    # after them.
+    for tier in reserved:
+        chapters.append({"name": tier["name"], "themes": [tier]})
     for bucket in buckets:
         if not bucket:
             continue
@@ -1095,6 +1309,91 @@ def _names_generic_dependency(heading: str) -> bool:
     return any(dep in upper for dep in _GENERIC_DEPENDENCIES)
 
 
+# Named artifacts a chapter talks about, as they appear in prompt prose. The
+# heading namer uses these to title a chapter after its actual subject.
+_SUBJECT_TOKEN_RE = re.compile(
+    r"[A-Za-z][A-Za-z0-9_.\-]{2,}(?:\.[A-Za-z0-9]{2,5})?")
+# Subjects too generic to name a chapter with, on top of the library list. These
+# are artifact TYPES and host constants that appear in almost every direction;
+# they crowd out the one specific name a reader needs.
+_SUBJECT_STOPWORDS = frozenset({
+    "EXE", "DLL", "SYS", "BIN", "XML", "JSON", "HTML", "TEXT", "TRUE", "FALSE",
+    "NULL", "HTTP", "HTTPS", "SYSTEM", "WINDOWS", "USERS", "PROGRAMDATA",
+    "APPDATA", "TEMP", "DESKTOP", "ADMIN", "USER", "DATA", "FILE", "FILES",
+    "PREFETCH", "VERBOSE", "CRITICAL", "ERROR", "WARNING", "INFORMATION",
+    "EVENT", "EVENTS", "EMPTY", "SOURCE_GROUP", "SQLITE", "REGISTRY", "LOG",
+    "LOGS", "MACHINE", "ORIGINAL", "NEUTRAL", "FIRST", "PARTIAL", "NULL",
+    "HTTP", "HTTPS", "SSH", "TRUE", "FALSE", "DESKTOP-02H4UFI",
+})
+
+
+def _subject_rank(token: str) -> int:
+    """Sort key: 0 for a specific named object, 1 for everything else.
+
+    A specific subject is what a reader searches for: a product or tool name
+    (Quasar, PrivaZer, mscoree), a path component, a host or volume id. Bare
+    ALL-CAPS tokens in this corpus are almost always artifact types or host
+    constants, and a lowercase dictionary word is prose, not a name — ranking
+    those as specific put 166 of 339 directions into the "has a subject" tier.
+    """
+    stem = token.rsplit(".", 1)[0]
+    if not re.search(r"[A-Za-z]", stem):
+        return 1
+    # A single short lowercase word is ordinary prose ("found", "empty").
+    if stem.islower() and len(stem) <= 6 and not re.search(r"[0-9_.\-]", stem):
+        return 1
+    if stem.isupper():
+        return 1
+    # Mixed case (Quasar, PrivaZer), embedded digits/dots/underscores, or a long
+    # lowercase identifier (mscoree, microsoftedgeupdate) name something.
+    if any(ch.isupper() for ch in stem[1:]) or stem[:1].isupper():
+        return 0
+    if re.search(r"[0-9_.\-]", stem) or len(stem) >= 8:
+        return 0
+    return 1
+
+
+def _chapter_subjects(chapter) -> list[str]:
+    """The distinct concrete subjects a chapter's directions name, most telling first.
+
+    Deterministic order: specific named objects before generic artifact types,
+    then frequency desc, then name asc — so the same chapter always offers the
+    namer the same subjects.
+    """
+    counts: dict[str, int] = {}
+    for direction in chapter_directions(chapter):
+        text = f"{direction.title} {direction.description}"
+        for match in _SUBJECT_TOKEN_RE.findall(text):
+            token = match.strip()
+            if not token:
+                continue
+            stem = token.rsplit(".", 1)[0].upper()
+            if stem in _GENERIC_DEPENDENCIES or stem in _SUBJECT_STOPWORDS:
+                continue
+            if token.upper() in _GENERIC_DEPENDENCIES:
+                continue
+            counts[token] = counts.get(token, 0) + 1
+    ranked = sorted(counts.items(),
+                    key=lambda kv: (_subject_rank(kv[0]), -kv[1], kv[0]))
+    return [token for token, _count in ranked[:_MAX_HEADING_SUBJECTS]]
+
+
+def _chapter_lead_name(chapter) -> str:
+    """The theme that should name the chapter when the namer gives nothing usable.
+
+    Prefers a theme carrying an inference over the largest one: a hypothesis is
+    what the chapter is FOR. Falls back to the largest theme. Never invents a
+    name — the result is always one of the chapter's own theme names.
+    """
+    members = chapter["themes"]
+    if not members:
+        return chapter["name"]
+    inferred = [t for t in members
+                if any(d.finding_kind == "hypothesis" for d in t["directions"])]
+    pool = inferred or members
+    return max(pool, key=lambda t: (len(t["directions"]), t["name"]))["name"]
+
+
 # A heading that ends on one of these is a fragment, not a title: "SVCHOST、WMI"
 # names two objects and stops, telling the reader nothing about the chapter.
 _HEADING_FRAGMENT_TAILS = ("、", "，", ",", "与", "和", "及", "的", "：", ":", "/")
@@ -1106,6 +1405,17 @@ def _is_heading_fragment(heading: str) -> bool:
     if not stripped:
         return True
     if stripped.endswith(_HEADING_FRAGMENT_TAILS):
+        return True
+    # Two particles in a row ("WinRM与的PowerShell执行") is a grammar error the
+    # namer produced on PC.E01. It cannot be repaired by trimming: the sentence
+    # itself is broken, so ask again.
+    if re.search(r"[与和及在对于把将被从向][的了]", stripped):
+        return True
+    # A single identifier ("PowerShell", "material.dll", "FormatExtFs") names an
+    # object but says nothing about it. Two PC.E01 chapters were published with
+    # exactly those headings; the reader learns nothing from them. A short
+    # pure-ASCII token is a label, not a topic.
+    if (re.fullmatch(r"[A-Za-z0-9_.\-]+", stripped) and len(stripped) <= 20):
         return True
     # A pure enumeration ("SVCHOST、WMI") has no statement after its separators.
     parts = [p for p in re.split(r"[、，,与和及]", stripped) if p.strip()]
@@ -1120,13 +1430,20 @@ async def _chapter_heading(chapter, llm):
     grouping label ("OfficeHub", "EXPLORER"), which is too terse to be a chapter
     title. Names built from a generic system library ("RPCSS执行…") or left as a
     bare noun list ("SVCHOST、WMI") are rejected and re-derived.
+
+    The namer also sees the chapter's concrete subjects (the named artifacts and
+    objects its directions talk about). Without them a chapter holding a Quasar
+    RAT configuration was titled "MATERIAL相关执行异常研判" — the theme names
+    described formatting conventions, not content, so the heading carried no
+    information the reader could act on.
     """
     names = [theme["name"] for theme in chapter["themes"]]
-    fallback = _shorten_heading(chapter["name"], _MAX_HEADING_CHARS)
+    subjects = _chapter_subjects(chapter)
+    fallback = _shorten_heading(_chapter_lead_name(chapter), _MAX_HEADING_CHARS)
     try:
         response = await llm.chat_completion(
             STAGE_CHAPTER_HEADING_SYSTEM_V1,
-            json.dumps({"topics": names}, ensure_ascii=False),
+            json.dumps({"topics": names, "subjects": subjects}, ensure_ascii=False),
             max_tokens=80, temperature=0.0)
         content = response.get("content")
         if isinstance(content, str) and content.strip():
@@ -1151,11 +1468,43 @@ async def _chapter_heading(chapter, llm):
             if (not _names_generic_dependency(candidate)
                     and not _is_heading_fragment(candidate)):
                 return candidate
-    # A bare process name ("RUNTIMEBROKER") is a label, not a title; it tells
-    # the reader what the chapter is about only if it says what happened.
-    if len(fallback) <= 16 and re.fullmatch(r"[A-Za-z0-9_.\- ]+", fallback):
-        return f"{fallback} 执行痕迹"
+        # Nothing usable: every theme name is a bare object list. Say what the
+        # chapter records about them rather than publishing the list alone.
+        labelled = _label_bare_artifacts(fallback)
+        if labelled != fallback:
+            return labelled
     return fallback
+
+
+def _label_bare_artifacts(name: str) -> str:
+    """Append the action a bare artifact label is missing.
+
+    A bare process name ("RUNTIMEBROKER") is a label, not a title; it tells the
+    reader what the chapter is about only if it says what happened. The verb has
+    to match the artifact: a DLL is loaded or parsed, never executed, so
+    "material.dll 执行痕迹" would be a false statement about the evidence.
+    """
+    if not name:
+        return name
+    if re.fullmatch(r"[A-Za-z0-9_.\- ]+", name) and len(name) <= _MAX_HEADING_CHARS:
+        extension = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        if extension in ("dll", "sys", "ocx"):
+            suffix = "解析痕迹"
+        elif extension in ("xml", "json", "ini", "txt", "log", "cfg"):
+            suffix = "配置记录"
+        else:
+            suffix = "执行痕迹"
+        labelled = f"{name} {suffix}"
+        if len(labelled) <= _MAX_HEADING_CHARS:
+            return labelled
+        # No room for a verb: keep the object name rather than a truncated verb.
+        return name
+    # A CJK enumeration ("WinRM与PowerShell") gets the generic verb.
+    if _is_heading_fragment(name):
+        labelled = f"{name} 执行痕迹"
+        if len(labelled) <= _MAX_HEADING_CHARS:
+            return labelled
+    return name
 
 
 async def write_chapters(chapters, materials, llm, *, concurrency: int = 1):
@@ -1532,6 +1881,24 @@ _SKELETON_PREFIX_RE = re.compile(
     r"^(?:%s)\s*(?:[（(]\s*\d+\s*[)）])?\s*$" % "|".join(_SKELETON_HEADINGS))
 
 
+def _trim_leading_particle(text: str) -> str:
+    """Drop a heading's leading function word left by a cut.
+
+    Cutting "同名文件material.dll的多版本…" at the ASCII→CJK boundary produced
+    the published heading "的material.dll多版本PE结构差": the cut landed one
+    character late, so the label began with the possessive "的". A heading may
+    not open with a particle — it reads as a broken fragment.
+
+    The same cut can leave the particle at the END ("DESKTOP-02H4UFI的"), which
+    is equally unusable: it promises a noun that the truncation removed.
+    """
+    text = re.sub(r"^[的了和与及或在对于把将被从向、，,。：:而并]\s*", "", text.strip())
+    text = re.sub(r"[的了和与及或在对于把将被从向而并]+$", "", text).strip()
+    # "WinRM与的PowerShell" — a conjunction followed by a possessive is a
+    # grammar error; drop the possessive and keep the conjunction.
+    return re.sub(r"([与和及])的", r"\1", text)
+
+
 def _shorten_heading(heading: str, limit: int) -> str:
     """Trim an over-long heading without cutting through a word or identifier.
 
@@ -1562,18 +1929,18 @@ def _shorten_heading(heading: str, limit: int) -> str:
     for conjunction in (" 与 ", " 和 ", " 及 ", "与", "和", "及"):
         cut = head.rfind(conjunction)
         if cut >= max(4, limit // 3):
-            return head[:cut].rstrip(" 、，, /|：:与和及")
+            return _trim_leading_particle(head[:cut].rstrip(" 、，, /|：:与和及"))
     # A boundary just after a separator reads naturally.
     for separator in ("、", "，", ",", " ", "/", "|", "：", ":"):
         cut = head.rfind(separator)
         if cut >= max(4, limit // 2):
-            return head[:cut].rstrip("、，, /|：:")
+            return _trim_leading_particle(head[:cut].rstrip("、，, /|：:"))
     # Otherwise prefer ending the label at a script change (an ASCII token
     # followed by Chinese text) rather than inside the ASCII identifier.
     for index in range(len(head) - 1, max(4, limit // 2) - 1, -1):
         if head[index].isascii() != head[index - 1].isascii():
-            return head[:index].rstrip()
-    return head
+            return _trim_leading_particle(head[:index].rstrip())
+    return _trim_leading_particle(head)
 
 
 def _derived_heading(heading: str, content: str) -> str:

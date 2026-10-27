@@ -351,8 +351,18 @@ def test_statement_headings_are_not_fragments():
                     "FTK Imager多次执行痕迹研判",
                     "事件日志解析为空或重复",
                     "SVCHOST多实例执行",
-                    "OfficeHub"):
+                    "Quasar远控配置与Hosts异常"):
         assert not gs._is_heading_fragment(heading), heading
+
+
+def test_bare_identifier_is_a_fragment():
+    """A single product or file name says nothing about what happened.
+
+    Two published PC.E01 chapters were titled just "PowerShell" and
+    "material.dll"; the reader learns the object but not the finding.
+    """
+    for heading in ("OfficeHub", "PowerShell", "material.dll", "FormatExtFs"):
+        assert gs._is_heading_fragment(heading), heading
 
 
 def test_heading_rejects_generic_dependency_and_fragment(monkeypatch):
@@ -605,3 +615,187 @@ def test_pe_extractor_parses_an_executable(tmp_path):
 
     assert extractor is not None
     assert type(extractor).__name__ == "PeExtractor"
+
+
+# ---------------------------------------------------------------------------
+# Findings must not be diluted by material-limit observations
+#
+# On PC.E01, 109 of 339 directions reported absent content ("解析结果为空",
+# "LNK解析失败", license texts, memory dumps with no strings). Size-balanced
+# packing spread them across every chapter, and the only Quasar RAT direction
+# lost every chapter heading to them: the published report named no RAT at all
+# while its citation list carried 37 Quasar references.
+# ---------------------------------------------------------------------------
+
+
+def _finding(title, kind="observation"):
+    quote = MaterialSpan(material_id="m001", quote="片段", character_start=0,
+                         character_end=2, ambiguous=False)
+    return InvestigationDirection(
+        direction_id=f"{kind}-{title}", title=title, description=f"{title} 的材料观察。",
+        finding_kind=kind, supporting_refs=(quote,), counter_refs=(),
+        missing_information=(), alternative_explanations=(),
+        baseline_direction_ids=(), case_context_quote="", origin="material",
+    )
+
+
+def test_no_finding_directions_are_pooled_into_one_theme():
+    themes = [
+        {"name": "空日志", "directions": (_finding("多份事件日志解析结果为空"),)},
+        {"name": "解析失败", "directions": (_finding("LNK解析失败记录"),)},
+        {"name": "空占位", "directions": (_finding("空哈希材料无实质内容"),)},
+        {"name": "RAT", "directions": (_finding("Quasar类远控配置"),)},
+    ]
+
+    chapters, warnings = gs.pack_themes_into_chapters(themes, 3)
+
+    pooled = [c for c in chapters if c["name"] == gs._NO_FINDING_THEME_NAME]
+    assert len(pooled) == 1
+    assert len(gs.chapter_directions(pooled[0])) == 3
+    assert any(w.startswith("NO_FINDING_POOLED_3") for w in warnings)
+
+
+def test_pooling_does_not_swallow_a_real_finding():
+    themes = [
+        {"name": "空日志", "directions": (_finding("多份事件日志解析结果为空"),)},
+        {"name": "RAT", "directions": (_finding("Quasar类远控配置与监听配置并存"),)},
+    ]
+
+    chapters, _warnings = gs.pack_themes_into_chapters(themes, 2)
+    names = [c["name"] for c in chapters]
+
+    assert gs._NO_FINDING_THEME_NAME in names
+    # The RAT observation is case-critical, so it is isolated rather than merely
+    # kept: the chapter heading itself has to name the suspicious object.
+    assert gs._CRITICAL_THEME_NAME in names
+
+
+def test_hypotheses_get_their_own_chapter():
+    """Inferences are the analytic core; bulk observations must not bury them."""
+    themes = [{"name": f"观察{i}", "directions": (_finding(f"观察{i}"),)}
+              for i in range(30)]
+    themes.append({"name": "RAT", "directions": (
+        _finding("Quasar类远控配置与监听配置并存", "hypothesis"),)})
+
+    chapters, warnings = gs.pack_themes_into_chapters(themes, 10)
+
+    assert chapters[0]["name"] == gs._HYPOTHESIS_THEME_NAME
+    assert any(w.startswith("HYPOTHESES_SEPARATED_1") for w in warnings)
+
+
+def test_hypothesis_and_observation_twins_stay_together():
+    """The pipeline emits both readings of one object under the same title."""
+    themes = [
+        {"name": "RAT观察", "directions": (_finding("Quasar类远控配置与监听配置并存"),)},
+        {"name": "RAT推断", "directions": (
+            _finding("Quasar类远控配置与监听配置并存", "hypothesis"),)},
+        {"name": "其他", "directions": (_finding("其他观察"),)},
+    ]
+
+    chapters, _warnings = gs.pack_themes_into_chapters(themes, 2)
+    hypothesis_chapter = next(
+        c for c in chapters if c["name"] == gs._HYPOTHESIS_THEME_NAME)
+
+    assert len(gs.chapter_directions(hypothesis_chapter)) == 2
+
+
+def test_empty_subject_key_does_not_pull_in_subjectless_observations():
+    """Two hypothesis titles name no token; keying "" must not match everything."""
+    themes = [
+        {"name": "推断", "directions": (
+            _finding("部分 Prefetch 引用网络/浏览器相关模块", "hypothesis"),)},
+    ] + [{"name": f"观察{i}", "directions": (_finding("其他观察"),)}
+         for i in range(5)]
+
+    chapters, _warnings = gs.pack_themes_into_chapters(themes, 4)
+    hypothesis_chapter = next(
+        c for c in chapters if c["name"] == gs._HYPOTHESIS_THEME_NAME)
+
+    assert len(gs.chapter_directions(hypothesis_chapter)) == 1
+
+
+def test_reserved_tiers_never_take_the_whole_chapter_budget():
+    """A report of nothing but parse failures must still carry findings."""
+    themes = [
+        {"name": "空", "directions": (_finding("解析结果为空"),)},
+        {"name": "推断", "directions": (_finding("某个推断", "hypothesis"),)},
+        {"name": "甲", "directions": (_finding("甲观察"),)},
+        {"name": "乙", "directions": (_finding("乙观察"),)},
+    ]
+
+    chapters, _warnings = gs.pack_themes_into_chapters(themes, 2)
+
+    assert any(c["name"] not in (gs._NO_FINDING_THEME_NAME,
+                                gs._HYPOTHESIS_THEME_NAME) for c in chapters)
+
+
+def test_only_pooled_directions_still_produce_a_report():
+    themes = [{"name": "空", "directions": (_finding("解析结果为空"),)}]
+
+    chapters, _warnings = gs.pack_themes_into_chapters(themes, 10)
+
+    assert len(chapters) == 1
+    assert chapters[0]["name"] == gs._NO_FINDING_THEME_NAME
+
+
+def test_chapter_subjects_rank_a_product_name_above_artifact_types():
+    """The heading namer needs Quasar, not Verbose/Event/Prefetch."""
+    chapter = {"name": "x", "themes": [{"name": "x", "directions": (
+        _finding("Verbose 事件集中出现，Event 与 Prefetch 记录见 Quasar类远控配置"),
+        _finding("Critical Error 事件重复，Quasar 配置再次出现"),
+    )}]}
+
+    subjects = gs._chapter_subjects(chapter)
+
+    assert "Quasar" in subjects
+    assert subjects.index("Quasar") < len(subjects)
+
+
+def test_chapter_lead_name_prefers_a_theme_carrying_an_inference():
+    chapter = {"name": "大主题",
+               "themes": [{"name": "大主题", "directions": (_finding("甲"),) * 1},
+                          {"name": "RAT推断", "directions": (
+                              _finding("Quasar配置", "hypothesis"),)}]}
+
+    assert gs._chapter_lead_name(chapter) == "RAT推断"
+
+
+def test_case_critical_observation_gets_its_own_chapter():
+    """A RAT config must not be a paragraph inside a browser-prefetch chapter.
+
+    PC.E01's only Quasar direction was packed into a chapter titled
+    "Edge与PrivaZer触发Defender"; no reader would look for a remote-control
+    configuration there.
+    """
+    themes = [{"name": f"观察{i}", "directions": (_finding(f"观察{i}"),)}
+              for i in range(20)]
+    themes.append({"name": "RAT", "directions": (
+        _finding("Quasar类远控配置与监听端口设置"),)})
+
+    chapters, warnings = gs.pack_themes_into_chapters(themes, 8)
+
+    assert chapters[0]["name"] == gs._HYPOTHESIS_THEME_NAME or \
+        gs._CRITICAL_THEME_NAME in [c["name"] for c in chapters]
+    critical = next(c for c in chapters if c["name"] == gs._CRITICAL_THEME_NAME)
+    assert len(gs.chapter_directions(critical)) == 1
+    assert any(w.startswith("CASE_CRITICAL_ISOLATED_1") for w in warnings)
+
+
+def test_benign_network_capability_is_not_case_critical():
+    """A driver's "网络能力" is not a remote-control finding."""
+    assert not gs._is_case_critical(_finding("多份样本导入网络通信与磁盘操作能力"))
+    assert not gs._is_case_critical(_finding("Edge 浏览器配置与崩溃痕迹"))
+    assert gs._is_case_critical(_finding("Quasar类远控配置与监听端口设置"))
+    assert gs._is_case_critical(_finding("检测到控制端与服务端配置并存"))
+
+
+def test_shortened_heading_never_starts_or_ends_with_a_particle():
+    """A cut at the script boundary left "的material.dll多版本PE结构差" and
+    "DESKTOP-02H4UFI的" — fragments that read as broken text."""
+    for original in ("同名文件material.dll的多版本PE结构差异与未来时间戳",
+                     "DESKTOP-02H4UFI的SanDisk Extreme SSD设备异常",
+                     "ELEVATION_SERVICE与EXPLORER执行痕迹"):
+        trimmed = gs._shorten_heading(original, 24)
+        assert not trimmed.startswith(("的", "了", "和", "与", "及", "在"))
+        assert not trimmed.endswith(("的", "了", "和", "与", "及", "在"))
+        assert len(trimmed) <= 24
