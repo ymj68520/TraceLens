@@ -557,3 +557,51 @@ def test_report_without_comparisons_has_no_difference_chapters():
         EvidenceOnlyEnv(), _materials_for_citations(), (), (), ())
     assert not [s for s in response.sections
                 if s.heading.startswith("与首次研判的差异")]
+
+
+# ---------------------------------------------------------------------------
+# Executables must reach the narrative
+#
+# A malware case's central evidence is the dropped program itself. A PC.E01
+# report froze Quasar.exe (RAT controller) and client.bin (payload) as
+# "unavailable" with zero characters because .exe/.bin were outside every
+# extension set, so the narrative stage had nothing to say about them and the
+# report concluded no RAT artefacts were found.
+# ---------------------------------------------------------------------------
+
+
+def test_executable_extensions_are_recognised_as_documents():
+    from httpserver.services.forensic_report.generation_sources import (
+        DOCUMENT_EXTENSIONS,
+    )
+
+    for extension in (".exe", ".dll", ".sys", ".com", ".scr", ".bin", ".msi"):
+        assert extension in DOCUMENT_EXTENSIONS, extension
+
+
+def test_pe_extractor_parses_an_executable(tmp_path):
+    """The extractor behind those extensions must actually produce content."""
+    import struct
+    from httpserver.services.forensic_report.generation_sources import (
+        DOCUMENT_EXTENSIONS,
+    )
+
+    assert ".exe" in DOCUMENT_EXTENSIONS
+
+    # Minimal PE: MZ stub + PE signature at e_lfanew.
+    dos = bytearray(64)
+    dos[0:2] = b"MZ"
+    struct.pack_into("<I", dos, 0x3C, 64)
+    pe = bytearray(b"PE\x00\x00")
+    pe += struct.pack("<HHIIIHH", 0x14c, 1, 0, 0, 0, 0, 0xE0)  # COFF header
+    payload = bytes(dos) + bytes(pe) + bytes(0xE0)
+    target = tmp_path / "sample.exe"
+    target.write_bytes(payload)
+
+    from httpserver.services.extractors import load_plugins
+    from httpserver.services.document_extractor import get_document_extractor_locator
+    load_plugins()
+    extractor = get_document_extractor_locator().get_extractor(str(target))
+
+    assert extractor is not None
+    assert type(extractor).__name__ == "PeExtractor"

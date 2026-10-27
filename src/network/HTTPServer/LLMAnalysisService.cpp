@@ -582,7 +582,16 @@ std::vector<std::string> LLMAnalysisService::getFilesFromDatabase(const std::str
     }
 
     if (options.skipBinaryFiles) {
-        conditions.push_back("category NOT IN ('Executables', 'Unknown Files')");
+        // Same split as getPrioritizedCandidates: OS-owned executables are
+        // noise, user-tree executables are candidate evidence. "Unknown Files"
+        // also stays selectable — it is where TSK puts event logs and hives.
+        conditions.push_back(
+            "NOT (category = 'Executables' AND ("
+            "path LIKE '/Windows/%' OR path LIKE '/windows/%' OR "
+            "path LIKE '/Program Files/%' OR path LIKE '/Program Files (x86)/%' OR "
+            "path LIKE '/program files/%' OR path LIKE '/Windows.old/%' OR "
+            "path LIKE '/ProgramData/Microsoft/%'))"
+            " AND category != 'Unknown Files'");
     }
 
     if (!conditions.empty()) {
@@ -638,11 +647,22 @@ std::vector<std::string> LLMAnalysisService::getPrioritizedCandidates(
 
     // "Unknown Files" is not a reliable binary signal: it is exactly where TSK
     // puts .evtx logs, registry hives (.hve) and other opaque-but-critical
-    // artefacts. Only true executables are excluded here; anything else is
-    // scored, and forensicPathPriority demotes genuine noise.
+    // artefacts. Executables are not uniform either: the OS tree holds ~7,900
+    // system binaries that are pure noise, while a user tree holds the handful
+    // of dropped/installed programs that ARE the case. On PC.E01 the blanket
+    // category filter skipped all 8,622 executables, including
+    // /Users/admin/Desktop/控制端/Quasar v1.4.1/Quasar.exe and client.bin — the
+    // RAT controller and payload the case was about — so the report concluded
+    // "no RAT artefacts found" while the evidence sat in the image.
+    // Only executables in OS-owned trees are excluded here; user-tree
+    // executables are scored like any other candidate.
     std::string sql = "SELECT path FROM files";
     if (skipBinaryFiles) {
-        sql += " WHERE category != 'Executables'";
+        sql += " WHERE NOT (category = 'Executables' AND ("
+               "path LIKE '/Windows/%' OR path LIKE '/windows/%' OR "
+               "path LIKE '/Program Files/%' OR path LIKE '/Program Files (x86)/%' OR "
+               "path LIKE '/program files/%' OR path LIKE '/Windows.old/%' OR "
+               "path LIKE '/ProgramData/Microsoft/%'))";
     }
 
     sqlite3_stmt* stmt = nullptr;
@@ -769,6 +789,38 @@ int LLMAnalysisService::forensicPathPriority(const std::string& path) {
     // chrome_child.dll). Windows-image replay showed these flooding the whole
     // budget — .dll/.pak under AppData inherit the 90 user-area score, .kuip
     // even hits the shadow credential pattern.
+    //
+    // Executables are the exception: a dropped program in a user tree is
+    // exactly what cases turn on (RAT controllers, packers, cleanup tools),
+    // and demoting them to noise made the category filter's blind spot total.
+    //
+    // They score 95 — above ordinary files in the same tree (90) and below only
+    // the core forensic artefacts (100). A lower band does not work: user trees
+    // hold ~5,400 files at 90 on PC.E01, which filled the 1,000-file candidate
+    // budget and left Quasar.exe ranked 5,869th, i.e. permanently unreachable.
+    //
+    // ProgramData counts only outside Microsoft's own subtree: Defender ships
+    // ~40 executables under /ProgramData/Microsoft/Windows Defender/Platform,
+    // which are vendor binaries, not dropped evidence.
+    static const std::vector<std::string> userExecutableTrees = {
+        "/users/", "/home/", "/root/"};
+    const auto endsWith = [&lower](const char* suffix) {
+        const std::size_t n = std::strlen(suffix);
+        return lower.size() >= n && lower.compare(lower.size() - n, n, suffix) == 0;
+    };
+    const bool isExecutableImage =
+        endsWith(".exe") || endsWith(".bin") || endsWith(".scr") ||
+        endsWith(".com") || endsWith(".pif");
+    if (isExecutableImage) {
+        bool inUserTree = false;
+        for (const auto& tree : userExecutableTrees) {
+            if (lower.find(tree) != std::string::npos) { inUserTree = true; break; }
+        }
+        const bool inProgramDataVendorTree =
+            lower.find("/programdata/") != std::string::npos &&
+            lower.find("/programdata/microsoft/") == std::string::npos;
+        if (inUserTree || inProgramDataVendorTree) return 95;
+    }
     static const std::vector<std::string> binaryResourceSuffixes = {
         ".dll", ".sys", ".ocx", ".efi", ".msi", ".cab", ".pak", ".kuip",
         ".exe", ".mui", ".ico", ".pb"};
