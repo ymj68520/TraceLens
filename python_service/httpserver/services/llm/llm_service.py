@@ -47,6 +47,22 @@ WRITE_RETRY_BASE_SLEEP_S = 0.25
 _LLM_POOL_MAX_CONNECTIONS = 256
 _LLM_POOL_MAX_KEEPALIVE = 64
 
+# Gateway rate limiting. The report pipeline fans chapters out at the shared LLM
+# concurrency (32), and the gateway answers bursts with 429. Without a retry the
+# whole chapter-writing phase failed on one 429 wave and fell back to the batch
+# renderer, which published 26 chapters / 110k characters instead of the 10 the
+# packer had produced. Retry only the statuses that are transient by definition:
+# a 400 (bad payload) or 401 (bad key) must surface immediately.
+#
+# Measured on PC.E01: a run made 491 successful calls and hit a single 429
+# window lasting 33 seconds. Five attempts of 2/4/8/16/32s (capped at 60) do not
+# reliably outlast a window that long, so a chapter that was merely rate-limited
+# still died. Eight attempts with the cap at 90s covers bursts up to ~3 minutes.
+_LLM_RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
+_LLM_RETRY_ATTEMPTS = 8
+_LLM_RETRY_BASE_DELAY_S = 2.0
+_LLM_RETRY_MAX_DELAY_S = 90.0
+
 
 class LLMService:
     """
@@ -550,6 +566,39 @@ class LLMService:
             image_data_list, self._vision_client, prompt
         )
 
+    async def _post_with_backoff(self, client, endpoint, payload, headers,
+                                 *, attempts: int = _LLM_RETRY_ATTEMPTS):
+        """POST to the gateway, retrying the statuses that are transient.
+
+        Retries 429 and 5xx with exponential backoff and jitter. The response is
+        returned for the caller to ``raise_for_status``: a final 429 still fails
+        the call, but only after the burst has had a chance to clear.
+        """
+        import asyncio
+        import random
+
+        delay = _LLM_RETRY_BASE_DELAY_S
+        for attempt in range(1, attempts + 1):
+            response = await client.post(endpoint, json=payload, headers=headers)
+            if response.status_code not in _LLM_RETRY_STATUSES:
+                return response
+            if attempt == attempts:
+                return response
+            retry_after = response.headers.get("retry-after")
+            try:
+                wait = float(retry_after) if retry_after else delay
+            except (TypeError, ValueError):
+                wait = delay
+            # Jitter spreads the retry wave: without it every rejected chapter
+            # retried in lockstep and re-created the same burst.
+            wait = min(wait, _LLM_RETRY_MAX_DELAY_S) * (0.5 + random.random() / 2)
+            logger.warning(
+                "LLM gateway returned %s (attempt %d/%d); retrying in %.1fs",
+                response.status_code, attempt, attempts, wait)
+            await asyncio.sleep(wait)
+            delay = min(delay * 2, _LLM_RETRY_MAX_DELAY_S)
+        return response
+
     async def chat_completion(
         self,
         system_prompt: str,
@@ -582,20 +631,19 @@ class LLMService:
         default_max = self.settings.llm_text_max_tokens if model_type == "text" else self.settings.llm_vision_max_tokens
         default_temp = self.settings.llm_text_temperature if model_type == "text" else self.settings.llm_vision_temperature
 
-        response = await client.post(
-            self.settings.llm_endpoint,
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "max_tokens": default_max if max_tokens is None else max_tokens,
-                "temperature": default_temp if temperature is None else temperature,
-                **self.settings.llm_thinking_body,
-            },
-            headers=auth_headers(self.settings, model_type),
-        )
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "max_tokens": default_max if max_tokens is None else max_tokens,
+            "temperature": default_temp if temperature is None else temperature,
+            **self.settings.llm_thinking_body,
+        }
+        headers = auth_headers(self.settings, model_type)
+        response = await self._post_with_backoff(
+            client, self.settings.llm_endpoint, payload, headers)
         response.raise_for_status()
         result = response.json()
         return {
