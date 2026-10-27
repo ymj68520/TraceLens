@@ -960,8 +960,32 @@ def _is_case_critical(direction) -> bool:
     Malware, remote-control configuration, exfiltration channels. These are few
     and decisive; they must not be averaged into a chapter of browser prefetch
     observations.
+
+    A direction that mentions a malicious tool only to DISCLAIM a link is not
+    case-critical. One PC.E01 chapter was titled "Quasar远控等重点样本研判"
+    while its prose said the samples showed no link to Quasar at all: the
+    direction read "未显示与前述Quasar配置…的直接关联", and a bare keyword
+    match promoted it. The negation has to be checked before the keyword.
     """
-    return bool(_CASE_CRITICAL_RE.search(f"{direction.title} {direction.description}"))
+    text = f"{direction.title} {direction.description}"
+    if _CASE_CRITICAL_NEGATION_RE.search(text):
+        return False
+    return bool(_CASE_CRITICAL_RE.search(text))
+
+
+# Phrases that turn a malware mention into its opposite: "未显示与 Quasar 配置
+# 的直接关联", "与远控无关", "不能据此认定存在远控". Chinese puts the negated
+# predicate after the object, so both orders must be covered: a keyword followed
+# by "…无直接关联" is the common one ("未显示与前述Quasar配置的直接关联").
+_CASE_CRITICAL_NEGATION_RE = re.compile(
+    r"(?:远控|木马|后门|恶意|控制端|外联|Quasar|NjRat|DarkComet|Gh0st|Remcos)"
+    r"[^。；]{0,30}?(?:无关|无涉|无直接关联|没有关联|不存在关联|未发现关联"
+    r"|未显示[^。；]{0,20}?关联|无证据|未被证实|不能认定|不足以认定)"
+    r"|(?:未|没有|无|不|非)[^。；]{0,24}?"
+    r"(?:关联|关系|指向|证据|迹象|发现|显示|表明|认定|属于|构成)"
+    r"[^。；]{0,16}?"
+    r"(?:远控|木马|后门|恶意|控制端|外联|Quasar)",
+    re.IGNORECASE)
 
 
 def _split_case_critical(themes):
@@ -1507,6 +1531,232 @@ def _label_bare_artifacts(name: str) -> str:
     return name
 
 
+def _part_role(part_index: int, parts_total: int) -> str:
+    """Where one written part sits inside its chapter.
+
+    A chapter too large for one request is written in parts, and each part used
+    to open with its own "本章围绕…展开" and close with its own "综合来看…".
+    Joined with blank lines that produced a chapter with four total-opening
+    sentences and two conclusions (chapter 4 of the PC.E01 report: 7,039
+    characters, 21 paragraphs, the same "no events found" statement rephrased
+    four times). Only the first part may introduce and only the last may
+    conclude; the middle parts go straight into their subject.
+    """
+    if parts_total <= 1:
+        return "single"
+    if part_index == 0:
+        return "first"
+    if part_index == parts_total - 1:
+        return "last"
+    return "middle"
+
+
+# Appended to the system prompt for a part that is not allowed to introduce or
+# conclude. Kept as prompt text rather than a payload field: the writer treats
+# JSON keys as data, and this is an instruction about shape.
+_PART_ROLE_INSTRUCTIONS = {
+    "first": (
+        "\n\n本章材料过多，分多段撰写，本段是第 1 段（不是最后一章）。"
+        "本段只写本章的引言与本段涉及的材料，不要写全章结论，"
+        "不要出现“综合来看”“综上”这类收束语；结论由最后一段写。"
+    ),
+    "middle": (
+        "\n\n本章材料过多，分多段撰写，本段是中间段。"
+        "禁止写引言：不要出现“本章围绕…展开”“本批材料呈现…”“综合来看”“综上”"
+        "这类开题或收束句，直接以具体对象或具体异常开头，写完本段材料即止。"
+    ),
+    "last": (
+        "\n\n本章材料过多，分多段撰写，本段是最后一段。"
+        "禁止写引言：不要出现“本章围绕…展开”“本批材料呈现…”，"
+        "直接以具体对象开头；本段末尾写全章结论（综合前述各段，一两句即可）。"
+    ),
+}
+
+
+def _strip_repeated_scaffolding(text: str) -> str:
+    """Remove duplicate chapter openings/conclusions left by joined parts.
+
+    The role instructions tell each part what it may write, but a prompt alone
+    is not a guarantee — a middle part still opened with "本章材料集中呈现两
+    类情况" on one run. This is the deterministic backstop: keep the first
+    introducing sentence and the last concluding sentence, drop the rest.
+
+    A repeated opening is stripped at the SENTENCE, not the paragraph: the
+    paragraph that follows it usually carries the part's findings, so dropping
+    the whole paragraph would delete evidence along with the scar.
+    """
+    paragraphs = [p for p in text.split("\n\n") if p.strip()]
+    if len(paragraphs) <= 1:
+        return text
+    intro_re = re.compile(
+        r"^\s*(?:本章|本批材料|该章|这一章)"
+        r"[^。]{0,60}?(?:展开|呈现|聚焦|围绕|反映|涵盖|涉及)[^。]*。")
+    seen_intro = False
+    cleaned: list[str] = []
+    for paragraph in paragraphs:
+        stripped = paragraph.strip()
+        if intro_re.match(stripped):
+            if seen_intro:
+                remainder = intro_re.sub("", stripped, count=1).strip()
+                if len(remainder) < _CHAPTER_MIN_CHARS // 3:
+                    # Nothing left but the opening: this paragraph was pure
+                    # lead-in, so the whole paragraph goes.
+                    continue
+                stripped = remainder
+            else:
+                seen_intro = True
+        cleaned.append(stripped)
+    # The same chapter must not conclude twice. Keep only the final
+    # "综合来看"/"综上" paragraph; earlier ones are part-level wrap-ups.
+    conclusion_indexes = [
+        i for i, p in enumerate(cleaned)
+        if re.match(r"^\s*(?:综合来看|综上|总体来看|综合上述)", p)
+    ]
+    if len(conclusion_indexes) > 1:
+        drop = set(conclusion_indexes[:-1])
+        cleaned = [p for i, p in enumerate(cleaned) if i not in drop]
+    return "\n\n".join(cleaned)
+
+
+# Narrative chapters habitually list execution counts instead of interpreting
+# them: chapter 8 of the PC.E01 report carried 14 instances of "X.EXE 运行 N 次"
+# in one chapter, six of them inside a single paragraph that read as a Prefetch
+# table transcribed into sentences. The write prompt now forbids it; this is the
+# deterministic check that catches a non-compliant answer.
+_EXEC_COUNT_RE = re.compile(
+    r"[A-Za-z0-9_.\-]{3,}\.(?:EXE|exe)[^。；\n]{0,12}?"
+    r"(?:运行|执行)\s*(?:了\s*)?\d+\s*次")
+_MAX_EXEC_COUNTS_PER_PARAGRAPH = 3
+# Whole-chapter budget. Per-paragraph counting was satisfied by spreading the
+# same table over five paragraphs: chapter 8 still published 18 named execution
+# counts across the chapter while no single paragraph exceeded three. A chapter
+# that names more than this many programs with counts is a table, however it is
+# paragraph-broken.
+_MAX_EXEC_COUNTS_PER_CHAPTER = 8
+
+
+def _paragraph_is_an_inventory(paragraph: str) -> bool:
+    """True when a paragraph reads as a frequency table rather than analysis."""
+    return len(_EXEC_COUNT_RE.findall(paragraph)) > _MAX_EXEC_COUNTS_PER_PARAGRAPH
+
+
+def _inventory_free(text: str) -> bool:
+    """True when no paragraph of a chapter is an execution-count inventory."""
+    return not any(_paragraph_is_an_inventory(p) for p in text.split("\n\n"))
+
+
+def _compress_inventory(paragraph: str, keep: int = _MAX_EXEC_COUNTS_PER_PARAGRAPH) -> str:
+    """Rewrite an over-budget counting paragraph into a grouped statement.
+
+    The rewrite request is not enough: on the PC.E01 run two chapters came back
+    from the rewrite still listing every program and its count (an 18-instance
+    chapter, nine of them in one sentence). Prompt-only enforcement fails here
+    because the model treats the count table as the content, so the backstop is
+    deterministic: keep the first ``keep`` named programs, replace the rest with
+    one grouped clause that preserves the count range and the fact of the
+    activity. ``keep`` drops to 1 when a chapter's total budget still does not
+    fit after the first pass.
+    """
+    matches = list(_EXEC_COUNT_RE.finditer(paragraph))
+    if len(matches) <= keep:
+        return paragraph
+    kept = matches[:keep]
+    dropped = matches[keep:]
+    counts = []
+    for match in dropped:
+        found = re.search(r"(\d+)\s*次", match.group())
+        if found:
+            counts.append(int(found.group(1)))
+    # Build the grouped clause from the whole dropped span so the sentence's own
+    # punctuation and connectors are removed with it.
+    start, end = dropped[0].start(), dropped[-1].end()
+    # Extend to the sentence end so the leftover enumeration marks disappear.
+    tail = paragraph[end:]
+    stop = re.search(r"[。；;！!？?]", tail)
+    grouped = ""
+    if counts:
+        low, high = min(counts), max(counts)
+        span = f"{low}" if low == high else f"{low} 至 {high}"
+        grouped = f"另有 {len(dropped)} 个系统组件各有 {span} 次执行"
+    replacement = (grouped + "。") if grouped else "。"
+    # Cut back to the beginning of the clause: the kept text must not end on a
+    # dangling enumeration mark or a half-written connector.
+    head = paragraph[:start].rstrip("：:，,、；; ")
+    if head and head[-1] in "。！？!?":
+        # The kept part already ended a sentence; a semicolon after it would
+        # read as "…多次运行。；另有 N 个…".
+        rebuilt = f"{head}{replacement}"
+    elif head:
+        rebuilt = f"{head}；{replacement}"
+    else:
+        rebuilt = replacement.lstrip("；")
+    remainder = paragraph[end:]
+    if stop is None:
+        return rebuilt
+    rest = remainder[stop.end():].lstrip()
+    if not rest:
+        return rebuilt
+    # Two grouped clauses in a row ("另有 2 个…。另有 6 个…。") carry no extra
+    # information; merge them into one by summing the components and widening
+    # the range. This happens when a paragraph is compressed twice.
+    merged = re.match(r"^另有\s*(\d+)\s*个系统组件各有\s*(\d+)(?:\s*至\s*(\d+))?\s*次执行。",
+                      rest)
+    if merged and grouped:
+        prev = re.search(r"另有\s*(\d+)\s*个系统组件各有\s*(\d+)(?:\s*至\s*(\d+))?\s*次执行。$",
+                         rebuilt)
+        if prev:
+            total = int(prev.group(1)) + int(merged.group(1))
+            lows = [int(x) for x in prev.groups()[1:] + merged.groups()[1:] if x]
+            low, high = min(lows), max(lows)
+            span = f"{low}" if low == high else f"{low} 至 {high}"
+            rebuilt = rebuilt[:prev.start()] + \
+                f"另有 {total} 个系统组件各有 {span} 次执行。"
+            rest = rest[merged.end():].lstrip()
+            if not rest:
+                return rebuilt
+    return f"{rebuilt}{rest}"
+
+
+def _compress_inventories(text: str) -> str:
+    """Reduce a chapter's execution-count listing to a readable budget.
+
+    Two limits apply. A paragraph with more than ``_MAX_EXEC_COUNTS_PER_PARAGRAPH``
+    counts is compressed first (it is unambiguously a table). If the chapter as
+    a whole still names more than ``_MAX_EXEC_COUNTS_PER_CHAPTER`` programs with
+    counts, the densest paragraphs are compressed until the chapter fits —
+    otherwise spreading the same table across five paragraphs satisfies the
+    per-paragraph rule while the chapter still reads as an inventory.
+    """
+    paragraphs = text.split("\n\n")
+    invents = [_EXEC_COUNT_RE.findall(p) for p in paragraphs]
+
+    def compress(index: int, keep: int = _MAX_EXEC_COUNTS_PER_PARAGRAPH) -> None:
+        paragraphs[index] = _compress_inventory(paragraphs[index], keep)
+        invents[index] = _EXEC_COUNT_RE.findall(paragraphs[index])
+
+    for index, found in enumerate(invents):
+        if len(found) > _MAX_EXEC_COUNTS_PER_PARAGRAPH:
+            compress(index)
+
+    total = sum(len(found) for found in invents)
+    # Second pass: the chapter still names too many programs. Tighten the
+    # densest paragraphs to a single named example each — one concrete program
+    # plus a grouped statement is what a reader needs; the full table belongs
+    # in the stage material, not in the chapter.
+    while total > _MAX_EXEC_COUNTS_PER_CHAPTER:
+        candidates = [(len(found), index) for index, found in enumerate(invents)
+                      if len(found) > 1]
+        if not candidates:
+            break
+        _count, index = max(candidates)
+        before = len(invents[index])
+        compress(index, keep=1)
+        if len(invents[index]) >= before:
+            break
+        total = sum(len(found) for found in invents)
+    return "\n\n".join(paragraphs)
+
+
 async def write_chapters(chapters, materials, llm, *, concurrency: int = 1):
     """Write one chapter per packed chapter (report shape v4).
 
@@ -1514,7 +1764,8 @@ async def write_chapters(chapters, materials, llm, *, concurrency: int = 1):
     ``{"heading": str, "content": str, "direction_ids": tuple[str, ...]}``.
     A chapter that does not fit one request is written in parts; every part
     keeps the chapter's heading so the report still has exactly one chapter
-    per packed chapter.
+    per packed chapter. Parts are role-scoped (first/middle/last) so a joined
+    chapter reads as one continuous argument instead of several stapled ones.
     """
     cid = {m.material_id: stage_citation_name(m.evidence_key) for m in materials}
     jobs = []
@@ -1531,6 +1782,7 @@ async def write_chapters(chapters, materials, llm, *, concurrency: int = 1):
                 "chapter_index": index,
                 "part_index": part_index,
                 "parts_total": len(parts),
+                "part_role": _part_role(part_index, len(parts)),
                 "topics": [t["name"] for t in chapter["themes"]],
                 "rows": part,
                 "direction_ids": part_ids,
@@ -1542,16 +1794,23 @@ async def write_chapters(chapters, materials, llm, *, concurrency: int = 1):
             "part": f"{job['part_index'] + 1}/{job['parts_total']}",
             "directions": job["rows"],
         }, ensure_ascii=False)
-        response = await llm.chat_completion(
-            STAGE_CHAPTER_WRITE_SYSTEM_V1, payload,
-            # A chapter body is up to 4000 characters of Chinese prose plus the
-            # JSON wrapper. 4096 tokens truncated long chapters mid-string, and
-            # the parse error dropped the whole chapter (one run lost 38
-            # directions to "Unterminated string").
-            max_tokens=8192, temperature=0.0)
-        content = response.get("content")
-        if not isinstance(content, str) or not content.strip():
-            raise ValueError("CHAPTER_SECTION_UNUSABLE")
+        system_prompt = STAGE_CHAPTER_WRITE_SYSTEM_V1 + _PART_ROLE_INSTRUCTIONS.get(
+            job["part_role"], "")
+
+        async def ask(prompt):
+            response = await llm.chat_completion(
+                prompt, payload,
+                # A chapter body is up to 4000 characters of Chinese prose plus
+                # the JSON wrapper. 4096 tokens truncated long chapters
+                # mid-string, and the parse error dropped the whole chapter (one
+                # run lost 38 directions to "Unterminated string").
+                max_tokens=8192, temperature=0.0)
+            content = response.get("content")
+            if not isinstance(content, str) or not content.strip():
+                raise ValueError("CHAPTER_SECTION_UNUSABLE")
+            return content
+
+        content = await ask(system_prompt)
         try:
             heading, text = _parse_chapter_section(content)
         except ValueError as exc:
@@ -1561,17 +1820,41 @@ async def write_chapters(chapters, materials, llm, *, concurrency: int = 1):
             # its own input had no evidence. The reminder goes into the system
             # prompt, never appended to the JSON payload — appending broke the
             # payload the retry was supposed to resend.
-            retry_prompt = STAGE_CHAPTER_WRITE_SYSTEM_V1 + (
+            retry_prompt = system_prompt + (
                 "\n\n注意：上一版错误地声明本章某个主题没有材料。"
                 "本章所有 directions 都有材料支撑，请把全部材料写成同一结论的不同侧面，"
                 "不得出现“未提供任何发现”“无法作出结论”这类表述。")
-            response = await llm.chat_completion(
-                retry_prompt, payload,
-                max_tokens=8192, temperature=0.0)
-            content = response.get("content")
-            if not isinstance(content, str) or not content.strip():
-                raise ValueError("CHAPTER_SECTION_UNUSABLE") from None
-            heading, text = _parse_chapter_section(content)
+            heading, text = _parse_chapter_section(await ask(retry_prompt))
+        if not _inventory_free(text):
+            # One rewrite with the violation named. The inventory rule is the
+            # one the writer bypasses most: it is easy to satisfy "no filename
+            # lists" by translating the same table into counting sentences.
+            logger.info("Chapter %d part %d is a frequency inventory; rewriting",
+                        job["chapter_index"] + 1, job["part_index"] + 1)
+            inventory_prompt = system_prompt + (
+                "\n\n注意：上一版把执行记录写成了频次清单"
+                "（同一段里多次出现“某程序运行 N 次”）。"
+                "请改写：每个段落最多点名为 3 个程序给出次数，其余按组件类别合并成"
+                "一句话概括，并写出这些执行对本章结论意味着什么。")
+            try:
+                rewritten_heading, rewritten = _parse_chapter_section(
+                    await ask(inventory_prompt))
+            except ValueError:
+                logger.warning(
+                    "Chapter %d part %d rewrite failed; keeping the first version",
+                    job["chapter_index"] + 1, job["part_index"] + 1)
+            else:
+                if _inventory_free(rewritten):
+                    heading, text = rewritten_heading, rewritten
+                else:
+                    logger.warning(
+                        "Chapter %d part %d still reads as an inventory after "
+                        "the rewrite; compressing the counting paragraphs",
+                        job["chapter_index"] + 1, job["part_index"] + 1)
+        if not _inventory_free(text):
+            # Deterministic backstop, applied whatever the rewrite produced:
+            # the model reliably keeps the table even when told not to.
+            text = _compress_inventories(text)
         return {**job, "heading": heading, "content": text}
 
     results = await _gather_bounded([write_one(j) for j in jobs], concurrency)
@@ -1594,6 +1877,8 @@ async def write_chapters(chapters, materials, llm, *, concurrency: int = 1):
         # invent their own title, or the report gains chapters it does not have.
         heading = await _chapter_heading(chapter, llm)
         body = "\n\n".join(part["content"] for part in parts)
+        if len(parts) > 1:
+            body = _strip_repeated_scaffolding(body)
         direction_ids = tuple(
             direction_id for part in parts for direction_id in part["direction_ids"])
         sections.append({"heading": heading, "content": body,
@@ -2091,6 +2376,57 @@ def _direction_citations(direction_ids, directions_by_id, materials) -> tuple[st
     )
 
 
+def _verification_checklist(directions, *, limit: int = 8) -> list[str]:
+    """Turn the directions' own missing-information notes into actions.
+
+    The advisory chapter used to be two fixed sentences plus a count of
+    warnings — it named nothing to go and check, which is the one thing a
+    reader wants from it. Every direction already records what it could not
+    establish (``missing_information``); those notes are exactly the open
+    questions, so they become the checklist.
+
+    Ordered by how much evidence the direction carries: a gap under a
+    well-supported finding is worth closing first. Duplicates are collapsed
+    because the same gap (no command line, no file hash) recurs across dozens
+    of directions.
+    """
+    ranked = sorted(
+        (d for d in directions if d.missing_information),
+        key=lambda d: (-len(d.supporting_refs), d.title),
+    )
+    seen: set[str] = set()
+    checklist: list[str] = []
+    for direction in ranked:
+        for gap in direction.missing_information:
+            note = gap.strip().rstrip("。；;，,")
+            if not note or len(note) < 6:
+                continue
+            # Normalize only for de-duplication; publish the original wording.
+            key = re.sub(r"[\s，,。；;、]", "", note)[:40]
+            if key in seen:
+                continue
+            seen.add(key)
+            checklist.append(note)
+            if len(checklist) >= limit:
+                return checklist
+    return checklist
+
+
+def _advisory_text(directions, warnings) -> str:
+    """The closing chapter: what an investigator should go and check."""
+    lines = ["逐项核对调查方向的支持材料、相反材料和缺失信息。材料记载、机器推断及案情假设"
+             "分别处理；没有人工复核的结论不得自动作为已确认事实。"]
+    checklist = _verification_checklist(directions)
+    if checklist:
+        lines.append("")
+        lines.append("优先补齐以下缺口（按所涉发现的材料支撑度排序）：")
+        lines.extend(f"{index}. {note}。" for index, note in enumerate(checklist, 1))
+    if warnings:
+        lines.append("")
+        lines.append(f"另有 {len(warnings)} 项分析或覆盖限制，详见本轮材料与差异清单。")
+    return "\n".join(lines)
+
+
 def render_stage_report(envelope, materials, directions, comparisons, warnings, narrative=None):
     phase_a = envelope.analysis_mode == "evidence_only"
     directions_by_id = {d.direction_id: d for d in directions}
@@ -2241,9 +2577,7 @@ def render_stage_report(envelope, materials, directions, comparisons, warnings, 
     if narrative and dropped_chars:
         warnings.append(f"NARRATIVE_OVERFLOW_DROPPED_{dropped_chars}_CHARS")
     sections.append(StructuredReportSection(heading="人工核查建议",
-        content="逐项核对调查方向的支持材料、相反材料和缺失信息。材料记载、机器推断及案情假设分别处理；"
-                "没有人工复核的结论不得自动作为已确认事实。" +
-                (f"\n本轮有 {len(warnings)} 项分析或覆盖限制，详见本轮材料与差异清单。" if warnings else "")))
+        content=_advisory_text(directions, warnings)))
     stage = StageAnalysis(
         analysis_mode=envelope.analysis_mode, evidence_scope_hash=envelope.evidence_scope_hash,
         case_description=envelope.case_description,
