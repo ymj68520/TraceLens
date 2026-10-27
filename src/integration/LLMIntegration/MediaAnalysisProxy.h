@@ -5,6 +5,7 @@
 #include <string>
 #include <httplib.h>
 #include <functional>
+#include "LLMDataTypes.h"
 
 namespace forensics {
 namespace llm {
@@ -48,15 +49,15 @@ public:
     /**
      * @brief Describe one video file via the Python segment-vision service.
      */
-    MediaDescriptionResult describeVideo(const std::string& filePath);
+    MediaDescriptionResult describeVideo(const std::string& filePath,const LLMConfig* budget=nullptr);
 
     /**
      * @brief Transcribe + describe one audio file via the Python STT service.
      */
-    MediaDescriptionResult describeAudio(const std::string& filePath);
+    MediaDescriptionResult describeAudio(const std::string& filePath,const LLMConfig* budget=nullptr);
 
 private:
-    MediaDescriptionResult describe(const std::string& endpoint, const std::string& filePath);
+    MediaDescriptionResult describe(const std::string& endpoint, const std::string& filePath,const LLMConfig* budget);
     std::string pythonServiceUrl_;
     HttpPoster http_poster_{};
 };

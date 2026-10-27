@@ -280,6 +280,20 @@ bool HarmonyBackupExtractor::extractFileByPath(const std::string& path, const st
         return true;
     } catch (const std::exception& e) { error_ = e.what(); return false; }
 }
+bool HarmonyBackupExtractor::readRange(const std::string& path,std::uint64_t offset,std::size_t length,std::string& data,std::string& error) {
+    data.clear();error.clear();
+    try {
+        const auto& e=entries_.at(path);const auto file=root_/e.container;
+        if(length>65536 || offset>e.size)throw std::runtime_error("SOURCE_RANGE_INVALID");
+        if(!safeFile(file) || fs::file_size(file)!=static_cast<std::uint64_t>(e.containerSize) || stamp(file)!=e.containerTime)
+            throw std::runtime_error("EVIDENCE_CHANGED_AFTER_INDEX");
+        length=std::min<std::uint64_t>(length,e.size-offset);
+        if(e.offset>UINT64_MAX-offset)throw std::runtime_error("SOURCE_RANGE_INVALID");
+        std::ifstream in(file,std::ios::binary);in.seekg(e.offset+offset);data.resize(length);
+        if(length){in.read(data.data(),length);if(in.gcount()!=static_cast<std::streamsize>(length))throw std::runtime_error("SOURCE_RANGE_READ_FAILED");}
+        return true;
+    }catch(const std::exception& e){data.clear();error=e.what();return false;}
+}
 std::vector<std::string> HarmonyBackupExtractor::findPathsByFilename(const std::string& name, std::size_t limit) const {
     std::vector<std::string> out;
     for (const auto& [path, entry] : entries_) {

@@ -1,3 +1,4 @@
+#include "../Common/WindowsArtifactDecoding.h"
 // WindowsArtifactsParsers.cpp
 // Implementation of various Windows artifact parsers
 
@@ -30,14 +31,18 @@ void WindowsFilesAnalyzer::analyzePrefetchFiles() {
     std::vector<FileRecord> pfFiles = queryFilesByPattern("%/Windows/Prefetch/%.pf");
     
     for (const auto& file : pfFiles) {
-        std::string extractPath = getExtractPath("prefetch/" + file.name);
+        std::string extractPath = getExtractPath("prefetch/" + std::to_string(file.partitionNum) + "_" + std::to_string(file.inode) + "_" + file.name);
         
         if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             PrefetchInfo info = parsePrefetchFile(extractPath);
-            // If parsing failed (empty path), skip
+            info.filePath = file.path; // Evidence path, never the temporary extraction name.
+            // Keep an explicit outcome even when execution facts are unknown.
             if (!info.filePath.empty()) {
-                info.creationTime = file.crtime;
-                windowsDb_->insertPrefetchInfo(info);
+                if (file.crtime != 0) info.creationTime = file.crtime;
+                if (!windowsDb_->insertPrefetchInfo(info)) throw std::runtime_error("PREFETCH_DATABASE_WRITE_FAILED");
+                if (!windowsDb_->recordParserOutcome(file.path,"libscca",info.parseStatus,info.parseError,
+                    info.runCount.has_value()?std::optional<int64_t>(1):std::nullopt))
+                    throw std::runtime_error("PREFETCH_OUTCOME_WRITE_FAILED");
             }
         }
     }
@@ -54,18 +59,9 @@ PrefetchInfo WindowsFilesAnalyzer::parsePrefetchFile(const std::string& prefetch
         AuditLog::instance().log("WARNING", "PREFETCH_PARSE_FAILED",
             "Failed to parse prefetch file: " + prefetchPath);
 
-        // Extract basic info from filename as fallback
-        std::string filename = fs::path(prefetchPath).filename().string();
-        size_t dashPos = filename.find_last_of('-');
-        if (dashPos != std::string::npos) {
-            info.executableName = filename.substr(0, dashPos);
-            size_t dotPos = filename.find_last_of('.');
-            if (dotPos != std::string::npos && dotPos > dashPos) {
-                info.prefetchHash = filename.substr(dashPos + 1, dotPos - dashPos - 1);
-            }
-        }
-        info.runCount = 1;
-        info.lastRunTime = std::time(nullptr);
+        info.parseStatus = parser.getStatus();
+        info.parseError = parser.getLastError();
+        info.parserVersion = parser.getParserVersion();
         return info;
     }
 
@@ -73,9 +69,13 @@ PrefetchInfo WindowsFilesAnalyzer::parsePrefetchFile(const std::string& prefetch
     info.executableName = parser.getExecutableName();
     info.executablePath = parser.getExecutablePath();
     info.prefetchHash = parser.getPrefetchHash();
-    info.runCount = static_cast<int>(parser.getRunCount());
-    info.lastRunTime = parser.getLastRunTime();
-    info.creationTime = parser.getCreationTime();
+    info.runCount = parser.getRunCount();
+    info.allRunTimes = parser.getAllRunTimes();
+    info.rawRunTimes = parser.getRawRunTimes();
+    if (parser.hasLastRunTime()) info.lastRunTime = parser.getLastRunTime();
+    info.parseStatus = parser.getStatus();
+    info.parseError = parser.getLastError();
+    info.parserVersion = parser.getParserVersion();
     info.referencedFiles = parser.getReferencedFiles();
     info.referencedDirectories = parser.getReferencedDirectories();
 
@@ -107,7 +107,7 @@ void WindowsFilesAnalyzer::analyzeLnkFiles() {
 
 LnkFileInfo WindowsFilesAnalyzer::parseLnkFile(const std::string& lnkPath) {
     LnkFileInfo info;
-    info.lnkPath = lnkPath;
+    // Only successful parsing establishes an artifact row.
 
     // Use the new LnkParser
     LnkParser parser(lnkPath);
@@ -115,10 +115,12 @@ LnkFileInfo WindowsFilesAnalyzer::parseLnkFile(const std::string& lnkPath) {
         // Parsing failed, log error
         AuditLog::instance().log("WARNING", "LNK_PARSE_FAILED",
             "Failed to parse LNK file: " + lnkPath + " - " + parser.getLastError());
-        return info; // Return empty info
+        if (windowsDb_) windowsDb_->recordParserOutcome(lnkPath,"lnk","error","LNK_PARSE_FAILED");
+        return info; // Unknown fields are not persisted as an artifact.
     }
 
     // Extract all parsed information
+    info.lnkPath = lnkPath;
     info.targetPath = parser.getTargetPath();
     info.workingDirectory = parser.getWorkingDirectory();
     info.arguments = parser.getArguments();
@@ -226,7 +228,11 @@ void WindowsFilesAnalyzer::analyzeRecycleBin() {
         
         if (extractFileToPath(file.inode, extractPath, file.partitionNum)) {
             auto entries = parseRecycleBin(extractPath);
-            for (const auto& entry : entries) {
+            windowsDb_->recordParserOutcome(file.path,"recyclebin:v2",entries.empty()?"error":"ok",entries.empty()?"RECYCLE_RECORD_INVALID":"",entries.size());
+            for (auto entry : entries) {
+                entry.recycleFilePath=file.path;
+                const auto parent=fs::path(file.path).parent_path().filename().string();
+                if(parent.rfind("S-1-",0)==0)entry.userSid=parent;
                 windowsDb_->insertRecycleBinEntry(entry);
             }
         }
@@ -234,87 +240,16 @@ void WindowsFilesAnalyzer::analyzeRecycleBin() {
 }
 
 std::vector<RecycleBinEntry> WindowsFilesAnalyzer::parseRecycleBin(const std::string& recycleBinPath) {
-    std::vector<RecycleBinEntry> entries;
-    
-    std::ifstream file(recycleBinPath, std::ios::binary);
-    if (!file) return entries;
-    
-    // Get file size
-    file.seekg(0, std::ios::end);
-    size_t fileSize = file.tellg();
-    file.seekg(0, std::ios::beg);
-    
-    if (fileSize < 24) return entries; // Minimum header size
-    
-    // $I file format:
-    // Version 1 (Win Vista/7/8): Header(8), Size(8), DeletedTime(8), Path(520 bytes UTF-16LE, fixed)
-    // Version 2 (Win 10+): Header(8), Size(8), DeletedTime(8), PathLen(4), Path(variable UTF-16LE)
-    
-    uint64_t version = 0;
-    file.read(reinterpret_cast<char*>(&version), 8);
-    
-    RecycleBinEntry entry;
-    entry.recycleFilePath = recycleBinPath;
-    
-    // Extract user SID from parent directory path
-    // Path format: .../$Recycle.Bin/S-1-5-21-xxx-xxx-xxx-xxxx/$Ixxxxxx
-    fs::path recyclePath(recycleBinPath);
-    fs::path parent = recyclePath.parent_path();
-    if (!parent.empty()) {
-        std::string sidDir = parent.filename().string();
-        if (sidDir.substr(0, 4) == "S-1-") {
-            entry.userSid = sidDir;
-        }
+    std::ifstream file(recycleBinPath,std::ios::binary);
+    if(!file)return {};
+    file.seekg(0,std::ios::end);const auto length=file.tellg();file.seekg(0);
+    if(length<24 || length>65564)return {};
+    std::vector<char> bytes(static_cast<size_t>(length));
+    if(!file.read(bytes.data(),bytes.size()))return {};
+    try{return {forensics::windows_decoding::recycle(bytes,recycleBinPath)};}
+    catch(const std::invalid_argument& error){
+        std::cerr<<"回收站记录无法完整解析："<<error.what()<<std::endl;return {};
     }
-    
-    // Extract original filename hint from $I filename
-    // $I filename format: $Ixxxxxx where xxxxxx matches $Rxxxxxx (actual deleted file)
-    std::string iFileName = recyclePath.filename().string();
-    if (iFileName.length() > 2 && iFileName.substr(0, 2) == "$I") {
-        entry.fileName = "$R" + iFileName.substr(2); // Corresponding $R file
-    }
-    
-    if (version == 1) {
-        // Version 1: Fixed 520-byte path (260 UTF-16LE chars)
-        uint64_t size;
-        file.read(reinterpret_cast<char*>(&size), 8);
-        entry.originalSize = size;
-        
-        uint64_t deletedTime;
-        file.read(reinterpret_cast<char*>(&deletedTime), 8);
-        entry.deletionTime = filetimeToUnixTime(deletedTime);
-        
-        // Read fixed 520-byte UTF-16LE path
-        char pathBuffer[520];
-        file.read(pathBuffer, 520);
-        entry.originalPath = readUTF16LEString(pathBuffer, 520);
-        
-        entries.push_back(entry);
-        
-    } else if (version == 2) {
-        // Version 2: Variable length path
-        uint64_t size;
-        file.read(reinterpret_cast<char*>(&size), 8);
-        entry.originalSize = size;
-        
-        uint64_t deletedTime;
-        file.read(reinterpret_cast<char*>(&deletedTime), 8);
-        entry.deletionTime = filetimeToUnixTime(deletedTime);
-        
-        // Read path length (in bytes, including null terminator)
-        uint32_t pathLen;
-        file.read(reinterpret_cast<char*>(&pathLen), 4);
-        
-        if (pathLen > 0 && pathLen < 65536) { // Sanity check
-            std::vector<char> pathBuffer(pathLen);
-            file.read(pathBuffer.data(), pathLen);
-            entry.originalPath = readUTF16LEString(pathBuffer.data(), pathLen);
-        }
-        
-        entries.push_back(entry);
-    }
-    
-    return entries;
 }
 
 // --- Other Analyzers ---

@@ -4,8 +4,11 @@ File Analyzer Module — LLM-driven file description generation.
 This module handles file analysis logic, including text and vision analysis.
 """
 
+from ..model_budget import ModelBudgetError
+from ..source_reading import source_display_path
 import asyncio
 import json
+from ..extractors.base import DocumentContentUnavailableError
 import logging
 import os
 import re
@@ -67,7 +70,8 @@ class FileAnalyzer:
         if files_db_path:
             for fp in file_paths:
                 record = latest_analysis(files_db_path, fp)
-                if record and record.get("description"):
+                from ..model_budget import plan_allows_cached_analysis
+                if record and record.get("description") and plan_allows_cached_analysis(files_db_path,fp,task_id):
                     already_described.add(fp)
                     existing_descriptions[fp] = {
                         "file_path": fp,
@@ -97,28 +101,18 @@ class FileAnalyzer:
         async def analyze_file(file_path: str) -> Dict[str, Any]:
             nonlocal processed_count
             async with sem:
+                source_stack = None
                 try:
                     file_ext = Path(file_path).suffix.lower()
                     is_image = file_ext in IMAGE_EXTENSIONS
                     from ..llm.video_analyzer import VIDEO_EXTENSIONS
                     from ..llm.audio_analyzer import AUDIO_EXTENSIONS
 
-                    # Resolve full file path: a host-existing path wins (already
-                    # extracted elsewhere); otherwise probe the task's
-                    # extraction roots — image-internal absolute paths are NOT
-                    # host paths, and platform analyzers materialize
-                    # <stem>_extracted_files instead of the recorded dir.
-                    full_path = file_path
-                    if not Path(full_path).exists() and extraction_dir:
-                        from ..extraction_layout import resolve_relative_path
-
-                        resolved = resolve_relative_path(extraction_dir, file_path)
-                        if resolved:
-                            full_path = resolved
-
-                    # Check if file exists
-                    if not Path(full_path).exists():
-                        return {"file_path": file_path, "description": "", "error": f"File not found: {full_path}", "success": False}
+                    from contextlib import AsyncExitStack
+                    from ..source_reading import task_source_file
+                    source_stack = AsyncExitStack()
+                    full_path, file_path, _provenance = await source_stack.enter_async_context(task_source_file(
+                        task_id, file_path, files_db_path=files_db_path, extraction_dir=extraction_dir or ''))
 
                     result = None
                     extraction_method = ""
@@ -171,7 +165,7 @@ class FileAnalyzer:
                                 extraction_method = f"{extraction_method}+media_vision({enhanced_images})"
                             custom_prompt = CASE_FILE_ANALYSIS_TEMPLATE.format(
                                 case_description=case_description,
-                                file_path=file_path,
+                                file_path=source_display_path(file_path),
                                 content=content,
                             )
 
@@ -180,6 +174,10 @@ class FileAnalyzer:
                                 model_type="text",
                                 prompt=custom_prompt
                             )
+                        except DocumentContentUnavailableError:
+                            raise
+                        except ModelBudgetError:
+                            raise
                         except Exception as e:
                             logger.warning(f"Extractor failed for {full_path}: {e}, falling back to vision/raw")
                             extraction_method = ""
@@ -202,6 +200,8 @@ class FileAnalyzer:
                             if result.get("error_type") == "image_decode_failed":
                                 logger.info(f"Image decode failed for {file_path}, falling back to text analysis")
                                 result = None # Trigger fallback below
+                        except ModelBudgetError:
+                            raise
                         except Exception as e:
                             logger.warning(f"Vision model failed for {file_path}, attempting text fallback: {e}")
                             result = None
@@ -244,7 +244,7 @@ class FileAnalyzer:
                     # Persist to _files.db (append-only truth row + both caches)
                     if files_db_path and description:
                         try:
-                            self._llm_service.persist_to_files_db(
+                            persisted=self._llm_service.persist_to_files_db(
                                 db_path=files_db_path,
                                 file_path=file_path,
                                 description=description,
@@ -255,12 +255,17 @@ class FileAnalyzer:
                                 trigger_source="pipeline",
                                 extraction_method=extraction_method,
                             )
+                            if not persisted:
+                                raise RuntimeError('分析结果无法绑定到指定来源，保存失败')
+                        except ModelBudgetError:
+                            raise
                         except Exception as e:
                             logger.warning(f"Failed to persist {file_path} analysis: {e}")
+                            raise
 
                     processed_count += 1
                     if progress_callback:
-                        await progress_callback(processed_count, total, file_path)
+                        await progress_callback(processed_count, total, source_display_path(file_path))
 
                     return {"file_path": file_path, "description": description, "model_used": result.get("model", ""), "success": True}
 
@@ -268,15 +273,19 @@ class FileAnalyzer:
                     logger.warning(f"Failed to analyze file {file_path}: {e}")
                     processed_count += 1
                     if progress_callback:
-                        await progress_callback(processed_count, total, file_path)
+                        await progress_callback(processed_count, total, source_display_path(file_path))
                     return {"file_path": file_path, "description": "", "error": str(e), "success": False}
+
+                finally:
+                    if source_stack is not None:
+                        await source_stack.aclose()
 
         # Run analysis tasks concurrently (only for files without existing descriptions)
         tasks = [analyze_file(fp) for fp in files_to_analyze]
         new_results = await asyncio.gather(*tasks)
 
         # Build result map from new analysis
-        result_map = {r["file_path"]: r for r in new_results}
+        result_map = dict(zip(files_to_analyze,new_results))
 
         # Merge: return results in original order, using existing descriptions for skipped files
         final_results = []
@@ -340,6 +349,8 @@ class FileAnalyzer:
                         context_lines.append(f"- {body[:300]}")
                 if context_lines:
                     kg_context = "\n".join(context_lines)
+            except ModelBudgetError:
+                raise
             except Exception as e:
                 logger.warning(f"KG search for re-analysis failed: {e}")
 
@@ -387,10 +398,18 @@ class FileAnalyzer:
         logger.info(f"Re-analysis completed: {sum(1 for r in results if r.get('success'))}/{len(results)} files successful")
         return results
 
-    async def _reanalyze_single_file(
+    async def _reanalyze_single_file(self, *, file_path, user_hint, kg_context, case_description, files_db_path, task_id):
+        from ..source_reading import task_source_file
+        async with task_source_file(task_id,file_path,files_db_path=files_db_path) as (actual,reference,_provenance):
+            return await self._reanalyze_source_copy(file_path=actual,source_reference=reference,
+                user_hint=user_hint,kg_context=kg_context,case_description=case_description,
+                files_db_path=files_db_path,task_id=task_id)
+
+    async def _reanalyze_source_copy(
         self,
         *,
         file_path: str,
+        source_reference: str,
         user_hint: str,
         kg_context: str,
         case_description: str,
@@ -405,7 +424,7 @@ class FileAnalyzer:
         if not Path(file_path).exists():
             logger.error(f"File not found: {file_path}")
             return {
-                "file_path": file_path,
+                "file_path": source_reference,
                 "description": "",
                 "error": f"File not found: {file_path}",
                 "success": False,
@@ -441,6 +460,10 @@ class FileAnalyzer:
                 if enhanced_images:
                     extraction_method = f"{extraction_method}+media_vision({enhanced_images})"
                 logger.info(f"Extractor converted {file_path}: {len(content)} chars")
+            except DocumentContentUnavailableError:
+                raise
+            except ModelBudgetError:
+                raise
             except Exception as e:
                 logger.warning(f"Extractor failed for {file_path}: {e}, falling back")
                 extractor = None  # Trigger fallback below
@@ -510,10 +533,12 @@ class FileAnalyzer:
                         image_data=image_data,
                         prompt=vision_prompt,
                     )
+                except ModelBudgetError:
+                    raise
                 except Exception as e:
                     logger.error(f"Failed to analyze {file_path} as image: {e}", exc_info=True)
                     return {
-                        "file_path": file_path,
+                        "file_path": source_reference,
                         "description": "",
                         "error": f"Vision analysis failed: {str(e)}",
                         "success": False,
@@ -552,7 +577,7 @@ class FileAnalyzer:
                 user_hint=user_hint
             ))
             prompt_parts.append(FILE_REANALYSIS_CONTEXT_FILE.format(
-                file_path=file_path,
+                file_path=source_display_path(file_path),
                 content=content,
             ))
             prompt_parts.append(FILE_REANALYSIS_INSTRUCTION)
@@ -571,19 +596,7 @@ class FileAnalyzer:
 
         logger.info(f"Received LLM response for {file_path}: {len(description)} characters")
 
-        # Persist identity: files/file_descriptions rows are keyed by the
-        # image-relative path ("/Program Files/..."), while the reanalyze
-        # request carries the on-disk absolute path (extraction root prefixed).
-        # Derive the stored key by stripping the extraction root; the
-        # fail-closed path matching in persist_to_files_db stays intact for
-        # paths outside the extraction tree.
-        storage_key = file_path
-        if files_db_path:
-            extracted_root = Path(files_db_path).parent / "extracted_files"
-            try:
-                storage_key = "/" + Path(file_path).relative_to(extracted_root).as_posix()
-            except ValueError:
-                pass
+        storage_key = source_reference
 
         # Persist updated description to _files.db
         if files_db_path and description:
@@ -601,12 +614,12 @@ class FileAnalyzer:
             if persisted:
                 logger.info(f"Successfully persisted re-analysis for {file_path}")
             else:
-                logger.warning(f"Failed to persist re-analysis for {file_path} (no matching row)")
+                raise RuntimeError('重分析结果无法绑定到指定来源，保存失败')
         elif not files_db_path:
             logger.warning(f"No files_db_path provided - re-analysis result for {file_path} will NOT be saved to database")
 
         return {
-            "file_path": file_path,
+            "file_path": source_reference,
             "description": description,
             "model_used": result.get("model", ""),
             "success": True,
@@ -711,7 +724,9 @@ class FileAnalyzer:
                         if files_db_path else None
                     )
                     analysis_id = record.get("id") if record else None
-                    ep_name = f"文件分析: {file_path}"
+                    from ..source_identity import decode_reference
+                    display_path,source_id=decode_reference(file_path)
+                    ep_name = f"文件分析: {display_path}"
                     if analysis_id:
                         ep_name += f" #fa{analysis_id}"
                     # Chunk long descriptions
@@ -721,7 +736,8 @@ class FileAnalyzer:
                             ep_name_j = f"{ep_name} (第{j+1}部分)"
                         else:
                             ep_name_j = ep_name
-                        body = {"file_path": file_path, "analysis": chunk}
+                        body = {"file_path": display_path, "analysis": chunk}
+                        if source_id:body['source_id']=source_id
                         if record:
                             if record.get("summary"):
                                 body["summary"] = record["summary"]
@@ -734,7 +750,7 @@ class FileAnalyzer:
                         episodes.append(EpisodeData(
                             name=ep_name_j,
                             episode_body=json.dumps(body, ensure_ascii=False),
-                            source_description=f"LLM分析结果 - {file_path}",
+                            source_description=f"LLM分析结果 - {display_path}",
                             reference_time=file_time,
                             file_path=file_path,
                             file_id=0,
@@ -780,6 +796,8 @@ class FileAnalyzer:
         except ImportError:
             logger.warning("graphiti_integration not available, skipping KG ingestion")
             return False
+        except ModelBudgetError:
+            raise
         except Exception as e:
             logger.error(f"Knowledge graph ingestion failed: {e}", exc_info=True)
             return False

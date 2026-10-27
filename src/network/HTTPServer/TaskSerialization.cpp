@@ -1,4 +1,5 @@
 #include "TaskSerialization.h"
+#include "TaskDeliveryState.h"
 #include "../../analyzers/ImageAnalyzer/ImageAnalyzerDataTypes.h"
 #include "PathManager/PathManager.h"
 
@@ -110,7 +111,9 @@ void to_json(nlohmann::json& j, const AnalysisTask& t) {
 
     j["created_time"] = std::chrono::duration_cast<std::chrono::seconds>(t.created_time.time_since_epoch()).count();
     j["started_time"] = std::chrono::duration_cast<std::chrono::seconds>(t.started_time.time_since_epoch()).count();
-    j["completed_time"] = std::chrono::duration_cast<std::chrono::seconds>(t.completed_time.time_since_epoch()).count();
+    const auto actual_end = completed_timestamp(t);
+    j["completed_time"] = actual_end ? nlohmann::json(*actual_end) : nlohmann::json(nullptr);
+    if (t.interrupted_by_restart) j["interrupted_time"] = std::chrono::duration_cast<std::chrono::seconds>(t.completed_time.time_since_epoch()).count();
 }
 
 void from_json(const nlohmann::json& j, AnalysisTask& t) {
@@ -184,9 +187,12 @@ void from_json(const nlohmann::json& j, AnalysisTask& t) {
         auto secs = j["started_time"].get<long long>();
         t.started_time = std::chrono::system_clock::time_point(std::chrono::seconds(secs));
     }
-    if (j.contains("completed_time")) {
+    if (j.contains("completed_time") && j["completed_time"].is_number_integer()) {
         auto secs = j["completed_time"].get<long long>();
         t.completed_time = std::chrono::system_clock::time_point(std::chrono::seconds(secs));
+    }
+    if (t.interrupted_by_restart && j.contains("interrupted_time") && j["interrupted_time"].is_number_integer()) {
+        t.completed_time = std::chrono::system_clock::time_point(std::chrono::seconds(j["interrupted_time"].get<long long>()));
     }
     
     t.execution_start_time = std::chrono::steady_clock::now();

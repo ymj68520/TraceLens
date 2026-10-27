@@ -58,6 +58,13 @@ def parse_evidence_key(evidence_key: str) -> ParsedEvidenceKey:
     if not isinstance(evidence_key, str) or not evidence_key:
         raise InvalidEvidenceKeyError("evidence_key must be a non-empty string")
 
+    if evidence_key.startswith("file:v2:"):
+        from ..source_identity import KEY, decode_reference, evidence_key as source_key
+        if not KEY.fullmatch(evidence_key): raise InvalidEvidenceKeyError("invalid source evidence key")
+        path,source_id=decode_reference(evidence_key)
+        if not path: raise InvalidEvidenceKeyError("source evidence path is empty")
+        return ParsedEvidenceKey(evidence_type="file", canonical_key=source_key(path,source_id),
+                                 normalized_path=path,source_id=source_id)
     if evidence_key.startswith(_FILE_PREFIX):
         raw_path = evidence_key[len(_FILE_PREFIX):]
         if not raw_path:
@@ -97,6 +104,13 @@ def parse_evidence_key(evidence_key: str) -> ParsedEvidenceKey:
             unix_minute=unix_minute,
             event_type=event_type,
         )
+
+    if evidence_key.startswith('windows_artifact:'):
+        from ..windows_activity_reader import parse_key
+        try:task_id,result,kind,record_id=parse_key(evidence_key)
+        except ValueError as exc:raise InvalidEvidenceKeyError(str(exc)) from exc
+        return ParsedEvidenceKey(evidence_type='windows_artifact',canonical_key=evidence_key,
+            artifact_task_id=task_id,result_set_id=result,artifact_kind=kind,artifact_record_id=record_id)
 
     if evidence_key.startswith(_ANDROID_PREFIX):
         parts = evidence_key.split(":")

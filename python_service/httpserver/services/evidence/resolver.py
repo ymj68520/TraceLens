@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
@@ -139,6 +140,15 @@ class EvidenceResolver:
                 source_db=str(db), result_manifest=manifest,
             )
 
+        if parsed.evidence_type=='windows_artifact':
+            if parsed.artifact_task_id!=task_id:raise EvidenceNotFoundError('Windows来源属于其他任务')
+            from ..windows_activity_reader import detail
+            database=task.get('output_events_db') or ''
+            manifest=await asyncio.to_thread(detail,database,task_id,parsed.result_set_id,parsed.artifact_kind,parsed.artifact_record_id)
+            return ResolvedEvidence(task_id=task_id,evidence_key=parsed.canonical_key,evidence_type='windows_artifact',
+                result_set_id=parsed.result_set_id,artifact_kind=parsed.artifact_kind,artifact_record_id=parsed.artifact_record_id,
+                source_db=database,result_manifest=manifest)
+
         files_db = task.get("output_files_db") or ""
         events_db = task.get("output_events_db") or ""
 
@@ -149,20 +159,19 @@ class EvidenceResolver:
     async def _resolve_file(
         self, task_id: str, parsed: ParsedEvidenceKey, files_db: str
     ) -> ResolvedEvidence:
-        normalized_path = parsed.normalized_path
-        # R4/R6: exact match inside THIS task's files.db only.
-        exists = await asyncio.to_thread(_file_exists, files_db, normalized_path)
-        if not exists:
-            raise EvidenceNotFoundError(
-                f"file evidence not found in task {task_id}: {normalized_path!r}"
-            )
-        return ResolvedEvidence(
-            task_id=task_id,
-            evidence_key=parsed.canonical_key,
-            evidence_type="file",
-            normalized_path=normalized_path,
-            source_db=files_db,
-        )
+        from ..source_identity import file_row, SourceIdentityError
+        def lookup():
+            with closing(_connect_ro(files_db)) as conn:
+                return file_row(conn,parsed.normalized_path,parsed.source_id)
+        try:
+            row, locator = await asyncio.to_thread(lookup)
+        except sqlite3.Error as error:
+            raise EvidenceStoreError("cannot read file source records") from error
+        except SourceIdentityError as error:
+            if error.code == "SOURCE_NOT_FOUND": raise EvidenceNotFoundError(error.message) from error
+            raise
+        return ResolvedEvidence(task_id=task_id,evidence_key=parsed.canonical_key,evidence_type="file",
+            normalized_path=parsed.normalized_path,source_id=parsed.source_id,source_locator=locator,source_db=files_db)
 
     async def _resolve_cluster(
         self, task_id: str, parsed: ParsedEvidenceKey, events_db: str

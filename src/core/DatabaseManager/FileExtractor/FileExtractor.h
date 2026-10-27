@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <optional>
 #include <cstdint>
+#include <nlohmann/json.hpp>
 #include <tsk/libtsk.h>
 #include "DatabaseManager/DatabaseManager.h"
 #include "analyzers/AndroidAnalyzer/IFileExtractor.h"
@@ -75,6 +76,13 @@ public:
     int extractDeleted(const std::string& outputDir, bool overwrite = false, int* skippedCount = nullptr, ExtractionLimits* limits = nullptr);
     bool extractFileByInode(int64_t inode, const std::string& outputPath, int partitionNum = -1);
     bool extractFileByPath(const std::string& filePath, const std::string& outputPath) override;
+    bool extractFileBySourceId(const std::string& sourceId, const std::string& outputPath);
+    // Bounded logical bytes, never a whole-file fallback. Error != empty data.
+    bool readSourceRange(const std::string& sourceId, uint64_t offset, size_t length,
+                         std::string& data, std::string& error);
+    nlohmann::json materializeSource(const std::string& filePath,
+        const std::filesystem::path& outputRoot, const std::string& sourceId = "",
+        uint64_t maxBundleBytes = 320ULL*1024*1024);
     std::vector<std::string> findPathsByFilename(
         const std::string& filename, std::size_t limit = 200) const override;
 

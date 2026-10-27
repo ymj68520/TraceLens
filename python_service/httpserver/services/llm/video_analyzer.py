@@ -17,6 +17,7 @@ Design (2026-09-19, agreed with the requester):
 - Raw video bytes are NEVER sent to any text model.
 """
 
+from ..model_budget import ModelBudgetError
 import asyncio
 import logging
 import os
@@ -208,6 +209,8 @@ async def _describe_segment(
         frame_paths = await asyncio.to_thread(
             _extract_segment_frames, file_path, plan, fps, out_dir
         )
+    except ModelBudgetError:
+        raise
     except Exception as exc:
         logger.warning(f"[VIDEO_ANALYZER] segment {index} frame extraction failed: {exc}")
         return f"{header}\n(本段抽帧失败: {exc})", 0
@@ -230,6 +233,8 @@ async def _describe_segment(
             result = await llm_service.analyze_images(
                 image_data_list=frame_bytes, prompt=prompt
             )
+        except ModelBudgetError:
+            raise
         except Exception as exc:
             last_error = f"调用失败: {exc}"
             logger.warning(f"[VIDEO_ANALYZER] segment {index} vision call failed: {exc}")

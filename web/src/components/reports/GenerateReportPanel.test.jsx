@@ -132,7 +132,7 @@ describe('GenerateReportPanel', () => {
         expect(screen.queryByTestId('generate-status')).not.toBeInTheDocument();
     });
 
-    test('unmapped admission detail is passed through verbatim', async () => {
+    test('admission diagnostics are presented in Chinese', async () => {
         const generate = vi.fn().mockRejectedValue({ status: 404, data: { detail: 'task not found' } });
         render(
             <GenerateReportPanel
@@ -143,7 +143,7 @@ describe('GenerateReportPanel', () => {
             />,
         );
         await submit();
-        expect(await screen.findByTestId('generate-admission-error')).toHaveTextContent('task not found');
+        expect(await screen.findByTestId('generate-admission-error')).toHaveTextContent('没有找到当前任务');
     });
 
     test('empty source set shows explicit guidance instead of "all case information"', async () => {

@@ -61,4 +61,14 @@ MiuiBakKind classifyMiuiBakContent(const std::string& bytes);
 bool parseMiuiContactsBak(const std::string& bytes, std::vector<MiuiProtoContactRow>& out);
 bool parseMiuiCallLogBak(const std::string& bytes, std::vector<MiuiProtoCallRow>& out);
 
+// Observed notes profile: f6 { repeated f2 { f2 id, f8 text, f9 content block } }.
+// f5/f6 are retained as numeric fields until their business time meaning is verified.
+struct MiuiProtoNoteRow {
+    std::string id, content;
+    uint64_t field5 = 0, field6 = 0;
+    std::size_t offset = 0, length = 0;
+    std::vector<std::string> attachmentNames;
+};
+bool parseMiuiNotesBak(const std::string&, std::vector<MiuiProtoNoteRow>&);
+
 #endif  // MIUI_BAK_PROTO_PARSERS_H

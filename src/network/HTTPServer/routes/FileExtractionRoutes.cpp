@@ -1,4 +1,7 @@
 #include "FileExtractionRoutes.h"
+#include "DatabaseManager/SourceIndex.h"
+#include "../FileSelectionService.h"
+#include "Selection/SelectionQuality.h"
 #include "RouteHelpers.h"
 #include "../SQLiteHelper.h"
 #include "DatabaseManager/FileExtractor/FileExtractor.h"
@@ -20,6 +23,37 @@ FileExtractionRoutes::~FileExtractionRoutes() {
 }
 
 FileExtractionRoutes::FileExtractionRoutes(HttpApp& app) {
+    CROW_ROUTE(app,"/api/forensics/files/selection-plan").methods("POST"_method)([this](const crow::request& req){return handle_selection_plan(req);});
+    CROW_ROUTE(app,"/api/forensics/files/selection-plan").methods("GET"_method)([](const crow::request& req){
+        crow::response res;RouteHelpers::add_cors_headers(res);res.set_header("Content-Type","application/json");
+        try{
+            const char* task=req.url_params.get("task_id");if(!task)throw std::runtime_error("TASK_REQUIRED");
+            const auto database=RouteHelpers::get_database_path(task,"files");sqlite3* raw=nullptr;
+            if(sqlite3_open_v2(database.c_str(),&raw,SQLITE_OPEN_READONLY,nullptr)!=SQLITE_OK){if(raw)sqlite3_close(raw);throw std::runtime_error("SOURCE_UNAVAILABLE");}
+            std::unique_ptr<sqlite3,decltype(&sqlite3_close)> db(raw,sqlite3_close);
+            if(!sources::table(raw,"selection_runs")){res.code=200;res.write("{\"plan\":null}");return res;}
+            sources::Statement row(raw,"SELECT plan_json FROM selection_runs ORDER BY created_at DESC,rowid DESC LIMIT 1");
+            if(sqlite3_step(row.value)!=SQLITE_ROW){res.code=200;res.write("{\"plan\":null}");return res;}
+            auto plan=json::parse(reinterpret_cast<const char*>(sqlite3_column_text(row.value,0)));
+            const auto id=plan.at("plan_id").get<std::string>();
+            // A multi-image plan's budget ledger has one authoritative owner.
+            sqlite3* owner=nullptr;const auto ownerPath=plan.value("budget_database",database);
+            if(sqlite3_open_v2(ownerPath.c_str(),&owner,SQLITE_OPEN_READONLY,nullptr)==SQLITE_OK){
+                sources::Statement usage(owner,"SELECT max_calls,max_tokens,used_calls,reserved_tokens FROM selection_budget WHERE plan_id=?");usage.bind(1,id);
+                if(sqlite3_step(usage.value)==SQLITE_ROW)plan["usage"]=sources::row(usage.value);
+                sources::Statement progress(owner,"SELECT state,COUNT(*) FROM selection_execution WHERE plan_id=? GROUP BY state");progress.bind(1,id);
+                while(sqlite3_step(progress.value)==SQLITE_ROW){const std::string state=reinterpret_cast<const char*>(sqlite3_column_text(progress.value,0));plan["execution"][state]=sqlite3_column_int64(progress.value,1);}
+            }if(owner)sqlite3_close(owner);
+            json families=json::object(),states=json::object();for(const auto& item:plan["selected"]){const auto family=item.value("family","other");families[family]=families.value(family,0)+1;}
+            for(const auto& item:plan["candidates"]){const auto state=item.value("probe_state","unprobed");states[state]=states.value(state,0)+1;}
+            plan["family_counts"]=families;plan["probe_states"]=states;
+            plan["quality"]=selection::deliveryQuality(plan);
+            size_t limit=50;if(const char* value=req.url_params.get("limit"))limit=std::min<size_t>(200,std::stoul(value));
+            json preview=json::array();for(const auto& item:plan["candidates"]){if(preview.size()>=limit)break;auto shown=item;shown.erase("probe");preview.push_back(std::move(shown));}
+            plan["display_candidates"]=preview;plan.erase("candidates");plan.erase("selected");plan.erase("budget_database");
+            res.code=200;res.write(json({{"plan",plan}}).dump());return res;
+        }catch(...){res.code=404;res.write("{\"message\":\"候选选择审计暂不可用\"}");return res;}
+    });
     CROW_ROUTE(app, "/api/forensics/extract").methods("POST"_method, "OPTIONS"_method)([this](const crow::request& req) {
         if (req.method == "OPTIONS"_method) {
             crow::response res;
@@ -64,6 +98,26 @@ FileExtractionRoutes::FileExtractionRoutes(HttpApp& app) {
         {},
         {{200, "File materialized"}, {400, "Invalid request"}, {404, "File not in image"}}
     );
+}
+
+crow::response FileExtractionRoutes::handle_selection_plan(const crow::request& req) {
+    crow::response res;RouteHelpers::add_cors_headers(res);res.set_header("Content-Type","application/json");
+    try {
+        auto body=json::parse(req.body);std::vector<std::string> tasks;
+        if(body.contains("task_ids"))tasks=body.at("task_ids").get<std::vector<std::string>>();else tasks.push_back(body.at("task_id").get<std::string>());
+        if(tasks.empty() || tasks.size()>16)throw std::runtime_error("选择任务数量无效");
+        std::sort(tasks.begin(),tasks.end());tasks.erase(std::unique(tasks.begin(),tasks.end()),tasks.end());
+        std::vector<SelectionSource> contexts;
+        for(auto& task:tasks){if(task.empty())throw std::runtime_error("缺少任务标识");contexts.push_back({task,RouteHelpers::get_database_path(task,"files"),RouteHelpers::get_database_path(task,"raw"),RouteHelpers::get_image_path_for_task(task)});}
+        const auto requested=body.value("max_files",int64_t(0));if(requested<0 || requested>100000)throw std::runtime_error("分析文件数量上限无效");
+        auto limits=FileSelectionService::budget(requested);const auto context=body.value("case_context",std::string());
+        if(context.size()>100000)throw std::runtime_error("案情上下文超过预算");
+        if(!context.empty())limits.analysisContract+="|case:"+sources::hash(context);
+        if(body.contains("file_references")){limits.fileReferences=body.at("file_references").get<std::vector<std::string>>();if(limits.fileReferences.size()>1000)throw std::runtime_error("来源选择数量超限");}
+        if(body.contains("file_types"))limits.fileTypes=body.at("file_types").get<std::vector<std::string>>();
+        const auto result=FileSelectionService::plan(contexts,limits);res.code=200;res.write(result.dump());
+    }catch(const std::exception& e){res.code=422;res.write(json({{"error","SELECTION_PLAN_UNAVAILABLE"},{"message","无法建立满足来源和预算约束的选择计划"}}).dump());}
+    return res;
 }
 
 crow::response FileExtractionRoutes::handle_extract_files(const crow::request& req) {
@@ -222,104 +276,44 @@ crow::response FileExtractionRoutes::handle_extract_files(const crow::request& r
 }
 
 crow::response FileExtractionRoutes::handle_materialize_file(const crow::request& req) {
-    crow::response res;
-    RouteHelpers::add_cors_headers(res);
-    res.set_header("Content-Type", "application/json");
-
+    crow::response res;RouteHelpers::add_cors_headers(res);res.set_header("Content-Type","application/json");
     try {
-        json body = json::parse(req.body);
-
-        const std::string task_id = body.value("task_id", std::string());
-        std::string evidence_path = body.value("path", std::string());
-        if (task_id.empty() || evidence_path.empty()) {
-            json error = {{"error", "task_id and path are required"}};
-            res.code = 400;
-            res.write(error.dump());
-            return res;
+        const auto body=json::parse(req.body);
+        const auto taskId=body.value("task_id",std::string());
+        const auto path=body.value("path",std::string());
+        const auto sourceId=body.value("source_id",std::string());
+        if(taskId.empty() || (path.empty() && sourceId.empty())) {
+            res.code=400;res.write(json({{"error","SOURCE_REQUEST_INVALID"},{"message","需要任务及文件路径或来源标识"}}).dump());return res;
         }
-
-        std::string image_path;
-        std::string raw_db;
-        try {
-            image_path = RouteHelpers::get_image_path_for_task(task_id);
-            raw_db = RouteHelpers::get_database_path(task_id, "raw");
-        } catch (const std::exception&) {
-            json error = {{"error", "task not found"}};
-            res.code = 404;
-            res.write(error.dump());
-            return res;
+        const auto image=RouteHelpers::get_image_path_for_task(taskId);
+        const auto raw=RouteHelpers::get_database_path(taskId,"raw");
+        FileExtractor extractor(image,raw);
+        if(!extractor.initialize()) {res.code=409;res.write(json({{"error","SOURCE_INDEX_UNAVAILABLE"},{"message","来源索引不可用或与材料不一致"}}).dump());return res;}
+        const auto classified=RouteHelpers::get_database_path(taskId,"files");
+        if(!classified.empty() && classified!=raw && std::filesystem::exists(classified)) {
+            sqlite3 *origin=nullptr,*destination=nullptr;
+            bool copied=false;
+            if(sqlite3_open_v2(raw.c_str(),&origin,SQLITE_OPEN_READONLY,nullptr)==SQLITE_OK && sqlite3_open(classified.c_str(),&destination)==SQLITE_OK) {
+                sqlite3_busy_timeout(destination,10000);
+                bool same=false;
+                try {
+                    if(forensics::sources::table(destination,"source_index_meta")) {
+                        forensics::sources::Statement a(origin,"SELECT value FROM source_index_meta WHERE key='revision'");
+                        forensics::sources::Statement b(destination,"SELECT value FROM source_index_meta WHERE key='revision'");
+                        same=sqlite3_step(a.value)==SQLITE_ROW && sqlite3_step(b.value)==SQLITE_ROW &&
+                            std::string(reinterpret_cast<const char*>(sqlite3_column_text(a.value,0)))==reinterpret_cast<const char*>(sqlite3_column_text(b.value,0));
+                    }
+                    copied=same || forensics::sources::copy(origin,destination,raw);
+                }catch(...){copied=false;}
+            }
+            if(destination)sqlite3_close(destination);if(origin)sqlite3_close(origin);
+            if(!copied){res.code=409;res.write("{\"error\":\"SOURCE_INDEX_SYNC_FAILED\"}");return res;}
         }
-        if (image_path.empty() || raw_db.empty()) {
-            json error = {{"error", "task extraction inputs are not ready"}};
-            res.code = 409;
-            res.write(error.dump());
-            return res;
-        }
-
-        // Contain the output under the task extract dir: strip image-root
-        // anchoring and reject any ".." traversal so image contents can never
-        // be written outside extracted_files.
-        while (!evidence_path.empty() && evidence_path.front() == '/') {
-            evidence_path.erase(0, 1);
-        }
-        namespace fs = std::filesystem;
-        const fs::path rel(evidence_path);
-        bool has_dotdot = false;
-        for (const auto& part : rel) {
-            if (part == "..") has_dotdot = true;
-        }
-        if (evidence_path.empty() || has_dotdot) {
-            json error = {{"error", "path must be an image-relative file path without '..'"}};
-            res.code = 400;
-            res.write(error.dump());
-            return res;
-        }
-
-        const fs::path out_path = PathManager::instance().getTaskExtractDir(task_id) / rel;
-        std::error_code ec;
-        fs::create_directories(out_path.parent_path(), ec);
-
-        // extractFileByPath only resolves paths that are known file records in
-        // the raw database, which doubles as the membership gate. Image paths
-        // are usually stored with a leading slash; try both anchorings.
-        FileExtractor extractor(image_path, raw_db);
-        if (!extractor.initialize()) {
-            json error = {{"error", "failed to open forensic image"}};
-            res.code = 500;
-            res.write(error.dump());
-            return res;
-        }
-        bool ok = extractor.extractFileByPath("/" + evidence_path, out_path.string());
-        if (!ok) {
-            ok = extractor.extractFileByPath(evidence_path, out_path.string());
-        }
-        if (!ok) {
-            json error = {{"error", "file could not be extracted from the image"}};
-            res.code = 404;
-            res.write(error.dump());
-            return res;
-        }
-
-        std::error_code size_ec;
-        const uintmax_t bytes = fs::file_size(out_path, size_ec);
-        json response = {
-            {"success", true},
-            {"materialized_path", out_path.string()},
-            {"bytes", size_ec ? 0 : bytes}
-        };
-        res.code = 200;
-        res.write(response.dump());
-
-    } catch (const json::exception& e) {
-        json error = {{"error", std::string("Invalid JSON: ") + e.what()}};
-        res.code = 400;
-        res.write(error.dump());
-    } catch (const std::exception& e) {
-        json error = {{"error", e.what()}};
-        res.code = 500;
-        res.write(error.dump());
-    }
-
+        const auto result=extractor.materializeSource(path,PathManager::instance().getTaskExtractDir(taskId),sourceId);
+        res.code=result.value("success",false)?200:(result.value("error","")=="SOURCE_PATH_AMBIGUOUS"?409:422);
+        res.write(result.dump());return res;
+    }catch(const json::exception&){res.code=400;res.write("{\"error\":\"SOURCE_REQUEST_INVALID\"}");}
+    catch(const std::exception&){res.code=404;res.write("{\"error\":\"SOURCE_TASK_NOT_FOUND\"}");}
     return res;
 }
 

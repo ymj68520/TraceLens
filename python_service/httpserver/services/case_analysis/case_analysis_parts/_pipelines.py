@@ -101,7 +101,7 @@ class CaseAnalysisPipelinesMixin:
             logger.info(f"[CASE_ANALYSIS] files_db_path: {files_db_path}")
             logger.info(f"[CASE_ANALYSIS] case_description length: {len(case_description)}")
             logger.info(f"[CASE_ANALYSIS] max_filter_files: {max_filter_files} "
-                        f"(ignored in deterministic mode; cap=settings.filter_max_files)")
+                        f"(jointly constrained by native selection configuration)")
 
             filter_result = await self.filter_files_by_case(
                 files_db_path, case_description, max_filter_files, task_id=task_id
@@ -147,10 +147,12 @@ class CaseAnalysisPipelinesMixin:
                 # Step 3: analysis rounds (SPEC file-analysis D8/D10): the
                 # artifact round and the file round run concurrently; the
                 # cluster round starts only after the file round persisted.
-                rounds = await self._execute_analysis_rounds(
-                    task_id, files_db_path, filtered_files, case_description,
-                    extraction_dir, progress_callback,
-                )
+                from ...model_budget import selection_run
+                with selection_run(result['steps'].get('filter',{}).get('plan_id')):
+                    rounds = await self._execute_analysis_rounds(
+                        task_id, files_db_path, filtered_files, case_description,
+                        extraction_dir, progress_callback,
+                    )
                 descriptions = rounds["descriptions"]
                 cluster_results = rounds["cluster_results"]
                 result["steps"].update(rounds["steps"])

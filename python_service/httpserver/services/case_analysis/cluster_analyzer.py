@@ -9,6 +9,7 @@ This module handles the complete event cluster data flow:
 """
 
 import asyncio
+from contextlib import closing, contextmanager
 import bisect
 import json
 import logging
@@ -16,7 +17,7 @@ import sqlite3
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 from ...config import Settings
 from ...path_utils import normalize_evidence_path
@@ -27,11 +28,12 @@ from ..investigation_evidence import (
 )
 from .adaptive import choose_bucket, estimate_bucket_ladder
 from .file_schema import latest_analysis, latest_analyses_batch
+from . import cluster_revision as revision
+from . import cluster_budget
 from .schema import (
     create_analysis_run,
     ensure_cluster_analysis_schema,
     finalize_analysis_run,
-    find_latest_analysis,
     mark_analysis_ingested,
     members_fingerprint,
 )
@@ -39,17 +41,53 @@ from .schema import (
 logger = logging.getLogger(__name__)
 
 
-def _connect_events(events_db: str) -> sqlite3.Connection:
+@contextmanager
+def _connect_events(events_db: str) -> Iterator[sqlite3.Connection]:
     """Open the events db tolerating non-UTF-8 bytes stored by the pipeline.
 
     Disk images routinely contain filenames in legacy encodings; sqlite3's
     default strict UTF-8 decode turns any GROUP_CONCAT over such paths into a
     fetch-wide failure, so undecodable bytes are replaced instead.
     """
-    conn = sqlite3.connect(events_db, timeout=10)
-    conn.row_factory = sqlite3.Row
-    conn.text_factory = lambda b: b.decode("utf-8", "replace")
-    return conn
+    # A sqlite connection context commits/rolls back but does not close it.
+    with closing(sqlite3.connect(events_db, timeout=10)) as conn, conn:
+        conn.row_factory = sqlite3.Row
+        conn.text_factory = lambda b: b.decode("utf-8", "replace")
+        yield conn
+
+
+def _prepare_cluster_candidates(events_db, task_id, clusters, settings, case_description, chosen, offset, budget):
+    """Read freshness once off the event loop; keep the existing plan identity."""
+    context = revision.context_hash(settings, case_description)
+    call_cap = getattr(settings, 'event_cluster_max_calls', 0) or min(budget * 10, 1000000)
+    token_cap = getattr(settings, 'event_cluster_max_total_tokens', 0) or call_cap * getattr(settings, 'llm_context_length', 4096)
+    plan_id = revision.digest({'task_id': task_id, 'context': context, 'calls': call_cap,
+        'tokens': token_cap, 'window': chosen, 'offset': offset,
+        'clusters': sorted((c['event_type'], c['time_window'], c['parent_directory'] or '', c['members_hash']) for c in clusters)})
+    cluster_budget.create(events_db, plan_id, call_cap, token_cap)
+    coordinates = ('bucket_epoch_offset', 'bucket_seconds', 'bucket_index', 'event_type', 'parent_directory')
+    latest = {}
+    with _connect_events(events_db) as conn:
+        for row in conn.execute('''SELECT a.*, d.version AS derivation_version,
+                d.context_hash AS derivation_context, d.members_hash AS derivation_hash
+                FROM event_cluster_analyses a LEFT JOIN cluster_derivations d ON d.analysis_id=a.id
+                WHERE a.task_id=? ORDER BY a.id''', (task_id,)):
+            latest[tuple(row[key] for key in coordinates)] = dict(row)
+    pending, skipped_fresh = [], 0
+    for cluster in clusters:
+        cluster['analysis_context_hash'] = context
+        cluster['budget_plan_id'] = plan_id
+        key = (cluster['bucket_epoch_offset'], cluster['bucket_seconds'], cluster['time_window'],
+               cluster['event_type'], cluster['parent_directory'])
+        row = latest.get(key)
+        fresh = row and row['members_hash'] == cluster['members_hash'] and (
+            row['derivation_version'], row['derivation_context'], row['derivation_hash']) == (
+            revision.VERSION, context, cluster['members_hash'])
+        if fresh:
+            skipped_fresh += 1
+        else:
+            pending.append(cluster)
+    return pending, skipped_fresh
 
 # Initial-analysis clustering window. Phase C replaces this constant with the
 # budget-driven adaptive selection (SPEC §5); until then the pipeline keeps the
@@ -225,49 +263,9 @@ class ClusterAnalyzer:
         Returns:
             List of cluster analysis results.
         """
-        if not Path(events_db).exists():
-            logger.warning(f"Events database not found: {events_db}")
-            return []
-
-        # Append-only analysis tables must exist before the first persist (SPEC §3.2).
-        ensure_cluster_analysis_schema(events_db)
-
-        # Step 0: adaptive window selection + run bookkeeping (SPEC §5).
-        budget = getattr(self.settings, "llm_max_event_clusters", 200)
-        scan = estimate_bucket_ladder(events_db, include_analyzed=False)
-        choice = choose_bucket(scan["estimates"], budget)
-        bucket_seconds = choice["recommended_bucket_seconds"]
-        if choice["warning"]:
-            logger.warning(f"Task {task_id}: adaptive bucket budget overshoot - {choice['warning']}")
-        run_id = create_analysis_run(
-            events_db, task_id, "pipeline", bucket_seconds, scan["bucket_epoch_offset"], budget
-        )
-
-        # Step 1: Fetch event clusters
-        clusters = await self.fetch_event_clusters(events_db, bucket_seconds=bucket_seconds)
-        if not clusters:
-            logger.info(f"Task {task_id}: No event clusters to analyze")
-            finalize_analysis_run(events_db, run_id, "completed", 0, 0, 0, 0)
-            return []
-
-        if progress_callback:
-            await progress_callback("fetching_clusters", f"获取到 {len(clusters)} 个事件簇")
-
-        # Step 2: Analyze each cluster (with concurrency control)
-        results = await self._analyze_clusters_concurrent(
-            clusters, case_description, events_db, progress_callback, task_id
-        )
-
-        # Step 3: Ingest to Graphiti
-        if self._graphiti_service and results:
-            if progress_callback:
-                await progress_callback("ingesting_clusters", "正在将事件簇摄入知识图谱...")
-            await self.ingest_clusters_to_graphiti(
-                task_id, case_description, results, events_db=events_db
-            )
-
-        self._finalize_run_from_results(events_db, run_id, len(clusters), results)
-        return results
+        summary=await self.run_analysis(task_id,events_db,case_description=case_description,
+                                        progress_callback=progress_callback,trigger_source="pipeline")
+        return summary["results"]
 
     async def run_analysis(
         self,
@@ -276,6 +274,8 @@ class ClusterAnalyzer:
         case_description: str = "",
         bucket_seconds: Optional[int] = None,
         progress_callback=None,
+        trigger_source: str = "task_run",
+        ingest: bool = True,
     ) -> Dict[str, Any]:
         """
         Task-level cluster analysis entry (SPEC §8.1 ``run`` endpoint backend).
@@ -289,8 +289,16 @@ class ClusterAnalyzer:
 
         ensure_cluster_analysis_schema(events_db)
 
+        def migrate_legacy_cache():
+            with _connect_events(events_db) as conn:
+                columns={row[1] for row in conn.execute('PRAGMA table_info(events)')}
+            if {'llm_summary','llm_description','llm_keywords','llm_analyzed_at','llm_model_used'}<=columns:
+                from .backfill import backfill_events_db
+                return backfill_events_db(events_db,task_id)
+        await asyncio.to_thread(migrate_legacy_cache)
+
         budget = getattr(self.settings, "llm_max_event_clusters", 200)
-        scan = estimate_bucket_ladder(events_db, include_analyzed=True)
+        scan = await asyncio.to_thread(estimate_bucket_ladder,events_db,include_analyzed=True)
         warning = None
         if bucket_seconds:
             chosen = int(bucket_seconds)
@@ -304,83 +312,77 @@ class ClusterAnalyzer:
                 logger.warning(f"Task {task_id}: adaptive bucket budget overshoot - {warning}")
 
         offset = scan["bucket_epoch_offset"]
-        run_id = create_analysis_run(events_db, task_id, "task_run", chosen, offset, budget)
+        run_id = create_analysis_run(events_db, task_id, trigger_source, chosen, offset, budget)
 
-        clusters = await self.fetch_event_clusters(
-            events_db, bucket_seconds=chosen, include_analyzed=True
-        )
-
-        pending: List[Dict[str, Any]] = []
-        skipped_fresh = 0
-        for cluster in clusters:
-            latest = find_latest_analysis(
-                events_db,
-                cluster["bucket_epoch_offset"],
-                cluster["bucket_seconds"],
-                cluster["time_window"],
-                cluster["event_type"],
-                cluster["parent_directory"],
+        try:
+            clusters = await self.fetch_event_clusters(
+                events_db, bucket_seconds=chosen, include_analyzed=True
             )
-            fresh = (
-                latest is not None
-                and latest["member_count"] == cluster["cluster_count"]
-                and latest["member_min_id"] == cluster["first_event_id"]
-                and latest["member_max_id"] == cluster["last_event_id"]
-            )
-            if fresh:
-                skipped_fresh += 1
-            else:
-                pending.append(cluster)
 
-        # The adaptive window only steers bucket choice; a timeline that
-        # overshoots the budget at every candidate window would otherwise send
-        # tens of thousands of clusters to the LLM. Enforce the budget by
-        # keeping the most active clusters deterministically.
-        skipped_over_budget = 0
-        if len(pending) > budget:
-            pending.sort(
-                key=lambda c: (
-                    -c["cluster_count"],
-                    c["time_window"],
-                    c["event_type"],
-                    c["parent_directory"] or "",
+            pending, skipped_fresh = await asyncio.to_thread(
+                _prepare_cluster_candidates, events_db, task_id, clusters,
+                self.settings, case_description, chosen, offset, budget,
+            )
+
+            # The adaptive window only steers bucket choice; a timeline that
+            # overshoots the budget at every candidate window would otherwise send
+            # tens of thousands of clusters to the LLM. Enforce the budget by
+            # keeping the most active clusters deterministically.
+            skipped_over_budget = 0
+            if len(pending) > budget:
+                pending.sort(
+                    key=lambda c: (
+                        -c["cluster_count"],
+                        c["time_window"],
+                        c["event_type"],
+                        c["parent_directory"] or "",
+                    )
                 )
-            )
-            skipped_over_budget = len(pending) - budget
-            pending = pending[:budget]
-            logger.warning(
-                f"Task {task_id}: cluster budget {budget} enforced, "
-                f"{skipped_over_budget} clusters skipped (kept the most active ones)"
-            )
-            warning = warning or (
-                f"cluster count exceeds the budget ({budget}); "
-                f"analyzed only the {budget} most active clusters"
+                skipped_over_budget = len(pending) - budget
+                pending = pending[:budget]
+                logger.warning(
+                    f"Task {task_id}: cluster budget {budget} enforced, "
+                    f"{skipped_over_budget} clusters skipped (kept the most active ones)"
+                )
+                warning = warning or (
+                    f"cluster count exceeds the budget ({budget}); "
+                    f"analyzed only the {budget} most active clusters"
+                )
+
+            results = await self._analyze_clusters_concurrent(
+                pending, case_description, events_db, progress_callback, task_id,
+                trigger_source=trigger_source,
             )
 
-        results = await self._analyze_clusters_concurrent(
-            pending, case_description, events_db, progress_callback, task_id,
-            trigger_source="task_run",
-        )
+            if ingest and self._graphiti_service and any(r.get("analysis_id") for r in results):
+                await self.ingest_clusters_to_graphiti(
+                    task_id, case_description, results, events_db=events_db
+                )
 
-        if self._graphiti_service and any(r.get("analysis_id") for r in results):
-            await self.ingest_clusters_to_graphiti(
-                task_id, case_description, results, events_db=events_db
-            )
-
-        self._finalize_run_from_results(events_db, run_id, len(clusters), results)
-        return {
-            "run_id": run_id,
-            "task_id": task_id,
-            "bucket_seconds": chosen,
-            "bucket_epoch_offset": offset,
-            "cluster_total": len(clusters),
-            "analyzed": len(pending),
-            "skipped_fresh": skipped_fresh,
-            "skipped_over_budget": skipped_over_budget,
-            "failed": sum(1 for r in results if not r.get("success")),
-            "warning": warning,
-            "results": results,
-        }
+            self._finalize_run_from_results(events_db, run_id, len(clusters), results)
+            with _connect_events(events_db) as conn:
+                conn.execute("UPDATE cluster_analysis_runs SET status=?,detail=? WHERE id=?",
+                    ('partial' if skipped_over_budget or any(not r.get('success') for r in results) else 'completed',
+                     json.dumps({'skipped_over_budget':skipped_over_budget,'skipped_fresh':skipped_fresh,'warning':warning},ensure_ascii=False),run_id))
+            return {
+                "run_id": run_id,
+                "task_id": task_id,
+                "bucket_seconds": chosen,
+                "bucket_epoch_offset": offset,
+                "cluster_total": len(clusters),
+                "analyzed": len(pending),
+                "skipped_fresh": skipped_fresh,
+                "skipped_over_budget": skipped_over_budget,
+                "failed": sum(1 for r in results if not r.get("success")),
+                "warning": warning,
+                "results": results,
+            }
+        except BaseException as exc:
+            with _connect_events(events_db) as conn:
+                conn.execute("UPDATE cluster_analysis_runs SET status=?,finished_at=?,detail=? WHERE id=?",
+                    ('interrupted' if isinstance(exc,asyncio.CancelledError) else 'failed',int(time.time()),
+                     json.dumps({'error':str(exc)},ensure_ascii=False),run_id))
+            raise
 
     def _finalize_run_from_results(
         self, events_db: str, run_id: int, cluster_total: int, results: List[Dict[str, Any]]
@@ -412,24 +414,9 @@ class ClusterAnalyzer:
         bucket_seconds: Optional[int] = None,
         include_analyzed: bool = False,
     ) -> List[Dict[str, Any]]:
-        """
-        Fetch event clusters from the events database.
+        return await asyncio.to_thread(self._fetch_event_clusters_sync,events_db,limit,bucket_seconds,include_analyzed)
 
-        Clusters are grouped by (time_window, event_type, parent_directory)
-        using the canonical bucket expression with the task's window-alignment
-        offset (SPEC §4).
-
-        Args:
-            events_db: Path to _events.db database
-            limit: Maximum number of clusters to fetch (None = no limit)
-            bucket_seconds: Window width; defaults to the historical 60 s
-            include_analyzed: False (pipeline, D9) keeps the
-                ``llm_analyzed_at IS NULL`` skip filter; True groups every
-                event — the task-level run uses this for full coverage
-
-        Returns:
-            List of cluster dictionaries.
-        """
+    def _fetch_event_clusters_sync(self,events_db,limit=None,bucket_seconds=None,include_analyzed=False):
         window = int(bucket_seconds or PIPELINE_BUCKET_SECONDS)
         try:
             from .schema import read_bucket_epoch_offset
@@ -438,6 +425,7 @@ class ClusterAnalyzer:
             with _connect_events(events_db) as conn:
 
                 # Build SQL query
+                member_hash_sql=revision.hash_expression(conn)
                 limit_clause = f"LIMIT {limit}" if limit else ""
                 analyzed_filter = "" if include_analyzed else "WHERE llm_analyzed_at IS NULL"
                 sql = f"""
@@ -452,7 +440,8 @@ class ClusterAnalyzer:
                         {PARENT_DIRECTORY_SQL} as parent_directory,
                         GROUP_CONCAT(COALESCE(description, ''), '\n') as group_desc,
                         GROUP_CONCAT(COALESCE(file_path, ''), '\n') as group_paths,
-                        GROUP_CONCAT(id) as member_ids
+                        GROUP_CONCAT(id) as member_ids,
+                        {member_hash_sql} as members_hash
                     FROM events
                     {analyzed_filter}
                     GROUP BY time_window, event_type, parent_directory
@@ -478,7 +467,7 @@ class ClusterAnalyzer:
 
         except sqlite3.Error as e:
             logger.error(f"Failed to fetch event clusters: {e}")
-            return []
+            raise
 
     async def _analyze_clusters_concurrent(
         self,
@@ -513,7 +502,20 @@ class ClusterAnalyzer:
             nonlocal processed
             async with sem:
                 try:
-                    result = await self.analyze_cluster(cluster, case_description)
+                    with _connect_events(events_db) as conn:
+                        rows=revision.read_members(conn,[int(value) for value in str(cluster.get('member_ids') or '').split(',') if value])
+                    observed=revision.fingerprint(rows)['members_hash']
+                    if cluster.get('members_hash') and observed!=cluster['members_hash']:
+                        raise sqlite3.DatabaseError('事件内容在分析前改变，等待续跑')
+                    cluster['members_hash']=observed
+                    cluster['member_rows']=rows
+                    cluster['analysis_context_hash']=revision.context_hash(self.settings,case_description)
+                    if cluster.get('budget_plan_id'):
+                        with cluster_budget.bind(events_db,cluster['budget_plan_id'],observed):
+                            result = await self.analyze_cluster(cluster, case_description)
+                    else:
+                        result = await self.analyze_cluster(cluster, case_description)
+                    if not result.get('success'):raise ValueError(result.get('error') or '事件分析未产生有效结果')
                     # Persist result (append analysis record + dual-write events)
                     result["analysis_id"] = self.persist_cluster_analysis(
                         events_db, cluster, result, task_id=task_id,
@@ -560,10 +562,8 @@ class ClusterAnalyzer:
 
         # Full member list — no sampling (SPEC §6). The evidence lines flow to
         # the LLM via event_data.description, chunked map-reduce when needed.
-        lines = lines_from_paths_descs(
-            cluster['group_paths'].split('\n'),
-            cluster['group_desc'].split('\n'),
-        )
+        lines = lines_from_members(cluster['member_rows']) if cluster.get('member_rows') else lines_from_paths_descs(
+            cluster['group_paths'].split('\n'),cluster['group_desc'].split('\n'))
         prompt = f"""案情背景：{case_description}
 
 请针对以上案情背景，分析这个事件簇在取证上的意义，并给出研判结论。
@@ -650,7 +650,7 @@ class ClusterAnalyzer:
             if not member_ids:
                 raise sqlite3.DatabaseError("cluster has no trusted member IDs")
 
-            fingerprint = members_fingerprint(member_ids)
+            fingerprint = members_fingerprint(member_ids)  # count/min/max compatibility; content is checked in the transaction
             bucket_seconds = int(cluster.get("bucket_seconds") or PIPELINE_BUCKET_SECONDS)
             bucket_offset = int(cluster.get("bucket_epoch_offset") or 0)
             bucket_index = int(cluster.get("time_window") or 0)
@@ -661,6 +661,11 @@ class ClusterAnalyzer:
             ensure_cluster_analysis_schema(events_db)
 
             with _connect_events(events_db) as conn:
+                conn.execute('BEGIN IMMEDIATE')
+                rows=revision.read_members(conn,member_ids)
+                fingerprint=revision.fingerprint(rows)
+                if cluster.get('members_hash') and cluster['members_hash']!=fingerprint['members_hash']:
+                    raise sqlite3.DatabaseError('事件内容在模型分析期间改变，旧结果未写入')
                 cur = conn.execute(
                     """
                     INSERT INTO event_cluster_analyses (
@@ -690,6 +695,7 @@ class ClusterAnalyzer:
                     ),
                 )
                 analysis_id = cur.lastrowid
+                revision.save_members(conn,analysis_id,rows,cluster.get("analysis_context_hash",revision.context_hash(self.settings,"")))
 
                 placeholders = ", ".join("?" for _ in member_ids)
                 sql = f"""
@@ -798,7 +804,7 @@ class ClusterAnalyzer:
             fully_ingested = total and successful == total
             if fully_ingested and events_db and ingested_ids:
                 mark_analysis_ingested(events_db, ingested_ids)
-            return successful > 0
+            return bool(total and successful == total)
 
         except ImportError:
             logger.warning("graphiti_integration not available, skipping cluster ingestion")
@@ -1136,7 +1142,7 @@ async def ingest_analysis_record_to_graphiti(
         successful = getattr(result, "successful", 0)
         if total and successful == total and events_db:
             mark_analysis_ingested(events_db, [analysis["id"]])
-        return successful > 0
+        return bool(total and successful == total)
     except ImportError:
         logger.warning("graphiti_integration not available, skipping cluster ingestion")
         return False

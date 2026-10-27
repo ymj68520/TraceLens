@@ -138,7 +138,8 @@ def fetch_pending_cluster_analyses(events_db: Optional[str]) -> list:
                 "WHERE ingested_at IS NULL AND description IS NOT NULL AND description != '' "
                 "ORDER BY id"
             )
-            return [dict(row) for row in cur.fetchall()]
+            from ..case_analysis.cluster_revision import filter_current_analyses
+            return filter_current_analyses(conn,cur.fetchall())
     except sqlite3.OperationalError:
         return []  # analyses table absent (pre-SPEC events db)
 

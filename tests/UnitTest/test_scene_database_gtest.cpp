@@ -436,7 +436,7 @@ TEST_F(SceneDatabaseTest, ImportSceneArtifactsAndroid) {
     std::remove(tmpEventPath);
 }
 
-TEST_F(SceneDatabaseTest, ImportSceneArtifactsWindows) {
+TEST_F(SceneDatabaseTest, WindowsProcessingTimeIsNotAnActivityTimestamp) {
     std::string filesDbPath = createTempFilesDb("windows");
     populateFilesDbArtifacts(filesDbPath, "windows");
 
@@ -458,7 +458,9 @@ TEST_F(SceneDatabaseTest, ImportSceneArtifactsWindows) {
     EventExtractor extractor(tmpSourcePath, tmpEventPath);
     ASSERT_TRUE(extractor.extractEvents());
 
-    ASSERT_TRUE(extractor.importSceneArtifacts(filesDbPath, "windows"));
+    // This fixture contains only extraction metadata, not typed activity rows.
+    // extracted_at must never be promoted to a Windows occurrence timestamp.
+    ASSERT_FALSE(extractor.importSceneArtifacts(filesDbPath, "windows"));
 
     sqlite3* eventDb;
     ASSERT_EQ(sqlite3_open(tmpEventPath, &eventDb), SQLITE_OK);
@@ -477,7 +479,7 @@ TEST_F(SceneDatabaseTest, ImportSceneArtifactsWindows) {
     sqlite3_finalize(stmt);
     sqlite3_close(eventDb);
 
-    ASSERT_EQ(count, 1);
+    ASSERT_EQ(count, 0);
 
     std::remove(filesDbPath.c_str());
     std::remove(tmpSourcePath);

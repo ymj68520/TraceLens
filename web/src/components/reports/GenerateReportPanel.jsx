@@ -10,6 +10,8 @@ import { listReportEvidence } from '../../services/investigationService';
 import { generateReport, getReportGeneration, getNarrativeReport } from '../../services/reportGenerationService';
 import { fetchTaskById } from '../../services/taskService';
 import { CaseBackgroundPresetPicker } from '../tasks/CaseBackgroundField';
+import { forensicError } from '../../utils/forensicLabels';
+import DeliveryQualityPanel from './DeliveryQualityPanel';
 
 const ERROR_HINTS = {
     citation_invalid: '模型输出引用了报告证据边界之外的来源，生成已整体作废。',
@@ -196,8 +198,8 @@ const GenerateReportPanel = ({
     const busy = submitting || (Boolean(submission) && !terminal);
     const admissionDetail = admissionError?.data?.detail;
     const admissionText = typeof admissionDetail === 'object' && admissionDetail !== null
-        ? (ADMISSION_HINTS[admissionDetail.code] || admissionDetail.message || '请检查分析阶段与案情输入。')
-        : (ADMISSION_HINTS[admissionDetail] || admissionDetail || admissionError?.message || '请稍后重试');
+        ? (ADMISSION_HINTS[admissionDetail.code] || forensicError(admissionError, '请检查分析阶段与案情输入。'))
+        : (ADMISSION_HINTS[admissionDetail] || forensicError(admissionError));
 
     return (
         <section
@@ -243,7 +245,7 @@ const GenerateReportPanel = ({
 
             {summaryError && (
                 <p className="text-xs text-amber-600 dark:text-amber-400" data-testid="generate-source-error">
-                    无法读取当前 Report Evidence 绑定（HTTP {summaryError?.status || '错误'}）。
+                    无法读取当前报告证据绑定（HTTP {summaryError?.status || '错误'}）。
                 </p>
             )}
             {summary && analysisMode !== 'case_guided' && (
@@ -260,12 +262,12 @@ const GenerateReportPanel = ({
                             className="text-amber-600 dark:text-amber-400"
                             data-testid="newer-accepted-hint"
                         >
-                            存在更新的 accepted Analysis，但当前 Report Evidence 仍绑定历史版本（{row.evidence_key}）。
+                            存在更新的已接受分析，但当前报告证据仍绑定历史版本（{row.evidence_key}）。
                         </p>
                     ))}
                     {summary.total === 0 && (
                         <p className="text-amber-600 dark:text-amber-400" data-testid="summary-empty">
-                            当前任务没有加入报告的 Report Evidence，请先在调查工作台显式添加。
+                            当前任务没有加入报告的证据，请先在调查工作台显式添加。
                         </p>
                     )}
                 </div>
@@ -273,7 +275,7 @@ const GenerateReportPanel = ({
 
             <div className="flex flex-wrap items-end gap-2">
                 <label className="block">
-                    <span className="block text-[10px] font-medium text-slate-500 dark:text-slate-400">分析人（requested_by）</span>
+                    <span className="block text-[10px] font-medium text-slate-500 dark:text-slate-400">分析人</span>
                     <input
                         data-testid="generate-actor-input"
                         value={actor}
@@ -326,12 +328,13 @@ const GenerateReportPanel = ({
                     {durableFailed && (
                         <div className="text-rose-600 dark:text-rose-400" data-testid="generate-failed-detail">
                             <p className="font-mono">{generation.error_code}</p>
-                            <p>{generation.error_message}</p>
+                            <p>{forensicError({ error_code: generation.error_code, message: generation.error_message })}</p>
                             <p className="text-slate-500 dark:text-slate-400">
-                                {ERROR_HINTS[generation.error_code] || '生成失败；可重新发起（将创建新的 generation）。'}
+                                {ERROR_HINTS[generation.error_code] || '生成失败；可重新发起并创建新的报告生成记录。'}
                             </p>
                         </div>
                     )}
+                    <DeliveryQualityPanel quality={generation.quality} />
                 </div>
             )}
             {!generation && polling.error && (

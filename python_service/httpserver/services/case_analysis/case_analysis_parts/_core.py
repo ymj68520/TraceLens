@@ -81,7 +81,7 @@ class CaseAnalysisCoreMixin:
         use_streaming: bool = True,
         task_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Let LLM select important files based on case description."""
+        """Select source references through the shared native plan."""
         if not self._file_filter:
             raise RuntimeError("FileFilter module not initialized. Ensure all dependencies are injected.")
         return await self._file_filter.filter_files_by_case(
@@ -100,10 +100,18 @@ class CaseAnalysisCoreMixin:
         """Generate LLM description for each file in the list using concurrency."""
         if not self._file_analyzer:
             raise RuntimeError("FileAnalyzer module not initialized. Ensure all dependencies are injected.")
-        return await self._file_analyzer.analyze_files(
-            files_db_path, file_paths, case_description, extraction_dir, progress_callback,
-            task_id=task_id,
-        )
+        import inspect
+        from ...model_budget import current_selection_run,selection_run
+        from ...selection_binding import bind_sources
+        deferred=[];plan_id=None
+        if not current_selection_run() and inspect.iscoroutinefunction(getattr(getattr(self,'_cpp_backend',None),'selection_plan',None)):
+            plan,file_paths,deferred=await bind_sources(self._cpp_backend,task_id,file_paths,case_description)
+            plan_id=plan['plan_id']
+        with selection_run(plan_id):
+            values=await self._file_analyzer.analyze_files(
+                files_db_path,file_paths,case_description,extraction_dir,progress_callback,task_id=task_id)
+        return values+deferred
+
 
     async def reanalyze_files(
         self,
@@ -116,9 +124,17 @@ class CaseAnalysisCoreMixin:
         """Re-analyze files with additional user context."""
         if not self._file_analyzer:
             raise RuntimeError("FileAnalyzer module not initialized. Ensure all dependencies are injected.")
-        return await self._file_analyzer.reanalyze_files(
-            task_id, file_paths, user_hint, files_db_path, case_description
-        )
+        import inspect
+        from ...model_budget import selection_run
+        from ...selection_binding import bind_sources
+        deferred=[];plan_id=None
+        if inspect.iscoroutinefunction(getattr(getattr(self,'_cpp_backend',None),'selection_plan',None)):
+            plan,file_paths,deferred=await bind_sources(self._cpp_backend,task_id,file_paths,case_description+'\n'+user_hint)
+            plan_id=plan['plan_id']
+        with selection_run(plan_id):
+            values=await self._file_analyzer.reanalyze_files(task_id,file_paths,user_hint,files_db_path,case_description)
+        return values+deferred
+
 
     async def ingest_to_knowledge_graph(
         self,

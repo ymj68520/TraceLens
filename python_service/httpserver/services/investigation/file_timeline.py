@@ -113,61 +113,42 @@ def _cluster_member_paths_batch(
     return result
 
 
-def _load_file_metadata(
-    files_db: str, raw_db: str, paths: set[str]
-) -> dict[str, dict[str, Any]]:
-    """Merge files.db descriptors with raw.db MACB times, keyed by path.
+from ..source_identity import decode_reference,analysis_reference,evidence_key
 
-    Neither store indexes ``path``, so each DB is streamed exactly once and
-    filtered in Python instead of issuing per-chunk ``IN`` scans.
-    """
-    merged: dict[str, dict[str, Any]] = {}
 
-    def _key(value: Any) -> str:
-        return _normalize_fast(value or "")
+def _file_reference(key):
+    from ..evidence.keys import parse_evidence_key
+    parsed=parse_evidence_key(key)
+    return analysis_reference(parsed.normalized_path,parsed.source_id)
 
-    if files_db and os.path.exists(files_db):
+
+def _load_file_metadata(files_db,raw_db,paths):
+    """Match exact source IDs; path-only legacy rows must be unique in each store."""
+    from ..source_identity import analysis_reference,decode_reference
+    merged={}
+    wanted_paths={decode_reference(p)[0] for p in paths}
+    for database in (files_db,raw_db):
+        if not database or not os.path.exists(database):continue
+        found={}
         try:
-            with contextlib.closing(_connect_ro(files_db)) as conn:
-                for row in conn.execute(
-                    "SELECT path, name, size, extension, category, llm_summary, "
-                    "mtime, ctime FROM files"
-                ):
-                    key = _key(row["path"])
-                    if key not in paths:
-                        continue
-                    merged[key] = {
-                        "name": row["name"],
-                        "size": row["size"],
-                        "extension": row["extension"],
-                        "category": row["category"],
-                        "llm_summary": row["llm_summary"],
-                        # files.db carries no atime/crtime; raw.db (when
-                        # present) overwrites mtime/ctime with its fuller set.
-                        "mtime": row["mtime"],
-                        "ctime": row["ctime"],
-                    }
-        except sqlite3.Error:
-            pass
-
-    if raw_db and os.path.exists(raw_db):
-        try:
-            with contextlib.closing(_connect_ro(raw_db)) as conn:
-                for row in conn.execute(
-                    "SELECT path, crtime, mtime, atime, ctime, is_deleted FROM files"
-                ):
-                    key = _key(row["path"])
-                    if key not in paths:
-                        continue
-                    entry = merged.setdefault(key, {})
-                    for macb in MACB_KEYS:
-                        if row[macb] is not None:
-                            entry[macb] = row[macb]
-                    if row["is_deleted"] is not None:
-                        entry["is_deleted"] = row["is_deleted"]
-        except sqlite3.Error:
-            pass
-
+            with contextlib.closing(_connect_ro(database)) as conn:
+                for raw in conn.execute('SELECT * FROM files'):
+                    row=dict(raw);path=_normalize_fast(row['path'])
+                    if path not in wanted_paths:continue
+                    reference=analysis_reference(path,row.get('source_id'))
+                    if reference in paths:found.setdefault(reference,[]).append(row)
+                    if path in paths and path!=reference:found.setdefault(path,[]).append(row)
+            for reference,rows in found.items():
+                if len(rows)!=1:
+                    merged.pop(reference,None)
+                    continue
+                row=rows[0]
+                entry=merged.setdefault(reference,{})
+                for key in ('name','size','extension','category','llm_summary','is_deleted','partition_num','inode',*MACB_KEYS):
+                    if row.get(key) is not None:entry[key]=row[key]
+                if row.get('source_id') and decode_reference(reference)[1]:
+                    entry['source_id']=row['source_id']
+        except sqlite3.Error:continue
     return merged
 
 
@@ -185,11 +166,12 @@ def load_analyzed_paths(files_db: str) -> set[str]:
     try:
         with contextlib.closing(_connect_ro(files_db)) as conn:
             for row in conn.execute(
-                "SELECT path FROM files WHERE llm_analyzed_at IS NOT NULL"
+                "SELECT * FROM files WHERE llm_analyzed_at IS NOT NULL"
             ):
                 path = row["path"]
                 if path:
-                    analyzed.add(path)
+                    from ..source_identity import analysis_reference
+                    analyzed.add(analysis_reference(path,dict(row).get("source_id")))
     except sqlite3.DatabaseError:
         return set()
     return analyzed
@@ -224,7 +206,7 @@ def covered_file_event_map(
         key = link.evidence_key
         if key.startswith(FILE_KEY_PREFIX):
             try:
-                path = normalize_forensic_path(parse_file_evidence_key(key))
+                path = _file_reference(key)
             except InvalidEvidenceKey:
                 continue
             if path:
@@ -300,7 +282,7 @@ def collect_file_timeline(
             if not key.startswith(FILE_KEY_PREFIX):
                 continue
             try:
-                judged_path = normalize_forensic_path(parse_file_evidence_key(key))
+                judged_path = _file_reference(key)
             except InvalidEvidenceKey:
                 continue
             if judged_path:
@@ -315,8 +297,12 @@ def collect_file_timeline(
             if event_id in known_event_ids
         )
         entry = dict(metadata.get(path) or {})
+        if path not in metadata:
+            entry['source_status']='unresolved'
         entry.update(
-            path=path,
+            path=decode_reference(path)[0],
+            source_reference=path,
+            evidence_key=evidence_key(decode_reference(path)[0],decode_reference(path)[1]),
             name=entry.get("name") or path.rstrip("/").rsplit("/", 1)[-1],
             event_ids=event_ids,
             event_count=len(event_ids),
@@ -333,7 +319,9 @@ def collect_file_timeline(
             continue
         entry = dict(metadata[path])
         entry.update(
-            path=path,
+            path=decode_reference(path)[0],
+            source_reference=path,
+            evidence_key=evidence_key(decode_reference(path)[0],decode_reference(path)[1]),
             name=entry.get("name") or path.rstrip("/").rsplit("/", 1)[-1],
             event_ids=[],
             event_count=0,
@@ -359,8 +347,8 @@ def collect_file_timeline(
     # 的未知路径忽略。
     ensured_paths: list[str] = []
     if ensure_paths:
-        included = {item["path"] for item in ordered}
-        by_path = {item["path"]: item for item in files}
+        included = {item["source_reference"] for item in ordered}
+        by_path = {item["source_reference"]: item for item in files}
         for raw in ensure_paths:
             path = _normalize_fast(raw)
             if not path or path in included:

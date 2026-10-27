@@ -1,6 +1,6 @@
 #pragma once
 
-#include "IFileExtractor.h"
+#include "IndexedMobileSource.h"
 #include <nlohmann/json.hpp>
 #include <sqlite3.h>
 #include <filesystem>
@@ -9,14 +9,8 @@
 
 // Already-decrypted HarmonyOS backup. Paths are scoped by bundle and appIndex;
 // the numeric IDs exported to the common files table are logical IDs, not inodes.
-class HarmonyBackupExtractor final : public IFileExtractor {
+class HarmonyBackupExtractor final : public IndexedMobileSource {
 public:
-    struct Entry {
-        std::string path, bundle, originalPath, container;
-        std::uint64_t offset = 0, size = 0;
-        std::int64_t modified = 0, containerSize = 0, containerTime = 0;
-        int appIndex = 0;
-    };
     explicit HarmonyBackupExtractor(std::string root);
     static bool recognizes(const std::string& root);
     static std::string scopedPath(const std::string& bundle, int appIndex,
@@ -26,6 +20,7 @@ public:
     bool saveIndex(sqlite3* database) const;
     bool verifyIntegrity();
     bool extractFileByPath(const std::string&, const std::string&) override;
+    bool readRange(const std::string&,std::uint64_t,std::size_t,std::string&,std::string&) override;
     std::vector<std::string> findPathsByFilename(const std::string&, std::size_t limit = 200) const override;
     std::vector<AndroidSourceProvenance> usedSourceProvenance() const override;
     const std::map<std::string, Entry>& entries() const { return entries_; }

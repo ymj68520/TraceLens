@@ -74,16 +74,19 @@ class FileMatcher:
             MatchResult with selected files and metadata
         """
         result = MatchResult()
+        from ..source_identity import analysis_reference
 
         # Build lookup structures
         name_to_paths: Dict[str, List[Dict[str, Any]]] = {}
-        path_lookup: Dict[str, Dict[str, Any]] = {}
+        path_lookup = {}
 
         for f in batch_files:
             path = f.get("path", "")
             name = f.get("name", "")
             if path:
-                path_lookup[path] = f
+                path_lookup.setdefault(path,[]).append(f)
+                if f.get('source_id'):
+                    path_lookup[analysis_reference(path,f['source_id'])]=[f]
             if name:
                 if name not in name_to_paths:
                     name_to_paths[name] = []
@@ -95,8 +98,13 @@ class FileMatcher:
 
             # Direct path match
             if item_clean in path_lookup:
-                result.files.append(item_clean)
-                result.confidence_scores[item_clean] = 1.0
+                candidates=path_lookup[item_clean]
+                if len(candidates)!=1:
+                    result.no_matches.append(item_clean)
+                    continue
+                selected=analysis_reference(candidates[0]['path'],candidates[0].get('source_id'))
+                result.files.append(selected)
+                result.confidence_scores[selected] = 1.0
                 continue
 
             # Name match - handle duplicates
@@ -104,10 +112,13 @@ class FileMatcher:
                 candidates = name_to_paths[item_clean]
 
                 if len(candidates) == 1:
-                    selected = candidates[0]["path"]
+                    selected = analysis_reference(candidates[0]['path'],candidates[0].get('source_id'))
                     result.files.append(selected)
                     result.confidence_scores[selected] = 1.0
                 else:
+                    if any(candidate.get('source_id') for candidate in candidates):
+                        result.no_matches.append(item_clean)
+                        continue
                     # Multiple duplicates - use composite scoring
                     selected = self._resolve_duplicate(
                         item_clean, candidates, case_context

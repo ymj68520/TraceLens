@@ -64,11 +64,16 @@ def normalize_forensic_path(path: str) -> str:
     return path
 
 
-def make_file_evidence_key(file_path: str) -> str:
-    return FILE_KEY_PREFIX + normalize_forensic_path(file_path)
+def make_file_evidence_key(file_path: str, source_id=None) -> str:
+    from .source_identity import decode_reference, evidence_key
+    path, embedded = decode_reference(file_path)
+    return evidence_key(path,source_id or embedded)
 
 
 def parse_file_evidence_key(evidence_key: str) -> str:
+    if isinstance(evidence_key,str) and evidence_key.startswith('file:v2:'):
+        from .evidence.keys import parse_evidence_key
+        return parse_evidence_key(evidence_key).normalized_path
     if not isinstance(evidence_key, str) or not evidence_key.startswith(FILE_KEY_PREFIX):
         raise InvalidEvidenceKey(f"not a file evidence key: {evidence_key!r}")
     path = evidence_key[len(FILE_KEY_PREFIX):]
@@ -297,16 +302,15 @@ class EvidenceResolver:
         return found
 
     @staticmethod
-    def _load_file_row(files_db: str, normalized_path: str) -> Optional[Dict[str, Any]]:
+    def _load_file_row(files_db: str, normalized_path: str, source_id=None) -> Optional[Dict[str, Any]]:
+        from .source_identity import file_row, SourceIdentityError
+        from contextlib import closing
         try:
-            with EvidenceResolver._connect_readonly(files_db) as conn:
-                row = conn.execute("SELECT * FROM files WHERE path = ? LIMIT 1", (normalized_path,)).fetchone()
-                if row is None:
-                    row = conn.execute(
-                        "SELECT * FROM files WHERE REPLACE(path, '\\\\', '/') = ? LIMIT 1",
-                        (normalized_path,),
-                    ).fetchone()
-                return dict(row) if row else None
+            with closing(EvidenceResolver._connect_readonly(files_db)) as conn:
+                return file_row(conn,normalized_path,source_id)[0]
+        except SourceIdentityError as exc:
+            if exc.code=='SOURCE_NOT_FOUND':return None
+            raise
         except (FileNotFoundError, sqlite3.Error):
             return None
 
@@ -321,16 +325,18 @@ class EvidenceResolver:
 
     def _resolve_file(self, task_id: str, key: str, task_info: Dict[str, Any], paths: Dict[str, str]) -> Optional[ResolvedEvidence]:
         normalized = parse_file_evidence_key(key)
-        row = self._load_file_row(paths["files_db"], normalized)
+        from .evidence.keys import parse_evidence_key
+        row = self._load_file_row(paths["files_db"], normalized,parse_evidence_key(key).source_id)
         if row is None:
             return None
         forensic_path = row.get("path") or normalized
-        content_path = forensic_path if os.path.exists(forensic_path) else None
-        extraction_dir = task_info.get("extraction_directory") or ""
-        if not content_path and extraction_dir:
-            relative = normalize_forensic_path(forensic_path).lstrip("/")
-            candidates = [Path(extraction_dir) / relative, Path(extraction_dir) / os.path.basename(relative)]
-            content_path = next((str(item) for item in candidates if item.exists()), None)
+        content_path = None
+        from .source_reading import resolve_source
+        from .source_identity import SourceIdentityError
+        try:
+            content_path=str(resolve_source(task_info,forensic_path,row.get('source_id')).path)
+        except SourceIdentityError as exc:
+            if exc.code!='EXTRACTED_SOURCE_MISSING':raise
         return ResolvedEvidence(
             task_id=task_id, evidence_key=key, evidence_type="file",
             title=row.get("name") or os.path.basename(normalized),
@@ -435,12 +441,20 @@ class EvidenceResolver:
     async def bounded_content(self, resolved: ResolvedEvidence) -> str:
         if resolved.evidence_type == "event_cluster":
             return str(resolved.content or "")[:MAX_CONTENT_CHARS]
-        if not resolved.content_path:
-            return ""
-        if self._content_reader:
-            return (await self._content_reader(resolved.content_path))[:MAX_CONTENT_CHARS]
+        from .source_reading import task_source_file
+        from .source_identity import SourceIdentityError
+        task=await self._task_loader(resolved.task_id)
         try:
-            with open(resolved.content_path, "r", encoding="utf-8", errors="ignore") as handle:
-                return handle.read(MAX_CONTENT_CHARS)
-        except OSError:
+            async with task_source_file(resolved.task_id,resolved.file_path,
+                    source_id=resolved.metadata.get('source_id'),task=task) as (copy,_reference,_provenance):
+                if self._content_reader:
+                    return (await self._content_reader(copy))[:MAX_CONTENT_CHARS]
+                from .document_extractor import get_document_extractor_locator
+                extractor=get_document_extractor_locator().get_extractor(copy)
+                if extractor:
+                    content,_method=await extractor.extract_to_markdown_detailed(copy)
+                    return content[:MAX_CONTENT_CHARS]
+                with open(copy, "r", encoding="utf-8", errors="strict") as handle:
+                    return handle.read(MAX_CONTENT_CHARS)
+        except (OSError,UnicodeError):
             return ""

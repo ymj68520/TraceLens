@@ -91,13 +91,12 @@ class ReportEvidenceService:
                     f"file:{resolved.source_db}?mode=ro", uri=True
                 ) as conn:
                     conn.row_factory = sqlite3.Row
-                    row = conn.execute(
-                        "SELECT * FROM files WHERE path = ?", (path,)
-                    ).fetchone()
-                row_dict = dict(row) if row is not None else {}
+                    from ..source_identity import file_row
+                    row_dict, locator = file_row(conn,path,resolved.source_id)
                 snapshot_json = json.dumps(
                     {
                         "evidence_type": "file",
+                        **({"source_id":resolved.source_id,"source_locator":locator} if resolved.source_id else {}),
                         "normalized_path": path,
                         "name": row_dict.get("name"),
                         "extension": row_dict.get("extension"),
@@ -260,10 +259,14 @@ class ReportEvidenceService:
                         has_re_table = False
 
                 join_sql = ""
+                from ..source_identity import has_column, evidence_key
+                indexed=has_column(conn,'files','source_id')
+                sid_sql='f.source_id' if indexed else 'NULL'
+                conn.create_function('source_evidence_key',2,evidence_key)
                 if has_re_table:
                     join_sql = (
                         "LEFT JOIN inv.report_evidence re ON re.task_id = ? "
-                        "AND re.evidence_key = 'file:' || f.path "
+                        f"AND re.evidence_key = source_evidence_key(f.path,{sid_sql}) "
                         "AND re.evidence_key LIKE 'file:%'"
                     )
 
@@ -272,7 +275,7 @@ class ReportEvidenceService:
                 # 否则 LEFT JOIN 会让判定计数与分页行成倍膨胀。
                 files_source = (
                     "FROM (SELECT * FROM (SELECT f0.*, ROW_NUMBER() OVER "
-                    "(PARTITION BY f0.path ORDER BY f0.id) AS __rn "
+                    f"(PARTITION BY f0.path{',f0.source_id' if indexed else ''} ORDER BY f0.id) AS __rn "
                     "FROM files f0) WHERE __rn = 1) f"
                 )
 
@@ -329,7 +332,7 @@ class ReportEvidenceService:
                     else ", NULL AS re_status, NULL AS re_analysis, NULL AS re_updated"
                 )
                 rows = conn.execute(
-                    f"SELECT f.path, f.name, f.extension, f.category, f.size, "
+                    f"SELECT f.path, {sid_sql} AS source_id, f.name, f.extension, f.category, f.size, "
                     f"f.mtime, f.ctime, f.md5, f.is_deleted, f.llm_summary, "
                     f"f.llm_analyzed_at, f.scene_relevant{re_select} "
                     f"{files_source} {join_sql} WHERE 1=1 {analyzed_where} {where_status} "
@@ -357,7 +360,8 @@ class ReportEvidenceService:
                         "llm_summary": row["llm_summary"],
                         "llm_analyzed_at": row["llm_analyzed_at"],
                         "scene_relevant": row["scene_relevant"],
-                        "evidence_key": f"file:{row['path']}",
+                        "evidence_key": evidence_key(row['path'],row['source_id']),
+                        "source_id":row['source_id'],
                         "report_status": report_status,
                         "analysis_id": row["re_analysis"] if has_re_table else None,
                         "updated_at": row["re_updated"] if has_re_table else None,
@@ -391,9 +395,11 @@ class ReportEvidenceService:
             raise EvidenceStoreError("task has no files database")
 
         def _covered():
-            from .file_timeline import load_analyzed_paths
-
-            return sorted(load_analyzed_paths(files_db))
+            from ..source_identity import has_column, analysis_reference
+            with sqlite3.connect(f"file:{files_db}?mode=ro",uri=True) as db:
+                indexed=has_column(db,"files","source_id")
+                rows=db.execute("SELECT path,"+("source_id" if indexed else "NULL")+" FROM files WHERE llm_analyzed_at IS NOT NULL").fetchall()
+                return sorted({analysis_reference(path,sid) for path,sid in rows if path})
 
         paths = await asyncio.to_thread(_covered)
 
@@ -424,15 +430,16 @@ class ReportEvidenceService:
                         (task_id,),
                     )
                 }
-                for path in paths:
-                    key = f"file:{path}"
+                from ..source_identity import decode_reference, evidence_key, file_row, SourceIdentityError
+                for reference in paths:
+                    path, source_id = decode_reference(reference)
+                    key = evidence_key(path,source_id)
                     if key in judged:
                         skipped_judged += 1
                         continue
-                    row = files_conn.execute(
-                        "SELECT * FROM files WHERE path = ?", (path,)
-                    ).fetchone()
-                    if row is None:
+                    try:
+                        row, locator = file_row(files_conn,path,source_id)
+                    except SourceIdentityError:
                         missing_files += 1
                         continue
                     if key not in captured:
@@ -448,6 +455,7 @@ class ReportEvidenceService:
                                 path,
                                 json.dumps(
                                     {
+                                        **({"source_id":source_id,"source_locator":locator} if source_id else {}),
                                         "evidence_type": "file",
                                         "normalized_path": path,
                                         "name": row_dict.get("name"),
@@ -499,7 +507,10 @@ class ReportEvidenceService:
 
         try:
             result = await asyncio.to_thread(_seed)
-            if task.get("android_source") == "harmony-backup":
+            windows = await self._seed_windows_activity(task,added_by=added_by)
+            if windows:result['windows_seeded']=windows
+            result['seeded']+=windows
+            if task.get("android_source") in {"harmony-backup", "xiaomi-image"}:
                 mobile = await self._seed_analyzed_mobile(task, added_by=added_by)
                 result["mobile_seeded"] = mobile
                 result["seeded"] += mobile
@@ -509,8 +520,61 @@ class ReportEvidenceService:
                 "investigation database is unavailable"
             ) from exc
 
+    async def _seed_windows_activity(self,task: dict,*,added_by: str) -> int:
+        """Bounded table-diverse raw records, through the existing snapshot path."""
+        from ..windows_activity_reader import connect,key
+        from contextlib import closing
+        from .service import InvestigationCaptureService
+        database=task.get('output_events_db')
+        if not database or not Path(database).is_file():return 0
+        def candidates():
+            with closing(connect(database)) as conn:
+                if not conn.execute("SELECT 1 FROM sqlite_master WHERE name='windows_activity_current'").fetchone():return None,[]
+                current=conn.execute('SELECT result_set_id FROM windows_activity_current WHERE task_id=?',(task['id'],)).fetchone()
+                if not current:return None,[]
+                result=[]
+                for kind in ('prefetch_files','browser_history','browser_downloads','browser_logins','windows_services','scheduled_tasks','usb_devices','recycle_bin','amcache_entries','event_logs'):
+                    result.extend((current[0],kind,row[0]) for row in conn.execute(
+                        "SELECT record_id FROM windows_activity_records WHERE result_set_id=? AND source_table=? "
+                        "AND json_extract(record_json,'$.parser_status') IN ('ok','partial') ORDER BY record_id LIMIT 30",(current[0],kind)))
+                return current[0],result
+        current,selected=await asyncio.to_thread(candidates)
+        existing_items=await self.list(task['id'])
+        # Only untouched automatic bindings follow the current derived version.
+        # Human decisions and bound analyses stay explicit; old snapshots/reports
+        # retain their exact source bytes and identities.
+        if current:
+            outdated=[]
+            for item in existing_items:
+                if (item.evidence_key.startswith(f"windows_artifact:v1:{task['id']}:") and
+                    item.evidence_key.split(':')[3]!=current and
+                    item.added_by.startswith('Windows自动来源/') and item.analysis_id is None and
+                    (item.updated_by is None or (item.updated_by==item.added_by and item.updated_at==item.created_at))):
+                    outdated.append(item.evidence_key)
+            if outdated:
+                report_db=await self._resolve_task_db(task['id'])
+                def retire():
+                    with sqlite3.connect(report_db,timeout=30) as conn:
+                        conn.execute('BEGIN IMMEDIATE')
+                        for old_key in outdated:
+                            conn.execute("UPDATE report_evidence SET report_status='excluded',updated_at=?,updated_by='系统：来源版本更新' "
+                                "WHERE task_id=? AND evidence_key=? AND analysis_id IS NULL AND added_by LIKE 'Windows自动来源/%' "
+                                "AND report_status IN ('main','appendix') "
+                                "AND (updated_by IS NULL OR (updated_by=added_by AND updated_at=created_at))",
+                                (datetime.now(timezone.utc).isoformat(),task['id'],old_key))
+                await asyncio.to_thread(retire)
+        existing={item.evidence_key for item in existing_items}
+        capture=InvestigationCaptureService(self._cpp_backend,EvidenceResolver(self._cpp_backend));count=0
+        for result,kind,record_id in selected:
+            reference=key(task['id'],result,kind,record_id)
+            if reference in existing:continue
+            await capture.capture(task['id'],reference)
+            await self.add(task['id'],reference,report_status='appendix' if kind in ('windows_services','scheduled_tasks') else 'main',added_by=f'Windows自动来源/{added_by}')
+            count+=1
+        return count
+
     async def _seed_analyzed_mobile(self, task: dict, *, added_by: str) -> int:
-        """Feed analyzed Harmony rows into the same frozen report evidence path.
+        """Feed analyzed mobile rows into the same frozen report evidence path.
 
         The pipeline invokes this after its existing ingestion tail. A bounded
         selection of already-analyzed rows is used; this does not call a model

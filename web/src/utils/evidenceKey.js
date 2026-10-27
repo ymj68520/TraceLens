@@ -10,11 +10,20 @@
 export const FILE_KEY_PREFIX = 'file:';
 
 // file: 前缀证据键 → 裸路径；非 file: 键返回 null（时间线没有对应文件落点）。
-export const stripFileKeyPrefix = (evidenceKey) => (
-    typeof evidenceKey === 'string' && evidenceKey.startsWith(FILE_KEY_PREFIX)
-        ? evidenceKey.slice(FILE_KEY_PREFIX.length)
-        : null
-);
+export const fileSourceId = (key) => /^file:v2:([0-9a-f]{64}):/.exec(key || '')?.[1] || null;
+export const stripFileKeyPrefix = (key) => {
+    if (typeof key !== 'string' || !key.startsWith(FILE_KEY_PREFIX)) return null;
+    if (key.startsWith('file:v2:')) {
+        const match = /^file:v2:([0-9a-f]{64}):(.*)$/s.exec(key);
+        try { return match ? decodeURIComponent(match[2]) : null; } catch { return null; }
+    }
+    return key.slice(FILE_KEY_PREFIX.length);
+};
+const encodePath = (path) => encodeURIComponent(path).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+export const fileEvidenceKey = (file) => file.evidence_key || (file.source_id
+    ? `file:v2:${file.source_id}:${encodePath(file.path || file.file_path)}` : `file:${file.path || file.file_path}`);
+export const fileSourceReference = (file) => file.source_reference || (file.source_id
+    ? `source:v1:${file.source_id}:${file.path || file.file_path}` : (file.path || file.file_path));
 
 // 与后端 normalize_evidence_path 相同的冻结规则，用于深链参数与时间线
 // path 的容错匹配（时间线 path 本已是规范形，此函数主要兜底 URL 传入形）。
@@ -31,6 +40,7 @@ export const investigationFileUrl = (taskId, evidenceKey, { reportId, citationId
     const path = stripFileKeyPrefix(evidenceKey);
     if (!taskId || !path) return null;
     let url = `/investigation?task_id=${encodeURIComponent(taskId)}&file=${encodeURIComponent(path)}`;
+    if (fileSourceId(evidenceKey)) url += `&evidence_key=${encodeURIComponent(evidenceKey)}`;
     if (reportId) url += `&report_id=${encodeURIComponent(reportId)}`;
     if (citationId) url += `&citation_id=${encodeURIComponent(citationId)}`;
     return url;
@@ -41,7 +51,7 @@ export const investigationFileUrl = (taskId, evidenceKey, { reportId, citationId
 export const investigationEvidenceUrl = (taskId, evidenceKey, options = {}) => {
     if (evidenceKey?.startsWith('file:')) return investigationFileUrl(taskId, evidenceKey, options);
     if (!taskId || typeof evidenceKey !== 'string' ||
-        !evidenceKey.startsWith(`android_artifact:v1:${taskId}:`)) return null;
+        !evidenceKey.startsWith(`android_artifact:v1:${taskId}:`) && !evidenceKey.startsWith(`windows_artifact:v1:${taskId}:`)) return null;
     let url = `/investigation?task_id=${encodeURIComponent(taskId)}&evidence_key=${encodeURIComponent(evidenceKey)}`;
     if (options.reportId) url += `&report_id=${encodeURIComponent(options.reportId)}`;
     if (options.citationId) url += `&citation_id=${encodeURIComponent(options.citationId)}`;

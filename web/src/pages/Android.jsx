@@ -69,7 +69,7 @@ const openStatusBadge = (status) => {
   return { variant: 'gray', label: forensicLabel(status, '状态待核对') };
 };
 
-const MOBILE_LABELS = { calendar: '日历', recording: '录音', call_recording: '通话录音', media: '照片/视频元数据', media_file: '媒体文件', note: '备忘录', note_content: '备忘录内容', todo: '待办', note_block: '思源内容块', qq_contact: 'QQ 联系人', qq_group: 'QQ 群资料', qq_recent: 'QQ 最近会话' };
+const MOBILE_LABELS = { contact: '联系人聚合记录', contact_raw: '联系人来源记录', contact_data: '联系人数据项', call: '通话记录', sms: '短信', browser_history: '浏览历史', browser_bookmark: '浏览器书签', calendar: '日历', recording: '录音', call_recording: '通话录音', media: '照片/视频元数据', media_file: '媒体文件', note: '备忘录', note_content: '备忘录内容', todo: '待办', note_block: '思源内容块', qq_contact: 'QQ 联系人', qq_group: 'QQ 群资料', qq_recent: 'QQ 最近会话' };
 
 const STATUS_BAR = {
   decrypted: { bg: 'bg-emerald-500', label: '已解密' },
@@ -206,12 +206,12 @@ const Android = () => {
         <motion.h1 initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="text-3xl font-bold text-slate-900">手机备份分析</motion.h1>
         <p className="mt-2 text-slate-600">任务: {currentTask?.image_path || taskId}</p>
         <Link to={`/android?mode=report&task_id=${encodeURIComponent(taskId)}`} className="mt-2 inline-block text-sm font-semibold text-primary-600 hover:underline">查看或导入离线取证报告 →</Link>
-        {currentTask && <div className="mt-2 flex items-center gap-2 flex-wrap"><Badge variant="blue">{currentTask.status}</Badge>{manifest.device && <Badge variant="purple">{manifest.device}</Badge>}{(manifest.miui_version || manifest.backup_version) && <Badge variant="gray">{manifest.miui_version || manifest.backup_version}</Badge>}</div>}
+        {currentTask && <div className="mt-2 flex items-center gap-2 flex-wrap"><Badge variant="blue">{forensicLabel(currentTask.status)}</Badge>{manifest.device && <Badge variant="purple">{manifest.device}</Badge>}{(manifest.miui_version || manifest.backup_version) && <Badge variant="gray">{manifest.miui_version || manifest.backup_version}</Badge>}</div>}
       </div>
       {error && <Card title="错误"><div className="p-4 bg-red-50 border border-red-200 rounded-xl"><p className="text-red-800">{error}</p></div></Card>}
       <AndroidCoverageCard taskId={taskId} />
       <AndroidArtifactsCard taskId={taskId} platform={manifest.platform} />
-      {manifest.platform === 'HarmonyOS' && <Card title="鸿蒙解析概览" subtitle="以下为解析记录数；媒体记录不等于原图数量，内容块不等于笔记篇数。"><div className="flex flex-wrap gap-4">{(overview?.artifact_counts || []).map((row) => <div key={row.kind} className="rounded-lg bg-slate-50 px-4 py-3"><div className="text-sm text-slate-600">{MOBILE_LABELS[row.kind] || row.kind}</div><strong>{Number(row.count).toLocaleString('zh-CN')}</strong></div>)}</div></Card>}
+      {['HarmonyOS', 'Android / MIUI'].includes(manifest.platform) && <Card title={manifest.platform === 'HarmonyOS' ? '鸿蒙解析概览' : '小米镜像解析概览'} subtitle="以下为解析记录数；媒体记录不等于原图数量，内容块不等于笔记篇数。"><div className="flex flex-wrap gap-4">{(overview?.artifact_counts || []).map((row) => <div key={row.kind} className="rounded-lg bg-slate-50 px-4 py-3"><div className="text-sm text-slate-600">{MOBILE_LABELS[row.kind] || row.kind}</div><strong>{Number(row.count).toLocaleString('zh-CN')}</strong></div>)}</div></Card>}
       <div className="border-b border-slate-200 overflow-x-auto">
         <nav className="-mb-px flex space-x-8 min-w-max" aria-label="页签">
           {[
@@ -237,7 +237,7 @@ const OverviewTab = ({ taskId, manifest, decryptionStatus, wechatSummary, hasWec
   const total = decryptionStatus.reduce((sum, item) => sum + Number(item.count || 0), 0);
   const cards = [
     { icon: Smartphone, label: '设备型号', value: manifest.device || '-' },
-    { icon: Package, label: manifest.platform === 'HarmonyOS' ? '备份组件版本' : 'MIUI 版本', value: manifest.backup_version || manifest.miui_version || '-' },
+    { icon: Package, label: manifest.platform === 'HarmonyOS' ? '备份组件版本' : manifest.platform === 'Android / MIUI' ? '已验证的系统版本' : 'MIUI 版本', value: manifest.backup_version || manifest.miui_version || '-' },
     { icon: Calendar, label: '备份时间', value: formatMsDate(manifest.backup_date) },
     { icon: HardDrive, label: '备份总大小', value: formatBytes(manifest.total_size) },
     { icon: Package, label: '应用数', value: manifest.package_count ?? '-' },

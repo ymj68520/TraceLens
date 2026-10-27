@@ -44,11 +44,13 @@ std::string FileTextProcessor::truncateContent(const std::string& content, size_
     }
 
     if (maxLength < 100) {
-        return content.substr(0, maxLength);
+        size_t end=maxLength;
+        while(end>0 && end<content.size() && (static_cast<unsigned char>(content[end])&0xc0)==0x80)--end;
+        return content.substr(0,end);
     }
 
     // Reserve space for indicator
-    const std::string indicator = "\n\n[... Content truncated due to context window limit ...]\n\n";
+    const std::string indicator = "\n（内容按预算截断，省略部分未作推断。）\n";
     size_t effectiveMax = maxLength - indicator.size();
 
     // Split: 70% from beginning, 30% from end
@@ -67,6 +69,8 @@ std::string FileTextProcessor::truncateContent(const std::string& content, size_
             break;
         }
     }
+    while(headEnd>0 && headEnd<content.size() && (static_cast<unsigned char>(content[headEnd])&0xc0)==0x80)--headEnd;
+    while(tailStart<content.size() && (static_cast<unsigned char>(content[tailStart])&0xc0)==0x80)++tailStart;
 
     std::string result;
     result.reserve(maxLength);

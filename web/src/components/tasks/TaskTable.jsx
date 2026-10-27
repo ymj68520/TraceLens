@@ -237,7 +237,7 @@ export default function TaskTable({ tasks, onCancel, onDelete, onJoinCase, onRes
                     <span className="w-24 uppercase shrink-0">
                       {task.interrupted_by_restart ? t('task.interruptedAt') : '结束：'}
                     </span>
-                    <span className="text-slate-600 dark:text-slate-300 font-medium">{formatDate(task.timestamps?.completed)}</span>
+                    <span className="text-slate-600 dark:text-slate-300 font-medium">{formatDate(task.interrupted_by_restart ? task.timestamps?.interrupted : ['COMPLETED','FAILED','CANCELLED'].includes(String(task.status).toUpperCase()) ? task.timestamps?.completed : null)}</span>
                   </div>
                 </div>
               </td>

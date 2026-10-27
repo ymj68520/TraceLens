@@ -14,26 +14,16 @@
 namespace PrefetchHelpers {
 
 PrefetchVersion detectVersion(const char* header) {
-    if (std::memcmp(header, "MAM", 3) == 0) {
-        // Check for version 30+ (MAM\x04)
-        if (header[3] == 0x04) {
-            uint32_t version = *reinterpret_cast<const uint32_t*>(header + 4);
-            if (version == 30) return PrefetchVersion::VERSION_30;
-            if (version == 31) return PrefetchVersion::VERSION_31;
-            return PrefetchVersion::VERSION_30; // Assume version 30 for unknown
-        }
-        // Older compressed format
-        uint32_t version = *reinterpret_cast<const uint32_t*>(header + 8);
-        if (version == 23) return PrefetchVersion::VERSION_23;
-        if (version == 26) return PrefetchVersion::VERSION_26;
-        return PrefetchVersion::VERSION_23; // Assume version 23
+    // MAM stores the uncompressed size here, not the Prefetch version.
+    if (std::memcmp(header + 4, "SCCA", 4) != 0) return PrefetchVersion::UNKNOWN;
+    switch (readUInt32LE(header)) {
+        case 17: return PrefetchVersion::VERSION_17;
+        case 23: return PrefetchVersion::VERSION_23;
+        case 26: return PrefetchVersion::VERSION_26;
+        case 30: return PrefetchVersion::VERSION_30;
+        case 31: return PrefetchVersion::VERSION_31;
+        default: return PrefetchVersion::UNKNOWN;
     }
-
-    if (std::memcmp(header, "SCCA", 4) == 0) {
-        return PrefetchVersion::VERSION_17; // Windows XP/2003
-    }
-
-    return PrefetchVersion::UNKNOWN;
 }
 
 int64_t filetimeToUnixTime(uint64_t filetime) {
@@ -45,7 +35,7 @@ int64_t filetimeToUnixTime(uint64_t filetime) {
     const uint64_t TICKS_PER_SECOND = 10000000;
     const uint64_t EPOCH_DIFFERENCE = 11644473600ULL;
 
-    return static_cast<int64_t>((filetime / TICKS_PER_SECOND) - EPOCH_DIFFERENCE);
+    return (static_cast<int64_t>(filetime / TICKS_PER_SECOND) - static_cast<int64_t>(EPOCH_DIFFERENCE));
 }
 
 uint16_t readUInt16LE(const char* data) {
@@ -124,32 +114,6 @@ std::string extractHashFromFilename(const std::string& filename) {
 }
 
 bool isValidPrefetchFile(const std::string& filepath) {
-    std::ifstream file(filepath, std::ios::binary);
-    if (!file) return false;
-
-    char header[4];
-    file.read(header, 4);
-    if (file.gcount() < 4) return false;
-
-    // Check for valid signatures
-    if (std::memcmp(header, "MAM", 3) == 0 || std::memcmp(header, "SCCA", 4) == 0) {
-        return true;
-    }
-
-    return false;
+    return PrefetchParser(filepath).parse();
 }
-
-std::string calculatePrefetchHash(const std::string& executableName) {
-    // This is a simplified placeholder
-    // The real prefetch hash algorithm is more complex and involves:
-    // 1. Converting executable name to uppercase
-    // 2. Normalizing the path
-    // 3. Computing a checksum/hash
-    // For now, return a placeholder based on string length
-    std::ostringstream oss;
-    oss << std::hex << std::setw(8) << std::setfill('0')
-        << (std::hash<std::string>{}(executableName) & 0xFFFFFFFF);
-    return oss.str();
-}
-
 } // namespace PrefetchHelpers

@@ -75,7 +75,7 @@ async def test_office_unknown_file_in_task_workspace_rejected(tmp_path, monkeypa
             office.ParseRequest(task_id="task-1", file_path=str(unknown))
         )
     assert excinfo.value.status_code == 404
-    assert excinfo.value.detail == "file is not part of the current task"
+    assert excinfo.value.detail['code'] == 'SOURCE_NOT_FOUND'
 
 
 @pytest.mark.asyncio
@@ -89,7 +89,7 @@ async def test_office_other_task_file_rejected(tmp_path, monkeypatch):
             office.ParseRequest(task_id="task-1", file_path=str(other))
         )
     assert excinfo.value.status_code == 404
-    assert excinfo.value.detail == "file is not part of the current task"
+    assert excinfo.value.detail['code'] == 'SOURCE_NOT_FOUND'
 
 
 @pytest.mark.asyncio

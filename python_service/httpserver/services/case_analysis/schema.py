@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import sqlite3
+from contextlib import closing
 from typing import Any, Dict, List, Optional, Sequence
 
 logger = logging.getLogger(__name__)
@@ -89,9 +90,11 @@ BUCKET_EPOCH_OFFSET_META_KEY = "bucket_epoch_offset"
 
 def ensure_cluster_analysis_schema(events_db: str) -> None:
     """Idempotently create the cluster-analysis tables in ``events_db``."""
-    with sqlite3.connect(events_db, timeout=10) as conn:
+    with closing(sqlite3.connect(events_db, timeout=10)) as conn, conn:
         for statement in CLUSTER_ANALYSIS_DDL:
             conn.execute(statement)
+        from .cluster_revision import ensure_schema
+        ensure_schema(conn)
         conn.commit()
 
 
@@ -102,7 +105,7 @@ def read_bucket_epoch_offset(events_db: str) -> int:
     (UTC-aligned windows) — the same value the SQL used before offsets existed.
     """
     try:
-        with sqlite3.connect(f"file:{events_db}?mode=ro", uri=True, timeout=10) as conn:
+        with closing(sqlite3.connect(f"file:{events_db}?mode=ro", uri=True, timeout=10)) as conn, conn:
             row = conn.execute(
                 "SELECT value FROM analysis_meta WHERE key = ?",
                 (BUCKET_EPOCH_OFFSET_META_KEY,),
@@ -132,7 +135,7 @@ def mark_analysis_ingested(events_db: str, analysis_ids: Sequence[int], when: in
 
     timestamp = int(when if when is not None else _time.time())
     placeholders = ", ".join("?" for _ in ids)
-    with sqlite3.connect(events_db, timeout=10) as conn:
+    with closing(sqlite3.connect(events_db, timeout=10)) as conn, conn:
         cursor = conn.execute(
             f"UPDATE event_cluster_analyses SET ingested_at = ? "
             f"WHERE ingested_at IS NULL AND id IN ({placeholders})",
@@ -149,16 +152,17 @@ def find_latest_analysis(
     bucket_index: int,
     event_type: str,
     parent_directory: str,
+    task_id: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Latest analysis record for a cluster coordinate, or None (SPEC §7)."""
-    with sqlite3.connect(events_db, timeout=10) as conn:
+    with closing(sqlite3.connect(events_db, timeout=10)) as conn, conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
             "SELECT * FROM event_cluster_analyses "
             "WHERE bucket_epoch_offset=? AND bucket_seconds=? AND bucket_index=? "
-            "AND event_type=? AND parent_directory=? "
+            "AND event_type=? AND parent_directory=? AND (? IS NULL OR task_id=?) "
             "ORDER BY id DESC LIMIT 1",
-            (bucket_epoch_offset, bucket_seconds, bucket_index, event_type, parent_directory),
+            (bucket_epoch_offset, bucket_seconds, bucket_index, event_type, parent_directory,task_id,task_id),
         ).fetchone()
     return dict(row) if row else None
 
@@ -174,7 +178,7 @@ def create_analysis_run(
     """Open a ``cluster_analysis_runs`` row (status=running); returns its id."""
     import time as _time
 
-    with sqlite3.connect(events_db, timeout=10) as conn:
+    with closing(sqlite3.connect(events_db, timeout=10)) as conn, conn:
         cursor = conn.execute(
             "INSERT INTO cluster_analysis_runs (task_id, trigger_source, bucket_seconds, "
             "bucket_epoch_offset, budget, status, started_at) VALUES (?, ?, ?, ?, ?, 'running', ?)",
@@ -199,7 +203,7 @@ def finalize_analysis_run(
     import json as _json
     import time as _time
 
-    with sqlite3.connect(events_db, timeout=10) as conn:
+    with closing(sqlite3.connect(events_db, timeout=10)) as conn, conn:
         conn.execute(
             "UPDATE cluster_analysis_runs SET status=?, cluster_total=?, cluster_failed=?, "
             "map_calls=?, reduce_calls=?, model=?, finished_at=?, detail=? WHERE id=?",

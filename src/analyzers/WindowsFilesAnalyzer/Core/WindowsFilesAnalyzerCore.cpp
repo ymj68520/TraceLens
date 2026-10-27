@@ -1,3 +1,4 @@
+#include "../Common/WindowsArtifactDecoding.h"
 // WindowsFilesAnalyzerCore.cpp
 // Core implementation of WindowsFilesAnalyzer
 
@@ -406,21 +407,5 @@ std::string WindowsFilesAnalyzer::readNullTerminatedString(const char* data, siz
 }
 
 std::string WindowsFilesAnalyzer::readUTF16LEString(const char* data, size_t maxLen) {
-    // This is a simplified conversion that assumes ASCII compatible chars
-    // For proper Unicode support in C++, we would need <codecvt> or external lib
-    // but <codecvt> is deprecated in C++17.
-    // For forensic purposes, capturing the ASCII part is often sufficient for system paths
-    
-    std::string result;
-    for (size_t i = 0; i < maxLen; i += 2) {
-        char c = data[i];
-        if (c == 0 && data[i+1] == 0) break; // null terminator
-        
-        if (data[i+1] == 0 && c > 0 && c < 127) {
-            result += c;
-        } else {
-            result += '?'; // Replace non-ASCII with ?
-        }
-    }
-    return result;
+    return forensics::windows_decoding::utf16le(data,maxLen);
 }

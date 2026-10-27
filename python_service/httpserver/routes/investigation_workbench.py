@@ -120,6 +120,10 @@ def _initial_translation_cache() -> InitialAnalysisTranslationCache:
 def _error(exc: Exception, not_found: str = "investigation resource not found") -> HTTPException:
     logger.error("investigation request failed: %s", exc, exc_info=exc)
     from ..services.investigation.repository import InvestigationMigrationRequiredError
+    from ..services.source_identity import SourceIdentityError
+    if isinstance(exc,SourceIdentityError):
+        return HTTPException(status_code=409 if 'AMBIGUOUS' in exc.code else 422,
+            detail={'code':exc.code,'message':exc.message,'candidates':exc.candidates})
     if isinstance(exc, InvestigationMigrationRequiredError):
         return HTTPException(status_code=409, detail=str(exc))
     if isinstance(exc, EvidenceNotFoundError):
@@ -203,6 +207,7 @@ def _evidence_detail(resolved: Any, snapshot: Any, analyses: list[Any], report_i
     detail["title"] = (f"Android {resolved.artifact_kind} #{resolved.artifact_record_id}"
                        if resolved.evidence_type == "android_artifact" else
                        resolved.normalized_path or resolved.event_type or resolved.evidence_key)
+    if resolved.evidence_type=="windows_artifact":detail["title"]=f"Windows来源记录 {resolved.artifact_kind} #{resolved.artifact_record_id}"
     detail["file_path"] = resolved.normalized_path
     detail["timestamp"] = resolved.representative_timestamp
     detail["metadata"] = {
@@ -212,7 +217,7 @@ def _evidence_detail(resolved: Any, snapshot: Any, analyses: list[Any], report_i
         if resolved.cluster_start is not None else None,
     }
     detail["snapshot"] = _dump(snapshot) if snapshot is not None else None
-    if resolved.evidence_type == "android_artifact":
+    if resolved.evidence_type in ("android_artifact","windows_artifact"):
         detail.pop("source_db", None)
         detail["frozen_result_set_id"] = resolved.result_set_id
     detail["analyses"] = [_analysis_view(item) for item in analyses]
@@ -241,7 +246,7 @@ def _report_view(version: Any, manifest: Any) -> dict[str, Any]:
     sections = []
     citation_map = {item["citation_id"]: item for item in raw.get("citations", [])}
     referenced_claims: dict[str, dict[str, Any]] = {}
-    for index, section in enumerate(raw.get("sections", []), start=1):
+    for index, section in enumerate([*raw.get("sections", []), *raw.get("appendices", [])], start=1):
         section_id = f"SEC-{index:03d}"
         paragraphs = [{
             "text": section.get("content", ""),
@@ -256,7 +261,7 @@ def _report_view(version: Any, manifest: Any) -> dict[str, Any]:
                 referenced_claims[claim_id]["citation_ids"].append(citation_id)
         sections.append({
             "section_id": section_id,
-            "section_type": "narrative",
+            "section_type": "appendix" if index>len(raw.get("sections",[])) else "narrative",
             "title": section.get("heading", section_id),
             "order": index,
             "paragraphs": paragraphs,
@@ -277,6 +282,11 @@ def _report_view(version: Any, manifest: Any) -> dict[str, Any]:
         "citation_manifest": raw.get("citations", []),
         "claim_manifest": list(referenced_claims.values()),
     }
+    from ..services.forensic_report.report_quality import report_quality
+    report['quality'] = report_quality(manifest).model_dump(mode='json')
+    if raw.get('organization'):
+        report['organization']=raw['organization']
+        report['body_section_count']=len(raw.get('sections',[]))
     return report
 
 
@@ -337,7 +347,8 @@ async def workbench_file_timeline(
                     parsed = parse_evidence_key(citation.evidence_key)
                     if parsed.evidence_type != "file" or not parsed.normalized_path:
                         continue
-                    ids = citation_ids_by_path.setdefault(parsed.normalized_path, [])
+                    from ..services.source_identity import analysis_reference
+                    ids = citation_ids_by_path.setdefault(analysis_reference(parsed.normalized_path,parsed.source_id), [])
                     if citation_id not in ids:
                         ids.append(citation_id)
         timeline = await manager.investigation_event_service.file_timeline(
@@ -347,7 +358,7 @@ async def workbench_file_timeline(
         if report_id:
             files = [
                 item for item in timeline.get("files", [])
-                if item.get("path") in citation_ids_by_path
+                if item.get("source_reference",item.get("path")) in citation_ids_by_path
             ]
             dated = [item["latest_time"] for item in files if item.get("latest_time") is not None]
             timeline = {
@@ -356,7 +367,7 @@ async def workbench_file_timeline(
                 "total_count": len(files),
                 "axis": {"start": min(dated) if dated else None, "end": max(dated) if dated else None},
                 "citation_ids_by_path": {
-                    item["path"]: citation_ids_by_path[item["path"]] for item in files
+                    item.get("source_reference",item["path"]): citation_ids_by_path[item.get("source_reference",item["path"])] for item in files
                 },
                 "scope": {
                     **timeline.get("scope", {}),
@@ -775,21 +786,21 @@ async def workbench_final_report(task_id: str, report_id: str):
 @router.get("/{task_id}/final-reports/{report_id}/markdown")
 @router.get("/{task_id}/final-reports/{report_id}/html")
 @router.get("/{task_id}/final-reports/{report_id}/print")
+@router.get("/{task_id}/final-reports/{report_id}/offline")
 async def workbench_final_report_presentation(task_id: str, report_id: str, request: Request):
     try:
         version, manifest = await _strict_report(task_id, report_id)
-        raw = manifest.model_dump(mode="json")
-        if request.url.path.endswith("/html") or request.url.path.endswith("/print"):
-            sections = "".join(
-                f"<section><h2>{html.escape(section.get('heading', ''))}</h2><p>{html.escape(section.get('content', ''))}</p></section>"
-                for section in raw.get("sections", [])
-            )
-            body = f"<!doctype html><html><body><h1>{html.escape(raw.get('title', 'Final Report'))}</h1>{sections}</body></html>"
-            return Response(content=body, media_type="text/html")
-        body = [f"# {raw.get('title', 'Final Report')}", ""]
-        for section in raw.get("sections", []):
-            body.extend([f"## {section.get('heading', '')}", "", section.get("content", ""), ""])
-        return Response(content="\n".join(body), media_type="text/markdown")
+        from ..services.forensic_report.offline_delivery import projection, render, offline_archive
+        if request.url.path.endswith('/offline'):
+            root = Path(get_settings().report_output_dir)
+            if not root.is_absolute(): root = get_project_root()/root
+            archive, checksum = await asyncio.to_thread(offline_archive, manifest, version.version, root)
+            return Response(content=archive, media_type='application/zip', headers={
+                'Content-Disposition': f'attachment; filename="report-{checksum[:20]}.zip"',
+                'X-Content-SHA256': checksum})
+        as_html = request.url.path.endswith('/html') or request.url.path.endswith('/print')
+        body = render(projection(manifest, version.version), as_html=as_html)
+        return Response(content=body, media_type='text/html' if as_html else 'text/markdown')
     except Exception as exc:
         raise _error(exc, "report not found") from exc
 

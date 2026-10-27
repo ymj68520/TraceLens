@@ -4,6 +4,8 @@ import hashlib
 import json
 import stat
 import time
+import threading
+from pathlib import Path
 import zipfile
 
 import pytest
@@ -31,6 +33,35 @@ def _finished(job_id, timeout=5):
             return job
         time.sleep(0.02)
     pytest.fail("preflight job did not finish")
+
+
+def test_completion_during_poll_is_not_misreported_as_interrupted(inbox, monkeypatch):
+    job_id = 'd' * 32
+    pending = {'id': job_id, 'status': 'running', 'file_count': 0}
+    final = {**pending, 'status': 'completed', 'file_count': 2}
+    intake._active[job_id] = threading.Event()
+    intake._write_job(job_id, pending)
+    path = intake._job_dir(job_id) / 'job.json'
+    original = Path.read_text
+    finished = threading.Event()
+    workers = []
+    def publish():
+        intake._write_job(job_id, final)
+        with intake._lock: intake._active.pop(job_id, None)
+        finished.set()
+    def raced_read(self, *args, **kwargs):
+        data = original(self, *args, **kwargs)
+        if self == path and not workers:
+            worker = threading.Thread(target=publish)
+            workers.append(worker); worker.start()
+            finished.wait(.1)
+        return data
+    monkeypatch.setattr(Path, 'read_text', raced_read)
+    observed = intake.get_job(job_id)
+    workers[0].join(timeout=5)
+    assert not workers[0].is_alive()
+    assert observed['status'] != 'interrupted'
+    assert intake.get_job(job_id) == final
 
 
 def test_bounded_candidate_detection_and_symlink_exclusion(inbox, tmp_path):

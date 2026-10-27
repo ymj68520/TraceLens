@@ -74,13 +74,6 @@ class EventAnalyzer:
         timestamp = event_data.get("timestamp", 0)
         time_window = event_data.get("time_window", 0)
 
-        # Truncate description to avoid exceeding model context window
-        if len(description) > self.MAX_DESCRIPTION_CHARS:
-            logger.info(
-                f"Truncating event description from {len(description)} to {self.MAX_DESCRIPTION_CHARS} chars"
-            )
-            description = description[:self.MAX_DESCRIPTION_CHARS] + "\n... [truncated]"
-
         # Count events in description for context
         event_count = description.count('\n') + 1 if description else 0
 
@@ -117,18 +110,23 @@ class EventAnalyzer:
                 description=description
             )
 
+        from ..model_budget import prepare_text_request,ModelBudgetError
+        messages,output_limit,admission=prepare_text_request(self.settings,system_prompt,description,
+            (prompt or '')+f'\n事件类型：{event_type}\n时间窗口：{time_window}\n事件数量：{event_count}',max_tokens)
+        if admission['content_truncated']:
+            raise ModelBudgetError('事件材料超出本次上下文额度；未截断后冒充完整分析，请细分事件簇')
+
         # Make API request
         try:
+            from ..case_analysis.cluster_budget import reserve
+            reserve(admission['input_upper_bound'],output_limit)
             response = await text_client.post(
                 self.settings.llm_endpoint,
                 json={
                     "model": model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "max_tokens": max_tokens or default_max_tokens,
-                    "temperature": temperature or default_temperature,
+                    "messages": messages,
+                    "max_tokens": output_limit,
+                    "temperature": default_temperature if temperature is None else temperature,
                     **self.settings.llm_thinking_body,
                 },
                 headers=auth_headers(self.settings, "text"),
@@ -143,6 +141,8 @@ class EventAnalyzer:
 
             # Parse structured analysis from LLM response
             parsed_analysis = self._parse_event_cluster_analysis(analysis_text)
+            if not (str(parsed_analysis.get('summary') or '').strip() or str(parsed_analysis.get('description') or '').strip()):
+                raise RuntimeError('事件模型未返回有效分析正文')
 
             return {
                 "analysis": {

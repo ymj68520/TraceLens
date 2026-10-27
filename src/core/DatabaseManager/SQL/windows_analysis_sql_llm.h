@@ -61,10 +61,10 @@ inline constexpr const char* SELECT_REGISTRY_PENDING_ANALYSIS =
     "SELECT id, hive_path, key_path, value_name, value_data FROM registry_values WHERE llm_analyzed_at IS NULL ORDER BY id LIMIT ?;";
 
 inline constexpr const char* SELECT_EVENT_LOGS_PENDING_ANALYSIS =
-    "SELECT id, record_id, event_id, level, source, message FROM event_logs WHERE llm_analyzed_at IS NULL ORDER BY id LIMIT ?;";
+    "SELECT id, record_id, event_id, level, source, message FROM event_logs WHERE parse_status IN ('ok','partial') AND message != '' AND llm_analyzed_at IS NULL ORDER BY id LIMIT ?;";
 
 inline constexpr const char* SELECT_PREFETCH_PENDING_ANALYSIS =
-    "SELECT id, file_path, executable_name, executable_path, run_count FROM prefetch_files WHERE llm_analyzed_at IS NULL ORDER BY id LIMIT ?;";
+    "SELECT id, file_path, executable_name, executable_path, run_count FROM prefetch_files WHERE parse_status IN ('ok','partial') AND run_count IS NOT NULL AND llm_analyzed_at IS NULL ORDER BY id LIMIT ?;";
 
 inline constexpr const char* SELECT_LNK_PENDING_ANALYSIS =
     "SELECT id, lnk_path, target_path, working_directory, arguments FROM lnk_files WHERE llm_analyzed_at IS NULL ORDER BY id LIMIT ?;";

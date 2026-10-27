@@ -221,6 +221,8 @@ class Settings(BaseSettings):
     llm_timeout_seconds: int = Field(default=120, alias="LLM_TIMEOUT_SECONDS")
     llm_max_retries: int = Field(default=3, alias="LLM_MAX_RETRIES")
     llm_context_length: int = Field(default=4096, alias="LLM_CONTEXT_LENGTH")
+    llm_reserved_tokens: int = Field(default=512,ge=256,alias="LLM_RESERVED_TOKENS")
+    llm_vision_image_token_bound: int = Field(default=0,ge=0,alias="LLM_VISION_IMAGE_TOKEN_BOUND")
     # Concurrent LLM calls per analysis pipeline (event clusters, files, artifacts).
     # Default 1 matches the C++ pipeline and .env: raise it only when the LLM
     # server can take more than one in-flight chat completion.
@@ -341,6 +343,19 @@ class Settings(BaseSettings):
     # adaptive bucketing targets this value; deployments raise it via config
     # (e.g. LLM_MAX_EVENT_CLUSTERS=1500) at the cost of LLM calls.
     llm_max_event_clusters: int = Field(default=200, ge=1, le=100000, alias="LLM_MAX_EVENT_CLUSTERS")
+    event_cluster_max_calls: int = Field(default=0,ge=0,le=1000000,alias="EVENT_CLUSTER_MAX_CALLS")
+    event_cluster_max_total_tokens: int = Field(default=0,ge=0,alias="EVENT_CLUSTER_MAX_TOTAL_TOKENS")
+    report_body_target_chars: int = Field(default=12000,ge=800,le=15000,alias="REPORT_BODY_TARGET_CHARS")
+    report_body_max_chars: int = Field(default=20000,ge=1200,le=20000,alias="REPORT_BODY_MAX_CHARS")
+    report_appendix_max_chars: int = Field(default=200000,ge=1000,le=1000000,alias="REPORT_APPENDIX_MAX_CHARS")
+    report_max_findings: int = Field(default=2000,ge=1,le=10000,alias="REPORT_MAX_FINDINGS")
+    report_body_findings: int = Field(default=72,ge=4,le=192,alias="REPORT_BODY_FINDINGS")
+    report_extraction_concurrency: int = Field(default=4,ge=1,le=4,alias="REPORT_EXTRACTION_CONCURRENCY")
+    report_writing_concurrency: int = Field(default=2,ge=1,le=2,alias="REPORT_WRITING_CONCURRENCY")
+    report_review_concurrency: int = Field(default=2,ge=1,le=2,alias="REPORT_REVIEW_CONCURRENCY")
+    report_global_max_calls: int = Field(default=512,ge=12,le=4096,alias="REPORT_GLOBAL_MAX_CALLS")
+    report_global_max_tokens: int = Field(default=0,ge=0,alias="REPORT_GLOBAL_MAX_TOKENS")
+    report_global_max_seconds: int = Field(default=1800,ge=30,le=14400,alias="REPORT_GLOBAL_MAX_SECONDS")
     # Map-reduce chunk size for event-cluster analysis: events per LLM call.
     # Every event enters at least one chunk — no sampling (SPEC §6).
     cluster_analysis_chunk_size: int = Field(default=200, ge=1, le=10000, alias="CLUSTER_ANALYSIS_CHUNK_SIZE")

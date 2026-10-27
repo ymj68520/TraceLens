@@ -14,6 +14,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from ..services.model_budget import ModelBudgetError
 from ..config import get_settings
 from ..services.llm.audio_analyzer import AUDIO_EXTENSIONS, analyze_audio_file
 
@@ -33,6 +34,7 @@ class AudioTranscribeRequest(BaseModel):
     workspace_root: str | None = Field(
         None, description="Deprecated standalone workspace anchor for CLI callers"
     )
+    selection_plan_id: str | None = None
     file_path: str = Field(..., description="Absolute path to the audio file")
     prompt: Optional[str] = Field(
         None, description="Optional analyst prompt woven into the synthesis stage"
@@ -62,6 +64,22 @@ class AudioTranscribeResponse(BaseModel):
     },
 )
 async def transcribe_audio(request: AudioTranscribeRequest):
+    if not request.task_id:
+        return await _analyze_media_copy(request)
+    from ..services import task_store
+    from ..services.source_reading import task_source_file
+    from ..services.source_identity import SourceIdentityError
+    from ..services.model_budget import analysis_budget,ModelBudgetError
+    try:
+        task=await task_store.get_task_record(request.task_id)
+        async with task_source_file(request.task_id,request.file_path,task=task) as (copy,reference,_):
+            with analysis_budget(task['output_files_db'],reference,request.selection_plan_id,request.task_id):
+                return await _analyze_media_copy(request.model_copy(update={'file_path':copy}),validated=True)
+    except (SourceIdentityError,ModelBudgetError) as exc:
+        raise HTTPException(status_code=422,detail={'code':getattr(exc,'code','MODEL_BUDGET_EXCEEDED'),'message':str(exc)}) from exc
+
+
+async def _analyze_media_copy(request: AudioTranscribeRequest,validated=False):
     """
     Transcribe an audio file and produce its forensic description.
 
@@ -73,9 +91,10 @@ async def transcribe_audio(request: AudioTranscribeRequest):
     """
     start_time = time.time()
 
-    await _assert_file_readable_for_task(
-        request.task_id, request.workspace_root, request.file_path
-    )
+    if not validated:
+        await _assert_file_readable_for_task(
+            request.task_id, request.workspace_root, request.file_path
+        )
 
     file_path = Path(request.file_path)
     if not file_path.is_file():
@@ -110,6 +129,8 @@ async def transcribe_audio(request: AudioTranscribeRequest):
             task_id=request.task_id or "",
             trigger_source="pipeline",
         )
+    except ModelBudgetError:
+        raise
     except HTTPException:
         raise
     except Exception as exc:

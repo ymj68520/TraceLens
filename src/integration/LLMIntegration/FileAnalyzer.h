@@ -41,6 +41,7 @@ public:
      */
     AnalysisResult analyzeFile(const std::string& filePath,
                                size_t maxContentLength = 10000);
+    void setLogicalPath(std::string path) { logicalPath_=std::move(path); }
 
     /**
      * @brief Analyze an image via the multimodal model (SPEC D).
@@ -173,6 +174,7 @@ public:
     AnalysisResult analyzeFileChunked(const std::string& filePath);
 
 private:
+    std::string logicalPath_;
     // Shared tail of the text-analysis flow: sanitize, truncate, prompt,
     // chat, parse. Returns false and sets errorMessage on failure (SPEC D).
     // `content` is by value: the flow mutates its own copy.

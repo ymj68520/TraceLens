@@ -11,7 +11,7 @@ markitdown conversion fails. Fallback wiring is configured in extractor_mapping.
 import asyncio
 import logging
 from pathlib import Path
-from .base import BaseExtractor, register_extractor
+from .base import DocumentContentUnavailableError, ExtractionResult, BaseExtractor, register_extractor
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +59,13 @@ class MarkitdownExtractor(BaseExtractor):
         :meth:`extract_to_markdown_detailed`)."""
         content, _ = await self.extract_to_markdown_detailed(file_path)
         return content
+
+    async def extract_result(self, file_path: str) -> ExtractionResult:
+        content, method = await self.extract_to_markdown_detailed(file_path)
+        # Conversion failures and legacy diagnostics have already raised. A
+        # source document may itself quote a line beginning with "Error:".
+        return ExtractionResult("ok" if content.strip() else "metadata_only", method,
+                                text=content, diagnostics_separated=True)
 
     async def extract_to_markdown_detailed(self, file_path: str) -> "tuple[str, str]":
         """
@@ -109,7 +116,7 @@ class MarkitdownExtractor(BaseExtractor):
             # it were evidence, so surface it as a missing-file failure instead.
             if markdown and "an error occurred while reading the file" in markdown[:300].lower():
                 logger.error(f"markitdown could not read {file_path}; refusing error text as content")
-                raise FileNotFoundError(file_path)
+                raise DocumentContentUnavailableError("文档读取失败，未取得证据正文", code="DOCUMENT_READ_FAILED")
 
             if title:
                 logger.debug(f"markitdown extracted title: {title}")
@@ -122,7 +129,7 @@ class MarkitdownExtractor(BaseExtractor):
                     logger.info(f"Falling back to {fallback.__class__.__name__} for {file_path}")
                     content, method = await fallback.extract_to_markdown_detailed(file_path)
                     return content, f"legacy:{method}"
-                return f"[No content extracted from {file_path}]", "markitdown"
+                raise DocumentContentUnavailableError("材料没有可读正文", code="SOURCE_HAS_NO_READABLE_CONTENT", status="metadata_only")
 
             logger.info(
                 f"markitdown converted {file_path}: "
@@ -130,6 +137,8 @@ class MarkitdownExtractor(BaseExtractor):
             )
             return markdown, "markitdown"
 
+        except DocumentContentUnavailableError:
+            raise
         except FileNotFoundError:
             logger.error(f"File not found: {file_path}")
             raise

@@ -24,6 +24,12 @@ def _make_analyzer() -> FileAnalyzer:
 
 
 def _stub_extractor(monkeypatch):
+    from contextlib import asynccontextmanager
+    import httpserver.services.source_reading as sources
+    @asynccontextmanager
+    async def fake_source(_task,path,**kwargs):
+        yield path,path,{}
+    monkeypatch.setattr(sources,'task_source_file',fake_source)
     class FakeExtractor:
         async def extract_to_markdown(self, path):
             return "fake content"

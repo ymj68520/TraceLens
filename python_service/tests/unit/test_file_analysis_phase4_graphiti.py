@@ -169,7 +169,8 @@ class TestFileEpisodeTime:
 
         episodes = [ep for ep in ingestor.batch_ingest.await_args.kwargs["episodes"]
                     if ep.name.startswith("文件分析")]
-        assert episodes[0].reference_time == datetime.fromtimestamp(1700000000)
+        from datetime import timezone
+        assert episodes[0].reference_time == datetime.fromtimestamp(1700000000,timezone.utc).replace(tzinfo=None)
 
     async def test_mtime_null_falls_back_to_ctime(self, tmp_path):
         db = _make_files_db(tmp_path, mtime=None, ctime=1690000000)
@@ -183,7 +184,8 @@ class TestFileEpisodeTime:
 
         episodes = [ep for ep in ingestor.batch_ingest.await_args.kwargs["episodes"]
                     if ep.name.startswith("文件分析")]
-        assert episodes[0].reference_time == datetime.fromtimestamp(1690000000)
+        from datetime import timezone
+        assert episodes[0].reference_time == datetime.fromtimestamp(1690000000,timezone.utc).replace(tzinfo=None)
 
     async def test_no_db_falls_back_to_now(self, tmp_path):
         graphiti, ingestor = self._graphiti()

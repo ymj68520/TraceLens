@@ -177,7 +177,7 @@ int AndroidLLMAnalysisService::analyzeArtifactType(const std::string& androidDbP
             case ArtifactType::WIFI_NETWORK:
                 return analyzeWifiNetworkArtifact(artifact);
             case ArtifactType::MOBILE_RECORD:
-                return analyzeWithPrompt("a derived HarmonyOS backup record", artifact.data,
+                return analyzeWithPrompt("a derived mobile backup or exported phone-image record", artifact.data,
                     "Use the supplied kind, source table and primary key. Distinguish calendar plans, recordings, "
                     "media metadata and note blocks from actual actions. Binary fields are not decoded. "
                     "Unknown timestamps/timezones stay unknown. The source is a partial backup, not a complete phone. "

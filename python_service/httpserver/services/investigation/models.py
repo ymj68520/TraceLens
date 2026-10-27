@@ -12,7 +12,7 @@ import json
 from enum import Enum
 from typing import Any, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator, model_serializer
 
 
 class FileSnapshotPayload(BaseModel):
@@ -31,6 +31,24 @@ class FileSnapshotPayload(BaseModel):
     mtime: Optional[int] = None
     ctime: Optional[int] = None
     is_deleted: Optional[int] = None
+    source_id: str | None = None
+    source_locator: dict[str, Any] | None = None
+
+    @model_serializer(mode="wrap")
+    def _serialize_source(self, handler):
+        value=handler(self)
+        for name in ("source_id", "source_locator"):
+            if value.get(name) is None: value.pop(name,None)
+        return value
+
+    @model_validator(mode="after")
+    def _source_matches(self):
+        if self.source_id is not None or self.source_locator is not None:
+            from ..source_identity import locator_hash
+            if not self.source_locator or locator_hash(self.source_locator)!=self.source_id or self.source_locator.get("logical_path")!=self.normalized_path:
+                raise ValueError("file source locator mismatch")
+        return self
+
     # Initial Analysis, frozen as-is (never generated)
     initial_summary: Optional[str] = None
     initial_description: Optional[str] = None
@@ -99,7 +117,23 @@ class AndroidArtifactSnapshotPayload(BaseModel):
     warnings: tuple[str, ...] = ()
 
 
-SnapshotPayload = Union[FileSnapshotPayload, ClusterSnapshotPayload, AndroidArtifactSnapshotPayload]
+class WindowsArtifactSnapshotPayload(BaseModel):
+    """One verified immutable Windows source row; never a model summary."""
+    model_config = ConfigDict(frozen=True,extra="forbid")
+    evidence_type: Literal['windows_artifact']='windows_artifact'
+    source_type: Literal['windows_activity']='windows_activity'
+    task_id: str
+    result_set_id: str = Field(pattern=r'^[0-9a-f]{64}$')
+    artifact_kind: str
+    record_id: int = Field(gt=0)
+    record_hash: str = Field(pattern=r'^[0-9a-f]{64}$')
+    source_revision: str
+    record_fields: dict[str,Any]
+    provenance: dict[str,Any]
+    coverage: dict[str,Any]
+    warnings: tuple[str,...]=()
+
+SnapshotPayload = Union[FileSnapshotPayload, ClusterSnapshotPayload, AndroidArtifactSnapshotPayload, WindowsArtifactSnapshotPayload]
 
 
 class SnapshotCandidate(BaseModel):
@@ -110,7 +144,7 @@ class SnapshotCandidate(BaseModel):
 
     task_id: str
     evidence_key: str  # canonical
-    evidence_type: Literal["file", "cluster", "android_artifact"]
+    evidence_type: Literal["file", "cluster", "android_artifact", "windows_artifact"]
     captured_at: int
     payload: SnapshotPayload
     # identity / index columns (must satisfy the table CHECK)
@@ -126,7 +160,7 @@ class EvidenceSnapshot(BaseModel):
 
     task_id: str
     evidence_key: str  # canonical
-    evidence_type: Literal["file", "cluster", "android_artifact"]
+    evidence_type: Literal["file", "cluster", "android_artifact", "windows_artifact"]
     captured_at: int
     payload: SnapshotPayload
     # Internal relational key only -- never part of public Evidence Identity
@@ -681,7 +715,7 @@ class EvidenceSummary(BaseModel):
 
     task_id: str
     evidence_key: str  # canonical
-    evidence_type: Literal["file", "cluster", "android_artifact"]
+    evidence_type: Literal["file", "cluster", "android_artifact", "windows_artifact"]
     captured_at: int
     selected_analysis: Optional[SelectedAnalysisRef] = None
 

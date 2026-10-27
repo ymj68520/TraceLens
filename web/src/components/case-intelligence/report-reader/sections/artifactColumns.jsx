@@ -13,6 +13,15 @@
 import { fmtTime, fileSize, callTypeLabel, smsTypeLabel } from './shared';
 
 const t = fmtTime;
+const parserStatus = (value) => ({
+  ok: '已解析', partial: '部分解析', metadata_only: '仅元数据',
+  error: '解析失败', unsupported: '不支持解析', legacy_unverified: '旧版结果未复核',
+}[value] || '未记录');
+const parserUtcTime = (value) => {
+  if (value === null || value === undefined || value === '') return '未知';
+  const date = new Date(Number(value) * 1000);
+  return Number.isNaN(date.getTime()) ? '未知' : date.toISOString().replace('T', ' ').replace(/\.000Z$/, ' UTC').replace(/Z$/, ' UTC');
+};
 
 export const ARTIFACT_COLUMNS = {
   // ── Android ──
@@ -133,18 +142,20 @@ export const ARTIFACT_COLUMNS = {
     { key: 'run_as', label: '运行身份' },
   ],
   win_prefetch: [
+    { key: 'parse_status', label: '解析状态', format: parserStatus },
     { key: 'executable_name', label: '可执行文件' },
     { key: 'executable_path', label: '路径' },
-    { key: 'run_count', label: '运行次数' },
-    { key: 'last_run_time', label: '上次运行', format: fmtTime },
-    { key: 'creation_time', label: '创建时间', format: fmtTime },
+    { key: 'run_count', label: '运行次数', format: (v) => v === null || v === undefined || v === '' ? '未知' : v },
+    { key: 'last_run_time', label: '上次运行 UTC', format: parserUtcTime },
+    { key: 'creation_time', label: '文件创建时间 UTC', format: parserUtcTime },
     { key: 'prefetch_hash', label: '哈希' },
   ],
   win_event_logs: [
+    { key: 'parse_status', label: '解析状态', format: parserStatus },
     { key: 'event_id', label: '事件ID' },
-    { key: 'level', label: '级别' },
+    { key: 'level', label: '级别', format: (v) => ({ LogAlways: '始终记录', Critical: '严重', Error: '错误', Warning: '警告', Information: '信息', Informational: '信息', Verbose: '详细' }[v] || '未知') },
     { key: 'log_source', label: '日志源' },
-    { key: 'timestamp', label: '时间', format: fmtTime },
+    { key: 'timestamp', label: '时间 UTC', format: parserUtcTime },
     { key: 'source', label: '来源' },
     { key: 'computer_name', label: '计算机' },
     { key: 'user_sid', label: '用户SID' },

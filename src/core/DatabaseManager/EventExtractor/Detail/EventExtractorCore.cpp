@@ -417,90 +417,9 @@ bool EventExtractor::importAndroidArtifactsFromFilesDb(const std::string& fileDb
 }
 
 bool EventExtractor::importWindowsArtifactsFromFilesDb(const std::string& fileDbPath) {
-    std::cout << "Importing Windows artifacts from files.db..." << std::endl;
-
-    sqlite3* fileDb = nullptr;
-    if (sqlite3_open(fileDbPath.c_str(), &fileDb) != SQLITE_OK) {
-        std::cerr << "Failed to open files.db: " << sqlite3_errmsg(fileDb) << std::endl;
-        if (fileDb) sqlite3_close(fileDb);
-        return false;
-    }
-
-    // Check if windows_artifacts table exists
-    const char* checkTableSql = "SELECT name FROM sqlite_master WHERE type='table' AND name='windows_artifacts';";
-    sqlite3_stmt* checkStmt;
-    if (sqlite3_prepare_v2(fileDb, checkTableSql, -1, &checkStmt, nullptr) != SQLITE_OK) {
-        sqlite3_close(fileDb);
-        return false;
-    }
-    bool tableExists = (sqlite3_step(checkStmt) == SQLITE_ROW);
-    sqlite3_finalize(checkStmt);
-    if (!tableExists) {
-        std::cerr << "windows_artifacts table not found in files.db" << std::endl;
-        sqlite3_close(fileDb);
-        return false;
-    }
-
-    const char* query = R"(
-        SELECT wa.artifact_type, wa.artifact_data, wa.extracted_at,
-               f.path, f.name, f.size, f.extension
-        FROM windows_artifacts wa
-        JOIN files f ON wa.file_id = f.id
-        ORDER BY wa.extracted_at
-    )";
-
-    sqlite3_stmt* stmt;
-    if (sqlite3_prepare_v2(fileDb, query, -1, &stmt, nullptr) != SQLITE_OK) {
-        std::cerr << "Failed to prepare windows artifacts query" << std::endl;
-        sqlite3_close(fileDb);
-        return false;
-    }
-
-    sqlite3_exec(eventDb_, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
-
-    int importedCount = 0;
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        const char* artifactTypeRaw = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-        const char* artifactDataRaw = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
-        int64_t extractedAt = sqlite3_column_int64(stmt, 2);
-        const char* filePathRaw = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
-        const char* fileNameRaw = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
-        int64_t fileSize = sqlite3_column_int64(stmt, 5);
-        const char* extensionRaw = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
-
-        std::string artifactType = artifactTypeRaw ? artifactTypeRaw : "";
-        std::string artifactData = artifactDataRaw ? artifactDataRaw : "";
-        std::string filePath = filePathRaw ? filePathRaw : "";
-        std::string fileName = fileNameRaw ? fileNameRaw : "";
-        std::string extension = extensionRaw ? extensionRaw : "";
-
-        TimelineEvent event;
-        event.timestamp = extractedAt;
-        event.eventType = "WINDOWS_ARTIFACT";
-        event.filePath = filePath;
-        event.inode = 0;
-        event.description = "Windows " + artifactType + ": " + fileName;
-        event.fileSize = fileSize;
-        event.fileType = extension;
-        event.systemContext = "";
-        event.priority = EventPriority::MEDIUM;
-        event.severity = EventSeverity::INFO;
-        event.source = EventSource::WINDOWS_EVENT_LOG;
-        event.category = EventCategory::APPLICATION_EVENT;
-        event.normalizedType = normalizeEventType("WINDOWS_ARTIFACT");
-        event.sourceId = getSourceId(event);
-
-        if (insertEvent(event)) {
-            importedCount++;
-        }
-    }
-
-    sqlite3_finalize(stmt);
-    sqlite3_exec(eventDb_, "COMMIT;", nullptr, nullptr, nullptr);
-    sqlite3_close(fileDb);
-
-    std::cout << "Imported " << importedCount << " Windows artifacts" << std::endl;
-    return true;
+    // The old windows_artifacts.extracted_at is the parser's processing time,
+    // not an evidence activity timestamp. Only typed source records may enter.
+    return importWindowsArtifacts(fileDbPath);
 }
 
 bool EventExtractor::importLinuxArtifactsFromFilesDb(const std::string& fileDbPath) {

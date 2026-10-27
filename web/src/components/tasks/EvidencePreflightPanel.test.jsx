@@ -262,3 +262,25 @@ test('password-unlocked Android Backup carries only runtime secret to Task form'
     preflight_detected_kind: 'android_backup_encrypted',
   }));
 });
+
+test('Xiaomi export uses verified preflight and prefills the existing Android task flow', async () => {
+  const user = userEvent.setup();
+  const onCreateTask = vi.fn();
+  listEvidenceCandidates.mockResolvedValue({ candidates: [{ id: 'cloud', name: '小米.bin', kind: 'xiaomi_export_image' }] });
+  startEvidencePreflight.mockResolvedValue({ job: {
+    id: 'c'.repeat(32), status: 'completed', integrity_status: 'verified',
+    source_path: '/evidence/小米.bin', sha256: 'd'.repeat(64),
+    detected: { kind: 'xiaomi_export_image', adapter: 'xiaomi-image' },
+    xiaomi_image: { ready: true, member_name: 'system.raw', raw_size: 40 * 1024 ** 3 },
+  } });
+  render(<EvidencePreflightPanel onCreateTask={onCreateTask} />);
+  await screen.findByRole('combobox', { name: '候选检材' });
+  await user.click(screen.getByRole('button', { name: '后台计算完整 SHA-256' }));
+  await user.click(await screen.findByRole('button', { name: '按此来源新建小米镜像分析任务' }));
+  expect(onCreateTask).toHaveBeenCalledWith(expect.objectContaining({
+    android_source: 'xiaomi-image', scenarios: ['android'], platform_analyze: true,
+    preflight_job_id: 'c'.repeat(32), preflight_source_sha256: 'd'.repeat(64),
+    preflight_detected_kind: 'xiaomi_export_image',
+  }));
+  expect(screen.getByText(/完整哈希不代表每个文件可读/)).toBeInTheDocument();
+});

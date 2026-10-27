@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <optional>
 
 // Registry value structure
 struct RegistryValue {
@@ -23,16 +24,20 @@ struct RegistryValue {
 
 // Event log entry structure (EVTX format)
 struct EventLogEntry {
-    int64_t recordId;               // Record ID
+    int64_t recordId = -1;               // Record ID
     std::string logSource;          // Security, System, Application, etc.
-    int eventId;                    // Event ID
+    int eventId = -1;                    // Event ID
     std::string level;              // Information, Warning, Error, Critical
-    int64_t timestamp;              // Event timestamp
+    int64_t timestamp = 0;              // Event timestamp
     std::string source;             // Event source
     std::string message;            // Event message
     std::string computerName;       // Computer name
     std::string userSid;            // User SID
     std::string channel;            // Log channel
+    bool timestampKnown = false;
+    bool isRecovered = false;
+    std::string rawTimestamp, sourcePath;
+    std::string parseStatus = "metadata_only", parseError, parserVersion;
 };
 
 // Prefetch file information
@@ -41,11 +46,14 @@ struct PrefetchInfo {
     std::string executableName;     // Executable name
     std::string executablePath;     // Full path to executable
     std::string prefetchHash;       // Prefetch hash
-    int runCount;                   // Number of times executed
-    int64_t lastRunTime;            // Last execution time
-    int64_t creationTime;           // Prefetch file creation time
+    std::optional<uint32_t> runCount; // Unknown until parsed
+    std::optional<int64_t> lastRunTime; // Unknown until parsed
+    std::optional<int64_t> creationTime; // Source filesystem metadata only
     std::vector<std::string> referencedFiles; // Files loaded by the executable
     std::vector<std::string> referencedDirectories; // Directories accessed
+    std::string parseStatus = "error", parseError, parserVersion;
+    std::vector<int64_t> allRunTimes;
+    std::vector<uint64_t> rawRunTimes;
 };
 
 // LNK (shortcut) file information
@@ -101,8 +109,8 @@ struct USBDeviceInfo {
     std::string deviceDescription;  // Device description
     std::string friendlyName;       // Friendly name
     std::string deviceClass;        // Device class (storage, etc.)
-    int64_t firstConnected;         // First connection time
-    int64_t lastConnected;          // Last connection time
+    int64_t firstConnected = 0;     // Unknown unless parsed from an identified time value
+    int64_t lastConnected = 0;      // Unknown; never infer from the key's existence
     std::string lastDriveLetter;    // Last assigned drive letter
 };
 
@@ -111,8 +119,8 @@ struct RecycleBinEntry {
     std::string recycleFilePath;    // Path within $Recycle.Bin
     std::string originalPath;       // Original file path
     std::string fileName;           // Original file name
-    int64_t deletionTime;           // Deletion timestamp
-    int64_t originalSize;           // Original file size
+    int64_t deletionTime = 0;       // Unknown when absent
+    int64_t originalSize = 0;       // Original file size
     std::string userSid;            // User SID who deleted
 };
 

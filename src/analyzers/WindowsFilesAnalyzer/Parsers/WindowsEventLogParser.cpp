@@ -98,98 +98,7 @@ libevtx_record_t* EvtxRecordHandle::release() {
 // EvtxHelpers Implementation
 // ============================================================================
 
-namespace EvtxHelpers {
 
-std::string eventLevelToString(uint8_t level) {
-    switch (level) {
-        case 1: return "Critical";
-        case 2: return "Error";
-        case 3: return "Warning";
-        case 4: return "Information";
-        case 5: return "Verbose";
-        default: return "Unknown";
-    }
-}
-
-int64_t filetimeToUnixTime(uint64_t filetime) {
-    if (filetime == 0) return 0;
-
-    // Windows FILETIME: 100-nanosecond intervals since January 1, 1601 UTC
-    // Unix timestamp: seconds since January 1, 1970 UTC
-    // Difference: 11,644,473,600 seconds (369 years)
-    const uint64_t TICKS_PER_SECOND = 10000000;
-    const uint64_t EPOCH_DIFFERENCE = 11644473600ULL;
-
-    return static_cast<int64_t>((filetime / TICKS_PER_SECOND) - EPOCH_DIFFERENCE);
-}
-
-std::string extractUserDataFromXML(const std::string& xmlString) {
-    // Extract user SID from XML if present
-    // Look for common XML patterns with user data
-    const std::vector<std::string> patterns = {
-        "<Data Name='SubjectUserName'>",
-        "<Data Name=\"SubjectUserName\">",
-        "<Data Name='UserId'>",
-        "<Data Name=\"UserId\">",
-        "<Data Name='UserName'>",
-        "<Data Name=\"UserName\">",
-        "<Data Name='SubjectUserSid'>",
-        "<Data Name=\"SubjectUserSid\">"
-    };
-
-    for (const auto& pattern : patterns) {
-        size_t pos = xmlString.find(pattern);
-        if (pos != std::string::npos) {
-            size_t start = pos + pattern.length();
-            size_t end = xmlString.find("</Data>", start);
-            if (end != std::string::npos) {
-                std::string userData = xmlString.substr(start, end - start);
-                // Trim whitespace
-                userData.erase(0, userData.find_first_not_of(" \t\n\r"));
-                userData.erase(userData.find_last_not_of(" \t\n\r") + 1);
-                if (!userData.empty()) {
-                    return userData;
-                }
-            }
-        }
-    }
-
-    return "S-1-0-0"; // Default: Nobody/NULL SID
-}
-
-std::string getLogSourceFromPath(const std::string& logPath) {
-    // Extract log type from filename
-    // e.g., "/path/to/System.evtx" -> "System"
-
-    size_t lastSlash = logPath.find_last_of("/\\");
-    if (lastSlash == std::string::npos) {
-        lastSlash = 0;
-    } else {
-        lastSlash++;
-    }
-
-    size_t dotPos = logPath.find_last_of('.');
-    if (dotPos == std::string::npos || dotPos <= lastSlash) {
-        return "Unknown";
-    }
-
-    std::string filename = logPath.substr(lastSlash, dotPos - lastSlash);
-
-    // Common log types - return as-is (they're already capitalized correctly)
-    if (filename == "Security" || filename == "System" ||
-        filename == "Application" || filename == "Setup") {
-        return filename;
-    }
-
-    // Capitalize first letter for others
-    if (!filename.empty()) {
-        filename[0] = std::toupper(filename[0]);
-    }
-
-    return filename;
-}
-
-} // namespace EvtxHelpers
 
 // ============================================================================
 // WindowsFilesAnalyzer::analyzeEventLogs
@@ -210,19 +119,21 @@ void WindowsFilesAnalyzer::analyzeEventLogs() {
     for (const auto& logFile : logFiles) {
         // Skip small files (likely empty or corrupted)
         if (logFile.size < 4096) {
+            windowsDb_->recordParserOutcome(logFile.path,"libevtx","error","EVTX_TRUNCATED_HEADER");
             AuditLog::instance().log("INFO", "EVTX_SKIPPED_SMALL",
                 "Skipping small EVTX file: " + logFile.name +
                 " (size: " + std::to_string(logFile.size) + ")");
             continue;
         }
 
-        std::string extractPath = getExtractPath("eventlogs/" + logFile.name);
+        std::string extractPath = getExtractPath("eventlogs/" + std::to_string(logFile.partitionNum) + "_" + std::to_string(logFile.inode) + "_" + logFile.name);
 
         if (extractFileToPath(logFile.inode, extractPath, logFile.partitionNum)) {
             auto [entries, recovered] = parseEventLogWithRecovery(extractPath);
+            for(auto& entry:entries)entry.sourcePath=logFile.path;
 
             if (!entries.empty()) {
-                windowsDb_->insertEventLogEntries(entries);
+                if (!windowsDb_->insertEventLogEntries(entries)) throw std::runtime_error("EVTX_DATABASE_WRITE_FAILED");
                 processedCount++;
                 totalRecords += entries.size();
                 recoveredRecords += recovered;
@@ -235,6 +146,7 @@ void WindowsFilesAnalyzer::analyzeEventLogs() {
                 std::cout << ")" << std::endl;
             }
         } else {
+            windowsDb_->recordParserOutcome(logFile.path,"libevtx","error","EVTX_EXTRACT_FAILED");
             AuditLog::instance().log("ERROR", "EVTX_EXTRACT_FAILED",
                 "Failed to extract EVTX file: " + logFile.path);
         }
@@ -269,19 +181,26 @@ std::vector<EventLogEntry> WindowsFilesAnalyzer::parseEventLog(const std::string
 std::pair<std::vector<EventLogEntry>, int> WindowsFilesAnalyzer::parseEventLogWithRecovery(const std::string& logPath) {
     std::vector<EventLogEntry> entries;
     int recoveredCount = 0;
+    auto outcome = [this, &logPath](const std::string& status, const std::string& code,
+            std::optional<int64_t> count = std::nullopt, int64_t recovered = 0) {
+        if (windowsDb_ && !windowsDb_->recordParserOutcome(logPath,"libevtx",status,code,count,recovered))
+            throw std::runtime_error("EVTX_OUTCOME_WRITE_FAILED");
+    };
 
     // Verify file exists and has valid header
     std::ifstream file(logPath, std::ios::binary);
     if (!file) {
+        outcome("error","EVTX_FILE_NOT_FOUND");
         AuditLog::instance().log("ERROR", "EVTX_FILE_NOT_FOUND",
             "Cannot open EVTX file for reading: " + logPath);
         return {entries, 0};
     }
 
     // Check header ("ElfFile\0")
-    char header[8];
+    char header[8]{};
     file.read(header, 8);
-    if (std::strncmp(header, "ElfFile", 7) != 0) {
+    if (file.gcount()!=8 || std::memcmp(header, "ElfFile\0", 8) != 0) {
+        outcome("error","EVTX_INVALID_HEADER");
         AuditLog::instance().log("ERROR", "EVTX_INVALID_HEADER",
             "Invalid EVTX header in: " + logPath);
         return {entries, 0};
@@ -291,23 +210,27 @@ std::pair<std::vector<EventLogEntry>, int> WindowsFilesAnalyzer::parseEventLogWi
     // Open EVTX file using libevtx
     EvtxFileHandle evtxFile(logPath);
     if (!evtxFile.isValid()) {
+        outcome("error","EVTX_OPEN_FAILED");
         AuditLog::instance().log("ERROR", "EVTX_OPEN_FAILED",
             "Failed to open EVTX file with libevtx: " + logPath);
         return {entries, 0};
     }
 
     // Get number of records
+    bool countsKnown = true;
     int numberOfRecords = 0;
     if (libevtx_file_get_number_of_records(evtxFile, &numberOfRecords, nullptr) != 1) {
         AuditLog::instance().log("WARNING", "EVTX_RECORD_COUNT_FAILED",
             "Could not get record count for: " + logPath);
         numberOfRecords = 0;
+        countsKnown = false;
     }
 
     // Get number of recovered records
     int numberOfRecoveredRecords = 0;
     if (libevtx_file_get_number_of_recovered_records(evtxFile, &numberOfRecoveredRecords, nullptr) != 1) {
         numberOfRecoveredRecords = 0;
+        countsKnown = false;
     }
 
     std::string logSource = EvtxHelpers::getLogSourceFromPath(logPath);
@@ -360,6 +283,11 @@ std::pair<std::vector<EventLogEntry>, int> WindowsFilesAnalyzer::parseEventLogWi
         }
     }
 
+    const bool complete=countsKnown && entries.size()==static_cast<size_t>(numberOfRecords+numberOfRecoveredRecords);
+    const bool fieldsKnown=std::all_of(entries.begin(),entries.end(),[](const auto& e){return e.parseStatus=="ok";});
+    outcome(complete ? (entries.empty()?"metadata_only":(fieldsKnown?"ok":"partial")) : (entries.empty()?"error":"partial"),
+            complete ? (fieldsKnown?"":"EVTX_FIELDS_UNKNOWN") : "EVTX_RECORDS_UNREADABLE",
+            complete || !entries.empty() ? std::optional<int64_t>(entries.size()) : std::nullopt, recoveredCount);
     AuditLog::instance().log("INFO", "EVTX_PARSE_SUCCESS",
         "Successfully parsed " + logPath + ": " +
         std::to_string(entries.size()) + " records, " +
@@ -379,6 +307,9 @@ EventLogEntry WindowsFilesAnalyzer::extractEventLogEntry(
     bool isRecovered) {
 
     EventLogEntry entry;
+    entry.isRecovered = isRecovered;
+    entry.sourcePath = logPath;
+    entry.parserVersion = libevtx_get_version();
     entry.recordId = -1; // Sentinel for invalid entries
 
     if (!record) {
@@ -402,7 +333,7 @@ EventLogEntry WindowsFilesAnalyzer::extractEventLogEntry(
     if (libevtx_record_get_event_level(record, &eventLevel, nullptr) == 1) {
         entry.level = EvtxHelpers::eventLevelToString(eventLevel);
     } else {
-        entry.level = "Information"; // Default
+        entry.level = "Unknown"; // Missing is not informational.
     }
 
     // Get Timestamp (written time)
@@ -410,7 +341,9 @@ EventLogEntry WindowsFilesAnalyzer::extractEventLogEntry(
     if (libevtx_record_get_written_time(record, &filetime, nullptr) != 1) {
         filetime = 0; // No timestamp available
     }
-    entry.timestamp = EvtxHelpers::filetimeToUnixTime(filetime);
+    entry.timestampKnown = filetime > 0 && filetime <= 2650467743999999999ULL;
+    if (filetime) entry.rawTimestamp = std::to_string(filetime);
+    if (entry.timestampKnown) entry.timestamp = EvtxHelpers::filetimeToUnixTime(filetime);
 
     // Get Source Name
     size_t sourceNameSize = 0;
@@ -422,9 +355,7 @@ EventLogEntry WindowsFilesAnalyzer::extractEventLogEntry(
         }
         delete[] sourceName;
     }
-    if (entry.source.empty()) {
-        entry.source = logSource; // Fallback to log source
-    }
+
 
     // Get Computer Name
     size_t computerNameSize = 0;
@@ -441,7 +372,7 @@ EventLogEntry WindowsFilesAnalyzer::extractEventLogEntry(
     }
 
     // Get Channel Name (use logSource as fallback since channel_name API doesn't exist)
-    entry.channel = logSource;
+    entry.channel.clear(); // Only the XML Channel field can establish the channel.
 
     // Get XML String (contains full event data)
     size_t xmlStringSize = 0;
@@ -453,12 +384,16 @@ EventLogEntry WindowsFilesAnalyzer::extractEventLogEntry(
 
             // Extract user SID from XML if present
             entry.userSid = EvtxHelpers::extractUserDataFromXML(entry.message);
+            entry.channel = EvtxHelpers::extractChannelFromXML(entry.message);
         }
         delete[] xmlString;
     }
 
-    if (entry.message.empty()) {
-        entry.message = "<No XML data available>";
+    entry.parseStatus = entry.message.empty() ? "metadata_only" : "ok";
+    if (entry.message.empty()) entry.parseError = "EVTX_XML_UNAVAILABLE";
+    else if (!entry.timestampKnown || entry.eventId < 0 || entry.level == "Unknown") {
+        entry.parseStatus = "partial";
+        entry.parseError = "EVTX_FIELDS_UNKNOWN";
     }
 
     // Set log source

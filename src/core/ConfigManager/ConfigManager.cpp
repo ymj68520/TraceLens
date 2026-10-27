@@ -162,6 +162,10 @@ llm::LLMConfig ConfigManager::getTextModelConfig() const {
     config.apiKey = getTextApiKey();
     config.model = getTextModel();
     config.maxTokens = getTextMaxTokens();
+    config.contextLength = getContextLength();
+    config.reservedTokens = std::max(256,getInt("LLM_RESERVED_TOKENS",512));
+    if(config.contextLength<=config.reservedTokens)throw std::runtime_error("模型上下文不足以容纳协议预留");
+    config.maxTokens=std::min(config.maxTokens,(config.contextLength-config.reservedTokens)/2);
     config.temperature = getTextTemperature();
     config.thinkingMode = getLLMThinkingMode();
     config.timeoutSeconds = getLLMTimeoutSeconds();
@@ -182,6 +186,11 @@ llm::LLMConfig ConfigManager::getVisionModelConfig() const {
     config.apiKey = getVisionApiKey();
     config.model = getVisionModel();
     config.maxTokens = getVisionMaxTokens();
+    config.contextLength = getContextLength();
+    config.reservedTokens=std::max(256,getInt("LLM_RESERVED_TOKENS",512));
+    if(config.contextLength<=config.reservedTokens)throw std::runtime_error("视觉模型上下文预算无效");
+    config.maxTokens=std::min(config.maxTokens,(config.contextLength-config.reservedTokens)/2);
+    config.visionImageTokenBound=std::max(0,getInt("LLM_VISION_IMAGE_TOKEN_BOUND",0));
     config.temperature = getVisionTemperature();
     config.thinkingMode = getLLMThinkingMode();
     config.timeoutSeconds = getLLMTimeoutSeconds();

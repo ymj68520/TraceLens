@@ -5,10 +5,14 @@ const labels = {
   android_sparse_super: '稀疏 super 镜像', android_sparse_userdata: '稀疏用户数据镜像',
   android_super: '动态分区镜像', can_normalize: '可以规范化',
   fbe_detected: '检测到文件级加密', fde_detected: '检测到全盘加密',
-  file: '文件证据', android_artifact: '手机派生记录', event_cluster: '事件聚合',
+  file: '文件证据', windows_artifact: 'Windows活动记录',
+    android_artifact: '手机派生记录', event_cluster: '事件聚合',
   included: '已纳入报告', excluded: '已排除', supports: '支持', contradicts: '存在相反证据',
   main: '主要证据', appendix: '附录证据', original_only: '仅原始材料',
   pending: '待处理', queued: '排队中', running: '运行中', completed: '已完成',
+  ready: '已生成', generating: '生成中', admitted: '已受理', assembled: '已组装',
+  events: '事件', analyses: '分析记录', base: '基础图谱', overlay: '调查图层',
+  limited: '有范围限制', passed: '校验通过', unassessed: '尚未评估',
   failed: '失败', cancelled: '已取消', paused: '已暂停',
   interrupted: '已中断（可继续）', unknown: '未知',
   low: '低', normal: '普通', high: '高', critical: '紧急', medium: '中',
@@ -28,7 +32,7 @@ const labels = {
   super_normalized_no_userdata: '已完成 super 规范化，来源不含用户数据分区',
   sms: '短信', sms_messages: '短信', contacts: '联系人', apps: '应用',
   installed_apps: '已安装应用', installed_packages: '安装包信息', wifi: '无线网络', wifi_networks: '无线网络',
-  call_logs: '通话记录', calls: '通话记录', mobile: '鸿蒙记录', mobile_artifacts: '鸿蒙记录',
+  call_logs: '通话记录', calls: '通话记录', mobile: '手机记录', mobile_artifacts: '手机记录', contact: '联系人聚合记录', contact_raw: '联系人来源记录', contact_data: '联系人数据项', call: '通话记录', browser_history: '浏览历史', browser_bookmark: '浏览器书签',
   calendar: '日历', recording: '录音', call_recording: '通话录音', media: '媒体元数据', media_file: '媒体文件',
   note: '备忘录', note_content: '备忘录内容', todo: '待办事项', note_block: '思源内容块',
   qq_contact: 'QQ 联系人', qq_group: 'QQ 群资料', qq_recent: 'QQ 最近会话',
@@ -73,3 +77,26 @@ const phases = {
   file_carving: '正在恢复文件', finalizing: '正在整理分析结果', completed: '分析已完成',
 };
 export const taskPhaseLabel = phase => phases[String(phase || '').toLowerCase()] || '正在处理';
+
+const errors = {
+  global_report_blocked: '报告未通过来源、结构或预算校验，未发布新版本。',
+  input_integrity_error: '冻结输入摘要不匹配，报告生成已停止。',
+  citation_invalid: '报告存在不属于本次材料范围的引用。',
+  structured_output_invalid: '模型输出结构不符合要求。',
+  neutral_sources_unavailable: '没有可用的原始材料，请核对来源读取结果。',
+  no_validated_neutral_analysis: '未形成通过来源校验的发现。',
+  'report not found': '当前任务下没有该报告版本。',
+  'task not found': '没有找到当前任务。',
+  'report narrative record is unavailable': '报告记录不可读取或完整性校验失败。',
+  'report generation record is unavailable': '报告记录不可读取或完整性校验失败。',
+  'report evidence binding is invalid': '报告证据绑定无效，请核对来源及版本。',
+  'report generation store is unavailable': '报告存储暂不可用。',
+  'Network Error': '网络连接失败，请检查服务连接。',
+  'Failed to fetch': '网络请求失败，请检查服务连接。',
+};
+export const forensicError = (error, fallback = '操作未完成，请重试或查看诊断记录。') => {
+  const detail = error?.data?.detail ?? error?.detail;
+  const code = error?.error_code || detail?.code || error?.code;
+  const message = typeof error === 'string' ? error : typeof detail === 'string' ? detail : detail?.message || error?.message;
+  return errors[code] || errors[message] || (typeof message === 'string' && /\p{Script=Han}/u.test(message) ? message : fallback);
+};

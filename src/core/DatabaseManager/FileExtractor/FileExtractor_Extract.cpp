@@ -581,34 +581,20 @@ bool FileExtractor::extractFileByInode(int64_t inode, const std::string& outputP
         return false;
     }
 
-    // When the caller supplies a valid partitionNum, pick the matching record
-    // directly — this avoids the ambiguity of inode collisions across partitions.
-    const FileRecord* chosen = nullptr;
     if (partitionNum >= 0) {
-        for (const auto& f : files) {
-            if (f.partitionNum == partitionNum) {
-                chosen = &f;
-                break;
-            }
-        }
+        files.erase(std::remove_if(files.begin(),files.end(),[partitionNum](const auto& f){return f.partitionNum!=partitionNum;}),files.end());
     }
-
-    // Fallback: heuristic — pick the record whose partition we actually have
-    // an open handle for (avoids reading the wrong partition's content).
-    if (!chosen) {
-        for (const auto& f : files) {
-            if (fsByPartition_.find(f.partitionNum) != fsByPartition_.end()) {
-                chosen = &f;
-                break;
-            }
-        }
+    // Hard-link names can share a physical default stream. Compatibility is
+    // allowed only when every locator field proves the same allocated object.
+    const bool sameObject=!files.empty() && std::all_of(files.begin(),files.end(),[&](const auto& f){
+        const auto& a=files.front();return f.partitionNum==a.partitionNum && f.inode==a.inode &&
+            f.isDeleted==a.isDeleted && f.isDeleted==0 && f.size==a.size && f.mtime==a.mtime && f.ctime==a.ctime && f.type==a.type;
+    });
+    if (files.empty() || (files.size()!=1 && !sameObject)) {
+        std::cerr << "来源记录不存在或不唯一，请指定来源标识" << std::endl;
+        return false;
     }
-    if (!chosen) {
-        chosen = &files[0];  // last fallback: best-effort with first record
-    }
-
-    // Single file extraction implies overwrite intent usually
-    return extractFile(*chosen, outputPath, true, nullptr);
+    return extractFile(files.front(),outputPath,true,nullptr);
 }
 
 bool FileExtractor::extractFileByPath(const std::string& filePath, const std::string& outputPath) {
@@ -669,7 +655,7 @@ bool FileExtractor::extractFileByPath(const std::string& filePath, const std::st
 
     if (results.size() > 1) {
         std::cerr << "Error: File path " << filePath
-                  << " maps to multiple partitions; extraction requires partition-aware metadata" << std::endl;
+                  << " maps to multiple source records; specify source_id (partition/inode/deletion state)" << std::endl;
         return false;
     }
 

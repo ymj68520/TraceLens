@@ -93,78 +93,12 @@ class AuthLogExtractor(BaseExtractor):
         return entry
 
 
+from .linux_utmp import LinuxUtmpExtractor
+
+
 @register_extractor
-class WtmpExtractor(BaseExtractor):
-    UTMP_SIZE = 384
-    UT_TYPES = {0: 'EMPTY', 1: 'RUN_LVL', 2: 'BOOT_TIME', 3: 'NEW_TIME', 4: 'OLD_TIME', 5: 'INIT_PROCESS', 6: 'LOGIN_PROCESS', 7: 'USER_PROCESS', 8: 'DEAD_PROCESS', 9: 'ACCOUNTING'}
-
-    async def extract_to_markdown(self, file_path: str) -> str:
-        try:
-            with open(file_path, 'rb') as f: data = f.read()
-        except Exception as e: return f"Error: Failed to read wtmp/utmp file: {e}"
-
-        if len(data) < self.UTMP_SIZE:
-            return f"# Login Records Summary: `{os.path.basename(file_path)}`\n\n*(File too small)*"
-
-        records = []
-        type_counter = Counter()
-        offset = 0
-        while offset + self.UTMP_SIZE <= len(data):
-            record = self._parse_record(data[offset:offset + self.UTMP_SIZE])
-            if record:
-                records.append(record)
-                type_counter[record['type_name']] += 1
-            offset += self.UTMP_SIZE
-
-        if not records:
-            return f"# Login Records Summary: `{os.path.basename(file_path)}`\n\n*(No valid records found)*"
-
-        result = [f"# Login Records Summary: `{os.path.basename(file_path)}`"]
-        result.append(f"**Total Records:** {len(records):,}")
-        timestamps = [r['timestamp'] for r in records if r['timestamp']]
-        if timestamps:
-            result.append(f"**Time Range:** {timestamps[-1]} ~ {timestamps[0]}")
-        result.append("")
-
-        result.append("## Login Statistics")
-        result.append("| Type | Count |")
-        result.append("| --- | --- |")
-        for tn, count in type_counter.most_common():
-            result.append(f"| {tn} | {count:,} |")
-        result.append("")
-
-        user_logins = [r for r in records if r['type_name'] == 'USER_PROCESS']
-        if user_logins:
-            result.append(f"## User Login History (Last {min(200, len(user_logins))})")
-            result.append("| Time | User | Terminal | Host | PID |")
-            result.append("| --- | --- | --- | --- | --- |")
-            for r in user_logins[:200]:
-                result.append(f"| {r['timestamp']} | {r['user']} | {r['terminal']} | {r['hostname']} | {r['pid']} |")
-
-        boots = [r for r in records if r['type_name'] == 'BOOT_TIME']
-        if boots:
-            result.append("")
-            result.append("## System Boots")
-            result.append("| Time | Terminal |")
-            result.append("| --- | --- |")
-            for r in boots[:20]:
-                result.append(f"| {r['timestamp']} | {r['terminal']} |")
-        return "\n".join(result)
-
-    def _parse_record(self, data: bytes) -> dict:
-        try:
-            ut_type = struct.unpack_from('<h', data, 0)[0]
-            ut_pid = struct.unpack_from('<i', data, 4)[0]
-            ut_user = data[8:40].split(b'\x00')[0].decode('utf-8', errors='replace')
-            ut_line = data[40:44].split(b'\x00')[0].decode('utf-8', errors='replace')
-            ut_host = data[44:76].split(b'\x00')[0].decode('utf-8', errors='replace')
-            tv_sec = struct.unpack_from('<i', data, 280)[0]
-            timestamp = ''
-            if tv_sec > 0:
-                try: timestamp = datetime.fromtimestamp(tv_sec).strftime('%Y-%m-%d %H:%M:%S')
-                except: pass
-            return {'type': ut_type, 'type_name': self.UT_TYPES.get(ut_type, f'UNKNOWN({ut_type})'), 'pid': ut_pid, 'user': ut_user, 'terminal': ut_line, 'hostname': ut_host, 'timestamp': timestamp}
-        except: return None
+class WtmpExtractor(LinuxUtmpExtractor):
+    """Compatibility import for the bounded, corrected glibc parser."""
 
 
 @register_extractor

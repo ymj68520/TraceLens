@@ -10,11 +10,28 @@ accessors in this module — never a third ad-hoc SQL variant.
 import logging
 import sqlite3
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ...path_utils import normalize_evidence_path
+from ..source_identity import decode_reference, analysis_reference, file_row, has_column, SourceIdentityError
+
+
+def _identity(conn, reference):
+    path, sid = decode_reference(reference)
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE name='files'").fetchone():
+        row, _ = file_row(conn,path,sid)
+        return row['path'], sid or row.get('source_id') or ''
+    return path, sid or ''
+
+
+def _source_clause(conn, sid):
+    if has_column(conn,'file_analyses','source_id'):
+        return " AND source_id = ?", (sid,)
+    if sid:
+        return " AND 0", ()
+    return "", ()
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +40,7 @@ CREATE TABLE IF NOT EXISTS file_analyses (
     id                   INTEGER PRIMARY KEY AUTOINCREMENT,
     task_id              TEXT    NOT NULL,
     file_path            TEXT    NOT NULL,
+    source_id            TEXT    NOT NULL DEFAULT '',
     md5                  TEXT    NOT NULL DEFAULT '',
     summary              TEXT    NOT NULL DEFAULT '',
     description          TEXT    NOT NULL DEFAULT '',
@@ -47,6 +65,9 @@ def ensure_file_analysis_schema(db_path: str) -> None:
     """Idempotently create the append-only truth table and its indexes."""
     with sqlite3.connect(db_path, timeout=10) as conn:
         conn.execute(DDL)
+        if not any(row[1]=="source_id" for row in conn.execute("PRAGMA table_info(file_analyses)")):
+            conn.execute("ALTER TABLE file_analyses ADD COLUMN source_id TEXT NOT NULL DEFAULT ''")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_fa_source ON file_analyses(task_id,source_id,id DESC)")
         for stmt in INDEXES:
             conn.execute(stmt)
 
@@ -64,10 +85,12 @@ def latest_analysis(db_path: str, file_path: str) -> Optional[Dict[str, Any]]:
     try:
         with sqlite3.connect(db_path, timeout=10) as conn:
             conn.row_factory = sqlite3.Row
+            norm, sid = _identity(conn,file_path)
+            clause, args = _source_clause(conn,sid)
             row = conn.execute(
-                "SELECT * FROM file_analyses WHERE file_path = ? "
-                "ORDER BY id DESC LIMIT 1",
-                (norm,),
+                "SELECT * FROM file_analyses WHERE file_path = ? " + clause +
+                " ORDER BY id DESC LIMIT 1",
+                (norm,*args),
             ).fetchone()
     except sqlite3.OperationalError:
         return None
@@ -84,13 +107,15 @@ def latest_analyses_batch(db_path: str, file_paths: List[str]) -> Dict[str, Dict
     """
     if not db_path or not Path(db_path).exists() or not file_paths:
         return {}
-    wanted = [p for p in (normalize_evidence_path(p) for p in file_paths) if p]
+    wanted = [p for p in file_paths if p]
     latest: Dict[str, Dict[str, Any]] = {}
     if not wanted:
         return latest
     try:
         with sqlite3.connect(db_path, timeout=10) as conn:
             conn.row_factory = sqlite3.Row
+            identities = {reference:_identity(conn,reference) for reference in wanted}
+            wanted = list({identity[0] for identity in identities.values()})
             for i in range(0, len(wanted), 400):
                 chunk = wanted[i:i + 400]
                 placeholders = ",".join("?" for _ in chunk)
@@ -102,7 +127,9 @@ def latest_analyses_batch(db_path: str, file_paths: List[str]) -> Dict[str, Dict
                 # Rows arrive newest-first, so the first row seen per path wins.
                 for row in rows:
                     record = dict(row)
-                    latest.setdefault(record.get("file_path") or "", record)
+                    for reference, (path,sid) in identities.items():
+                        if record.get('file_path') == path and (record.get('source_id') or '') == sid:
+                            latest.setdefault(reference,record)
     except sqlite3.OperationalError:
         return {}
     return latest
@@ -147,10 +174,12 @@ def list_analyses(
         with sqlite3.connect(db_path, timeout=10) as conn:
             conn.row_factory = sqlite3.Row
             if file_path:
+                path,sid = _identity(conn,file_path)
+                clause,args = _source_clause(conn,sid)
                 rows = conn.execute(
-                    "SELECT * FROM file_analyses WHERE task_id = ? AND file_path = ? "
-                    "ORDER BY id DESC LIMIT ?",
-                    (task_id, normalize_evidence_path(file_path), limit),
+                    "SELECT * FROM file_analyses WHERE task_id = ? AND file_path = ? " + clause +
+                    " ORDER BY id DESC LIMIT ?",
+                    (task_id, path, *args, limit),
                 ).fetchall()
             else:
                 rows = conn.execute(
@@ -174,9 +203,11 @@ def file_forensic_time(db_path: str, file_path: str) -> Optional[datetime]:
     norm = normalize_evidence_path(file_path)
     try:
         with sqlite3.connect(db_path, timeout=10) as conn:
-            row = conn.execute(
-                "SELECT mtime, ctime FROM files WHERE path = ? LIMIT 1", (norm,)
-            ).fetchone()
+            record,_ = file_row(conn,file_path)
+            row = (record.get('mtime'),record.get('ctime'))
+    except SourceIdentityError as exc:
+        if exc.code=='SOURCE_NOT_FOUND':return None
+        raise
     except sqlite3.OperationalError:
         return None
     if not row:
@@ -185,7 +216,7 @@ def file_forensic_time(db_path: str, file_path: str) -> Optional[datetime]:
     if not ts:
         return None
     try:
-        return datetime.fromtimestamp(int(ts))
+        return datetime.fromtimestamp(int(ts),timezone.utc).replace(tzinfo=None)
     except (OverflowError, OSError, ValueError):
         return None
 
@@ -200,16 +231,21 @@ def analysis_stats(db_path: str) -> Dict[str, Any]:
         return {"total": 0, "analyzed": 0, "pending": 0, "stale": 0}
     try:
         with sqlite3.connect(db_path, timeout=10) as conn:
+            source_match = (" AND COALESCE(fa.source_id,'')=COALESCE(f.source_id,'')" if
+                has_column(conn,'files','source_id') and has_column(conn,'file_analyses','source_id') else '')
+            # Legacy ambiguous paths cannot be attributed to either record.
+            unique_match = " AND (SELECT COUNT(*) FROM files f2 WHERE f2.path=f.path)=1" if not source_match else ''
+            latest_match = " AND source_id=fa.source_id" if has_column(conn,'file_analyses','source_id') else ''
             total, analyzed = conn.execute(
                 "SELECT COUNT(*), COALESCE(SUM(EXISTS("
-                "  SELECT 1 FROM file_analyses fa WHERE fa.file_path = f.path)), 0) "
+                "  SELECT 1 FROM file_analyses fa WHERE fa.file_path = f.path" + source_match + unique_match + ")), 0) "
                 "FROM files f"
             ).fetchone()
             stale = conn.execute(
                 "SELECT COUNT(*) FROM file_analyses fa "
-                "JOIN files f ON f.path = fa.file_path "
-                "WHERE fa.id = (SELECT MAX(id) FROM file_analyses "
-                "               WHERE file_path = fa.file_path) "
+                "JOIN files f ON f.path = fa.file_path " + source_match + unique_match +
+                " WHERE fa.id = (SELECT MAX(id) FROM file_analyses "
+                "               WHERE file_path = fa.file_path" + latest_match + ") "
                 "AND COALESCE(fa.md5, '') != COALESCE(f.md5, '')"
             ).fetchone()[0]
     except sqlite3.OperationalError:

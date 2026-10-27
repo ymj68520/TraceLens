@@ -263,6 +263,8 @@ def transcribe_source(
         from ...config import get_settings
         settings = get_settings()
 
+    from ..source_reading import source_reference_for_read
+    reference = source_reference_for_read(file_path)
     md5 = ""
     try:
         md5 = _file_md5(file_path)
@@ -273,7 +275,7 @@ def transcribe_source(
         from .audio_transcript_store import ensure_audio_transcript_schema, latest_transcript
 
         ensure_audio_transcript_schema(files_db_path)
-        existing = latest_transcript(files_db_path, file_path, md5=md5, source=source)
+        existing = latest_transcript(files_db_path, reference, md5=md5, source=source)
         if existing and existing.get("status") == "complete" and existing.get("segments"):
             outcome = TranscriptionOutcome(reused=True)
             outcome.record = existing
@@ -289,7 +291,7 @@ def transcribe_source(
     if max_duration and duration > max_duration:
         note = f"时长 {_format_clock(duration)} 超过上限 {_format_clock(max_duration)},待补齐"
         record = _base_record(
-            file_path, md5, source, task_id, trigger_source,
+            reference, md5, source, task_id, trigger_source,
             duration_sec=duration, transcribed_sec=0.0, coverage=0.0,
             status="pending_backfill", note=note,
         )
@@ -327,7 +329,7 @@ def transcribe_source(
         note_bits.append(f"未覆盖 {_format_clock(max(0.0, duration - transcribed_sec))}(可能为静音/环境音)")
 
     record = _base_record(
-        file_path, md5, source, task_id, trigger_source,
+        reference, md5, source, task_id, trigger_source,
         language=language, engine=engine.name,
         duration_sec=duration, transcribed_sec=round(transcribed_sec, 2),
         coverage=round(coverage, 4), status=status,

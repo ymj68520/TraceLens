@@ -66,7 +66,8 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr("httpserver.services.get_service_manager", lambda: manager)
     app = FastAPI()
     app.include_router(router, prefix="/api/llm")
-    yield TestClient(app), manager, events_db
+    with TestClient(app) as active_client:
+        yield active_client, manager, events_db
     eca_routes._run_jobs.clear()
 
 

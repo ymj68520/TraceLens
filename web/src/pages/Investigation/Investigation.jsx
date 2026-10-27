@@ -1,3 +1,4 @@
+import { fileSourceReference, fileSourceId } from '../../utils/evidenceKey';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Microscope, RefreshCw } from 'lucide-react';
@@ -42,7 +43,7 @@ function InvestigationForTask({ taskId, searchParams }) {
   }, [requestedFileParam]);
   const [selectedEventId, setSelectedEventId] = useState(requestedEvent);
   const [selectedEvidenceKey, setSelectedEvidenceKey] = useState(
-    searchParams.get('evidence_key')?.startsWith(`android_artifact:v1:${taskId}:`)
+    (searchParams.get('evidence_key')?.startsWith(`android_artifact:v1:${taskId}:`) || searchParams.get('evidence_key')?.startsWith(`windows_artifact:v1:${taskId}:`) || fileSourceId(searchParams.get('evidence_key')))
       ? searchParams.get('evidence_key') : null
   );
   const [claimEvidenceScope, setClaimEvidenceScope] = useState(null);
@@ -62,10 +63,10 @@ function InvestigationForTask({ taskId, searchParams }) {
   // 深链 ?event=）时设置，右栏随之切换到事件面板。
   const files = useMemo(() => fileTimeline?.files || [], [fileTimeline]);
   const citationIdsByPath = fileTimeline?.citation_ids_by_path || {};
-  const filesSignature = useMemo(() => files.map((file) => file.path).join('\n'), [files]);
+  const filesSignature = useMemo(() => files.map((file) => fileSourceReference(file)).join('\n'), [files]);
   const [selectedFileKey, setSelectedFileKey] = useState(null);
   const selectedFile = useMemo(
-    () => files.find((file) => file.path === selectedFileKey) || null,
+    () => files.find((file) => fileSourceReference(file) === selectedFileKey) || null,
     [files, selectedFileKey]
   );
   const fileEvents = useMemo(() => {
@@ -83,8 +84,8 @@ function InvestigationForTask({ taskId, searchParams }) {
       if (selectedFileKey) setSelectedFileKey(null);
       return;
     }
-    if (!selectedFileKey || !files.some((file) => file.path === selectedFileKey)) {
-      setSelectedFileKey(files[0].path);
+    if (!selectedFileKey || !files.some((file) => fileSourceReference(file) === selectedFileKey)) {
+      setSelectedFileKey(fileSourceReference(files[0]));
     }
   }, [filesSignature, selectedFileKey, fileTimeline, fileTimelineLoading, reportLoading]);
 
@@ -98,12 +99,15 @@ function InvestigationForTask({ taskId, searchParams }) {
     let targetPath = null;
     if (requestedEvent) {
       const host = files.find((file) => (file.event_ids || []).includes(requestedEvent));
-      if (host) targetPath = host.path;
+      if (host) targetPath = fileSourceReference(host);
     }
     if (!targetPath && requestedFileKey) {
-      const match = files.find((file) => file.path === requestedFileKey)
-        || files.find((file) => normalizeEvidencePath(file.path) === requestedFileKey);
-      if (match) targetPath = match.path;
+      const matches = files.filter((file) => normalizeEvidencePath(file.path) === requestedFileKey);
+      const requestedSourceId = fileSourceId(searchParams.get('evidence_key'));
+      const match = requestedSourceId
+        ? matches.find((file) => file.source_id === requestedSourceId)
+        : (matches.length === 1 ? matches[0] : null);
+      if (match) targetPath = fileSourceReference(match);
     }
     if (targetPath) setSelectedFileKey(targetPath);
   }, [files, requestedEvent, requestedFileKey]);
@@ -119,7 +123,7 @@ function InvestigationForTask({ taskId, searchParams }) {
 
   const selectFile = (file) => {
     if (!file) return;
-    setSelectedFileKey(file.path);
+    setSelectedFileKey(fileSourceReference(file));
     // 回到文件工作台：判定是文件级动作，点文件不再自动跳转事件面板。
     setSelectedEventId(null);
     setSelectedEvidenceKey(null);
@@ -129,7 +133,7 @@ function InvestigationForTask({ taskId, searchParams }) {
   const selectEvent = (eventId) => {
     // 事件面板：事件不在当前文件时自动切换到承载它的文件。
     const host = files.find((file) => (file.event_ids || []).includes(eventId));
-    if (host && host.path !== selectedFileKey) setSelectedFileKey(host.path);
+    if (host && fileSourceReference(host) !== selectedFileKey) setSelectedFileKey(fileSourceReference(host));
     setSelectedEventId(eventId);
     setSelectedEvidenceKey(null);
     setClaimEvidenceScope(null);
@@ -197,7 +201,7 @@ function InvestigationForTask({ taskId, searchParams }) {
           {overview?.read_only && <span role="status" data-testid="historical-readonly-badge" className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500 dark:bg-slate-800"
             title="此历史版本只读；写入需另行备份并受控迁移，浏览不会修改原库。">历史版本 · 只读</span>}
         </div><p className="text-xs text-slate-500">证据梳理 · 分析版本 · 关联线索 · 报告追溯</p></div>
-        <div className="flex items-center gap-4 text-xs text-slate-500"><span>{overview?.event_count || 0} Events</span><span>{overview?.analysis_count || 0} Analyses</span><span data-testid="cited-file-count">{files.length} 引用文件</span><Link to={`/case-intelligence?task_id=${encodeURIComponent(taskId)}&tab=forensic${reportId ? `&report_id=${encodeURIComponent(reportId)}` : ''}`} className="font-semibold text-primary-600 hover:text-primary-500 dark:text-primary-300">查看最终报告</Link><Button size="sm" variant="ghost" icon={RefreshCw} onClick={refreshEventsAndGraph}>刷新</Button></div>
+        <div className="flex items-center gap-4 text-xs text-slate-500"><span>{overview?.event_count || 0} 个事件</span><span>{overview?.analysis_count || 0} 条分析记录</span><span data-testid="cited-file-count">{files.length} 引用文件</span><Link to={`/case-intelligence?task_id=${encodeURIComponent(taskId)}&tab=forensic${reportId ? `&report_id=${encodeURIComponent(reportId)}` : ''}`} className="font-semibold text-primary-600 hover:text-primary-500 dark:text-primary-300">查看最终报告</Link><Button size="sm" variant="ghost" icon={RefreshCw} onClick={refreshEventsAndGraph}>刷新</Button></div>
       </header>
       <main className={`grid min-h-0 flex-1 gap-3 ${graphActive ? 'grid-cols-[minmax(250px,0.8fr)_minmax(640px,2.45fr)]' : 'grid-cols-[minmax(250px,0.8fr)_minmax(300px,0.9fr)_minmax(440px,1.45fr)]'}`}>
         <section className="min-h-0 overflow-hidden rounded-2xl glass">

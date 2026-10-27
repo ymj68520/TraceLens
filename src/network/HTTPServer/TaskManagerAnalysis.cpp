@@ -4,17 +4,21 @@
 
 #include "TaskManager.h"
 #include "AndroidAnalyzer/HarmonyBackupExtractor.h"
+#include "AndroidAnalyzer/XiaomiImageExtractor.h"
 #include "TaskPersistence.h"
 #include "TaskWatchdog.h"
 #include "TaskSerialization.h"
 #include "TaskStageLedger.h"
+#include "ReportTailResume.h"
+#include "WindowsFilesAnalyzer/Parsers/WindowsPrefetchParser.h"
+#include "WindowsFilesAnalyzer/Parsers/WindowsEventLogParser.h"
 #include "AndroidPreflightAdmission.h"
 #include "RaidTaskAdmission.h"
 #include "AndroidContainerNormalization.h"
 #include "AliyunImagePreparation.h"
 #include "LLMPythonProxy.h"
 #include "../../integration/LLMIntegration/LLMClient.h"
-#include "EventClusterAnalyzer.h"
+#include "DatabaseManager/EventExtractor/ActivityRevision.h"
 #include "SceneDetector.h"
 #include "ConfigManager/ConfigManager.h"
 #include "PathManager/PathManager.h"
@@ -518,6 +522,30 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 }
             }
             update_status(task_id, TaskStatus::RUNNING, "正在初始化分析…");
+
+            // The ordinary resume endpoint honors the recorded report boundary.
+            // Reuse only a completed ingestion over the same source and records;
+            // do not treat a physical SQLite checkpoint as new evidence.
+            const auto nextStage=task.metadata.find("resume.next_stage");
+            const auto ingestionStage=stage_ledger::parse(get_stage_entry(task_id,"FINALIZING.ingestion"));
+            if(task.android_source=="tsk" && task.llm_analyze &&
+               nextStage!=task.metadata.end() && nextStage->second=="FINALIZING.report" &&
+               ingestionStage.state=="done" &&
+               forensics::ConfigManager::instance().getBool("REPORT_AUTO_GENERATE_ENABLED",true) &&
+               forensics::report_tail::unchangedInputs(task.image_path,task.output_files_db,task.output_events_db,ingestionStage.detail)) {
+                add_audit_log(task_id,"STAGE_SKIPPED","报告阶段续跑：检材绑定及文件、事件内容摘要与已完成摄取一致");
+                const bool ready=wait_for_pipeline_report(task_id);
+                if(is_task_cancelled(task_id))return;
+                if(!ready){
+                    update_status(task_id,TaskStatus::FAILED,"首次材料自主研判报告未完成","报告重试未通过；已完成的分析、图谱及失败审计记录保留。");
+                    return;
+                }
+                const std::string message="报告已生成；既有文件分析与图谱覆盖范围保留";
+                mark_stage_complete(task_id,stage_ledger::kFinalizing,"");
+                update_progress(task_id,TaskPhase::FINALIZING,100,message);
+                update_status(task_id,TaskStatus::COMPLETED,message);
+                return;
+            }
             update_progress(task_id, TaskPhase::INITIALIZING, 10, "正在初始化分析环境…");
 
             if (!std::filesystem::exists(imagePath)) {
@@ -529,19 +557,25 @@ void TaskManager::start_analysis(const std::string& task_id) {
 
             // Generate DB paths
             const bool harmonyBackup = HarmonyBackupExtractor::recognizes(imagePath);
+            const bool xiaomiImage = task.android_source == "xiaomi-image";
+            const bool indexedMobile = harmonyBackup || xiaomiImage;
+            if (xiaomiImage && !XiaomiImageExtractor::recognizes(imagePath)) {
+                update_status(task_id, TaskStatus::FAILED, "不是受支持的小米手机数据导出镜像"); return;
+            }
             bool harmonyCoverageIncomplete = !task.platform_analyze;
+            bool windowsCoverageIncomplete=false,clusterCoverageIncomplete=false;
             if (task.android_source == "harmony-backup" && !harmonyBackup) {
                 update_status(task_id, TaskStatus::FAILED, "INVALID_HARMONY_BACKUP");
                 return;
             }
-            if (harmonyBackup) {
-                task.android_source = "harmony-backup";
+            if (indexedMobile) {
+                task.android_source = xiaomiImage ? "xiaomi-image" : "harmony-backup";
                 task.scenarios = {ForensicScenario::ANDROID};
                 std::lock_guard<std::mutex> lock(mtx_);
                 tasks_[task_id].android_source = task.android_source;
                 tasks_[task_id].scenarios = task.scenarios;
-                tasks_[task_id].metadata["device_platform"] = "HarmonyOS";
-                tasks_[task_id].metadata["source_identity_kind"] = "logical_file_id_not_inode";
+                tasks_[task_id].metadata["device_platform"] = xiaomiImage ? "Android / MIUI" : "HarmonyOS";
+                tasks_[task_id].metadata["source_identity_kind"] = xiaomiImage ? "logical_file_id_not_device_physical_inode" : "logical_file_id_not_inode";
             }
             std::filesystem::path p(imagePath);
             std::string baseName = task.android_source == "aliyun-image" ? "system" : p.stem().string();
@@ -838,14 +872,24 @@ void TaskManager::start_analysis(const std::string& task_id) {
             update_progress(task_id, TaskPhase::IMAGE_ANALYSIS, 50, "检材结构分析已完成，正在提取元数据…");
 
             if (!analyzer->extractToDatabase(rawDbPath)) {
-                update_status(task_id, TaskStatus::FAILED, "Failed to create raw database",
-                              "extractToDatabase produced no files for '" + imagePath +
-                              "' (raw DB: " + rawDbPath +
-                              "). Either the image contains no walkable filesystem or the "
-                              "filesystem walker failed. See cpp_server.log for this task.");
+                update_status(task_id, TaskStatus::FAILED, "文件元数据提取或来源索引建立失败",
+                              "检材：" + imagePath + "；任务数据库：" + rawDbPath +
+                              "。请核对本任务解析诊断；该状态不表示镜像中没有文件。");
                 return;
             }
             update_progress(task_id, TaskPhase::IMAGE_ANALYSIS, 100, "检材结构分析与元数据提取已完成");
+            if (xiaomiImage) {
+                sqlite3* sourceDb=nullptr;sqlite3_stmt* hashRow=nullptr;bool verified=false;
+                if(sqlite3_open_v2(rawDbPath.c_str(),&sourceDb,SQLITE_OPEN_READONLY,nullptr)==SQLITE_OK &&
+                    sqlite3_prepare_v2(sourceDb,"SELECT value FROM xiaomi_source_meta WHERE key='manifest'",-1,&hashRow,nullptr)==SQLITE_OK &&
+                    sqlite3_step(hashRow)==SQLITE_ROW) {
+                    const auto m=nlohmann::json::parse(reinterpret_cast<const char*>(sqlite3_column_text(hashRow,0)),nullptr,false);
+                    verified=!m.is_discarded() && m.value("source_sha256",std::string())==task.metadata["preflight_source_sha256"];
+                }
+                sqlite3_finalize(hashRow);if(sourceDb)sqlite3_close(sourceDb);
+                if(!verified){update_status(task_id,TaskStatus::FAILED,"镜像来源与完整预检不一致","EVIDENCE_CHANGED_AFTER_PREFLIGHT");return;}
+            }
+
             if (task.android_source == "aliyun-image") {
                 sqlite3* probe = nullptr;
                 sqlite3_stmt* statement = nullptr;
@@ -1007,6 +1051,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     // extractEvents() appends rows into an existing events table
                     // (CREATE TABLE IF NOT EXISTS + INSERT), so a partial database
                     // from an interrupted attempt must go before the re-run.
+                    forensics::activity_revision::archive(eventDbPath);
                     remove_sqlite_artifacts({eventDbPath});
                     if (!eventExtractor->extractEvents()) {
                         std::cerr << "Error: Failed to extract events from " << effectiveRawDb << std::endl;
@@ -1053,6 +1098,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     // A stale files DB from an interrupted earlier attempt would
                     // collect duplicate rows (FileClassifier only INSERTs), so
                     // the artifact is removed before the re-run.
+                    forensics::activity_revision::archive(fileDbPath);
                     remove_sqlite_artifacts({fileDbPath});
                     if (!fileClassifier->classifyAndExtract()) {
                         update_status(task_id, TaskStatus::FAILED, "Failed to classify files",
@@ -1090,7 +1136,9 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     llmService.setSceneType(sceneType);
                     // Provide image + raw DB paths so files can be extracted from the
                     // image before LLM analysis (files live inside the image, not on disk).
-                    llmService.setImagePaths(imagePath, effectiveRawDb, task_id);
+                    // Selection remains restricted to files.db, but companions
+                    // must resolve against the complete task acquisition index.
+                    llmService.setImagePaths(imagePath, rawDbPath, task_id);
                     auto& config = forensics::ConfigManager::instance();
                     forensics::LLMAnalysisService::AnalysisOptions llmOpts;
                     llmOpts.maxFiles = config.getLLMMaxFiles();
@@ -1147,58 +1195,27 @@ void TaskManager::start_analysis(const std::string& task_id) {
                             });
                     }
                     
-                    update_progress(task_id, TaskPhase::LLM_ANALYSIS, 100, 
-                        "LLM analysis completed: " + std::to_string(analyzedCount) + " files analyzed (stored in _files.db)");
-                    mark_stage_complete(task_id, stage_ledger::kLlmAnalysis, "",
-                                        stage_ledger::kPlatformAnalysis);
+                    const auto selectionSummary=llmService.selectionSummary();
+                    {
+                        std::lock_guard<std::mutex> lock(mtx_);
+                        tasks_[task_id].metadata["file_selection_plan"]=selectionSummary.value("plan_id",std::string());
+                        tasks_[task_id].metadata["file_selection_counts"]=selectionSummary.value("counts",nlohmann::json::object()).dump();
+                        tasks_[task_id].metadata["file_selection_progress"]=selectionSummary.dump();
+                    }
+                    update_progress(task_id, TaskPhase::LLM_ANALYSIS, 100,
+                        "本轮文件初析结束，新增成功 " + std::to_string(analyzedCount) + " 项；未选、暂缓与失败范围见候选选择审计");
+                    if(selectionSummary.value("completed",int64_t(0))<selectionSummary.value("counts",nlohmann::json::object()).value("selected",int64_t(0)))
+                        mark_stage_partial(task_id,stage_ledger::kLlmAnalysis,
+                            std::to_string(selectionSummary.value("completed",int64_t(0)))+"/"+
+                            std::to_string(selectionSummary.value("counts",nlohmann::json::object()).value("selected",int64_t(0)))+
+                            ":selection:"+selectionSummary.value("plan_id",std::string()));
+                    else mark_stage_complete(task_id, stage_ledger::kLlmAnalysis, selectionSummary.value("plan_id",std::string()),stage_ledger::kPlatformAnalysis);
                 } else {
                     std::cerr << "Warning: Failed to initialize LLM analysis service" << std::endl;
                 }
             }
 
-            // 5. Event Cluster Analysis (Optional) — independent of the file
-            // description switch: llm_event_analyze alone controls this stage.
-            if (task.llm_event_analyze) {
-                if (is_task_cancelled(task_id)) { return; }
-                update_progress(task_id, TaskPhase::LLM_ANALYSIS, 90, "Starting event cluster analysis...");
-                
-                forensics::EventClusterAnalyzer clusterAnalyzer;
-                if (clusterAnalyzer.initialize()) {
-                    int analyzedCount = 0;
-                    
-                    if (task.llm_mode == "full") {
-                        // Full mode: analyze all event clusters
-                        update_progress(task_id, TaskPhase::LLM_ANALYSIS, 92, "Full mode: Analyzing all event clusters...");
-                        auto allClusters = clusterAnalyzer.getAllEventClusters(eventDbPath);
-                        analyzedCount = clusterAnalyzer.analyzeEventClusters(eventDbPath, allClusters,
-                            [this, task_id](int current, int total, const std::string&) -> bool {
-                                if (is_task_cancelled(task_id)) return false;
-                                update_progress(task_id, TaskPhase::LLM_ANALYSIS, 92,
-                                    "Analyzing event cluster " + std::to_string(current) + "/" + std::to_string(total));
-                                return true;
-                            });
-                    } else {
-                        // Smart mode: LLM selects important event clusters first
-                        update_progress(task_id, TaskPhase::LLM_ANALYSIS, 92, "Smart mode: Selecting important event clusters...");
-                        const int configuredClusterLimit = forensics::ConfigManager::instance().getLLMMaxEventClusters();
-                        const size_t clusterLimit = configuredClusterLimit > 0
-                            ? static_cast<size_t>(configuredClusterLimit)
-                            : 0;
-                        analyzedCount = clusterAnalyzer.analyzeSmartEventClusters(eventDbPath, clusterLimit,
-                            [this, task_id](int current, int total, const std::string&) -> bool {
-                                if (is_task_cancelled(task_id)) return false;
-                                update_progress(task_id, TaskPhase::LLM_ANALYSIS, 93,
-                                    "Analyzing event cluster " + std::to_string(current) + "/" + std::to_string(total));
-                                return true;
-                            });
-                    }
-                    
-                    update_progress(task_id, TaskPhase::LLM_ANALYSIS, 95, 
-                        "Event cluster analysis completed: " + std::to_string(analyzedCount) + " clusters analyzed");
-                } else {
-                    std::cerr << "Warning: Failed to initialize event cluster analyzer" << std::endl;
-                }
-            }
+            // Event-cluster analysis runs in FINALIZING after platform activity import.
 
             // 6. Platform-Specific Analysis (Unified) — task-level switch
             // (mvp: selected by the user at creation time, default on).
@@ -1239,6 +1256,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     }
                     const std::string scenarioFp = stage_ledger::combine({
                         stage_ledger::fingerprintSqlite(effectiveRawDb), scenario_name,
+                        scenario == ForensicScenario::WINDOWS ? "windows-parser-truth-v3-artifact-decoding:" + PrefetchParser::libraryVersion() + ":" + libevtx_get_version() : "",
                         task.llm_analyze ? "llm" : "nollm"});
                     if (stage_is_reusable(task_id, scenarioStage, scenarioFp, {scenarioDbPath})) {
                         add_audit_log(task_id, "STAGE_SKIPPED",
@@ -1278,7 +1296,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                                     [this, task_id]() { return is_task_cancelled(task_id); });
                                 if (androidAnalyzer->initialize()) {
                                     androidAnalyzer->analyzeAndroidData();
-                                    if (harmonyBackup) {
+                                    if (indexedMobile) {
                                         if (!eventExtractor->importAndroidArtifacts(androidDbPath))
                                             throw std::runtime_error("HARMONY_TIMELINE_IMPORT_FAILED");
                                         if (!writeAndroidCoverageManifest(task, androidDbPath))
@@ -1290,7 +1308,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                                         tasks_[task_id].metadata["android_coverage_status"] = coverage.unresolved ? "incomplete" : "parsed_sources_present";
                                     }
                                 } else {
-                                    if (harmonyBackup) throw std::runtime_error("HARMONY_INIT_FAILED");
+                                    if (indexedMobile) throw std::runtime_error(xiaomiImage ? "小米镜像来源初始化失败" : "HARMONY_INIT_FAILED");
                                     std::cerr << "Warning: Failed to initialize Android analyzer" << std::endl;
                                 }
                                 break;
@@ -1298,19 +1316,20 @@ void TaskManager::start_analysis(const std::string& task_id) {
                             case ForensicScenario::WINDOWS: {
                                 auto dbManager = std::make_unique<DatabaseManager>(effectiveRawDb);
                                 if (!dbManager->initialize()) {
-                                    std::cerr << "Warning: Failed to initialize DatabaseManager for Windows analysis" << std::endl;
-                                    break;
+                                    throw std::runtime_error("Windows分析数据库初始化失败");
                                 }
                                 auto windowsAnalyzer = std::make_unique<WindowsFilesAnalyzer>(imagePath, dbManager.get());
                                 std::string windowsDbPath = pm.getTaskDbPaths(task_id, baseName).windowsDb.string();
+                                forensics::activity_revision::archive(windowsDbPath);
                                 remove_sqlite_artifacts({windowsDbPath});
                                 windowsAnalyzer->setOutputDatabasePath(windowsDbPath);
+                                windowsAnalyzer->setSkipAI(!task.llm_analyze);
                                 attachPlatformProgressCallback(*windowsAnalyzer, task_id, base_progress,
                                                                per_scenario_progress, scenario_name);
                                 if (windowsAnalyzer->initialize()) {
                                     windowsAnalyzer->analyzeWindowsData();
                                 } else {
-                                    std::cerr << "Warning: Failed to initialize Windows analyzer" << std::endl;
+                                    throw std::runtime_error("Windows解析器初始化失败");
                                 }
                                 break;
                             }
@@ -1361,7 +1380,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     } catch (const std::exception& e) {
                         std::cerr << "Warning: " << scenario_name << " analysis failed: " << e.what() << std::endl;
                         add_audit_log(task_id, "WARNING", scenario_name + " analysis failed: " + std::string(e.what()));
-                        if (harmonyBackup || task.android_source == "aliyun-image") throw;
+                        if (indexedMobile || task.android_source == "aliyun-image" || scenario == ForensicScenario::WINDOWS) throw;
                         // Soft failure: the scenario is intentionally left
                         // unrecorded in the ledger so a resume retries it,
                         // matching the original pipeline's tolerance for
@@ -1395,8 +1414,20 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 }
             }
 
+            if(task.platform_analyze && std::find(task.scenarios.begin(),task.scenarios.end(),ForensicScenario::WINDOWS)!=task.scenarios.end()) {
+                update_progress(task_id,TaskPhase::PLATFORM_ANALYSIS,98,"正在导入Windows有效活动与配置观察…");
+                const auto windowsDb=pm.getTaskDbPaths(task_id,baseName).windowsDb.string();
+                const bool imported=eventExtractor->importWindowsArtifacts(windowsDb,task_id);
+                const auto coverage=nlohmann::json::parse(eventExtractor->windowsImportReport());
+                windowsCoverageIncomplete=!coverage.value("complete",false);
+                {std::lock_guard<std::mutex> lock(mtx_);tasks_[task_id].metadata["windows_activity_coverage"]=coverage.dump();tasks_[task_id].metadata["windows_activity_result_set"]=coverage.value("result_set_id",std::string());}
+                if(!imported)throw std::runtime_error("Windows活动导入失败；本次事务已回滚");
+                if(windowsCoverageIncomplete)mark_stage_partial(task_id,"PLATFORM_ANALYSIS.windows.import",coverage.value("result_set_id",std::string()));
+                else mark_stage_complete(task_id,"PLATFORM_ANALYSIS.windows.import",coverage.value("result_set_id",std::string()));
+            }
+
             // 7. File Carving (Optional) — signature-based recovery from unallocated space
-            if (task.file_carving && !harmonyBackup && !is_task_cancelled(task_id)) {
+            if (task.file_carving && !indexedMobile && !is_task_cancelled(task_id)) {
               if (is_task_paused(task_id)) { update_status(task_id, TaskStatus::PAUSED, "已暂停（文件恢复前）"); return; }
               auto carvedEntry = stage_ledger::parse(
                   get_stage_entry(task_id, stage_ledger::kFileCarving));
@@ -1450,13 +1481,56 @@ void TaskManager::start_analysis(const std::string& task_id) {
             const bool noOptionalIntelligence = fieldMode && std::string(fieldMode) == "enabled" &&
                 (!outbound || std::string(outbound) == "disabled");
 
+            if(task.llm_event_analyze && !noOptionalIntelligence) {
+                auto& config=forensics::ConfigManager::instance();const auto model=config.getTextModelConfig();
+                const auto eventsRevision=forensics::activity_revision::fingerprint(eventDbPath,{"events","windows_activity_current"});
+                if(eventsRevision.empty())throw std::runtime_error("无法校验事件来源版本");
+                const auto clusterFp=stage_ledger::combine({eventsRevision,"cluster-derivation:v2",task.case_description,
+                    model.model,model.baseUrl,model.endpoint,model.thinkingMode,std::to_string(model.reservedTokens),
+                    std::to_string(model.temperature),std::to_string(model.contextLength),std::to_string(model.maxTokens),std::to_string(config.getLLMMaxEventClusters()),
+                    config.get("CLUSTER_ANALYSIS_CHUNK_SIZE","200"),
+                    config.get("EVENT_CLUSTER_MAX_CALLS","0"),config.get("EVENT_CLUSTER_MAX_TOTAL_TOKENS","0")});
+                const auto previous=stage_ledger::parse(get_stage_entry(task_id,"FINALIZING.clusters"));
+                if(previous.state!="done" || previous.detail!=clusterFp) {
+                    update_progress(task_id,TaskPhase::FINALIZING,12,"正在分析包含Windows活动的事件簇…");
+                    auto& proxy=forensics::LLMPythonProxy::instance();const auto started=proxy.startClusterRun(task_id);
+                    if(started.value("status",std::string())=="disabled"){
+                        clusterCoverageIncomplete=true;mark_stage_partial(task_id,"FINALIZING.clusters","配置关闭事件智能分析");
+                    }else{
+                        const auto jobId=started.at("job_id").get<std::string>();
+                        {std::lock_guard<std::mutex> lock(mtx_);tasks_[task_id].metadata["event_cluster_job_id"]=jobId;}
+                        save_tasks_internal();
+                        const auto until=std::chrono::steady_clock::now()+std::chrono::minutes(std::max(1,config.getInt("EVENT_CLUSTER_WAIT_TIMEOUT_MIN",120)));
+                        for(;;){
+                            if(is_task_cancelled(task_id) || is_task_paused(task_id)){
+                                proxy.cancelClusterRun(jobId);mark_stage_partial(task_id,"FINALIZING.clusters",jobId);
+                                if(is_task_paused(task_id))update_status(task_id,TaskStatus::PAUSED,"已暂停（事件分析中）");return;
+                            }
+                            auto state=proxy.clusterRunStatus(jobId);const auto status=state.value("status",std::string());
+                            if(status=="completed" || status=="partial"){
+                                clusterCoverageIncomplete=status=="partial";
+                                {std::lock_guard<std::mutex> lock(mtx_);tasks_[task_id].metadata["event_cluster_summary"]=state.value("summary",nlohmann::json::object()).dump();}
+                                if(clusterCoverageIncomplete)mark_stage_partial(task_id,"FINALIZING.clusters",clusterFp);
+                                else mark_stage_complete(task_id,"FINALIZING.clusters",clusterFp);
+                                break;
+                            }
+                            if(status=="failed" || status=="interrupted")throw std::runtime_error("事件簇分析未完成；已完成记录保留，可续跑");
+                            if(std::chrono::steady_clock::now()>=until){proxy.cancelClusterRun(jobId);throw std::runtime_error("事件簇分析等待超时；已完成记录保留");}
+                            touch_heartbeat(task_id);std::this_thread::sleep_for(std::chrono::seconds(1));
+                        }
+                    }
+                }
+            }
+            const auto ingestionFp=forensics::report_tail::ingestionFingerprint(eventDbPath,fileDbPath);
+            if(ingestionFp.empty() && !noOptionalIntelligence)throw std::runtime_error("无法校验图谱输入的文件与事件内容，未记录为完成");
+
             // Resume fast path: a previous attempt that already finished
             // ingestion must not re-wait for it — the graph is idempotent
             // server-side (file-episode dedupe + ingested_at watermark), but the
             // wait itself costs hours on a real image. Only the report gate is
             // retried in that case.
-            const bool ingestionAlreadyDone = stage_ledger::parse(
-                get_stage_entry(task_id, "FINALIZING.ingestion")).state == "done";
+            const auto ingestionEntry=stage_ledger::parse(get_stage_entry(task_id,"FINALIZING.ingestion"));
+            const bool ingestionAlreadyDone=ingestionEntry.state=="done" && ingestionEntry.detail==ingestionFp;
 
             if (!noOptionalIntelligence && !ingestionAlreadyDone) {
                 try {
@@ -1505,7 +1579,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
             // so a later failure in the report stage resumes straight to the
             // report instead of re-waiting hours for an already-built graph.
             if (!noOptionalIntelligence && !ingestionAlreadyDone) {
-                mark_stage_complete(task_id, "FINALIZING.ingestion", "",
+                mark_stage_complete(task_id, "FINALIZING.ingestion", ingestionFp,
                                     "FINALIZING.report");
             }
 
@@ -1523,9 +1597,10 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     return;
                 }
             }
-            const std::string completionMessage = harmonyBackup && harmonyCoverageIncomplete
-                ? "HarmonyOS backup analyzed; some sources are absent or unsupported. Review mobile source coverage."
-                : "Analysis completed successfully";
+            const std::string completionMessage = indexedMobile && harmonyCoverageIncomplete
+                ? "手机材料分析完成；部分来源缺失或未支持，请核对解析覆盖情况。"
+                : windowsCoverageIncomplete || clusterCoverageIncomplete ? "分析流程已结束；部分Windows来源或事件簇未完成，请查看覆盖与运行记录。"
+                : indexedMobile ? "手机材料分析已完成" : "取证分析已完成";
             mark_stage_complete(task_id, stage_ledger::kFinalizing, "");
             update_progress(task_id, TaskPhase::FINALIZING, 100, completionMessage);
             update_status(task_id, TaskStatus::COMPLETED, completionMessage);

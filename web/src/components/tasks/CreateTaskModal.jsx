@@ -34,6 +34,7 @@ const DATA_SOURCES = [
   { value: 'dir', label: 'Android 目录', desc: '已解压的逻辑提取目录树' },
   { value: 'zip', label: 'Android ZIP', desc: '逻辑提取打包成的单个 .zip' },
   { value: 'miui-backup', label: 'MIUI 备份', desc: '小米 MIUI 离线备份目录（含 descript.xml + .bak）' },
+  { value: 'xiaomi-image', label: '小米手机镜像', desc: '含 DMF、应用数据和共享存储的 EXT4 导出镜像，走完整取证流程' },
   { value: 'harmony-backup', label: '华为鸿蒙备份', desc: '已解密备份目录，含 .info.json 和 files' },
   { value: 'tar', label: 'Android TAR', desc: '.tar / .tar.gz / .tgz / .tar.xz（需完整预检）' },
   { value: 'seven-zip', label: 'Android 7z', desc: '.7z 逻辑提取归档（需完整预检）' },
@@ -75,7 +76,8 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
 
   const isRaid = form.android_source === 'raid';
   const isAliyun = form.android_source === 'aliyun-image';
-  const isLogical = form.android_source !== 'tsk' && !isRaid && !isAliyun;
+  const isXiaomi = form.android_source === 'xiaomi-image';
+  const isLogical = form.android_source !== 'tsk' && !isRaid && !isAliyun && !isXiaomi;
   const isMiui = form.android_source === 'miui-backup';
   const isArchive = ['tar', 'seven-zip', 'android-backup', 'filesystem-image', 'android-container'].includes(form.android_source);
 
@@ -88,7 +90,7 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
   }));
 
   // Label / placeholder for the path input changes with the data source.
-  const pathLabel = isAliyun ? '阿里云系统盘导出包 *' : form.android_source === 'harmony-backup' ? '鸿蒙备份目录 *' : isMiui
+  const pathLabel = isXiaomi ? '小米手机导出镜像 *' : isAliyun ? '阿里云系统盘导出包 *' : form.android_source === 'harmony-backup' ? '鸿蒙备份目录 *' : isMiui
     ? 'MIUI 备份目录 *'
     : form.android_source === 'dir'
     ? 'Android 提取目录 *'
@@ -99,7 +101,7 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
     : isArchive
     ? 'Android 归档/备份文件 *'
     : '检材路径 *';
-  const pathPlaceholder = isAliyun ? '/path/to/file_m-xxx_system.raw.tar.gz' : form.android_source === 'harmony-backup' ? '/path/to/已解密鸿蒙备份/' : isMiui
+  const pathPlaceholder = isXiaomi ? '/path/to/小米全盘-MIX 2S.bin' : isAliyun ? '/path/to/file_m-xxx_system.raw.tar.gz' : form.android_source === 'harmony-backup' ? '/path/to/已解密鸿蒙备份/' : isMiui
     ? '/path/to/MIUI备份目录（含 descript.xml + .bak）'
     : form.android_source === 'dir'
     ? '/path/to/android_logical_extraction/'
@@ -126,17 +128,18 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
       // force the scenario so the backend runs the Android analyzer path and
       // skips the TSK disk-image pipeline.
       if (isRaid && !raidSource) throw new Error('请先完成 RAID 布局确认和系统镜像准备');
-      const isLogical = form.android_source !== 'tsk' && !isRaid && !isAliyun;
-      if (isAliyun && !form.preflight_job_id) throw new Error('请先在检材预检中完成完整 SHA-256，再按此来源创建任务');
+      const isLogical = form.android_source !== 'tsk' && !isRaid && !isAliyun && !isXiaomi;
+      if ((isAliyun || isXiaomi) && !form.preflight_job_id) throw new Error('请先在检材预检中完成完整 SHA-256，再按此来源创建任务');
       const payload = {
         ...form,
         ...(isRaid ? raidSource : {}),
-        scenarios: isAliyun ? ['linux'] : isLogical ? ['android'] : form.scenarios,
+        scenarios: isAliyun ? ['linux'] : (isXiaomi || isLogical) ? ['android'] : form.scenarios,
+        ...(isXiaomi ? { file_carving: false } : {}),
         llm_analyze: true,
         llm_event_analyze: false,
         llm_mode: 'smart',
         // 平台分析任务级开关（创建时选择；默认开启）
-        platform_analyze: isAliyun || isArchive || form.platform_analyze !== false,
+        platform_analyze: isAliyun || isXiaomi || isArchive || form.platform_analyze !== false,
       };
       // Only send backup_password when non-empty (keeps it runtime-only / sparse).
       if (!payload.backup_password) delete payload.backup_password;
@@ -277,14 +280,14 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
                 <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
                   <input
                     type="checkbox"
-                    checked={isAliyun || isArchive || form.platform_analyze !== false}
-                    disabled={isAliyun || isArchive}
+                    checked={isAliyun || isXiaomi || isArchive || form.platform_analyze !== false}
+                    disabled={isAliyun || isXiaomi || isArchive}
                     onChange={(e) => set('platform_analyze', e.target.checked)}
                     className="w-4 h-4 rounded border-slate-300"
                   />
                   平台分析（Android / Windows / Linux 工件级分析，默认开启）
                 </label>
-                {isAliyun ? <p className="text-xs text-slate-600">阿里云系统盘固定执行 Linux 平台分析，继续原有磁盘取证流程。</p> : isLogical ? (
+                {isXiaomi ? <p className="text-xs text-slate-600">小米导出镜像固定执行手机分析，并继续文件、时间线、调查和报告流程。</p> : isAliyun ? <p className="text-xs text-slate-600">阿里云系统盘固定执行 Linux 平台分析，继续原有磁盘取证流程。</p> : isLogical ? (
                   // Logical Android source → platform is fixed to Android; the
                   // TSK pipeline (and thus XFS mode / scene auto-detect) does
                   // not apply. Show an informational note instead of overrides.

@@ -23,6 +23,13 @@ find_package(Boost REQUIRED COMPONENTS system thread)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(HIVEX REQUIRED hivex)
 pkg_check_modules(LIBEVTX REQUIRED libevtx)
+# Optional build capability: missing libscca preserves unknown Prefetch fields.
+pkg_check_modules(LIBSCCA QUIET IMPORTED_TARGET libscca>=20240414)
+if(LIBSCCA_FOUND)
+  add_compile_definitions(HAVE_LIBSCCA)
+else()
+  message(WARNING "libscca unavailable: Prefetch execution fields will remain unknown")
+endif()
 pkg_check_modules(LIBBFIO REQUIRED libbfio)
 pkg_check_modules(LIBESEDB REQUIRED libesedb)
 pkg_check_modules(LIBOLECF REQUIRED libolecf)
@@ -340,6 +347,7 @@ set(LIB_SOURCES
     src/core/DatabaseManager/FileClassifier/FileClassifierPatterns.cpp
     src/core/DatabaseManager/FileClassifier/EncryptionUtils.cpp
     src/core/DatabaseManager/FileExtractor/FileExtractor.cpp
+    src/core/DatabaseManager/FileExtractor/SourceMaterializer.cpp
     src/core/DatabaseManager/FileExtractor/FileExtractor_Extract.cpp
     src/core/Logger/Logger.cpp
     src/core/ThreadPool/ThreadPool.cpp
@@ -418,6 +426,7 @@ set(LIB_SOURCES
     src/analyzers/AndroidAnalyzer/LogicalDirExtractor.cpp
     src/analyzers/AndroidAnalyzer/ZipArchiveExtractor.cpp
     src/analyzers/AndroidAnalyzer/HarmonyBackupExtractor.cpp
+    src/analyzers/AndroidAnalyzer/XiaomiImageExtractor.cpp
     src/analyzers/AndroidAnalyzer/HarmonyArtifactParsers.cpp
     src/analyzers/AndroidAnalyzer/AndroidPathMapper.cpp
     src/analyzers/AndroidAnalyzer/FilesystemEvidenceSource.cpp
@@ -448,6 +457,7 @@ set(LIB_SOURCES
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsRegistryParser.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsRegistryArtifacts.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsEventLogParser.cpp
+    src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsEventLogHelpers.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsArtifactsParsers.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsArtifactsParsers_ExecutionTraces.cpp
     src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsArtifactsParsers_SystemAnalysis.cpp
@@ -616,7 +626,7 @@ set_source_files_properties(src/analyzers/AndroidAnalyzer/FilesystemEvidenceSour
     PROPERTIES COMPILE_DEFINITIONS "TRACELENS_SOURCE_ROOT=\"${TRACELENS_RUNTIME_SOURCE_ROOT}\"")
 set_source_files_properties(src/network/HTTPServer/AndroidContainerNormalization.cpp
     PROPERTIES COMPILE_DEFINITIONS "TRACELENS_SOURCE_ROOT=\"${TRACELENS_RUNTIME_SOURCE_ROOT}\"")
-set_source_files_properties(src/network/HTTPServer/AliyunImagePreparation.cpp
+set_source_files_properties(src/analyzers/AndroidAnalyzer/XiaomiImageExtractor.cpp src/network/HTTPServer/AliyunImagePreparation.cpp
     PROPERTIES COMPILE_DEFINITIONS "TRACELENS_SOURCE_ROOT=\"${TRACELENS_RUNTIME_SOURCE_ROOT}\"")
 
 # Link libraries
@@ -656,6 +666,9 @@ else()
 endif()
 
 # Installation
+if(LIBSCCA_FOUND)
+  target_link_libraries(forensic_analyzer PkgConfig::LIBSCCA)
+endif()
 install(TARGETS forensic_analyzer DESTINATION bin)
 install(PROGRAMS scripts/bitlocker_fvek_decrypt.py DESTINATION bin/scripts)
 

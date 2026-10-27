@@ -165,7 +165,7 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
         {
             const std::string source_kind = body.value("android_source", "tsk");
             static const std::set<std::string> supportedSources{
-                "tsk", "dir", "zip", "miui-backup", "harmony-backup", "tar", "seven-zip", "android-backup", "filesystem-image", "android-container", "aliyun-image"};
+                "tsk", "dir", "zip", "miui-backup", "harmony-backup", "tar", "seven-zip", "android-backup", "filesystem-image", "android-container", "aliyun-image", "xiaomi-image"};
             if (!supportedSources.count(source_kind)) {
                 res.code = 400;
                 res.set_header("Content-Type", "application/json");
@@ -325,11 +325,11 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
         // disk-image pipeline; "dir" / "zip" / "miui-backup" short-circuit
         // straight to the Android analyzer (no _raw.db produced).
         std::string android_source = body.value("android_source", "tsk");
-        if ((android_source == "android-container" || android_source == "aliyun-image") &&
+        if ((android_source == "android-container" || android_source == "aliyun-image" || android_source == "xiaomi-image") &&
             !body.value("db_output_dir", std::string()).empty()) {
             res.code = 400;
             res.set_header("Content-Type", "application/json");
-            res.write(json{{"error", android_source == "aliyun-image" ? "阿里云镜像任务输出须保存在本任务目录" : "Android container Task outputs must stay in its Task directory"},
+            res.write(json{{"error", android_source == "xiaomi-image" ? "小米镜像任务输出须保存在本任务目录" : android_source == "aliyun-image" ? "阿里云镜像任务输出须保存在本任务目录" : "Android container Task outputs must stay in its Task directory"},
                            {"error_code", "TASK_WORKDIR_REQUIRED"}}.dump());
             return res;
         }
@@ -386,6 +386,25 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
             metadata["source_verification"] = "VERIFIED_PREFLIGHT";
             scenarios = {ForensicScenario::LINUX};
         }
+        if (android_source == "xiaomi-image") {
+            for (auto it = metadata.begin(); it != metadata.end();) {
+                if (it->first.rfind("xiaomi_", 0) == 0) it = metadata.erase(it);
+                else ++it;
+            }
+            const auto admission = admitXiaomiImage(image_path,
+                body.value("preflight_job_id", std::string()),
+                body.value("preflight_source_sha256", std::string()),
+                body.value("preflight_detected_kind", std::string()));
+            if (!admission.accepted) {
+                res.code = admission.code == "EVIDENCE_CHANGED_AFTER_PREFLIGHT" ? 409 : 400;
+                res.set_header("Content-Type", "application/json");
+                res.write(json{{"error", admission.detail}, {"error_code", admission.code}, {"status", "rejected"}}.dump());
+                return res;
+            }
+            for (const auto& [key, value] : admission.metadata) metadata[key] = value;
+            metadata["source_verification"] = "VERIFIED_PREFLIGHT";
+            scenarios = {ForensicScenario::ANDROID};
+        }
         // MIUI / Android backup AES-256 password (runtime-only, never persisted).
         std::string backup_password = body.value("backup_password", "");
         body.erase("backup_password");
@@ -397,6 +416,11 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
         // Platform artifact analysis (Android/Windows/Linux/ServerCloud stage).
         // Task-level switch, selected by the user at creation; on by default.
         bool platform_analyze = body.value("platform_analyze", true);
+        if (android_source == "xiaomi-image" && (!platform_analyze || body.value("file_carving",false))) {
+            res.code=400;res.set_header("Content-Type","application/json");
+            res.write(json{{"error","小米导出镜像须启用手机分析，且不支持原设备物理删除恢复"},{"error_code","XIAOMI_EXPORT_OPTIONS_INVALID"}}.dump());return res;
+        }
+
         if (android_source == "aliyun-image" && !platform_analyze) {
             res.code = 400;
             res.set_header("Content-Type", "application/json");
@@ -418,6 +442,11 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
         bool file_carving = body.value("file_carving", false);
         if (body.contains("options") && body["options"].is_object()) {
             file_carving = file_carving || body["options"].value("file_carving", false);
+        }
+        if (android_source == "xiaomi-image" && file_carving) {
+            res.code=400;res.set_header("Content-Type","application/json");
+            res.write(json{{"error","手机数据导出镜像不支持原设备物理删除恢复"},
+                           {"error_code","XIAOMI_EXPORT_OPTIONS_INVALID"}}.dump());return res;
         }
 
         // ATOMIC TASK CREATION: All options in one go to prevent lock contention and redundant disk I/O

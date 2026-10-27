@@ -8,15 +8,16 @@ Gives a single task the case-flow-independent entry the retired
 - ``GET  /event-cluster-analysis/run/{id}``  job progress/statistics;
 - ``GET  /event-cluster-analyses``           analysis-record query (truth source).
 
-Job registry follows the in-memory pattern of multi_analysis.py: single
-process, best-effort status.
+Job status is persisted in the task events database; in-memory entries only
+hold active asyncio tasks and compatibility observations.
 """
 
 import asyncio
 import logging
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Literal
+from ..services.case_analysis import cluster_jobs
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -29,6 +30,7 @@ router = APIRouter()
 
 # In-memory job registry (single process; same convention as multi_analysis).
 _run_jobs: Dict[str, Dict[str, Any]] = {}
+_run_tasks: Dict[str, asyncio.Task] = {}
 
 
 class EstimateRequest(BaseModel):
@@ -36,6 +38,7 @@ class EstimateRequest(BaseModel):
 
 
 class RunRequest(BaseModel):
+    trigger_source: Literal["task_run", "pipeline"] = "task_run"
     task_id: str = Field(..., description="Task ID")
     bucket_seconds: Optional[int] = Field(
         None, description="Force the window; omit for budget-driven adaptive selection"
@@ -47,7 +50,8 @@ async def _resolve_events_db(service_manager, task_id: str) -> str:
     if not task_info:
         raise HTTPException(status_code=404, detail="Task not found")
     events_db = task_info.get("output_events_db") or ""
-    if not events_db:
+    from pathlib import Path
+    if not events_db or not Path(events_db).is_file():
         raise HTTPException(status_code=400, detail="No events database for this task")
     return events_db
 
@@ -90,7 +94,7 @@ async def run_event_cluster_analysis(
     if not settings.event_llm_analysis_enabled:
         raise HTTPException(
             status_code=503,
-            detail="Event LLM analysis is disabled in this build (MVP)",
+            detail="当前配置已关闭事件簇智能分析",
         )
     if request.bucket_seconds is not None and not (
         1 <= request.bucket_seconds <= TIMELINE_MAX_BUCKET_SECONDS
@@ -114,66 +118,72 @@ async def run_event_cluster_analysis(
         getattr(service_manager, "graphiti_service", None),
     )
 
-    job_id = str(uuid.uuid4())
-    _run_jobs[job_id] = {
-        "job_id": job_id,
-        "task_id": request.task_id,
-        "status": "running",
-        "detail": "正在选择聚簇窗口并启动分析...",
-        "summary": None,
-        "error": None,
-        "started_at": datetime.now().isoformat(),
-        "finished_at": None,
-    }
+    job,created=await asyncio.to_thread(cluster_jobs.create,events_db,request.task_id)
+    job_id=job['job_id'];_run_jobs[job_id]=job
 
     async def _worker():
+        active=asyncio.current_task()
+        async def heartbeat():
+            while True:
+                await asyncio.sleep(10)
+                state=await asyncio.to_thread(cluster_jobs.read,events_db,job_id)
+                if state and state['status']=='cancel_requested':active.cancel();return
+                await asyncio.to_thread(cluster_jobs.update,events_db,job_id)
+        beat=asyncio.create_task(heartbeat())
         try:
-            summary = await analyzer.run_analysis(
-                request.task_id,
-                events_db,
-                case_description=case_description,
-                bucket_seconds=request.bucket_seconds,
-            )
-            _run_jobs[job_id].update({
-                "status": "completed",
-                "detail": (
-                    f"分析完成：{summary['analyzed']} 个簇新分析，"
-                    f"{summary['skipped_fresh']} 个已最新，{summary['failed']} 个失败"
-                ),
-                "summary": {k: v for k, v in summary.items() if k != "results"},
-                "failures": [
-                    {"event_type": r.get("event_type"), "time_window": r.get("time_window"),
-                     "error": r.get("error")}
-                    for r in summary["results"] if not r.get("success")
-                ],
-                "finished_at": datetime.now().isoformat(),
-            })
-        except Exception as exc:  # job must always terminate with a status
-            logger.error(f"Cluster analysis run {job_id} failed: {exc}", exc_info=True)
-            _run_jobs[job_id].update({
-                "status": "failed",
-                "detail": "任务级事件簇分析失败",
-                "error": str(exc),
-                "finished_at": datetime.now().isoformat(),
-            })
+            options={"case_description":case_description,"bucket_seconds":request.bucket_seconds}
+            if request.trigger_source=="pipeline":options.update(trigger_source="pipeline",ingest=False)
+            summary = await analyzer.run_analysis(request.task_id,events_db,**options)
+            partial=bool(summary.get('failed') or summary.get('skipped_over_budget'))
+            value=await asyncio.to_thread(cluster_jobs.update,events_db,job_id,
+                status='partial' if partial else 'completed',
+                detail=f"事件分析已落库：{summary['analyzed']} 个簇处理，{summary['skipped_fresh']} 个已最新，{summary['failed']} 个失败",
+                summary={k:v for k,v in summary.items() if k!='results'},
+                failures=[{'event_type':r.get('event_type'),'time_window':r.get('time_window'),'error':r.get('error')} for r in summary['results'] if not r.get('success')],
+                finished_at=datetime.now().isoformat())
+            _run_jobs[job_id]=value
+        except asyncio.CancelledError:
+            _run_jobs[job_id]=await asyncio.to_thread(cluster_jobs.update,events_db,job_id,
+                status='interrupted',detail='事件分析已中断；已完成的规范记录保留',finished_at=datetime.now().isoformat())
+        except Exception as exc:
+            logger.error('Cluster analysis failed: %s',exc,exc_info=True)
+            _run_jobs[job_id]=await asyncio.to_thread(cluster_jobs.update,events_db,job_id,
+                status='failed',detail='事件簇分析失败，已完成结果保留',error=str(exc),finished_at=datetime.now().isoformat())
+        finally:
+            beat.cancel()
+            try:
+                outcomes = await asyncio.gather(beat, return_exceptions=True)
+                if isinstance(outcomes[0], Exception):
+                    logger.warning("事件分析心跳任务异常：%s", outcomes[0])
+            finally:
+                _run_tasks.pop(job_id,None)
 
-    asyncio.create_task(_worker())
-    return {
-        "success": True,
-        "job_id": job_id,
-        "task_id": request.task_id,
-        "bucket_seconds": request.bucket_seconds,
-        "message": "Cluster analysis run started",
-        "timestamp": datetime.now().isoformat(),
-    }
+    if created:_run_tasks[job_id]=asyncio.create_task(_worker())
+    return {'success':True,'job_id':job_id,'task_id':request.task_id,'bucket_seconds':request.bucket_seconds,
+            'message':'事件分析已启动' if created else '复用正在执行的事件分析','timestamp':datetime.now().isoformat()}
 
 
 @router.get("/event-cluster-analysis/run/{job_id}")
 async def get_event_cluster_run_status(job_id: str):
-    job = _run_jobs.get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Run job not found")
-    return dict(job)
+    from ..services import get_service_manager
+    try:task_id=cluster_jobs.task_from_job(job_id)
+    except ValueError:raise HTTPException(status_code=404,detail='事件分析运行不存在')
+    database=await _resolve_events_db(get_service_manager(),task_id)
+    job=await asyncio.to_thread(cluster_jobs.read,database,job_id)
+    if not job:raise HTTPException(status_code=404,detail='事件分析运行不存在')
+    return job
+
+
+@router.post("/event-cluster-analysis/run/{job_id}/cancel")
+async def cancel_event_cluster_run(job_id: str):
+    job=await get_event_cluster_run_status(job_id)
+    if job['status']=='running':
+        from ..services import get_service_manager
+        database=await _resolve_events_db(get_service_manager(),job['task_id'])
+        await asyncio.to_thread(cluster_jobs.request_cancel,database,job_id)
+        worker=_run_tasks.get(job_id)
+        if worker:worker.cancel()
+    return {'success':True,'job_id':job_id,'message':'已请求停止事件分析'}
 
 
 @router.get("/event-cluster-analyses")
@@ -266,3 +276,18 @@ async def list_event_cluster_analyses(
         "offset": offset,
         "records": records,
     }
+
+
+@router.get('/windows-activity/{task_id}')
+async def windows_activity_coverage(task_id: str):
+    from ..services import get_service_manager
+    from ..services.windows_activity_reader import connect
+    from contextlib import closing
+    import json
+    database=await _resolve_events_db(get_service_manager(),task_id)
+    with closing(connect(database)) as conn:
+        if not conn.execute("SELECT 1 FROM sqlite_master WHERE name='windows_activity_current'").fetchone():return {'task_id':task_id,'coverage':None}
+        row=conn.execute('SELECT coverage_json FROM windows_activity_import_runs WHERE task_id=? ORDER BY id DESC LIMIT 1',(task_id,)).fetchone()
+        coverage=json.loads(row[0]) if row else None
+        if coverage:coverage.pop('parser_outcomes',None)
+    return {'task_id':task_id,'coverage':coverage}

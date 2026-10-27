@@ -153,4 +153,5 @@ def load_plugins():
             break
 
 # This ensures plugins are loaded as soon as `extractors` is imported
-load_plugins()
+if os.environ.get('TRACELENS_PROBE_WORKER') != '1':
+    load_plugins()

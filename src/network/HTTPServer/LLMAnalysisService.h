@@ -5,6 +5,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <nlohmann/json.hpp>
 #include "LLMIntegration/LLMDataTypes.h"
 #include "LLMIntegration/FileAnalyzer.h"
 #include "LLMIntegration/ModelRouter.h"
@@ -20,9 +21,8 @@ namespace forensics {
 /**
  * @brief LLM Analysis Service for forensic file description generation
  * 
- * Provides two analysis modes:
- * - FULL: Analyze all files in the database
- * - SMART: LLM selects important files first, then analyzes them
+ * FULL and SMART retain their existing entry points and share the bounded
+ * native source/content selection plan. Models analyze admitted file content.
  */
 class LLMAnalysisService {
 public:
@@ -30,7 +30,7 @@ public:
      * @brief Analysis options for LLM file analysis
      */
     struct AnalysisOptions {
-        size_t maxFiles = 0;                 // Maximum files to analyze (0 = 全量, unlimited)
+        size_t maxFiles = 0;                 // 0 uses configured finite selection limits
         size_t maxContentLength = 10000;     // Maximum content length per file
         std::vector<std::string> fileTypes;  // File types to analyze (empty = all)
         bool skipBinaryFiles = true;         // Skip binary files
@@ -120,6 +120,7 @@ public:
      * @return Current scene type
      */
     SceneType getSceneType() const;
+    nlohmann::json selectionSummary() const;
 
     /**
      * @brief Check if a file should be skipped based on scene priority
@@ -147,6 +148,8 @@ private:
     std::shared_ptr<llm::ModelRouter> router_;
     std::unique_ptr<llm::FileAnalyzer> fileAnalyzer_;
     bool initialized_ = false;
+    nlohmann::json selectionPlan_;
+    std::string selectionDatabase_;
 
     // Scene type for prioritization
     SceneType sceneType_ = SceneType::NONE;

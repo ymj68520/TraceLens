@@ -29,6 +29,7 @@ from ..investigation.models import (
     ClaimGroundingStatus,
     ClaimType,
     AndroidArtifactSnapshotPayload,
+    WindowsArtifactSnapshotPayload,
     ClusterSnapshotPayload,
     FileSnapshotPayload,
     ReportEvidenceStatus,
@@ -49,6 +50,11 @@ from .models import (
     ReportGenerationEnvelopeV3,
     ReportGenerationEnvelopeV4,
     ReportGenerationEnvelopeV5,
+    ReportGenerationEnvelopeV6,
+    ReportGenerationEnvelopeV7,
+    ReportGenerationEnvelopeV8,
+    ReportGenerationEnvelopeV9,
+    WindowsEvidenceScope,
     BaselineContext,
     material_scope_hash,
     parse_generation_envelope,
@@ -164,7 +170,13 @@ class ReportGenerationInputBuilder:
                 sorted({item.evidence_key for item in (*main, *appendix)})
             ),
         )
-        has_android = any(item.snapshot.evidence_type == "android_artifact" for item in (*main, *appendix))
+        if any(item.snapshot.evidence_type=='windows_artifact' for item in (*main,*appendix)):
+            return WindowsEvidenceScope(task_id=self._task_id,prompt_version=prompt_version,
+                case_description=case_description,
+                main_evidence=tuple(EnvelopeEvidenceItemV3.model_validate(i.model_dump(mode="json")) for i in main),
+                appendix_evidence=tuple(EnvelopeEvidenceItemV3.model_validate(i.model_dump(mode="json")) for i in appendix),
+                allowed_report_evidence_ids=tuple(sorted(item.evidence_key for item in (*main,*appendix))))
+        has_android = any(item.snapshot.evidence_type in ("android_artifact","windows_artifact") for item in (*main, *appendix))
         if prompt_version == "final-report:v4":
             return ReportGenerationEnvelopeV4(
                 case_description=case_description[:CASE_DESCRIPTION_MAX_CHARS],
@@ -203,7 +215,7 @@ class ReportGenerationInputBuilder:
         analysis_id = row["analysis_id"]
         if analysis_id is not None:
             bound = self._bound_analysis_with_conn(conn, evidence_key, analysis_id)
-        item_type = EnvelopeEvidenceItemV3 if snapshot.evidence_type == "android_artifact" else EnvelopeEvidenceItemV1
+        item_type = EnvelopeEvidenceItemV3 if snapshot.evidence_type in ("android_artifact","windows_artifact") else EnvelopeEvidenceItemV1
         return item_type(
             evidence_key=evidence_key,
             report_status=ReportEvidenceStatus(row["report_status"]),
@@ -324,6 +336,15 @@ class ReportGenerationInputBuilder:
             payload = FileSnapshotPayload.model_validate(data)
         elif evidence_type == "cluster":
             payload = ClusterSnapshotPayload.model_validate(data)
+        elif evidence_type=='windows_artifact':
+            from ..investigation.models import WindowsArtifactSnapshotPayload
+            from ..evidence.keys import parse_evidence_key
+            payload=WindowsArtifactSnapshotPayload.model_validate(data)
+            key=parse_evidence_key(row['evidence_key'])
+            if (key.evidence_type!='windows_artifact' or
+                (payload.task_id,payload.result_set_id,payload.artifact_kind,payload.record_id)!=
+                (key.artifact_task_id,key.result_set_id,key.artifact_kind,key.artifact_record_id) or payload.task_id!=row['task_id']):
+                raise ReportGenerationInputError('snapshot_identity_mismatch','Windows快照身份不一致')
         elif evidence_type == "android_artifact":
             from ..evidence.keys import parse_evidence_key
             key = parse_evidence_key(row["evidence_key"])
@@ -335,7 +356,7 @@ class ReportGenerationInputBuilder:
                 raise EvidenceStoreError("Android report snapshot identity mismatch")
         else:  # pragma: no cover - guarded by the table CHECK
             raise EvidenceStoreError("report evidence snapshot type is unknown")
-        snapshot_type = EnvelopeSnapshotV3 if evidence_type == "android_artifact" else EnvelopeSnapshotV1
+        snapshot_type = EnvelopeSnapshotV3 if evidence_type in ("android_artifact","windows_artifact") else EnvelopeSnapshotV1
         return snapshot_type(
             task_id=row["task_id"],
             evidence_key=row["evidence_key"],
@@ -427,6 +448,26 @@ class ReportGenerationAdmissionService:
                 "report generation store is unavailable"
             ) from exc
 
+    def _execution_policy(self):
+        from ...config import get_settings
+        from .global_report_models import ReportExecutionPolicy
+        settings=get_settings()
+        return ReportExecutionPolicy(extraction_concurrency=settings.report_extraction_concurrency,
+            writing_concurrency=settings.report_writing_concurrency,review_concurrency=settings.report_review_concurrency)
+
+    def _global_budget(self):
+        from ...config import get_settings
+        from .global_report_models import ReportBudget
+        settings=get_settings()
+        context=int(settings.llm_context_length);reserve=int(settings.llm_reserved_tokens)
+        output=min(16384,int(settings.llm_text_max_tokens),max(256,(context-reserve)//3))
+        calls=settings.report_global_max_calls
+        return ReportBudget(body_target_chars=settings.report_body_target_chars,body_hard_chars=settings.report_body_max_chars,
+            appendix_chars=settings.report_appendix_max_chars,max_findings=settings.report_max_findings,
+            body_findings=settings.report_body_findings,max_calls=calls,context_limit=context,output_tokens=output,
+            reserved_tokens=reserve,max_tokens=settings.report_global_max_tokens or calls*context,max_seconds=settings.report_global_max_seconds,
+            image_token_bound=settings.llm_vision_image_token_bound)
+
     async def _stage_envelope(self, task, mode, base_report_id, case_description):
         from .generation_sources import digest, freeze_materials, sanitize_items
         if mode not in ("evidence_only", "case_guided"):
@@ -442,9 +483,10 @@ class ReportGenerationAdmissionService:
             if not current.allowed_report_evidence_ids:
                 raise ReportGenerationInputError("no_report_evidence", "task has no report evidence")
             main, appendix = sanitize_items(current.main_evidence), sanitize_items(current.appendix_evidence)
-            materials = await freeze_materials(task, (*main, *appendix))
-            return ReportGenerationEnvelopeV5(
-                task_id=task["id"], prompt_version="final-report:evidence-only:v3",
+            materials = await freeze_materials(task, (*main, *appendix), cpp_backend=self._cpp_backend)
+            envelope_type=ReportGenerationEnvelopeV9
+            return envelope_type(
+                task_id=task["id"], prompt_version="final-report:evidence-only:v6", report_budget=self._global_budget(), execution_policy=self._execution_policy(),
                 analysis_mode=mode, case_description="", main_evidence=main, appendix_evidence=appendix,
                 allowed_report_evidence_ids=current.allowed_report_evidence_ids,
                 neutral_materials=materials, evidence_scope_hash=material_scope_hash(materials),
@@ -487,8 +529,9 @@ class ReportGenerationAdmissionService:
             priorities={c.evidence_key: c.priority for c in manifest.evidence_classifications.items},
             text_models=stage.text_models,
         )
-        return ReportGenerationEnvelopeV5(
-            task_id=task["id"], prompt_version="final-report:case-guided:v3", analysis_mode=mode,
+        envelope_type=ReportGenerationEnvelopeV9
+        return envelope_type(
+            task_id=task["id"], prompt_version="final-report:case-guided:v6", report_budget=self._global_budget(), execution_policy=self._execution_policy(), analysis_mode=mode,
             case_description=context, main_evidence=frozen.main_evidence, appendix_evidence=frozen.appendix_evidence,
             allowed_report_evidence_ids=frozen.allowed_report_evidence_ids,
             neutral_materials=frozen.neutral_materials, evidence_scope_hash=frozen.evidence_scope_hash,

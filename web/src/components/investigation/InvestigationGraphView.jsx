@@ -122,7 +122,7 @@ const InvestigationGraphView = ({ taskId, onNodeClick, refreshSignal = 0 }) => {
                 ))}
                 <span className="inline-flex items-center gap-1.5">
                     <span className="inline-block h-2.5 w-2.5 rounded-full bg-slate-400" />
-                    Base KG
+                    基础知识图谱
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                     <svg width="26" height="10" aria-hidden="true">

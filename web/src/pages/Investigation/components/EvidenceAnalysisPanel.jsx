@@ -108,7 +108,8 @@ export default function EvidenceAnalysisPanel({ taskId, eventId, evidenceKey, on
   const [frozenError, setFrozenError] = useState('');
   const [bindingId, setBindingId] = useState('');
   const initialAnalysis = detail?.snapshot?.payload || detail?.snapshot || {};
-  const androidEvidence = detail?.evidence_type === 'android_artifact';
+  const windowsEvidence = detail?.evidence_type === 'windows_artifact';
+  const androidEvidence = detail?.evidence_type === 'android_artifact' || windowsEvidence;
   const initialSourceText = initialAnalysisText(initialAnalysis);
   const translatedAnalysis = useInitialAnalysisTranslation(taskId, evidenceKey, initialSourceText);
 
@@ -167,7 +168,7 @@ export default function EvidenceAnalysisPanel({ taskId, eventId, evidenceKey, on
     <div className="h-full overflow-y-auto p-5 space-y-4" data-testid="evidence-analysis-panel">
       {file && <FileContextHeader file={file} />}
       <div>
-        <div className="text-xs uppercase tracking-wide text-slate-400">{androidEvidence ? 'AndroidAnalyzer 派生记录' : detail.evidence_type === 'event_cluster' ? 'Event Cluster Evidence' : 'File Evidence'}</div>
+        <div className="text-xs uppercase tracking-wide text-slate-400">{windowsEvidence ? 'Windows 活动与配置记录' : androidEvidence ? 'Android 派生记录' : detail.evidence_type === 'event_cluster' ? '事件簇证据' : '文件证据'}</div>
         <h2 className="mt-1 text-xl font-bold text-slate-900 dark:text-white">{detail.title}</h2>
         <p className="mt-1 text-xs text-slate-500 break-all">{androidEvidence || detail.evidence_type === 'event_cluster' ? detail.evidence_key : detail.file_path}</p>
       </div>
@@ -199,9 +200,9 @@ export default function EvidenceAnalysisPanel({ taskId, eventId, evidenceKey, on
         <pre className="mt-2 whitespace-pre-wrap break-all rounded-lg bg-slate-50 p-2 text-xs">{JSON.stringify({record: initialAnalysis.record_fields, provenance: initialAnalysis.provenance, coverage: initialAnalysis.coverage, warnings: initialAnalysis.warnings}, null, 2)}</pre>
         <Button size="sm" onClick={async () => {
           setFrozenError('');
-          try { setFrozenRow(await getFrozenAndroidArtifact(taskId, initialAnalysis.result_set_id, initialAnalysis.artifact_kind, initialAnalysis.record_id)); }
+          try { setFrozenRow(windowsEvidence ? { record: initialAnalysis.record_fields, provenance: initialAnalysis.provenance } : await getFrozenAndroidArtifact(taskId, initialAnalysis.result_set_id, initialAnalysis.artifact_kind, initialAnalysis.record_id)); }
           catch (err) { setFrozenError(err?.data?.detail || err?.message || '冻结结果不可用'); }
-        }}>查看同一冻结结果版本的原记录</Button>
+          }}>{windowsEvidence ? '查看冻结来源投影' : '查看同一冻结结果版本的原记录'}</Button>
         {frozenError && <p role="alert" className="text-xs text-rose-700">{frozenError}</p>}
         {frozenRow && <pre className="mt-2 whitespace-pre-wrap break-all text-xs">{JSON.stringify({record: frozenRow.record, source: frozenRow.source, record_hash: frozenRow.record_hash}, null, 2)}</pre>}
       </Section>}

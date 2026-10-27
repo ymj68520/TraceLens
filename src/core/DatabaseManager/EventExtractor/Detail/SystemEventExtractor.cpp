@@ -1,4 +1,5 @@
 #include "../EventExtractor.h"
+#include "../WindowsActivityImport.h"
 #include "DatabaseManager/SQL/event_extractor_sql.h"
 #include "AuditLog/AuditLog.h"
 #include <iostream>
@@ -6,97 +7,12 @@
 #include <sqlite3.h>
 #include <algorithm>
 
-bool EventExtractor::importWindowsArtifacts(const std::string& windowsDbPath) {
-    AuditLog::instance().log("SYSTEM", "TIMELINE_MERGE", "Importing Windows artifacts from: " + windowsDbPath);
-    std::string attachSql = "ATTACH DATABASE '" + windowsDbPath + "' AS win_db;";
-    sqlite3_exec(eventDb_, attachSql.c_str(), nullptr, nullptr, nullptr);
-
-    // Import event logs
-    const char* importLogsSql = R"(
-        INSERT INTO events (timestamp, event_type, file_path, inode, description, file_size, file_type, system_context, priority, severity, event_source, event_category, normalized_type, source_id)
-        SELECT timestamp, 'WIN_LOG_' || COALESCE(level, 'UNK'), log_source, 0, 'ID:' || event_id || ' ' || message, 0, 'LOG', '', 'LOW', 'INFO', 'WINDOWS_EVENT_LOG', 'SYSTEM_ACTIVITY', '', ''
-        FROM win_db.event_logs;
-    )";
-    sqlite3_exec(eventDb_, importLogsSql, nullptr, nullptr, nullptr);
-
-    // Import browser history
-    const char* importBrowserSql = R"(
-        INSERT INTO events (timestamp, event_type, file_path, inode, description, file_size, file_type, system_context, priority, severity, event_source, event_category, normalized_type, source_id)
-        SELECT visit_time, 'WEB_HISTORY', url, 0, 'Title: ' || title, 0, 'WEB', '', 'LOW', 'INFO', 'WEB_BROWSER', 'USER_ACTIVITY', '', ''
-        FROM win_db.browser_history;
-    )";
-    sqlite3_exec(eventDb_, importBrowserSql, nullptr, nullptr, nullptr);
-
-    // Import browser downloads
-    const char* importDownloadsSql = R"(
-        INSERT INTO events (timestamp, event_type, file_path, inode, description, file_size, file_type, system_context, priority, severity, event_source, event_category, normalized_type, source_id)
-        SELECT start_time, 'WEB_DOWNLOAD', url, 0, 'File: ' || file_name || ' Size: ' || file_size, file_size, 'FILE', '', 'LOW', 'INFO', 'WEB_BROWSER', 'USER_ACTIVITY', '', ''
-        FROM win_db.browser_downloads;
-    )";
-    sqlite3_exec(eventDb_, importDownloadsSql, nullptr, nullptr, nullptr);
-
-    // Import browser logins
-    const char* importLoginsSql = R"(
-        INSERT INTO events (timestamp, event_type, file_path, inode, description, file_size, file_type, system_context, priority, severity, event_source, event_category, normalized_type, source_id)
-        SELECT last_used_time, 'WEB_LOGIN', origin_url, 0, 'User: ' || username, 0, 'SECURITY', '', 'HIGH', 'WARNING', 'WEB_BROWSER', 'SECURITY_EVENT', '', ''
-        FROM win_db.browser_logins;
-    )";
-    sqlite3_exec(eventDb_, importLoginsSql, nullptr, nullptr, nullptr);
-
-    // Import Windows services
-    const char* importServicesSql = R"(
-        INSERT INTO events (timestamp, event_type, file_path, inode, description, file_size, file_type, system_context, priority, severity, event_source, event_category, normalized_type, source_id)
-        SELECT 0, 'WINDOWS_SERVICE', service_name, 0, 'Service: ' || display_name || ' State: ' || service_state, 0, 'SYSTEM', '', 'MEDIUM', 'INFO', 'SYSTEM', 'SYSTEM_ACTIVITY', '', ''
-        FROM win_db.windows_services;
-    )";
-    sqlite3_exec(eventDb_, importServicesSql, nullptr, nullptr, nullptr);
-
-    // Import scheduled tasks
-    const char* importTasksSql = R"(
-        INSERT INTO events (timestamp, event_type, file_path, inode, description, file_size, file_type, system_context, priority, severity, event_source, event_category, normalized_type, source_id)
-        SELECT 0, 'SCHEDULED_TASK', task_path, 0, 'Task: ' || task_name || ' Action: ' || action_path, 0, 'SYSTEM', '', 'MEDIUM', 'INFO', 'SYSTEM', 'SYSTEM_ACTIVITY', '', ''
-        FROM win_db.scheduled_tasks;
-    )";
-    sqlite3_exec(eventDb_, importTasksSql, nullptr, nullptr, nullptr);
-
-    // Import prefetch files
-    const char* importPrefetchSql = R"(
-        INSERT INTO events (timestamp, event_type, file_path, inode, description, file_size, file_type, system_context, priority, severity, event_source, event_category, normalized_type, source_id)
-        SELECT last_executed_time, 'PREFETCH_EXECUTION', file_path, 0, 'Executable: ' || executable_name || ' Run count: ' || run_count, file_size, 'SYSTEM', '', 'MEDIUM', 'INFO', 'SYSTEM', 'APPLICATION_EVENT', '', ''
-        FROM win_db.prefetch_info;
-    )";
-    sqlite3_exec(eventDb_, importPrefetchSql, nullptr, nullptr, nullptr);
-
-    // Import USB devices
-    const char* importUSBSql = R"(
-        INSERT INTO events (timestamp, event_type, file_path, inode, description, file_size, file_type, system_context, priority, severity, event_source, event_category, normalized_type, source_id)
-        SELECT first_insert_time, 'USB_DEVICE_CONNECT', device_id, 0, 'Device: ' || device_name || ' Serial: ' || serial_number, 0, 'HARDWARE', '', 'MEDIUM', 'INFO', 'SYSTEM', 'HARDWARE_EVENT', '', ''
-        FROM win_db.usb_devices;
-    )";
-    sqlite3_exec(eventDb_, importUSBSql, nullptr, nullptr, nullptr);
-
-    // Import recycle bin entries
-    const char* importRecycleBinSql = R"(
-        INSERT INTO events (timestamp, event_type, file_path, inode, description, file_size, file_type, system_context, priority, severity, event_source, event_category, normalized_type, source_id)
-        SELECT deletion_time, 'FILE_DELETED', original_path, 0, 'Deleted file: ' || original_name, file_size, 'FILE', '', 'HIGH', 'WARNING', 'FILE_SYSTEM', 'FILE_OPERATION', '', ''
-        FROM win_db.recycle_bin_entries;
-    )";
-    sqlite3_exec(eventDb_, importRecycleBinSql, nullptr, nullptr, nullptr);
-
-    // Import Amcache entries
-    const char* importAmcacheSql = R"(
-        INSERT INTO events (timestamp, event_type, file_path, inode, description, file_size, file_type, system_context, priority, severity, event_source, event_category, normalized_type, source_id)
-        SELECT last_modified_time, 'AMCACHE_ENTRY', file_path, 0, 'File: ' || file_name || ' SHA1: ' || sha1_hash, file_size, 'FILE', '', 'MEDIUM', 'INFO', 'SYSTEM', 'FILE_OPERATION', '', ''
-        FROM win_db.amcache_entries;
-    )";
-    sqlite3_exec(eventDb_, importAmcacheSql, nullptr, nullptr, nullptr);
-
-    sqlite3_exec(eventDb_, "DETACH DATABASE win_db;", nullptr, nullptr, nullptr);
-
-    // 标准化导入的事件
-    standardizeEvents();
-
-    return true;
+bool EventExtractor::importWindowsArtifacts(const std::string& windowsDbPath,const std::string& taskId) {
+    const auto owner=taskId.empty()?std::filesystem::path(eventDbPath_).stem().string():taskId;
+    const auto report=forensics::windows_activity::importArtifacts(eventDb_,sourceDb_,windowsDbPath,owner);
+    windowsImportReport_=report.dump();
+    if(!report.value("success",false))AuditLog::instance().log("ERROR","WINDOWS_ACTIVITY_IMPORT_FAILED",report.value("error",std::string()));
+    return report.value("success",false);
 }
 
 bool EventExtractor::importLinuxArtifacts(const std::string& linuxDbPath) {
@@ -237,12 +153,14 @@ bool EventExtractor::importAndroidArtifacts(const std::string& androidDbPath) {
     if (sqlite3_prepare_v2(eventDb_, "SELECT 1 FROM android_db.sqlite_master WHERE name='mobile_artifacts'", -1, &check, nullptr) == SQLITE_OK &&
         sqlite3_step(check) == SQLITE_ROW) {
         const char* mobile = R"SQL(
-            DELETE FROM events WHERE event_source='HARMONY_BACKUP';
+            DELETE FROM events WHERE event_source IN ('HARMONY_BACKUP','XIAOMI_IMAGE');
             INSERT INTO events(timestamp,event_type,file_path,inode,description,file_size,file_type,system_context,
                 priority,severity,event_source,event_category,normalized_type,source_id)
-            SELECT timestamp_seconds,'HARMONY_'||upper(kind),source_path,0,
-                kind||' ['||package_name||'] '||substr(record_json,1,256),0,'MOBILE_ARTIFACT','HarmonyOS',
-                'MEDIUM','INFO','HARMONY_BACKUP',kind,kind,'mobile:'||id
+            SELECT timestamp_seconds,
+                (CASE WHEN parser_version LIKE 'xiaomi-%' THEN 'XIAOMI_' ELSE 'HARMONY_' END)||upper(kind),source_path,0,
+                kind||' ['||package_name||'] '||substr(record_json,1,256),0,'MOBILE_ARTIFACT',
+                CASE WHEN parser_version LIKE 'xiaomi-%' THEN 'Android / MIUI' ELSE 'HarmonyOS' END,
+                'MEDIUM','INFO',CASE WHEN parser_version LIKE 'xiaomi-%' THEN 'XIAOMI_IMAGE' ELSE 'HARMONY_BACKUP' END,kind,kind,'mobile:'||id
             FROM android_db.mobile_artifacts WHERE timestamp_seconds IS NOT NULL;
         )SQL";
         imported = sqlite3_exec(eventDb_, mobile, nullptr, nullptr, nullptr) == SQLITE_OK;

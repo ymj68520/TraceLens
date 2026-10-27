@@ -30,6 +30,8 @@ from ..services.forensic_report.generation_execution import (
     read_generation_strict,
 )
 from ..services.forensic_report.generation_writer import GenerationReportWriter
+from ..services.forensic_report.models import GenerationReportManifest
+from ..services.forensic_report.report_quality import ReportQuality, report_quality
 from ..services.service_manager import ServiceManager, get_service_manager
 
 router = APIRouter()
@@ -99,6 +101,7 @@ class GenerationStatusResponse(BaseModel):
     error_code: Optional[str] = None
     error_message: Optional[str] = None
     report: Optional[dict] = None
+    quality: ReportQuality | None = None
 
 
 def _report_root() -> Path:
@@ -166,11 +169,15 @@ async def get_report_generation(
 
 def _status_response(row, *, include_report: bool) -> GenerationStatusResponse:
     report = None
+    manifest = None
     if include_report and row.report_id is not None:
         try:
             report = GenerationReportWriter(_report_root()).read_manifest(
                 row.task_id, row.report_id
             )
+            manifest = GenerationReportManifest.model_validate(report)
+            if (manifest.task_id, manifest.report_id, manifest.generation_id, manifest.input_hash) != (row.task_id, row.report_id, row.generation_id, row.input_hash):
+                raise ValueError('报告身份或冻结输入摘要不一致')
         except (OSError, ValueError, KeyError):
             raise HTTPException(
                 status_code=503,
@@ -194,4 +201,5 @@ def _status_response(row, *, include_report: bool) -> GenerationStatusResponse:
         error_code=row.error_code,
         error_message=row.error_message,
         report=report,
+        quality=report_quality(manifest, execution_status=row.status, error_code=row.error_code),
     )

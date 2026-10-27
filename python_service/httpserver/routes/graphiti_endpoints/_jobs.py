@@ -28,6 +28,7 @@ router = APIRouter()
 })
 async def get_job_status(
     job_id: str,
+    task_id: Optional[str] = Query(None),
     settings: Settings = Depends(get_settings),
 ):
     """
@@ -43,6 +44,7 @@ async def get_job_status(
         if hasattr(service_manager, 'ingestion_job_manager') and service_manager.ingestion_job_manager:
             status = await service_manager.ingestion_job_manager.get_job_status(job_id)
             if status:
+                if task_id and status.get('task_id') != task_id: raise HTTPException(status_code=404, detail='Job not found')
                 status = dict(status)
                 status["status"] = str(status.get("status", "unknown")).upper()
                 return JobStatusResponse(**status)
@@ -50,8 +52,11 @@ async def get_job_status(
         # Fallback to old GraphitiService
         status = await service_manager.graphiti_service.get_job_status(job_id)
         if status:
+            if task_id and status.get('task_id') != task_id: raise HTTPException(status_code=404, detail='Job not found')
+            from ...services.ingestion_quality import ingestion_quality
             return JobStatusResponse(
                 job_id=job_id,
+                task_id=status.get('task_id'), quality=ingestion_quality(status),
                 status=str(status.get("status", "unknown")).upper(),
                 progress=int(status.get("progress", 0) * 100),
                 current_phase=status.get("current_phase", "unknown"),

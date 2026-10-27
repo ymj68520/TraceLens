@@ -19,17 +19,11 @@ LNK_FLAG_HAS_ICON_LOCATION = 0x00000040
 DRIVE_TYPES = {0: "Unknown", 1: "No Root Dir", 2: "Removable", 3: "Fixed", 4: "Remote", 5: "CD-ROM", 6: "RAM Disk"}
 
 
-def _filetime_to_datetime(filetime: int) -> datetime:
-    if filetime == 0:
-        return None
-    try:
-        return datetime.fromtimestamp((filetime - 116444736000000000) / 10000000)
-    except (ValueError, OSError, OverflowError):
-        return None
+from .windows_time import filetime_to_datetime as _filetime_to_datetime
 
 
 def _format_datetime(dt: datetime) -> str:
-    return dt.strftime('%Y-%m-%d %H:%M:%S') if dt else "N/A"
+    return dt.strftime('%Y-%m-%d %H:%M:%S UTC') if dt else "N/A"
 
 
 @register_extractor

@@ -470,6 +470,25 @@ test('deep link ?file= accepts a bare path and falls back to the first file when
   await waitFor(() => expect(screen.getByTestId('file-event-panel-name')).toHaveTextContent('a.txt'));
 });
 
+test('同路径多来源的报告回链选中精确来源，保留独立节点', async () => {
+  const first = 'a'.repeat(64), second = 'b'.repeat(64);
+  const path = '/case/a.txt';
+  const key = `file:v2:${second}:${encodeURIComponent(path)}`;
+  service.getInvestigationFileTimeline.mockResolvedValue({
+    files: [
+      { ...files[0], source_id: first, source_reference: `source:v1:${first}:${path}` },
+      { ...files[0], source_id: second, source_reference: `source:v1:${second}:${path}`, is_deleted: 1 },
+    ], total_count: 2, axis: { start: 150, end: 150 },
+  });
+  service.getEvidenceDetail.mockResolvedValue({ evidence: { evidence_key: key, title: 'a.txt', file_path: path, snapshot: {}, metadata: {}, related_event_ids: [] } });
+  renderPage(`/investigation?task_id=t1&file=${encodeURIComponent(path)}&evidence_key=${encodeURIComponent(key)}`);
+  await waitFor(() => expect(service.getEvidenceDetail).toHaveBeenCalledWith('t1', key));
+  const nodes = await screen.findAllByTestId('file-node-/case/a.txt');
+  expect(nodes).toHaveLength(2);
+  await waitFor(() => expect(nodes[1]).toHaveAttribute('aria-current', 'true'));
+  expect(nodes[0]).not.toHaveAttribute('aria-current', 'true');
+});
+
 test('only report-cited files appear and node links back to exact citation', async () => {
   service.getInvestigationFileTimeline.mockResolvedValueOnce({
     files: [files[1]], total_count: 1, citation_ids_by_path: { '/case/b.txt': ['c002'] },

@@ -85,7 +85,10 @@ def test_persist_cluster_analysis_appends_analysis_row_and_dual_writes(tmp_path)
     assert row["bucket_seconds"] == 60
     assert row["bucket_index"] == 2
     assert row["member_count"] == 1
-    assert row["members_hash"] == members_fingerprint([1])["members_hash"]
+    from httpserver.services.case_analysis.cluster_revision import fingerprint,read_members
+    with sqlite3.connect(path) as con:
+        con.row_factory=sqlite3.Row
+        assert row["members_hash"] == fingerprint(read_members(con,[1]))['members_hash']
     assert row["ingested_at"] is None
     assert event["llm_summary"] == "s"
     assert event["llm_model_used"] == "m1"
@@ -96,7 +99,7 @@ def test_persist_cluster_analysis_rolls_back_analysis_row_when_member_update_inc
     path = _db(tmp_path)
     analyzer = ClusterAnalyzer(Settings(), None, None)
     bogus = dict(_CLUSTER, member_ids="1,999")  # 999 does not exist -> rowcount mismatch
-    with pytest.raises(sqlite3.DatabaseError, match="incomplete"):
+    with pytest.raises(sqlite3.DatabaseError, match="缺失"):
         analyzer.persist_cluster_analysis(
             str(path), bogus, {"analysis": {"summary": "s"}, "model": "m"}, task_id="task-1"
         )

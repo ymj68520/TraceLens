@@ -1,5 +1,12 @@
 import { expect, test } from 'vitest';
-import { placeNarrativeCitations } from './narrativeCitationPlacement';
+import { placeNarrativeCitations, explicitNarrativeParts } from './narrativeCitationPlacement';
+
+test('explicit paragraph markers retain exact identity without filename guesses', () => {
+  const citations = new Map([['c0001', { evidence_key: 'file:/one/History' }], ['c0002', { evidence_key: 'file:/two/History' }]]);
+  expect(explicitNarrativeParts('观察甲[[c0001]]。观察乙[[c0002]]。', ['c0001', 'c0002'], citations))
+    .toEqual([{ text: '观察甲' }, { citationId: 'c0001' }, { text: '。观察乙' }, { citationId: 'c0002' }, { text: '。' }]);
+  expect(explicitNarrativeParts('未知[[foreign]]', ['c0001'], citations).map(p => p.text || '').join('')).toBe('未知〔引用待核对〕');
+});
 
 test('places manifest citations after unique literal filenames or stems', () => {
   const content = '检材含“第一天基本信息”材料与聊天话术1.docx。';

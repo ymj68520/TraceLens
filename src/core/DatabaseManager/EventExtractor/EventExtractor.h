@@ -115,7 +115,8 @@ public:
      */
     bool openEventDatabaseForImports() { return openDatabases(); }
 
-    bool importWindowsArtifacts(const std::string& windowsDbPath);
+    bool importWindowsArtifacts(const std::string& windowsDbPath,const std::string& taskId="");
+    const std::string& windowsImportReport() const {return windowsImportReport_;}
     bool importLinuxArtifacts(const std::string& linuxDbPath);
     bool importAndroidArtifacts(const std::string& androidDbPath);
 
@@ -145,6 +146,7 @@ public:
     EventSource identifySource(const TimelineEvent& event);
 
 private:
+    std::string windowsImportReport_;
 	std::string sourceDbPath_;
 	std::string eventDbPath_;
 	sqlite3* sourceDb_;

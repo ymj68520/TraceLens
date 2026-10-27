@@ -133,6 +133,27 @@ TEST(MiuiContactsBakTest, OneRowPerPhoneWhenContactHasSeveral) {
     EXPECT_EQ(rows[1].numberType, 7);
 }
 
+TEST(MiuiNotesBakTest, PreservesTextAndByteRangeWithoutInventingTimestampMeaning) {
+    const std::string record = std::string("\x12\x01n\x42\x04note", 9);
+    const std::string item = std::string("\x12\x09",2) + record;
+    const std::string message = std::string("\x32\x0b",2) + item;
+    std::vector<MiuiProtoNoteRow> notes;
+    ASSERT_TRUE(parseMiuiNotesBak(message, notes));
+    ASSERT_EQ(notes.size(),1u);EXPECT_EQ(notes[0].id,"n");EXPECT_EQ(notes[0].content,"note");
+    EXPECT_EQ(notes[0].offset,2u);EXPECT_EQ(notes[0].length,item.size());
+    EXPECT_EQ(notes[0].field5,0u);EXPECT_EQ(notes[0].field6,0u);
+    EXPECT_FALSE(parseMiuiNotesBak(message.substr(0,message.size()-1),notes));
+    EXPECT_TRUE(notes.empty());
+}
+
+TEST(MiuiNotesBakTest, RejectsAmbiguousFieldsAndUnknownShapes) {
+    const std::string record = std::string("\x12\x01n\x42\x01x\x42\x01y",9);
+    const std::string message = std::string("\x32\x0b\x12\x09",4) + record;
+    std::vector<MiuiProtoNoteRow> notes;
+    EXPECT_FALSE(parseMiuiNotesBak(message,notes));
+    EXPECT_FALSE(parseMiuiNotesBak("{\"notes\":[]}",notes));
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

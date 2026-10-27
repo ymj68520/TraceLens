@@ -118,6 +118,16 @@ class TestWorkerClusterGapfill:
                     "INSERT INTO events (timestamp, event_type, llm_description)"
                     " VALUES (100, 'FILE_CREATE', 'legacy pseudo-cluster')"
                 )
+            if with_analyses:
+                # Modern records must retain the source members they analyzed.
+                from httpserver.services.case_analysis import cluster_revision
+                conn.row_factory=sqlite3.Row
+                if not with_legacy:
+                    conn.execute('CREATE TABLE events(id INTEGER PRIMARY KEY,timestamp INTEGER,event_type TEXT,llm_description TEXT)')
+                conn.executemany("INSERT OR IGNORE INTO events(id,timestamp,event_type) VALUES(?,?,'FILE_CREATE')",[(1,300),(2,301),(3,302)])
+                rows=cluster_revision.read_members(conn,[1,2,3])
+                cluster_revision.save_members(conn,1,rows,'test-context')
+                conn.execute('UPDATE event_cluster_analyses SET members_hash=? WHERE id=1',(cluster_revision.fingerprint(rows)['members_hash'],))
             conn.commit()
         return events_db
 

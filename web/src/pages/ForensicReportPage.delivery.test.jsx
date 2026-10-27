@@ -1,0 +1,30 @@
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { beforeEach, expect, test, vi } from 'vitest';
+import ForensicReportPage from './ForensicReportPage';
+import { useReportVersion } from '../hooks/useReportVersion';
+import { getFinalReportHtml, getFinalReportOffline } from '../services/investigationService';
+vi.mock('../hooks/useReportVersion',()=>({useReportVersion:vi.fn()}));
+vi.mock('../services/taskService',()=>({fetchTaskById:vi.fn().mockResolvedValue({})}));
+vi.mock('../services/reportGenerationService',()=>({getNarrativeReport:vi.fn(),getReportGeneration:vi.fn(),getPipelineReportStatus:vi.fn().mockRejectedValue({status:404})}));
+vi.mock('../services/investigationService',()=>({getFinalReportHtml:vi.fn(),getFinalReportOffline:vi.fn()}));
+vi.mock('../components/reports/GenerateReportPanel',()=>({default:()=>null}));
+vi.mock('../components/reports/NarrativeReportView',()=>({default:()=>null}));
+const version={report_id:'exact-r2',version:2,status:'ready',report_kind:'llm_generation'};
+beforeEach(()=>{
+  useReportVersion.mockReturnValue({versions:[version],selectedVersion:version,manifest:null,selectVersion:vi.fn(),refresh:vi.fn(),createVersion:vi.fn()});
+  URL.createObjectURL=vi.fn().mockReturnValue('blob:test');URL.revokeObjectURL=vi.fn();
+  vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{});
+});
+test('exports exact selected task/version and history button focuses existing list',async()=>{
+  getFinalReportHtml.mockResolvedValue('<html lang="zh-CN">报告</html>');
+  getFinalReportOffline.mockResolvedValue(new Blob(['archive']));
+  render(<MemoryRouter><ForensicReportPage scopeType="task" scopeId="task-A"/></MemoryRouter>);
+  fireEvent.click(screen.getByRole('button',{name:'导出离线 HTML'}));
+  await waitFor(()=>expect(getFinalReportHtml).toHaveBeenCalledWith('task-A','exact-r2'));
+  await waitFor(()=>expect(screen.getByRole('button',{name:'下载离线包'})).toBeEnabled());
+  fireEvent.click(screen.getByRole('button',{name:'下载离线包'}));
+  await waitFor(()=>expect(getFinalReportOffline).toHaveBeenCalledWith('task-A','exact-r2'));
+  fireEvent.click(screen.getByRole('button',{name:'版本历史'}));
+  expect(screen.getByLabelText('报告版本列表')).toHaveFocus();
+});

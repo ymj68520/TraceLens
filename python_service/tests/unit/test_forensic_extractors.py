@@ -981,7 +981,9 @@ def _build_minimal_evtx(tmp_path):
     struct.pack_into("<H", header, 0x24, 1)   # minor version
     struct.pack_into("<H", header, 0x26, 3)   # major version
     struct.pack_into("<H", header, 0x28, 0x1000)  # header chunk size
-    struct.pack_into("<H", header, 0x2A, 1)   # chunk count
+    struct.pack_into("<H", header, 0x2A, 0)   # no chunks in this empty log
+    import zlib
+    struct.pack_into("<I", header, 0x7C, zlib.crc32(header[:0x78]))
     path = tmp_path / "minimal.evtx"
     path.write_bytes(bytes(header))
     return path
@@ -1005,9 +1007,10 @@ async def test_evtx_extractor_accepts_buffer_and_offset(tmp_path):
     assert header.magic() == "ElfFile\x00"
 
     # And the extractor must not report a parse error for a readable header.
-    out = await EvtxExtractor().extract_to_markdown(str(path))
-    assert "missing 1 required positional argument" not in out
-    assert "Error: Failed to parse EVTX" not in out
+    result = await EvtxExtractor().extract_result(str(path))
+    assert result.status == "metadata_only"
+    assert result.coverage["record_count"] == 0
+    assert not result.text
 
 
 def test_registry_value_api_matches_extractor_usage():
@@ -1046,14 +1049,12 @@ def test_registry_extractor_uses_correct_import_path():
     assert "Registry.Registry(file_path)" not in source
 
 
-def test_evtx_extractor_uses_two_argument_file_header():
-    """The EVTX extractor must call FileHeader(buffer, offset)."""
-    import inspect
-    from httpserver.services.extractors import windows_evtx
-
-    source = inspect.getsource(windows_evtx.EvtxExtractor._extract_with_python_evtx)
-    assert "FileHeader(data, 0)" in source
-    assert "FileHeader(f.read())" not in source
+def test_evtx_context_manager_reads_empty_header(tmp_path):
+    from Evtx.Evtx import Evtx
+    path = _build_minimal_evtx(tmp_path)
+    with Evtx(str(path)) as log:
+        assert log.get_file_header().verify()
+        assert list(log.records()) == []
 
 
 @pytest.mark.asyncio
@@ -1072,12 +1073,12 @@ async def test_prefetch_extractor_uses_libscca_for_mam(tmp_path):
     # degrade to metadata rather than raise.
     mam = tmp_path / "NOTEPAD.EXE-DEADBEEF.pf"
     mam.write_bytes(b"MAM\x04" + struct.pack("<I", 4096) + b"\x00" * 32)
-    out = await PrefetchExtractor().extract_to_markdown(str(mam))
-    assert not out.startswith("Error")
-    assert "NOTEPAD.EXE" in out
-    # Either libscca parsed it (unlikely for a truncated body) or the fallback
-    # states plainly that run data is unavailable.
-    assert ("Run Count" in out) or ("not available" in out)
+    result = await PrefetchExtractor().extract_result(str(mam))
+    assert result.status == "error"
+    assert not result.text and not result.records
+    from httpserver.services.extractors.base import DocumentContentUnavailableError
+    with pytest.raises(DocumentContentUnavailableError):
+        result.require_content()
 
 
 @pytest.mark.asyncio
@@ -1087,8 +1088,10 @@ async def test_prefetch_extractor_rejects_non_prefetch(tmp_path):
 
     bogus = tmp_path / "not-a-prefetch.pf"
     bogus.write_bytes(b"\xde\xad\xbe\xef" + b"\x00" * 128)
-    out = await PrefetchExtractor().extract_to_markdown(str(bogus))
-    assert out.startswith("Error: Not a valid Prefetch file")
+    result = await PrefetchExtractor().extract_result(str(bogus))
+    assert result.status == "error"
+    assert "PREFETCH_INVALID_SIGNATURE" in result.diagnostics
+    assert not result.text
 
 
 def test_prefetch_extractor_routes_through_libscca():

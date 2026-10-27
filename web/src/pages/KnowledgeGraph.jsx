@@ -32,6 +32,8 @@ import RelationshipTracePanel from '../components/knowledge-graph/RelationshipTr
 import PeopleGraphPanel from '../components/knowledge-graph/PeopleGraphPanel';
 import EventGraphPanel from '../components/knowledge-graph/EventGraphPanel';
 import CommunicationGraphEntry from '../components/knowledge-graph/CommunicationGraphEntry';
+import IngestionQualityPanel from '../components/knowledge-graph/IngestionQualityPanel';
+import { forensicError, forensicLabel } from '../utils/forensicLabels';
 
 const escapeGraphTooltip = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -43,6 +45,8 @@ const escapeGraphTooltip = (value) => String(value ?? '').replace(/[&<>"']/g, (c
 export default function KnowledgeGraph() {
     const [searchParams, setSearchParams] = useSearchParams();
     const taskId = searchParams.get('task_id');
+    const activeTaskRef = useRef(taskId);
+    activeTaskRef.current = taskId;
     const requestedRelationshipId = searchParams.get('relationship_id');
     const { tasks } = useSelector((state) => state.tasks);
 
@@ -71,6 +75,8 @@ export default function KnowledgeGraph() {
     const [ingestResult, setIngestResult] = useState(null);
     const [ingestProgress, setIngestProgress] = useState(0);
     const [ingestMessage, setIngestMessage] = useState('');
+    const [ingestJobId, setIngestJobId] = useState(null);
+    const [lastKgJob, setLastKgJob] = useState(null);
 
     // Re-ingestion state (separate from regular ingestion)
     const [reingesting, setReingesting] = useState(false);
@@ -165,6 +171,8 @@ export default function KnowledgeGraph() {
         setRelationshipTrace(null);
         setTraceError(null);
         setReingestError(null);
+        setIngestJobId(null); setReingestJobId(null); setLastKgJob(null);
+        setIngesting(false); setReingesting(false); setIngestProgress(0); setIngestResult(null);
         if (taskId) fetchStatus();
     }, [taskId, fetchStatus]);
 
@@ -176,36 +184,37 @@ export default function KnowledgeGraph() {
 
         const pollStatus = async () => {
             try {
-                const status = await getJobStatus(reingestJobId);
-                if (!isMounted) return;
+                const status = await getJobStatus(reingestJobId, taskId);
+                if (!isMounted || activeTaskRef.current !== taskId) return;
+                setLastKgJob(status);
 
                 setReingestProgress(status.progress || 0);
-                setReingestMessage(status.current_phase || 'Processing...');
+                setReingestMessage(forensicLabel(status.status, '正在摄取'));
 
                 if (status.status === 'COMPLETED') {
                     if (!isMounted) return;
                     setReingesting(false);
-                    setReingestMessage('重新摄入完成！');
+                    setReingestJobId(null);
+                    setReingestMessage(status.quality?.status === 'passed' ? '本轮摄取计数通过' : '本轮执行结束，请核对摄取质量');
                     await fetchStatus();
                     await fetchTaskGraphs();
                     setGraphData({ nodes: [], links: [] }); // trigger reload
                 } else if (status.status === 'FAILED') {
                     if (!isMounted) return;
                     setReingesting(false);
+                    setReingestJobId(null);
                     setReingestProgress(0);
                     setReingestMessage('');
-                    setReingestError(`重新摄入失败: ${status.error || '未知错误'}`);
+                    setReingestError(forensicError(status.error, '摄取失败，请查看本轮质量记录后重试。'));
                 } else if (status.status === 'CANCELLED') {
                     if (!isMounted) return;
                     setReingesting(false);
+                    setReingestJobId(null);
                     setReingestMessage('操作已取消');
                 }
             } catch (err) {
                 if (!isMounted) return;
-                setReingesting(false);
-                setReingestProgress(0);
-                setReingestMessage('');
-                setReingestError('获取任务状态失败: ' + (err.message || '未知错误'));
+                setReingestError(forensicError(err, '暂时无法读取摄取进度，正在重试查询。'));
             }
         };
 
@@ -217,7 +226,32 @@ export default function KnowledgeGraph() {
             isMounted = false;
             clearInterval(interval);
         };
-    }, [reingestJobId, fetchStatus, fetchTaskGraphs]);
+    }, [reingestJobId, taskId, fetchStatus, fetchTaskGraphs]);
+
+    useEffect(() => {
+        if (!ingestJobId || !taskId) return;
+        let active = true, timer;
+        const poll = async () => {
+            try {
+                const job = await getJobStatus(ingestJobId, taskId);
+                if (!active || activeTaskRef.current !== taskId) return;
+                setLastKgJob(job); setIngestProgress(Number(job.progress) || 0);
+                setIngestMessage(forensicLabel(job.status, '正在摄取'));
+                if (['COMPLETED','FAILED','CANCELLED'].includes(String(job.status).toUpperCase())) {
+                    setIngestJobId(null); setIngesting(false);
+                    setIngestResult({ message: '本轮执行已结束，请核对下方成功、失败与未处理计数。' });
+                    await fetchStatus(); await fetchTaskGraphs();
+                    if (active) setGraphData({ nodes: [], links: [] });
+                    return;
+                }
+            } catch (error) {
+                if (active) setIngestMessage(forensicError(error, '进度暂不可用，正在重试查询。'));
+            }
+            if (active) timer = setTimeout(poll, 2000);
+        };
+        poll();
+        return () => { active = false; clearTimeout(timer); };
+    }, [ingestJobId, taskId, fetchStatus, fetchTaskGraphs]);
 
     // ── Background KG ingestion job (pipeline-dispatched kg_sync job) ────────
     // The analysis pipeline queues KG ingestion as a background job; surface
@@ -230,6 +264,8 @@ export default function KnowledgeGraph() {
         try {
             const res = await listIngestionJobs(taskId, 5);
             const jobs = res.jobs || [];
+            if (activeTaskRef.current !== taskId) return;
+            if (jobs[0]?.task_id === taskId) setLastKgJob(jobs[0]);
             const active = jobs.find((j) =>
                 ['PENDING', 'RUNNING'].includes(String(j.status || '').toUpperCase())
             );
@@ -427,36 +463,19 @@ export default function KnowledgeGraph() {
         setIngestMessage('正在准备导入数据...');
         try {
             const result = await ingestTaskData(taskId, { includeLLMDescriptions: true });
+            if (activeTaskRef.current !== taskId) return;
             if (result.job_id) {
+                setIngestJobId(result.job_id);
                 setIngestMessage('导入进行中...');
-                let progress = 10;
-                const iv = setInterval(() => {
-                    progress = Math.min(progress + 15, 90);
-                    setIngestProgress(progress);
-                    setIngestMessage(`已处理 ${progress}%...`);
-                }, 2000);
-                setTimeout(async () => {
-                    clearInterval(iv);
-                    setIngestProgress(100);
-                    setIngestMessage('导入完成！');
-                    setIngestResult(result);
-                    await fetchStatus();
-                    await fetchTaskGraphs();
-                    setGraphData({ nodes: [], links: [] }); // trigger reload
-                }, 10000);
             } else {
-                setIngestProgress(100);
-                setIngestMessage('导入完成！');
-                setIngestResult(result);
-                await fetchStatus();
-                await fetchTaskGraphs();
-                setGraphData({ nodes: [], links: [] });
+                setIngesting(false);
+                setError('未取得摄取运行编号，无法确认完成状态。');
             }
         } catch (err) {
-            setError('导入失败: ' + (err.message || '未知错误'));
+            if (activeTaskRef.current !== taskId) return;
+            setError(forensicError(err, '摄取请求失败，请重试。'));
             setIngestProgress(0);
             setIngestMessage('');
-        } finally {
             setIngesting(false);
         }
     };
@@ -488,6 +507,7 @@ export default function KnowledgeGraph() {
 
         try {
             const result = await reingestAnalyzedData(taskId);
+            if (activeTaskRef.current !== taskId) return;
             if (result.job_id) {
                 setReingestJobId(result.job_id);
                 setReingestMessage('已提交重新摄入任务');
@@ -496,7 +516,7 @@ export default function KnowledgeGraph() {
                 setError('未能提交重新摄入任务');
             }
         } catch (err) {
-            setReingestError('提交重新摄入任务失败: ' + (err.message || '未知错误'));
+            setReingestError(forensicError(err, '提交重新摄取任务失败，请检查服务连接。'));
             setReingesting(false);
             setReingestProgress(0);
             setReingestMessage('');
@@ -650,6 +670,7 @@ export default function KnowledgeGraph() {
                     ✅ {ingestResult.message}
                 </div>
             )}
+            <IngestionQualityPanel job={lastKgJob?.task_id === taskId ? lastKgJob : null} onRetry={status?.read_only ? undefined : handleReingestAnalyzed} retrying={reingesting || ingesting} />
         </Card>
     );
 

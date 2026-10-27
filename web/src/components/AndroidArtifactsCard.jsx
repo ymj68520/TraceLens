@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom';
 
 const KINDS = [
   ['sms', '短信'], ['contacts', '联系人'], ['apps', '已安装应用'], ['wifi', 'Wi-Fi'],
-  ['mobile', '鸿蒙记录'],
+  ['mobile', '手机记录'],
 ];
 
 export default function AndroidArtifactsCard({ taskId, platform }) {
@@ -18,7 +18,7 @@ export default function AndroidArtifactsCard({ taskId, platform }) {
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState('');
   const [capturing, setCapturing] = useState(false);
-  useEffect(() => { setKind(platform === 'HarmonyOS' ? 'mobile' : 'sms'); setPage(1); }, [taskId, platform]);
+  useEffect(() => { setKind(['HarmonyOS', 'Android / MIUI'].includes(platform) ? 'mobile' : 'sms'); setPage(1); }, [taskId, platform]);
 
   useEffect(() => {
     let active = true;
@@ -56,7 +56,7 @@ export default function AndroidArtifactsCard({ taskId, platform }) {
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">{KINDS.map(([value, label]) => <button type="button" key={value}
         onClick={() => { setKind(value); setPage(1); }}
-        className={`rounded-lg px-3 py-1 text-sm ${kind === value ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700'}`}>{label}</button>)}</div>
+        className={`rounded-lg px-3 py-1 text-sm ${kind === value ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700'}`}>{value === 'mobile' ? (platform === 'HarmonyOS' ? '鸿蒙记录' : platform === 'Android / MIUI' ? '小米记录' : '手机记录') : label}</button>)}</div>
       <label className="block text-sm">检索当前类别 <input className="ml-2 rounded-lg border border-slate-300 px-2 py-1" value={query}
         onChange={(event) => { setQuery(event.target.value); setPage(1); }} maxLength={200} /></label>
       {error && <p role="alert" className="rounded-lg bg-amber-50 p-2 text-sm text-amber-800">{error}</p>}

@@ -11,6 +11,7 @@
   - **阿里云 Linux 系统盘导出包**：任务来源 `aliyun-image`，支持单 RAW 的 `.raw.tar.gz`；经预检、完整校验及解包后沿用原 Linux 取证、时间线和报告流程，含宝塔请求日志支持，详见 [阿里云镜像适配](docs/modules/AliyunImage.md)。
 - **三层数据库产出**：`_raw.db`（文件系统元数据）→ `_events.db`（时间线事件）→ `_files.db`（24 类文件分类 + LLM 分析列 + 场景优先级）
 - **平台专项取证**：
+  - **小米手机数据导出镜像**：`--android-source xiaomi-image`，适配含 `DMF + data + storage` 的 EXT4 导出镜像；只读来源索引、通话/通讯录/日历、MIUI 便签与附件，沿用鸿蒙使用的完整任务及报告流程，异常文件明确记录覆盖状态，详见 [小米镜像适配](docs/modules/XiaomiImage.md)。
   - **华为鸿蒙已解密备份**：`--android-source harmony-backup`，支持 `.info.json + files`、解密后的 JSON/TAR 和独立文件；日历、录音、媒体、思源笔记与可读 QQ 资料。沿用原任务、文件分类/提取、时间线及报告流程，详见 [鸿蒙备份适配](docs/modules/HarmonyBackup.md)。
   - **Android**：短信/联系人/通话记录、Chrome 历史、已装应用、WiFi；MIUI 备份（`.bak`）解析、微信（SQLCipher 解密，支持 `--backup-password-stdin/-fd` 避免密码进 argv）、QQNT 工件；逻辑取证数据源 `--android-source tsk|dir|zip|miui-backup`
   - **Windows**：注册表、事件日志、Prefetch、Amcache、SRUM、LNK、Jump List、MFT、浏览器（Chromium/Firefox）、USB 等（Shimcache/UserAssist/RDP/WiFi 解析器已实现但尚未接线）

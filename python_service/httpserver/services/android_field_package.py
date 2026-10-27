@@ -45,7 +45,7 @@ def _selected_android_evidence(task: dict) -> list[dict]:
     with closing(sqlite3.connect(uri, uri=True, timeout=30)) as con:
         con.row_factory = sqlite3.Row
         con.execute("PRAGMA query_only=ON")
-        if con.execute("PRAGMA user_version").fetchone()[0] not in (7, 8):
+        if con.execute("PRAGMA user_version").fetchone()[0] not in (7, 8, 9):
             raise ValueError("unsupported investigation store for delivery")
         has_report = con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='report_evidence'").fetchone()
         report_cols = "r.report_status,r.analysis_id" if has_report else "NULL AS report_status,NULL AS analysis_id"

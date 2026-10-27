@@ -136,12 +136,13 @@ std::vector<std::string> DependencyAnalyzer::getPrefetchReferences(
     auto prefetchFiles = windowsDb_->queryPrefetchFiles("");
 
     for (const auto& prefetch : prefetchFiles) {
+        if (prefetch.parseStatus != "ok" && prefetch.parseStatus != "partial") continue;
         // 检查 referencedFiles 中是否包含目标 DLL
         for (const auto& refFile : prefetch.referencedFiles) {
             if (extractFileName(refFile) == targetDll) {
                 references.push_back("Prefetch:" + prefetch.executableName +
-                                    " (Hash:" + prefetch.prefetchHash +
-                                    ", Runs:" + std::to_string(prefetch.runCount) + ")");
+                                    "（哈希：" + prefetch.prefetchHash +
+                                    "，运行次数：" + (prefetch.runCount ? std::to_string(*prefetch.runCount) : "未知") + "）");
                 break; // 每个 Prefetch 只记录一次
             }
         }

@@ -15,6 +15,7 @@ zip word/media；.doc 按签名雕刻 JPEG/PNG 并用 PIL 校验），调用调�
 - 不在提取器层引入 LLM 依赖：vision_fn 由调用方注入（保持分层）。
 """
 
+from ..model_budget import ModelBudgetError
 import hashlib
 import io
 import logging
@@ -139,6 +140,8 @@ def _extract_doc_images(path: Path, limit: int) -> List[bytes]:
             return out
     except ImportError:
         logger.info("doc media enhance: olefile unavailable, falling back to raw scan for %s", path)
+    except ModelBudgetError:
+        raise
     except Exception as exc:
         logger.warning("doc media enhance: OLE scan failed for %s: %s", path, exc)
 
@@ -154,6 +157,8 @@ def extract_embedded_images(file_path: str, limit: int = MAX_ENHANCE_IMAGES) -> 
             return _extract_docx_media(Path(file_path), limit)
         if suffix == ".doc":
             return _extract_doc_images(Path(file_path), limit)
+    except ModelBudgetError:
+        raise
     except Exception as exc:
         logger.warning("doc media enhance: embedded image extraction failed for %s: %s", file_path, exc)
     return []
@@ -205,6 +210,8 @@ async def enhance_document_text(
             try:
                 result = await vision_fn(data)
                 content = _vision_text(result).strip()
+            except ModelBudgetError:
+                raise
             except Exception as exc:
                 logger.warning("doc media enhance: vision call %d failed for %s: %s", index + 1, file_path, exc)
                 continue
@@ -223,6 +230,8 @@ async def enhance_document_text(
             f"以下为视觉模型对图片内容的转写，共分析 {used} 张）\n\n"
         )
         return text + header + "\n\n".join(sections), used
+    except ModelBudgetError:
+        raise
     except Exception as exc:
         logger.warning("doc media enhance failed for %s: %s", file_path, exc)
         return text, 0

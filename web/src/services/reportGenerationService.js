@@ -44,6 +44,9 @@ export const getReportGeneration = async (taskId, generationId) => {
     );
 };
 
+export const getPipelineReportStatus = async (taskId) =>
+    pythonApi.get('/api/reports/pipeline-tail/status', { params: { task_id: taskId } });
+
 /**
  * 按 exact report_id 读取一个已发布 narrative report version
  * （版本行 + persisted manifest：sections + citation manifest + audit 元数据）。

@@ -68,7 +68,7 @@ def test_event_cluster_analysis_run_returns_503(tmp_path, monkeypatch):
         "/api/llm/event-cluster-analysis/run", json={"task_id": "t1"}
     )
     assert resp.status_code == 503
-    assert "MVP" in resp.json()["detail"]
+    assert "已关闭" in resp.json()["detail"]
     # no background job may have been registered
     assert eca_routes._run_jobs == {}
 

@@ -35,8 +35,23 @@ async def ensure_evidence_copies(task_id: str, *, cpp_backend, evidence_service,
     with the same terminal error as before this helper existed.
     """
     items = await evidence_service.list(task_id)
-    paths = sorted({item.evidence_key[5:] for item in items
-                    if item.evidence_key.startswith("file:") and len(item.evidence_key) > 5})
+    from ..evidence.keys import parse_evidence_key
+    from ..source_reading import ensure_source
+    paths=[]; indexed=0; source_errors=[]
+    task=None
+    for item in items:
+        if not item.evidence_key.startswith("file:"):continue
+        key=parse_evidence_key(item.evidence_key)
+        if key.source_id:
+            try:
+                if task is None:task=await cpp_backend.get_task(task_id)
+                await ensure_source(task,key.normalized_path,key.source_id,cpp_backend=cpp_backend)
+                indexed+=1
+            except Exception as error:source_errors.append(getattr(error,"code","SOURCE_COPY_FAILED"))
+        else:paths.append(key.normalized_path)
+    paths=sorted(set(paths))
+    if not paths and (indexed or source_errors):
+        return {"task_id":task_id,"extracted":indexed,"source_errors":source_errors}
     if not paths:
         return {"task_id": task_id, "skipped": "no_file_evidence"}
     # Keep full path identity even for a large evidence set. Basename fallback
@@ -52,7 +67,7 @@ async def ensure_evidence_copies(task_id: str, *, cpp_backend, evidence_service,
     if batch:
         batches.append(batch)
     waited = 0.0
-    extracted = 0
+    extracted = indexed
     for batch in batches:
         job = await cpp_backend.extract_files(task_id, batch)
         job_id = (job or {}).get("job_id")
@@ -110,7 +125,8 @@ async def auto_generate_pipeline_report(
             "Task %s already has a report generation in flight; auto generation skipped",
             task_id,
         )
-        return {"task_id": task_id, "skipped": "generation_in_flight"}
+        return {"task_id": task_id, "skipped": "generation_in_flight",
+                "generation_id": executor.get_inflight_generation_id(task_id)}
 
     # Register the actual analyzed-file scope before listing it for extraction.
     # A fresh task otherwise has no Report Evidence and freezes missing sources.

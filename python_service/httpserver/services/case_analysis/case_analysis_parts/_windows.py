@@ -195,6 +195,22 @@ class CaseAnalysisWindowsMixin:
             logger.info(f"Task {task_id}: Final determined extraction directory: {extraction_dir}")
             logger.info(f"Task {task_id}: Starting targeted extraction of {len(file_paths)} files")
 
+            # The existing extraction phase uses exact materialization for
+            # indexed sources. Passing these references as filename globs
+            # would lose identity (and split logical paths containing commas).
+            from ...source_identity import decode_reference
+            if any(decode_reference(path)[1] for path in file_paths):
+                count=0
+                for reference in file_paths:
+                    logical,source_id=decode_reference(reference)
+                    result=await self._cpp_backend.materialize_source(task_id,logical,source_id)
+                    if not result.get('success'):
+                        raise RuntimeError('指定来源提取失败：'+result.get('error','SOURCE_MATERIALIZATION_FAILED'))
+                    count+=1
+                    if progress_callback:
+                        await progress_callback(count,len(file_paths),f'已提取 {count}/{len(file_paths)}：{logical}')
+                return {'success':True,'extracted_count':count,'extraction_dir':extraction_dir,'skipped_count':0,'failed_count':0}
+
             # Start extraction task
             extract_result = await self._cpp_backend.extract_files(
                 task_id=task_id,

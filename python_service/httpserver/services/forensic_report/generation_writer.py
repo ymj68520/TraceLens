@@ -14,6 +14,7 @@ publications can target the same directory.
 from __future__ import annotations
 
 import os
+import hashlib
 import shutil
 import uuid
 from pathlib import Path
@@ -53,9 +54,9 @@ class GenerationReportWriter:
         shutil.rmtree(staging, ignore_errors=True)
         try:
             staging.mkdir(parents=True)
-            (staging / "manifest.json").write_bytes(
-                _canonical_json(manifest.model_dump(mode="json"))
-            )
+            payload = _canonical_json(manifest.model_dump(mode="json"))
+            (staging / "manifest.json").write_bytes(payload)
+            (staging / "manifest.sha256").write_text(hashlib.sha256(payload).hexdigest(), encoding='ascii')
             final_dir.parent.mkdir(parents=True, exist_ok=True)
             if final_dir.exists():
                 raise FileExistsError("immutable report already exists")
@@ -83,7 +84,12 @@ class GenerationReportWriter:
             raise FileNotFoundError("report manifest is unavailable")
         import json
 
-        return json.loads(resolved.read_bytes().decode("utf-8"))
+        payload = resolved.read_bytes()
+        checksum = final_dir / 'manifest.sha256'
+        if checksum.exists():
+            if checksum.is_symlink() or checksum.read_text(encoding='ascii').strip() != hashlib.sha256(payload).hexdigest():
+                raise ValueError('报告清单摘要不匹配')
+        return json.loads(payload.decode("utf-8"))
 
 
 __all__ = ["GenerationReportWriter", "new_generation_report_id"]

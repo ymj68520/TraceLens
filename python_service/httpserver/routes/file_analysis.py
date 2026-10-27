@@ -12,13 +12,34 @@ import uuid
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel,Field
 
 from ..config import get_settings
 
 logger = logging.getLogger(__name__)
+class SelectionProbeSource(BaseModel):
+    path: str
+    source_id: str = Field(pattern=r'^[0-9a-f]{64}$')
+
+class SelectionProbeRequest(BaseModel):
+    task_id: str
+    sources: List[SelectionProbeSource] = Field(max_length=10000)
+    max_bytes: int = Field(default=1024*1024*1024,ge=0,le=8*1024*1024*1024)
+    max_files: int = Field(default=500,ge=0,le=10000)
+    timeout_seconds: int = Field(default=300,ge=1,le=3600)
 
 router = APIRouter()
+
+@router.post('/file-analysis/probe')
+async def probe_file_candidates(request:SelectionProbeRequest):
+    from ..services import get_service_manager
+    from ..services.candidate_probe import probe_sources
+    manager=get_service_manager()
+    task=await manager.cpp_backend.get_task(request.task_id)
+    if not task or not task.get('output_files_db'):
+        raise HTTPException(status_code=404,detail='任务或来源索引不存在')
+    return await probe_sources(task,[item.model_dump() for item in request.sources],backend=manager.cpp_backend,
+        max_bytes=request.max_bytes,max_files=request.max_files,timeout_seconds=request.timeout_seconds)
 
 # Background run jobs (module-level registry, event-cluster-analysis style).
 _run_jobs = {}
@@ -32,6 +53,7 @@ class FileAnalysisRunRequest(BaseModel):
     task_id: str
     file_paths: Optional[List[str]] = None
     case_description: str = ""
+    max_files: int = Field(default=500,ge=1,le=1000)
 
 
 async def _resolve_task_files(service_manager, task_id: str):
@@ -107,6 +129,8 @@ async def run_file_analysis(request: FileAnalysisRunRequest):
             status_code=400,
             detail="no candidate files: run case filtering first or pass file_paths",
         )
+    if len(paths)>request.max_files:
+        raise HTTPException(status_code=422,detail='指定来源超过本次文件数量预算')
 
     case_service = get_case_analysis_service(service_manager)
     extraction_dir = task_info.get("extraction_directory") or ""

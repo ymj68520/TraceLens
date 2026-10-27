@@ -60,6 +60,7 @@ class ParseRequest(BaseModel):
 
     task_id: str | None = Field(None, description="Task ID owning the file (membership anchor)")
     workspace_root: str | None = Field(None, description="Deprecated standalone workspace anchor for C++ callers")
+    source_id: str | None = Field(None, pattern=r"^[0-9a-f]{64}$")
     file_path: str = Field(..., description="Absolute path to the Office file")
 
 
@@ -114,9 +115,12 @@ async def parse_office_file(request: ParseRequest) -> ParseResponse:
     Returns:
         ParseResponse with extracted content or error message.
     """
-    file_path = request.file_path
-    path = await _resolve_task_file(request.task_id, request.workspace_root, file_path)
+    async with _office_source(request.task_id,request.workspace_root,request.file_path,request.source_id) as path:
+        return await _parse_office_path(path)
 
+
+async def _parse_office_path(path):
+    file_path=str(path)
     # Get file type
     suffix = path.suffix.lower()
 
@@ -167,13 +171,17 @@ async def get_office_file(
     file_path: str = "",
     task_id: Optional[str] = None,
     workspace_root: Optional[str] = None,
+    source_id: Optional[str] = None,
 ):
     """Serve the (on-demand materialized) Office file bytes for client-side
     rendering, e.g. the full-fidelity docx viewer in the web preview."""
     if not file_path:
         raise HTTPException(status_code=400, detail="file_path is required")
-    path = await _resolve_task_file(task_id, workspace_root, file_path)
+    async with _office_source(task_id,workspace_root,file_path,source_id) as path:
+        return _office_response(path)
 
+
+def _office_response(path):
     media_types = {
         ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         ".doc": "application/msword",
@@ -199,6 +207,30 @@ async def get_office_file(
         media_type=media_type,
         headers={"Content-Disposition": disposition},
     )
+
+
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def _office_source(task_id,workspace_root,file_path,source_id=None):
+    if not task_id:
+        yield await _resolve_task_file(task_id,workspace_root,file_path)
+        return
+    from ..services.source_reading import task_source_file
+    from ..services.source_identity import SourceIdentityError
+    from ..services import task_store
+    try:
+        task=await task_store.get_task_record(task_id)
+        async with task_source_file(task_id,file_path,source_id=source_id,task=task) as (copy,_reference,_provenance):
+            if Path(copy).suffix.lower() not in {'.doc','.docx','.xls','.xlsx','.ppt','.pptx'}:
+                raise HTTPException(status_code=400,detail='不支持的文档格式')
+            yield Path(copy)
+    except SourceIdentityError as exc:
+        raise HTTPException(status_code=409 if 'AMBIGUOUS' in exc.code else (404 if exc.code=='SOURCE_NOT_FOUND' else 422),
+                            detail={"code":exc.code,"message":exc.message}) from exc
+    except task_store.TaskStoreError as exc:
+        raise HTTPException(status_code=404 if exc.code==task_store.TASK_NOT_FOUND else 400,detail=str(exc)) from exc
 
 
 async def _resolve_task_file(

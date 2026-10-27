@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 from . import android_archive_preflight, android_image_preflight, android_container_pipeline
-from . import aliyun_image
+from . import aliyun_image, xiaomi_image
 from .android_sparse_image import validate_sparse
 
 from ..config import get_data_root, get_project_root
@@ -100,6 +100,11 @@ def _probe(path: Path) -> dict:
                 "confidence": "high", "sidecars_present": sidecars}
     if header.startswith(b"\x3a\xff\x26\xed"):
         return {"kind": "android_sparse_image", "adapter": None, "confidence": "high"}
+    if header[1080:1082] == b"\x53\xef":
+        mobile = xiaomi_image.inspect_header(path)
+        if mobile.get("candidate"):
+            return {"kind": "xiaomi_export_image", "adapter": "xiaomi-image", "confidence": "high",
+                    "reason": "手机数据导出镜像；文件区段与内容将在任务索引阶段继续校验"}
     if header[1024:1028] == b"\x10\x20\xf5\xf2" or header[1080:1082] == b"\x53\xef":
         return {"kind": "raw_image_candidate", "adapter": None,
                 "confidence": "filesystem_magic_candidate"}
@@ -192,8 +197,11 @@ def get_job(job_id: str) -> dict:
     path = _job_dir(job_id) / "job.json"
     if not path.is_file():
         raise FileNotFoundError("preflight job not found")
-    result = json.loads(path.read_text(encoding="utf-8"))
     with _lock:
+        # Keep the persisted snapshot and worker membership consistent. Otherwise
+        # a worker can publish completion and leave _active between these reads,
+        # making a stale "running" snapshot appear interrupted.
+        result = json.loads(path.read_text(encoding="utf-8"))
         active = job_id in _active
     if result["status"] in {"queued", "running"} and not active:
         result = {**result, "status": "interrupted", "warning": "service restarted; full hash not verified"}
@@ -300,6 +308,8 @@ def _run_job(job_id: str, path: Path, full_hash: bool, cancelled: threading.Even
                     result["detected"]["root_mapping"] = result["archive"]["root_mapping"]
                 elif str(result["archive"].get("reason", "")).startswith("RISK_REJECTED"):
                     result["detected"]["risk_status"] = "RISK_REJECTED"
+            if result["detected"]["kind"] == "xiaomi_export_image":
+                result["xiaomi_image"] = {**xiaomi_image.inspect_header(path), "ready": bool(full_hash)}
             if result["detected"]["kind"] in {"raw_image_candidate", "ewf_candidate", "android_sparse_image"}:
                 original_kind = result["detected"]["kind"]
                 if original_kind == "android_sparse_image" and not full_hash:

@@ -83,7 +83,7 @@ describe('InvestigationGraphView', () => {
     expect(lastCanvasProps().graphData.links).toHaveLength(5);
     // namespace legend shows the four investigation entries plus Base KG
     expect(screen.getByText('InvestigationEvent')).toBeInTheDocument();
-    expect(screen.getByText('Base KG')).toBeInTheDocument();
+    expect(screen.getByText('基础知识图谱')).toBeInTheDocument();
   });
 
   test('base degradation keeps the overlay rendered and only warns', () => {

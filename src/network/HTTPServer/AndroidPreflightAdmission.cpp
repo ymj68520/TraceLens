@@ -88,6 +88,50 @@ AndroidPreflightAdmissionResult admitAliyunImage(
     return result;
 }
 
+AndroidPreflightAdmissionResult admitXiaomiImage(
+    const std::string& path, const std::string& jobId,
+    const std::string& claimedHash, const std::string& claimedKind) {
+    AndroidPreflightAdmissionResult result;
+    result.code = "PREFLIGHT_REQUIRED";
+    result.detail = "小米手机镜像须先完成完整 SHA-256 预检";
+#ifdef _WIN32
+    result.code="XIAOMI_REQUIRES_LINUX_RUNTIME";
+    result.detail="小米镜像读取需要 Linux 或 WSL 后端";
+    return result;
+#endif
+    if (!isHex(jobId, 32) || !isHex(claimedHash, 64) || claimedKind != "xiaomi_export_image") return result;
+    try {
+        const auto root = forensics::PathManager::instance().getDataDir() / "evidence_preflight";
+        const auto file = root / jobId / "job.json";
+        if (!fs::is_regular_file(file) || fs::is_symlink(file) || fs::is_symlink(file.parent_path()) ||
+            fs::file_size(file) > 8 * 1024 * 1024 || fs::is_symlink(path)) return result;
+        nlohmann::json job;
+        std::ifstream stream(file);
+        stream >> job;
+        if (job.at("id") != jobId || job.at("status") != "completed" ||
+            job.at("integrity_status") != "verified" || !job.at("full_hash").get<bool>() ||
+            job.at("sha256") != claimedHash || job.at("detected").at("kind") != claimedKind ||
+            job.at("detected").at("adapter") != "xiaomi-image" ||
+            !job.at("xiaomi_image").at("ready").get<bool>()) return result;
+        const auto source = fs::canonical(path);
+        if (source != fs::canonical(job.at("source_path").get<std::string>()) ||
+            fs::file_size(source) != job.at("source_size").get<uint64_t>()) {
+            result.code = "EVIDENCE_CHANGED_AFTER_PREFLIGHT";
+            result.detail = "镜像来源已变化，请重新预检";
+            return result;
+        }
+        // The index worker rehashes the image; the task compares that identity
+        // before classification, mobile parsing or intelligence starts.
+        result.metadata = {{"preflight_job_id", jobId}, {"preflight_source_sha256", claimedHash},
+            {"source_kind", "xiaomi-image"}, {"source_label", source.filename().string()},
+            {"xiaomi_original_source", source.string()}, {"preflight_detected_kind", claimedKind}};
+        result.accepted = true;
+        result.code = "ACCEPTED";
+        result.detail = "预检已通过，任务将验证镜像并建立来源索引";
+    } catch (...) {}
+    return result;
+}
+
 AndroidPreflightAdmissionResult admitAndroidContainerSource(
     const std::string& path, const std::string& jobId,
     const std::string& claimedHash, const std::string& claimedKind,

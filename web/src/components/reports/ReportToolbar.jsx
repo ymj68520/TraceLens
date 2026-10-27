@@ -5,6 +5,10 @@ export default function ReportToolbar({
   scopeType = 'task',
   onCreateVersion,
   onRefresh,
+  onExportHtml,
+  onExportBundle,
+  onHistory,
+  exporting = false,
 }) {
   const title = manifest?.title || version?.title || '取证报告';
   const generatedAt = manifest?.generated_at || version?.generated_at;
@@ -35,8 +39,9 @@ export default function ReportToolbar({
         <span className="text-xs text-slate-500 dark:text-slate-400">暂不支持案情级新版报告</span>
       )}
       <button type="button" onClick={onRefresh}>刷新</button>
-      <button type="button" disabled>导出离线 HTML</button>
-      <button type="button" disabled>版本历史</button>
+      <button type="button" disabled={!onExportHtml || exporting} onClick={onExportHtml}>导出离线 HTML</button>
+      <button type="button" disabled={!onExportBundle || exporting} onClick={onExportBundle}>下载离线包</button>
+      <button type="button" disabled={!onHistory} onClick={onHistory}>版本历史</button>
     </header>
   );
 }

@@ -19,6 +19,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from ..services.document_extractor import get_document_extractor_locator
+from ..services.extractors.base import DocumentContentUnavailableError, validate_extracted_text
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ class ConvertRequest(BaseModel):
     task_id: str | None = Field(None, description="Task ID owning the file (workspace anchor)")
     workspace_root: str | None = Field(None, description="Deprecated standalone workspace anchor for CLI callers")
     file_path: str = Field(..., description="Absolute path to the file to convert")
+    source_id: str | None = Field(None, pattern=r"^[0-9a-f]{64}$")
 
 
 # Formats markitdown itself converts well. Everything else goes to the
@@ -89,10 +91,11 @@ async def _convert_via_extractor(file_path: Path) -> "tuple[str, str]":
         return "", ""
 
     try:
-        markdown = await extractor.extract_to_markdown(str(file_path))
+        markdown = validate_extracted_text(await extractor.extract_to_markdown(str(file_path)))
+    except DocumentContentUnavailableError:
+        raise
     except Exception as exc:
-        logger.error(f"{type(extractor).__name__} failed for {file_path}: {exc}")
-        return "", ""
+        raise DocumentContentUnavailableError("材料解析失败，未生成证据正文", code="DOCUMENT_PARSE_FAILED") from exc
 
     if not markdown or not markdown.strip():
         logger.warning(f"{type(extractor).__name__} produced empty output for {file_path}")
@@ -198,6 +201,23 @@ class ConvertResponse(BaseModel):
     },
 )
 async def convert_file(request: ConvertRequest):
+    if not request.task_id:
+        return await _convert_source_copy(request)
+    from ..services.source_reading import task_source_file
+    from ..services.source_identity import SourceIdentityError
+    from ..services import task_store
+    try:
+        task=await task_store.get_task_record(request.task_id)
+        async with task_source_file(request.task_id,request.file_path,source_id=request.source_id,task=task) as (copy,_reference,_provenance):
+            return await _convert_source_copy(request.model_copy(update={'file_path':copy}),validated=True)
+    except SourceIdentityError as exc:
+        raise HTTPException(status_code=409 if 'AMBIGUOUS' in exc.code else 422,
+                            detail={'code':exc.code,'message':exc.message}) from exc
+    except task_store.TaskStoreError as exc:
+        raise HTTPException(status_code=404 if exc.code==task_store.TASK_NOT_FOUND else 400,detail=str(exc)) from exc
+
+
+async def _convert_source_copy(request: ConvertRequest,validated=False):
     """
     Convert a file to markdown using markitdown.
 
@@ -210,9 +230,10 @@ async def convert_file(request: ConvertRequest):
     start_time = time.time()
 
     # Task ownership gate: the file must belong to the requesting task.
-    await _assert_file_readable_for_task(
-        request.task_id, request.workspace_root, request.file_path
-    )
+    if not validated:
+        await _assert_file_readable_for_task(
+            request.task_id, request.workspace_root, request.file_path
+        )
 
     # Validate file exists
     file_path = Path(request.file_path)
@@ -245,6 +266,8 @@ async def convert_file(request: ConvertRequest):
             result = await asyncio.to_thread(md.convert, str(file_path))
 
             markdown = result.markdown if result else ""
+            if "an error occurred while reading the file" in markdown[:300].lower():
+                raise DocumentContentUnavailableError("文档读取失败，未取得证据正文", code="DOCUMENT_READ_FAILED")
             title = getattr(result, 'title', None) or ""
 
         processing_time = (time.time() - start_time) * 1000
@@ -261,6 +284,8 @@ async def convert_file(request: ConvertRequest):
             processing_time_ms=processing_time,
         )
 
+    except DocumentContentUnavailableError as exc:
+        raise HTTPException(status_code=422, detail={"code": exc.code, "status": exc.status, "message": str(exc)}) from exc
     except ImportError:
         raise HTTPException(
             status_code=500,
@@ -435,7 +460,7 @@ async def _convert_file_to_output(
         locator = get_document_extractor_locator()
         extractor = locator.get_extractor(str(file_path))
         if extractor is not None:
-            markdown = await extractor.extract_to_markdown(str(file_path))
+            markdown = validate_extracted_text(await extractor.extract_to_markdown(str(file_path)))
         else:
             raw = file_path.read_bytes()
             if not raw or _is_likely_binary(raw):

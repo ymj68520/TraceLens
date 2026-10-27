@@ -44,6 +44,9 @@ class _FakeExecutor:
     def has_inflight_generation(self, task_id: str) -> bool:
         return self._inflight
 
+    def get_inflight_generation_id(self, task_id: str):
+        return "gen-running" if self._inflight else None
+
     async def submit(self, generation_id: str) -> None:
         self.submitted.append(generation_id)
 
@@ -135,6 +138,14 @@ def test_auto_report_skips_when_report_exists():
     assert evidence.calls == []
     assert admission.calls == []
     assert executor.submitted == []
+
+
+def test_auto_report_reuses_exact_inflight_generation_for_completion_gate():
+    evidence, admission, executor = _FakeEvidence(), _FakeAdmission(), _FakeExecutor(inflight=True)
+    summary = asyncio.run(auto_generate_pipeline_report(
+        "T", evidence_service=evidence, admission=admission, executor=executor))
+    assert summary == {"task_id": "T", "skipped": "generation_in_flight", "generation_id": "gen-running"}
+    assert evidence.calls == admission.calls == executor.submitted == []
 
 
 def test_auto_report_propagates_seed_failure():

@@ -107,6 +107,9 @@ def group_report_evidence(
     """
     groups: dict[str, list[EnvelopeEvidenceItemV1]] = {}
     for item in (*envelope.main_evidence, *envelope.appendix_evidence):
+        if item.snapshot.evidence_type == 'windows_artifact':
+            groups.setdefault('windows_records',[]).append(item)
+            continue
         if item.snapshot.evidence_type == "android_artifact":
             groups.setdefault("android_records", []).append(item)
             continue
@@ -129,6 +132,8 @@ def group_report_evidence(
             ordered.append((gid, name, items))
             seen.add(gid)
     android_items = groups.pop("android_records", [])
+    windows_items=groups.pop('windows_records',[])
+    if windows_items:ordered.append(('windows_records','Windows活动与配置记录',windows_items))
     if android_items:
         ordered.append(("android_records", "Android 派生工件记录", android_items))
     fallback_items = groups.pop(_FALLBACK_GROUP_ID, [])
@@ -138,6 +143,9 @@ def group_report_evidence(
 
 
 def _classify_generation_error(exc: Exception) -> tuple[str, str]:
+    from .global_report_store import ReportPlanningError
+    if isinstance(exc,ReportPlanningError):
+        return exc.code,'报告全局规划或来源/预算校验未通过：'+str(exc)[:300]
     if isinstance(exc, httpx.ReadTimeout):
         return "llm_timeout", "LLM request timed out"
     if isinstance(exc, httpx.ConnectError):
@@ -208,7 +216,7 @@ def build_citation_manifest(
     """
     referenced = {
         citation_id
-        for section in response.sections
+        for section in (*response.sections, *response.appendices)
         for citation_id in section.citation_ids
     }
     items = {
@@ -353,10 +361,14 @@ class ReportGenerationExecutor:
         generation each. On PC.E01 that ran the whole report twice — the
         first one was superseded after ~10 minutes of LLM work.
         """
+        return self.get_inflight_generation_id(task_id) is not None
+
+    def get_inflight_generation_id(self, task_id: str) -> str | None:
+        """Attach the existing completion gate to the exact running generation."""
         for row in self._repository.list_stale_generations():
             if row.task_id == task_id:
-                return True
-        return False
+                return row.generation_id
+        return None
 
     async def submit(self, generation_id: str) -> None:
         """Schedule one admitted generation; scheduling failure is durable.
@@ -471,7 +483,13 @@ class ReportGenerationExecutor:
             try:
                 classifications = None
                 stage_analysis = None
-                if envelope.schema_version == 5:
+                organization = None
+                if envelope.schema_version in (8,9):
+                    from .global_report import generate_global_report
+                    from .global_report_store import PlanningStore
+                    store=PlanningStore(self._repository.db_path,generation_id,row.input_hash,envelope.report_budget)
+                    response,classifications,stage_analysis,organization,model=await generate_global_report(envelope,self._llm_service,store)
+                elif envelope.schema_version in (5, 6, 7):
                     response, classifications, stage_analysis, model = await self._generate_staged(envelope)
                 elif envelope.schema_version == 4:
                     classifications = await self._classify_evidence(envelope)
@@ -512,7 +530,7 @@ class ReportGenerationExecutor:
             try:
                 report_id = new_generation_report_id()
                 manifest = GenerationReportManifest(
-                    schema_version="1.2" if stage_analysis is not None else ("1.1" if classifications is not None else "1.0"),
+                    schema_version="1.4" if envelope.schema_version==9 else "1.3" if organization is not None else "1.2" if stage_analysis is not None else ("1.1" if classifications is not None else "1.0"),
                     report_id=report_id,
                     scope_type=ScopeType.TASK,
                     scope_id=row.task_id,
@@ -527,6 +545,7 @@ class ReportGenerationExecutor:
                     citations=build_citation_manifest(response, envelope),
                     evidence_classifications=classifications,
                     stage_analysis=stage_analysis,
+                    appendices=response.appendices,organization=organization,
                 )
                 final_dir = await asyncio.to_thread(
                     self._writer.publish,

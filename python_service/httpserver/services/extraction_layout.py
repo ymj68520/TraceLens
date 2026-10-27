@@ -28,12 +28,10 @@ def candidate_roots(extraction_dir) -> list:
     if not extraction_dir:
         return []
     recorded = Path(extraction_dir)
-    if recorded.is_dir():
-        return [recorded]
     parent = recorded.parent
     if not parent.is_dir():
         return [recorded]
-    siblings = [p for p in parent.iterdir() if p.is_dir() and p.name.endswith("_extracted_files")]
+    siblings = [p for p in parent.iterdir() if p!=recorded and p.is_dir() and not p.is_symlink() and p.name.endswith("_extracted_files")]
     known_first = sorted(
         siblings,
         key=lambda p: (

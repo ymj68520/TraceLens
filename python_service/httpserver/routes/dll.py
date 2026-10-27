@@ -36,6 +36,7 @@ def normalize_threat_level(raw: str, numeric_score: int) -> str:
 class DLLAnalysisRequest(BaseModel):
     """Request model for DLL analysis."""
     task_id: str | None = Field(None, description="Task ID owning the persistence target (required to persist)")
+    source_id: str | None = Field(None, pattern=r"^[0-9a-f]{64}$")
     file_path: str = Field(..., description="Absolute path to DLL file")
     # Deprecated: the persistence target is always resolved server-side from
     # task_id; a supplied value must exactly match that resolution.
@@ -98,6 +99,10 @@ async def analyze_dll(
     3. Sends report to LLM for security analysis
     4. Returns LLM analysis results
     """
+    from contextlib import AsyncExitStack
+    from ..services.source_reading import task_source_file
+    from ..services.source_identity import SourceIdentityError
+    source_stack=AsyncExitStack()
     start_time = time.time()
 
     try:
@@ -105,48 +110,13 @@ async def analyze_dll(
         service_manager = get_service_manager()
         cpp_backend_url = getattr(settings, 'cpp_backend_url', 'http://localhost:8080')
 
-        # Resolve the path: the raw image-internal path usually does not exist
-        # on the host; fall back to the copy materialized by the extraction
-        # pipeline under the task's extraction directory (same D2b contract
-        # as the office parse route). If it was never extracted, run the
-        # single-file extraction now and wait, mirroring /api/llm/analyze.
-        host_path = request.file_path
-        if request.task_id and not os.path.exists(host_path):
+        host_path=request.file_path
+        if request.task_id:
             from ..services import task_store
-
-            try:
-                task = await task_store.get_task_record(request.task_id)
-                extraction_dir = (task or {}).get("extraction_directory")
-                if extraction_dir:
-                    from ..services.extraction_layout import resolve_relative_path
-
-                    resolved = resolve_relative_path(extraction_dir, request.file_path)
-                    if resolved:
-                        host_path = resolved
-                    else:
-                        from ..services.llm.auto_extractor import (
-                            AutoExtractionError,
-                            ensure_extracted_for_analysis,
-                        )
-
-                        try:
-                            host_path = await ensure_extracted_for_analysis(
-                                get_service_manager().cpp_backend,
-                                task_id=request.task_id,
-                                file_path=request.file_path,
-                                extraction_dir=extraction_dir,
-                            )
-                        except AutoExtractionError as exc:
-                            logger.warning(f"Auto-extraction before DLL analysis failed: {exc}")
-                            raise HTTPException(
-                                status_code=404,
-                                detail=(
-                                    f"File not found: {request.file_path}. "
-                                    f"Automatic extraction was attempted but failed: {exc}"
-                                ),
-                            ) from exc
-            except task_store.TaskStoreError:
-                pass  # keep raw path; the C++ side will report not-found
+            task=await task_store.get_task_record(request.task_id)
+            host_path,reference,_provenance=await source_stack.enter_async_context(task_source_file(
+                request.task_id,request.file_path,source_id=request.source_id,task=task))
+            request.file_path=reference
 
         # Step 1: Analyze DLL via C++ backend
         logger.info(f"Analyzing DLL file: {request.file_path} (host: {host_path})")
@@ -234,6 +204,9 @@ async def analyze_dll(
             timestamp=datetime.now().isoformat(),
         )
 
+    except SourceIdentityError as exc:
+        raise HTTPException(status_code=409 if 'AMBIGUOUS' in exc.code else 422,
+                            detail={'code':exc.code,'message':exc.message}) from exc
     except HTTPException:
         raise
     except Exception as e:
@@ -242,3 +215,6 @@ async def analyze_dll(
             status_code=500,
             detail="dll analysis failed"
         )
+
+    finally:
+        await source_stack.aclose()

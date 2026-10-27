@@ -6,7 +6,7 @@ import { PRIORITIES, TOPICS, priorityStyle } from './evidenceClassificationStyle
 const MATERIALS = {
     document: ['文档', FileText], chat_record: ['聊天记录', MessagesSquare],
     transaction_record: ['交易记录', Receipt], image: ['图片', ImageIcon],
-    log: ['日志', ScrollText], android_artifact: ['Android工件', Smartphone],
+    log: ['日志', ScrollText], android_artifact: ['Android工件', Smartphone], windows_artifact: ['Windows活动记录', ScrollText],
     other: ['其他材料', FileText], unknown: ['类型未确定', HelpCircle],
 };
 const STATES = { deleted: '已删除', recovered: '已恢复', insufficient_content: '内容不足', incomplete_provenance: '来源定位不完整' };

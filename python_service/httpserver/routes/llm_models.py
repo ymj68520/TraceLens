@@ -22,6 +22,7 @@ class AnalyzeRequest(BaseModel):
     task_id: Optional[str] = Field(None, description="Task ID owning the persistence target (required to persist)")
     file_path: Optional[str] = Field(None, description="Path to file to analyze")
     db_file_path: Optional[str] = Field(None, description="Path to file in DB (for persistence)")
+    source_id: Optional[str] = Field(None, pattern=r"^[0-9a-f]{64}$", description="文件来源标识")
     content: Optional[str] = Field(None, description="Direct content to analyze")
     model_type: str = Field(default="text", description="Model type: 'text' or 'vision'")
     prompt: Optional[str] = Field(None, description="Custom analysis prompt")

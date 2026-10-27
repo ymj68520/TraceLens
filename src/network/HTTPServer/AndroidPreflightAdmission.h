@@ -30,3 +30,6 @@ bool sourceMatchesPreflightHash(const std::string& path,
 AndroidPreflightAdmissionResult admitAliyunImage(
     const std::string& path, const std::string& jobId,
     const std::string& claimedHash, const std::string& claimedKind);
+
+AndroidPreflightAdmissionResult admitXiaomiImage(const std::string& path, const std::string& jobId,
+    const std::string& claimedHash, const std::string& claimedKind);

@@ -12,6 +12,7 @@ browsing ladder capped at 6 h (SPEC §4.3).
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from typing import Any, Dict, List, Optional
 
 from ..investigation_evidence import PARENT_DIRECTORY_SQL
@@ -38,7 +39,7 @@ def estimate_bucket(
                      event_type
         )
     """
-    with sqlite3.connect(events_db, timeout=10) as conn:
+    with closing(sqlite3.connect(events_db, timeout=10)) as conn, conn:
         row = conn.execute(sql, (bucket_epoch_offset,)).fetchone()
     return {
         "bucket_seconds": int(bucket_seconds),

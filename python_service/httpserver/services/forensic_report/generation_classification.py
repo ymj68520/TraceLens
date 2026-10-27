@@ -58,7 +58,13 @@ def classification_input(item):
     states = []
     if payload.get("is_deleted"):
         states.append("deleted")  # deletion does not establish recovery
-    if item.snapshot.evidence_type == "android_artifact":
+    if item.snapshot.evidence_type == 'windows_artifact':
+        from ..windows_activity_reader import render
+        full=render(item.snapshot.payload)
+        basis_type='neutral_material'
+        material_type='windows_artifact'
+        if payload.get('provenance',{}).get('source',{}).get('binding_status')!='unique':states.append('incomplete_provenance')
+    elif item.snapshot.evidence_type == "android_artifact":
         fields = payload.get("record_fields") or {}
         full = json.dumps(fields, ensure_ascii=False, sort_keys=True) if fields else ""
         basis_type = "android_record"
@@ -143,9 +149,9 @@ def parse_classifications(content, inputs, questions, model):
             else "unassessed"
         )
         material_type = value["material_type"]
-        if material_type not in ("image", "android_artifact"):
+        if material_type not in ("image", "android_artifact", "windows_artifact"):
             material_type = suggestion.material_type
-            if material_type == "android_artifact":
+            if material_type in ("android_artifact", "windows_artifact"):
                 # The prompt forbids this value for ordinary files, but the
                 # model still emitted it intermittently. Raising here rejected
                 # the whole batch, and the caller's single retry re-ran every

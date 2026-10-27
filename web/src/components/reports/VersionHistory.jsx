@@ -1,8 +1,9 @@
+import { forensicLabel } from '../../utils/forensicLabels';
 function statusText(version) {
   if (version.status === 'generating' || version.status === 'queued') {
-    return `${version.status} · ${version.progress ?? 0}%`;
+    return `${forensicLabel(version.status)} · ${version.progress ?? 0}%`;
   }
-  return version.status;
+  return forensicLabel(version.status);
 }
 
 export default function VersionHistory({ versions, selectedVersion, onSelect }) {

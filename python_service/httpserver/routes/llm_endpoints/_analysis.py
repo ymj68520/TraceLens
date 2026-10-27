@@ -86,6 +86,8 @@ async def analyze_event_cluster(
         if not members:
             raise HTTPException(status_code=404, detail="No events found in this cluster")
         member_ids = [int(row["id"]) for row in members]
+        from ...services.case_analysis import cluster_revision
+        observed_members_hash=cluster_revision.fingerprint([cluster_revision.source_row(row) for row in members])['members_hash']
         event_type = descriptor["event_type"]
         time_window = descriptor["bucket_index"]
         bucket_seconds = descriptor["bucket_seconds"]
@@ -99,15 +101,23 @@ async def analyze_event_cluster(
             lines_from_members,
         )
 
-        result = await analyze_cluster_members(
-            service_manager.llm_service,
-            event_type=event_type,
-            time_window=time_window,
-            member_lines=lines_from_members(members),
-            chunk_size=settings.cluster_analysis_chunk_size,
-            prompt=request.prompt,
-            concurrency=settings.llm_max_concurrency,
-        )
+        from ...services.case_analysis import cluster_budget
+        calls=settings.event_cluster_max_calls or 10
+        tokens=settings.event_cluster_max_total_tokens or calls*settings.llm_context_length
+        plan=cluster_revision.digest({'kind':'manual_cluster','members':observed_members_hash,
+            'context':cluster_revision.context_hash(settings,request.prompt or ''),'calls':calls,'tokens':tokens})
+        cluster_budget.create(events_db,plan,calls,tokens)
+        with cluster_budget.bind(events_db,plan,observed_members_hash):
+            result = await analyze_cluster_members(
+                service_manager.llm_service,
+                event_type=event_type,
+                time_window=time_window,
+                member_lines=lines_from_members(members),
+                chunk_size=settings.cluster_analysis_chunk_size,
+                prompt=request.prompt,
+                concurrency=settings.llm_max_concurrency,
+            )
+
         analysis = result.get("analysis", {})
 
         # 4. Append one analysis record and dual-write the member cache inside
@@ -124,6 +134,8 @@ async def analyze_event_cluster(
             "event_type": event_type,
             "parent_directory": descriptor["parent_directory"],
             "member_ids": ",".join(str(member_id) for member_id in member_ids),
+            "members_hash": observed_members_hash,
+            "analysis_context_hash": cluster_revision.context_hash(settings,request.prompt or ''),
         }
         analysis_id = analyzer.persist_cluster_analysis(
             events_db,
@@ -191,6 +203,10 @@ async def analyze_content(
             detail="task_id is required to persist analysis results",
         )
 
+    from contextlib import AsyncExitStack
+    from ...services.source_identity import SourceIdentityError
+    from ...services.source_reading import task_source_file
+    source_stack = AsyncExitStack()
     try:
         from ...services import get_service_manager, get_document_extractor_locator
         service_manager = get_service_manager()
@@ -205,63 +221,14 @@ async def analyze_content(
 
         # Handle file path
         if request.file_path:
-            # Resolve image-internal paths ("/etc/motd") to the extracted host
-            # copy under the task's extraction directory before existence checks.
             if request.task_id:
-                try:
-                    task_info_for_path = await service_manager.cpp_backend.get_task(request.task_id)
-                except Exception:
-                    task_info_for_path = None
-                if task_info_for_path:
-                    from ...services.llm.file_analyzer import resolve_analysis_path
-
-                    resolved = resolve_analysis_path(
-                        request.file_path,
-                        task_info_for_path.get("extraction_directory") or "",
-                    )
-                    if resolved:
-                        request.file_path = resolved
-
-            # Check if file exists before attempting to read
-            from pathlib import Path as FilePath
-            file_path_obj = FilePath(request.file_path)
-
-            if not file_path_obj.exists():
-                # Not extracted yet: run the single-file extraction job now and
-                # wait, so the interactive analyze button works without a prior
-                # manual extraction (same chain as the case-analysis pipeline).
-                if request.task_id and task_info_for_path:
-                    extraction_dir = task_info_for_path.get("extraction_directory") or ""
-                    if extraction_dir:
-                        from ...services.llm.auto_extractor import (
-                            AutoExtractionError,
-                            ensure_extracted_for_analysis,
-                        )
-
-                        try:
-                            request.file_path = await ensure_extracted_for_analysis(
-                                service_manager.cpp_backend,
-                                task_id=request.task_id,
-                                file_path=request.file_path,
-                                extraction_dir=extraction_dir,
-                                db_file_path=request.db_file_path,
-                            )
-                            file_path_obj = FilePath(request.file_path)
-                        except AutoExtractionError as exc:
-                            logger.warning(f"Auto-extraction before analysis failed: {exc}")
-
-            if not file_path_obj.exists():
-                error_msg = (
-                    f"File not found: {request.file_path}\n\n"
-                    f"The file must be extracted from the disk image before AI analysis. "
-                    f"Automatic extraction was attempted but did not produce the file — "
-                    f"it may not exist in the image (e.g. deleted), or extraction failed. "
-                    f"Try the file extraction feature on the Files page for details."
-                )
-                raise HTTPException(
-                    status_code=404,
-                    detail=error_msg
-                )
+                actual, reference, _provenance = await source_stack.enter_async_context(task_source_file(
+                    request.task_id, request.db_file_path or request.file_path,
+                    source_id=request.source_id, cpp_backend=service_manager.cpp_backend))
+                request.file_path = actual
+                request.db_file_path = reference
+            elif not Path(request.file_path).is_file():
+                raise HTTPException(status_code=404, detail="文件不存在")
 
             file_ext = Path(request.file_path).suffix.lower()
             is_image = file_ext in IMAGE_EXTENSIONS
@@ -423,7 +390,7 @@ async def analyze_content(
             keywords_str = ", ".join(keywords_list) if isinstance(keywords_list, list) else str(keywords_list)
 
             db_path_to_save = request.db_file_path or request.file_path
-            service_manager.llm_service.persist_to_files_db(
+            persisted = service_manager.llm_service.persist_to_files_db(
                 db_path=str(trusted_files_db),
                 file_path=db_path_to_save,
                 description=description,
@@ -434,6 +401,8 @@ async def analyze_content(
                 trigger_source="interactive",
                 extraction_method=extraction_method,
             )
+            if not persisted:
+                raise HTTPException(status_code=409,detail='分析结果未能绑定到指定来源，未保存为成功结果')
 
         return AnalyzeResponse(
             success=True,
@@ -443,6 +412,9 @@ async def analyze_content(
             processing_time_ms=processing_time,
             timestamp=datetime.now().isoformat(),
         )
+    except SourceIdentityError as exc:
+        raise HTTPException(status_code=409 if 'AMBIGUOUS' in exc.code else 422,
+                            detail={"code":exc.code,"message":exc.message,"candidates":exc.candidates}) from exc
     except FileNotFoundError as e:
         logger.error(f"Analysis file not found: {e}")
         raise HTTPException(status_code=404, detail="file not found")
@@ -451,6 +423,9 @@ async def analyze_content(
     except Exception as e:
         logger.error(f"Analysis failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="file analysis failed")
+    finally:
+        await source_stack.aclose()
+
 @router.post(
     "/analyze/file", 
     response_model=AnalyzeResponse,
@@ -484,7 +459,7 @@ async def analyze_uploaded_file(
         logger.info(f"Analyzing uploaded file: {file.filename}, size: {file_size_kb:.2f} KB, type: {file.content_type}, model: {model_type}")
 
         # Determine content type
-        if model_type == "vision" or file.content_type.startswith("image/"):
+        if model_type == "vision" or (file.content_type or "").startswith("image/"):
             # Handle as image (let vision model determine if image is valid)
             result = await service_manager.llm_service.analyze_image(
                 image_data=content,
@@ -506,7 +481,7 @@ async def analyze_uploaded_file(
                     with os.fdopen(temp_fd, 'wb') as temp_file:
                         temp_file.write(content)
                     
-                    extracted_text = await extractor.extract_to_markdown(temp_path)
+                    extracted_text, _method = await extractor.extract_to_markdown_detailed(temp_path)
                     result = await service_manager.llm_service.analyze(
                         content=extracted_text,
                         model_type="text",
@@ -538,6 +513,8 @@ async def analyze_uploaded_file(
         )
     except HTTPException:
         raise
+    except DocumentContentUnavailableError as e:
+        raise HTTPException(status_code=422, detail={"code": e.code, "status": e.status, "message": str(e)}) from e
     except ValueError as e:
         # Handle specific validation errors (like image too large)
         logger.error(f"File validation failed: {e}")
@@ -573,24 +550,20 @@ async def batch_analyze(
         # Extract the _files.db path for persisting LLM results
         files_db_path: str = task_info.get("output_files_db") or ""
         
-        # Get files to analyze
-        if request.file_paths:
-            # Use explicit file paths provided by user
-            files = [{"path": p} for p in request.file_paths]
-            logger.info(f"Starting targeted batch analysis for {len(files)} selected files")
-        else:
-            # Fallback to automatic discovery based on types/limit
-            files = await service_manager.cpp_backend.get_task_files(
-                task_id=request.task_id,
-                file_types=request.file_types,
-                limit=request.limit,
-            )
-            logger.info(f"Starting automatic batch analysis for {len(files)} discovered files")
+        if request.file_paths and len(request.file_paths)>request.limit:
+            raise HTTPException(status_code=422,detail='指定文件数量超过本次分析上限')
+        plan=await service_manager.cpp_backend.selection_plan([request.task_id],request.limit,
+            file_references=request.file_paths,file_types=request.file_types)
+        if not isinstance(plan,dict) or plan.get('schema_version')!=1:
+            raise HTTPException(status_code=422,detail='候选选择计划不可用，未启动无预算批量分析')
+        files=[{'path':item['reference'],'task_id':request.task_id,'selection_plan_id':plan['plan_id']} for item in plan['selected'] if item['task_id']==request.task_id]
+        if len(files)>request.limit:raise HTTPException(status_code=422,detail='选择计划超出本次文件数量预算')
         
         # Extract the extraction_directory for resolving relative file paths
         extraction_dir: str = task_info.get("extraction_directory") or ""
         
         # Start background batch analysis (results will be persisted to _files.db)
+        files=[dict(file,task_id=request.task_id) for file in files]
         job_id = await service_manager.llm_service.start_batch_analysis(
             files=files,
             model_type=request.model_type,

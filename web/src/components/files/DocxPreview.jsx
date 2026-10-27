@@ -8,7 +8,7 @@ import { renderAsync } from 'docx-preview';
 import Spinner from '../common/Spinner';
 import { fetchOfficeFile } from '../../services/officeService';
 
-const DocxPreview = ({ taskId, filePath, fallbackText }) => {
+const DocxPreview = ({ taskId, filePath, sourceId, fallbackText }) => {
   const containerRef = useRef(null);
   const [status, setStatus] = useState('loading'); // loading | ok | error
 
@@ -16,7 +16,7 @@ const DocxPreview = ({ taskId, filePath, fallbackText }) => {
     let cancelled = false;
     setStatus('loading');
 
-    fetchOfficeFile(taskId, filePath)
+    fetchOfficeFile(taskId, filePath, sourceId)
       .then(async (blob) => {
         const buffer = await blob.arrayBuffer();
         if (cancelled || !containerRef.current) return;
@@ -39,7 +39,7 @@ const DocxPreview = ({ taskId, filePath, fallbackText }) => {
     return () => {
       cancelled = true;
     };
-  }, [taskId, filePath]);
+  }, [taskId, filePath, sourceId]);
 
   return (
     <div>

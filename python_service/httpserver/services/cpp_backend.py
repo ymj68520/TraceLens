@@ -328,6 +328,24 @@ class CppBackendService:
         }
 
     # File Extraction Operations
+    async def selection_plan(self,task_ids,max_files=0,case_context='',file_references=None,file_types=None):
+        """One native selection policy for automatic and multi-image workflows."""
+        return await self._request('POST','/api/forensics/files/selection-plan',
+            json={'task_ids':list(task_ids),'max_files':max_files,'case_context':case_context,
+                  'file_references':file_references or [],'file_types':file_types or []},timeout=360,max_retries=1)
+
+    async def materialize_source(self, task_id: str, path: str = "", source_id: str | None = None) -> Dict[str, Any]:
+        await self.initialize()
+        response = await self.client.post("/api/forensics/files/materialize",
+            json={"task_id":task_id,"path":path,"source_id":source_id or ""}, timeout=120)
+        try:
+            value=response.json()
+        except ValueError:
+            return {"success":False,"error":"SOURCE_BACKEND_INVALID_RESPONSE"}
+        if response.is_error:
+            return {"success":False,"error":value.get("error","SOURCE_MATERIALIZATION_FAILED"),
+                    "message":value.get("message","来源读取失败"),"candidates":value.get("candidates",[])}
+        return value
 
     async def extract_files(
         self,

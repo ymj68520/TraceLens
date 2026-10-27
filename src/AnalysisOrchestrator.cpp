@@ -1,13 +1,17 @@
 #include "AnalysisOrchestrator.h"
 #include "ImageAnalyzer/ImageAnalyzer.h"
 #include "DatabaseManager/EventExtractor/EventExtractor.h"
+#include "DatabaseManager/EventExtractor/ActivityRevision.h"
 #include "DatabaseManager/FileClassifier/FileClassifier.h"
 #include "DatabaseManager/FileExtractor/FileExtractor.h"
 #include "FileFilter/FileFilter.h"
 #include "HTTPServer/HTTPserver.h"
 #include "AndroidAnalyzer/AndroidAnalyzer.h"
 #include "AndroidAnalyzer/HarmonyBackupExtractor.h"
+#include "AndroidAnalyzer/XiaomiImageExtractor.h"
 #include "WindowsFilesAnalyzer/WindowsFilesAnalyzer.h"
+#include "WindowsFilesAnalyzer/Parsers/WindowsPrefetchParser.h"
+#include "WindowsFilesAnalyzer/Parsers/WindowsEventLogParser.h"
 #include "LinuxFilesAnalyzer/LinuxFilesAnalyzer.h"
 #include "MemoryAnalyzer/MemoryAnalyzer.h"
 #include "DLLAnalyzer/Core/DLLAnalyzer.h"
@@ -245,6 +249,9 @@ const std::vector<std::string>& cli_stage_order() {
 } // namespace
 
 int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
+    if (args.android_source == "xiaomi-image" && !XiaomiImageExtractor::recognizes(args.image_path)) {
+        std::cerr << "不是受支持的小米手机导出镜像" << std::endl; return 1;
+    }
     if (args.android_source == "harmony-backup" && !HarmonyBackupExtractor::recognizes(args.image_path)) {
         std::cerr << "INVALID_HARMONY_BACKUP: expected .info.json and files directory" << std::endl;
         return 1;
@@ -390,6 +397,12 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
         else if (args.windows_analyze) sceneType = SceneType::WINDOWS;
         else if (args.linux_analyze) sceneType = SceneType::LINUX;
 
+        // Platform readers initialize shared indexes/legacy columns. Finish those
+        // additive changes before fingerprinting the classification input.
+        if (sceneType != SceneType::NONE) {
+            DatabaseManager platformInput(effectiveRawDb);
+            if (!platformInput.initialize()) return 1;
+        }
         const std::string classifyFp = ledger::combine({
             ledger::fingerprintSqlite(effectiveRawDb),
             std::to_string(static_cast<int>(sceneType))});
@@ -445,6 +458,7 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
             ledger::fingerprintSqlite(effectiveRawDb),
             args.android_analyze ? "android" : "",
             args.windows_analyze ? "windows" : "",
+            args.windows_analyze ? "windows-parser-truth-v2-source-path:" + PrefetchParser::libraryVersion() + ":" + libevtx_get_version() : "",
             args.linux_analyze ? "linux" : "",
             args.skip_ai ? "noai" : "ai"});
         const bool platformRequested = args.android_analyze || args.windows_analyze || args.linux_analyze;
@@ -474,6 +488,9 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
             classifier.reset();
             stageLedger.mark(ledger::kFileClassification, classifyFp);
 
+        }
+        // Initial classification and resume rebuilds both require platform parsing.
+        if (platformRequested && !platformReusable) {
         if (args.android_analyze) {
             std::cout << "[Android] Analyzing..." << std::endl;
             auto dbMgr = std::make_unique<DatabaseManager>(effectiveRawDb);
@@ -490,7 +507,7 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
                 if (androidAnalyzer->initialize()) {
                     androidAnalyzer->analyzeAndroidData();
                     std::cout << "✓ Android analysis complete\n" << std::endl;
-                } else if (HarmonyBackupExtractor::recognizes(args.image_path)) {
+                } else if (HarmonyBackupExtractor::recognizes(args.image_path) || args.android_source == "xiaomi-image") {
                     std::cerr << "HARMONY_INIT_FAILED" << std::endl;
                     return 1;
                 }
@@ -540,9 +557,9 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
         // Step 5: Generate timeline (uses effective raw db)
         // The timeline depends on the platform artifacts above (they are merged
         // into events.db), so its fingerprint covers both inputs.
-        const std::string eventsFp = ledger::combine({
-            ledger::fingerprintSqlite(effectiveRawDb),
-            ledger::fingerprintSqlite(fileDbPath)});
+        const std::string eventsFp = args.windows_analyze
+            ? ledger::combine({"windows-activity:v1",ledger::fingerprintSqlite(effectiveRawDb),ledger::fingerprintSqlite(fileDbPath)})
+            : ledger::combine({ledger::fingerprintSqlite(effectiveRawDb),ledger::fingerprintSqlite(fileDbPath)});
         if (stageLedger.reusable(ledger::kEventExtraction, eventsFp) &&
             !ledger::fingerprintSqlite(eventDbPath).empty()) {
             std::cout << "[4/4] Generating timeline... skipped (timeline already complete)\n" << std::endl;
@@ -550,6 +567,7 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
             stageLedger.invalidateFrom(ledger::kEventExtraction, cli_stage_order());
             std::cout << "[4/4] Generating timeline..." << std::endl;
             // EventExtractor appends into an existing events table.
+            forensics::activity_revision::archive(eventDbPath);
             for (const char* suffix : {"", "-wal", "-shm", "-journal"}) {
                 std::error_code ec;
                 fs::remove(eventDbPath + suffix, ec);
@@ -560,7 +578,7 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
                 if (args.android_analyze && fs::exists(fileDbPath))
                     eventExtractor->importAndroidArtifacts(fileDbPath);
                 if (args.windows_analyze && fs::exists(fileDbPath))
-                    eventExtractor->importWindowsArtifacts(fileDbPath);
+                    if(!eventExtractor->importWindowsArtifacts(fileDbPath))throw std::runtime_error("Windows活动时间线导入失败");
                 if (args.linux_analyze && fs::exists(fileDbPath))
                     eventExtractor->importLinuxArtifacts(fileDbPath);
                 std::cout << "✓ Timeline: " << eventDbPath << "\n" << std::endl;

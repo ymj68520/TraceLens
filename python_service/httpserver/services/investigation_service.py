@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from .extractors.base import DocumentContentUnavailableError
 import logging
 import os
 import re
@@ -264,10 +265,10 @@ class InvestigationService:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
         finally:
             conn.close()
-        if version == 7 or (os.environ.get("TRACELENS_REQUIRE_RELEASE_LAYOUT") == "1" and version != 8):
+        if version == 7 or (os.environ.get("TRACELENS_REQUIRE_RELEASE_LAYOUT") == "1" and version not in (8,9)):
             raise InvestigationMigrationRequiredError(
                 "MIGRATION_REQUIRED: 历史调查库仅可读；请先备份并完成受控 v8 迁移")
-        if version == 8:
+        if version in (8,9):
             self._create_recovery_aux_table(db_path)
             return
         if version != 3:
@@ -519,7 +520,7 @@ class InvestigationService:
         with sqlite3.connect(files_db, timeout=10) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
-                "SELECT path, mtime, ctime FROM files ORDER BY mtime DESC LIMIT ?",
+                "SELECT * FROM files ORDER BY mtime DESC LIMIT ?",
                 (limit * 3,),
             ).fetchall()
         for row in rows:
@@ -532,7 +533,7 @@ class InvestigationService:
                 if ts is not None
             ]
             if diffs and min(diffs) < 300:
-                keys.append((make_file_evidence_key(path), path))
+                keys.append((make_file_evidence_key(path,dict(row).get('source_id')), path))
             if len(keys) >= limit:
                 break
         return keys
@@ -970,8 +971,10 @@ class InvestigationService:
             locator = get_document_extractor_locator()
             extractor = locator.get_extractor(file_path)
             if extractor:
-                content = await extractor.extract_to_markdown(file_path)
+                content, _method = await extractor.extract_to_markdown_detailed(file_path)
                 return content[:MAX_CONTENT_CHARS]
+        except DocumentContentUnavailableError:
+            raise
         except Exception as exc:
             logger.warning("[Investigation] extractor failed for %s: %s", file_path, exc)
         try:

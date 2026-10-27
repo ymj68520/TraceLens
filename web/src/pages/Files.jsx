@@ -1,3 +1,4 @@
+import { fileSourceReference } from '../utils/evidenceKey';
 import { motion } from 'framer-motion';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -21,6 +22,8 @@ import OfficePreviewTab from '../components/files/OfficePreviewTab';
 import ReanalyzeModal from '../components/files/ReanalyzeModal';
 import FilePagination from '../components/files/FilePagination';
 import RaidTaskOrigin from '../components/files/RaidTaskOrigin';
+import SelectionAuditPanel from '../components/files/SelectionAuditPanel';
+import WindowsActivityAuditPanel from '../components/files/WindowsActivityAuditPanel';
 
 // 子页签：文件列表视图的过滤口径（服务端分页）
 const FILE_SUBTABS = [
@@ -466,7 +469,8 @@ const Files = () => {
 
         try {
           result = await analyzeDLLFile({
-            filePath: filePath,
+            filePath: file.path || file.file_path,
+            sourceId: file.source_id,
             filesDbPath: currentTask?.output_files_db || null
           });
 
@@ -491,7 +495,7 @@ const Files = () => {
 
             setLlmResults(prev => ({
               ...prev,
-              [filePath]: descData
+              [fileSourceReference(file)]: descData
             }));
 
             // Also update the file in largestFiles to reflect the change
@@ -545,6 +549,7 @@ ${detail}`;
           taskId: taskId,
           filePath: filePath,
           dbFilePath: file.path || file.file_path,
+          sourceId: file.source_id,
           modelType: modelType,
           filesDbPath: currentTask?.output_files_db || null,
         });
@@ -564,7 +569,7 @@ ${detail}`;
 
           setLlmResults(prev => ({
             ...prev,
-            [filePath]: descData
+            [fileSourceReference(file)]: descData
           }));
 
           // Also update the file in largestFiles to reflect the change
@@ -591,7 +596,8 @@ ${detail}`;
       // pythonApi/api 的响应拦截器 reject 的是普通对象 { message, status, data }，
       // 原始 axios 错误才有 err.response；两种形态都要兼容，否则下方分支全部失效。
       const errStatus = err.response?.status ?? err.status;
-      const detail = String(err.response?.data?.detail ?? err.data?.detail ?? '') || err.message || '';
+      const rawDetail = err.response?.data?.detail ?? err.data?.detail;
+      const detail = (typeof rawDetail === 'string' ? rawDetail : rawDetail?.message) || err.message || '';
       let errorMsg = detail || '未知错误';
 
       // Check for Python service not available
@@ -637,7 +643,7 @@ ${detail}
 
     if (selectedFiles.size === 0) {
       // No files selected - analyze all files on the current page
-      filesToAnalyze = displayFiles.map(f => f.path || f.file_path).filter(Boolean);
+      filesToAnalyze = displayFiles.map(f => fileSourceReference(f)).filter(Boolean);
 
       if (filesToAnalyze.length === 0) {
         alert('当前筛选结果中没有可分析的文件');
@@ -652,7 +658,7 @@ ${detail}
       filesToAnalyze = [...selectedFiles]
         .map(idx => displayFiles[idx])
         .filter(Boolean)
-        .map(f => f.path || f.file_path)
+        .map(f => fileSourceReference(f))
         .filter(Boolean);
 
       if (filesToAnalyze.length === 0) {
@@ -858,34 +864,9 @@ ${detail}
       };
     }
 
-    // Then check from session results and pre-loaded descriptions
-    // Try multiple key formats: full path, basename, etc.
-    const basename = filePath.split('/').pop() || filePath;
-
-    // Check with full path
-    if (llmResults[filePath]) {
-      return llmResults[filePath];
-    }
-    if (existingLlmDescriptions[filePath]) {
-      return existingLlmDescriptions[filePath];
-    }
-
-    // Check with basename
-    if (llmResults[basename]) {
-      return llmResults[basename];
-    }
-    if (existingLlmDescriptions[basename]) {
-      return existingLlmDescriptions[basename];
-    }
-
-    // Check with absolute path
-    const absolutePath = toAbsolutePath(filePath);
-    if (llmResults[absolutePath]) {
-      return llmResults[absolutePath];
-    }
-    if (existingLlmDescriptions[absolutePath]) {
-      return existingLlmDescriptions[absolutePath];
-    }
+    const reference = fileSourceReference(file);
+    if (llmResults[reference]) return llmResults[reference];
+    if (existingLlmDescriptions[reference]) return existingLlmDescriptions[reference];
 
     return null;
   };
@@ -1058,6 +1039,8 @@ ${detail}
   return (
     <div className="space-y-6">
       <RaidTaskOrigin taskId={taskId} enabled={currentTask?.metadata?.source_kind === 'raid'} />
+      <SelectionAuditPanel taskId={taskId} running={String(currentTask?.status || '').toLowerCase() === 'running' || isBatchRunning} />
+      <WindowsActivityAuditPanel taskId={taskId} running={String(currentTask?.status || '').toLowerCase() === 'running'} />
       <FilesHeader
         currentTask={currentTask}
         taskId={taskId}

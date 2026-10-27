@@ -17,6 +17,9 @@ public:
 
     // Initialize database and create tables
     bool initialize();
+    bool recordParserOutcome(const std::string& path, const std::string& parser,
+        const std::string& status, const std::string& diagnostic,
+        std::optional<int64_t> recordCount = std::nullopt, int64_t recoveredCount = 0);
 
     // Registry value operations
     bool insertRegistryValue(const RegistryValue& value);

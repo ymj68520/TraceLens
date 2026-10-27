@@ -181,14 +181,20 @@ def test_get_completed_generation_embeds_manifest(monkeypatch):
             pass
 
         def read_manifest(self, task_id, report_id):
-            return {"title": "T", "report_id": report_id}
+            return {"schema_version":"1.0", "title":"T", "report_id":report_id,
+                "task_id":task_id, "scope_type":"task", "scope_id":task_id,
+                "generation_id":row.generation_id, "input_hash":row.input_hash,
+                "prompt_version":"final-report:v1", "model":"m", "generated_at":"2026-10-26T00:00:00Z",
+                "sections":[{"heading":"观察", "content":"用于接口校验的冻结正文。", "citation_ids":[]}], "citations":[]}
 
     monkeypatch.setattr(report_generation, "GenerationReportWriter", FakeWriter)
     client = make_client(FakeAdmissionService(), FakeExecutor(), _identity_reader(row), monkeypatch)
 
     response = client.get("/api/reports/generations/rg_1", params={"task_id": "A"})
     assert response.status_code == 200
-    assert response.json()["report"] == {"title": "T", "report_id": "rep_1"}
+    assert response.json()["report"]["title"] == "T"
+    assert response.json()["report"]["report_id"] == "rep_1"
+    assert response.json()["quality"]["status"] == "unassessed"
 
 
 def test_get_completed_generation_missing_manifest_is_503(monkeypatch):

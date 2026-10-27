@@ -1,4 +1,5 @@
 #include "LLMClient.h"
+#include "core/Selection/ModelBudget.h"
 
 // Use httplib from cpp-mcp
 #include "httplib.h"
@@ -196,6 +197,22 @@ LLMResponse LLMClient::chat(const std::vector<ChatMessage>& messages,
     }
     
     std::string requestBody = buildRequestBody(messages, toolsJson, temperatureOverride);
+    const auto body=nlohmann::json::parse(requestBody);
+    auto inputBound=forensics::selection::inputUpperBound(body.at("messages"),toolsJson);
+    const bool multimodal=std::any_of(messages.begin(),messages.end(),[](const auto& m){return m.hasImages();});
+    if(!multimodal && (config_.contextLength<=0 || inputBound+config_.maxTokens+config_.reservedTokens>static_cast<size_t>(config_.contextLength))) {
+        response.errorMessage="MODEL_CONTEXT_BUDGET_EXCEEDED：完整请求超出模型上下文预算";return response;
+    }
+    // A file-selection run may not bypass its ledger through a vision payload.
+    if(multimodal && !config_.budgetPlan.empty()) {
+        if(!config_.visionImageTokenBound){response.errorMessage="MULTIMODAL_TOKEN_BOUND_UNAVAILABLE：本轮未配置多模态计数上界";return response;}
+        auto counted=body.at("messages");size_t imageCount=0;
+        for(auto& message:counted)if(message["content"].is_array())for(auto& part:message["content"])if(part.value("type",std::string())=="image_url"){
+            ++imageCount;part["image_url"]["url"]="[图像载荷另计上界]";}
+        inputBound=forensics::selection::inputUpperBound(counted,toolsJson)+imageCount*config_.visionImageTokenBound;
+        if(inputBound+config_.maxTokens+config_.reservedTokens>static_cast<size_t>(config_.contextLength)){
+            response.errorMessage="MODEL_CONTEXT_BUDGET_EXCEEDED：多模态完整请求超出上下文预算";return response;}
+    }
 
     // Cloud providers require the key; local servers (LM Studio) ignore it.
     httplib::Headers requestHeaders;
@@ -205,6 +222,9 @@ LLMResponse LLMClient::chat(const std::vector<ChatMessage>& messages,
 
     int retries = 0;
     while (retries <= config_.maxRetries) {
+        if(!forensics::selection::reserveModelCall(config_.budgetDb,config_.budgetPlan,config_.budgetSource,inputBound+config_.reservedTokens,config_.maxTokens)) {
+            response.errorMessage="MODEL_RUN_BUDGET_EXHAUSTED：本轮调用或令牌预算已用尽";return response;
+        }
         // Liveness heartbeat before each attempt: a single attempt can block
         // up to the full read timeout, and back-to-back failed attempts with
         // retries made the whole chain look hung to the task watchdog.

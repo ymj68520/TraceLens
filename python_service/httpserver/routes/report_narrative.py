@@ -27,6 +27,8 @@ from ..services.forensic_report.narrative_reader import (
     read_narrative_version_strict,
 )
 from .report_generation import _report_root
+from ..services.forensic_report.global_report_models import ReportOrganization
+from ..services.forensic_report.report_quality import ReportQuality, report_quality
 
 router = APIRouter()
 
@@ -50,6 +52,9 @@ class NarrativeReportResponse(BaseModel):
     citations: tuple[CitationManifestEntry, ...]
     evidence_classifications: ReportClassifications | None = None
     stage_analysis: StageAnalysis | None = None
+    appendices: tuple[StructuredReportSection,...] = ()
+    organization: ReportOrganization | None = None
+    quality: ReportQuality | None = None
 
 
 @router.get(
@@ -86,4 +91,7 @@ async def get_narrative_report_version(
         citations=manifest.citations,
         evidence_classifications=manifest.evidence_classifications,
         stage_analysis=manifest.stage_analysis,
+        appendices=manifest.appendices,
+        organization=manifest.organization,
+        quality=report_quality(manifest),
     )

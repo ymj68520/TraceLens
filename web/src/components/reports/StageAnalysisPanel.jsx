@@ -5,7 +5,7 @@ import { priorityStyle } from './evidenceClassificationStyles';
 
 const STATUS = { supported: '原判断得到支持', revised: '原判断需要修正', weakened: '支持减弱',
     contradicted: '存在相反材料', insufficient: '依据不足', case_only: '仅由案情提出' };
-const KIND = { text: '冻结文本片段', parsed_text: '冻结解析片段', android_record: 'Android派生记录',
+const KIND = { text: '冻结文本片段', parsed_text: '冻结解析片段', android_record: 'Android派生记录', windows_record: 'Windows活动与配置记录',
     audio_transcript: '机器转写片段', machine_visual: '机器视觉观察（非原文或OCR）', unavailable: '来源暂不可读' };
 const ORIGIN = { material: '材料自主发现', reinterpreted: '关联首次判断', new_candidate: '新增关注候选', case_only: '仅案情提出，尚无材料支持' };
 const LIMITS = {
@@ -36,7 +36,7 @@ function Quotes({ label, refs = [], onOpenMaterial }) {
     </div>;
 }
 
-export function StageSourcePanel({ material, citationId, taskId, reportId, onClose }) {
+export function StageSourcePanel({ material, citationId, taskId, reportId, onClose, sourceSpans = [] }) {
     const url = material && investigationEvidenceUrl(taskId, material.evidence_key, { reportId, citationId });
     return <section className="space-y-4 text-slate-700 dark:text-slate-200" aria-label="本轮冻结材料溯源">
         <div className="flex items-center justify-between">
@@ -57,6 +57,12 @@ export function StageSourcePanel({ material, citationId, taskId, reportId, onClo
             {material.limitations?.length > 0 && <ul className="list-disc space-y-1 pl-5 text-xs text-amber-800 dark:text-amber-300">
                 {material.limitations.map(code => <li key={code}>{sourceLabel(code)}</li>)}
             </ul>}
+            {sourceSpans.length>0 && <div className="space-y-2" aria-label="精确引文位置">
+                {sourceSpans.map((span,index) => <blockquote key={span.span_id} className="border-l-2 border-blue-300 pl-3 text-sm">
+                    <p className="text-xs text-slate-500">片段 {index+1} · 冻结文本字符 {span.character_start}—{span.character_end}</p>
+                    <p>{Array.from(material.text || '').slice(span.character_start,span.character_end).join('')===span.quote ? span.quote : '片段与冻结文本不匹配，请核对报告完整性。'}</p>
+                </blockquote>)}
+            </div>}
             <pre className="max-h-[55vh] overflow-auto whitespace-pre-wrap break-words rounded-xl border border-slate-200 bg-white p-4 text-sm leading-7 dark:border-slate-700 dark:bg-slate-800">{material.text || '本次没有可用内容。历史 AI 摘要未作为替代输入。'}</pre>
             {url && <Link className="text-sm text-blue-700 dark:text-blue-300" to={url}>前往原证据与时间线</Link>}
         </>}

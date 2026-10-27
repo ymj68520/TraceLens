@@ -79,8 +79,8 @@ bool WindowsAnalysisDatabase::insertUSBDevice(const USBDeviceInfo& device) {
     BIND_TEXT(stmt, 4, device.deviceDescription);
     BIND_TEXT(stmt, 5, device.friendlyName);
     BIND_TEXT(stmt, 6, device.deviceClass);
-    BIND_INT64(stmt, 7, device.firstConnected);
-    BIND_INT64(stmt, 8, device.lastConnected);
+    if (device.firstConnected) sqlite3_bind_int64(stmt, 7, device.firstConnected); else sqlite3_bind_null(stmt, 7);
+    if (device.lastConnected) sqlite3_bind_int64(stmt, 8, device.lastConnected); else sqlite3_bind_null(stmt, 8);
     BIND_TEXT(stmt, 9, device.lastDriveLetter);
 
     bool result = sqlite3_step(stmt) == SQLITE_DONE;
@@ -123,7 +123,7 @@ bool WindowsAnalysisDatabase::insertRecycleBinEntry(const RecycleBinEntry& entry
     BIND_TEXT(stmt, 1, entry.recycleFilePath);
     BIND_TEXT(stmt, 2, entry.originalPath);
     BIND_TEXT(stmt, 3, entry.fileName);
-    BIND_INT64(stmt, 4, entry.deletionTime);
+    if (entry.deletionTime) sqlite3_bind_int64(stmt, 4, entry.deletionTime); else sqlite3_bind_null(stmt, 4);
     BIND_INT64(stmt, 5, entry.originalSize);
     BIND_TEXT(stmt, 6, entry.userSid);
 

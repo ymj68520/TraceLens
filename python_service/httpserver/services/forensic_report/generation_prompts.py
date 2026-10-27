@@ -43,6 +43,12 @@ REPORT_GENERATION_ENVELOPE_COMPAT: dict[int, frozenset[str]] = {
     5: frozenset({"final-report:evidence-only:v1", "final-report:case-guided:v1",
                   "final-report:evidence-only:v2", "final-report:case-guided:v2",
                   "final-report:evidence-only:v3", "final-report:case-guided:v3"}),
+    6: frozenset({"final-report:evidence-only:v2", "final-report:case-guided:v2"}),
+    7: frozenset({"final-report:evidence-only:v2", "final-report:case-guided:v2"}),
+    8: frozenset({"final-report:evidence-only:v3", "final-report:case-guided:v3"}),
+    9: frozenset({"final-report:evidence-only:v4", "final-report:case-guided:v4",
+                  "final-report:evidence-only:v5", "final-report:case-guided:v5",
+                  "final-report:evidence-only:v6", "final-report:case-guided:v6"}),
 }
 
 # Prompt version -> structured output contract identity.
@@ -194,8 +200,9 @@ CLASSIFICATION_SYSTEM_V1 = """你负责对本次报告的冻结材料进行辅�
 案情片段questions是待核事项，不是已证实事实。初次分析摘要是派生说明，不是原文。
 只能使用给定evidence_key和question_id。路径/文件名/目录不构成业务主题依据。
 每个输入材料恰好输出一条，不遗漏、不重复，不输出人工决定、优先级、CSS或其他字段。
-material_type取document/chat_record/transaction_record/image/log/android_artifact/other/unknown。
+material_type取document/chat_record/transaction_record/image/log/android_artifact/windows_artifact/other/unknown。
 android_artifact只用于Android派生解析记录，普通文件永远不得输出该值。
+windows_artifact只用于输入明确标识的Windows活动或配置记录；配置、缓存存在与实际执行必须区分。
 topics允许多选，值只能输出英文枚举本身，禁止附加中文或任何后缀：
 "funds"(资金活动)、"identity_accounts"(人员账号)、"communications"(通讯联系)、
 "location"(位置轨迹)、"network"(网络行为)、"tools"(工具配置)。不明确时为空数组。

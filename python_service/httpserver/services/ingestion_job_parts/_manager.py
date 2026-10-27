@@ -609,7 +609,7 @@ class IngestionJobManagerMixin:
         if not job:
             return None
 
-        return {
+        response = {
             "job_id": job.job_id,
             "task_id": job.task_id,
             "mode": job.mode.value,
@@ -622,6 +622,10 @@ class IngestionJobManagerMixin:
             "error": job.error,
             "result": job.result,
         }
+        from ..ingestion_quality import ingestion_quality
+        response['quality'] = ingestion_quality(response)
+        if job.status in (JobStatus.PENDING, JobStatus.RUNNING): response['completed_at'] = None
+        return response
 
     async def cancel_job(self, job_id: str) -> bool:
         """
@@ -710,25 +714,14 @@ class IngestionJobManagerMixin:
                     if status and job_data.get("status") != status:
                         continue
                     jobs.append(job_data)
-                    if len(jobs) >= limit:
-                        break
-            return jobs
+            jobs.sort(key=lambda item:(item.get('created_at',''),item.get('job_id','')), reverse=True)
+            return [value for item in jobs[:limit] if (value := await self.get_job_status(item['job_id'])) is not None]
         else:
             jobs = list(self._jobs.values())
             if task_id:
                 jobs = [j for j in jobs if j.task_id == task_id]
             if status:
                 jobs = [j for j in jobs if j.status.value == status]
-            return [
-                {
-                    "job_id": j.job_id,
-                    "task_id": j.task_id,
-                    "mode": j.mode.value,
-                    "status": j.status.value,
-                    "progress": j.progress,
-                    "current_phase": j.current_phase,
-                    "created_at": j.created_at,
-                }
-                for j in jobs[:limit]
-            ]
+            jobs.sort(key=lambda item:(item.created_at,item.job_id), reverse=True)
+            return [value for job in jobs[:limit] if (value := await self.get_job_status(job.job_id)) is not None]
 

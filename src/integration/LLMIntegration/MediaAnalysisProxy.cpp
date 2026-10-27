@@ -22,7 +22,7 @@ MediaAnalysisProxy& MediaAnalysisProxy::instance() {
 }
 
 MediaDescriptionResult MediaAnalysisProxy::describe(
-    const std::string& endpoint, const std::string& filePath) {
+    const std::string& endpoint, const std::string& filePath,const LLMConfig* budget) {
     MediaDescriptionResult result;
     try {
         const auto file = fs::weakly_canonical(fs::path(filePath));
@@ -32,6 +32,11 @@ MediaDescriptionResult MediaAnalysisProxy::describe(
             {"file_path", file.string()},
             {"workspace_root", file.parent_path().string()},
         };
+        if(budget && !budget->budgetPlan.empty()){
+            if(budget->budgetTask.empty()){result.error="MODEL_BUDGET_BINDING_UNAVAILABLE";return result;}
+            body["task_id"]=budget->budgetTask;body["file_path"]=budget->budgetReference;
+            body["selection_plan_id"]=budget->budgetPlan;body.erase("workspace_root");
+        }
         const std::string payload = body.dump();
 
         httplib::Result res;
@@ -78,12 +83,12 @@ MediaDescriptionResult MediaAnalysisProxy::describe(
     }
 }
 
-MediaDescriptionResult MediaAnalysisProxy::describeVideo(const std::string& filePath) {
-    return describe("/api/video-analysis/describe", filePath);
+MediaDescriptionResult MediaAnalysisProxy::describeVideo(const std::string& filePath,const LLMConfig* budget) {
+    return describe("/api/video-analysis/describe", filePath,budget);
 }
 
-MediaDescriptionResult MediaAnalysisProxy::describeAudio(const std::string& filePath) {
-    return describe("/api/audio-analysis/transcribe", filePath);
+MediaDescriptionResult MediaAnalysisProxy::describeAudio(const std::string& filePath,const LLMConfig* budget) {
+    return describe("/api/audio-analysis/transcribe", filePath,budget);
 }
 
 } // namespace llm

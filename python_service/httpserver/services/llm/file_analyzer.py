@@ -7,8 +7,10 @@ This module handles:
 - File content reading and preparation
 """
 
+from ..model_budget import ModelBudgetError
 import asyncio
 import base64
+from ..extractors.base import DocumentContentUnavailableError
 import logging
 import uuid
 from pathlib import Path
@@ -155,6 +157,8 @@ class FileAnalyzer:
             return content
         except ValueError:
             raise
+        except ModelBudgetError:
+            raise
         except Exception as e:
             logger.warning(f"Failed to read file as text: {e}")
             raise
@@ -202,26 +206,9 @@ class FileAnalyzer:
             default_temperature = self.settings.llm_vision_temperature
             logger.info(f"Using vision model: {model} at {self.settings.llm_vision_base_url}")
 
-        # Build prompt
-        system_prompt = TEXT_ANALYSIS_SYSTEM
-        # 上下文溢出守卫：LM Studio 引擎对超出上下文窗口的请求直接报
-        # exceed_context_size_error（案例3.docx 16.9 万字符 → 146k tokens > 128k
-        # ctx），在交互路径表现为难以理解的 "document content extraction failed"。
-        # 超长文档按预算截断并注明。
-        if len(content) > MAX_ANALYSIS_CONTENT_CHARS:
-            logger.warning(
-                "content length %d chars exceeds analysis budget %d, truncating",
-                len(content), MAX_ANALYSIS_CONTENT_CHARS,
-            )
-            content = content[:MAX_ANALYSIS_CONTENT_CHARS] + (
-                f"\n\n[NOTE: 原始内容过长（已截断），以上仅为前 {MAX_ANALYSIS_CONTENT_CHARS} 字符]"
-            )
-        if prompt:
-            user_prompt = TEXT_ANALYSIS_USER_WITH_INSTRUCTION_TEMPLATE.format(
-                content=content, instruction=prompt
-            )
-        else:
-            user_prompt = TEXT_ANALYSIS_USER_TEMPLATE.format(content=content)
+        from ..model_budget import prepare_text_request,reserve_attempt
+        messages,output_limit,admission=prepare_text_request(
+            self.settings,TEXT_ANALYSIS_SYSTEM,content,prompt,max_tokens if max_tokens is not None else default_max_tokens)
 
         # Make API request
         try:
@@ -233,16 +220,14 @@ class FileAnalyzer:
             tokens_used = 0
             result: Dict[str, Any] = {}
             for attempt in (1, 2):
+                reserve_attempt(admission["input_upper_bound"],output_limit)
                 response = await client.post(
                     self.settings.llm_endpoint,
                     json={
                         "model": model,
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_prompt},
-                        ],
-                        "max_tokens": max_tokens or default_max_tokens,
-                        "temperature": temperature or default_temperature,
+                        "messages": messages,
+                        "max_tokens": output_limit,
+                        "temperature": temperature if temperature is not None else default_temperature,
                         **self.settings.llm_thinking_body,
                     },
                     headers=auth_headers(self.settings, model_type),
@@ -261,7 +246,7 @@ class FileAnalyzer:
                 )
             logger.info(
                 f"LLM call dur={_time.monotonic() - _t0:.1f}s model={model} "
-                f"in={len(user_prompt)}ch out={len(analysis_text)}ch tokens={tokens_used}"
+                f"in={len(messages[-1]['content'])}ch out={len(analysis_text)}ch tokens={tokens_used}"
             )
 
             # D15: extract the four-part structure when present; the full
@@ -291,6 +276,8 @@ class FileAnalyzer:
             logger.error(f"LLM connection error: {e}")
             base_url = self.settings.llm_text_base_url if model_type == 'text' else self.settings.llm_vision_base_url
             raise RuntimeError(f"Cannot connect to LLM service at {base_url}") from e
+        except ModelBudgetError:
+            raise
         except Exception as e:
             logger.error(f"LLM analysis failed: {e}", exc_info=True)
             raise
@@ -319,6 +306,8 @@ class FileAnalyzer:
             try:
                 image_data = self._compress_image(image_data, max_size=3 * 1024 * 1024)
                 logger.info(f"Image compressed to {len(image_data)} bytes")
+            except ModelBudgetError:
+                raise
             except Exception as e:
                 logger.warning(f"Image compression failed: {e}, proceeding with original size")
 
@@ -330,6 +319,8 @@ class FileAnalyzer:
         # Use prompts from prompts.py
         system_prompt = VISION_ANALYSIS_SYSTEM
         user_prompt = prompt or VISION_ANALYSIS_USER_DEFAULT
+        from ..model_budget import reserve_vision_attempt
+        vision_output=reserve_vision_attempt(self.settings,system_prompt+user_prompt,1)
 
         # Check if image is still too large after compression
         if len(image_b64) > 10 * 1024 * 1024:  # 10MB base64 limit
@@ -358,7 +349,7 @@ class FileAnalyzer:
                             ],
                         },
                     ],
-                    "max_tokens": 2048,
+                    "max_tokens": vision_output,
                     "temperature": self.settings.llm_vision_temperature,
                     **self.settings.llm_thinking_body,
                 },
@@ -404,6 +395,8 @@ class FileAnalyzer:
 
             logger.error(f"LLM HTTP error: {e.response.status_code} - {e.response.text}")
             raise RuntimeError(f"LLM request failed with status {e.response.status_code}: {e.response.text}") from e
+        except ModelBudgetError:
+            raise
         except Exception as e:
             logger.error(f"Vision analysis failed: {e}", exc_info=True)
             raise
@@ -455,6 +448,8 @@ class FileAnalyzer:
                 }
             )
 
+        from ..model_budget import reserve_vision_attempt
+        vision_output=reserve_vision_attempt(self.settings,VISION_ANALYSIS_SYSTEM+(prompt or VISION_ANALYSIS_USER_DEFAULT),len(encoded))
         try:
             import time as _time
             _t0 = _time.monotonic()
@@ -466,7 +461,7 @@ class FileAnalyzer:
                         {"role": "system", "content": VISION_ANALYSIS_SYSTEM},
                         {"role": "user", "content": content},
                     ],
-                    "max_tokens": 2048,
+                    "max_tokens": vision_output,
                     "temperature": self.settings.llm_vision_temperature,
                     **self.settings.llm_thinking_body,
                 },
@@ -506,6 +501,8 @@ class FileAnalyzer:
                 f"LLM request timed out after {self.settings.llm_timeout_seconds}s "
                 "(video segment). Consider LLM_VIDEO_SEGMENT_SECONDS smaller."
             ) from e
+        except ModelBudgetError:
+            raise
         except Exception as e:
             logger.error(f"Vision multi-image analysis failed: {e}", exc_info=True)
             raise
@@ -586,6 +583,7 @@ class FileAnalyzer:
 
         self._jobs[job_id] = {
             "status": "running",
+            "task_id": next((f.get('task_id') for f in files if f.get('task_id')), ''),
             "progress": 0.0,
             "files_processed": 0,
             "files_total": len(files),
@@ -623,17 +621,18 @@ class FileAnalyzer:
             total = len(files)
             for i, file_info in enumerate(files):
                 file_path = file_info.get("path") or file_info.get("file_path", "")
+                source_stack = None
                 try:
                     if not file_path:
                         continue
 
-                    # Resolve the evidence path to a host file. Image-internal
-                    # absolute paths ("/etc/motd") live under extraction_dir.
-                    actual_path = resolve_analysis_path(file_path, extraction_dir)
-                    if actual_path is None:
-                        raise FileNotFoundError(
-                            f"evidence file not available on host: {file_path}"
-                        )
+                    from contextlib import AsyncExitStack
+                    from ..source_reading import task_source_file
+                    from ..source_identity import decode_reference
+                    source_stack = AsyncExitStack()
+                    actual_path, file_path, _provenance = await source_stack.enter_async_context(task_source_file(
+                        self._jobs[job_id].get('task_id',''), file_path, source_id=file_info.get('source_id'),
+                        files_db_path=files_db_path or '', extraction_dir=extraction_dir or '',selection_plan_id=file_info.get('selection_plan_id')))
 
                     # Auto-detect if file is an image
                     file_ext = Path(actual_path).suffix.lower()
@@ -657,6 +656,10 @@ class FileAnalyzer:
                             if enhanced_images:
                                 extraction_method = f"{extraction_method}+media_vision({enhanced_images})"
                             result = await self.analyze_file(content, text_client, vision_client, "text")
+                        except DocumentContentUnavailableError:
+                            raise
+                        except ModelBudgetError:
+                            raise
                         except Exception as e:
                             logger.warning(f"Extractor failed for {actual_path}: {e}, falling back")
                             extraction_method = ""
@@ -667,6 +670,8 @@ class FileAnalyzer:
                                     with open(actual_path, 'rb') as f:
                                         image_data = f.read()
                                     result = await self.analyze_image(image_data, vision_client)
+                                except ModelBudgetError:
+                                    raise
                                 except Exception as e2:
                                     logger.warning(f"Vision fallback also failed for {actual_path}: {e2}")
                                     self._jobs[job_id]["errors"].append(
@@ -689,6 +694,8 @@ class FileAnalyzer:
                             with open(actual_path, 'rb') as f:
                                 image_data = f.read()
                             result = await self.analyze_image(image_data, vision_client)
+                        except ModelBudgetError:
+                            raise
                         except Exception as e:
                             logger.warning(f"Failed to analyze {actual_path} as image: {e}, falling back to text")
                             extraction_method = "raw_text"
@@ -731,9 +738,15 @@ class FileAnalyzer:
                         "file_path": file_path,
                         "analysis": analysis,
                     })
+                except ModelBudgetError:
+                    raise
                 except Exception as e:
                     logger.error(f"Failed to analyze {file_path}: {e}", exc_info=True)
                     self._jobs[job_id]["errors"].append(f"{file_path}: file analysis failed")
+
+                finally:
+                    if source_stack is not None:
+                        await source_stack.aclose()
 
                 self._jobs[job_id]["files_processed"] = i + 1
                 self._jobs[job_id]["progress"] = (i + 1) / total

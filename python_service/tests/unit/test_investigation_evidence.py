@@ -83,6 +83,10 @@ async def test_file_resolver_allows_same_key_across_tasks_with_distinct_sources(
     extract_b.mkdir(parents=True)
     (extract_a / "a.txt").write_text("content-a", encoding="utf-8")
     (extract_b / "a.txt").write_text("content-b", encoding="utf-8")
+    # Metadata describes the actual extracted bytes under the shared read contract.
+    for database in (files_a,files_b):
+        with sqlite3.connect(database) as conn:
+            conn.execute("UPDATE files SET size=9 WHERE path='/evidence/a.txt'")
     task_map = {
         "task-a": {"output_files_db": str(files_a), "output_events_db": str(events_a), "extraction_directory": str(extract_a.parent)},
         "task-b": {"output_files_db": str(files_b), "output_events_db": str(events_b), "extraction_directory": str(extract_b.parent)},

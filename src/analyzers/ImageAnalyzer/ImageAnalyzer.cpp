@@ -1,6 +1,8 @@
 #include "ImageAnalyzer.h"
 #include "AndroidAnalyzer/HarmonyBackupExtractor.h"
+#include "AndroidAnalyzer/XiaomiImageExtractor.h"
 #include "DatabaseManager/DatabaseManager.h"
+#include "DatabaseManager/SourceIndex.h"
 #include "XFSHelper.h"
 #include "NativeFilesystemWalker.h"
 #include "TskFilesystemWalker.h"
@@ -96,8 +98,9 @@ ImageAnalyzer::~ImageAnalyzer() {
 }
 
 bool ImageAnalyzer::analyze() {
-	if (HarmonyBackupExtractor::recognizes(imagePath_)) {
-		harmonySource_ = std::make_unique<HarmonyBackupExtractor>(imagePath_);
+	if (HarmonyBackupExtractor::recognizes(imagePath_) || XiaomiImageExtractor::recognizes(imagePath_)) {
+		if (HarmonyBackupExtractor::recognizes(imagePath_)) harmonySource_ = std::make_unique<HarmonyBackupExtractor>(imagePath_);
+		else harmonySource_ = std::make_unique<XiaomiImageExtractor>(imagePath_);
 		harmonySource_->setProgress([this](std::size_t n) {
 			if (progressCallback_) progressCallback_(static_cast<int>(n));
 		}, [this]() { return isCancelled(); });
@@ -371,7 +374,7 @@ bool ImageAnalyzer::extractToDatabase(const std::string& dbPath) {
 		sqlite3_exec(dbManager_->getDb(), "BEGIN", nullptr, nullptr, nullptr);
 		const bool saved = harmonySource_->saveIndex(dbManager_->getDb());
 		sqlite3_exec(dbManager_->getDb(), saved ? "COMMIT" : "ROLLBACK", nullptr, nullptr, nullptr);
-		return saved && logicalId > 0;
+        return saved && logicalId > 0 && forensics::sources::ensure(dbManager_->getDb(), imagePath_);
 	}
 
 	// Record partition metadata into the partitions table (previously dead code).
@@ -408,7 +411,11 @@ bool ImageAnalyzer::extractToDatabase(const std::string& dbPath) {
 		std::cout << "\nFilesystem walk completed across " << okPartitions
 		          << "/" << partitions_.size() << " partitions. Total files: "
 		          << totalFiles << std::endl;
-		AuditLog::instance().log("SYSTEM", "EXTRACTION_COMPLETE",
+        dbManager_->flushInsertBatch();
+        std::string sourceIndexError;
+        if (!forensics::sources::ensure(dbManager_->getDb(), imagePath_, &sourceIndexError))
+            throw std::runtime_error("已写入"+std::to_string(totalFiles)+"条文件记录，但来源索引建立失败："+sourceIndexError);
+        AuditLog::instance().log("SYSTEM", "EXTRACTION_COMPLETE",
 			"Filesystem walk completed for: " + imagePath_ +
 			" (" + std::to_string(okPartitions) + "/" +
 			std::to_string(partitions_.size()) + " partitions, " +

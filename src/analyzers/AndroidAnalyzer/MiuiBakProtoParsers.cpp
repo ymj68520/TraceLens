@@ -9,6 +9,7 @@ struct ProtoField {
     uint32_t wireType = 0;
     uint64_t varint = 0;
     std::string bytes;
+    size_t offset = 0, payloadOffset = 0, end = 0;
 };
 
 bool readVarint(const std::string& buf, size_t& pos, uint64_t& out) {
@@ -17,6 +18,7 @@ bool readVarint(const std::string& buf, size_t& pos, uint64_t& out) {
     while (shift < 64) {
         if (pos >= buf.size()) return false;
         const uint8_t byte = static_cast<uint8_t>(buf[pos++]);
+        if (shift == 63 && (byte & 0xfe)) return false;
         value |= static_cast<uint64_t>(byte & 0x7f) << shift;
         if ((byte & 0x80) == 0) {
             out = value;
@@ -32,9 +34,12 @@ bool readVarint(const std::string& buf, size_t& pos, uint64_t& out) {
 bool readFields(const std::string& buf, std::vector<ProtoField>& out) {
     size_t pos = 0;
     while (pos < buf.size()) {
+        if (out.size() >= 100000) return false;
+        const size_t start = pos;
         uint64_t tag = 0;
         if (!readVarint(buf, pos, tag)) return false;
         ProtoField field;
+        field.offset = start;
         field.number = static_cast<uint32_t>(tag >> 3);
         field.wireType = static_cast<uint32_t>(tag & 7);
         if (field.number == 0) return false;
@@ -50,6 +55,7 @@ bool readFields(const std::string& buf, std::vector<ProtoField>& out) {
                 uint64_t length = 0;
                 if (!readVarint(buf, pos, length)) return false;
                 if (length > buf.size() - pos) return false;
+                field.payloadOffset = pos;
                 field.bytes.assign(buf, pos, static_cast<size_t>(length));
                 pos += static_cast<size_t>(length);
                 break;
@@ -61,6 +67,7 @@ bool readFields(const std::string& buf, std::vector<ProtoField>& out) {
             default:
                 return false;
         }
+        field.end = pos;
         out.push_back(std::move(field));
     }
     return true;
@@ -214,4 +221,44 @@ bool parseMiuiContactsBak(const std::string& bytes, std::vector<MiuiProtoContact
     out.clear();
     if (looksLikeJson(bytes)) return false;
     return parseContactsShape(bytes, out);
+}
+
+bool parseMiuiNotesBak(const std::string& bytes, std::vector<MiuiProtoNoteRow>& out) {
+    out.clear(); if (bytes.empty() || bytes.size() > (8U << 20)) return false;
+    std::vector<ProtoField> top;
+    if (!readFields(bytes, top)) return false;
+    std::vector<MiuiProtoNoteRow> parsed;
+    for (const auto& list : top) {
+        if (list.number != 6 || list.wireType != 2) continue;
+        std::vector<ProtoField> items;
+        if (!readFields(list.bytes, items)) return false;
+        for (const auto& item : items) {
+            if (item.number != 2 || item.wireType != 2) continue;
+            if (parsed.size() >= 50000) return false;
+            std::vector<ProtoField> fields;
+            if (!readFields(item.bytes, fields)) return false;
+            for (uint32_t number : {2U, 5U, 6U, 8U}) {
+                size_t count = 0;
+                for (const auto& field : fields) if (field.number == number) ++count;
+                if (count > 1) return false;
+            }
+            MiuiProtoNoteRow row;
+            if (!findString(fields, 2, row.id) || row.id.empty() || row.id.size() > 256 ||
+                !findString(fields, 8, row.content) || row.content.size() > (1U << 20)) return false;
+            findVarint(fields, 5, row.field5); findVarint(fields, 6, row.field6);
+            row.offset = list.payloadOffset + item.offset; row.length = item.end - item.offset;
+            for (const auto& block : fields) {
+                if (block.number != 9 || block.wireType != 2) continue;
+                std::vector<ProtoField> detail;
+                if (!readFields(block.bytes, detail)) return false;
+                std::string name;
+                if (findString(detail, 4, name) && name.size() == 40 &&
+                    name.find_first_not_of("0123456789abcdef") == std::string::npos)
+                    row.attachmentNames.push_back(name);
+            }
+            parsed.push_back(std::move(row));
+        }
+    }
+    if (parsed.empty()) return false;
+    out = std::move(parsed); return true;
 }

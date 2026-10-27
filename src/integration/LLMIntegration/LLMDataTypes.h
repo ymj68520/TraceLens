@@ -30,6 +30,9 @@ struct LLMConfig {
     double charsPerToken = 4.0;       // Estimated characters per token (Chinese ~1.5, English ~4)
     bool enableChunkedAnalysis = true; // Enable chunked analysis for large files
     int maxChunks = 5;                // Maximum chunks for analysis
+    std::string budgetDb, budgetPlan, budgetSource;
+    std::string budgetTask, budgetReference;
+    size_t visionImageTokenBound = 0;
 };
 
 /**

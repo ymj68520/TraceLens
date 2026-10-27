@@ -193,6 +193,8 @@ export const getFinalReportMarkdown = (taskId, reportId) =>
     pythonApi.get(`${workbenchBase(taskId)}/final-reports/${encodeURIComponent(reportId)}/markdown`, { responseType: 'text' });
 export const getFinalReportHtml = (taskId, reportId) =>
     pythonApi.get(`${workbenchBase(taskId)}/final-reports/${encodeURIComponent(reportId)}/html`, { responseType: 'text' });
+export const getFinalReportOffline = (taskId, reportId) =>
+    pythonApi.get(`${workbenchBase(taskId)}/final-reports/${encodeURIComponent(reportId)}/offline`, { responseType: 'blob' });
 export const getFinalReportPrint = (taskId, reportId) =>
     pythonApi.get(`${workbenchBase(taskId)}/final-reports/${encodeURIComponent(reportId)}/print`, { responseType: 'text' });
 export const getFinalReportPublication = (taskId, reportId) =>

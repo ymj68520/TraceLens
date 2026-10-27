@@ -92,7 +92,8 @@ const FileListTable = ({
                 const fileName = file.name || filePath?.split('/').pop() || '-';
                 const llmDesc = getLLMDescription(file);
                 const isAnalyzing = llmAnalyzingFiles.has(index);
-                const isExpanded = expandedDescriptions.has(filePath);
+                const sourceKey = file.source_id || filePath;
+                const isExpanded = expandedDescriptions.has(sourceKey);
                 const hasDescription = llmDesc && (llmDesc.summary || llmDesc.description);
 
                 return (
@@ -109,6 +110,7 @@ const FileListTable = ({
                       <td className="px-4 py-4 text-sm font-medium text-slate-900 dark:text-white">#{index + 1}</td>
                       <td className="px-4 py-4 text-sm font-medium text-slate-900 dark:text-white">
                         {fileName}
+                        {file.partition_num != null && <span className="block text-xs text-slate-500">分区 {file.partition_num} · 记录 {file.inode ?? '未知'} · {file.is_deleted ? '已删除' : '现存'}</span>}
                       </td>
                       <td className="px-4 py-4 text-sm text-slate-600 dark:text-slate-300 max-w-xs truncate font-mono" title={filePath}>
                         {filePath || '-'}
@@ -162,7 +164,7 @@ const FileListTable = ({
                                   {/* Expand/Collapse button for full description */}
                                   {llmDesc.description && (
                                     <button
-                                      onClick={() => toggleDescription(filePath)}
+                                      onClick={() => toggleDescription(sourceKey)}
                                       className="text-xs text-purple-600 hover:text-purple-800 dark:text-purple-400 dark:hover:text-purple-300"
                                     >
                                       {isExpanded ? '收起详情 ▲' : '展开详情 ▼'}

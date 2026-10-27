@@ -1,5 +1,6 @@
 #include "HarmonyArtifactParsers.h"
 #include "HarmonyBackupExtractor.h"
+#include "MiuiBakProtoParsers.h"
 #include "AndroidAnalysisDatabase.h"
 #include <fstream>
 #include <iostream>
@@ -47,8 +48,17 @@ json row(sqlite3_stmt* s) {
     return j;
 }
 struct Rule { std::string table,kind,time; };
-std::vector<Rule> rules(const HarmonyBackupExtractor::Entry& e) {
+std::vector<Rule> rules(const IndexedMobileSource::Entry& e) {
     const auto name=fs::path(e.originalPath).filename().string();
+    if(e.bundle=="com.android.providers.contacts" && name=="contacts2.db")
+        return {{"contacts","contact",""},{"raw_contacts","contact_raw",""},{"data","contact_data",""}};
+    if(e.bundle=="com.android.providers.contacts" && name=="calllog.db") return {{"calls","call","date"}};
+    if(e.bundle=="com.android.providers.telephony" && name=="mmssms.db") return {{"sms","sms","date"}};
+    if(e.bundle=="com.android.providers.calendar" && name=="calendar.db") return {{"Events","calendar","dtstart"}};
+    if(e.bundle=="com.miui.notes" && name=="note.db") return {{"note","note","modified_date"}};
+    if(e.bundle=="com.android.providers.media" && name.ends_with(".db")) return {{"files","media_file","datetaken"}};
+    if(e.bundle=="com.android.browser" && name=="browser2.db") return {{"history","browser_history","date"},{"bookmarks","browser_bookmark","created"}};
+
     if(e.bundle=="com.huawei.hmos.calendardata" && name=="calendardata.db") return {{"Events","calendar","dtstart"}};
     if(e.bundle=="com.huawei.hmos.soundrecorder" && name=="recorderSound.db") return {{"normal_record_table","recording","date_added"}};
     if(e.bundle=="com.huawei.hmos.callrecorder" && name=="call_record.db") return {{"record_log","call_recording","date_added"}};
@@ -67,7 +77,9 @@ bool primaryDatabase(const std::string& p) {
 int budget(void* ptr) { auto& n=*static_cast<int*>(ptr); return --n<=0; }
 }
 
-bool analyzeHarmonyBackup(HarmonyBackupExtractor& source, AndroidAnalysisDatabase& output, const fs::path& temporaryRoot) {
+bool analyzeMobileSource(IndexedMobileSource& source, AndroidAnalysisDatabase& output, const fs::path& temporaryRoot) {
+    const bool xiaomi=source.manifest().value("adapter_version", "")=="xiaomi-export-ext4-v1";
+    const std::string parserVersion=xiaomi?"xiaomi-export-mobile-v1":"harmony-decrypted-v1";
     const char* schema=R"SQL(
       CREATE TABLE IF NOT EXISTS mobile_backup_manifest(id INTEGER PRIMARY KEY CHECK(id=1),platform TEXT,
         device TEXT,backup_version TEXT,backup_time_ms INTEGER,module_count INTEGER,manifest_sha256 TEXT,adapter_version TEXT);
@@ -90,9 +102,9 @@ bool analyzeHarmonyBackup(HarmonyBackupExtractor& source, AndroidAnalysisDatabas
             throw std::runtime_error("HARMONY_RESULT_RESET_FAILED");
         const auto& meta=source.manifest();
         auto ms=prepare(dest,"INSERT OR REPLACE INTO mobile_backup_manifest VALUES(1,?,?,?,?,?,?,?)");
-        bindText(ms.get(),1,"HarmonyOS");bindText(ms.get(),2,meta.value("device",""));bindText(ms.get(),3,meta.value("backup_version",""));
+        bindText(ms.get(),1,meta.value("platform","HarmonyOS"));bindText(ms.get(),2,meta.value("device",""));bindText(ms.get(),3,meta.value("backup_version",""));
         sqlite3_bind_int64(ms.get(),4,meta.value("backup_time_ms",0LL));sqlite3_bind_int64(ms.get(),5,meta["modules"].size());
-        bindText(ms.get(),6,meta.value("manifest_sha256",""));bindText(ms.get(),7,"harmony-decrypted-v1");
+        bindText(ms.get(),6,meta.value("manifest_sha256",""));bindText(ms.get(),7,parserVersion);
         if(sqlite3_step(ms.get())!=SQLITE_DONE) throw std::runtime_error("HARMONY_MANIFEST_WRITE_FAILED");
         for(const auto& app:meta["modules"])
             if(!output.insertInstalledApp(app.value("bundle",""),app.value("name",""),
@@ -104,6 +116,42 @@ bool analyzeHarmonyBackup(HarmonyBackupExtractor& source, AndroidAnalysisDatabas
             "source_key,record_json,timestamp_raw,time_unit,timestamp_seconds,source_db_sha256,source_wal_sha256,parser_version,related_path,related_status) "
             "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
         for(const auto& [path,e]:source.entries()) {
+            if(xiaomi && e.bundle=="com.miui.notes" && path.ends_with("/miui_bak/_tmp_bak")) {
+                if(e.size>(8ULL<<20)){output.recordSourceCoverage("note",path,"UNSUPPORTED","便签备份超过读取上限");continue;}
+                const auto local=temporaryRoot/("miui-note-"+std::to_string(++serial));
+                if(!source.extractFileByPath(path,local.string())) {
+                    if(source.error()=="CANCELLED" || source.error().starts_with("EVIDENCE_CHANGED"))throw std::runtime_error(source.error());
+                    output.recordSourceCoverage("note",path,"EXTRACT_FAILED",source.error());continue;
+                }
+                std::ifstream stream(local,std::ios::binary);std::string bytes((std::istreambuf_iterator<char>(stream)),{});stream.close();
+                const auto fileHash=HarmonyBackupExtractor::sha256(local);std::error_code ec;fs::remove(local,ec);
+                std::vector<MiuiProtoNoteRow> notes;
+                if(!parseMiuiNotesBak(bytes,notes)){output.recordSourceCoverage("note",path,"UNSUPPORTED","未识别的 MIUI 便签备份结构");continue;}
+                for(const auto& note:notes) {
+                    if(++totalRows>200000)throw std::runtime_error("artifact_row_limit");
+                    json attachments=json::array();std::string related;
+                    for(const auto& name:note.attachmentNames){
+                        const auto candidate="/data/com.miui.notes/miui_att/"+name;
+                        if(source.entries().count(candidate)){attachments.push_back(candidate);if(related.empty())related=candidate;}
+                    }
+                    json record={{"id",note.id},{"content",note.content},{"backup_field_5",note.field5},{"backup_field_6",note.field6},
+                        {"time_semantics","备份时间字段含义尚未验证，未加入绝对时间线"},{"attachments",attachments},
+                        {"source_format","MIUI protobuf 便签备份"}};
+                    // Invalid UTF-8 is a schema failure, never silently altered evidence text.
+                    std::string serializedRecord;
+                    try{serializedRecord=record.dump();}catch(...){output.recordSourceCoverage("note",path,"UNSUPPORTED","便签文字编码无效");continue;}
+                    sqlite3_reset(insert.get());sqlite3_clear_bindings(insert.get());
+                    bindText(insert.get(),1,"note");bindText(insert.get(),2,e.bundle);sqlite3_bind_int(insert.get(),3,0);
+                    bindText(insert.get(),4,path);bindText(insert.get(),5,"protobuf:6.2");
+                    bindText(insert.get(),6,json{{"id",note.id},{"byte_offset",note.offset},{"byte_length",note.length}}.dump());
+                    bindText(insert.get(),7,serializedRecord);bindText(insert.get(),8,std::to_string(note.field6));
+                    bindText(insert.get(),9,"unverified_backup_field");sqlite3_bind_null(insert.get(),10);
+                    bindText(insert.get(),11,fileHash);bindText(insert.get(),12,"");bindText(insert.get(),13,"miui-notes-protobuf-v1");
+                    bindText(insert.get(),14,related);bindText(insert.get(),15,related.empty()?"no_verified_file_reference":"present_in_backup");
+                    if(sqlite3_step(insert.get())!=SQLITE_DONE)throw std::runtime_error("RESULT_WRITE_FAILED: miui_notes");
+                }
+                output.recordSourceCoverage("note",path,"parsed","已解析便签备份记录；附件仅按同应用精确标识关联");continue;
+            }
             if(!primaryDatabase(path)) continue;
             if(e.size>(256ULL<<20)) { output.recordSourceCoverage("database",path,"UNSUPPORTED","database_size_limit");continue; }
             const auto local=temporaryRoot/("harmony-db-"+std::to_string(++serial)+".db");
@@ -169,7 +217,12 @@ bool analyzeHarmonyBackup(HarmonyBackupExtractor& source, AndroidAnalysisDatabas
                     auto columns=prepare(db.get(),"PRAGMA table_info("+quote(rule.table)+")");std::vector<std::string> keys;
                     while(sqlite3_step(columns.get())==SQLITE_ROW) if(sqlite3_column_int(columns.get(),5)) keys.push_back(text(columns.get(),1));
                     std::string select=keys.empty()?"SELECT rowid AS __source_rowid__,* FROM ":"SELECT * FROM ";
-                    auto rows=prepare(db.get(),select+quote(rule.table)+" LIMIT 50001");std::size_t parsed=0;
+                    auto query=select+quote(rule.table)+" LIMIT 50001";
+                    if(xiaomi && rule.kind=="contact_data" && names.count("raw_contacts") && names.count("mimetypes"))
+                        query="SELECT d.*,r.display_name,r.contact_id,m.mimetype FROM data d "
+                              "LEFT JOIN raw_contacts r ON r._id=d.raw_contact_id "
+                              "LEFT JOIN mimetypes m ON m._id=d.mimetype_id LIMIT 50001";
+                    auto rows=prepare(db.get(),query);std::size_t parsed=0;
                     while((rc=sqlite3_step(rows.get()))==SQLITE_ROW) {
                         if(parsed>=50000 || totalRows>=200000) throw std::runtime_error("artifact_row_limit");
                         auto record=row(rows.get());json key=json::object();
@@ -187,11 +240,11 @@ bool analyzeHarmonyBackup(HarmonyBackupExtractor& source, AndroidAnalysisDatabas
                         bindText(insert.get(),1,rule.kind);bindText(insert.get(),2,e.bundle);sqlite3_bind_int(insert.get(),3,e.appIndex);
                         bindText(insert.get(),4,path);bindText(insert.get(),5,rule.table);bindText(insert.get(),6,serialized(key));bindText(insert.get(),7,serialized(record));
                         bindText(insert.get(),8,rawTime);bindText(insert.get(),9,unit);if(seconds)sqlite3_bind_int64(insert.get(),10,seconds);else sqlite3_bind_null(insert.get(),10);
-                        bindText(insert.get(),11,dbHash);bindText(insert.get(),12,walHash);bindText(insert.get(),13,"harmony-decrypted-v1");
+                        bindText(insert.get(),11,dbHash);bindText(insert.get(),12,walHash);bindText(insert.get(),13,parserVersion);
                         std::string related,relatedStatus="no_file_reference";
                         if(rule.kind=="recording" || rule.kind=="call_recording" || rule.kind=="media" || rule.kind=="media_file") {
                             auto original=scalar(record,rule.kind=="recording"?"_data":rule.kind=="call_recording"?"file_path":"data");
-                            related=HarmonyBackupExtractor::scopedPath(e.bundle,e.appIndex,original);
+                            related=xiaomi?original:HarmonyBackupExtractor::scopedPath(e.bundle,e.appIndex,original);
                             relatedStatus=source.entries().count(related)?"present_in_backup":"not_resolved_in_backup";
                             if(relatedStatus=="not_resolved_in_backup") {
                                 std::string restored;
@@ -226,11 +279,15 @@ bool analyzeHarmonyBackup(HarmonyBackupExtractor& source, AndroidAnalysisDatabas
                 output.recordSourceCoverage("database",path,"ERROR",ex.what());
             }
         }
-        for(const auto* missing:{"sms","contacts","wechat"})
+        if(!xiaomi) for(const auto* missing:{"sms","contacts","wechat"})
             output.recordSourceCoverage(missing,"<harmony-backup>","NOT_PRESENT","no_verified_source_in_supported_backup_profile; not evidence of absence on device");
         for(const auto& p:source.usedSourceProvenance()) if(!output.insertSourceProvenance(p))throw std::runtime_error("provenance_write_failed");
         if(!source.verifyIntegrity()) throw std::runtime_error(source.error().empty()?"EVIDENCE_CHANGED_AFTER_INDEX":source.error());
         if(!output.commitTransaction())throw std::runtime_error("harmony_commit_failed");
         return true;
     } catch(...) { output.rollbackTransaction();throw; }
+}
+
+bool analyzeHarmonyBackup(HarmonyBackupExtractor& source, AndroidAnalysisDatabase& output, const fs::path& temporaryRoot) {
+    return analyzeMobileSource(source, output, temporaryRoot);
 }

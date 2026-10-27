@@ -47,6 +47,7 @@ add_executable(test_harmony_backup_gtest
   UnitTest/test_harmony_backup_gtest.cpp
   ../src/analyzers/AndroidAnalyzer/HarmonyBackupExtractor.cpp
   ../src/analyzers/AndroidAnalyzer/HarmonyArtifactParsers.cpp
+  ../src/analyzers/AndroidAnalyzer/MiuiBakProtoParsers.cpp
   ../src/analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.cpp)
 target_include_directories(test_harmony_backup_gtest PRIVATE ${CMAKE_SOURCE_DIR}/src
   ${CMAKE_SOURCE_DIR}/src/core ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer)
@@ -1442,11 +1443,82 @@ target_include_directories(test_llm_scratch_gtest PRIVATE ${CMAKE_SOURCE_DIR}/sr
 target_link_libraries(test_llm_scratch_gtest ${GTEST_LIBRARIES} gtest_main)
 add_test(NAME LLMScratchTests COMMAND test_llm_scratch_gtest)
 
+add_executable(test_windows_parser_truth_gtest
+  UnitTest/test_windows_parser_truth_gtest.cpp
+  ../src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsPrefetchParser.cpp
+  ../src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsPrefetchParser_Helpers.cpp
+  ../src/analyzers/WindowsFilesAnalyzer/Parsers/WindowsEventLogHelpers.cpp
+  ../src/analyzers/WindowsFilesAnalyzer/Database/WindowsAnalysisDatabase.cpp
+  ../src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_Prefetch.cpp
+  ../src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_EventLog.cpp)
+target_compile_definitions(test_windows_parser_truth_gtest PRIVATE
+  PARSER_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures/windows_parser_truth")
+target_link_libraries(test_windows_parser_truth_gtest PRIVATE gtest_main gtest SQLite::SQLite3 nlohmann_json::nlohmann_json ${LIBEVTX_LIBRARIES} ${LIBBFIO_LIBRARIES})
+if(LIBSCCA_FOUND)
+  target_link_libraries(test_windows_parser_truth_gtest PRIVATE PkgConfig::LIBSCCA)
+endif()
+add_test(NAME WindowsParserTruthTests COMMAND test_windows_parser_truth_gtest)
+add_executable(test_source_identity_gtest UnitTest/test_source_identity_gtest.cpp)
+target_include_directories(test_source_identity_gtest PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/core)
+target_link_libraries(test_source_identity_gtest PRIVATE gtest_main gtest SQLite::SQLite3 OpenSSL::Crypto nlohmann_json::nlohmann_json)
+add_test(NAME SourceIdentityTests COMMAND test_source_identity_gtest)
+add_executable(test_candidate_selection_gtest UnitTest/test_candidate_selection_gtest.cpp)
+target_include_directories(test_candidate_selection_gtest PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/core)
+target_link_libraries(test_candidate_selection_gtest PRIVATE gtest_main gtest SQLite::SQLite3 OpenSSL::Crypto Threads::Threads nlohmann_json::nlohmann_json)
+add_test(NAME CandidateSelectionTests COMMAND test_candidate_selection_gtest)
+add_executable(test_windows_activity_import_gtest UnitTest/test_windows_activity_import_gtest.cpp)
+target_include_directories(test_windows_activity_import_gtest PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/core)
+target_link_libraries(test_windows_activity_import_gtest PRIVATE gtest_main gtest SQLite::SQLite3 OpenSSL::Crypto nlohmann_json::nlohmann_json)
+add_test(NAME WindowsActivityImportTests COMMAND test_windows_activity_import_gtest)
+target_link_libraries(test_event_timeline OpenSSL::Crypto)
+target_link_libraries(test_scene_database_gtest OpenSSL::Crypto)
+if(UNIX)
+  set(TRACELENS_TEST_PYTHON "${Python3_EXECUTABLE}" CACHE FILEPATH "Python with application dependencies for HTTP acceptance")
+  set(TRACELENS_TEST_PYTHONPATH "${CMAKE_SOURCE_DIR}/python_service" CACHE STRING "Application Python source for HTTP acceptance")
+  add_test(NAME WindowsActivityHttpLifecycleTests COMMAND ${TRACELENS_TEST_PYTHON}
+    ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_windows_activity_http.py --analyzer $<TARGET_FILE:forensic_analyzer>)
+  set_tests_properties(WindowsActivityHttpLifecycleTests PROPERTIES TIMEOUT 300 SKIP_RETURN_CODE 77
+    ENVIRONMENT "PYTHONPATH=${TRACELENS_TEST_PYTHONPATH}")
+endif()
+add_executable(windows_activity_probe integration/windows_activity_probe.cpp)
+target_include_directories(windows_activity_probe PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/core)
+target_link_libraries(windows_activity_probe PRIVATE SQLite::SQLite3 OpenSSL::Crypto nlohmann_json::nlohmann_json)
+get_target_property(SOURCE_PROBE_SOURCES test_file_extractor_text_dump SOURCES)
+list(FILTER SOURCE_PROBE_SOURCES EXCLUDE REGEX "UnitTest/")
+add_executable(source_materialize_probe integration/source_materialize_probe.cpp
+  ../src/core/DatabaseManager/FileExtractor/SourceMaterializer.cpp ${SOURCE_PROBE_SOURCES}
+  ../src/analyzers/AndroidAnalyzer/HarmonyBackupExtractor.cpp ../src/analyzers/AndroidAnalyzer/XiaomiImageExtractor.cpp)
+target_include_directories(source_materialize_probe PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(source_materialize_probe ${SQLITE_LINK_LIBRARIES} ${TSK_LIBRARIES}
+  ${PLATFORM_LIBRARIES} ${LIBARCHIVE_LIBRARIES} OpenSSL::Crypto cpp_dotenv)
+get_target_property(SELECTION_PROBE_SOURCES source_materialize_probe SOURCES)
+list(FILTER SELECTION_PROBE_SOURCES EXCLUDE REGEX "integration/")
+add_executable(candidate_selection_probe integration/candidate_selection_probe.cpp
+  ../src/network/HTTPServer/LLMPythonProxy.cpp ${SELECTION_PROBE_SOURCES})
+target_include_directories(candidate_selection_probe PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/core)
+target_link_libraries(candidate_selection_probe ${SQLITE_LINK_LIBRARIES} ${TSK_LIBRARIES}
+  ${PLATFORM_LIBRARIES} ${LIBARCHIVE_LIBRARIES} OpenSSL::SSL OpenSSL::Crypto cpp_dotenv)
+if(UNIX)
+  add_test(NAME SourceReadContractCliTests COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_source_read_contract.py
+    --analyzer $<TARGET_FILE:forensic_analyzer> --probe $<TARGET_FILE:source_materialize_probe>)
+  set_tests_properties(SourceReadContractCliTests PROPERTIES TIMEOUT 300
+    ENVIRONMENT "PYTHONPATH=${CMAKE_SOURCE_DIR}/python_service")
+endif()
+if(UNIX AND LIBSCCA_FOUND)
+  add_test(NAME WindowsParserTruthCliTests
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_windows_parser_truth_cli.py
+      --analyzer $<TARGET_FILE:forensic_analyzer>)
+  set_tests_properties(WindowsParserTruthCliTests PROPERTIES TIMEOUT 300 SKIP_RETURN_CODE 77)
+endif()
+
 # The existing extraction/classification tests also exercise the logical source backend.
 foreach(harmony_consumer test_file_extractor_text_dump test_scene_classifier_gtest test_text_dump_adapters)
-  target_sources(${harmony_consumer} PRIVATE ../src/analyzers/AndroidAnalyzer/HarmonyBackupExtractor.cpp)
+  target_sources(${harmony_consumer} PRIVATE ../src/analyzers/AndroidAnalyzer/HarmonyBackupExtractor.cpp ../src/analyzers/AndroidAnalyzer/XiaomiImageExtractor.cpp)
+  target_sources(${harmony_consumer} PRIVATE ../src/core/DatabaseManager/FileExtractor/SourceMaterializer.cpp)
   target_link_libraries(${harmony_consumer} ${LIBARCHIVE_LIBRARIES} OpenSSL::Crypto)
 endforeach()
+target_link_libraries(test_file_classifier OpenSSL::Crypto)
 
 add_test(NAME HarmonyBackupCliEndToEndTests
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_harmony_backup_cli.py
@@ -1459,6 +1531,12 @@ if(UNIX)
     COMMAND ${CMAKE_SOURCE_DIR}/python_service/.venv/bin/python
       ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_aliyun_image_http.py
       --analyzer $<TARGET_FILE:forensic_analyzer>)
+  add_test(NAME XiaomiImageHttpEndToEndTests
+    COMMAND ${CMAKE_SOURCE_DIR}/python_service/.venv/bin/python
+      ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_xiaomi_image_http.py
+      --analyzer $<TARGET_FILE:forensic_analyzer>)
+  set_tests_properties(XiaomiImageHttpEndToEndTests PROPERTIES
+    ENVIRONMENT "PYTHONPATH=${CMAKE_SOURCE_DIR}/python_service" TIMEOUT 300)
   set_tests_properties(AliyunImageHttpEndToEndTests PROPERTIES
     ENVIRONMENT "PYTHONPATH=${CMAKE_SOURCE_DIR}/python_service" TIMEOUT 240)
 endif()
@@ -1470,6 +1548,10 @@ add_executable(test_stage_ledger_gtest
 target_include_directories(test_stage_ledger_gtest PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_stage_ledger_gtest ${GTEST_LIBRARIES} gtest_main OpenSSL::Crypto)
 add_test(NAME StageLedgerTests COMMAND test_stage_ledger_gtest)
+add_executable(test_delivery_quality_gtest UnitTest/test_delivery_quality_gtest.cpp)
+target_include_directories(test_delivery_quality_gtest PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_delivery_quality_gtest PRIVATE gtest_main gtest nlohmann_json::nlohmann_json)
+add_test(NAME DeliveryQualityTests COMMAND test_delivery_quality_gtest)
 
 # Resumable-task end-to-end acceptance: the CLI stage ledger (skip / invalidate /
 # rebuild / --overwrite) and the HTTP resume lifecycle (complete -> restart ->

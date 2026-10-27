@@ -1,6 +1,7 @@
 #include "TaskHelpers.h"
 #include "RouteHelpers.h"
 #include "../TaskManager.h"
+#include "../TaskDeliveryState.h"
 #include "../../core/PathManager/PathManager.h"
 #include <chrono>
 #include <filesystem>
@@ -16,6 +17,7 @@ nlohmann::json TaskHelpers::task_to_json(const AnalysisTask& task) {
         task.started_time.time_since_epoch()).count();
     auto completed_time = std::chrono::duration_cast<std::chrono::milliseconds>(
         task.completed_time.time_since_epoch()).count();
+    const auto actual_end = completed_timestamp(task, true);
 
     json dependencies_json = json::array();
     for (const auto& dep : task.dependencies) {
@@ -81,7 +83,8 @@ nlohmann::json TaskHelpers::task_to_json(const AnalysisTask& task) {
         {"timestamps", {
             {"created", created_time},
             {"started", started_time},
-            {"completed", completed_time},
+            {"completed", actual_end ? json(*actual_end) : json(nullptr)},
+            {"interrupted", task.interrupted_by_restart ? json(completed_time) : json(nullptr)},
             {"execution_time_seconds", execution_time_seconds}
         }},
         {"scenarios", scenarios_json},

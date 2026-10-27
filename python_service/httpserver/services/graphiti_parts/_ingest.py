@@ -145,6 +145,8 @@ class GraphitiIngestMixin:
                                 "WHERE description IS NOT NULL AND description != '' "
                                 "ORDER BY id"
                             ).fetchall()
+                            from ..case_analysis.cluster_revision import filter_current_analyses
+                            rows=filter_current_analyses(conn,rows)
                         except sqlite3.OperationalError:
                             continue  # analyses table absent (pre-SPEC db)
                     for row in rows:
@@ -535,6 +537,8 @@ class GraphitiIngestMixin:
                                 "WHERE description IS NOT NULL AND description != '' "
                                 "ORDER BY id"
                             ).fetchall()
+                            from ..case_analysis.cluster_revision import filter_current_analyses
+                            rows=filter_current_analyses(conn,rows)
                         except sqlite3.OperationalError:
                             continue  # analyses table absent (pre-SPEC db)
                     for row in rows:

@@ -1,3 +1,4 @@
+import { fileSourceReference } from '../../../utils/evidenceKey';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Clock3, FileText, Filter } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -145,7 +146,7 @@ export default function InvestigationTimeline({ taskId = null, reportId = null, 
   }, [selectedFileKey, expandedKey, visible]);
 
   useEffect(() => {
-    if (focusFileKey && (files || []).some((file) => file.path === focusFileKey)) {
+    if (focusFileKey && (files || []).some((file) => fileSourceReference(file) === focusFileKey)) {
       setExpandedKey(focusFileKey);
     }
   }, [files, focusFileKey]);
@@ -156,7 +157,7 @@ export default function InvestigationTimeline({ taskId = null, reportId = null, 
   }
 
   const toggle = (file) => {
-    setExpandedKey((current) => (current === file.path ? null : file.path));
+    setExpandedKey((current) => (current === fileSourceReference(file) ? null : fileSourceReference(file)));
     onSelectFile(file);
   };
 
@@ -232,11 +233,11 @@ export default function InvestigationTimeline({ taskId = null, reportId = null, 
         </div>
 
         {visible.map((file, index) => {
-          const citationIds = citationIdsByPath[file.path] || [];
+          const citationIds = citationIdsByPath[fileSourceReference(file)] || [];
           const fileEvents = resolveEvents(file);
           const judgeKey = judgeKeyOf(file);
-          const selected = selectedFileKey === file.path;
-          const expanded = expandedKey === file.path;
+          const selected = selectedFileKey === fileSourceReference(file);
+          const expanded = expandedKey === fileSourceReference(file);
           const sideIsLeft = index % 2 === 0;
           const toggleThis = () => toggle(file);
           const sizeLabel = formatSize(file.size);
@@ -263,8 +264,8 @@ export default function InvestigationTimeline({ taskId = null, reportId = null, 
 
           return (
             <div
-              key={file.path}
-              ref={(el) => { nodeRefs.current[file.path] = el; }}
+              key={fileSourceReference(file)}
+              ref={(el) => { nodeRefs.current[fileSourceReference(file)] = el; }}
               data-side={sideIsLeft ? 'left' : 'right'}
               data-testid={`file-${file.path}`}
             >
@@ -340,9 +341,9 @@ export default function InvestigationTimeline({ taskId = null, reportId = null, 
                   )}
                   {file.llm_summary && (
                     <div className="mt-2">
-                      <p className={`whitespace-pre-wrap break-words text-xs leading-5 text-slate-600 dark:text-slate-400 ${String(file.llm_summary).length > 220 && expandedSummaryKey !== file.path ? 'line-clamp-4' : ''}`}>{file.llm_summary}</p>
+                      <p className={`whitespace-pre-wrap break-words text-xs leading-5 text-slate-600 dark:text-slate-400 ${String(file.llm_summary).length > 220 && expandedSummaryKey !== fileSourceReference(file) ? 'line-clamp-4' : ''}`}>{file.llm_summary}</p>
                       {String(file.llm_summary).length > 220 && (
-                        <button type="button" className="mt-1 text-[11px] font-semibold text-primary-600 hover:underline dark:text-primary-300" onClick={() => setExpandedSummaryKey((current) => current === file.path ? null : file.path)}>{expandedSummaryKey === file.path ? '收起文件摘要' : '展开文件摘要'}</button>
+                        <button type="button" className="mt-1 text-[11px] font-semibold text-primary-600 hover:underline dark:text-primary-300" onClick={() => setExpandedSummaryKey((current) => current === fileSourceReference(file) ? null : fileSourceReference(file))}>{expandedSummaryKey === fileSourceReference(file) ? '收起文件摘要' : '展开文件摘要'}</button>
                       )}
                     </div>
                   )}

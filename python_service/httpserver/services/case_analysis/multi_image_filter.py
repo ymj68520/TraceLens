@@ -1,9 +1,6 @@
 """
-MultiImageFilter — LLM-driven file filtering across multiple disk images.
-
-Extends the single-image FileFilter to aggregate file lists from N _files.db
-databases, deduplicate across images (by full path), then run the same
-streaming LLM batch-filter pipeline used for single-image analysis.
+Multi-image adapter for one global native selection plan.
+Task and source identities survive content grouping and shared budget admission.
 """
 
 import logging
@@ -21,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 class MultiImageFilter(FileFilter):
-    """Aggregates file lists from multiple images before LLM filtering."""
+    """Selects across multiple images with one global finite budget."""
 
     def __init__(self, settings: Settings, llm_service, cpp_backend):
         """Initialize multi-image filter with enhanced components."""
@@ -40,149 +37,60 @@ class MultiImageFilter(FileFilter):
         batch_size: int = 50,
         task_ids: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        """Filter files across multiple _files.db databases.
+        """Select source references and per-task subsets from one native plan.
 
-        Dispatches on settings.file_filter_mode:
-        - 'deterministic' (default): aggregate + dedup all paths from each
-          C++-filtered files.db. No LLM, fully reproducible.
-        - 'llm': legacy streaming LLM filter.
-
-        Returns the same structure as FileFilter.filter_files_by_case(), plus:
-            source_counts: {db_path: file_count}   — per-image file count
-            dedup_removed: int                      — cross-image duplicates removed
+        source_counts reports admitted references per task; dedup_removed stays
+        zero because grouping never removes original source records.
         """
         if not files_db_paths:
             return {"filtered_files": [], "total_files": 0, "selected_count": 0}
 
-        mode = getattr(self.settings, "file_filter_mode", "deterministic")
-        if mode != "llm":
-            return await self._filter_files_multi_deterministic(
-                files_db_paths, task_ids, max_files
-            )
-
-        # --- legacy LLM path (unchanged) ---
-        # Step 1: load + tag all files from every db
-        all_tagged: List[Dict[str, str]] = []
-        source_counts: Dict[str, int] = {}
-
-        for idx, db_path in enumerate(files_db_paths):
-            records = self._get_file_list_from_db(db_path)
-            source_counts[db_path] = len(records)
-            tag = f"[IMG{idx+1}]"
-            for r in records:
-                r["tagged_path"] = f"{tag} {r['path']}"
-                r["source_db"]   = db_path
-            all_tagged.extend(records)
-            logger.info(f"[MULTI_FILTER] DB {idx+1}: {len(records)} files from {db_path}")
-
-        total_before_dedup = len(all_tagged)
-
-        # Step 2: deduplicate by (filename, size) across images
-        deduped = self._cross_image_dedup(all_tagged)
-        dedup_removed = total_before_dedup - len(deduped)
-        logger.info(f"[MULTI_FILTER] Dedup: {total_before_dedup} → {len(deduped)} "
-                    f"(-{dedup_removed} cross-image duplicates)")
-
-        # Step 3: build TOON lines and run streaming LLM filter
-        toon_lines = self._build_toon_lines(deduped)
-        schema = "name | tagged_path | size | category"
-
-        filter_result = await self._run_streaming_filter(
-            schema=schema,
-            data_lines=toon_lines,
-            case_description=case_description,
-            max_files=max_files,
-            batch_size=batch_size,
-            original_records=deduped,
-        )
-
-        # Step 4: persist per-db filtered lists for downstream pipeline
-        selected = filter_result.get("filtered_files", [])
-        self._distribute_and_persist(selected, deduped, files_db_paths, task_ids)
-
-        return {
-            **filter_result,
-            "source_counts":  source_counts,
-            "dedup_removed":  dedup_removed,
-            "total_files":    len({r.get("path", "") for r in deduped if r.get("path")}),
-        }
+        return await self._filter_files_multi_deterministic(files_db_paths,task_ids,max_files,case_description)
 
     async def _filter_files_multi_deterministic(
         self,
         files_db_paths: List[str],
         task_ids: Optional[List[str]] = None,
         max_files: int = 0,
+        case_context: str = '',
     ) -> Dict[str, Any]:
-        """Deterministic multi-image selection: aggregate + dedup all paths."""
-        all_tagged: List[Dict[str, Any]] = []
-        source_counts: Dict[str, int] = {}
-
-        for idx, db_path in enumerate(files_db_paths):
-            records = self._get_file_list_from_db(db_path)
-            source_counts[db_path] = len(records)
-            for r in records:
-                rec = dict(r)
-                rec["tagged_path"] = rec.get("path", "")
-                rec["source_db"] = db_path
-                all_tagged.append(rec)
-            logger.info(f"[MULTI_FILTER] DB {idx+1}: {len(records)} files from {db_path}")
-
-        total_before_dedup = len(all_tagged)
-        deduped = self._cross_image_dedup(all_tagged)
-        dedup_removed = total_before_dedup - len(deduped)
-
-        # total_files = unique paths (the selection pool). Aligned with the LLM
-        # path's total_files definition so both modes report the same metric.
-        paths = sorted({r.get("path", "") for r in deduped if r.get("path")})
-        total_files = len(paths)
-
-        cap = int(getattr(self.settings, "filter_max_files", 0) or 0)
-        if cap > 0:
-            selected = paths[:cap]
-            logger.info(
-                f"[MULTI_FILTER] Deterministic cap applied: {len(selected)}/{total_files} "
-                f"(filter_max_files={cap})"
-            )
-        else:
-            selected = paths
-
-        if max_files and max_files > 0:
-            logger.info(
-                f"[MULTI_FILTER] max_files={max_files} ignored in deterministic mode; "
-                f"using settings.filter_max_files={cap}"
-            )
-
-        self._distribute_and_persist(selected, deduped, files_db_paths, task_ids)
-
-        return {
-            "filtered_files": selected,
-            "reasoning": f"Deterministic multi-image selection ({total_files} files after dedup)",
-            "total_files": total_files,
-            "selected_count": len(selected),
-            "truncated": len(selected) < total_files,
-            "limit": cap if cap > 0 else None,
-            "limit_reason": "configured_filter_max_files" if len(selected) < total_files else None,
-            "model_used": "deterministic_cpp_filter",
-            "streaming_used": False,
-            "source_counts": source_counts,
-            "dedup_removed": dedup_removed,
-        }
+        """Apply the common policy while retaining each task/source identity."""
+        if not task_ids or len(task_ids)!=len(files_db_paths) or self._cpp_backend is None:
+            raise ValueError('多镜像选择需要每个已登记任务的来源身份')
+        cap=int(getattr(self.settings,'filter_max_files',0) or 0)
+        if max_files<0 or cap<0:raise ValueError('文件数量预算不能为负数')
+        effective=min([v for v in (max_files,cap) if v>0],default=0)
+        plan=(await self._cpp_backend.selection_plan(task_ids,effective,case_context=case_context)
+              if case_context else await self._cpp_backend.selection_plan(task_ids,effective))
+        if not isinstance(plan,dict) or plan.get('schema_version')!=1 or 'selected' not in plan:
+            raise ValueError('多镜像候选选择计划不可用')
+        selected=plan['selected']
+        if effective and len(selected)>effective:raise ValueError('全局选择计划超出文件数量预算')
+        by_task={task:[] for task in task_ids}
+        for item in selected:
+            if item['task_id'] not in by_task:raise ValueError('选择计划包含其他任务来源')
+            by_task[item['task_id']].append(item['reference'])
+        for task,database in zip(task_ids,files_db_paths):self._persist_filtered_files(database,task,by_task[task])
+        return {'filtered_files':[item['reference'] for item in selected],
+            'selected_sources':selected,'per_task':by_task,'reasoning':'按来源身份执行多镜像全局配额，不以同名同大小删除证据',
+            'total_files':plan['counts']['indexed'],'selected_count':len(selected),'dedup_removed':0,
+            'source_counts':{task:len(items) for task,items in by_task.items()},'plan_id':plan['plan_id'],
+            'selection_budget':plan['budget'],'selection_counts':plan['counts'],'model_used':'native_selection',
+            'selection_policy':plan.get('policy_version'),'streaming_used':False}
 
     # ── Internals ─────────────────────────────────────────────────────────────
 
     def _cross_image_dedup(self, records: List[Dict]) -> List[Dict]:
-        """
-        Deduplicate file records across images.
-        Key = (filename, size).  First occurrence wins.
-        """
-        seen: set = set()
-        unique: List[Dict] = []
-        for r in records:
-            key = (Path(r["path"]).name, r.get("size", 0))
+        """Remove repeated references to the same source, preserving occurrences."""
+        # Compatibility helper only removes repeated references to the SAME
+        # source. Content grouping belongs to the verified native plan.
+        seen=set();unique=[]
+        for record in records:
+            key=(record.get('source_db') or record.get('task_id'),record.get('source_id'),record['path'])
             if key not in seen:
-                seen.add(key)
-                unique.append(r)
+                seen.add(key);unique.append(record)
         return unique
+
 
     def _build_toon_lines(self, records: List[Dict]) -> List[str]:
         """Build TOON-format lines (name | tagged_path | size | category)."""

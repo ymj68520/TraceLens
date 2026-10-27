@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Literal, Optional, Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator, model_serializer
 
 
 class ParsedEvidenceKey(BaseModel):
@@ -22,11 +22,12 @@ class ParsedEvidenceKey(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    evidence_type: Literal["file", "cluster", "android_artifact"]
+    evidence_type: Literal["file", "cluster", "android_artifact", "windows_artifact"]
     canonical_key: str
 
     # file
     normalized_path: Optional[str] = None
+    source_id: Optional[str] = None
     # cluster (event_type is decoded, human-readable)
     version: Optional[str] = None
     unix_minute: Optional[int] = None
@@ -36,8 +37,19 @@ class ParsedEvidenceKey(BaseModel):
     artifact_kind: Optional[str] = None
     artifact_record_id: Optional[int] = None
 
+    @model_serializer(mode="wrap")
+    def _serialize_source(self, handler):
+        value=handler(self)
+        for name in ("source_id", "source_locator"):
+            if value.get(name) is None: value.pop(name,None)
+        return value
+
     @model_validator(mode="after")
     def _check_consistency(self) -> "ParsedEvidenceKey":
+        if self.source_id is not None:
+            import re
+            if self.evidence_type != "file" or not re.fullmatch(r"[0-9a-f]{64}",self.source_id):
+                raise ValueError("invalid file source identity")
         if self.evidence_type == "file":
             if self.normalized_path is None:
                 raise ValueError("file evidence key requires normalized_path")
@@ -75,10 +87,11 @@ class ResolvedEvidence(BaseModel):
 
     task_id: str
     evidence_key: str  # canonical
-    evidence_type: Literal["file", "cluster", "android_artifact"]
+    evidence_type: Literal["file", "cluster", "android_artifact", "windows_artifact"]
 
     # file
     normalized_path: Optional[str] = None
+    source_id: Optional[str] = None
     # cluster (recomputed from the stable identity; never fabricated)
     version: Optional[str] = None
     unix_minute: Optional[int] = None
@@ -94,9 +107,21 @@ class ResolvedEvidence(BaseModel):
     # server-internal only: never serialized, never client-supplied
     source_db: str = Field(exclude=True, default="")
     result_manifest: dict[str, Any] = Field(exclude=True, default_factory=dict)
+    source_locator: Optional[dict[str, Any]] = None
+
+    @model_serializer(mode="wrap")
+    def _serialize_source(self, handler):
+        value=handler(self)
+        for name in ("source_id", "source_locator"):
+            if value.get(name) is None: value.pop(name,None)
+        return value
 
     @model_validator(mode="after")
     def _check_consistency(self) -> "ResolvedEvidence":
+        if self.source_id is not None:
+            import re
+            if self.evidence_type != "file" or not re.fullmatch(r"[0-9a-f]{64}",self.source_id):
+                raise ValueError("invalid file source identity")
         if self.evidence_type == "file":
             if self.normalized_path is None:
                 raise ValueError("file evidence requires normalized_path")

@@ -1,5 +1,7 @@
 #include "FileExtractor.h"
+#include "DatabaseManager/SourceIndex.h"
 #include "AndroidAnalyzer/HarmonyBackupExtractor.h"
+#include "AndroidAnalyzer/XiaomiImageExtractor.h"
 #include "AuditLog/AuditLog.h"
 #include <iostream>
 #include <fstream>
@@ -44,7 +46,13 @@ bool FileExtractor::initialize() {
         // A frozen source index is mandatory when extracting through a task.
         if (!source->loadIndex(dbManager_->getDb())) return false;
         logicalSource_ = std::move(source);
-        return true;
+        return forensics::sources::ensure(dbManager_->getDb(), imagePath_);
+    }
+    if (XiaomiImageExtractor::recognizes(imagePath_)) {
+        auto source = std::make_unique<XiaomiImageExtractor>(imagePath_);
+        if (!source->loadIndex(dbManager_->getDb())) return false;
+        logicalSource_ = std::move(source);
+        return forensics::sources::ensure(dbManager_->getDb(), imagePath_);
     }
     // Open image
     if (!openImage()) {
@@ -60,7 +68,7 @@ bool FileExtractor::initialize() {
 
     std::cout << "File extractor initialized successfully" << std::endl;
     AuditLog::instance().log("SYSTEM", "EXTRACTOR_INIT", "File extractor initialized: " + imagePath_);
-    return true;
+    return forensics::sources::ensure(dbManager_->getDb(), imagePath_);
 }
 
 std::vector<std::string> FileExtractor::findPathsByFilename(
@@ -206,10 +214,6 @@ TSK_FS_INFO* FileExtractor::fsForPartition(int partitionNum) const {
     // successful open on the wrong filesystem silently corrupts evidence.
     if (partitionNum != 0) {
         return nullptr;
-    }
-    // Legacy single-filesystem databases used partition_num=0.
-    if (fsByPartition_.size() == 1) {
-        return fsByPartition_.begin()->second;
     }
     return nullptr;
 }

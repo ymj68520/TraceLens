@@ -461,7 +461,10 @@ async def compare_directions(envelope, materials, llm, current_directions=(),
 
 def stage_citation_name(evidence_key: str) -> str:
     """File name used in narrative text; the reader places citation chips by it."""
-    path = evidence_key[5:] if evidence_key.startswith("file:") else evidence_key
+    if evidence_key.startswith("file:"):
+        from ..evidence.keys import parse_evidence_key
+        path=parse_evidence_key(evidence_key).normalized_path
+    else:path=evidence_key
     return path.rsplit("/", 1)[-1] if "/" in path else path
 
 

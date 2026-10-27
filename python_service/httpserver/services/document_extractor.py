@@ -24,9 +24,26 @@ class ExtractorLocator:
     def __init__(self):
         pass
         
-    def get_extractor(self, file_path: str) -> Optional[BaseExtractor]:
+    def get_extractor(self, file_path: str, logical_name: str | None = None) -> Optional[BaseExtractor]:
         """Locates the appropriate extractor for the given file path."""
         path = Path(file_path)
+        name = logical_name or path.name
+        if path.is_file():
+            try:
+                with path.open('rb') as stream: signature=stream.read(20)
+            except OSError: signature=b''
+            if signature.startswith(b'SQLite format 3\x00'):
+                from .extractors.sqlite_records import SQLiteExtractor
+                return SQLiteExtractor()
+            if signature.startswith(b'regf'):
+                from .extractors.windows_registry import RegistryExtractor
+                return RegistryExtractor()
+            if signature.startswith(b'ElfFile\x00'):
+                from .extractors.windows_evtx import EvtxExtractor
+                return EvtxExtractor()
+            if signature[:3]==b'MAM' or signature[4:8]==b'SCCA':
+                from .extractors.windows_prefetch import PrefetchExtractor
+                return PrefetchExtractor()
 
         # Filename-based routing must come first: registry hives (SAM, SYSTEM,
         # SOFTWARE, SECURITY, DEFAULT, NTUSER.DAT) and Linux logs (wtmp, btmp)
@@ -34,7 +51,7 @@ class ExtractorLocator:
         # None before their names were ever consulted. The hives then fell
         # through to markitdown, which cannot read them, and every registry
         # artifact in a case failed with HTTP 500.
-        extractor = get_extractor_by_filename(path.name)
+        extractor = get_extractor_by_filename(name)
         if extractor:
             logger.info(f"Routed '{path.name}' to {extractor.__class__.__name__} (by filename)")
             return extractor

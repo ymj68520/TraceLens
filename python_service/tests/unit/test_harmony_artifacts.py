@@ -1,5 +1,6 @@
 """Harmony records use the existing frozen Android evidence/report contract."""
 import asyncio
+import pytest
 import json
 import sqlite3
 from pathlib import Path
@@ -21,7 +22,39 @@ def test_decrypted_backup_detection_is_structural(tmp_path):
     assert _probe(tmp_path)["kind"] == "unknown_directory"
 
 
-def test_mobile_record_freezes_and_retains_source_key_in_investigation(tmp_path):
+def test_xiaomi_binary_note_capture_preserves_field_offsets_without_database_or_time_claim(tmp_path):
+    database = tmp_path / 'android.db'
+    with sqlite3.connect(database) as con:
+        con.execute('CREATE TABLE mobile_artifacts(id INTEGER PRIMARY KEY,kind TEXT,package_name TEXT,app_index INTEGER,'
+                    'source_path TEXT,source_table TEXT,source_key TEXT,record_json TEXT,timestamp_raw TEXT,time_unit TEXT,'
+                    'timestamp_seconds INTEGER,source_db_sha256 TEXT,source_wal_sha256 TEXT,parser_version TEXT)')
+        con.execute('INSERT INTO mobile_artifacts VALUES(1,?,?,?,?,?,?,?,?,?,?,?,?,?)', (
+            'note', 'com.miui.notes', 0, '/data/com.miui.notes/miui_bak/_tmp_bak', 'protobuf:6.2',
+            '{"id":"fixture","byte_offset":2,"byte_length":11}', '{"content":"合成便签"}',
+            '1700000000000', 'unverified_backup_field', None, 'a' * 64, '', 'miui-notes-protobuf-v1'))
+        con.execute('CREATE TABLE android_source_coverage(artifact_kind TEXT,source_path TEXT,status TEXT,detail TEXT)')
+    task = {'id': 'xiaomi-note-fixture', 'android_source': 'xiaomi-image', 'output_files_db': str(database),
+            'metadata': {'android_db': str(database)}}
+    detail = artifact_detail(task, 'mobile', 1)
+    assert detail['source']['platform'] == 'Android / MIUI'
+    assert detail['source']['source_format'] == 'protobuf'
+    assert detail['source']['granularity'] == 'binary_record'
+    frozen = freeze_selected_result(task, 'mobile', 1, expected_row_hash=detail['record_hash'],
+                                    expected_source_revision=detail['source_revision'])
+    cpp = AsyncMock(); cpp.get_task = AsyncMock(return_value=task)
+    key = f"android_artifact:v1:{task['id']}:{frozen['result_set_id']}:mobile:1"
+    resolved = asyncio.run(EvidenceResolver(cpp).resolve_evidence(task['id'], key))
+    snapshot = _acquire_android_artifact(resolved)
+    assert snapshot.provenance['original_database_record'] == 'not_applicable'
+    assert snapshot.provenance['binary_record'] == 'parser_bound_field_and_byte_offset'
+    assert snapshot.provenance['original_primary_key']['byte_offset'] == 2
+    assert snapshot.parser_name == 'AndroidAnalyzer/XiaomiImage'
+    assert snapshot.timestamp_timezone is None
+
+
+@pytest.mark.parametrize("mobile_source", ["harmony-backup", "xiaomi-image"])
+def test_mobile_record_freezes_and_retains_source_key_in_investigation(tmp_path, mobile_source):
+    parser_version = "xiaomi-export-mobile-v1" if mobile_source == "xiaomi-image" else "harmony-decrypted-v1"
     db = tmp_path / "android.db"
     source = "/harmony/com.huawei.hmos.calendardata/0/data/storage/el2/database/entry/rdb/calendardata.db"
     with sqlite3.connect(db) as con:
@@ -31,17 +64,18 @@ def test_mobile_record_freezes_and_retains_source_key_in_investigation(tmp_path)
         con.execute("INSERT INTO mobile_artifacts VALUES(1,?,?,?,?,?,?,?,?,?,?,?,?,?)", (
             "calendar", "com.huawei.hmos.calendardata", 0, source, "Events", '{"_id":7}',
             '{"title":"test event","dtstart":1700000000000}', "1700000000000", "epoch_ms",
-            1700000000, "a" * 64, "b" * 64, "harmony-decrypted-v1"))
+            1700000000, "a" * 64, "b" * 64, parser_version))
         con.execute("CREATE TABLE android_source_coverage(artifact_kind TEXT,source_path TEXT,status TEXT,detail TEXT)")
         con.execute("INSERT INTO android_source_coverage VALUES('calendar',?,'parsed','rows=1')", (source,))
         con.execute("CREATE TABLE android_source_provenance(normalized_android_path TEXT,source_member_path TEXT,"
                     "source_container TEXT,source_container_sha256 TEXT)")
         con.execute("INSERT INTO android_source_provenance VALUES(?,?,?,?)", (source,
             "/data/storage/el2/database/entry/rdb/calendardata.db", "part.0.tarx", "c" * 64))
-    task = {"id": "harmony-fixture", "output_files_db": str(db), "android_source": "harmony-backup",
+    task = {"id": "harmony-fixture", "output_files_db": str(db), "android_source": mobile_source,
             "metadata": {"android_db": str(db)}}
     assert list_artifacts(task, "mobile", query="test event")["total"] == 1
     detail = artifact_detail(task, "mobile", 1)
+    assert detail["source"]["platform"] == ("Android / MIUI" if mobile_source == "xiaomi-image" else "HarmonyOS")
     assert detail["source"]["original_primary_key"] == {"_id": 7}
     assert detail["source"]["wal_frame"] is None
     frozen = freeze_selected_result(task, "mobile", 1, expected_row_hash=detail["record_hash"],
@@ -56,8 +90,8 @@ def test_mobile_record_freezes_and_retains_source_key_in_investigation(tmp_path)
     assert snapshot.provenance["original_primary_key"] == {"_id": 7}
     assert snapshot.provenance["wal_frame"] is None
     assert snapshot.timestamp_unit == "epoch_ms"
-    assert snapshot.parser_version == "harmony-decrypted-v1"
-    assert snapshot.normalized_fields["platform"] == "HarmonyOS"
+    assert snapshot.parser_version == parser_version
+    assert snapshot.normalized_fields["platform"] == ("Android / MIUI" if mobile_source == "xiaomi-image" else "HarmonyOS")
     # The ordinary pipeline report seeder also adopts analyzed mobile rows.
     # The test substitutes an existing analysis result, never a real model call.
     with sqlite3.connect(db) as con:

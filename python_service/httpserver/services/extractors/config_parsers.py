@@ -17,89 +17,24 @@ def _format_size(size_bytes: int) -> str:
 
 @register_extractor
 class IniExtractor(BaseExtractor):
-    """Deep parser for INI/CONF/CFG configuration files."""
+    """Bounded, verbatim projection of configuration source text.
 
-    INI_EXTENSIONS = {'.ini', '.conf', '.cfg', '.config', '.properties', '.env'}
+    A .conf suffix does not imply INI syntax. Nginx blocks and SSH directives
+    must survive, as must duplicate keys, case, comments and percent literals.
+    Configuration contents establish definitions, not their effective runtime.
+    """
+
+    INI_EXTENSIONS = {'.ini', '.conf', '.cnf', '.cfg', '.config', '.properties', '.env'}
 
     async def extract_to_markdown(self, file_path: str) -> str:
-        try:
-            import configparser
-        except ImportError:
-            return "Error: configparser not available."
+        return (await self.extract_result(file_path)).require_content()
 
-        try:
-            config = configparser.ConfigParser()
-            config.read(file_path, encoding='utf-8')
+    async def extract_result(self, file_path: str):
+        from dataclasses import replace
+        from .text_dump import TextDumpExtractor
 
-            result = [f"# Configuration File: `{os.path.basename(file_path)}`"]
-            result.append(f"**File Size:** {_format_size(os.path.getsize(file_path))}")
-            result.append(f"**Sections:** {len(config.sections())}")
-            result.append("")
-
-            if not config.sections():
-                # Try reading as key=value without sections
-                with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
-                    lines = f.readlines()
-
-                result.append("## Key-Value Pairs")
-                result.append("| Key | Value |")
-                result.append("| --- | --- |")
-                count = 0
-                for line in lines:
-                    line = line.strip()
-                    if line and not line.startswith('#') and not line.startswith(';') and '=' in line:
-                        key, _, value = line.partition('=')
-                        result.append(f"| {key.strip()} | {value.strip()[:100]} |")
-                        count += 1
-                        if count >= 100:
-                            break
-            else:
-                for section in config.sections():
-                    result.append(f"## [{section}]")
-                    result.append("| Key | Value |")
-                    result.append("| --- | --- |")
-                    for key, value in config.items(section):
-                        result.append(f"| {key} | {value[:100]} |")
-                    result.append("")
-
-            return "\n".join(result)
-        except configparser.Error:
-            # Fallback: treat as plain key=value
-            return self._parse_kv(file_path)
-        except Exception as e:
-            return f"Error: Failed to parse config file: {e}"
-
-    def _parse_kv(self, file_path: str) -> str:
-        try:
-            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
-                lines = f.readlines()
-
-            result = [f"# Configuration File: `{os.path.basename(file_path)}`"]
-            result.append(f"**File Size:** {_format_size(os.path.getsize(file_path))}")
-            result.append("")
-            result.append("## Key-Value Pairs")
-            result.append("| Key | Value |")
-            result.append("| --- | --- |")
-
-            count = 0
-            for line in lines:
-                line = line.strip()
-                if line and not line.startswith('#') and not line.startswith(';'):
-                    if '=' in line:
-                        key, _, value = line.partition('=')
-                        result.append(f"| {key.strip()} | {value.strip()[:100]} |")
-                        count += 1
-                    elif ':' in line:
-                        key, _, value = line.partition(':')
-                        result.append(f"| {key.strip()} | {value.strip()[:100]} |")
-                        count += 1
-
-                    if count >= 200:
-                        break
-
-            return "\n".join(result)
-        except Exception as e:
-            return f"Error: Failed to read config file: {e}"
+        parsed = await TextDumpExtractor().extract_result(file_path)
+        return replace(parsed, parser="configuration_source_text", parser_version="2")
 
 
 @register_extractor

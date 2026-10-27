@@ -19,6 +19,24 @@ void configure_field_client(httplib::Client& client) {
 LLMPythonProxy::LLMPythonProxy(const std::string& python_service_url)
     : python_service_url_(python_service_url) {}
 
+nlohmann::json LLMPythonProxy::startClusterRun(const std::string& taskId) {
+    httplib::Client cli(python_service_url_);configure_field_client(cli);cli.set_connection_timeout(5);cli.set_read_timeout(60);
+    auto response=cli.Post("/api/llm/event-cluster-analysis/run",nlohmann::json({{"task_id",taskId},{"trigger_source","pipeline"}}).dump(),"application/json");
+    if(response && response->status==503)return {{"status","disabled"}};
+    if(!response || response->status!=200)throw std::runtime_error("事件分析服务启动失败");
+    return nlohmann::json::parse(response->body);
+}
+nlohmann::json LLMPythonProxy::clusterRunStatus(const std::string& jobId) {
+    httplib::Client cli(python_service_url_);configure_field_client(cli);cli.set_connection_timeout(5);cli.set_read_timeout(30);
+    auto response=cli.Get(("/api/llm/event-cluster-analysis/run/"+jobId).c_str());
+    if(!response || response->status!=200)throw std::runtime_error("事件分析进度读取失败");
+    return nlohmann::json::parse(response->body);
+}
+void LLMPythonProxy::cancelClusterRun(const std::string& jobId) {
+    httplib::Client cli(python_service_url_);configure_field_client(cli);cli.set_connection_timeout(5);cli.set_read_timeout(10);
+    cli.Post(("/api/llm/event-cluster-analysis/run/"+jobId+"/cancel").c_str(),"{}","application/json");
+}
+
 bool LLMPythonProxy::isServiceAvailable() {
     try {
         httplib::Client cli(python_service_url_);
@@ -31,6 +49,14 @@ bool LLMPythonProxy::isServiceAvailable() {
     } catch (...) {
         return false;
     }
+}
+
+nlohmann::json LLMPythonProxy::probeFileSelection(const nlohmann::json& payload) {
+    httplib::Client cli(python_service_url_);configure_field_client(cli);
+    cli.set_connection_timeout(3);cli.set_read_timeout(300);
+    auto response=cli.Post("/api/llm/file-analysis/probe",payload.dump(),"application/json");
+    if(!response || response->status!=200)throw std::runtime_error("语义探测服务不可用");
+    return nlohmann::json::parse(response->body);
 }
 
 bool LLMPythonProxy::recordFileAnalysisResult(

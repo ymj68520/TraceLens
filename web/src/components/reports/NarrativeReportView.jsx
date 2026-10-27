@@ -1,3 +1,4 @@
+import { stripFileKeyPrefix } from '../../utils/evidenceKey';
 // NarrativeReportView.jsx
 // R2d narrative 报告阅读视图：只消费 persisted narrative version 的
 // strict 读响应（sections + persisted citation manifest + audit 元数据）。
@@ -16,6 +17,10 @@ import { placeNarrativeCitations } from './narrativeCitationPlacement';
 import EvidenceClassification, { ClassificationBadges, ClassificationDetails } from './EvidenceClassification';
 import { priorityStyle } from './evidenceClassificationStyles';
 import StageAnalysisPanel, { StageSourcePanel } from './StageAnalysisPanel';
+import ReportOrganizationPanel from './ReportOrganizationPanel';
+import DeliveryQualityPanel from './DeliveryQualityPanel';
+import { forensicError } from '../../utils/forensicLabels';
+import { explicitNarrativeParts } from './narrativeCitationPlacement';
 
 function previewText(value, limit) {
     const text = String(value || '').replace(/\s+/g, ' ').trim();
@@ -26,9 +31,9 @@ function CitationMarker({ taskId, reportId, citationId, citation, classification
     const [hovered, setHovered] = useState(false);
     const [popupPlacement, setPopupPlacement] = useState({ left: 0, below: false });
     const markerRef = useRef(null);
-    const isAndroid = citation?.evidence_key?.startsWith('android_artifact:');
-    const filename = isAndroid ? `Android 工件 ${citation?.evidence_key?.split(':').slice(-2).join(' #')}`
-        : citation?.evidence_key?.slice(5).split(/[\\/]/).pop() || citationId;
+    const isAndroid = (citation?.evidence_key?.startsWith('android_artifact:') || citation?.evidence_key?.startsWith('windows_artifact:'));
+    const filename = isAndroid ? `${citation?.evidence_key?.startsWith('windows_artifact:') ? 'Windows记录' : 'Android 工件'} ${citation?.evidence_key?.split(':').slice(-2).join(' #')}`
+        : stripFileKeyPrefix(citation?.evidence_key)?.split(/[\\/]/).pop() || citationId;
     const evidenceUrl = investigationEvidenceUrl(taskId, citation?.evidence_key, { reportId, citationId });
     const showPreview = () => {
         const bounds = markerRef.current?.getBoundingClientRect();
@@ -173,6 +178,14 @@ const NarrativeReportView = ({
             .then((snapshot) => {
                 if (identityRef.current !== requestedIdentity) return;
                 const payload = snapshot?.payload || snapshot?.snapshot?.payload || {};
+                if (snapshot?.evidence_type === 'windows_artifact' || payload.evidence_type === 'windows_artifact') {
+                    setCitationPreviews(previous => ({ ...previous, [citationId]: {
+                        title: `Windows 来源记录 #${payload.record_id ?? '—'}`,
+                        summary: payload.record_fields?.observation || '冻结来源记录',
+                        description: '活动含义、时间与回收状态以冻结原始字段为准。',
+                    }}));
+                    return;
+                }
                 if (snapshot?.evidence_type === 'android_artifact' || payload.evidence_type === 'android_artifact') {
                     const fields = payload.record_fields || {};
                     const kind = payload.artifact_kind || 'unknown';
@@ -191,7 +204,7 @@ const NarrativeReportView = ({
                     ? fullDescription.slice(130).trim()
                     : fullDescription;
                 setCitationPreviews((previous) => ({ ...previous, [citationId]: {
-                    title: payload.name || citation.evidence_key.slice(5).split(/[\\/]/).pop(),
+                    title: payload.name || (stripFileKeyPrefix(citation.evidence_key) || '').split(/[\\/]/).pop(),
                     summary: previewText(fullSummary, 130),
                     description: previewText(moreDescription, 190),
                 } }));
@@ -235,12 +248,23 @@ const NarrativeReportView = ({
         };
     }, [openEntry]);
 
+    const openMaterial = materialId => {
+        const material=report?.stage_analysis?.materials.find(m => m.material_id===materialId);
+        const citation=report?.citations.find(c => c.evidence_key===material?.evidence_key);
+        if (citation) setOpenCitationId(citation.citation_id);
+    };
+    const explicitProse = (section,prefix) => explicitNarrativeParts(section.content,section.citation_ids,citationsById).map((part,index) => part.citationId
+        ? <CitationMarker key={`${prefix}-${index}`} taskId={taskId} reportId={reportId} citationId={part.citationId}
+            citation={citationsById.get(part.citationId)} classification={classificationsByKey.get(citationsById.get(part.citationId)?.evidence_key)}
+            inline focused={focusCitationId===part.citationId} preview={citationPreviews[part.citationId]} onOpen={openCitation} onPreview={loadPreview} />
+        : part.text);
+
     return (
         <div className="space-y-4 [overflow-wrap:anywhere]" data-testid="narrative-report-view">
             {error && (
                 <div role="alert" className="rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-900/20 p-4 text-sm text-rose-600 dark:text-rose-400" data-testid="narrative-report-error">
                     叙事报告暂时不可读取（HTTP {error?.status || '错误'}）：
-                    {error?.data?.detail || error?.message || '请稍后重试'}
+                    {forensicError(error, '报告记录暂不可用，请核对版本与完整性。')}
                 </div>
             )}
             {!report && !error && (
@@ -263,26 +287,30 @@ const NarrativeReportView = ({
                         <details className="group mt-4 border-t border-indigo-100 pt-3 dark:border-slate-700">
                             <summary className="flex w-fit cursor-pointer items-center gap-1 text-xs font-medium text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-300">查看版本审计信息 <ChevronDown size={13} className="transition-transform group-open:rotate-180" aria-hidden /></summary>
                             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-mono text-slate-400" data-testid="narrative-audit-metadata">
-                                <span>generation {report.generation_id}</span>
-                                <span>prompt {report.prompt_version}</span>
-                                <span>model {report.model}</span>
-                                <span>input_hash {report.input_hash?.slice(0, 16)}…</span>
+                                <span>生成记录 {report.generation_id}</span>
+                                <span>提示版本 {report.prompt_version}</span>
+                                <span>模型 {report.model}</span>
+                                <span>输入摘要 {report.input_hash?.slice(0, 16)}…</span>
                             </div>
                         </details>
                     </header>
 
+                    <DeliveryQualityPanel quality={report.quality} />
+                    <ReportOrganizationPanel organization={report.organization} onOpenMaterial={openMaterial} />
                     <EvidenceClassification key={reportId} classification={report.evidence_classifications}
                         citations={report.citations} taskId={taskId} reportId={reportId} onOpenCitation={openCitation} />
+                    {!report.organization && <>
                     <StageAnalysisPanel stage={report.stage_analysis} taskId={taskId} classifications={report.evidence_classifications}
                         onOpenMaterial={materialId => {
                             const material = report.stage_analysis?.materials.find(m => m.material_id === materialId);
                             const citation = report.citations.find(c => c.evidence_key === material?.evidence_key);
                             if (citation) setOpenCitationId(citation.citation_id);
                         }} />
+                    </>}
 
                     <article className="space-y-5" data-testid="narrative-sections">
                         {(report.sections || []).map((section, index) => {
-                            const { placements, unresolved } = placeNarrativeCitations(section.content, section.citation_ids, citationsById);
+                            const { placements, unresolved } = report.organization ? { placements: [], unresolved: [] } : placeNarrativeCitations(section.content, section.citation_ids, citationsById);
                             const prose = [];
                             let cursor = 0;
                             placements.forEach(({ end, citationId }) => {
@@ -291,6 +319,7 @@ const NarrativeReportView = ({
                                 cursor = end;
                             });
                             prose.push(section.content.slice(cursor));
+                            if (report.organization) { prose.length=0; prose.push(...explicitProse(section,`body-${index}`)); }
                             return (
                                 <section key={`${section.heading}-${index}`} className="rounded-2xl border border-slate-200 bg-white px-5 py-6 shadow-sm dark:border-slate-700 dark:bg-slate-800 md:px-7 md:py-7" data-testid="narrative-section">
                                     <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-700">
@@ -314,6 +343,15 @@ const NarrativeReportView = ({
                         })}
                     </article>
 
+                    {report.organization && <details className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800" data-testid="narrative-appendices">
+                        <summary className="cursor-pointer font-semibold">报告附录 · 材料覆盖、未决事项与来源审计</summary>
+                        {(report.appendices || []).map((section,index) => <section key={index} className="mt-4">
+                            <h3 className="font-semibold">{section.heading}</h3>
+                            <p className="mt-2 whitespace-pre-wrap text-sm leading-7">{explicitProse(section,`appendix-${index}`)}</p>
+                        </section>)}
+                        <StageAnalysisPanel stage={report.stage_analysis} taskId={taskId} classifications={report.evidence_classifications} onOpenMaterial={openMaterial} />
+                    </details>}
+
                     {openCitationId && !openEntry && (
                         <p className="text-xs text-amber-600 dark:text-amber-400" data-testid="citation-unknown-warning">
                             未知引用 ID：{openCitationId}。manifest 中不存在该引用，不做任何推测。
@@ -325,7 +363,7 @@ const NarrativeReportView = ({
                             <div ref={tracebackRef} id={`citation-evidence-${openCitationId}`} role="dialog" aria-modal="true" aria-label={`引用 ${openCitationId} 的证据溯源`} tabIndex={-1} className="relative z-10 h-full w-full max-w-[540px] overflow-y-auto border-l border-blue-100 bg-slate-50 p-4 shadow-[-18px_0_45px_rgba(15,23,42,0.2)] outline-none dark:border-slate-700 dark:bg-slate-900 md:p-6" data-testid="citation-evidence-target">
                                 {report.stage_analysis
                                     ? <StageSourcePanel material={stageMaterialsByKey.get(openEntry.evidence_key)} citationId={openCitationId}
-                                        taskId={taskId} reportId={reportId} onClose={() => setOpenCitationId(null)} />
+                                        taskId={taskId} reportId={reportId} sourceSpans={(report.organization?.spans || []).filter(s => s.evidence_key===openEntry.evidence_key)} onClose={() => setOpenCitationId(null)} />
                                     : <TracebackPanel taskId={taskId} reportId={reportId} citation={openEntry} onClose={() => setOpenCitationId(null)} />}
                                 <section className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800" aria-label="引用证据分类">
                                     <h4 className="mb-3 text-sm font-semibold text-slate-800 dark:text-slate-100">报告生成时的证据分类</h4>

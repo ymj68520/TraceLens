@@ -5,6 +5,7 @@
 #include "LogicalDirExtractor.h"
 #include "ZipArchiveExtractor.h"
 #include "HarmonyBackupExtractor.h"
+#include "XiaomiImageExtractor.h"
 #include "HarmonyArtifactParsers.h"
 #include "MiuiBackupExtractor.h"
 #include "ArchiveFileExtractor.h"
@@ -70,6 +71,7 @@ bool AndroidAnalyzer::initialize() {
     sourceError_.clear();
     if ((sourceMode_ == AndroidSourceMode::LogicalDir || sourceMode_ == AndroidSourceMode::TSK) &&
         HarmonyBackupExtractor::recognizes(imagePath_)) sourceMode_ = AndroidSourceMode::HarmonyBackup;
+    if (sourceMode_ == AndroidSourceMode::TSK && XiaomiImageExtractor::recognizes(imagePath_)) sourceMode_ = AndroidSourceMode::XiaomiImage;
     // Auto-promote a generic directory source to MIUI backup mode when the
     // folder is in fact a MIUI backup (descript.xml + .bak files). This keeps
     // analysis correct regardless of which source the user picked in the UI —
@@ -87,6 +89,10 @@ bool AndroidAnalyzer::initialize() {
     // in this module go through fileExtractor_->extractFileByPath(...), so the
     // backend is transparent to the parsing logic.
     switch (sourceMode_) {
+        case AndroidSourceMode::XiaomiImage: {
+            fileExtractor_ = std::make_unique<XiaomiImageExtractor>(imagePath_);
+            break;
+        }
         case AndroidSourceMode::HarmonyBackup: {
             fileExtractor_ = std::make_unique<HarmonyBackupExtractor>(imagePath_);
             break;
@@ -131,7 +137,7 @@ bool AndroidAnalyzer::initialize() {
             break;
     }
 
-    auto* harmony = dynamic_cast<HarmonyBackupExtractor*>(fileExtractor_.get());
+    auto* harmony = dynamic_cast<IndexedMobileSource*>(fileExtractor_.get());
     if (harmony) harmony->setProgress(sourceProgress_, sourceCancelled_);
     const bool initialized = harmony && dbManager_
         ? harmony->loadIndex(dbManager_->getDb()) : fileExtractor_->initialize();
@@ -191,8 +197,8 @@ bool AndroidAnalyzer::initialize() {
 }
 
 void AndroidAnalyzer::analyzeAndroidData() {
-    if (auto* harmony = dynamic_cast<HarmonyBackupExtractor*>(fileExtractor_.get())) {
-        if (!analyzeHarmonyBackup(*harmony, *androidDb_, secureTemporaryRoot_))
+    if (auto* harmony = dynamic_cast<IndexedMobileSource*>(fileExtractor_.get())) {
+        if (!analyzeMobileSource(*harmony, *androidDb_, secureTemporaryRoot_))
             throw std::runtime_error("HARMONY_ANALYSIS_FAILED");
         analyzeWithLLM();
         AuditLog::instance().log("SYSTEM", "HARMONY_ANALYSIS_COMPLETE", imagePath_);

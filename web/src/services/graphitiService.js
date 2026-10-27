@@ -101,8 +101,8 @@ export const deleteTaskGraph = async (taskId) => {
  * 获取导入任务状态
  * @param {string} jobId - 任务 ID
  */
-export const getJobStatus = async (jobId) => {
-    return await pythonApi.get(`/api/graphiti/jobs/${jobId}`);
+export const getJobStatus = async (jobId, taskId) => {
+    return await pythonApi.get(`/api/graphiti/jobs/${encodeURIComponent(jobId)}`, { params: taskId ? { task_id: taskId } : {} });
 };
 
 /**

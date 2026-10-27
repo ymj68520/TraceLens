@@ -204,7 +204,10 @@ class LLMService:
         # normalize_evidence_path is idempotent on already-canonical paths, so the
         # normal flow (file_path from SELECT path, already '/'-style) is unchanged;
         # only backslash / duplicate-separator inputs are aligned with files.path.
-        norm_path = normalize_evidence_path(file_path)
+        from ..source_identity import decode_reference, analysis_reference, file_row
+        norm_path, source_id = decode_reference(file_path)
+        source_id = source_id or ""
+        description_key = analysis_reference(norm_path,source_id)
 
         update_files_sql = """
             UPDATE files SET
@@ -213,16 +216,17 @@ class LLMService:
                 llm_keywords = ?,
                 llm_analyzed_at = ?,
                 llm_model_used = ?
-            WHERE path = ?
+            WHERE rowid = ?
         """
         insert_analysis_sql = """
             INSERT INTO file_analyses (
-                task_id, file_path, md5, summary, description,
+                task_id, file_path, source_id, md5, summary, description,
                 keywords, model, extraction_method, trigger_source,
                 analysis_id_upstream, created_at, ingested_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
         """
         def _attempt() -> bool:
+            nonlocal source_id,description_key
             # Schema ensure is idempotent and runs outside the write
             # transaction; the truth table must exist before the first row.
             ensure_file_analysis_schema(db_path)
@@ -237,40 +241,39 @@ class LLMService:
                 # 0) Identity gate + snapshot: the Evidence row must really
                 #    exist, and its pre-existing llm_* values (if any) are the
                 #    D19 archival source.
-                cur.execute(
-                    "SELECT md5, llm_summary, llm_description, llm_keywords, "
-                    "llm_analyzed_at, llm_model_used FROM files WHERE path = ?",
-                    (norm_path,),
-                )
-                row = cur.fetchone()
-                if row is None:
-                    logger.warning(
-                        f"Path match failed for {file_path!r} "
-                        f"(normalized: {norm_path!r}) in {db_path!r}"
-                    )
-                    return False
-                (file_md5, old_summary, old_description, old_keywords,
-                 old_analyzed_at, old_model) = row
+                metadata, _locator = file_row(conn,norm_path,source_id or None)
+                if not source_id and metadata.get('source_id'):
+                    source_id=metadata['source_id']
+                    metadata,_locator=file_row(conn,norm_path,source_id)
+                    description_key=analysis_reference(norm_path,source_id)
+                file_row_id=metadata["source_row_id"]
+                file_md5=metadata.get("md5")
+                old_summary,old_description,old_keywords,old_analyzed_at,old_model=(metadata.get(k) for k in
+                    ("llm_summary","llm_description","llm_keywords","llm_analyzed_at","llm_model_used"))
 
                 # D8/D19: chain state — the previous latest truth record (if
                 # any) both gates the legacy archival (a cache backed by its
                 # own truth record is OURS, never archived) and becomes the
                 # new record's analysis_id_upstream.
                 cur.execute(
-                    "SELECT MAX(id) FROM file_analyses WHERE file_path = ?",
-                    (norm_path,),
+                    "SELECT MAX(id) FROM file_analyses WHERE file_path = ? AND source_id = ?",
+                    (norm_path,source_id),
                 )
                 previous_row = cur.fetchone()
                 previous_id = previous_row[0] if previous_row else None
 
                 if old_analyzed_at is not None and previous_id is None:
+                    # A legacy path cache cannot establish which duplicate source
+                    # it described. Keep it explicitly unbound in the history.
+                    duplicates=cur.execute("SELECT COUNT(*) FROM files WHERE path=?",(norm_path,)).fetchone()[0]
+                    archive_source_id=source_id if duplicates==1 else ""
                     cur.execute(insert_analysis_sql, (
-                        task_id, norm_path, file_md5 or "",
+                        task_id, norm_path, archive_source_id, file_md5 or "",
                         old_summary or "", old_description or "",
                         old_keywords or "", old_model or "",
                         "", "migrated", None, int(old_analyzed_at),
                     ))
-                    previous_id = cur.lastrowid
+                    previous_id = cur.lastrowid if archive_source_id==source_id else None
                     logger.info(
                         f"Archived pre-existing (CLI) description for "
                         f"{norm_path!r} as trigger_source='migrated'"
@@ -283,7 +286,7 @@ class LLMService:
                     keywords,
                     int(time.time()),
                     model_used,
-                    norm_path,
+                    file_row_id,
                 ))
                 if cur.rowcount <= 0:  # pragma: no cover — gated by the SELECT
                     logger.warning(
@@ -295,7 +298,7 @@ class LLMService:
                 # 2) Truth: append the analysis record, chained to the
                 #    previous latest version via analysis_id_upstream (D8).
                 cur.execute(insert_analysis_sql, (
-                    task_id, norm_path, file_md5 or "",
+                    task_id, norm_path, source_id, file_md5 or "",
                     summary or description[:200],
                     description,
                     keywords,
@@ -321,7 +324,7 @@ class LLMService:
                         model_used = excluded.model_used,
                         created_at = excluded.created_at
                 """, (
-                    norm_path,
+                    description_key,
                     description,
                     summary or description[:200],
                     keywords,
@@ -334,6 +337,8 @@ class LLMService:
                     f"Successfully persisted LLM result for {file_path!r} "
                     f"(normalized: {norm_path!r})"
                 )
+                from ..model_budget import mark_finished
+                mark_finished(db_path,description_key)
                 return True
 
         # A busy writer is a timing problem, not a data problem: retry the

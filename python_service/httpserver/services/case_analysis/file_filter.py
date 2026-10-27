@@ -1,7 +1,6 @@
 """
-File Filter Module — LLM-driven forensic file filtering.
-
-This module handles file filtering logic, including streaming and legacy methods.
+File selection adapter for the shared native source/content selection plan.
+Legacy response helpers remain for compatibility, outside the public dispatch.
 """
 
 import json
@@ -25,7 +24,7 @@ from .file_filter_parts import FileFilterLegacyMixin
 
 
 class FileFilter(FileFilterLegacyMixin):
-    """Filters files by case relevance using LLM.
+    """Selects source references using the bounded native policy.
 
     NOTE: legacy (pre-streaming) response parsers live in FileFilterLegacyMixin
     (file_filter_parts/_legacy.py). Public surface unchanged.
@@ -59,102 +58,38 @@ class FileFilter(FileFilterLegacyMixin):
         use_streaming: bool = True,
         task_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Select files for case analysis.
-
-        Dispatches on settings.file_filter_mode:
-        - 'deterministic' (default): read all paths from the C++-filtered
-          files.db. No LLM, fully reproducible.
-        - 'llm': legacy LLM selection by case_description.
-        """
-        mode = getattr(self.settings, "file_filter_mode", "deterministic")
-        if mode != "llm":
-            return await self._filter_files_deterministic(
-                files_db_path, max_files, task_id
-            )
-
-        if not self._llm_service:
-            raise RuntimeError("LLM service not initialized")
-
-        # If streaming is disabled, fall back to old method
-        if not use_streaming:
-            return await self._filter_files_by_case_legacy(
-                files_db_path, case_description, max_files, task_id
-            )
-
-        # Extract task_id if not provided
-        if not task_id:
-            task_match = re.search(r'tasks/([a-f0-9-]+)/', files_db_path)
-            task_id = task_match.group(1) if task_match else "_latest"
-
-        # Use concurrent lock if enabled
-        if self._lock_manager and hasattr(self.settings, 'llm_filter_config') and self.settings.llm_filter_config.enable_concurrent_lock:
-            return await self._lock_manager.filter_with_lock(
-                task_id,
-                self._do_filter_files_by_case,
-                files_db_path,
-                case_description,
-                max_files,
-                batch_size,
-                use_streaming,
-            )
-        else:
-            return await self._do_filter_files_by_case(
-                files_db_path,
-                case_description,
-                max_files,
-                batch_size,
-                use_streaming,
-            )
+        """Select files through the shared plan, including legacy mode settings."""
+        return await self._filter_files_deterministic(files_db_path,max_files,task_id,case_description)
 
     async def _filter_files_deterministic(
         self,
         files_db_path: str,
         max_files: int,
         task_id: Optional[str] = None,
+        case_context: str = '',
     ) -> Dict[str, Any]:
-        """Deterministic file selection: read all paths from files.db.
-
-        files.db is already the product of the C++ FileFilter (scenario profile
-        applied at task creation). This method performs NO LLM call and NO
-        rule-based filtering - it selects every file the C++ filter kept, so the
-        selection is reproducible across runs.
-        """
-        records = self._get_file_list_from_db(files_db_path)
-        paths = sorted({r.get("path", "") for r in records if r.get("path")})
-        total_files = len(paths)
-
-        cap = int(getattr(self.settings, "filter_max_files", 0) or 0)
-        if cap > 0:
-            selected = paths[:cap]
-            logger.info(
-                f"[FILE_FILTER] Deterministic cap applied: {len(selected)}/{total_files} "
-                f"(filter_max_files={cap})"
-            )
-        else:
-            selected = paths
-
-        if max_files and max_files > 0:
-            logger.info(
-                f"[FILE_FILTER] max_files={max_files} ignored in deterministic mode; "
-                f"using settings.filter_max_files={cap}"
-            )
-
-        # Mirror the LLM path's task_id extraction so callers that omit task_id
-        # still persist under the real UUID (avoids a silent data-placement
-        # divergence where the deterministic path would write to "_latest").
+        """Consume native quotas, probes and the jointly enforced file cap."""
         if not task_id:
-            task_match = re.search(r'tasks/([a-f0-9-]+)/', files_db_path)
-            task_id = task_match.group(1) if task_match else "_latest"
-        self._persist_filtered_files(files_db_path, task_id, selected)
+            task_match=re.search(r'tasks/([^/]+)/',files_db_path)
+            task_id=task_match.group(1) if task_match else None
+        if not task_id or self._cpp_backend is None:
+            raise ValueError('候选选择需要已登记的任务及原生后端，不能退回路径字母序')
+        cap=int(getattr(self.settings,'filter_max_files',0) or 0)
+        if max_files<0 or cap<0:raise ValueError('文件数量预算不能为负数')
+        effective=min([v for v in (max_files,cap) if v>0],default=0)
+        plan=(await self._cpp_backend.selection_plan([task_id],effective,case_context=case_context)
+              if case_context else await self._cpp_backend.selection_plan([task_id],effective))
+        if not isinstance(plan,dict) or plan.get('schema_version')!=1 or 'selected' not in plan:
+            raise ValueError('原生候选选择计划不可用，未退回无预算筛选')
+        selected=[item['reference'] for item in plan['selected'] if item['task_id']==task_id]
+        if effective and len(selected)>effective:raise ValueError('后端选择计划超出文件数量预算')
+        self._persist_filtered_files(files_db_path,task_id,selected)
+        return {'filtered_files':selected,'reasoning':'按来源、内容状态、类别配额和探索抽样生成选择计划',
+                'total_files':plan['counts']['indexed'],'selected_count':len(selected),
+                'model_used':'native_selection','selection_policy':plan.get('policy_version'),
+                'streaming_used':False,'plan_id':plan['plan_id'],
+                'selection_budget':plan['budget'],'selection_counts':plan['counts']}
 
-        return {
-            "filtered_files": selected,
-            "reasoning": f"Deterministic selection from C++-filtered files.db ({total_files} files)",
-            "total_files": total_files,
-            "selected_count": len(selected),
-            "model_used": "deterministic_cpp_filter",
-            "streaming_used": False,
-        }
 
     async def _do_filter_files_by_case(
         self,
@@ -438,13 +373,16 @@ class FileFilter(FileFilterLegacyMixin):
             with sqlite3.connect(db_path, timeout=10) as conn:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
+                from ..source_identity import has_column
+                source_column='source_id' if has_column(conn,'files','source_id') else 'NULL'
                 cur.execute(
-                    "SELECT path, type as file_type, size FROM files ORDER BY path"
+                    f"SELECT path, type as file_type, size,{source_column} AS source_id FROM files ORDER BY path"
                 )
                 rows = cur.fetchall()
                 return [
                     {
                         "path": row["path"],
+                        "source_id":row['source_id'],
                         "file_type": row["file_type"] if "file_type" in row.keys() else "",
                         "size": row["size"] if "size" in row.keys() else 0,
                     }

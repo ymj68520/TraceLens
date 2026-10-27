@@ -91,7 +91,7 @@ def test_new_db_is_v8(tmp_path):
     idb = str(tmp_path / "investigation.db")
     InvestigationRepository(idb, "A")
     conn = sqlite3.connect(idb)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 8
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
     conn.close()
 
 
@@ -103,7 +103,7 @@ def test_v5_migration_to_current_preserves_existing_data(tmp_path):
 
     reopened = InvestigationRepository(idb, "A")
     conn = sqlite3.connect(idb)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 8
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
     assert conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='investigation_event_refreshes'"
     ).fetchone() is not None

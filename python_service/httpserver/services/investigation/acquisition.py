@@ -58,10 +58,11 @@ def _acquire_file(resolved: ResolvedEvidence) -> FileSnapshotPayload:
         raise EvidenceStoreError(f"cannot open files.db {resolved.source_db!r}: {exc}") from exc
     conn.row_factory = sqlite3.Row
     try:
-        row = conn.execute(
-            f"SELECT {_FILE_COLUMNS} FROM files WHERE path = ?",
-            [resolved.normalized_path],
-        ).fetchone()
+        from ..source_identity import file_row, SourceIdentityError
+        row, locator = file_row(conn,resolved.normalized_path,resolved.source_id)
+    except SourceIdentityError as exc:
+        if exc.code=='SOURCE_NOT_FOUND':raise EvidenceNotFoundError(exc.message) from exc
+        raise
     except sqlite3.OperationalError as exc:
         raise EvidenceStoreError(f"cannot query files table: {exc}") from exc
     finally:
@@ -72,6 +73,7 @@ def _acquire_file(resolved: ResolvedEvidence) -> FileSnapshotPayload:
         )
     return FileSnapshotPayload(
         normalized_path=row["path"],
+        source_id=resolved.source_id,source_locator=locator,
         name=row["name"],
         extension=row["extension"],
         category=row["category"],
@@ -173,6 +175,9 @@ def _acquire_android_artifact(resolved: ResolvedEvidence) -> AndroidArtifactSnap
     if resolved.artifact_kind == "mobile" and source:
         provenance.update(input_file="hashed_database_bundle", original_database_record="parser_bound_table_key",
                           original_table=source.get("original_table"), original_primary_key=source.get("original_primary_key"))
+    if resolved.artifact_kind == "mobile" and source and source.get("source_format") == "protobuf":
+        provenance.update(input_file="hashed_binary_backup", original_database_record="not_applicable",
+                          binary_record="parser_bound_field_and_byte_offset")
     warnings.append(detail["warning"])
     return AndroidArtifactSnapshotPayload(
         task_id=resolved.task_id,
@@ -185,14 +190,14 @@ def _acquire_android_artifact(resolved: ResolvedEvidence) -> AndroidArtifactSnap
         record_fields=fields,
         redacted_fields=("pre_shared_key",) if resolved.artifact_kind == "wifi" and "pre_shared_key" in fields else (),
         normalized_fields={**{name: fields.get(name) for name in normalized_names if name in fields},
-                           **({"platform": "HarmonyOS"} if resolved.artifact_kind == "mobile" else {})},
+                           **({"platform": "Android / MIUI" if str(fields.get("parser_version", "")).startswith(("xiaomi-", "miui-notes-")) else "HarmonyOS"} if resolved.artifact_kind == "mobile" else {})},
         raw_timestamp=fields.get("timestamp_raw") if resolved.artifact_kind == "mobile" else
                       fields.get("date") if resolved.artifact_kind == "sms" else
                       fields.get("last_connected") if resolved.artifact_kind == "wifi" else None,
         timestamp_unit=fields.get("time_unit") if resolved.artifact_kind == "mobile" else None,
         timestamp_timezone="UTC" if resolved.artifact_kind == "mobile" and fields.get("time_unit") in {"epoch_s", "epoch_ms"} else None,
         timestamp_basis="source_database_value" if resolved.artifact_kind == "mobile" else None,
-        parser_name="AndroidAnalyzer/HarmonyBackup" if resolved.artifact_kind == "mobile" else
+        parser_name=("AndroidAnalyzer/XiaomiImage" if str(fields.get("parser_version", "")).startswith(("xiaomi-", "miui-notes-")) else "AndroidAnalyzer/HarmonyBackup") if resolved.artifact_kind == "mobile" else
                     manifest.get("parser_name") or "AndroidAnalyzer",
         parser_version=fields.get("parser_version") or manifest.get("parser_version"),
         android_user=None,
@@ -216,6 +221,26 @@ def build_snapshot_candidate(resolved: ResolvedEvidence) -> SnapshotCandidate:
             payload=payload,
             normalized_path=payload.normalized_path,
         )
+    if resolved.evidence_type=='windows_artifact':
+        from .models import WindowsArtifactSnapshotPayload
+        from ..windows_activity_reader import detail
+        value=detail(resolved.source_db,resolved.task_id,resolved.result_set_id,resolved.artifact_kind,resolved.artifact_record_id)
+        record=value['record'];fields=dict(record.get('fields') or {})
+        # Password bytes are not part of a default report projection. The exact
+        # source hash continues to identify the private immutable source row.
+        redacted=[name for name in ('encrypted_password',) if name in fields]
+        for name in redacted:fields.pop(name)
+        record={**record,'fields':fields}
+        payload=WindowsArtifactSnapshotPayload(task_id=resolved.task_id,result_set_id=resolved.result_set_id,
+            artifact_kind=resolved.artifact_kind,record_id=resolved.artifact_record_id,record_hash=value['record_hash'],
+            source_revision=value['source_revision'],record_fields=record,
+            provenance={'source_table':value['source_table'],'source_row_id':value['source_row_id'],
+                        'import_version':value['import_version'],'source':record.get('source'),'redacted_fields':redacted},
+            coverage=value['coverage'].get('tables',{}).get(resolved.artifact_kind,{}),
+            warnings=tuple(['时间与活动含义以原始字段为限，不据配置推断实际执行']+
+                           (['原始来源路径未唯一绑定；记录身份由结果集和表主键确定'] if record.get('source',{}).get('binding_status')!='unique' else [])))
+        return SnapshotCandidate(task_id=resolved.task_id,evidence_key=resolved.evidence_key,evidence_type='windows_artifact',
+                                 captured_at=int(time.time()),payload=payload)
     if resolved.evidence_type == "android_artifact":
         payload = _acquire_android_artifact(resolved)
         return SnapshotCandidate(

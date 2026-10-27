@@ -41,7 +41,7 @@ const OfficePreviewTab = ({
         const rows = res?.files || res?.items || [];
         const seen = new Set();
         const unique = rows.filter((f) => {
-          const key = f.path || f.file_path || f.name;
+          const key = f.source_id || f.path || f.file_path || f.name;
           if (!key || seen.has(key)) return false;
           seen.add(key);
           return true;
@@ -64,7 +64,7 @@ const OfficePreviewTab = ({
     setOfficeError(null);
     setOfficePreview(null);
     try {
-      const result = await parseFile(taskId, filePath);
+      const result = await parseFile(taskId, filePath, file.source_id);
       // 解析器返回 200 但 success=false 时（如文件损坏），把 error 提为失败。
       if (result && result.success === false) {
         setOfficeError(result.error || '解析失败');
@@ -72,7 +72,8 @@ const OfficePreviewTab = ({
         setOfficePreview({ file, filePath, ...result });
       }
     } catch (err) {
-      setOfficeError(err?.response?.data?.detail || err.message || '解析失败');
+      const detail=err?.response?.data?.detail ?? err?.data?.detail;
+      setOfficeError((typeof detail === 'string' ? detail : detail?.message) || err.message || '解析失败');
     } finally {
       setOfficeParsing(false);
     }
@@ -141,6 +142,7 @@ const OfficePreviewTab = ({
               <DocxPreview
                 taskId={taskId}
                 filePath={officePreview.filePath}
+                sourceId={officePreview.file?.source_id}
                 fallbackText={officePreview.content}
               />
             ) : (

@@ -81,6 +81,10 @@ public:
      * @return true if service responds to health check
      */
     bool isServiceAvailable();
+    nlohmann::json startClusterRun(const std::string& taskId);
+    nlohmann::json clusterRunStatus(const std::string& jobId);
+    void cancelClusterRun(const std::string& jobId);
+    nlohmann::json probeFileSelection(const nlohmann::json& payload);
 
     /**
      * @brief Delete knowledge graph data associated with a task

@@ -105,11 +105,12 @@ int64_t filetimeToUnixTime(uint64_t filetime);
 
 /**
  * Extract user SID from event XML data
- * Looks for common XML patterns like SubjectUserName, UserId, UserName
+ * Reads explicit SID fields only; usernames are not SIDs.
  * @param xmlString XML string from event record
- * @return Extracted user SID or default "S-1-0-0" if not found
+ * @return Extracted SID or an empty string if unknown
  */
 std::string extractUserDataFromXML(const std::string& xmlString);
+std::string extractChannelFromXML(const std::string& xmlString);
 
 /**
  * Extract log source (e.g., "System", "Security") from file path

@@ -13,6 +13,7 @@ import {
 
 const textError = (error) => error?.data?.detail || error?.message || '预检请求失败';
 const kindLabel = {
+  xiaomi_export_image: '小米手机数据导出镜像',
   aliyun_raw_export: '阿里云 RAW 系统盘导出包',
   derived_html_report: '第三方派生报告', miui_backup: 'MIUI 备份',
   harmony_decrypted_backup: '已解密的鸿蒙备份',
@@ -39,6 +40,7 @@ const integrityLabel = {
   manifest_hashed: '逐文件哈希已计算（非目录快照）',
 };
 const adapterLabel = {
+  'xiaomi-image': '手机镜像只读索引与完整分析流程',
   'aliyun-image': '阿里云系统盘校验解包与 Linux 分析',
   android_report: '第三方报告只读索引', 'miui-backup': 'MIUI 备份解析',
   dir: 'Android 目录解析', zip: 'Android ZIP 解析',
@@ -190,6 +192,11 @@ export default function EvidencePreflightPanel({ onCreateTask }) {
         </>}
         {job.container.warnings?.length > 0 && <p className="text-amber-700">警告：{job.container.warnings.join('、')}</p>}
       </div>}
+      {job.xiaomi_image && <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-900">
+        <p className="font-semibold">小米手机数据导出镜像</p>
+        <p>已识别 EXT4 导出布局；完整哈希不代表每个文件可读。任务中继续验证目录及文件区段，异常文件会标记覆盖状态。</p>
+        <p>镜像来源不代表已认证采集厂商，也不代表原手机完整物理存储。</p>
+      </div>}
       {job.aliyun_image && <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-900">
         <p className="font-semibold">阿里云 Linux 系统盘导出包</p>
         <p className="break-all">包内 RAW：{job.aliyun_image.member_name}</p>
@@ -197,16 +204,17 @@ export default function EvidencePreflightPanel({ onCreateTask }) {
         <p>已检查头部；完整容器、gzip 校验和、唯一 RAW 与来源哈希在任务解包阶段再次验证。请预留展开大小及分析结果所需空间。</p>
       </div>}
       {job.status === 'completed' && ['verified', 'manifest_hashed'].includes(job.integrity_status) &&
-        ['dir', 'zip', 'miui-backup', 'harmony-backup', 'tar', 'seven-zip', 'android-backup', 'filesystem-image', 'android-container', 'aliyun-image'].includes(job.detected?.adapter) &&
-        (!['tar', 'seven-zip', 'android-backup', 'filesystem-image', 'android-container', 'aliyun-image'].includes(job.detected?.adapter) ||
-          (job.integrity_status === 'verified' && (job.archive?.inspected && job.archive?.ready || job.image?.ready || job.image?.selected_partition?.locked || job.container?.ready || job.aliyun_image?.ready))) &&
+        ['dir', 'zip', 'miui-backup', 'harmony-backup', 'tar', 'seven-zip', 'android-backup', 'filesystem-image', 'android-container', 'aliyun-image', 'xiaomi-image'].includes(job.detected?.adapter) &&
+        (!['tar', 'seven-zip', 'android-backup', 'filesystem-image', 'android-container', 'aliyun-image', 'xiaomi-image'].includes(job.detected?.adapter) ||
+          (job.integrity_status === 'verified' && (job.archive?.inspected && job.archive?.ready || job.image?.ready || job.image?.selected_partition?.locked || job.container?.ready || job.aliyun_image?.ready || job.xiaomi_image?.ready))) &&
         (job.detected?.adapter !== 'android-container' || selectedSlot === job.selected_slot) &&
         (job.detected?.kind !== 'android_backup_encrypted' || verifiedPassword) && onCreateTask &&
         <div><Button size="sm" onClick={() => {
           onCreateTask({
           image_path: job.source_path, android_source: job.detected.adapter,
+          ...(job.detected.adapter === 'xiaomi-image' ? { scenarios: ['android'], platform_analyze: true } : {}),
           ...(job.detected.adapter === 'aliyun-image' ? { scenarios: ['linux'], platform_analyze: true } : {}),
-          ...(['tar', 'seven-zip', 'android-backup', 'filesystem-image', 'android-container', 'aliyun-image'].includes(job.detected.adapter) ? {
+          ...(['tar', 'seven-zip', 'android-backup', 'filesystem-image', 'android-container', 'aliyun-image', 'xiaomi-image'].includes(job.detected.adapter) ? {
             preflight_job_id: job.id, preflight_source_sha256: job.sha256,
             preflight_detected_kind: job.detected.kind,
           } : {}),
@@ -218,7 +226,7 @@ export default function EvidencePreflightPanel({ onCreateTask }) {
           });
           setPassword('');
           setVerifiedPassword('');
-        }}>{job.detected.adapter === 'aliyun-image' ? '按此来源新建阿里云分析任务' : job.detected.adapter === 'android-container' && job.container?.super_inventory
+        }}>{job.detected.adapter === 'xiaomi-image' ? '按此来源新建小米镜像分析任务' : job.detected.adapter === 'aliyun-image' ? '按此来源新建阿里云分析任务' : job.detected.adapter === 'android-container' && job.container?.super_inventory
             ? '建立系统分区规范化任务' : '按此来源新建 安卓分析任务'}</Button>
           <p className="mt-1 text-xs text-slate-500">仅预填来源与类型；创建前仍须确认案情和检材状态，预检哈希并不代替解析核验。</p>
         </div>}

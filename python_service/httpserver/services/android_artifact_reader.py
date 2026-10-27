@@ -136,12 +136,17 @@ def artifact_detail_from_database(database: Path, task_id: str, kind: str, row_i
             raise FileNotFoundError("Android artifact not found in task")
         if kind == "mobile":
             value = dict(row)
-            source = {"platform": "HarmonyOS", "normalized_path": value["source_path"], "granularity": "logical_database_row",
+            exported_image = str(value.get("parser_version", "")).startswith(("xiaomi-", "miui-notes-"))
+            protobuf = value.get("source_table", "").startswith("protobuf:")
+            source = {"platform": "Android / MIUI" if exported_image else "HarmonyOS",
+                      "normalized_path": value["source_path"],
+                      "granularity": "binary_record" if protobuf else "logical_database_row",
                       "original_table": value["source_table"],
                       "original_primary_key": json.loads(value["source_key"]),
                       "sha256": value.get("source_db_sha256"), "wal_sha256": value.get("source_wal_sha256"),
                       "wal_frame": None, "verified_row_source": True,
-                      "parser_version": value.get("parser_version"), "app_index": value.get("app_index")}
+                      "parser_version": value.get("parser_version"), "app_index": value.get("app_index"),
+                      "source_format": "protobuf" if value.get("source_table", "").startswith("protobuf:") else "sqlite"}
             if con.execute("SELECT 1 FROM sqlite_master WHERE name='android_source_provenance'").fetchone():
                 original = con.execute("SELECT source_member_path,source_container,source_container_sha256 "
                                        "FROM android_source_provenance WHERE normalized_android_path=? LIMIT 2",
@@ -149,10 +154,21 @@ def artifact_detail_from_database(database: Path, task_id: str, kind: str, row_i
                 if len(original) == 1:
                     source.update(original_path=original[0][0], source_container=original[0][1],
                                   source_container_sha256=original[0][2])
+            if con.execute("SELECT 1 FROM sqlite_master WHERE name='android_filesystem_provenance'").fetchone():
+                locators = con.execute(
+                    "SELECT partition_name,partition_start_offset,filesystem_type,filesystem_object_id,reader_version "
+                    "FROM android_filesystem_provenance WHERE normalized_android_path=? LIMIT 2",
+                    (value["source_path"],)).fetchall()
+                if len(locators) == 1:
+                    source.update(zip(("partition_name", "partition_start_offset", "filesystem_type",
+                                       "filesystem_object_id", "reader_version"), locators[0]))
+                    source["locator_scope"] = "exported_image_not_original_device"
             return {"task_id": task_id, "source_type": "android_analyzer", "kind": kind,
                     "record": value, "source": source, "source_candidates": [value["source_path"]],
                     "record_hash": raw_row_hash(value), "source_revision": revision,
-                    "warning": "来源为已解密的鸿蒙备份；记录绑定源库、表、主键和 WAL 哈希，未定位物理偏移或 WAL 帧；不代表完整手机。"}
+                    "warning": ("来源为手机数据导出镜像；数据库记录保留源表、主键与文件哈希，便签备份保留字段路径及字节偏移；导出镜像定位不代表原手机物理位置，WAL 帧未验证。"
+                                if str(value.get("parser_version", "")).startswith(("xiaomi-", "miui-notes-")) else
+                                "来源为已解密的鸿蒙备份；记录绑定源库、表、主键和 WAL 哈希，未定位物理偏移或 WAL 帧；不代表完整手机。")}
         # Old parser tables do not carry per-row source paths/primary keys.
         # A unique coverage path is shown as a candidate only, never a proof.
         candidate_paths = []

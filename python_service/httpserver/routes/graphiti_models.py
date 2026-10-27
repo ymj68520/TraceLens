@@ -72,6 +72,8 @@ class IngestionResponse(BaseModel):
 class JobStatusResponse(BaseModel):
     """Response model for job status query."""
     job_id: str
+    task_id: Optional[str] = None
+    quality: Optional[Dict[str, Any]] = None
     status: str
     progress: int
     current_phase: str

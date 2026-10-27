@@ -66,6 +66,8 @@ def setup(tmp_path, *, paths=("/case/a.txt",), contents=None):
     repository = ReportRepository(reports / "reports.db")
     writer = GenerationReportWriter(reports)
     admission = ReportGenerationAdmissionService(backend, repository)
+    from httpserver.services.forensic_report.global_report_models import ReportBudget
+    admission._global_budget=lambda:ReportBudget(context_limit=65536,image_token_bound=1000)
     return task, investigation, repository, writer, admission
 
 
@@ -82,7 +84,22 @@ class Model:
     async def chat_completion(self, system, user, **kwargs):
         self.calls.append((system, user))
         body = json.loads(user)
-        if _is_discovery_prompt(system):
+        if body.get('operation')=='semantic_review':
+            response={'issues':[]}
+        elif 'windows' in body:
+            source=body['windows'][0]
+            item={'statement':'应核对材料中的业务背景和账户关系。','kind':'hypothesis','topic':'business',
+                  'supporting_refs':[{'material_id':source['material_id'],'quote':source['text'][:8]}],
+                  'counter_refs':[],'limitations':['原始业务凭据'],'alternatives':['可能为正常业务安排'],'priority_hint':'P2'}
+            if self.case_only and body['analysis_mode']=='case_guided':
+                item.update(supporting_refs=[],case_context_quote=body['case_context'],statement='仅案情提出的待核方向，需要原始材料支持。')
+            response={'findings':[item]}
+        elif 'claims' in body and 'section_id' in body:
+            ids=[c['claim_id'] for c in body['claims']]
+            refs=list(dict.fromkeys(r['citation_id'] for c in body['claims'] for r in c['references']))
+            text=body['heading']+'主要围绕当前材料的来源及解释边界展开。'+''.join(c['statement'] for c in body['claims'])+'相关认识仍属待核假设，不能代替对原始业务材料和真实账户关系的核对。应结合来源形成过程、记录含义和其他可能解释开展人工复核，避免将有限观察提升为确定性行为结论。'
+            response={'section_id':body['section_id'],'used_claim_ids':ids,'paragraphs':[{'text':text,'claim_ids':ids,'citation_ids':refs}]}
+        elif _is_discovery_prompt(system):
             source = body["materials"][0]
             item = {"title": "资金活动待核线索", "description": "应核对材料中的业务背景和账户关系。",
                     "finding_kind": "hypothesis",
@@ -178,7 +195,7 @@ async def test_case_only_direction_has_no_fabricated_support_and_comparison_fail
     assert stage["directions"][0]["supporting_refs"] == []
     assert stage["comparisons"][0]["status"] == "insufficient"
     assert stage["baseline_directions"] == original["stage_analysis"]["directions"]
-    assert any(w.startswith("COMPARISON_REJECTED") for w in stage["warnings"])
+    assert any('未完成来源对照' in w for w in stage['warnings'])
 
 
 @pytest.mark.asyncio
@@ -273,7 +290,8 @@ async def test_sqlite_sample_is_context_free_and_source_bytes_remain_unchanged(t
     row = await admission.admit("A", requested_by="x", analysis_mode="evidence_only")
     source = parse_generation_envelope(row.input_envelope_json).neutral_materials[0]
     assert source.kind == "parsed_text" and "合成业务记录" in source.text
-    assert "SQLITE_SCHEMA_AND_FIRST_50_ROWS_ONLY" in source.limitations
+    assert source.source_provenance['parser']=='sqlite3'
+    assert source.source_provenance['coverage']['record_count']==1
     assert CANARY not in row.input_envelope_json
     assert (Path(task["extraction_directory"]) / "case/transactions.db").read_bytes() == raw
 
@@ -330,6 +348,12 @@ async def test_newly_linked_counter_material_can_revise_the_baseline(tmp_path):
     class CounterModel(Model):
         async def chat_completion(self, system, user, **kwargs):
             body = json.loads(user)
+            if 'windows' in body:
+                value={'statement':'需要核对安排与实际执行，可能仅为计划。','kind':'hypothesis','topic':'connections',
+                    'supporting_refs':[{'material_id':'m0001','quote':RAW[:8]}],
+                    'counter_refs':[{'material_id':'m0002','quote':counter}],
+                    'limitations':['实际执行凭据'],'alternatives':['可能仅为计划'],'priority_hint':'P1'}
+                return {'model':'synthetic','content':json.dumps({'findings':[value]},ensure_ascii=False)}
             if _is_discovery_prompt(system):
                 value = {"title": "执行情况存在差异", "description": "需要核对安排与实际执行。",
                          "finding_kind": "hypothesis",

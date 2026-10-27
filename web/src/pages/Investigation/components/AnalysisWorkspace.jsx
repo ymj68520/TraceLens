@@ -1,5 +1,6 @@
 import EvidenceAnalysisPanel from './EvidenceAnalysisPanel';
 import EventAnalysisPanel from './EventAnalysisPanel';
+import { fileEvidenceKey } from '../../../utils/evidenceKey';
 
 /**
  * 右栏工作台路由：
@@ -43,9 +44,9 @@ export default function AnalysisWorkspace({
   if (file) {
     return (
       <EvidenceAnalysisPanel
-        key={`${taskId}:file:${file.path}`}
+        key={`${taskId}:${fileEvidenceKey(file)}`}
         taskId={taskId}
-        evidenceKey={`file:${file.path}`}
+        evidenceKey={fileEvidenceKey(file)}
         onEvidenceChanged={onEvidenceChanged}
         fileContext={{ file, events, onSelectEvent }}
         readOnly={readOnly}

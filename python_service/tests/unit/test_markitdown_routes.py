@@ -36,9 +36,17 @@ def _task_workspace(tmp_path, monkeypatch):
     class FakeCppBackend:
         async def get_task(self, task_id):
             if task_id == "t1":
+                import sqlite3
+                database=tmp_path/'t_files.db'
+                with sqlite3.connect(database) as db:
+                    db.execute('CREATE TABLE IF NOT EXISTS files(path TEXT PRIMARY KEY,name TEXT,size INTEGER)')
+                    for source in tmp_path.rglob('*'):
+                        if source.is_file() and not source.name.startswith('t_files.db'):
+                            db.execute('INSERT OR REPLACE INTO files VALUES(?,?,?)',(str(source),source.name,source.stat().st_size))
                 return {
                     "id": "t1",
                     "output_files_db": str(tmp_path / "t_files.db"),
+                    "extraction_directory":str(tmp_path),
                 }
             return None
 
@@ -661,7 +669,7 @@ async def test_convert_falls_back_to_markitdown_for_documents(tmp_path, monkeypa
 
 
 @pytest.mark.asyncio
-async def test_convert_falls_back_to_markitdown_when_extractor_raises(
+async def test_convert_does_not_turn_corrupt_artifact_into_fallback_content(
     tmp_path, monkeypatch
 ):
     artifact = tmp_path / "weird.evtx"
@@ -677,7 +685,7 @@ async def test_convert_falls_back_to_markitdown_when_extractor_raises(
 
     class FakeMd:
         def convert(self, file_path):
-            return MagicMock(markdown="# Recovered", title="")
+            raise AssertionError("a corrupt forensic artifact must not reach a generic converter")
 
     monkeypatch.setattr(markitdown, "_get_markitdown", lambda: FakeMd())
 
@@ -686,8 +694,9 @@ async def test_convert_falls_back_to_markitdown_when_extractor_raises(
         json={"task_id": "t1", "file_path": str(artifact)},
     )
 
-    assert response.status_code == 200
-    assert response.json()["content"] == "# Recovered"
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "DOCUMENT_PARSE_FAILED"
+    assert "content" not in response.json()
 
 
 # ---------------------------------------------------------------------------

@@ -163,7 +163,7 @@ const CitationTracebackPanel = ({
             </div>
 
             <p className="border-b border-slate-100 pb-3 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                以下 identity 来自报告发布时冻结的 citation manifest，不随后续调查变化。
+                以下来源身份来自报告生成时冻结的引用清单，不随后续调查变化。
             </p>
 
             <Layer
@@ -172,17 +172,17 @@ const CitationTracebackPanel = ({
                 testId="traceback-evidence-layer"
             >
                 <p className="text-[11px] text-slate-600 dark:text-slate-300 break-all">
-                    <span className="text-slate-400">evidence_key: </span>
+                    <span className="text-slate-400">证据来源标识：</span>
                     <EvidenceKeyLink value={citation.evidence_key} taskId={taskId} reportId={reportId} citationId={citation.citation_id} />
                 </p>
                 <Field label="采集时间" value={citation.evidence_captured_at ?? '—'} />
                 {snapshot && (
                     <>
                         <Field label="证据类型" value={forensicLabel(snapshot.evidence_type)} />
-                        {snapshot.evidence_type === 'android_artifact' && <>
+                        {['android_artifact','windows_artifact'].includes(snapshot.evidence_type) && <>
                             <Field label="结果集编号" value={snapshot.payload?.result_set_id || '—'} />
                             <Field label="工件及记录编号" value={`${snapshot.payload?.artifact_kind || '—'} / ${snapshot.payload?.record_id ?? '—'}`} />
-                            <p className="text-xs text-amber-800">AndroidAnalyzer 派生解析记录；原库主键、时间单位/时区和 WAL 定位以冻结来源字段为准，未知不代表已核实。</p>
+                            <p className="text-xs text-amber-800">{snapshot.evidence_type === 'windows_artifact' ? 'Windows 派生解析记录；原始字段、时间依据和来源定位以冻结记录为准，未知不代表已核实。' : 'AndroidAnalyzer 派生解析记录；原库主键、时间单位/时区和 WAL 定位以冻结来源字段为准，未知不代表已核实。'}</p>
                             <ExpandableDescription label="冻结来源精度与限制" value={JSON.stringify({
                                 provenance: snapshot.payload?.provenance || {},
                                 warnings: snapshot.payload?.warnings || [],
@@ -215,7 +215,7 @@ const CitationTracebackPanel = ({
                 </Layer>
             ) : (
                 <p className="text-[11px] text-slate-500 dark:text-slate-400" data-testid="traceback-original-only">
-                    Original Evidence only —— 本引用在报告发布时未绑定任何 Accepted Analysis。
+                    本引用仅依据原始材料，报告生成时未绑定分析员已接受的派生分析。
                 </p>
             )}
 
@@ -232,7 +232,7 @@ const CitationTracebackPanel = ({
                             <ExpandableDescription label="断言原文" value={claim.claim_text} />
                             <Field label="证据引用校验" value={forensicLabel(claim.grounding_status)} />
                             <p className="text-[11px] text-slate-600 dark:text-slate-300 break-all">
-                                <span className="text-slate-400">evidence_refs: </span>
+                                <span className="text-slate-400">证据引用：</span>
                                 {(claim.evidence_refs || []).length ? (
                                     claim.evidence_refs.map((ref, index) => (
                                         <span key={ref}>
@@ -252,7 +252,7 @@ const CitationTracebackPanel = ({
             {enrichmentError && (
                 <p className="text-[11px] text-amber-600 dark:text-amber-400" data-testid="traceback-enrichment-error">
                     当前调查库详细记录暂时不可读取（HTTP {enrichmentError?.status || '错误'}）；
-                    上方 frozen identity 仍然有效，该引用不会被判定为不存在。
+                    上方冻结的来源身份仍然有效，该引用不会被判定为不存在。
                 </p>
             )}
         </aside>

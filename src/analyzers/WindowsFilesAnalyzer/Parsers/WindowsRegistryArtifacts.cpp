@@ -109,7 +109,7 @@ std::vector<USBDeviceInfo> WindowsFilesAnalyzer::parseUSBDevicesFromRegistry(con
         for (int i = 0; deviceTypes[i] != 0; i++) {
             char* deviceTypeName = hivex_node_name(hive, deviceTypes[i]);
             
-            USBDeviceInfo baseInfo;
+            USBDeviceInfo baseInfo{};
             if (deviceTypeName) {
                 parseDeviceTypeName(deviceTypeName, baseInfo);
             }

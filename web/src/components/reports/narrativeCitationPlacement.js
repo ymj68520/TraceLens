@@ -1,3 +1,4 @@
+import { stripFileKeyPrefix } from '../../utils/evidenceKey';
 /**
  * Locate a frozen citation beside a literal evidence filename in report prose.
  * Identity always comes from the persisted manifest. If the filename (or its
@@ -16,7 +17,7 @@ export function placeNarrativeCitations(content, citationIds, citationsById) {
             unresolved.push(citationId);
             continue;
         }
-        const filename = evidenceKey.slice(5).split(/[\\/]/).pop() || '';
+        const filename = (stripFileKeyPrefix(evidenceKey) || "").split(/[\\/]/).pop() || '';
         const stem = filename.replace(/\.[^.]+$/, '');
         const candidates = [...new Set([filename, stem])]
             .filter((candidate) => candidate.length >= 4)
@@ -35,4 +36,20 @@ export function placeNarrativeCitations(content, citationIds, citationsById) {
 
     placements.sort((left, right) => left.start - right.start);
     return { placements, unresolved };
+}
+
+// New globally planned reports carry explicit paragraph markers. Never infer
+// these positions from filenames, including same-name files across sources.
+export function explicitNarrativeParts(content, citationIds, citationsById) {
+    const allowed = new Set(citationIds || []), parts = [];
+    const text = String(content || '');
+    let cursor = 0;
+    for (const match of text.matchAll(/\[\[([^\]]+)\]\]/g)) {
+        parts.push({ text: text.slice(cursor, match.index) });
+        parts.push(allowed.has(match[1]) && citationsById.has(match[1])
+            ? { citationId: match[1] } : { text: '〔引用待核对〕' });
+        cursor = match.index + match[0].length;
+    }
+    parts.push({ text: text.slice(cursor) });
+    return parts;
 }

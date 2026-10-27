@@ -6,7 +6,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Iterator, Literal, Protocol, Sequence
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator, model_serializer
 
 from ..investigation.models import (
     AnalysisGroundingStatus,
@@ -325,7 +325,7 @@ class EnvelopeEvidenceItemV1(BaseModel):
 class EnvelopeSnapshotV3(EnvelopeSnapshotV1):
     """Versioned Android extension; V1/V2 refuse the new evidence type."""
 
-    evidence_type: Literal["file", "cluster", "android_artifact"]
+    evidence_type: Literal["file", "cluster", "android_artifact", "windows_artifact"]
 
 
 class EnvelopeEvidenceItemV3(EnvelopeEvidenceItemV1):
@@ -403,6 +403,13 @@ class ReportGenerationEnvelopeV3(ReportGenerationEnvelopeV2):
     main_evidence: tuple[EnvelopeEvidenceItemV3, ...] = ()
     appendix_evidence: tuple[EnvelopeEvidenceItemV3, ...] = ()
 
+    @model_validator(mode="after")
+    def _windows_version_boundary(self):
+        if self.schema_version<7 and any(item.snapshot.evidence_type=='windows_artifact' for item in (*self.main_evidence,*self.appendix_evidence)):
+            raise ValueError('Windows来源记录需要v7报告输入')
+        return self
+
+
 
 class ReportGenerationEnvelopeV4(ReportGenerationEnvelopeV3):
     """Classification is part of the existing report job, with a frozen policy."""
@@ -411,13 +418,18 @@ class ReportGenerationEnvelopeV4(ReportGenerationEnvelopeV3):
     classification_policy: Literal["evidence-dimensions:v1"] = "evidence-dimensions:v1"
 
 
+class WindowsEvidenceScope(ReportGenerationEnvelopeV4):
+    """Internal admission scope, before neutral materials are frozen into v7."""
+    schema_version: Literal[7] = 7
+
+
 class NeutralMaterial(BaseModel):
     """Content frozen for this report; never a historical AI summary."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     material_id: str = Field(pattern=r"^m[0-9]+$")
     evidence_key: str
-    kind: Literal["text", "parsed_text", "android_record", "audio_transcript",
+    kind: Literal["text", "parsed_text", "android_record", "windows_record", "audio_transcript",
                   "image", "machine_visual", "unavailable"]
     text: str = Field(default="", max_length=4000)
     media_base64: str = Field(default="", max_length=3_000_000)
@@ -426,6 +438,14 @@ class NeutralMaterial(BaseModel):
     original_characters: int = Field(default=0, ge=0)
     status: Literal["ready", "partial", "unavailable"]
     limitations: tuple[str, ...] = ()
+
+    source_provenance: dict[str, Any] | None = None
+
+    @model_serializer(mode="wrap")
+    def _legacy_material_serialization(self, handler):
+        value=handler(self)
+        if value.get("source_provenance") is None:value.pop("source_provenance",None)
+        return value
 
     @model_validator(mode="after")
     def _content_integrity(self):
@@ -565,10 +585,10 @@ class ReportGenerationEnvelopeV5(ReportGenerationEnvelopeV4):
             )):
                 raise ValueError("case-derived analysis is forbidden in neutral sources")
         if self.analysis_mode == "evidence_only":
-            if self.case_description or self.baseline is not None or self.prompt_version not in ("final-report:evidence-only:v1", "final-report:evidence-only:v2", "final-report:evidence-only:v3"):
+            if self.case_description or self.baseline is not None or self.prompt_version not in (("final-report:evidence-only:v1", "final-report:evidence-only:v2") + (("final-report:evidence-only:v3",) if self.schema_version==5 or self.schema_version>=8 else ()) + (("final-report:evidence-only:v4", "final-report:evidence-only:v5", "final-report:evidence-only:v6") if self.schema_version>=9 else ())):
                 raise ValueError("first-stage input must be independent of case context")
         else:
-            if not self.case_description.strip() or self.baseline is None or self.prompt_version not in ("final-report:case-guided:v1", "final-report:case-guided:v2", "final-report:case-guided:v3"):
+            if not self.case_description.strip() or self.baseline is None or self.prompt_version not in (("final-report:case-guided:v1", "final-report:case-guided:v2") + (("final-report:case-guided:v3",) if self.schema_version==5 or self.schema_version>=8 else ()) + (("final-report:case-guided:v4", "final-report:case-guided:v5", "final-report:case-guided:v6") if self.schema_version>=9 else ())):
                 raise ValueError("second-stage input requires case context and baseline")
             if self.baseline.evidence_scope_hash != self.evidence_scope_hash:
                 raise ValueError("second-stage evidence scope changed")
@@ -578,6 +598,36 @@ class ReportGenerationEnvelopeV5(ReportGenerationEnvelopeV4):
                 raise ValueError("baseline material identity changed")
         return self
 
+
+class ReportGenerationEnvelopeV6(ReportGenerationEnvelopeV5):
+    schema_version: Literal[6] = 6
+    source_policy: Literal["source-locator-and-read:v1"] = "source-locator-and-read:v1"
+
+
+class ReportGenerationEnvelopeV7(ReportGenerationEnvelopeV6):
+    schema_version: Literal[7] = 7
+    activity_policy: Literal['windows-activity:v1']='windows-activity:v1'
+
+
+from .global_report_models import ReportBudget,ReportOrganization,ReportExecutionPolicy
+
+class ReportGenerationEnvelopeV8(ReportGenerationEnvelopeV7):
+    schema_version: Literal[8] = 8
+    report_budget: ReportBudget = Field(default_factory=ReportBudget)
+    derivation_versions: dict[str,str] = Field(default_factory=lambda: {
+        'planner':'report-global-plan:v1','validation':'report-global-validation:v1',
+        'projection':'source-locator-and-read:v1','selection':'report-evidence-scope:v1',
+        'parser':'per-material-provenance'})
+
+class ReportGenerationEnvelopeV9(ReportGenerationEnvelopeV8):
+    schema_version:Literal[9]=9
+    execution_policy:ReportExecutionPolicy=Field(default_factory=ReportExecutionPolicy)
+
+    @model_validator(mode='after')
+    def execution_contract(self):
+        if self.prompt_version not in ('final-report:evidence-only:v4','final-report:case-guided:v4','final-report:evidence-only:v5','final-report:case-guided:v5','final-report:evidence-only:v6','final-report:case-guided:v6'):
+            raise ValueError('并发收束报告必须使用冻结的 v4/v5/v6 提示契约')
+        return self
 
 def _validate_envelope_determinism(
     *,
@@ -615,7 +665,7 @@ def _validate_envelope_determinism(
                 raise ValueError("claim evidence_refs must be sorted")
 
 
-def parse_generation_envelope(raw: str) -> "ReportGenerationEnvelopeV1 | ReportGenerationEnvelopeV2 | ReportGenerationEnvelopeV3 | ReportGenerationEnvelopeV4 | ReportGenerationEnvelopeV5":
+def parse_generation_envelope(raw: str) -> "ReportGenerationEnvelopeV1 | ReportGenerationEnvelopeV2 | ReportGenerationEnvelopeV3 | ReportGenerationEnvelopeV4 | ReportGenerationEnvelopeV5 | ReportGenerationEnvelopeV6":
     """Parse a persisted generation envelope, dispatching on schema_version.
 
     A stored row's bytes are version-tagged; strict pydantic validation for
@@ -636,6 +686,10 @@ def parse_generation_envelope(raw: str) -> "ReportGenerationEnvelopeV1 | ReportG
         3: ReportGenerationEnvelopeV3,
         4: ReportGenerationEnvelopeV4,
         5: ReportGenerationEnvelopeV5,
+        6: ReportGenerationEnvelopeV6,
+        7: ReportGenerationEnvelopeV7,
+        8: ReportGenerationEnvelopeV8,
+        9: ReportGenerationEnvelopeV9,
     }.get(version)
     if model is None:
         raise ValueError(f"unsupported envelope schema_version: {version!r}")
@@ -718,13 +772,21 @@ class StructuredReportResponse(BaseModel):
     sections: tuple[StructuredReportSection, ...] = Field(min_length=1)
     citations: tuple[StructuredReportCitation, ...] = ()
 
+    appendices: tuple[StructuredReportSection,...] = ()
+
+    @model_serializer(mode="wrap")
+    def _legacy_body(self,handler):
+        value=handler(self)
+        if not self.appendices:value.pop('appendices',None)
+        return value
+
     @model_validator(mode="after")
     def _validate_citation_references(self):
         ids = [citation.citation_id for citation in self.citations]
         if len(set(ids)) != len(ids):
             raise ValueError("duplicate citation_id in report output")
         known = set(ids)
-        for section in self.sections:
+        for section in (*self.sections,*self.appendices):
             unknown = [cid for cid in section.citation_ids if cid not in known]
             if unknown:
                 raise ValueError("section references an unknown citation_id")
@@ -799,7 +861,7 @@ EvidenceTopic = Literal[
 ]
 MaterialType = Literal[
     "document", "chat_record", "transaction_record", "image", "log",
-    "android_artifact", "other", "unknown",
+    "android_artifact", "windows_artifact", "other", "unknown",
 ]
 
 
@@ -972,8 +1034,38 @@ class GenerationReportManifest(BaseModel):
     evidence_classifications: ReportClassifications | None = None
     stage_analysis: StageAnalysis | None = None
 
+    appendices: tuple[StructuredReportSection,...] = ()
+    organization: ReportOrganization | None = None
+
+    @model_serializer(mode="wrap")
+    def _legacy_organization(self,handler):
+        value=handler(self)
+        if not self.appendices:value.pop('appendices',None)
+        if self.organization is None:value.pop('organization',None)
+        return value
+
     @model_validator(mode="after")
     def _classification_contract(self):
+        # Upstream v3 also exists as schema 1.2; route by manifest schema.
+        if self.schema_version in ('1.3', '1.4') or self.prompt_version in ('final-report:evidence-only:v4','final-report:case-guided:v4','final-report:evidence-only:v5','final-report:case-guided:v5','final-report:evidence-only:v6','final-report:case-guided:v6'):
+            if (self.prompt_version not in ('final-report:evidence-only:v3','final-report:case-guided:v3','final-report:evidence-only:v4','final-report:case-guided:v4','final-report:evidence-only:v5','final-report:case-guided:v5','final-report:evidence-only:v6','final-report:case-guided:v6')
+                or self.schema_version!=('1.4' if self.prompt_version.endswith((':v4',':v5',':v6')) else '1.3') or self.stage_analysis is None or self.organization is None or self.evidence_classifications is None):
+                raise ValueError('全局报告缺少冻结规划、来源或分类')
+            from .global_report_validation import validate_published
+            validate_published(self.organization,self.sections,self.appendices,self.stage_analysis.materials,self.citations)
+            if self.schema_version=='1.4':
+                from .global_report_models import digest
+                ReportExecutionPolicy.model_validate(self.organization.validation.get('execution_policy'))
+                body=[{'heading':section.heading,'content':section.content} for chapter,section in zip(self.organization.plan.chapters,self.sections) if chapter.role not in ('scope','conclusion')]
+                body_hash=digest(body)
+                hashes=self.organization.validation.get('closure_body_hashes',{})
+                required={c.section_id for c in self.organization.plan.chapters if c.role in ('scope','conclusion')}
+                if not isinstance(hashes,dict) or set(hashes)!=required or any(value!=body_hash for value in hashes.values()) or self.organization.validation.get('closure_body_sha256')!=body_hash:
+                    raise ValueError('概述或结论没有绑定最终主体版本')
+            expected='evidence_only' if ':evidence-only:' in self.prompt_version else 'case_guided'
+            if self.stage_analysis.analysis_mode!=expected:raise ValueError('全局报告模式不匹配')
+            return self
+        if self.organization is not None or self.appendices:raise ValueError('旧版本报告不能隐式取得新规划或附录')
         if self.prompt_version in ("final-report:evidence-only:v1", "final-report:case-guided:v1", "final-report:evidence-only:v2", "final-report:case-guided:v2", "final-report:evidence-only:v3", "final-report:case-guided:v3"):
             if self.schema_version != "1.2" or self.stage_analysis is None or self.evidence_classifications is None:
                 raise ValueError("stage report requires frozen analysis and classifications")
