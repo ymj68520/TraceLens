@@ -2,6 +2,7 @@
 #include "HarmonyBackupExtractor.h"
 #include "MiuiBakProtoParsers.h"
 #include "AndroidAnalysisDatabase.h"
+#include "MobileBackupSchema.h"
 #include <fstream>
 #include <iostream>
 #include <array>
@@ -80,18 +81,7 @@ int budget(void* ptr) { auto& n=*static_cast<int*>(ptr); return --n<=0; }
 bool analyzeMobileSource(IndexedMobileSource& source, AndroidAnalysisDatabase& output, const fs::path& temporaryRoot) {
     const bool xiaomi=source.manifest().value("adapter_version", "")=="xiaomi-export-ext4-v1";
     const std::string parserVersion=xiaomi?"xiaomi-export-mobile-v1":"harmony-decrypted-v1";
-    const char* schema=R"SQL(
-      CREATE TABLE IF NOT EXISTS mobile_backup_manifest(id INTEGER PRIMARY KEY CHECK(id=1),platform TEXT,
-        device TEXT,backup_version TEXT,backup_time_ms INTEGER,module_count INTEGER,manifest_sha256 TEXT,adapter_version TEXT);
-      CREATE TABLE IF NOT EXISTS mobile_artifacts(id INTEGER PRIMARY KEY,kind TEXT NOT NULL,package_name TEXT NOT NULL,
-        app_index INTEGER NOT NULL,source_path TEXT NOT NULL,source_table TEXT NOT NULL,source_key TEXT NOT NULL,
-        record_json TEXT NOT NULL,timestamp_raw TEXT,time_unit TEXT,timestamp_seconds INTEGER,
-        source_db_sha256 TEXT,source_wal_sha256 TEXT,parser_version TEXT NOT NULL,
-        related_path TEXT,related_status TEXT,
-        llm_summary TEXT,llm_description TEXT,llm_keywords TEXT,llm_analyzed_at INTEGER,llm_model_used TEXT,
-        UNIQUE(source_path,source_table,source_key));
-      CREATE INDEX IF NOT EXISTS mobile_artifacts_kind ON mobile_artifacts(kind,id);
-    )SQL";
+    const char* schema = mobile_backup_schema::DDL;
     auto* dest=output.handle();
     if(sqlite3_exec(dest,schema,nullptr,nullptr,nullptr)!=SQLITE_OK) return false;
     if(!output.beginTransaction()) return false;

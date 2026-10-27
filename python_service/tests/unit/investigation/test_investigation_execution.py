@@ -100,7 +100,7 @@ class FakeCppBackend:
         self._task_dir = str(task_dir)
         self.get_task_call_count = 0
         # The restart-recovery sweep reads timeout settings off the backend.
-        self.settings = Mock(cpp_recovery_timeout=8.0)
+        self.settings = Mock(cpp_recovery_timeout=8.0,recovery_max_pages=200)
 
     async def get_task(self, task_id, **kwargs):
         self.get_task_call_count += 1

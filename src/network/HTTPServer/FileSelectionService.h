@@ -3,6 +3,7 @@
 #include "DatabaseManager/FileExtractor/FileExtractor.h"
 #include "ConfigManager/ConfigManager.h"
 #include "LLMPythonProxy.h"
+#include "AnalysisBudget.h"
 #include "core/PathManager/PathManager.h"
 #include <mutex>
 
@@ -10,13 +11,12 @@ namespace forensics {
 struct SelectionSource {std::string task,files,raw,image;};
 class FileSelectionService {
 public:
-    static selection::Budget budget(size_t requested){
+    static selection::Budget budget(size_t requested,bool taskOverride=false){
         auto& config=ConfigManager::instance();if(!config.isLoaded())config.load();selection::Budget b;
         auto limit=[&](const char* key,int64_t fallback,int64_t ceiling){const auto raw=config.get(key,std::to_string(fallback));
             size_t used=0;const auto value=std::stoll(raw,&used);if(used!=raw.size() || value<0 || value>ceiling)throw std::runtime_error(std::string("选择预算配置无效：")+key);return value;};
-        size_t maximum=config.getLLMMaxFiles();if(!maximum)maximum=100000;
-        const auto filter=limit("FILTER_MAX_FILES",0,100000);if(filter>0)maximum=std::min(maximum,static_cast<size_t>(filter));
-        b.files=requested?std::min(requested,maximum):maximum;
+        const auto filter=limit("FILTER_MAX_FILES",0,100000);
+        b.files=analysis_budget::selection_limit(requested,config.getLLMMaxFiles(),filter,taskOverride);
         b.candidates=config.getLLMSmartCandidateFiles();if(!b.candidates)b.candidates=100000;
         b.probeFiles=limit("SELECTION_MAX_PROBE_FILES",std::min<size_t>(2000,b.candidates),100000);
         b.probeBytes=limit("SELECTION_MAX_PROBE_BYTES",128*1024*1024,4LL*1024*1024*1024);

@@ -90,6 +90,7 @@ if (body.contains("xfs_mode")) {
 - `priority`：**小写** low/normal/high/critical（TaskHelpers::priority_from_string，TaskHelpers.cpp:99-105）；
 - `scenarios`：字符串数组 android/windows/linux/server_cloud（旧的 `android_analyze` 布尔仍兼容，:166-169）；
 - `llm_analyze` + `llm_mode`（full|smart，默认 smart）、`case_description`；
+- `llm_max_files`：任务级分析文件预算，整数 `0..100000`。`0`（或缺省/null）= 继承全局 `LLM_MAX_FILES`；`>0` = 本任务预算，同时约束逐文件 LLM 分析、知识图谱摄取（只摄已分析文件）与报告证据 seed（同一已分析文件口径）。**这是本条唯一不静默回落的字段**：非整数或越界返回 400 + `INVALID_LLM_MAX_FILES`（拼错就悄悄退回全局预算，正是这个开关要防的跑飞成本）；
 - `filter_profile`（空则 TaskManager 默认 general_forensics）、`xfs_mode`（native|pure|auto）、`db_output_dir`；
 - 解密：`enable_decryption`/`key_file_dir`（兼容旧拼写 key_dir，:192-194）/`decrypt_password`；
 - Android 逻辑源：`android_source`（tsk|dir|zip|miui-backup）+ `backup_password`；
@@ -223,7 +224,7 @@ if (!cached_result.empty()) {
 | 端点 | 方法 | 请求 | 成功 | 失败 | handler 位置 |
 |---|---|---|---|---|---|
 | `/tasks`、`/api/tasks` | GET | query：status、priority（值 "all" 跳过过滤）、limit（默认 100）、offset（默认 0） | 200 `{tasks[], pagination{total,limit,offset,has_more}, filters{status,priority}}` | 400（stoi 异常） | TaskCRUDRoutes.cpp:394-461 |
-| `/tasks`、`/api/tasks` | POST | §3.2 全字段 | 201 任务摘要（id/status:"created"/priority/scenarios/llm_analyze/llm_mode/file_carving/filter_profile/android_source/dependencies_count） | 400 文本 "Invalid request: ..." | :127-262 |
+| `/tasks`、`/api/tasks` | POST | §3.2 全字段 | 201 任务摘要（id/status:"created"/priority/scenarios/llm_analyze/llm_mode/llm_max_files/file_carving/filter_profile/android_source/dependencies_count） | 400 文本 "Invalid request: ..."；或 400 JSON `{error, error_code:"INVALID_LLM_MAX_FILES"}` | :127-262 |
 | `/api/tasks/list` | GET | 同列表 | 同列表 | 同 | :394（同 handler） |
 | `/tasks/{id}`、`/api/tasks/{id}` | GET/PUT | 路径参数 | 200 task_to_json 全量 | 404 `{error, task_id}`；保留字 404 | :264-292 |
 | `/tasks/{id}/results`、`/api/tasks/{id}/results` | GET | — | 202（未完成 `{status,message,task_id}`）/ 200 结果 JSON | 404；500 | :294-392 |

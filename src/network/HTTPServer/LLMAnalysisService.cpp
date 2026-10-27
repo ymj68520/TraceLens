@@ -1,6 +1,7 @@
 #include "LLMAnalysisService.h"
 #include "FileSelectionService.h"
 #include "DatabaseManager/SourceIndex.h"
+#include "AnalysisBudget.h"
 #include "network/HTTPServer/LLMPythonProxy.h"
 #include "DatabaseManager/SQL/file_classifier_sql.h"
 #include "DatabaseManager/FileExtractor/FileExtractor.h"
@@ -145,7 +146,7 @@ int LLMAnalysisService::analyzeAllFiles(const std::string& filesDbPath,
     }
 
     // Get files to analyze from the database
-    auto files = selectImportantFiles(filesDbPath, options.maxFiles);
+    auto files = selectImportantFiles(filesDbPath, options.maxFiles, options.taskBudgetOverride);
     if (files.empty()) {
         return 0;
     }
@@ -281,7 +282,7 @@ int LLMAnalysisService::analyzeSmartFiles(const std::string& filesDbPath,
     }
 
     // All entry points consume the same bounded native selection plan.
-    auto importantFiles = selectImportantFiles(filesDbPath, options.maxFiles);
+    auto importantFiles = selectImportantFiles(filesDbPath, options.maxFiles, options.taskBudgetOverride);
     if (importantFiles.empty()) {
         std::cerr << "本轮没有通过内容与预算准入的候选文件" << std::endl;
         return 0;
@@ -290,10 +291,10 @@ int LLMAnalysisService::analyzeSmartFiles(const std::string& filesDbPath,
     return runFileAnalyses(filesDbPath, options, importantFiles, progressCallback, "smart-mode");
 }
 
-std::vector<std::string> LLMAnalysisService::selectImportantFiles(const std::string& filesDbPath,size_t maxFiles) {
+std::vector<std::string> LLMAnalysisService::selectImportantFiles(const std::string& filesDbPath,size_t maxFiles,bool taskBudgetOverride) {
     try {
         selectionDatabase_=filesDbPath;
-        selectionPlan_=FileSelectionService::plan({{scratchTaskId_,filesDbPath,rawDbPath_,imagePath_}},FileSelectionService::budget(maxFiles));
+        selectionPlan_=FileSelectionService::plan({{scratchTaskId_,filesDbPath,rawDbPath_,imagePath_}},FileSelectionService::budget(maxFiles,taskBudgetOverride));
         std::vector<std::string> selected;
         for(const auto& item:selectionPlan_.at("selected"))selected.push_back(item.at("reference").get<std::string>());
         std::cout<<"候选选择完成："<<selectionPlan_.at("counts").dump()<<std::endl;
@@ -474,7 +475,16 @@ std::vector<std::string> LLMAnalysisService::getFilesFromDatabase(const std::str
     }
 
     if (options.skipBinaryFiles) {
-        conditions.push_back("category NOT IN ('Executables', 'Unknown Files')");
+        // Same split as getPrioritizedCandidates: OS-owned executables are
+        // noise, user-tree executables are candidate evidence. "Unknown Files"
+        // also stays selectable — it is where TSK puts event logs and hives.
+        conditions.push_back(
+            "NOT (category = 'Executables' AND ("
+            "path LIKE '/Windows/%' OR path LIKE '/windows/%' OR "
+            "path LIKE '/Program Files/%' OR path LIKE '/Program Files (x86)/%' OR "
+            "path LIKE '/program files/%' OR path LIKE '/Windows.old/%' OR "
+            "path LIKE '/ProgramData/Microsoft/%'))"
+            " AND category != 'Unknown Files'");
     }
 
     if (!conditions.empty()) {
@@ -531,11 +541,22 @@ std::vector<std::string> LLMAnalysisService::getPrioritizedCandidates(
 
     // "Unknown Files" is not a reliable binary signal: it is exactly where TSK
     // puts .evtx logs, registry hives (.hve) and other opaque-but-critical
-    // artefacts. Only true executables are excluded here; anything else is
-    // scored, and forensicPathPriority demotes genuine noise.
+    // artefacts. Executables are not uniform either: the OS tree holds ~7,900
+    // system binaries that are pure noise, while a user tree holds the handful
+    // of dropped/installed programs that ARE the case. On PC.E01 the blanket
+    // category filter skipped all 8,622 executables, including
+    // /Users/admin/Desktop/控制端/Quasar v1.4.1/Quasar.exe and client.bin — the
+    // RAT controller and payload the case was about — so the report concluded
+    // "no RAT artefacts found" while the evidence sat in the image.
+    // Only executables in OS-owned trees are excluded here; user-tree
+    // executables are scored like any other candidate.
     std::string sql = forensics::sources::column(db,"source_id") ? "SELECT path,source_id FROM files" : "SELECT path FROM files";
     if (skipBinaryFiles) {
-        sql += " WHERE category != 'Executables'";
+        sql += " WHERE NOT (category = 'Executables' AND ("
+               "path LIKE '/Windows/%' OR path LIKE '/windows/%' OR "
+               "path LIKE '/Program Files/%' OR path LIKE '/Program Files (x86)/%' OR "
+               "path LIKE '/program files/%' OR path LIKE '/Windows.old/%' OR "
+               "path LIKE '/ProgramData/Microsoft/%'))";
     }
 
     sqlite3_stmt* stmt = nullptr;
@@ -593,6 +614,98 @@ std::vector<std::string> LLMAnalysisService::getPrioritizedCandidates(
     // ordering the rest of the pipeline expects.
     return selectByHeuristic(std::move(kept), budget);
 }
+
+namespace {
+
+// A directory keyword matches as a path COMPONENT, not a substring. A bare
+// "rat" check matched intEGRATion, usbarbiTRATor and dehydRATe — 4,534 false
+// positives on PC.E01 against a single real directory. The keyword must be
+// bounded by a separator, a non-alphanumeric character, or the string edge.
+bool hasPathComponent(const std::string& lowerPath, const std::string& keyword) {
+    const size_t n = keyword.size();
+    if (n == 0) return false;
+    size_t pos = lowerPath.find(keyword);
+    while (pos != std::string::npos) {
+        const bool leftOk = pos == 0 ||
+            !std::isalnum(static_cast<unsigned char>(lowerPath[pos - 1]));
+        const size_t end = pos + n;
+        const bool rightOk = end >= lowerPath.size() ||
+            !std::isalnum(static_cast<unsigned char>(lowerPath[end]));
+        if (leftOk && rightOk) return true;
+        pos = lowerPath.find(keyword, pos + 1);
+    }
+    return false;
+}
+
+// Directories named after the case. A controller directory is evidence as a
+// whole — its DLL dependencies, licence files and config belong in the report
+// because the reader needs to see the toolset, not just one binary.
+bool isCaseNamedDirectory(const std::string& lowerPath, const std::string& keyword) {
+    // Only the directory components are consulted, never the file name:
+    // "rat" appearing in a file name inside System32 is not a case directory.
+    const size_t slash = lowerPath.find_last_of('/');
+    if (slash == std::string::npos) return false;
+    return hasPathComponent(lowerPath.substr(0, slash), keyword);
+}
+
+// "rat" is too short and too collision-prone to allow as a file-name term; it
+// only counts when it names a directory.
+bool hasCaseDirectoryKeyword(const std::string& lowerPath) {
+    static const std::vector<std::string> keywords = {
+        "控制端", "木马", "远控", "恶意", "样本", "后门",
+        "清理", "反取证",
+        "quasar", "njrat", "darkcomet", "gh0st", "remcos", "asyncrat",
+        "xworm", "cobalt", "meterpreter", "backdoor", "payload",
+        "privazer", "ccleaner", "eraser",
+    };
+    for (const auto& keyword : keywords) {
+        if (hasPathComponent(lowerPath, keyword)) return true;
+    }
+    return hasPathComponent(lowerPath.substr(0, lowerPath.find_last_of('/') == std::string::npos
+                                                  ? lowerPath.size()
+                                                  : lowerPath.find_last_of('/')),
+                            "rat");
+}
+
+bool isAcquisitionToolName(const std::string& lowerPath) {
+    static const std::vector<std::string> terms = {
+        "ftk imager", "ftkimager", "ftk", "encase", "xways", "autopsy",
+        "volatility", "wireshark", "dumpit", "winpmem", "magnet"};
+    const size_t slash = lowerPath.find_last_of('/');
+    const std::string name = slash == std::string::npos
+        ? lowerPath : lowerPath.substr(slash + 1);
+    for (const auto& term : terms) {
+        if (name.find(term) != std::string::npos) return true;
+    }
+    return false;
+}
+
+// Script and payload extensions that carry readable text or executable intent.
+bool isUserScriptOrPayload(const std::string& lowerPath) {
+    static const char* suffixes[] = {
+        ".ps1", ".vbs", ".js", ".jse", ".hta", ".bat", ".cmd",
+        ".jar", ".py", ".sh"};
+    for (const char* suffix : suffixes) {
+        const size_t n = std::strlen(suffix);
+        if (lowerPath.size() >= n &&
+            lowerPath.compare(lowerPath.size() - n, n, suffix) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Trees that hold vendor payloads even though they sit under a user profile.
+bool isVendoredProgramTree(const std::string& lowerPath) {
+    static const std::vector<std::string> markers = {
+        "/appdata/local/programs/", "/chrome/application/", "kingsoft"};
+    for (const auto& marker : markers) {
+        if (lowerPath.find(marker) != std::string::npos) return true;
+    }
+    return false;
+}
+
+}  // namespace
 
 int LLMAnalysisService::forensicPathPriority(const std::string& reference) {
     const std::string path=forensics::sources::referencePath(reference);
@@ -664,6 +777,62 @@ int LLMAnalysisService::forensicPathPriority(const std::string& reference) {
     // chrome_child.dll). Windows-image replay showed these flooding the whole
     // budget — .dll/.pak under AppData inherit the 90 user-area score, .kuip
     // even hits the shadow credential pattern.
+    //
+    // Executables are the exception: a dropped program in a user tree is
+    // exactly what cases turn on (RAT controllers, packers, cleanup tools),
+    // and demoting them to noise made the category filter's blind spot total.
+    //
+    // They score 95 — above ordinary files in the same tree (90) and below only
+    // the core forensic artefacts (100). A lower band does not work: user trees
+    // hold ~5,400 files at 90 on PC.E01, which filled the 1,000-file candidate
+    // budget and left Quasar.exe ranked 5,869th, i.e. permanently unreachable.
+    //
+    // ProgramData counts only outside Microsoft's own subtree: Defender ships
+    // ~40 executables under /ProgramData/Microsoft/Windows Defender/Platform,
+    // which are vendor binaries, not dropped evidence.
+    static const std::vector<std::string> userExecutableTrees = {
+        "/users/", "/home/", "/root/"};
+    const auto endsWith = [&lower](const char* suffix) {
+        const std::size_t n = std::strlen(suffix);
+        return lower.size() >= n && lower.compare(lower.size() - n, n, suffix) == 0;
+    };
+    const bool isExecutableImage =
+        endsWith(".exe") || endsWith(".bin") || endsWith(".scr") ||
+        endsWith(".com") || endsWith(".pif");
+    if((isExecutableImage || isUserScriptOrPayload(lower)) && !selection::resourcePackage(lower).empty())return 5;
+    if (isExecutableImage) {
+        bool inUserTree = false;
+        for (const auto& tree : userExecutableTrees) {
+            if (lower.find(tree) != std::string::npos) { inUserTree = true; break; }
+        }
+        const bool inProgramDataVendorTree =
+            lower.find("/programdata/") != std::string::npos &&
+            lower.find("/programdata/microsoft/") == std::string::npos;
+        if ((inUserTree || inProgramDataVendorTree) && !isVendoredProgramTree(lower)) {
+            return 95;
+        }
+    }
+    // A directory named after the case is evidence as a whole: the controller's
+    // DLL dependencies, licence files and config describe the toolset. This
+    // ranks above a bare executable elsewhere because the directory itself is
+    // the finding. Vendored program trees are still noise.
+    if (!isVendoredProgramTree(lower) && hasCaseDirectoryKeyword(lower)) {
+        return 92;
+    }
+    // Scripts a suspect wrote or dropped read like documents but sit in the
+    // runtime tree, so they would otherwise fall through to the noise band.
+    if (isUserScriptOrPayload(lower) &&
+        (lower.find("/users/") != std::string::npos ||
+         lower.find("/home/") != std::string::npos ||
+         lower.find("/root/") != std::string::npos ||
+         lower.find("/programdata/") != std::string::npos)) {
+        return 95;
+    }
+    // Acquisition tooling bounds the evidence window: its run time tells the
+    // analyst when the image was taken and explains later disk activity.
+    if (isAcquisitionToolName(lower)) {
+        return 85;
+    }
     static const std::vector<std::string> binaryResourceSuffixes = {
         ".dll", ".sys", ".ocx", ".efi", ".msi", ".cab", ".pak", ".kuip",
         ".exe", ".mui", ".ico", ".pb"};

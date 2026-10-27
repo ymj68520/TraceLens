@@ -16,7 +16,7 @@
 // Probes are injected; the policy never interprets a path as a host file.
 namespace forensics::selection {
 using json=nlohmann::json;
-inline constexpr const char* policyVersion="candidate-selection:v6-server-resources";
+inline constexpr const char* policyVersion="candidate-selection:v7-user-programs";
 struct Budget {
     size_t candidates=1000,files=500,probeFiles=2000,probeBytes=128*1024*1024,probePerFile=65536;
     size_t semanticFiles=500,semanticBytes=1024ULL*1024*1024;
@@ -50,9 +50,32 @@ inline std::string lower(std::string value){for(auto& c:value)c=static_cast<char
 inline bool contains(const std::string& value,const std::vector<std::string>& tokens){for(auto& token:tokens)if(value.find(token)!=std::string::npos)return true;return false;}
 inline bool ends(const std::string& value,const std::string& suffix){return value.size()>=suffix.size() && value.compare(value.size()-suffix.size(),suffix.size(),suffix)==0;}
 inline std::string parent(const std::string& path){const auto pos=path.find_last_of('/');return pos==std::string::npos?"":path.substr(0,pos);}
+inline bool systemExecutable(const std::string& path){
+    const auto p=lower(path);
+    for(const std::string prefix:{"/windows/","/windows.old/","/program files/","/program files (x86)/","/programdata/microsoft/",
+        "/usr/bin/","/usr/sbin/","/bin/","/sbin/","/usr/lib/","/lib/","/lib64/"})if(p.rfind(prefix,0)==0)return true;
+    return false;
+}
+inline bool boundedKeyword(const std::string& path,const std::string& word){
+    size_t at=path.find(word);
+    while(at!=std::string::npos){const auto end=at+word.size();
+        if((at==0 || !std::isalnum(static_cast<unsigned char>(path[at-1]))) &&
+           (end==path.size() || !std::isalnum(static_cast<unsigned char>(path[end]))))return true;
+        at=path.find(word,at+1);
+    }
+    return false;
+}
+inline bool caseToolDirectory(const std::string& path){
+    const auto p=parent(lower(path));
+    for(const std::string word:{"控制端","木马","远控","恶意","样本","后门","清理","反取证","quasar","njrat","darkcomet",
+        "gh0st","remcos","asyncrat","xworm","cobalt","meterpreter","backdoor","payload","privazer","ccleaner","eraser","rat"})
+        if(boundedKeyword(p,word))return true;
+    return false;
+}
 inline std::string resourcePackage(const std::string& path) {
     const auto p=lower(path);
-    for(const std::string marker:{"/public/static/plugs/","/public/static/plugins/","/usr/src/kernels/","/usr/share/cmake/","/var/lib/yum/yumdb/",
+    for(const std::string marker:{"/.m2/repository/","/.gradle/caches/","/.git/objects/","/.git/modules/","/.npm/","/.yarn/","/.pnpm-store/","/.cargo/registry/","/go/pkg/mod/",
+        "/appdata/local/programs/","/chrome/application/","/public/static/plugs/","/public/static/plugins/","/usr/src/kernels/","/usr/share/cmake/","/var/lib/yum/yumdb/",
         "/_locales/","/locales/","/node_modules/","/site-packages/","/vendor/","/thinkphp/","/mysql-test/","/winsxs/","/usr/share/doc/","/usr/share/man/","/usr/lib/","/lib64/"}) {
         const auto at=p.find(marker);
         if(at!=std::string::npos){
@@ -103,8 +126,17 @@ inline void classify(Candidate& c){
        n=="database.php" || n==".env" || n=="my.cnf" || n=="sshd_config") {c.family="program";c.score=114;}
     if(p=="/etc/centos-release" || p=="/etc/os-release" || p=="/etc/redhat-release" || p=="/etc/hostname") {c.family="activity";c.score=105;}
     if(contains(p,{"/var/log/secure","/var/log/auth.log","/var/log/wtmp","/var/log/btmp"}) || n==".bash_history") {c.family="activity";c.score=115;}
+    const bool programArea=contains(p,{"/users/","/home/","/root/"}) || (p.rfind("/programdata/",0)==0 && p.rfind("/programdata/microsoft/",0)!=0);
+    if(programArea && (ends(n,".exe") || ends(n,".bin") || ends(n,".scr") || ends(n,".com") || ends(n,".pif") ||
+        ends(n,".ps1") || ends(n,".vbs") || ends(n,".js") || ends(n,".jse") || ends(n,".hta") || ends(n,".bat") || ends(n,".cmd") || ends(n,".jar") || ends(n,".py") || ends(n,".sh"))) {
+        c.family="program";c.score=std::max(c.score,116);
+    }
+    if(caseToolDirectory(p)){c.score=std::max(c.score,115);if(c.family=="other")c.family="business";}
     c.resourceGroup=resourcePackage(p);
     if(!c.resourceGroup.empty()){c.family="resource";c.score=6;c.cluster=c.task+":"+c.resourceGroup;}
+    if(n=="authorized_keys" || n=="known_hosts" || n=="id_rsa" || n=="id_ed25519"){
+        c.resourceGroup.clear();c.family="program";c.score=115;c.cluster=c.context;
+    }
     if(n=="desktop.ini" || n=="thumbs.db"){c.cache=true;c.score=6;}
     c.scoreParts={{"role_prior",c.score}};
     c.key=c.task+":"+std::to_string(c.partition)+":"+std::to_string(c.inode)+":"+c.path+":"+std::to_string(c.deleted)+":"+c.id;
@@ -282,7 +314,7 @@ inline json build(const std::vector<Input>& inputs,const Budget& budget,const Pr
             auto number=[&](const char* field){return r[field].is_number_integer()?r[field].get<int64_t>():0;};
             c.size=number("size");c.mtime=number("mtime");c.partition=number("partition_num");c.inode=number("inode");c.deleted=number("is_deleted");
             if(c.size<=0){++empty;continue;}
-            if(budget.skipExecutables && c.category=="Executables"){++excluded;continue;}
+            if(budget.skipExecutables && c.category=="Executables" && systemExecutable(c.path)){++excluded;continue;}
             classify(c);retain(c.family,c);
             auto sample=c;sample.score=0;sample.key=sources::hash(budget.seed+c.key)+":"+c.key;retain("_exploration",std::move(sample));
         }
@@ -305,7 +337,7 @@ inline json build(const std::vector<Input>& inputs,const Budget& budget,const Pr
         const auto allowance=std::min<size_t>({budget.probePerFile,budget.probeBytes-bytes,static_cast<size_t>(c.size)});
         ++probed;bytes+=allowance; // Reserve the worst case before the reader runs.
         try {auto value=probe(c,allowance);if(value.value("bytes",size_t(0))>allowance)throw std::runtime_error("PROBE_BUDGET_EXCEEDED");applyProbe(c,value);
-            if(budget.skipExecutables && c.format=="executable"){c.eligible=false;c.reason="用户范围排除程序内容分析";}}
+            if(budget.skipExecutables && c.format=="executable" && systemExecutable(c.path)){c.eligible=false;c.reason="本轮跳过系统目录程序内容分析";}}
         catch(const std::exception&){c.state="probe_error";c.eligible=false;c.reason="内容探测失败，状态未知";}
     }
     json semanticStats=json::object();
@@ -325,7 +357,7 @@ inline json build(const std::vector<Input>& inputs,const Budget& budget,const Pr
         c.eligible=false;if(c.reason.empty())c.reason="暂缓：没有足够的内容探测信息，来源继续保留";
     }
     for(auto& c:pool){
-        if(budget.skipExecutables && c.format=="executable"){c.eligible=false;c.reason="用户范围排除程序内容分析";}
+        if(budget.skipExecutables && c.format=="executable" && systemExecutable(c.path)){c.eligible=false;c.reason="本轮跳过系统目录程序内容分析";}
         if(!budget.visionAvailable && c.format=="image"){c.eligible=false;c.reason="暂缓：尚未配置视觉模型令牌上界";}
         if(c.size>256LL*1024*1024){c.eligible=false;c.reason="暂缓：超出当前完整来源读取预算，需要分段读取能力";}
     }

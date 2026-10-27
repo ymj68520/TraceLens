@@ -110,6 +110,15 @@ async def analyze_dll(
         service_manager = get_service_manager()
         cpp_backend_url = getattr(settings, 'cpp_backend_url', 'http://localhost:8080')
 
+        if request.files_db_path:
+            from ..services import task_store
+            if not request.task_id:raise HTTPException(status_code=400,detail='task_id is required to persist analysis results')
+            try:
+                trusted=await task_store.resolve_task_files_db(request.task_id)
+                task_store.validate_legacy_db_path(request.files_db_path,trusted)
+            except task_store.TaskStoreError as exc:
+                raise HTTPException(status_code=404 if exc.code==task_store.TASK_NOT_FOUND else 400,detail=str(exc)) from exc
+
         host_path=request.file_path
         if request.task_id:
             from ..services import task_store
@@ -205,7 +214,7 @@ async def analyze_dll(
         )
 
     except SourceIdentityError as exc:
-        raise HTTPException(status_code=409 if 'AMBIGUOUS' in exc.code else 422,
+        raise HTTPException(status_code=404 if exc.code in ('SOURCE_NOT_FOUND','EXTRACTED_SOURCE_MISSING','SOURCE_MATERIALIZATION_FAILED') else 409 if 'AMBIGUOUS' in exc.code else 422,
                             detail={'code':exc.code,'message':exc.message}) from exc
     except HTTPException:
         raise

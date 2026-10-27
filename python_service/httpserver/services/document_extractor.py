@@ -30,7 +30,7 @@ class ExtractorLocator:
         name = logical_name or path.name
         if path.is_file():
             try:
-                with path.open('rb') as stream: signature=stream.read(20)
+                with path.open('rb') as stream: signature=stream.read(64)
             except OSError: signature=b''
             if signature.startswith(b'SQLite format 3\x00'):
                 from .extractors.sqlite_records import SQLiteExtractor
@@ -44,6 +44,18 @@ class ExtractorLocator:
             if signature[:3]==b'MAM' or signature[4:8]==b'SCCA':
                 from .extractors.windows_prefetch import PrefetchExtractor
                 return PrefetchExtractor()
+            if signature.startswith(b'\x7fELF') and len(signature)>=16 and signature[4] in (1,2) and signature[5] in (1,2) and signature[6]==1:
+                from .extractors.binary_analyzer import ElfExtractor
+                return ElfExtractor()
+            if signature.startswith(b'MZ') and len(signature)>=64:
+                offset=int.from_bytes(signature[60:64],'little')
+                try:
+                    with path.open('rb') as stream:
+                        stream.seek(offset);pe_signature=stream.read(4)
+                except OSError:pe_signature=b''
+                if pe_signature==b'PE\0\0':
+                    from .extractors.binary_analyzer import PeExtractor
+                    return PeExtractor()
 
         # Filename-based routing must come first: registry hives (SAM, SYSTEM,
         # SOFTWARE, SECURITY, DEFAULT, NTUSER.DAT) and Linux logs (wtmp, btmp)

@@ -52,6 +52,33 @@ def test_xiaomi_binary_note_capture_preserves_field_offsets_without_database_or_
     assert snapshot.timestamp_timezone is None
 
 
+def test_oppo_json_record_keeps_its_vendor_and_does_not_claim_a_database_row(tmp_path):
+    database=tmp_path/'android.db'
+    with sqlite3.connect(database) as con:
+        con.execute('CREATE TABLE mobile_artifacts(id INTEGER PRIMARY KEY,kind TEXT,package_name TEXT,app_index INTEGER,'
+                    'source_path TEXT,source_table TEXT,source_key TEXT,record_json TEXT,timestamp_raw TEXT,time_unit TEXT,'
+                    'timestamp_seconds INTEGER,source_db_sha256 TEXT,source_wal_sha256 TEXT,parser_version TEXT)')
+        con.execute('INSERT INTO mobile_artifacts VALUES(1,?,?,?,?,?,?,?,?,?,?,?,?,?)', (
+            'device_info','',0,'/phone_data/deviceinfo.json','deviceinfo','{"section":"devices","row":0}',
+            '{"model":"synthetic"}','', '',None,None,None,'oppo-thunderforensic-v1'))
+        con.execute('CREATE TABLE mobile_backup_manifest(platform TEXT)')
+        con.execute("INSERT INTO mobile_backup_manifest VALUES('Android')")
+        con.execute('CREATE TABLE android_source_coverage(artifact_kind TEXT,source_path TEXT,status TEXT,detail TEXT)')
+    task={'id':'oppo-fixture','android_source':'oppo-backup','output_files_db':str(database),'metadata':{'android_db':str(database)}}
+    detail=artifact_detail(task,'mobile',1)
+    assert detail['source']['platform']=='Android' and detail['source']['source_format']=='json'
+    assert detail['source']['granularity']=='logical_json_record'
+    frozen=freeze_selected_result(task,'mobile',1,expected_row_hash=detail['record_hash'],expected_source_revision=detail['source_revision'])
+    cpp=AsyncMock();cpp.get_task=AsyncMock(return_value=task)
+    key=f"android_artifact:v1:{task['id']}:{frozen['result_set_id']}:mobile:1"
+    resolved=asyncio.run(EvidenceResolver(cpp).resolve_evidence(task['id'],key))
+    snapshot=_acquire_android_artifact(resolved)
+    assert snapshot.normalized_fields['platform']=='Android'
+    assert snapshot.parser_name=='AndroidAnalyzer/OppoBackup'
+    assert snapshot.provenance['original_database_record']=='not_applicable'
+    assert snapshot.provenance['json_record']=='parser_bound_section_and_row'
+
+
 @pytest.mark.parametrize("mobile_source", ["harmony-backup", "xiaomi-image"])
 def test_mobile_record_freezes_and_retains_source_key_in_investigation(tmp_path, mobile_source):
     parser_version = "xiaomi-export-mobile-v1" if mobile_source == "xiaomi-image" else "harmony-decrypted-v1"

@@ -138,15 +138,25 @@ def artifact_detail_from_database(database: Path, task_id: str, kind: str, row_i
             value = dict(row)
             exported_image = str(value.get("parser_version", "")).startswith(("xiaomi-", "miui-notes-"))
             protobuf = value.get("source_table", "").startswith("protobuf:")
-            source = {"platform": "Android / MIUI" if exported_image else "HarmonyOS",
-                      "normalized_path": value["source_path"],
-                      "granularity": "binary_record" if protobuf else "logical_database_row",
+            oppo = str(value.get("parser_version", "")).startswith("oppo-")
+            source_format = ("log_inventory" if value.get("source_table")=="logdata" else "json") if oppo else ("protobuf" if protobuf else "sqlite")
+            # Platform comes from the writing adapter's manifest row, not a
+            # hardcoded vendor: the same mobile_artifacts table carries
+            # HarmonyOS and OPPO (ThunderForensic) records.
+            platform = "Android / MIUI" if exported_image else "Android" if oppo else "HarmonyOS"
+            manifest = con.execute("SELECT 1 FROM sqlite_master WHERE name='mobile_backup_manifest'").fetchone()
+            if manifest:
+                seen = con.execute("SELECT platform FROM mobile_backup_manifest LIMIT 1").fetchone()
+                if seen and seen[0]:
+                    platform = seen[0]
+            source = {"platform": platform, "normalized_path": value["source_path"],
+                      "granularity": "binary_record" if protobuf else "logical_json_record" if source_format=="json" else "file_inventory_record" if oppo else "logical_database_row",
                       "original_table": value["source_table"],
                       "original_primary_key": json.loads(value["source_key"]),
                       "sha256": value.get("source_db_sha256"), "wal_sha256": value.get("source_wal_sha256"),
                       "wal_frame": None, "verified_row_source": True,
                       "parser_version": value.get("parser_version"), "app_index": value.get("app_index"),
-                      "source_format": "protobuf" if value.get("source_table", "").startswith("protobuf:") else "sqlite"}
+                      "source_format": source_format}
             if con.execute("SELECT 1 FROM sqlite_master WHERE name='android_source_provenance'").fetchone():
                 original = con.execute("SELECT source_member_path,source_container,source_container_sha256 "
                                        "FROM android_source_provenance WHERE normalized_android_path=? LIMIT 2",
@@ -168,7 +178,7 @@ def artifact_detail_from_database(database: Path, task_id: str, kind: str, row_i
                     "record_hash": raw_row_hash(value), "source_revision": revision,
                     "warning": ("来源为手机数据导出镜像；数据库记录保留源表、主键与文件哈希，便签备份保留字段路径及字节偏移；导出镜像定位不代表原手机物理位置，WAL 帧未验证。"
                                 if str(value.get("parser_version", "")).startswith(("xiaomi-", "miui-notes-")) else
-                                "来源为已解密的鸿蒙备份；记录绑定源库、表、主键和 WAL 哈希，未定位物理偏移或 WAL 帧；不代表完整手机。")}
+                                f"来源为{platform}手机备份的解析记录；记录绑定源容器成员、表和行主键，未定位物理偏移或 WAL 帧；不代表完整手机。")}
         # Old parser tables do not carry per-row source paths/primary keys.
         # A unique coverage path is shown as a candidate only, never a proof.
         candidate_paths = []

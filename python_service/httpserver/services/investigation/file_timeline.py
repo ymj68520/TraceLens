@@ -51,6 +51,9 @@ def _connect_ro(path: str) -> sqlite3.Connection:
     uri = f"file:{urllib.parse.quote(str(path))}?mode=ro"
     conn = sqlite3.connect(uri, uri=True, timeout=30)
     conn.row_factory = sqlite3.Row
+    # 真实镜像可能携带非 UTF-8 文件名；默认 text_factory 会在迭代中途抛
+    # OperationalError，把整批已分析文件集吞成空集（初管入报因此为空）。
+    conn.text_factory = lambda data: data.decode("utf-8", "replace")
     conn.execute("PRAGMA query_only = ON")
     return conn
 

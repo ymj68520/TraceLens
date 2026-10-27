@@ -63,6 +63,13 @@ class _FakeCppBackend:
     async def get_task(self, task_id):
         return self._tasks.get(task_id)
 
+    async def materialize_source(self, task_id, path, source_id=None):
+        """Current exact-source endpoint, backed by the fixture extraction job."""
+        job=await self.extract_files(task_id,[path],output_dir='extracted_files')
+        if not job.get('job_id'):return {'success':False,'error':'SOURCE_MATERIALIZATION_FAILED'}
+        result=await self.get_extraction_status(job['job_id'])
+        return {'success':True} if result.get('status')=='completed' else {'success':False,'error':'SOURCE_MATERIALIZATION_FAILED'}
+
     async def extract_files(self, task_id, file_paths, output_dir=None, overwrite=False):
         self.extract_calls.append({
             "task_id": task_id,
@@ -212,7 +219,7 @@ async def test_analyze_extraction_job_failure_fails_closed(unextracted_task):
     with pytest.raises(HTTPException) as excinfo:
         await _analysis.analyze_content(request, Settings(_env_file=None))
     assert excinfo.value.status_code == 404
-    assert "Automatic extraction" in excinfo.value.detail
+    assert excinfo.value.detail['code']=='SOURCE_MATERIALIZATION_FAILED'
     assert unextracted_task["backend"].extract_calls
 
 
@@ -230,7 +237,7 @@ async def test_analyze_extraction_completed_but_file_still_missing(unextracted_t
     with pytest.raises(HTTPException) as excinfo:
         await _analysis.analyze_content(request, Settings(_env_file=None))
     assert excinfo.value.status_code == 404
-    assert "Automatic extraction" in excinfo.value.detail
+    assert excinfo.value.detail['code']=='EXTRACTED_SOURCE_MISSING'
 
 
 @pytest.mark.asyncio
@@ -248,7 +255,7 @@ async def test_analyze_extraction_start_refused_fails_closed(unextracted_task):
     with pytest.raises(HTTPException) as excinfo:
         await _analysis.analyze_content(request, Settings(_env_file=None))
     assert excinfo.value.status_code == 404
-    assert "Automatic extraction" in excinfo.value.detail
+    assert excinfo.value.detail['code']=='SOURCE_MATERIALIZATION_FAILED'
 
 
 @pytest.mark.asyncio
@@ -323,7 +330,9 @@ async def test_dll_auto_extracts_missing_file(unextracted_task, monkeypatch):
             return False
 
         async def analyze_dll(self, file_path):
-            assert file_path == str(ws / "evidence" / "evil.dll")
+            assert Path(file_path).name=='evil.dll'
+            assert Path(file_path).read_bytes()==(ws/'evidence'/'evil.dll').read_bytes()
+            assert file_path!=str(ws/'evidence'/'evil.dll')  # disposable parser snapshot
             return {"threat_score": 10, "file_path": file_path}
 
     monkeypatch.setattr(dll_routes, "DLLAnalyzerClient", FakeDLLClient)
@@ -378,4 +387,5 @@ async def test_dll_auto_extraction_failure_returns_404(unextracted_task, monkeyp
     with pytest.raises(HTTPException) as excinfo:
         await dll_routes.analyze_dll(request, Settings(_env_file=None))
     assert excinfo.value.status_code == 404
-    assert "Automatic extraction" in excinfo.value.detail
+    assert excinfo.value.detail['code']=='SOURCE_NOT_FOUND'
+    assert unextracted_task['backend'].extract_calls==[]

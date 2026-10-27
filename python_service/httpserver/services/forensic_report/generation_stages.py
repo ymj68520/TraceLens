@@ -45,12 +45,21 @@ DEFAULT_REPORT_CONCURRENCY = 8
 
 
 def report_concurrency(settings) -> int:
-    """Fan-out for report LLM batches, bounded by the shared LLM budget."""
+    """Fan-out for report LLM batches, bounded by the shared LLM budget.
+
+    Capped well below LLM_MAX_CONCURRENCY: the report pipeline issues hundreds
+    of large requests back to back, and the gateway answers that sustained rate
+    with 429 windows even though the same concurrency succeeds in a short burst
+    (measured: 32 concurrent 14k-character requests all returned 200, while a
+    full generation hit a 33-second 429 window after ~490 calls). More
+    parallelism does not shorten the report — those seconds are spent waiting
+    out the limiter — so keep the sustained rate modest.
+    """
     try:
         value = int(getattr(settings, "llm_max_concurrency", DEFAULT_REPORT_CONCURRENCY))
     except (TypeError, ValueError):
         value = DEFAULT_REPORT_CONCURRENCY
-    return max(1, min(value, 32))
+    return max(1, min(value, DEFAULT_REPORT_CONCURRENCY))
 
 
 async def _gather_bounded(coros, limit: int):
@@ -881,6 +890,52 @@ _MIN_GROUPS_FOR_FULL_TARGET = 4
 # one huge theme cannot occupy a chapter alone while others carry a fraction.
 _THEME_SPLIT_FACTOR = 1.2
 
+# Directions that report the ABSENCE of content rather than a finding: an empty
+# event log, a failed parse, an empty XML/JSON object, a license file, a memory
+# dump with no strings. On PC.E01 they were 109 of 339 directions — a third of
+# the evidence — and size-balanced packing spread them across every chapter, so
+# the chapters carrying real findings were diluted until a Quasar RAT
+# configuration existed only in the citation list and never in the prose.
+# Pooling them keeps every direction reported while confining the material
+# limits to one honest chapter.
+_NO_FINDING_RE = re.compile(
+    r"解析(?:结果)?为空|解析失败|为空|空\s*XML|空\s*JSON|空哈希|空占位|无实质"
+    r"|未提取到|无显著|无法形成|无法就|未显示异常|无可用"
+    r"|(?:开源)?许可证|第三方组件声明|同源重复|重复副本|重复材料"
+    r"|解析器(?:格式|限制)|格式识别限制|手段限制"
+)
+_NO_FINDING_THEME_NAME = "材料解析限制与空记录"
+# Subjects a case is actually about. A direction naming one of these is not
+# "one observation among two hundred" — it is the finding the report exists to
+# deliver. On PC.E01 the only Quasar direction (a RAT client config with
+# 192.168.10.30:4782, Mutex and AddStartup) was packed into a chapter titled
+# "Edge与PrivaZer触发Defender", where no reader would ever find it. Themes
+# carrying such a direction get their own chapter, ahead of the bulk.
+_CASE_CRITICAL_RE = re.compile(
+    # Malware families and tool names: unambiguous on their own.
+    r"quasar|njrat|darkcomet|gh0st|remcos|asyncrat|xworm|cobalt\s*strike"
+    r"|meterpreter|mimikatz|beacon"
+    # Behavioural language that only a malicious reading uses. "网络能力"
+    # (network capability) and "提权" (privilege escalation) appear in benign
+    # driver descriptions too, so they are excluded; "远控/木马/后门" and a
+    # control-end/server-config pair are not.
+    r"|远控|木马|后门程序|恶意程序|恶意代码|勒索软件|窃密"
+    r"|控制端|受控端|服务端配置|客户端配置|监听端口"
+    r"|外联地址|回连|反弹\s*shell|C2\s*服务器|C&C",
+    re.IGNORECASE)
+_CRITICAL_THEME_NAME = "重点可疑对象"
+# Inferences are what an investigator reads first: they state what the evidence
+# may mean. They are few (5 of 339 on PC.E01), so size-balanced packing always
+# tucked them behind bulk observations, and the one Quasar inference lost the
+# chapter name to a larger, less specific theme. One dedicated chapter makes the
+# inferences the report's analytic core instead of a footnote.
+_HYPOTHESIS_THEME_NAME = "待验证推断与可疑关联"
+# Specific subjects handed to the heading namer alongside the theme names. A
+# chapter named only after its themes becomes "MATERIAL相关执行异常研判" even
+# when it also holds a named RAT configuration; the concrete subjects let the
+# namer title the chapter after what is actually in it.
+_MAX_HEADING_SUBJECTS = 4
+
 
 # Libraries every Windows process loads. Naming a chapter after one of them says
 # nothing about the chapter: a PC.E01 chapter was titled "KERNEL32相关执行"
@@ -895,6 +950,159 @@ _GENERIC_DEPENDENCIES = frozenset({
     "RPCSS", "WOW64", "WOW64BASE", "WOW64WIN", "WOW64CPU", "MSVCRT", "SHLWAPI",
     "COMCTL32", "MSI", "WINTRUST", "PSAPI", "VERSION", "IMAGEHLP", "DBGHELP",
 })
+
+
+def _is_no_finding(direction) -> bool:
+    """True when a direction reports missing content instead of a finding."""
+    return bool(_NO_FINDING_RE.search(f"{direction.title} {direction.description}"))
+
+
+def _is_case_critical(direction) -> bool:
+    """True when a direction names a subject the case is actually about.
+
+    Malware, remote-control configuration, exfiltration channels. These are few
+    and decisive; they must not be averaged into a chapter of browser prefetch
+    observations.
+
+    A direction that mentions a malicious tool only to DISCLAIM a link is not
+    case-critical. One PC.E01 chapter was titled "Quasar远控等重点样本研判"
+    while its prose said the samples showed no link to Quasar at all: the
+    direction read "未显示与前述Quasar配置…的直接关联", and a bare keyword
+    match promoted it. The negation has to be checked before the keyword.
+    """
+    text = f"{direction.title} {direction.description}"
+    if _CASE_CRITICAL_NEGATION_RE.search(text):
+        return False
+    return bool(_CASE_CRITICAL_RE.search(text))
+
+
+# Phrases that turn a malware mention into its opposite: "未显示与 Quasar 配置
+# 的直接关联", "与远控无关", "不能据此认定存在远控". Chinese puts the negated
+# predicate after the object, so both orders must be covered: a keyword followed
+# by "…无直接关联" is the common one ("未显示与前述Quasar配置的直接关联").
+_CASE_CRITICAL_NEGATION_RE = re.compile(
+    r"(?:远控|木马|后门|恶意|控制端|外联|Quasar|NjRat|DarkComet|Gh0st|Remcos)"
+    r"[^。；]{0,30}?(?:无关|无涉|无直接关联|没有关联|不存在关联|未发现关联"
+    r"|未显示[^。；]{0,20}?关联|无证据|未被证实|不能认定|不足以认定)"
+    r"|(?:未|没有|无|不|非)[^。；]{0,24}?"
+    r"(?:关联|关系|指向|证据|迹象|发现|显示|表明|认定|属于|构成)"
+    r"[^。；]{0,16}?"
+    r"(?:远控|木马|后门|恶意|控制端|外联|Quasar)",
+    re.IGNORECASE)
+
+
+def _split_case_critical(themes):
+    """Pull case-critical observations into one dedicated theme.
+
+    Returns ``(critical_theme, remaining_themes)``. The critical theme keeps its
+    own chapter so the RAT configuration is a heading a reader can find, rather
+    than a paragraph inside "Edge与PrivaZer触发Defender".
+
+    Only OBSERVATIONS move: a critical hypothesis already belongs to the
+    inference tier, which has its own chapter.
+    """
+    critical, remaining = [], []
+    for theme in themes:
+        rest = []
+        for direction in theme["directions"]:
+            if (direction.finding_kind != "hypothesis"
+                    and not _is_no_finding(direction)
+                    and _is_case_critical(direction)):
+                critical.append(direction)
+            else:
+                rest.append(direction)
+        if rest:
+            remaining.append({"name": theme["name"], "directions": tuple(rest)})
+    if not critical:
+        return None, themes
+    return {"name": _CRITICAL_THEME_NAME, "directions": tuple(critical)}, remaining
+
+
+def _subject_key(direction) -> str:
+    """A coarse identity for what a direction is about.
+
+    Used to keep two readings of the same object (one observation, one
+    hypothesis) in the same tier instead of splitting them across chapters.
+    The title carries the object and is stable across the two readings; the
+    description is free prose and names different parameters each time, so
+    reading it would give the twins different keys. Normalized to lowercase and
+    stripped of the finding vocabulary induction appends. Empty when the title
+    names no specific object.
+    """
+    tokens = set()
+    for match in _SUBJECT_TOKEN_RE.findall(direction.title):
+        stem = match.rsplit(".", 1)[0].lower()
+        if not stem or stem.upper() in _SUBJECT_STOPWORDS:
+            continue
+        if stem.upper() in _GENERIC_DEPENDENCIES:
+            continue
+        if _subject_rank(match) != 0:
+            continue
+        tokens.add(stem)
+    # One specific name identifies the object; requiring all of them fails
+    # whenever one reading rephrases its title.
+    return min(tokens) if tokens else ""
+
+
+def _split_no_finding_and_hypotheses(themes):
+    """Separate the two tiers that must not compete with bulk observations.
+
+    Returns ``(pooled, hypotheses, findings, warnings)``:
+
+    * ``pooled`` — one theme holding every direction that reports absent
+      content, or ``None`` when there are none.
+    * ``hypotheses`` — one theme holding every ``hypothesis`` direction, or
+      ``None``.
+    * ``findings`` — the remaining themes, with pooled/hypothesis directions
+      removed from them.
+
+    A theme that loses all of its directions disappears; one that keeps some
+    is returned with the remainder.
+
+    An observation is moved with its hypothesis twin. The pipeline emits both
+    readings of the same object under the SAME title ("Quasar类远控配置与监听
+    配置并存" once as an observation, once as a hypothesis); splitting them put
+    the RAT configuration in two chapters, and the heading then named neither
+    after it. The move is keyed on the exact normalized title, so the seven
+    ordinary PrivaZer observations — same subject, different findings — stay in
+    the findings tier where they belong.
+    """
+    warnings = []
+    pooled, hypotheses, findings = [], [], []
+    inferred_titles = {
+        _subject_key(d)
+        for theme in themes for d in theme["directions"]
+        if d.finding_kind == "hypothesis" and not _is_no_finding(d)
+    }
+    inferred_titles.discard("")
+    for theme in themes:
+        observations, inferences = [], []
+        for direction in theme["directions"]:
+            if _is_no_finding(direction):
+                pooled.append(direction)
+            elif direction.finding_kind == "hypothesis":
+                inferences.append(direction)
+            elif _subject_key(direction) and _subject_key(direction) in inferred_titles:
+                # The observation twin of a hypothesis: same object, same title.
+                # The explicit non-empty test matters: two hypothesis titles name
+                # no specific token and key to "", which would match every
+                # subject-less observation and drag 238 of them into the tier.
+                inferences.append(direction)
+            else:
+                observations.append(direction)
+        hypotheses.extend(inferences)
+        if observations:
+            findings.append({"name": theme["name"], "directions": tuple(observations)})
+    if pooled:
+        warnings.append(f"NO_FINDING_POOLED_{len(pooled)}")
+    if hypotheses:
+        warnings.append(f"HYPOTHESES_SEPARATED_{len(hypotheses)}")
+    return (
+        {"name": _NO_FINDING_THEME_NAME, "directions": tuple(pooled)} if pooled else None,
+        {"name": _HYPOTHESIS_THEME_NAME, "directions": tuple(hypotheses)} if hypotheses else None,
+        findings,
+        warnings,
+    )
 
 
 def _piece_label(theme_name: str, piece, used: set[str] | None = None) -> str:
@@ -952,12 +1160,37 @@ def pack_themes_into_chapters(themes, target: int = _TARGET_NARRATIVE_CHAPTERS):
     if not groups:
         return [], ()
     warnings = []
-    bins = min(target, len(groups))
+    pooled, hypotheses, groups, tier_warnings = _split_no_finding_and_hypotheses(groups)
+    warnings.extend(tier_warnings)
+    if not groups and len((pooled, hypotheses)) == 0:
+        return [], ()
+    # A tier that survives is a chapter in its own right, so it takes one bin
+    # before the findings compete for the rest. Both tiers are optional: a case
+    # whose materials are all readable has neither. They never consume the whole
+    # budget: at least one bin is left for the findings, otherwise a report of
+    # nothing but parse failures would be a wall of limitations.
+    critical, groups = _split_case_critical(groups)
+    if critical is not None:
+        warnings.append(f"CASE_CRITICAL_ISOLATED_{len(critical['directions'])}")
+    reserved = [tier for tier in (hypotheses, critical, pooled) if tier is not None]
+    if not groups:
+        # Only pooled/hypothesis/critical directions exist; they are the report.
+        chapters = [{"name": tier["name"], "themes": [tier]} for tier in reserved]
+        # Keep the analytic tiers first: inferences, then the critical objects.
+        order = {tier["name"]: i for i, tier in
+                 enumerate(t for t in (hypotheses, critical, pooled) if t is not None)}
+        chapters.sort(key=lambda c: order[c["name"]])
+        return chapters, tuple(warnings)
+    # Never let the tiers take the whole budget: at least one bin is left for
+    # the findings, otherwise a report of nothing but parse failures would be a
+    # wall of limitations with no findings at all.
+    finding_bins = max(1, min(target - len(reserved), len(groups)))
+    bins = len(reserved) + finding_bins
     if bins < target:
         warnings.append(f"CHAPTER_TARGET_REDUCED_{bins}_OF_{target}")
 
     total = sum(len(theme["directions"]) for theme in groups)
-    ideal = total / bins
+    ideal = total / finding_bins
     # Split oversized themes into near-ideal pieces so every chapter can carry
     # a comparable amount of evidence.
     pieces = []
@@ -987,13 +1220,18 @@ def pack_themes_into_chapters(themes, target: int = _TARGET_NARRATIVE_CHAPTERS):
         range(len(pieces)),
         key=lambda i: (-len(pieces[i]["directions"]), pieces[i]["name"]),
     )
-    buckets: list[list[int]] = [[] for _ in range(bins)]
-    loads = [0] * bins
+    buckets: list[list[int]] = [[] for _ in range(finding_bins)]
+    loads = [0] * len(buckets)
     for index in ordered:
-        lightest = min(range(bins), key=lambda b: (loads[b], b))
+        lightest = min(range(len(buckets)), key=lambda b: (loads[b], b))
         buckets[lightest].append(index)
         loads[lightest] += len(pieces[index]["directions"])
     chapters = []
+    # Reserved tiers lead the report: the reader meets the analytic claims and
+    # the materials that could not be parsed before the bulk observations, not
+    # after them.
+    for tier in reserved:
+        chapters.append({"name": tier["name"], "themes": [tier]})
     for bucket in buckets:
         if not bucket:
             continue
@@ -1098,6 +1336,91 @@ def _names_generic_dependency(heading: str) -> bool:
     return any(dep in upper for dep in _GENERIC_DEPENDENCIES)
 
 
+# Named artifacts a chapter talks about, as they appear in prompt prose. The
+# heading namer uses these to title a chapter after its actual subject.
+_SUBJECT_TOKEN_RE = re.compile(
+    r"[A-Za-z][A-Za-z0-9_.\-]{2,}(?:\.[A-Za-z0-9]{2,5})?")
+# Subjects too generic to name a chapter with, on top of the library list. These
+# are artifact TYPES and host constants that appear in almost every direction;
+# they crowd out the one specific name a reader needs.
+_SUBJECT_STOPWORDS = frozenset({
+    "EXE", "DLL", "SYS", "BIN", "XML", "JSON", "HTML", "TEXT", "TRUE", "FALSE",
+    "NULL", "HTTP", "HTTPS", "SYSTEM", "WINDOWS", "USERS", "PROGRAMDATA",
+    "APPDATA", "TEMP", "DESKTOP", "ADMIN", "USER", "DATA", "FILE", "FILES",
+    "PREFETCH", "VERBOSE", "CRITICAL", "ERROR", "WARNING", "INFORMATION",
+    "EVENT", "EVENTS", "EMPTY", "SOURCE_GROUP", "SQLITE", "REGISTRY", "LOG",
+    "LOGS", "MACHINE", "ORIGINAL", "NEUTRAL", "FIRST", "PARTIAL", "NULL",
+    "HTTP", "HTTPS", "SSH", "TRUE", "FALSE", "DESKTOP-02H4UFI",
+})
+
+
+def _subject_rank(token: str) -> int:
+    """Sort key: 0 for a specific named object, 1 for everything else.
+
+    A specific subject is what a reader searches for: a product or tool name
+    (Quasar, PrivaZer, mscoree), a path component, a host or volume id. Bare
+    ALL-CAPS tokens in this corpus are almost always artifact types or host
+    constants, and a lowercase dictionary word is prose, not a name — ranking
+    those as specific put 166 of 339 directions into the "has a subject" tier.
+    """
+    stem = token.rsplit(".", 1)[0]
+    if not re.search(r"[A-Za-z]", stem):
+        return 1
+    # A single short lowercase word is ordinary prose ("found", "empty").
+    if stem.islower() and len(stem) <= 6 and not re.search(r"[0-9_.\-]", stem):
+        return 1
+    if stem.isupper():
+        return 1
+    # Mixed case (Quasar, PrivaZer), embedded digits/dots/underscores, or a long
+    # lowercase identifier (mscoree, microsoftedgeupdate) name something.
+    if any(ch.isupper() for ch in stem[1:]) or stem[:1].isupper():
+        return 0
+    if re.search(r"[0-9_.\-]", stem) or len(stem) >= 8:
+        return 0
+    return 1
+
+
+def _chapter_subjects(chapter) -> list[str]:
+    """The distinct concrete subjects a chapter's directions name, most telling first.
+
+    Deterministic order: specific named objects before generic artifact types,
+    then frequency desc, then name asc — so the same chapter always offers the
+    namer the same subjects.
+    """
+    counts: dict[str, int] = {}
+    for direction in chapter_directions(chapter):
+        text = f"{direction.title} {direction.description}"
+        for match in _SUBJECT_TOKEN_RE.findall(text):
+            token = match.strip()
+            if not token:
+                continue
+            stem = token.rsplit(".", 1)[0].upper()
+            if stem in _GENERIC_DEPENDENCIES or stem in _SUBJECT_STOPWORDS:
+                continue
+            if token.upper() in _GENERIC_DEPENDENCIES:
+                continue
+            counts[token] = counts.get(token, 0) + 1
+    ranked = sorted(counts.items(),
+                    key=lambda kv: (_subject_rank(kv[0]), -kv[1], kv[0]))
+    return [token for token, _count in ranked[:_MAX_HEADING_SUBJECTS]]
+
+
+def _chapter_lead_name(chapter) -> str:
+    """The theme that should name the chapter when the namer gives nothing usable.
+
+    Prefers a theme carrying an inference over the largest one: a hypothesis is
+    what the chapter is FOR. Falls back to the largest theme. Never invents a
+    name — the result is always one of the chapter's own theme names.
+    """
+    members = chapter["themes"]
+    if not members:
+        return chapter["name"]
+    inferred = [t for t in members
+                if any(d.finding_kind == "hypothesis" for d in t["directions"])]
+    pool = inferred or members
+    return max(pool, key=lambda t: (len(t["directions"]), t["name"]))["name"]
+
+
 # A heading that ends on one of these is a fragment, not a title: "SVCHOST、WMI"
 # names two objects and stops, telling the reader nothing about the chapter.
 _HEADING_FRAGMENT_TAILS = ("、", "，", ",", "与", "和", "及", "的", "：", ":", "/")
@@ -1109,6 +1432,17 @@ def _is_heading_fragment(heading: str) -> bool:
     if not stripped:
         return True
     if stripped.endswith(_HEADING_FRAGMENT_TAILS):
+        return True
+    # Two particles in a row ("WinRM与的PowerShell执行") is a grammar error the
+    # namer produced on PC.E01. It cannot be repaired by trimming: the sentence
+    # itself is broken, so ask again.
+    if re.search(r"[与和及在对于把将被从向][的了]", stripped):
+        return True
+    # A single identifier ("PowerShell", "material.dll", "FormatExtFs") names an
+    # object but says nothing about it. Two PC.E01 chapters were published with
+    # exactly those headings; the reader learns nothing from them. A short
+    # pure-ASCII token is a label, not a topic.
+    if (re.fullmatch(r"[A-Za-z0-9_.\-]+", stripped) and len(stripped) <= 20):
         return True
     # A pure enumeration ("SVCHOST、WMI") has no statement after its separators.
     parts = [p for p in re.split(r"[、，,与和及]", stripped) if p.strip()]
@@ -1123,13 +1457,20 @@ async def _chapter_heading(chapter, llm):
     grouping label ("OfficeHub", "EXPLORER"), which is too terse to be a chapter
     title. Names built from a generic system library ("RPCSS执行…") or left as a
     bare noun list ("SVCHOST、WMI") are rejected and re-derived.
+
+    The namer also sees the chapter's concrete subjects (the named artifacts and
+    objects its directions talk about). Without them a chapter holding a Quasar
+    RAT configuration was titled "MATERIAL相关执行异常研判" — the theme names
+    described formatting conventions, not content, so the heading carried no
+    information the reader could act on.
     """
     names = [theme["name"] for theme in chapter["themes"]]
-    fallback = _shorten_heading(chapter["name"], _MAX_HEADING_CHARS)
+    subjects = _chapter_subjects(chapter)
+    fallback = _shorten_heading(_chapter_lead_name(chapter), _MAX_HEADING_CHARS)
     try:
         response = await llm.chat_completion(
             STAGE_CHAPTER_HEADING_SYSTEM_V1,
-            json.dumps({"topics": names}, ensure_ascii=False),
+            json.dumps({"topics": names, "subjects": subjects}, ensure_ascii=False),
             max_tokens=80, temperature=0.0)
         content = response.get("content")
         if isinstance(content, str) and content.strip():
@@ -1154,11 +1495,269 @@ async def _chapter_heading(chapter, llm):
             if (not _names_generic_dependency(candidate)
                     and not _is_heading_fragment(candidate)):
                 return candidate
-    # A bare process name ("RUNTIMEBROKER") is a label, not a title; it tells
-    # the reader what the chapter is about only if it says what happened.
-    if len(fallback) <= 16 and re.fullmatch(r"[A-Za-z0-9_.\- ]+", fallback):
-        return f"{fallback} 执行痕迹"
+        # Nothing usable: every theme name is a bare object list. Say what the
+        # chapter records about them rather than publishing the list alone.
+        labelled = _label_bare_artifacts(fallback)
+        if labelled != fallback:
+            return labelled
     return fallback
+
+
+def _label_bare_artifacts(name: str) -> str:
+    """Append the action a bare artifact label is missing.
+
+    A bare process name ("RUNTIMEBROKER") is a label, not a title; it tells the
+    reader what the chapter is about only if it says what happened. The verb has
+    to match the artifact: a DLL is loaded or parsed, never executed, so
+    "material.dll 执行痕迹" would be a false statement about the evidence.
+    """
+    if not name:
+        return name
+    if re.fullmatch(r"[A-Za-z0-9_.\- ]+", name) and len(name) <= _MAX_HEADING_CHARS:
+        extension = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        if extension in ("dll", "sys", "ocx"):
+            suffix = "解析痕迹"
+        elif extension in ("xml", "json", "ini", "txt", "log", "cfg"):
+            suffix = "配置记录"
+        else:
+            suffix = "执行痕迹"
+        labelled = f"{name} {suffix}"
+        if len(labelled) <= _MAX_HEADING_CHARS:
+            return labelled
+        # No room for a verb: keep the object name rather than a truncated verb.
+        return name
+    # A CJK enumeration ("WinRM与PowerShell") gets the generic verb.
+    if _is_heading_fragment(name):
+        labelled = f"{name} 执行痕迹"
+        if len(labelled) <= _MAX_HEADING_CHARS:
+            return labelled
+    return name
+
+
+def _part_role(part_index: int, parts_total: int) -> str:
+    """Where one written part sits inside its chapter.
+
+    A chapter too large for one request is written in parts, and each part used
+    to open with its own "本章围绕…展开" and close with its own "综合来看…".
+    Joined with blank lines that produced a chapter with four total-opening
+    sentences and two conclusions (chapter 4 of the PC.E01 report: 7,039
+    characters, 21 paragraphs, the same "no events found" statement rephrased
+    four times). Only the first part may introduce and only the last may
+    conclude; the middle parts go straight into their subject.
+    """
+    if parts_total <= 1:
+        return "single"
+    if part_index == 0:
+        return "first"
+    if part_index == parts_total - 1:
+        return "last"
+    return "middle"
+
+
+# Appended to the system prompt for a part that is not allowed to introduce or
+# conclude. Kept as prompt text rather than a payload field: the writer treats
+# JSON keys as data, and this is an instruction about shape.
+_PART_ROLE_INSTRUCTIONS = {
+    "first": (
+        "\n\n本章材料过多，分多段撰写，本段是第 1 段（不是最后一章）。"
+        "本段只写本章的引言与本段涉及的材料，不要写全章结论，"
+        "不要出现“综合来看”“综上”这类收束语；结论由最后一段写。"
+    ),
+    "middle": (
+        "\n\n本章材料过多，分多段撰写，本段是中间段。"
+        "禁止写引言：不要出现“本章围绕…展开”“本批材料呈现…”“综合来看”“综上”"
+        "这类开题或收束句，直接以具体对象或具体异常开头，写完本段材料即止。"
+    ),
+    "last": (
+        "\n\n本章材料过多，分多段撰写，本段是最后一段。"
+        "禁止写引言：不要出现“本章围绕…展开”“本批材料呈现…”，"
+        "直接以具体对象开头；本段末尾写全章结论（综合前述各段，一两句即可）。"
+    ),
+}
+
+
+def _strip_repeated_scaffolding(text: str) -> str:
+    """Remove duplicate chapter openings/conclusions left by joined parts.
+
+    The role instructions tell each part what it may write, but a prompt alone
+    is not a guarantee — a middle part still opened with "本章材料集中呈现两
+    类情况" on one run. This is the deterministic backstop: keep the first
+    introducing sentence and the last concluding sentence, drop the rest.
+
+    A repeated opening is stripped at the SENTENCE, not the paragraph: the
+    paragraph that follows it usually carries the part's findings, so dropping
+    the whole paragraph would delete evidence along with the scar.
+    """
+    paragraphs = [p for p in text.split("\n\n") if p.strip()]
+    if len(paragraphs) <= 1:
+        return text
+    intro_re = re.compile(
+        r"^\s*(?:本章|本批材料|该章|这一章)"
+        r"[^。]{0,60}?(?:展开|呈现|聚焦|围绕|反映|涵盖|涉及)[^。]*。")
+    seen_intro = False
+    cleaned: list[str] = []
+    for paragraph in paragraphs:
+        stripped = paragraph.strip()
+        if intro_re.match(stripped):
+            if seen_intro:
+                remainder = intro_re.sub("", stripped, count=1).strip()
+                if len(remainder) < _CHAPTER_MIN_CHARS // 3:
+                    # Nothing left but the opening: this paragraph was pure
+                    # lead-in, so the whole paragraph goes.
+                    continue
+                stripped = remainder
+            else:
+                seen_intro = True
+        cleaned.append(stripped)
+    # The same chapter must not conclude twice. Keep only the final
+    # "综合来看"/"综上" paragraph; earlier ones are part-level wrap-ups.
+    conclusion_indexes = [
+        i for i, p in enumerate(cleaned)
+        if re.match(r"^\s*(?:综合来看|综上|总体来看|综合上述)", p)
+    ]
+    if len(conclusion_indexes) > 1:
+        drop = set(conclusion_indexes[:-1])
+        cleaned = [p for i, p in enumerate(cleaned) if i not in drop]
+    return "\n\n".join(cleaned)
+
+
+# Narrative chapters habitually list execution counts instead of interpreting
+# them: chapter 8 of the PC.E01 report carried 14 instances of "X.EXE 运行 N 次"
+# in one chapter, six of them inside a single paragraph that read as a Prefetch
+# table transcribed into sentences. The write prompt now forbids it; this is the
+# deterministic check that catches a non-compliant answer.
+_EXEC_COUNT_RE = re.compile(
+    r"[A-Za-z0-9_.\-]{3,}\.(?:EXE|exe)[^。；\n]{0,12}?"
+    r"(?:运行|执行)\s*(?:了\s*)?\d+\s*次")
+_MAX_EXEC_COUNTS_PER_PARAGRAPH = 3
+# Whole-chapter budget. Per-paragraph counting was satisfied by spreading the
+# same table over five paragraphs: chapter 8 still published 18 named execution
+# counts across the chapter while no single paragraph exceeded three. A chapter
+# that names more than this many programs with counts is a table, however it is
+# paragraph-broken.
+_MAX_EXEC_COUNTS_PER_CHAPTER = 8
+
+
+def _paragraph_is_an_inventory(paragraph: str) -> bool:
+    """True when a paragraph reads as a frequency table rather than analysis."""
+    return len(_EXEC_COUNT_RE.findall(paragraph)) > _MAX_EXEC_COUNTS_PER_PARAGRAPH
+
+
+def _inventory_free(text: str) -> bool:
+    """True when no paragraph of a chapter is an execution-count inventory."""
+    return not any(_paragraph_is_an_inventory(p) for p in text.split("\n\n"))
+
+
+def _compress_inventory(paragraph: str, keep: int = _MAX_EXEC_COUNTS_PER_PARAGRAPH) -> str:
+    """Rewrite an over-budget counting paragraph into a grouped statement.
+
+    The rewrite request is not enough: on the PC.E01 run two chapters came back
+    from the rewrite still listing every program and its count (an 18-instance
+    chapter, nine of them in one sentence). Prompt-only enforcement fails here
+    because the model treats the count table as the content, so the backstop is
+    deterministic: keep the first ``keep`` named programs, replace the rest with
+    one grouped clause that preserves the count range and the fact of the
+    activity. ``keep`` drops to 1 when a chapter's total budget still does not
+    fit after the first pass.
+    """
+    matches = list(_EXEC_COUNT_RE.finditer(paragraph))
+    if len(matches) <= keep:
+        return paragraph
+    kept = matches[:keep]
+    dropped = matches[keep:]
+    counts = []
+    for match in dropped:
+        found = re.search(r"(\d+)\s*次", match.group())
+        if found:
+            counts.append(int(found.group(1)))
+    # Build the grouped clause from the whole dropped span so the sentence's own
+    # punctuation and connectors are removed with it.
+    start, end = dropped[0].start(), dropped[-1].end()
+    # Extend to the sentence end so the leftover enumeration marks disappear.
+    tail = paragraph[end:]
+    stop = re.search(r"[。；;！!？?]", tail)
+    grouped = ""
+    if counts:
+        low, high = min(counts), max(counts)
+        span = f"{low}" if low == high else f"{low} 至 {high}"
+        grouped = f"另有 {len(dropped)} 个系统组件各有 {span} 次执行"
+    replacement = (grouped + "。") if grouped else "。"
+    # Cut back to the beginning of the clause: the kept text must not end on a
+    # dangling enumeration mark or a half-written connector.
+    head = paragraph[:start].rstrip("：:，,、；; ")
+    if head and head[-1] in "。！？!?":
+        # The kept part already ended a sentence; a semicolon after it would
+        # read as "…多次运行。；另有 N 个…".
+        rebuilt = f"{head}{replacement}"
+    elif head:
+        rebuilt = f"{head}；{replacement}"
+    else:
+        rebuilt = replacement.lstrip("；")
+    remainder = paragraph[end:]
+    if stop is None:
+        return rebuilt
+    rest = remainder[stop.end():].lstrip()
+    if not rest:
+        return rebuilt
+    # Two grouped clauses in a row ("另有 2 个…。另有 6 个…。") carry no extra
+    # information; merge them into one by summing the components and widening
+    # the range. This happens when a paragraph is compressed twice.
+    merged = re.match(r"^另有\s*(\d+)\s*个系统组件各有\s*(\d+)(?:\s*至\s*(\d+))?\s*次执行。",
+                      rest)
+    if merged and grouped:
+        prev = re.search(r"另有\s*(\d+)\s*个系统组件各有\s*(\d+)(?:\s*至\s*(\d+))?\s*次执行。$",
+                         rebuilt)
+        if prev:
+            total = int(prev.group(1)) + int(merged.group(1))
+            lows = [int(x) for x in prev.groups()[1:] + merged.groups()[1:] if x]
+            low, high = min(lows), max(lows)
+            span = f"{low}" if low == high else f"{low} 至 {high}"
+            rebuilt = rebuilt[:prev.start()] + \
+                f"另有 {total} 个系统组件各有 {span} 次执行。"
+            rest = rest[merged.end():].lstrip()
+            if not rest:
+                return rebuilt
+    return f"{rebuilt}{rest}"
+
+
+def _compress_inventories(text: str) -> str:
+    """Reduce a chapter's execution-count listing to a readable budget.
+
+    Two limits apply. A paragraph with more than ``_MAX_EXEC_COUNTS_PER_PARAGRAPH``
+    counts is compressed first (it is unambiguously a table). If the chapter as
+    a whole still names more than ``_MAX_EXEC_COUNTS_PER_CHAPTER`` programs with
+    counts, the densest paragraphs are compressed until the chapter fits —
+    otherwise spreading the same table across five paragraphs satisfies the
+    per-paragraph rule while the chapter still reads as an inventory.
+    """
+    paragraphs = text.split("\n\n")
+    invents = [_EXEC_COUNT_RE.findall(p) for p in paragraphs]
+
+    def compress(index: int, keep: int = _MAX_EXEC_COUNTS_PER_PARAGRAPH) -> None:
+        paragraphs[index] = _compress_inventory(paragraphs[index], keep)
+        invents[index] = _EXEC_COUNT_RE.findall(paragraphs[index])
+
+    for index, found in enumerate(invents):
+        if len(found) > _MAX_EXEC_COUNTS_PER_PARAGRAPH:
+            compress(index)
+
+    total = sum(len(found) for found in invents)
+    # Second pass: the chapter still names too many programs. Tighten the
+    # densest paragraphs to a single named example each — one concrete program
+    # plus a grouped statement is what a reader needs; the full table belongs
+    # in the stage material, not in the chapter.
+    while total > _MAX_EXEC_COUNTS_PER_CHAPTER:
+        candidates = [(len(found), index) for index, found in enumerate(invents)
+                      if len(found) > 1]
+        if not candidates:
+            break
+        _count, index = max(candidates)
+        before = len(invents[index])
+        compress(index, keep=1)
+        if len(invents[index]) >= before:
+            break
+        total = sum(len(found) for found in invents)
+    return "\n\n".join(paragraphs)
 
 
 async def write_chapters(chapters, materials, llm, *, concurrency: int = 1):
@@ -1168,7 +1767,8 @@ async def write_chapters(chapters, materials, llm, *, concurrency: int = 1):
     ``{"heading": str, "content": str, "direction_ids": tuple[str, ...]}``.
     A chapter that does not fit one request is written in parts; every part
     keeps the chapter's heading so the report still has exactly one chapter
-    per packed chapter.
+    per packed chapter. Parts are role-scoped (first/middle/last) so a joined
+    chapter reads as one continuous argument instead of several stapled ones.
     """
     cid = {m.material_id: stage_citation_name(m.evidence_key) for m in materials}
     jobs = []
@@ -1185,6 +1785,7 @@ async def write_chapters(chapters, materials, llm, *, concurrency: int = 1):
                 "chapter_index": index,
                 "part_index": part_index,
                 "parts_total": len(parts),
+                "part_role": _part_role(part_index, len(parts)),
                 "topics": [t["name"] for t in chapter["themes"]],
                 "rows": part,
                 "direction_ids": part_ids,
@@ -1196,16 +1797,23 @@ async def write_chapters(chapters, materials, llm, *, concurrency: int = 1):
             "part": f"{job['part_index'] + 1}/{job['parts_total']}",
             "directions": job["rows"],
         }, ensure_ascii=False)
-        response = await llm.chat_completion(
-            STAGE_CHAPTER_WRITE_SYSTEM_V1, payload,
-            # A chapter body is up to 4000 characters of Chinese prose plus the
-            # JSON wrapper. 4096 tokens truncated long chapters mid-string, and
-            # the parse error dropped the whole chapter (one run lost 38
-            # directions to "Unterminated string").
-            max_tokens=8192, temperature=0.0)
-        content = response.get("content")
-        if not isinstance(content, str) or not content.strip():
-            raise ValueError("CHAPTER_SECTION_UNUSABLE")
+        system_prompt = STAGE_CHAPTER_WRITE_SYSTEM_V1 + _PART_ROLE_INSTRUCTIONS.get(
+            job["part_role"], "")
+
+        async def ask(prompt):
+            response = await llm.chat_completion(
+                prompt, payload,
+                # A chapter body is up to 4000 characters of Chinese prose plus
+                # the JSON wrapper. 4096 tokens truncated long chapters
+                # mid-string, and the parse error dropped the whole chapter (one
+                # run lost 38 directions to "Unterminated string").
+                max_tokens=8192, temperature=0.0)
+            content = response.get("content")
+            if not isinstance(content, str) or not content.strip():
+                raise ValueError("CHAPTER_SECTION_UNUSABLE")
+            return content
+
+        content = await ask(system_prompt)
         try:
             heading, text = _parse_chapter_section(content)
         except ValueError as exc:
@@ -1215,17 +1823,41 @@ async def write_chapters(chapters, materials, llm, *, concurrency: int = 1):
             # its own input had no evidence. The reminder goes into the system
             # prompt, never appended to the JSON payload — appending broke the
             # payload the retry was supposed to resend.
-            retry_prompt = STAGE_CHAPTER_WRITE_SYSTEM_V1 + (
+            retry_prompt = system_prompt + (
                 "\n\n注意：上一版错误地声明本章某个主题没有材料。"
                 "本章所有 directions 都有材料支撑，请把全部材料写成同一结论的不同侧面，"
                 "不得出现“未提供任何发现”“无法作出结论”这类表述。")
-            response = await llm.chat_completion(
-                retry_prompt, payload,
-                max_tokens=8192, temperature=0.0)
-            content = response.get("content")
-            if not isinstance(content, str) or not content.strip():
-                raise ValueError("CHAPTER_SECTION_UNUSABLE") from None
-            heading, text = _parse_chapter_section(content)
+            heading, text = _parse_chapter_section(await ask(retry_prompt))
+        if not _inventory_free(text):
+            # One rewrite with the violation named. The inventory rule is the
+            # one the writer bypasses most: it is easy to satisfy "no filename
+            # lists" by translating the same table into counting sentences.
+            logger.info("Chapter %d part %d is a frequency inventory; rewriting",
+                        job["chapter_index"] + 1, job["part_index"] + 1)
+            inventory_prompt = system_prompt + (
+                "\n\n注意：上一版把执行记录写成了频次清单"
+                "（同一段里多次出现“某程序运行 N 次”）。"
+                "请改写：每个段落最多点名为 3 个程序给出次数，其余按组件类别合并成"
+                "一句话概括，并写出这些执行对本章结论意味着什么。")
+            try:
+                rewritten_heading, rewritten = _parse_chapter_section(
+                    await ask(inventory_prompt))
+            except ValueError:
+                logger.warning(
+                    "Chapter %d part %d rewrite failed; keeping the first version",
+                    job["chapter_index"] + 1, job["part_index"] + 1)
+            else:
+                if _inventory_free(rewritten):
+                    heading, text = rewritten_heading, rewritten
+                else:
+                    logger.warning(
+                        "Chapter %d part %d still reads as an inventory after "
+                        "the rewrite; compressing the counting paragraphs",
+                        job["chapter_index"] + 1, job["part_index"] + 1)
+        if not _inventory_free(text):
+            # Deterministic backstop, applied whatever the rewrite produced:
+            # the model reliably keeps the table even when told not to.
+            text = _compress_inventories(text)
         return {**job, "heading": heading, "content": text}
 
     results = await _gather_bounded([write_one(j) for j in jobs], concurrency)
@@ -1248,6 +1880,8 @@ async def write_chapters(chapters, materials, llm, *, concurrency: int = 1):
         # invent their own title, or the report gains chapters it does not have.
         heading = await _chapter_heading(chapter, llm)
         body = "\n\n".join(part["content"] for part in parts)
+        if len(parts) > 1:
+            body = _strip_repeated_scaffolding(body)
         direction_ids = tuple(
             direction_id for part in parts for direction_id in part["direction_ids"])
         sections.append({"heading": heading, "content": body,
@@ -1535,6 +2169,24 @@ _SKELETON_PREFIX_RE = re.compile(
     r"^(?:%s)\s*(?:[（(]\s*\d+\s*[)）])?\s*$" % "|".join(_SKELETON_HEADINGS))
 
 
+def _trim_leading_particle(text: str) -> str:
+    """Drop a heading's leading function word left by a cut.
+
+    Cutting "同名文件material.dll的多版本…" at the ASCII→CJK boundary produced
+    the published heading "的material.dll多版本PE结构差": the cut landed one
+    character late, so the label began with the possessive "的". A heading may
+    not open with a particle — it reads as a broken fragment.
+
+    The same cut can leave the particle at the END ("DESKTOP-02H4UFI的"), which
+    is equally unusable: it promises a noun that the truncation removed.
+    """
+    text = re.sub(r"^[的了和与及或在对于把将被从向、，,。：:而并]\s*", "", text.strip())
+    text = re.sub(r"[的了和与及或在对于把将被从向而并]+$", "", text).strip()
+    # "WinRM与的PowerShell" — a conjunction followed by a possessive is a
+    # grammar error; drop the possessive and keep the conjunction.
+    return re.sub(r"([与和及])的", r"\1", text)
+
+
 def _shorten_heading(heading: str, limit: int) -> str:
     """Trim an over-long heading without cutting through a word or identifier.
 
@@ -1565,18 +2217,18 @@ def _shorten_heading(heading: str, limit: int) -> str:
     for conjunction in (" 与 ", " 和 ", " 及 ", "与", "和", "及"):
         cut = head.rfind(conjunction)
         if cut >= max(4, limit // 3):
-            return head[:cut].rstrip(" 、，, /|：:与和及")
+            return _trim_leading_particle(head[:cut].rstrip(" 、，, /|：:与和及"))
     # A boundary just after a separator reads naturally.
     for separator in ("、", "，", ",", " ", "/", "|", "：", ":"):
         cut = head.rfind(separator)
         if cut >= max(4, limit // 2):
-            return head[:cut].rstrip("、，, /|：:")
+            return _trim_leading_particle(head[:cut].rstrip("、，, /|：:"))
     # Otherwise prefer ending the label at a script change (an ASCII token
     # followed by Chinese text) rather than inside the ASCII identifier.
     for index in range(len(head) - 1, max(4, limit // 2) - 1, -1):
         if head[index].isascii() != head[index - 1].isascii():
-            return head[:index].rstrip()
-    return head
+            return _trim_leading_particle(head[:index].rstrip())
+    return _trim_leading_particle(head)
 
 
 def _derived_heading(heading: str, content: str) -> str:
@@ -1725,6 +2377,57 @@ def _direction_citations(direction_ids, directions_by_id, materials) -> tuple[st
         for mid in sorted(material_ids, key=lambda x: order.get(x, 10 ** 9))
         if mid in order
     )
+
+
+def _verification_checklist(directions, *, limit: int = 8) -> list[str]:
+    """Turn the directions' own missing-information notes into actions.
+
+    The advisory chapter used to be two fixed sentences plus a count of
+    warnings — it named nothing to go and check, which is the one thing a
+    reader wants from it. Every direction already records what it could not
+    establish (``missing_information``); those notes are exactly the open
+    questions, so they become the checklist.
+
+    Ordered by how much evidence the direction carries: a gap under a
+    well-supported finding is worth closing first. Duplicates are collapsed
+    because the same gap (no command line, no file hash) recurs across dozens
+    of directions.
+    """
+    ranked = sorted(
+        (d for d in directions if d.missing_information),
+        key=lambda d: (-len(d.supporting_refs), d.title),
+    )
+    seen: set[str] = set()
+    checklist: list[str] = []
+    for direction in ranked:
+        for gap in direction.missing_information:
+            note = gap.strip().rstrip("。；;，,")
+            if not note or len(note) < 6:
+                continue
+            # Normalize only for de-duplication; publish the original wording.
+            key = re.sub(r"[\s，,。；;、]", "", note)[:40]
+            if key in seen:
+                continue
+            seen.add(key)
+            checklist.append(note)
+            if len(checklist) >= limit:
+                return checklist
+    return checklist
+
+
+def _advisory_text(directions, warnings) -> str:
+    """The closing chapter: what an investigator should go and check."""
+    lines = ["逐项核对调查方向的支持材料、相反材料和缺失信息。材料记载、机器推断及案情假设"
+             "分别处理；没有人工复核的结论不得自动作为已确认事实。"]
+    checklist = _verification_checklist(directions)
+    if checklist:
+        lines.append("")
+        lines.append("优先补齐以下缺口（按所涉发现的材料支撑度排序）：")
+        lines.extend(f"{index}. {note}。" for index, note in enumerate(checklist, 1))
+    if warnings:
+        lines.append("")
+        lines.append(f"另有 {len(warnings)} 项分析或覆盖限制，详见本轮材料与差异清单。")
+    return "\n".join(lines)
 
 
 def render_stage_report(envelope, materials, directions, comparisons, warnings, narrative=None):
@@ -1877,9 +2580,7 @@ def render_stage_report(envelope, materials, directions, comparisons, warnings, 
     if narrative and dropped_chars:
         warnings.append(f"NARRATIVE_OVERFLOW_DROPPED_{dropped_chars}_CHARS")
     sections.append(StructuredReportSection(heading="人工核查建议",
-        content="逐项核对调查方向的支持材料、相反材料和缺失信息。材料记载、机器推断及案情假设分别处理；"
-                "没有人工复核的结论不得自动作为已确认事实。" +
-                (f"\n本轮有 {len(warnings)} 项分析或覆盖限制，详见本轮材料与差异清单。" if warnings else "")))
+        content=_advisory_text(directions, warnings)))
     stage = StageAnalysis(
         analysis_mode=envelope.analysis_mode, evidence_scope_hash=envelope.evidence_scope_hash,
         case_description=envelope.case_description,

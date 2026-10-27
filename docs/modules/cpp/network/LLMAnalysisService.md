@@ -51,7 +51,7 @@ using ProgressCallback = std::function<bool(int current, int total, const std::s
 
 | 字段 | env（ConfigManager.cpp:91-97） | 默认 | 说明 |
 |---|---|---|---|
-| maxFiles | `LLM_MAX_FILES` | 500 | smart/full 共同预算；旧硬编码下限 1000 曾让本地 LLM 任务跑数小时（TaskManagerAnalysis.cpp:369-372 注释） |
+| maxFiles | `LLM_MAX_FILES`，可被任务级 `llm_max_files` 覆盖 | 500 | smart/full 共同预算；旧硬编码下限 1000 曾让本地 LLM 任务跑数小时（TaskManagerAnalysis.cpp:369-372 注释）。任务级值经 `AnalysisBudget::resolve()`（`src/network/HTTPServer/AnalysisBudget.h`）解析：0=继承 env，smart 模式超过 `LLM_SMART_CANDIDATE_FILES` 时钳到候选池 |
 | maxContentLength | `LLM_MAX_CONTENT_LENGTH` | 10000 | 单文件喂模型的字符上限，超长截断 |
 | fileTypes | （无 env） | 空 | 空=全部分类；非空时映射为 `category IN (...)` |
 | skipBinaryFiles | `LLM_SKIP_BINARY` | true | 排除 Executables/Unknown 分类 |
@@ -330,7 +330,7 @@ for (size_t i = 0; i < files.size(); ++i) {
 
 | 配置 | 默认 | 消费链 | 说明 |
 |---|---|---|---|
-| `LLM_MAX_FILES` | 500 | ConfigManager.cpp:91 → TaskManagerAnalysis.cpp:345 → AnalysisOptions.maxFiles | smart/full 共同预算 |
+| `LLM_MAX_FILES` | 500 | AnalysisBudget.h `resolve(task.llm_max_files, …)` → TaskManagerAnalysis → AnalysisOptions.maxFiles | smart/full 共同预算；任务级 `llm_max_files`（非 0）优先 |
 | `LLM_MAX_CONTENT_LENGTH` | 10000 | ConfigManager.cpp:96 → :346 → maxContentLength | 单文件截断；与 `FILE_ANALYSIS_MAX_CONTENT`（10000，FileAnalyzer 内部）是两个变量，都生效时取更紧 |
 | `LLM_SKIP_BINARY` | true | ConfigManager.cpp:97 → :347 → skipBinaryFiles | 排除 Executables/Unknown 分类 |
 | `LLM_TEXT_*` 五项 | 见 Environment.md | ModelRouter 文本模型 | 每文件 LLM 调用 |

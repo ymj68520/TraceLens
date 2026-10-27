@@ -36,6 +36,7 @@ enum class AndroidSourceMode {
     MiuiBackup,
     HarmonyBackup,
     XiaomiImage,
+    OppoBackup,
     Tar,
     SevenZip,
     AndroidBackup,

@@ -37,7 +37,14 @@ DOCUMENT_EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"
                        ".pf", ".hve", ".edb", ".pfx",
                        ".automaticdestinations-ms", ".customdestinations-ms",
                        ".journal", ".wtmp", ".btmp", ".ab", ".pcap", ".pcapng",
-                       ".psd", ".ai", ".heic", ".heif", ".dmp", ".raw", ".mem", ".lime"}
+                       ".psd", ".ai", ".heic", ".heif", ".dmp", ".raw", ".mem", ".lime",
+                       # Executables. A dropped program (RAT controller, payload,
+                       # packer) is the central evidence in a malware case, and the
+                       # PeExtractor parses PE headers fine. Missing here meant the
+                       # RAT controller and its client.bin payload froze as
+                       # "unavailable" with zero characters, so the narrative stage
+                       # had nothing to write about them.
+                       ".exe", ".dll", ".sys", ".com", ".scr", ".bin", ".msi"}
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 MEDIA_EXTENSIONS = {".mp3", ".wav", ".m4a", ".amr", ".ogg", ".flac", ".mp4", ".avi", ".mkv", ".mov"}
 DERIVED_FIELDS = ("initial_summary", "initial_description", "initial_keywords", "initial_model",

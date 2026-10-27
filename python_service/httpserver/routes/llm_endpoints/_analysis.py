@@ -212,6 +212,15 @@ async def analyze_content(
         service_manager = get_service_manager()
 
         # Image file extensions for auto-detection
+        # Reject a foreign persistence hint before extracting or calling a model.
+        if request.files_db_path:
+            from ...services import task_store
+            try:
+                trusted=await task_store.resolve_task_files_db(request.task_id)
+                task_store.validate_legacy_db_path(request.files_db_path,trusted)
+            except task_store.TaskStoreError as exc:
+                raise HTTPException(status_code=404 if exc.code==task_store.TASK_NOT_FOUND else 400,detail=str(exc)) from exc
+
         IMAGE_EXTENSIONS = {
             '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif',
             '.svg', '.ico', '.heic', '.heif', '.raw', '.cr2', '.nef', '.arw'
@@ -413,7 +422,7 @@ async def analyze_content(
             timestamp=datetime.now().isoformat(),
         )
     except SourceIdentityError as exc:
-        raise HTTPException(status_code=409 if 'AMBIGUOUS' in exc.code else 422,
+        raise HTTPException(status_code=404 if exc.code in ('SOURCE_NOT_FOUND','EXTRACTED_SOURCE_MISSING','SOURCE_MATERIALIZATION_FAILED') else 409 if 'AMBIGUOUS' in exc.code else 422,
                             detail={"code":exc.code,"message":exc.message,"candidates":exc.candidates}) from exc
     except FileNotFoundError as e:
         logger.error(f"Analysis file not found: {e}")

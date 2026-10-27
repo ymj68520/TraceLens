@@ -93,6 +93,27 @@ TEST_F(SelectionFixture, MagicWordsDoNotMakeOrdinaryTextExecutable) {
     std::string pe(68,'\0');pe[0]='M';pe[1]='Z';pe[60]=64;pe[64]='P';pe[65]='E';
     EXPECT_EQ(sel::inspectBytes(pe,true)["format"],"executable");
 }
+TEST_F(SelectionFixture, UserProgramsSurviveTheSystemBinaryFilter) {
+    add("/Users/u/Desktop/Quasar/Quasar.exe",68);add("/Users/u/Desktop/Quasar/client.bin",68);
+    add("/Windows/System32/noise.exe",68);add("/Users/u/Documents/note.txt",20);
+    src::sql(db,"UPDATE files SET category='Executables' WHERE path LIKE '%.exe'");
+    std::string pe(68,'\0');pe[0]='M';pe[1]='Z';pe[60]=64;pe[64]='P';pe[65]='E';
+    auto plan=build(10,[&](const auto& c,size_t){auto bytes=pe;if(c.name=="client.bin")bytes[8]=1;
+        return sel::inspectBytes(sel::ends(c.path,".txt")?"ordinary source text":bytes,true);});
+    std::set<std::string> paths;for(auto& row:plan["selected"])paths.insert(row["path"]);
+    EXPECT_TRUE(paths.count("/Users/u/Desktop/Quasar/Quasar.exe"));
+    EXPECT_TRUE(paths.count("/Users/u/Desktop/Quasar/client.bin"));
+    EXPECT_FALSE(paths.count("/Windows/System32/noise.exe"));
+    EXPECT_EQ(plan["counts"]["scope_excluded"],1);
+}
+TEST_F(SelectionFixture, CaseDirectoryWordsHaveBoundariesAndPreserveCompanions) {
+    EXPECT_TRUE(sel::caseToolDirectory("/Users/u/Desktop/RAT/license.txt"));
+    EXPECT_TRUE(sel::caseToolDirectory("/Users/u/Desktop/Quasar v1.4/client.dll"));
+    EXPECT_FALSE(sel::caseToolDirectory("/Users/u/Desktop/integration/license.txt"));
+    EXPECT_FALSE(sel::caseToolDirectory("/Users/u/Desktop/usbarbitrator/data.txt"));
+    sel::Candidate c;c.path="/Users/u/Desktop/Quasar v1.4/client.dll";c.name="client.dll";sel::classify(c);
+    EXPECT_GE(c.score,115);
+}
 TEST_F(SelectionFixture, EmptyEvtxNeedsVerifiedHeadersAndNeverMeansRecoveredRecordsAbsent) {
     std::string header(4096,'\0');header.replace(0,8,std::string("ElfFile\0",8));
     header[36]=2;header[38]=3;header[41]=16;

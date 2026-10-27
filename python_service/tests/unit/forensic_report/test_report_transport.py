@@ -28,8 +28,9 @@ def test_provider_retry_after_is_honored_and_invalid_values_are_safe():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('status_code',[429,503])
 @pytest.mark.parametrize('maximum,failures,expected_calls', [(3,1,2),(2,5,2),(8,5,3)])
-async def test_rate_limit_retries_charge_each_call_and_stop_at_the_budget(tmp_path,monkeypatch,maximum,failures,expected_calls):
+async def test_rate_limit_retries_charge_each_call_and_stop_at_the_budget(tmp_path,monkeypatch,maximum,failures,expected_calls,status_code):
     from httpserver.services.forensic_report import report_transport
     waits=[]
     async def wait():pass
@@ -41,8 +42,10 @@ async def test_rate_limit_retries_charge_each_call_and_stop_at_the_budget(tmp_pa
     class Model:
         calls=0
         async def chat_completion(self,*args,**kwargs):
+            from httpserver.services.model_budget import transport_attempt_is_budgeted
+            assert transport_attempt_is_budgeted()
             self.calls+=1
-            if self.calls<=failures:raise error()
+            if self.calls<=failures:raise error(status_code)
             return {'content':'{"ok":true}','model':'test-model'}
     model=Model();provider=BudgetedReportProvider(model,store,value.execution_policy);provider.retry_rate_limits=True
     if failures==1:assert await provider.call('chapter','test','test',{},output=10)=={'ok':True}
@@ -63,3 +66,23 @@ async def test_authentication_failure_is_not_retried(tmp_path):
     provider=BudgetedReportProvider(Model(),store,value.execution_policy);provider.retry_rate_limits=True
     with pytest.raises(httpx.HTTPStatusError):await provider.call('chapter','auth','test',{},output=10)
     assert store.usage()['calls']==1
+
+
+@pytest.mark.asyncio
+async def test_gateway_backoff_does_not_multiply_budgeted_report_attempts(monkeypatch):
+    from httpserver.services.model_budget import budgeted_transport_attempt,transport_attempt_is_budgeted
+    from httpserver.services.llm.llm_service import LLMService
+    class Client:
+        calls=0
+        async def post(self,*args,**kwargs):
+            self.calls+=1
+            return httpx.Response(429 if self.calls==1 else 200,request=httpx.Request('POST','https://example.invalid'))
+    async def no_wait(seconds):pass
+    monkeypatch.setattr(asyncio,'sleep',no_wait)
+    service=LLMService.__new__(LLMService);client=Client()
+    with budgeted_transport_attempt():
+        response=await service._post_with_backoff(client,'/test',{}, {},attempts=8)
+    assert response.status_code==429 and client.calls==1 and not transport_attempt_is_budgeted()
+    client.calls=0
+    response=await service._post_with_backoff(client,'/test',{}, {},attempts=2)
+    assert response.status_code==200 and client.calls==2

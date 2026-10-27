@@ -178,6 +178,9 @@ def _acquire_android_artifact(resolved: ResolvedEvidence) -> AndroidArtifactSnap
     if resolved.artifact_kind == "mobile" and source and source.get("source_format") == "protobuf":
         provenance.update(input_file="hashed_binary_backup", original_database_record="not_applicable",
                           binary_record="parser_bound_field_and_byte_offset")
+    if resolved.artifact_kind == "mobile" and source and source.get("source_format") in {"json","log_inventory"}:
+        provenance.update(input_file="backup_json_member" if source['source_format']=="json" else "backup_container_inventory",
+                          original_database_record="not_applicable",json_record="parser_bound_section_and_row" if source['source_format']=="json" else "not_applicable")
     warnings.append(detail["warning"])
     return AndroidArtifactSnapshotPayload(
         task_id=resolved.task_id,
@@ -190,14 +193,14 @@ def _acquire_android_artifact(resolved: ResolvedEvidence) -> AndroidArtifactSnap
         record_fields=fields,
         redacted_fields=("pre_shared_key",) if resolved.artifact_kind == "wifi" and "pre_shared_key" in fields else (),
         normalized_fields={**{name: fields.get(name) for name in normalized_names if name in fields},
-                           **({"platform": "Android / MIUI" if str(fields.get("parser_version", "")).startswith(("xiaomi-", "miui-notes-")) else "HarmonyOS"} if resolved.artifact_kind == "mobile" else {})},
+                           **({"platform": (source or {}).get("platform","Android")} if resolved.artifact_kind == "mobile" else {})},
         raw_timestamp=fields.get("timestamp_raw") if resolved.artifact_kind == "mobile" else
                       fields.get("date") if resolved.artifact_kind == "sms" else
                       fields.get("last_connected") if resolved.artifact_kind == "wifi" else None,
         timestamp_unit=fields.get("time_unit") if resolved.artifact_kind == "mobile" else None,
         timestamp_timezone="UTC" if resolved.artifact_kind == "mobile" and fields.get("time_unit") in {"epoch_s", "epoch_ms"} else None,
-        timestamp_basis="source_database_value" if resolved.artifact_kind == "mobile" else None,
-        parser_name=("AndroidAnalyzer/XiaomiImage" if str(fields.get("parser_version", "")).startswith(("xiaomi-", "miui-notes-")) else "AndroidAnalyzer/HarmonyBackup") if resolved.artifact_kind == "mobile" else
+        timestamp_basis=("source_backup_value" if (source or {}).get('source_format') in {'json','log_inventory','protobuf'} else "source_database_value") if resolved.artifact_kind == "mobile" else None,
+        parser_name=("AndroidAnalyzer/XiaomiImage" if str(fields.get("parser_version", "")).startswith(("xiaomi-", "miui-notes-")) else "AndroidAnalyzer/OppoBackup" if str(fields.get("parser_version", "")).startswith("oppo-") else "AndroidAnalyzer/HarmonyBackup") if resolved.artifact_kind == "mobile" else
                     manifest.get("parser_name") or "AndroidAnalyzer",
         parser_version=fields.get("parser_version") or manifest.get("parser_version"),
         android_user=None,

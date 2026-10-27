@@ -7,6 +7,7 @@
 #include "DatabaseManager/DatabaseManagerDataTypes.h"
 #include "DatabaseManager/DatabaseManager.h"
 #include "LLMAnalysisService.h"
+#include "network/HTTPServer/AnalysisBudget.h"
 #include <sqlite3.h>
 #include <cstdio>
 #include <algorithm>
@@ -335,6 +336,16 @@ struct LLMSelectionHeuristicTestAccess {
         LLMAnalysisService service;
         return service.getPrioritizedCandidates(dbPath, budget, skipBinary);
     }
+    // Full-mode candidate query: the resolved task budget reaches the database
+    // as LIMIT maxFiles, so this returns at most `budget` paths (0 = unlimited).
+    static std::vector<std::string> fullModeCandidates(const std::string& dbPath,
+                                                       size_t budget) {
+        LLMAnalysisService service;
+        LLMAnalysisService::AnalysisOptions options;
+        options.maxFiles = budget;
+        options.skipBinaryFiles = false;
+        return service.getFilesFromDatabase(dbPath, options);
+    }
 };
 }
 
@@ -471,9 +482,9 @@ TEST_F(SceneClassifierTest, CandidateWindowScansWholeTable) {
     }
     EXPECT_EQ(selected.front(), "/etc/shadow");
 
-    // The full-table scan must still honour the skip-binary filter.
+    // The system-binary filter keeps user-tree programs as candidate evidence.
     auto noBinary = A::prioritized(path, 10, true);
-    EXPECT_EQ(std::find(noBinary.begin(), noBinary.end(),
+    EXPECT_NE(std::find(noBinary.begin(), noBinary.end(),
                         std::string("/Users/admin/Desktop/tool.exe")),
               noBinary.end());
 
@@ -567,7 +578,7 @@ TEST_F(SceneClassifierTest, HeuristicPriorityJunkMatrix) {
     low("C:/Windows/SoftwareDistribution/Download/7a2b/x.dll");
     low("C:/Windows/WinSxS/amd64_microsoft-windows-servicing.dll");
     low("C:/Users/X/AppData/Local/Microsoft/Windows/INetCache/IE/abc.htm");
-    low("C:/Users/X/AppData/Local/Temp/tmpA1B2/chrome_installer.exe");
+    low("/Windows/Temp/tmpA1B2/chrome_installer.exe");
     low("D:/documents/$RECYCLE.BIN/S-1-5-18/$I3X2F.txt");
 
     // Editor / office droppings inside user areas.
@@ -686,7 +697,7 @@ TEST_F(SceneClassifierTest, HeuristicSelectionMixedRealWorld) {
         "/usr/share/icons/hicolor/48x48/apps/x.png",
         "/var/lib/snapd/snaps/core20_2105.snap",
         "C:/Windows/WinSxS/amd64_microsoft-windows-servicing.dll",
-        "C:/Users/X/AppData/Local/Temp/chrome_installer.exe",
+        "/Windows/Temp/chrome_installer.exe",
         "C:/Users/X/AppData/Local/Microsoft/Windows/INetCache/IE/abc.htm",
         "/root/go/pkg/mod/golang.org/x/net@v0.17.0/socket.go",
         "/root/.cargo/registry/src/index.crates.io/serde/src/lib.rs",
@@ -1097,6 +1108,74 @@ TEST_F(SceneClassifierTest, SmartSelectionRealDatabase) {
     EXPECT_EQ(picked[0], head[0]);
     EXPECT_EQ(picked[1], head[2]);
     EXPECT_EQ(picked[2], head[4]);
+}
+
+// Task-level analysis budget -> database query. Full mode truncates with
+// LIMIT maxFiles (LLMAnalysisService.cpp getFilesFromDatabase), so the value
+// resolved from task.llm_max_files must reach this seam unchanged; 0 stays
+// unlimited and must not truncate.
+TEST_F(SceneClassifierTest, FullModeBudgetBecomesSqlLimit) {
+    namespace fs = std::filesystem;
+    const auto dbPath = fs::temp_directory_path() /
+        ("budget_files_" + std::to_string(::getpid()) + ".db");
+    fs::remove(dbPath);
+    sqlite3* db = nullptr;
+    ASSERT_EQ(sqlite3_open(dbPath.string().c_str(), &db), SQLITE_OK);
+    ASSERT_EQ(sqlite3_exec(db,
+        "CREATE TABLE files(path TEXT, category TEXT)", nullptr, nullptr, nullptr),
+        SQLITE_OK);
+    ASSERT_EQ(sqlite3_exec(db,
+        "INSERT INTO files(path, category) VALUES "
+        "('/etc/passwd','Configuration Files'),"
+        "('/var/log/auth.log','Logs'),"
+        "('/home/u/notes.txt','Documents'),"
+        "('/home/u/chat.db','Databases'),"
+        "('/usr/bin/ls','Executables'),"
+        "('/opt/app/config.yml','Configuration Files')", nullptr, nullptr, nullptr),
+        SQLITE_OK);
+    sqlite3_close(db);
+
+    using A = forensics::LLMSelectionHeuristicTestAccess;
+
+    EXPECT_EQ(A::fullModeCandidates(dbPath.string(), 0).size(), 6u);  // unlimited
+    EXPECT_EQ(A::fullModeCandidates(dbPath.string(), 2).size(), 2u);
+    EXPECT_EQ(A::fullModeCandidates(dbPath.string(), 4).size(), 4u);
+    EXPECT_LE(A::fullModeCandidates(dbPath.string(), 100).size(), 6u);  // never exceeds rows
+
+    fs::remove(dbPath);
+}
+
+// The same budget in smart mode bounds the candidate pool, not the SQL row
+// count: an over-large request is clamped by the policy helper, and the
+// resulting pool never exceeds the budget.
+TEST_F(SceneClassifierTest, SmartModeBudgetBoundsTheCandidatePool) {
+    namespace fs = std::filesystem;
+    const auto dbPath = fs::temp_directory_path() /
+        ("budget_pool_" + std::to_string(::getpid()) + ".db");
+    fs::remove(dbPath);
+    sqlite3* db = nullptr;
+    ASSERT_EQ(sqlite3_open(dbPath.string().c_str(), &db), SQLITE_OK);
+    ASSERT_EQ(sqlite3_exec(db,
+        "CREATE TABLE files(path TEXT, category TEXT)", nullptr, nullptr, nullptr),
+        SQLITE_OK);
+    auto insert = [&](int i) {
+        const std::string sql = "INSERT INTO files(path, category) VALUES ('/home/u/note" +
+            std::to_string(i) + ".txt','Documents')";
+        sqlite3_exec(db, sql.c_str(), nullptr, nullptr, nullptr);
+    };
+    for (int i = 0; i < 12; ++i) insert(i);
+    sqlite3_close(db);
+
+    using A = forensics::LLMSelectionHeuristicTestAccess;
+
+    // resolve(task=5) -> pool budget 5 -> at most 5 candidates.
+    const auto budget = forensics::analysis_budget::resolve(5, 500, 5000, true);
+    EXPECT_EQ(budget.files, 5);
+    const auto candidates = A::prioritized(dbPath.string(), (size_t)budget.files, true);
+    EXPECT_LE(candidates.size(), 5u);
+    EXPECT_FALSE(candidates.empty());
+
+    fs::remove(dbPath);
 }
 
 // The prompts must never be starved of the image's own headline evidence: the

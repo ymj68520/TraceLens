@@ -34,6 +34,7 @@ public:
         size_t maxContentLength = 10000;     // Maximum content length per file
         std::vector<std::string> fileTypes;  // File types to analyze (empty = all)
         bool skipBinaryFiles = true;         // Skip binary files
+        bool taskBudgetOverride = false;     // A saved task may override the global default
     };
 
     /**
@@ -94,7 +95,7 @@ public:
      * @return Vector of file paths deemed important
      */
     std::vector<std::string> selectImportantFiles(const std::string& filesDbPath,
-                                                   size_t maxFiles = 100);
+                                                   size_t maxFiles = 100, bool taskBudgetOverride = false);
 
     /**
      * @brief Set the scene type for scene-aware prioritization

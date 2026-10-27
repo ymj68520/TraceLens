@@ -94,6 +94,7 @@ nlohmann::json TaskHelpers::task_to_json(const AnalysisTask& task) {
         {"llm_analyze", task.llm_analyze},
         {"llm_event_analyze", task.llm_event_analyze},
         {"llm_mode", task.llm_mode},
+        {"llm_max_files", task.llm_max_files},
         {"file_carving", task.file_carving},
         {"filter_profile", task.filter_profile},
         {"case_description", task.case_description},

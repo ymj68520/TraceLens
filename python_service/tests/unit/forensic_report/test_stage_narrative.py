@@ -397,7 +397,12 @@ def test_report_concurrency_follows_shared_llm_budget():
         DEFAULT_REPORT_CONCURRENCY, report_concurrency,
     )
 
-    assert report_concurrency(SimpleNamespace(llm_max_concurrency=32)) == 32
+    # Lower budgets are honoured; a higher one is capped at the report default.
+    # The previous contract passed 32 straight through, and a full generation at
+    # that sustained rate hit a 33-second 429 window after ~490 calls, losing the
+    # chapter-writing phase.
+    assert report_concurrency(SimpleNamespace(llm_max_concurrency=4)) == 4
+    assert report_concurrency(SimpleNamespace(llm_max_concurrency=32)) == DEFAULT_REPORT_CONCURRENCY
     # Absent or malformed settings fall back to the pipeline default.
     assert report_concurrency(SimpleNamespace()) == DEFAULT_REPORT_CONCURRENCY
     assert report_concurrency(None) == DEFAULT_REPORT_CONCURRENCY
@@ -405,7 +410,7 @@ def test_report_concurrency_follows_shared_llm_budget():
     # Never below one (a zero/negative budget would deadlock the semaphore).
     assert report_concurrency(SimpleNamespace(llm_max_concurrency=0)) == 1
     # Capped so a large env value cannot flood the provider.
-    assert report_concurrency(SimpleNamespace(llm_max_concurrency=1000)) == 32
+    assert report_concurrency(SimpleNamespace(llm_max_concurrency=1000)) == DEFAULT_REPORT_CONCURRENCY
 
 
 @pytest.mark.asyncio

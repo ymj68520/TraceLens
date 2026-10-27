@@ -240,7 +240,8 @@ async def test_identity_merge_split_versions_are_immutable_and_clear_person_scor
     with sqlite3.connect(store.path) as db:
         with pytest.raises(sqlite3.IntegrityError):
             db.execute("UPDATE graph_analysis_runs SET result_json='{}' WHERE run_id=?", (first["run_id"],))
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 8
+        from httpserver.services.investigation.repository import SUPPORTED_SCHEMA_VERSION
+        assert db.execute("PRAGMA user_version").fetchone()[0] == SUPPORTED_SCHEMA_VERSION
 
 
 @pytest.mark.asyncio

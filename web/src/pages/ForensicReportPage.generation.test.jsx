@@ -15,6 +15,7 @@ vi.mock('../services/reportGenerationService', () => ({
     generateReport: vi.fn(),
     getReportGeneration: vi.fn(),
     getNarrativeReport: vi.fn(),
+    getPipelineReportStatus: vi.fn().mockResolvedValue({ state: 'idle' }),
 }));
 vi.mock('../services/investigationService', () => ({
     listReportEvidence: vi.fn(),

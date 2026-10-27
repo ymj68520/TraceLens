@@ -97,6 +97,7 @@ void to_json(nlohmann::json& j, const AnalysisTask& t) {
     j["llm_event_analyze"] = t.llm_event_analyze;
     j["platform_analyze"] = t.platform_analyze;
     j["llm_mode"] = t.llm_mode;
+    j["llm_max_files"] = t.llm_max_files;
     j["output_descriptions_db"] = t.output_descriptions_db;
     j["case_description"] = t.case_description;
     j["filter_profile"] = t.filter_profile;
@@ -165,6 +166,9 @@ void from_json(const nlohmann::json& j, AnalysisTask& t) {
     if(j.contains("llm_event_analyze")) j.at("llm_event_analyze").get_to(t.llm_event_analyze);
     if(j.contains("platform_analyze")) j.at("platform_analyze").get_to(t.platform_analyze);
     if(j.contains("llm_mode")) j.at("llm_mode").get_to(t.llm_mode);
+    // Tasks persisted before the task-level budget existed keep the inherited
+    // global LLM_MAX_FILES (0 = inherit), so an old tasks.json stays runnable.
+    if(j.contains("llm_max_files")) j.at("llm_max_files").get_to(t.llm_max_files);
     if(j.contains("output_descriptions_db")) j.at("output_descriptions_db").get_to(t.output_descriptions_db);
     if(j.contains("case_description")) j.at("case_description").get_to(t.case_description);
     if(j.contains("filter_profile")) j.at("filter_profile").get_to(t.filter_profile);

@@ -14,6 +14,19 @@ from pathlib import Path
 
 _context=ContextVar('file_model_budget',default=None)
 _active_plan=ContextVar('active_selection_plan',default=None)
+_transport_budgeted=ContextVar('transport_budgeted_attempt',default=False)
+
+
+@contextmanager
+def budgeted_transport_attempt():
+    """The caller owns dispatch accounting and retries; forbid hidden retries."""
+    token=_transport_budgeted.set(True)
+    try:yield
+    finally:_transport_budgeted.reset(token)
+
+
+def transport_attempt_is_budgeted():
+    return _transport_budgeted.get()
 
 
 @contextmanager

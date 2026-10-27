@@ -2,6 +2,7 @@
 import json,sqlite3,time
 from contextlib import closing,contextmanager
 from .global_report_models import canonical,digest
+from ..model_budget import budgeted_transport_attempt
 
 class ReportPlanningError(ValueError):
     def __init__(self,message,code='global_report_blocked'):
@@ -76,7 +77,8 @@ class BudgetedReportProvider:
         self.store.save('request',stage+':'+key,request)
         self.store.reserve(stage,bound,output)
         remaining=max(1,self.store.budget.max_seconds-self.store.usage()['elapsed_seconds'])
-        response=await asyncio.wait_for(self.delegate.chat_completion(system,canonical(payload),max_tokens=output,temperature=0.0),timeout=remaining)
+        with budgeted_transport_attempt():
+            response=await asyncio.wait_for(self.delegate.chat_completion(system,canonical(payload),max_tokens=output,temperature=0.0),timeout=remaining)
         self.store.save('response',stage+':'+key,response)
         if response.get('model'):self.models.add(response['model']);self.text_models.add(response['model'])
         if response.get('finish_reason')=='length':raise ReportPlanningError('报告模型输出被截断，未并入正文')
@@ -106,12 +108,13 @@ class BudgetedReportProvider:
                     await asyncio.to_thread(self.store.reserve,stage,request['input_bound'],request['output_limit'],self.stage_call_limits.get(stage))
                     self.active[stage]=self.active.get(stage,0)+1;self.peak[stage]=max(self.peak.get(stage,0),self.active[stage])
                     try:
-                        response=await self.delegate.chat_completion(request['system'],canonical(request['input']),max_tokens=request['output_limit'],temperature=0.0)
+                        with budgeted_transport_attempt():
+                            response=await self.delegate.chat_completion(request['system'],canonical(request['input']),max_tokens=request['output_limit'],temperature=0.0)
                     except httpx.HTTPStatusError as error:
-                        if not cooldown or error.response.status_code!=429 or attempt==2:raise
+                        if not cooldown or error.response.status_code not in (429,500,502,503,504) or attempt==2:raise
                         delay=retry_delay(error.response,attempt);cooldown.defer(delay)
                         await asyncio.to_thread(self.store.save,'transport_retry',attempt_key,
-                            {'status':429,'attempt':attempt+1,'cooldown_seconds':delay,'reason':'模型限流，等待后按原请求重试；失败调用仍占预算'})
+                            {'status':error.response.status_code,'attempt':attempt+1,'cooldown_seconds':delay,'reason':'模型限流或服务暂时异常，等待后按原请求重试；失败调用仍占预算'})
                         continue
                     finally:self.active[stage]-=1
                     await asyncio.to_thread(self.store.save,'response',stage+':'+key,response)

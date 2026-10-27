@@ -5,6 +5,7 @@
 #include "TaskManager.h"
 #include "AndroidAnalyzer/HarmonyBackupExtractor.h"
 #include "AndroidAnalyzer/XiaomiImageExtractor.h"
+#include "AndroidAnalyzer/OppoBackupExtractor.h"
 #include "TaskPersistence.h"
 #include "TaskWatchdog.h"
 #include "TaskSerialization.h"
@@ -12,6 +13,7 @@
 #include "ReportTailResume.h"
 #include "WindowsFilesAnalyzer/Parsers/WindowsPrefetchParser.h"
 #include "WindowsFilesAnalyzer/Parsers/WindowsEventLogParser.h"
+#include "AnalysisBudget.h"
 #include "AndroidPreflightAdmission.h"
 #include "RaidTaskAdmission.h"
 #include "AndroidContainerNormalization.h"
@@ -577,6 +579,23 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 tasks_[task_id].metadata["device_platform"] = xiaomiImage ? "Android / MIUI" : "HarmonyOS";
                 tasks_[task_id].metadata["source_identity_kind"] = xiaomiImage ? "logical_file_id_not_device_physical_inode" : "logical_file_id_not_inode";
             }
+            // Same treatment for OPPO ThunderForensic extractions: the source
+            // may arrive as the tar file or its project directory, whatever the
+            // caller picked, and is routed to the dedicated adapter.
+            const bool oppoBackup = OppoBackupExtractor::recognizes(imagePath);
+            if (task.android_source == "oppo-backup" && !oppoBackup) {
+                update_status(task_id, TaskStatus::FAILED, "INVALID_OPPO_BACKUP");
+                return;
+            }
+            if (oppoBackup) {
+                task.android_source = "oppo-backup";
+                task.scenarios = {ForensicScenario::ANDROID};
+                std::lock_guard<std::mutex> lock(mtx_);
+                tasks_[task_id].android_source = task.android_source;
+                tasks_[task_id].scenarios = task.scenarios;
+                tasks_[task_id].metadata["device_platform"] = "Android";
+                tasks_[task_id].metadata["device_brand"] = "OPPO";
+            }
             std::filesystem::path p(imagePath);
             std::string baseName = task.android_source == "aliyun-image" ? "system" : p.stem().string();
 
@@ -690,6 +709,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
             if (task.android_source == "dir" ||
                 task.android_source == "zip" ||
                 task.android_source == "miui-backup" ||
+                task.android_source == "oppo-backup" ||
                 task.android_source == "tar" ||
                 task.android_source == "seven-zip" ||
                 task.android_source == "android-backup" ||
@@ -761,6 +781,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 const auto coverage = inspectAndroidCoverage(logicalResultDb);
                 const bool incomplete = !coverage.available || coverage.unresolved > 0 || coverage.parsed == 0;
                 bool superNormalized = false;
+                bool lockedPersisted = false;
                 {
                     std::lock_guard<std::mutex> lock(mtx_);
                     auto it = tasks_.find(task_id);
@@ -768,7 +789,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                         const auto prior = it->second.metadata.find("android_coverage_status");
                         superNormalized = prior != it->second.metadata.end() &&
                             prior->second == "SUPER_NORMALIZED_NO_USERDATA";
-                        const bool lockedPersisted = prior != it->second.metadata.end() &&
+                        lockedPersisted = prior != it->second.metadata.end() &&
                             prior->second == "COMPLETED_WITH_LOCKED_USERDATA";
                         if (!superNormalized && !lockedPersisted)
                             it->second.metadata["android_coverage_status"] = incomplete ? "incomplete" : "parsed_sources_present";
@@ -780,6 +801,31 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     "Source coverage: parsed=" + std::to_string(coverage.parsed) +
                     ", unresolved=" + std::to_string(coverage.unresolved) +
                     ", available=" + (coverage.available ? "true" : "false"));
+                // First-stage 材料自主研判 report gate — mirror the TSK/Harmony
+                // completion gate so logical-source tasks (dir/zip/MIUI/OPPO
+                // backups) also end their initial pipeline with the auto report.
+                // Locked/super-normalized tasks carry no analyzable artifacts;
+                // a report over an empty evidence set would be noise.
+                if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "任务已取消"); return; }
+                if (task.llm_analyze && !superNormalized && !lockedPersisted) {
+                    const char* logicalFieldMode = std::getenv("TRACELENS_FIELD_AUTH");
+                    const char* logicalOutbound = std::getenv("FIELD_OUTBOUND_POLICY");
+                    const bool logicalNoIntel = logicalFieldMode &&
+                        std::string(logicalFieldMode) == "enabled" &&
+                        (!logicalOutbound || std::string(logicalOutbound) == "disabled");
+                    if (!logicalNoIntel &&
+                        forensics::ConfigManager::instance().getBool("REPORT_AUTO_GENERATE_ENABLED", true)) {
+                        update_progress(task_id, TaskPhase::FINALIZING, 95,
+                                        "生成首次材料自主研判报告…");
+                        if (!wait_for_pipeline_report(task_id)) {
+                            update_status(task_id, TaskStatus::FAILED,
+                                          "首次材料自主研判报告未完成",
+                                          "报告生成失败或超时；分析产物仍可浏览，请查看报告任务状态。");
+                            add_audit_log(task_id, "ERROR", "Analysis failed at the report completion gate");
+                            return;
+                        }
+                    }
+                }
                 const bool locked = task.android_source == "filesystem-image" &&
                     task.metadata.count("preflight_locked") && task.metadata.at("preflight_locked") == "true";
                 const std::string message = superNormalized
@@ -1141,15 +1187,34 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     llmService.setImagePaths(imagePath, rawDbPath, task_id);
                     auto& config = forensics::ConfigManager::instance();
                     forensics::LLMAnalysisService::AnalysisOptions llmOpts;
-                    llmOpts.maxFiles = config.getLLMMaxFiles();
+                    // Task-level budget wins over the global cap. It also caps
+                    // knowledge-graph ingestion and the report evidence seed,
+                    // which both read the analyzed-file set (llm_analyzed_at),
+                    // so one number governs the whole cost curve.
+                    const bool smartMode = task.llm_mode != "full";
+                    const auto budget = forensics::analysis_budget::resolve(
+                        task.llm_max_files,
+                        config.getLLMMaxFiles(),
+                        config.getLLMSmartCandidateFiles(),
+                        smartMode);
+                    add_audit_log(task_id, "LLM_CONFIG",
+                                  forensics::analysis_budget::describe(budget, smartMode));
+                    llmOpts.maxFiles = static_cast<size_t>(budget.files);
+                    llmOpts.taskBudgetOverride = task.llm_max_files > 0;
                     llmOpts.maxContentLength = config.getLLMMaxContentLength();
                     llmOpts.skipBinaryFiles = config.getLLMSkipBinary();
-                    
+
                     int analyzedCount = 0;
+                    // Surfaced on the mode-specific start message below, so the
+                    // budget is visible exactly where the work begins.
+                    const std::string budgetText = budget.files == 0
+                        ? std::string("不限")
+                        : std::to_string(budget.files) + " 个文件";
                     
                     if (task.llm_mode == "full") {
                         // Full mode: analyze all files
-                        update_progress(task_id, TaskPhase::LLM_ANALYSIS, 30, "完整模式：正在分析全部文件…");
+                        update_progress(task_id, TaskPhase::LLM_ANALYSIS, 30,
+                            "完整模式：正在分析文件（预算 " + budgetText + "）…");
                         analyzedCount = llmService.analyzeAllFiles(fileDbPath, llmOpts,
                             [this, task_id](int current, int total, const std::string& file) -> bool {
                                 if (is_task_cancelled(task_id)) return false;
@@ -1171,12 +1236,13 @@ void TaskManager::start_analysis(const std::string& task_id) {
                             });
                     } else {
                         // Smart mode: LLM selects important files first.
-                        // File budget honours LLM_MAX_FILES exactly — the previous
-                        // hardcoded floor of 1000 made real-image tasks run for
-                        // many hours on local LLMs.
-                        update_progress(task_id, TaskPhase::LLM_ANALYSIS, 20, "Smart mode: Selecting important files...");
+                        // File budget honours the resolved budget exactly — the
+                        // previous hardcoded floor of 1000 made real-image tasks
+                        // run for many hours on local LLMs.
+                        update_progress(task_id, TaskPhase::LLM_ANALYSIS, 20,
+                            "智能模式：正在筛选重要文件（预算 " + budgetText + "）…");
                         // 候选扫描范围由 LLM_SMART_CANDIDATE_FILES 控制（selectImportantFiles 内部读取），
-                        // 分析数量上限沿用 LLM_MAX_FILES；两者默认有限（500/1000），显式配置 0 才是全量。
+                        // 分析数量上限用已解析的任务级预算；两者默认有限，显式配置 0 才是全量。
                         analyzedCount = llmService.analyzeSmartFiles(fileDbPath, llmOpts,
                             [this, task_id](int current, int total, const std::string& file) -> bool {
                                 if (is_task_cancelled(task_id)) return false;
@@ -1752,6 +1818,7 @@ bool TaskManager::runLogicalAndroidAnalysis(const AnalysisTask& task,
         AndroidSourceMode mode =
             task.android_source == "zip"          ? AndroidSourceMode::Zip :
             task.android_source == "miui-backup"  ? AndroidSourceMode::MiuiBackup :
+            task.android_source == "oppo-backup"  ? AndroidSourceMode::OppoBackup :
             task.android_source == "tar"          ? AndroidSourceMode::Tar :
             task.android_source == "seven-zip"    ? AndroidSourceMode::SevenZip :
             task.android_source == "android-backup" ? AndroidSourceMode::AndroidBackup :

@@ -157,6 +157,12 @@ struct AnalysisTask {
     bool llm_analyze = true;            // Enable LLM file description generation
     bool llm_event_analyze = false;     // Enable task-time LLM event cluster analysis
     std::string llm_mode = "smart";     // "full" or "smart"
+    // Task-level file budget for LLM analysis (0 = inherit LLM_MAX_FILES).
+    // One budget governs the whole cost curve: the LLM analysis stage, the
+    // knowledge-graph ingestion (which ingests analyzed files only) and the
+    // report evidence seed (same analyzed-file scope). A per-stage cap would
+    // let the graph and the report disagree about which files are evidence.
+    int llm_max_files = 0;
     std::string output_descriptions_db; // Database for LLM-generated descriptions
     std::string case_description;       // Case description for LLM analysis
     std::string graphiti_job_id;        // Job ID for Graphiti knowledge graph ingestion
@@ -241,6 +247,7 @@ struct AnalysisTask {
           resume_count(other.resume_count), last_resumed_time(other.last_resumed_time),
           metadata(other.metadata),
           llm_analyze(other.llm_analyze), llm_event_analyze(other.llm_event_analyze), llm_mode(other.llm_mode),
+          llm_max_files(other.llm_max_files),
           output_descriptions_db(other.output_descriptions_db),
           case_description(other.case_description),
           graphiti_job_id(other.graphiti_job_id),
@@ -285,6 +292,7 @@ struct AnalysisTask {
             llm_analyze = other.llm_analyze;
             llm_event_analyze = other.llm_event_analyze;
             llm_mode = other.llm_mode;
+            llm_max_files = other.llm_max_files;
             output_descriptions_db = other.output_descriptions_db;
             case_description = other.case_description;
             graphiti_job_id = other.graphiti_job_id;
@@ -319,6 +327,7 @@ struct AnalysisTask {
           resume_count(other.resume_count), last_resumed_time(other.last_resumed_time),
           metadata(std::move(other.metadata)),
           llm_analyze(other.llm_analyze), llm_event_analyze(other.llm_event_analyze), llm_mode(std::move(other.llm_mode)),
+          llm_max_files(other.llm_max_files),
           output_descriptions_db(std::move(other.output_descriptions_db)),
           case_description(std::move(other.case_description)),
           graphiti_job_id(std::move(other.graphiti_job_id)),
@@ -363,6 +372,7 @@ struct AnalysisTask {
             llm_analyze = other.llm_analyze;
             llm_event_analyze = other.llm_event_analyze;
             llm_mode = std::move(other.llm_mode);
+            llm_max_files = other.llm_max_files;
             output_descriptions_db = std::move(other.output_descriptions_db);
             case_description = std::move(other.case_description);
             graphiti_job_id = std::move(other.graphiti_job_id);

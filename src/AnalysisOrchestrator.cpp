@@ -9,6 +9,7 @@
 #include "AndroidAnalyzer/AndroidAnalyzer.h"
 #include "AndroidAnalyzer/HarmonyBackupExtractor.h"
 #include "AndroidAnalyzer/XiaomiImageExtractor.h"
+#include "AndroidAnalyzer/OppoBackupExtractor.h"
 #include "WindowsFilesAnalyzer/WindowsFilesAnalyzer.h"
 #include "WindowsFilesAnalyzer/Parsers/WindowsPrefetchParser.h"
 #include "WindowsFilesAnalyzer/Parsers/WindowsEventLogParser.h"
@@ -256,6 +257,10 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
         std::cerr << "INVALID_HARMONY_BACKUP: expected .info.json and files directory" << std::endl;
         return 1;
     }
+    if (args.android_source == "oppo-backup" && !OppoBackupExtractor::recognizes(args.image_path)) {
+        std::cerr << "INVALID_OPPO_BACKUP: expected a ThunderForensic tar or its project folder" << std::endl;
+        return 1;
+    }
     if (HarmonyBackupExtractor::recognizes(args.image_path)) {
         const auto evidence=fs::weakly_canonical(args.image_path);
         const auto planned=args.db_dir.empty()?PathManager::instance().getDataDir()/"cli":fs::path(args.db_dir);
@@ -287,7 +292,12 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
     // runs only the Android analyzer against the data source directly.
     if (args.android_analyze && !HarmonyBackupExtractor::recognizes(args.image_path) &&
         (args.android_source == "dir" || args.android_source == "zip" ||
-         args.android_source == "miui-backup" || args.android_source == "tar" ||
+         args.android_source == "miui-backup" || args.android_source == "oppo-backup" ||
+         // An OPPO ThunderForensic extraction routed through any other source
+         // value still belongs to the logical analyzer; the mode promotion to
+         // OppoBackup happens inside AndroidAnalyzer::initialize().
+         OppoBackupExtractor::recognizes(args.image_path) ||
+         args.android_source == "tar" ||
          args.android_source == "seven-zip" || args.android_source == "android-backup" ||
          args.android_source == "filesystem-image")) {
         return runAndroidLogicalAnalysis(args);
@@ -466,11 +476,14 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
         const bool platformReusable = platformRequested &&
             stageLedger.reusable(ledger::kPlatformAnalysis, platformFp) && filesDbPresent;
 
-        if (platformRequested && !platformReusable && !filesDbRebuiltInStep3) {
-            // Rebuilding classification + platform together is the only correct
-            // move once files.db must be rewritten: classification's output and
-            // the platform analyzers' output share one artifact. (When Step 3
-            // already rebuilt it for the same reason, that copy is the input.)
+        if (platformRequested && !platformReusable) {
+            // Fresh runs and resume runs both land here: the platform
+            // analyzers must run whenever platform artifacts are requested and
+            // not reusable. Only the classification rebuild below is
+            // conditional — when Step 3 already produced this run's files.db
+            // (filesDbRebuiltInStep3), that copy is the input the analyzers
+            // write into; rebuilding it again would discard nothing but time.
+            if (!filesDbRebuiltInStep3) {
             std::cout << "[Scene] Rebuilding file database (classification + platform artifacts)...\n";
             for (const char* suffix : {"", "-wal", "-shm", "-journal"}) {
                 std::error_code ec;
@@ -487,6 +500,7 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
             }
             classifier.reset();
             stageLedger.mark(ledger::kFileClassification, classifyFp);
+            }
 
         }
         // Initial classification and resume rebuilds both require platform parsing.
@@ -740,6 +754,7 @@ int AnalysisOrchestrator::runAndroidLogicalAnalysis(const CommandLineArgs& args)
         AndroidSourceMode mode =
             args.android_source == "zip"         ? AndroidSourceMode::Zip :
             args.android_source == "miui-backup" ? AndroidSourceMode::MiuiBackup :
+            args.android_source == "oppo-backup" ? AndroidSourceMode::OppoBackup :
             args.android_source == "tar"         ? AndroidSourceMode::Tar :
             args.android_source == "seven-zip"   ? AndroidSourceMode::SevenZip :
             args.android_source == "android-backup" ? AndroidSourceMode::AndroidBackup :

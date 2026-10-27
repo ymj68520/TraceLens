@@ -20,6 +20,20 @@ test('new synthetic image tasks respect disabled AI instead of forcing an LLM ca
  await store().dispatch(createCaseWithTasks({name:'case',description:'context',imagePaths:['/synthetic/input.img']})).unwrap();
  expect(tasks.createTask).toHaveBeenCalledWith(expect.objectContaining({image_path:'/synthetic/input.img',llm_analyze:false}));
 });
+test('a case-level analysis budget is forwarded to every new image task',async()=>{
+ cases.caseTaskAnalysisOptions.mockResolvedValue({llm_analyze:true,llm_event_analyze:false});
+ tasks.createTask.mockResolvedValueOnce({id:'new-t1'}).mockResolvedValueOnce({id:'new-t2'});
+ cases.createCase.mockResolvedValue({id:'c1'});
+ await store().dispatch(createCaseWithTasks({name:'case',description:'context',imagePaths:['/a.img','/b.img'],llmMaxFiles:300})).unwrap();
+ expect(tasks.createTask).toHaveBeenCalledTimes(2);
+ for (const call of tasks.createTask.mock.calls) expect(call[0]).toMatchObject({llm_max_files:300});
+});
+test('an unset case-level budget leaves the server default in charge',async()=>{
+ cases.caseTaskAnalysisOptions.mockResolvedValue({llm_analyze:true,llm_event_analyze:false});
+ tasks.createTask.mockResolvedValue({id:'new-t1'});cases.createCase.mockResolvedValue({id:'c1'});
+ await store().dispatch(createCaseWithTasks({name:'case',description:'context',imagePaths:['/a.img']})).unwrap();
+ expect(tasks.createTask.mock.calls[0][0]).not.toHaveProperty('llm_max_files');
+});
 test('case loading recovers cleanly from a previous endpoint failure',async()=>{
  const s=store();cases.listCases.mockRejectedValueOnce(new Error('503')).mockResolvedValueOnce({cases:[{id:'c1'}],total:1});
  await s.dispatch(fetchCases());expect(s.getState().cases.status).toBe('failed');

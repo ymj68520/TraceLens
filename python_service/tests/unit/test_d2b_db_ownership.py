@@ -89,8 +89,9 @@ def two_task_stores(tmp_path, monkeypatch):
     ws_b = tmp_path / "taskB"
     ws_a.mkdir()
     ws_b.mkdir()
-    source_a = ws_a / "shared.txt"
-    source_b = ws_b / "shared.txt"
+    (ws_a/'evidence').mkdir();(ws_b/'evidence').mkdir()
+    source_a = ws_a / "evidence" / "shared.txt"
+    source_b = ws_b / "evidence" / "shared.txt"
     source_a.write_text("task A evidence")
     source_b.write_text("task B evidence")
     dll_a = ws_a / "sample.dll"
@@ -131,7 +132,7 @@ async def test_analyze_rejects_other_task_db_and_touches_nothing(two_task_stores
     db_a, db_b = two_task_stores["A"], two_task_stores["B"]
     before_a, before_b = _bytes_of(db_a), _bytes_of(db_b)
 
-    shared_a = str(Path(two_task_stores["A"].parent) / "shared.txt")
+    shared_a = str(Path(two_task_stores["A"].parent) / "evidence" / "shared.txt")
     request = AnalyzeRequest(
         task_id="A",
         file_path=shared_a,
@@ -150,7 +151,7 @@ async def test_analyze_legacy_path_matching_task_passes(two_task_stores):
     from httpserver.routes.llm_models import AnalyzeRequest
 
     db_a = two_task_stores["A"]
-    shared_a = str(db_a.parent / "shared.txt")
+    shared_a = str(db_a.parent / "evidence" / "shared.txt")
     request = AnalyzeRequest(
         task_id="A",
         file_path=shared_a,
@@ -170,7 +171,7 @@ async def test_analyze_without_legacy_path_uses_trusted_store(two_task_stores):
     from httpserver.routes.llm_models import AnalyzeRequest
 
     db_a = two_task_stores["A"]
-    shared_a = str(db_a.parent / "shared.txt")
+    shared_a = str(db_a.parent / "evidence" / "shared.txt")
     request = AnalyzeRequest(task_id="A", file_path=shared_a, db_file_path="/evidence/shared.txt")
     response = await _analysis.analyze_content(request, Settings(_env_file=None))
     assert response.success
@@ -185,7 +186,7 @@ async def test_analyze_legacy_path_without_task_id_rejected(two_task_stores):
     from httpserver.routes.llm_models import AnalyzeRequest
 
     db_a = two_task_stores["A"]
-    shared_a = str(db_a.parent / "shared.txt")
+    shared_a = str(db_a.parent / "evidence" / "shared.txt")
     before_a = _bytes_of(db_a)
     request = AnalyzeRequest(
         file_path=shared_a,

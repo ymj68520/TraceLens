@@ -60,3 +60,12 @@ async def test_config_budget_is_explicit_and_preserves_prefix(tmp_path):
     assert parsed.require_content() == text[:200000]
     assert parsed.coverage['truncated']
     assert parsed.diagnostics == ('TEXT_READ_BUDGET',)
+
+
+def test_renamed_programs_use_static_parsers_instead_of_memory_or_text(tmp_path):
+    from httpserver.services.extractors.binary_analyzer import PeExtractor,ElfExtractor
+    payload=bytearray(68);payload[:2]=b'MZ';payload[60:64]=(64).to_bytes(4,'little');payload[64:]=b'PE\0\0'
+    path=tmp_path/'client.bin';path.write_bytes(payload)
+    assert isinstance(get_document_extractor_locator().get_extractor(str(path)),PeExtractor)
+    path=tmp_path/'payload';path.write_bytes(b'\x7fELF\x02\x01\x01'+bytes(57))
+    assert isinstance(get_document_extractor_locator().get_extractor(str(path)),ElfExtractor)

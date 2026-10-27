@@ -59,6 +59,37 @@ def _candidate_id(path: Path) -> str:
     return hashlib.sha256(str(path).encode()).hexdigest()[:24]
 
 
+
+_OPPO_SCAN_MEMBER_LIMIT = 20_000
+
+
+def _is_oppo_thunderforensic_tar(path: Path) -> bool:
+    """Bounded tar header walk looking for the ThunderForensic markers.
+
+    The containers are plain ustar and the manifest member position varies
+    (it follows the sdcard payloads), so scan names until both markers show
+    up or the member cap is reached. Data blocks are skipped by seek.
+    """
+    import tarfile
+
+    try:
+        with tarfile.open(path, "r:") as archive:
+            saw_manifest = saw_phone_data = False
+            for count, member in enumerate(archive):
+                if count >= _OPPO_SCAN_MEMBER_LIMIT:
+                    return False
+                name = member.name.lstrip("./")
+                if name == "ThunderForensic.json":
+                    saw_manifest = True
+                if name.startswith("PhoneData/"):
+                    saw_phone_data = True
+                if saw_manifest and saw_phone_data:
+                    return True
+    except (tarfile.TarError, OSError, EOFError):
+        return False
+    return False
+
+
 def _probe(path: Path) -> dict:
     if path.is_dir():
         header = path / ".info.json"
@@ -74,6 +105,20 @@ def _probe(path: Path) -> dict:
             return {"kind": "derived_html_report", "adapter": "android_report", "confidence": "high"}
         if (path / "descript.xml").is_file() and any(path.glob("*.bak")):
             return {"kind": "miui_backup", "adapter": "miui-backup", "confidence": "high"}
+        oppo_tar_dir = path / "filesystem" / "1" / "tar"
+        if oppo_tar_dir.is_dir():
+            try:
+                oppo_tars = [item for item in sorted(oppo_tar_dir.iterdir())
+                             if item.suffix.lower() == ".tar"
+                             and _is_oppo_thunderforensic_tar(item)]
+            except OSError:
+                oppo_tars = []
+            if oppo_tars:
+                return {"kind": "oppo_thunderforensic_backup", "adapter": "oppo-backup",
+                        "confidence": "high",
+                        "container": oppo_tars[0].name,
+                        "reason": "ThunderForensic（雷电手机快取）OPPO 提取工程目录；适配器在分析阶段解析容器成员"}
+
         if any((path / marker).exists() for marker in ("data/data", "data/user/0", "system/build.prop")):
             return {"kind": "android_logical_tree", "adapter": "dir", "confidence": "medium"}
         return {"kind": "unknown_directory", "adapter": None, "confidence": "low"}
@@ -112,6 +157,14 @@ def _probe(path: Path) -> dict:
         return {"kind": "ewf_candidate", "adapter": None,
                 "confidence": "ewf_header_candidate"}
     if header[257:262] == b"ustar":
+        try:
+            oppo = _is_oppo_thunderforensic_tar(path)
+        except OSError:
+            oppo = False
+        if oppo:
+            return {"kind": "oppo_thunderforensic_backup", "adapter": "oppo-backup",
+                    "confidence": "high",
+                    "reason": "ThunderForensic（雷电手机快取）OPPO 提取容器；适配器在分析阶段解析 PhoneData 成员"}
         return {"kind": "tar_container", "adapter": None, "confidence": "high"}
     if (header.startswith(b"\x1f\x8b") and path.name.lower().endswith((".tar.gz", ".tgz"))) or (
         header.startswith(b"\xfd7zXZ\x00") and path.name.lower().endswith(".tar.xz")

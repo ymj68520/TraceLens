@@ -7,6 +7,8 @@
 #include "HarmonyBackupExtractor.h"
 #include "XiaomiImageExtractor.h"
 #include "HarmonyArtifactParsers.h"
+#include "OppoBackupExtractor.h"
+#include "OppoArtifactParsers.h"
 #include "MiuiBackupExtractor.h"
 #include "ArchiveFileExtractor.h"
 #include "FilesystemEvidenceSource.h"
@@ -84,6 +86,19 @@ bool AndroidAnalyzer::initialize() {
             "Logical dir auto-promoted to miui-backup: " + imagePath_);
         sourceMode_ = AndroidSourceMode::MiuiBackup;
     }
+    // Auto-promote any source selection to OPPO (ThunderForensic) backup mode
+    // when the path is in fact such an extraction: a project directory holding
+    // a ThunderForensic tar under filesystem/1/tar, or the tar file itself.
+    // Recognition is a cheap bounded header scan, so this is safe to run for
+    // every mode, mirroring the TSK→Harmony promotion above.
+    if (sourceMode_ != AndroidSourceMode::OppoBackup &&
+        OppoBackupExtractor::recognizes(imagePath_)) {
+        std::cout << "[Android] Source is an OPPO ThunderForensic extraction; "
+                     "auto-selecting oppo-backup mode." << std::endl;
+        AuditLog::instance().log("SYSTEM", "ANDROID_SOURCE_PROMOTED",
+            "Source auto-promoted to oppo-backup: " + imagePath_);
+        sourceMode_ = AndroidSourceMode::OppoBackup;
+    }
 
     // Pick a file-access backend based on the source mode. All nine call sites
     // in this module go through fileExtractor_->extractFileByPath(...), so the
@@ -95,6 +110,10 @@ bool AndroidAnalyzer::initialize() {
         }
         case AndroidSourceMode::HarmonyBackup: {
             fileExtractor_ = std::make_unique<HarmonyBackupExtractor>(imagePath_);
+            break;
+        }
+        case AndroidSourceMode::OppoBackup: {
+            fileExtractor_ = std::make_unique<OppoBackupExtractor>(imagePath_);
             break;
         }
         case AndroidSourceMode::MiuiBackup: {
@@ -153,7 +172,8 @@ bool AndroidAnalyzer::initialize() {
                       sourceMode_ == AndroidSourceMode::Zip ? "zip" :
                       sourceMode_ == AndroidSourceMode::Tar ? "tar" :
                       sourceMode_ == AndroidSourceMode::SevenZip ? "seven-zip" :
-                      sourceMode_ == AndroidSourceMode::AndroidBackup ? "android-backup" : "miui-backup")
+                      sourceMode_ == AndroidSourceMode::AndroidBackup ? "android-backup" :
+                      sourceMode_ == AndroidSourceMode::OppoBackup ? "oppo-backup" : "miui-backup")
                   << ")" << std::endl;
         AuditLog::instance().log("SYSTEM", "ANDROID_INIT_FAILED", "Failed to initialize Android analyzer for: " + imagePath_);
         return false;
@@ -164,7 +184,9 @@ bool AndroidAnalyzer::initialize() {
         if (!miui || miui->temporaryRoot().empty()) return false;
         secureTemporaryRoot_ = miui->temporaryRoot().string();
     } else {
-        const bool sourceIsDirectory = sourceMode_ == AndroidSourceMode::LogicalDir || sourceMode_ == AndroidSourceMode::HarmonyBackup;
+        const bool sourceIsDirectory = sourceMode_ == AndroidSourceMode::LogicalDir ||
+            sourceMode_ == AndroidSourceMode::HarmonyBackup ||
+            (sourceMode_ == AndroidSourceMode::OppoBackup && fs::is_directory(imagePath_));
         fs::path evidenceRoot;
         fs::path root;
         if (!miui_secure_temp::evidenceRootForSource(imagePath_, sourceIsDirectory, evidenceRoot) ||
@@ -202,6 +224,16 @@ void AndroidAnalyzer::analyzeAndroidData() {
             throw std::runtime_error("HARMONY_ANALYSIS_FAILED");
         analyzeWithLLM();
         AuditLog::instance().log("SYSTEM", "HARMONY_ANALYSIS_COMPLETE", imagePath_);
+        return;
+    }
+    // OPPO ThunderForensic extractions carry pre-parsed JSON artifacts rather
+    // than provider databases; the generic data/data scan below would find
+    // nothing. Persist everything from the container and stop.
+    if (auto* oppo = dynamic_cast<OppoBackupExtractor*>(fileExtractor_.get())) {
+        if (!analyzeOppoBackup(*oppo, *androidDb_))
+            throw std::runtime_error("OPPO_ANALYSIS_FAILED");
+        analyzeWithLLM();
+        AuditLog::instance().log("SYSTEM", "OPPO_ANALYSIS_COMPLETE", imagePath_);
         return;
     }
     const auto analysisStarted = std::chrono::steady_clock::now();

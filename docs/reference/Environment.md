@@ -67,7 +67,7 @@
 | `FILE_ANALYSIS_MAX_KEYWORDS` | `10` / `10` | C++ :175；Py :223 | |
 | `FILE_ANALYSIS_MAX_CONTENT_LIMIT` | Py `12000` | Py config.py:224 | .env.example 写 `50000`，与代码缺省 `12000` 不一致；C++ 不读 |
 | `LLM_MAX_CONTENT_LENGTH` | `10000` | C++ :96（消费 FileAnalyzer.cpp:199） | 与上一条是两个不同变量 |
-| `LLM_MAX_FILES` | `500` | C++ :91 | |
+| `LLM_MAX_FILES` | `500` | C++ :91 | 全局默认预算；单任务可用请求字段 `llm_max_files` 覆盖（0=继承本值） |
 | `LLM_SKIP_BINARY` | `true` | C++ :97 | |
 | `DB_OUTPUT_DIR` | `./output` / `./output` | C++ :179；Py :211 | |
 | `DB_NAME` | `forensics.db` / `forensics.db` | C++ :180；Py :212 | |

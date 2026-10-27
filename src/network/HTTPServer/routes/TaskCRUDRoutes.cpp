@@ -4,6 +4,7 @@
 #include "TaskHelpers.h"
 #include "RouteHelpers.h"
 #include "../SQLiteHelper.h"
+#include "../AnalysisBudget.h"
 #include "../../Swagger/Swagger.h"
 #include "PathManager/PathManager.h"
 #include <ctime>
@@ -165,7 +166,7 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
         {
             const std::string source_kind = body.value("android_source", "tsk");
             static const std::set<std::string> supportedSources{
-                "tsk", "dir", "zip", "miui-backup", "harmony-backup", "tar", "seven-zip", "android-backup", "filesystem-image", "android-container", "aliyun-image", "xiaomi-image"};
+                "tsk", "dir", "zip", "miui-backup", "harmony-backup", "oppo-backup", "tar", "seven-zip", "android-backup", "filesystem-image", "android-container", "aliyun-image", "xiaomi-image"};
             if (!supportedSources.count(source_kind)) {
                 res.code = 400;
                 res.set_header("Content-Type", "application/json");
@@ -173,16 +174,23 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
                                {"error_code", "UNSUPPORTED_ANDROID_SOURCE"}}.dump());
                 return res;
             }
+            // oppo-backup accepts either the ThunderForensic tar or the project
+            // directory that contains it; the analyzer re-validates the layout.
             const bool wants_directory = (source_kind == "dir" || source_kind == "miui-backup" || source_kind == "harmony-backup");
+            const bool accepts_either = source_kind == "oppo-backup";
             std::error_code ec;
             const bool exists = std::filesystem::exists(image_path, ec);
             bool type_ok = true;
             std::string expect;
             if (exists) {
-                type_ok = wants_directory
+                type_ok = accepts_either
+                    ? (std::filesystem::is_directory(image_path, ec) ||
+                       std::filesystem::is_regular_file(image_path, ec))
+                    : wants_directory
                     ? std::filesystem::is_directory(image_path, ec)
                     : std::filesystem::is_regular_file(image_path, ec);
-                expect = wants_directory ? "a directory" : "a regular file";
+                expect = accepts_either ? "a directory or a regular file"
+                         : wants_directory ? "a directory" : "a regular file";
             }
             if (ec || !exists || !type_ok) {
                 std::string reason = ec
@@ -310,6 +318,36 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
             metadata["field_outbound_policy"] = "disabled";
         }
         std::string llm_mode = body.value("llm_mode", "smart"); // "full" or "smart"
+
+        // Task-level analysis budget (0 = inherit LLM_MAX_FILES). Reject
+        // non-integers and out-of-range values instead of silently coercing:
+        // a typo that falls back to the global budget is exactly the runaway
+        // cost this option exists to bound.
+        int llm_max_files = 0;
+        if (body.contains("llm_max_files") && !body["llm_max_files"].is_null()) {
+            const auto& raw = body["llm_max_files"];
+            if (!raw.is_number_integer()) {
+                res.code = 400;
+                res.set_header("Content-Type", "application/json");
+                res.write(json{{"error", "llm_max_files must be an integer (0 = inherit LLM_MAX_FILES)"},
+                               {"error_code", "INVALID_LLM_MAX_FILES"}}.dump());
+                return res;
+            }
+            const long long requested = raw.get<long long>();
+            if (requested < analysis_budget::kMinTaskBudget ||
+                requested > analysis_budget::kMaxTaskBudget) {
+                res.code = 400;
+                res.set_header("Content-Type", "application/json");
+                res.write(json{{"error", "llm_max_files must be between " +
+                                              std::to_string(analysis_budget::kMinTaskBudget) +
+                                              " and " +
+                                              std::to_string(analysis_budget::kMaxTaskBudget)},
+                               {"error_code", "INVALID_LLM_MAX_FILES"}}.dump());
+                return res;
+            }
+            llm_max_files = static_cast<int>(requested);
+        }
+
         std::string case_description = body.value("case_description", "");
 
         // Filter profile option
@@ -469,7 +507,8 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
             android_source,
             backup_password,
             file_carving,
-            platform_analyze
+            platform_analyze,
+            llm_max_files
         );
 
         // Check if task can start immediately
@@ -489,6 +528,7 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
             {"llm_analyze", llm_analyze},
             {"llm_event_analyze", llm_event_analyze},
             {"llm_mode", llm_mode},
+            {"llm_max_files", llm_max_files},
             {"file_carving", file_carving},
             {"filter_profile", filter_profile},
             {"android_source", android_source},

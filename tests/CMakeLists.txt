@@ -1128,6 +1128,18 @@ target_link_libraries(test_task_scenarios ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES}
 
 add_test(NAME TaskScenarioTests COMMAND test_task_scenarios)
 
+# Analysis budget policy (task-level llm_max_files resolution). Header-only
+# target: no server link, so it runs in seconds.
+add_executable(
+  test_analysis_budget
+  UnitTest/test_analysis_budget_gtest.cpp)
+
+target_include_directories(test_analysis_budget PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+target_link_libraries(test_analysis_budget ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES} gtest_main pthread)
+
+add_test(NAME AnalysisBudgetTests COMMAND test_analysis_budget)
+
 # WeChat Decryptor Tests (conditional on SQLCipher availability)
 if(SQLCIPHER_FOUND)
   add_executable(
@@ -1269,6 +1281,13 @@ add_test(
   COMMAND python3
           ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_miui_cli_e2e.py
           --analyzer $<TARGET_FILE:forensic_analyzer>)
+add_test(NAME OppoBackupCliEndToEndTests
+  COMMAND python3
+          ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_oppo_backup_cli.py
+          --analyzer $<TARGET_FILE:forensic_analyzer>)
+add_test(NAME OppoBackupHttpEndToEndTests
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_oppo_backup_http.py
+    --analyzer $<TARGET_FILE:forensic_analyzer>)
 install(TARGETS test_android_logical_source_gtest RUNTIME DESTINATION bin/tests)
 
 # Scene Database Tests (SQL schema definitions for scene specialization)
@@ -1564,3 +1583,10 @@ add_test(NAME TaskResumeHttpEndToEndTests
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_task_resume_http.py
     --analyzer $<TARGET_FILE:forensic_analyzer>)
 set_tests_properties(TaskResumeHttpEndToEndTests PROPERTIES TIMEOUT 1800)
+
+# Task-level analysis budget (llm_max_files): request validation, echo,
+# persistence across a server reload.
+add_test(NAME TaskBudgetHttpEndToEndTests
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_task_budget_http.py
+    $<TARGET_FILE:forensic_analyzer>)
+set_tests_properties(TaskBudgetHttpEndToEndTests PROPERTIES TIMEOUT 900)

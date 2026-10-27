@@ -140,8 +140,22 @@ std::string AndroidLLMAnalysisService::getSelectSQLForType(ArtifactType type) {
         case ArtifactType::WIFI_NETWORK: return A::SELECT_WIFI_NETWORKS_PENDING_ANALYSIS;
         case ArtifactType::MOBILE_RECORD: return "SELECT id,kind,package_name,source_path,source_table,source_key,record_json,"
             "timestamp_raw,time_unit,parser_version FROM mobile_artifacts WHERE llm_analyzed_at IS NULL "
-            "ORDER BY CASE kind WHEN 'calendar' THEN 0 WHEN 'recording' THEN 1 WHEN 'qq_contact' THEN 2 "
-            "WHEN 'note_block' THEN 3 ELSE 4 END,id LIMIT ?";
+            // Priority tiers serve whoever wrote the rows — a task's
+            // mobile_artifacts holds one platform only. Harmony conversation/
+            // recording kinds first; then OPPO (ThunderForensic) high-value
+            // facts (device identity, wifi, media, usage sessions) before the
+            // per-app inventory; bulk counters (app_traffic) and the log
+            // inventory last. Without this, a tight artifact budget is eaten
+            // by hundreds of zero-value traffic rows and the narrative report
+            // never sees the device story.
+            "ORDER BY CASE kind "
+            "WHEN 'calendar' THEN 0 WHEN 'recording' THEN 1 WHEN 'qq_contact' THEN 2 "
+            "WHEN 'note_block' THEN 3 "
+            "WHEN 'device_info' THEN 4 WHEN 'device_identifier' THEN 4 WHEN 'wifi' THEN 4 "
+            "WHEN 'media' THEN 4 WHEN 'app_usage_session' THEN 4 "
+            "WHEN 'application' THEN 5 WHEN 'uninstall_list' THEN 5 "
+            "WHEN 'app_traffic' THEN 6 WHEN 'device_log' THEN 6 "
+            "ELSE 4 END,id LIMIT ?";
         default: return "";
     }
 }

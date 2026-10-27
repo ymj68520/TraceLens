@@ -101,6 +101,8 @@ const std::set<std::string>& forensicExtractorExtensions() {
         ".sqlite", ".sqlite3",
         // Linux journal and auth logs
         ".journal", ".wtmp", ".btmp", ".utmp",
+        // Static executable parsing, including payloads renamed to .bin.
+        ".exe", ".dll", ".sys", ".scr", ".com", ".pif", ".bin", ".elf", ".so", ".ko",
         // Mobile / container artifacts
         ".ab", ".tar", ".gz",
     };
