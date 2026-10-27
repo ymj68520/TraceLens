@@ -86,13 +86,18 @@ WAL 模式下最近写入可能在 `-wal` 文件里。只读查询的安全做�
 
 背景：删除不是简单 `rm -rf`——后台 LLM/图谱分析线程可能还在跑，直接删目录会被延迟写入"复活"。完整设计见 `docs/hardening/d4b-lifecycle-resource-fixes.md`。
 
-`TaskManager::delete_task`（`TaskManager.cpp:313-360`）流程：
+`TaskManager::delete_task` 流程（每步都有可见后果，缺一步就会留残留）：
 1. 从内存 map 移除 + 立即保存 `tasks.json`（UI 即刻不可见）；
-2. 请求 Python 侧删除该任务的 Graphiti 图数据（`LLMPythonProxy::deleteGraphitiData`）；
-3. 清理该任务的 LLM 临时提取目录 `<tmp>/forensics_llm_extract/<task_id>/`（D4b）；
-4. **非 RUNNING** 任务：立即 `remove_all(task_dir)`；**RUNNING** 任务：只标记取消，由后台线程退出时自查任务已消失后再删目录。
+2. **写 `DELETED` 审计并立即 flush**（`AuditLog::log_and_flush`）。注意不能用 `add_audit_log`：它要求任务仍在 `tasks_` 里，而此处任务已被 erase，用它会静默丢日志；
+3. 关联案件解绑（`CaseManager::remove_task_from_all_cases`）；
+4. 请求 Python 侧删除该任务的 Graphiti 图数据（`LLMPythonProxy::deleteGraphitiData`，客户端读超时 90s，须大于 Python 侧 `DETACH DELETE` 的 60s 上限）；
+5. 请求 Python 侧清理该任务的报告足迹（`LLMPythonProxy::deleteTaskReportData` → `DELETE /api/reports/tasks/{task_id}`）：删除 `report_versions` 行、已发布快照目录（`snapshots/task/<task_id>/` 与确定性布局 `<scope>/<task_id>/`）、`.locks/<report_id>.lock`、`exports/<task_id>/` 离线包缓存，以及 `initial_analysis_translations` 中该任务的翻译缓存。**`report_generation_inputs` 及报告规划、调用账本保留**——不改写冻结准入与执行审计；
+6. 清理该任务的 LLM 临时提取目录 `<tmp>/forensics_llm_extract/<task_id>/`（D4b）；
+7. **非 RUNNING** 任务：立即 `remove_all(task_dir)`；**RUNNING** 任务：只标记取消，由后台线程退出时自查任务已消失后再删目录。目录删不掉时写 `DELETION_INCOMPLETE` 审计并记录路径，而不是静默成功。
 
 D4b 加固后的终端写保护（`docs/hardening/d4b` B 节）：后台执行器每次**终端写**前都要 ① 查询可信任务注册表确认任务仍存活 → ② 当前可信路径与提交时路径严格相等 → ③ 以 SQLite `mode=rw` 打开（不存在即失败，**不 mkdir/不自愈**）。任务在活性检查后、写库前被删（TOCTOU 窗口）会在"只读打开"处失败关闭，不会重建目录。结论：**删除后 LLM 结果被丢弃，不留 failed 行、不留墓碑**。
+
+报告侧的在途生成：`DELETE /api/reports/tasks/{task_id}` 会先调 `ReportGenerationExecutor::cancel_task` 取消该任务所有 admitted/running 的生成（落 `error_code=task_deleted`），再删版本行；若仍有 queued/generating 版本未收敛，返回 **409** 并保留行——删行会让 worker 发布一个没有版本记录的 manifest。快照和离线缓存只按所属任务、报告编号生成清理路径；删除前校验边界，不跟随目录符号链接，也不以可变 `manifest_path` 授权删除其他任务目录。
 
 操作（注意：**没有单任务 cancel 端点**；取消走 `POST /api/tasks/batch-cancel`，请求体 `{task_ids:[...], reason?}`，`TaskBatchRoutes.cpp:37`）：
 ```bash
@@ -103,8 +108,25 @@ sleep 5; curl -s http://localhost:8666/api/tasks/<id>         # 确认 status=ca
 curl -X DELETE http://localhost:8666/api/tasks/<id>           # 路由到 handle_cancel_task → delete_task
 ```
 
-验证：`build/data/tasks/<id>/` 消失（RUNNING 任务稍等后台线程退出）；`tasks.json` 中无该 id；Neo4j 侧该任务 group_id 的图数据被删（`wipe` 见 ExternalServices.md）。
-失败排查：目录删不掉通常是后台线程仍持有文件句柄——等数分钟后复查；孤儿目录（有目录无注册项）会在下次启动时由 `TaskPersistence::cleanup_orphan_directories`（`TaskManager.cpp:69`）清掉。
+验证：`build/data/tasks/<id>/` 消失（RUNNING 任务稍等后台线程退出）；`tasks.json` 中无该 id；Neo4j 侧该任务 group_id 的图数据被删（`wipe` 见 ExternalServices.md）；`reports.db` 中该任务无 `report_versions` 行；审计库有 `action='DELETED'` 记录：
+
+```bash
+sqlite3 build/data/audit/forensics_audit.db \
+  "SELECT datetime(timestamp/1000,'unixepoch','localtime'),action,details
+   FROM audit_logs WHERE task_id='<id>' AND action LIKE 'DELET%';"
+sqlite3 build/data/reports/reports.db \
+  "SELECT COUNT(*) FROM report_versions WHERE scope_id='<id>';"
+```
+
+单独手工清报告足迹（任务记录已不存在时，例如历史残留）：
+```bash
+curl -X DELETE http://localhost:8090/api/reports/tasks/<task_id>
+# -> {"deleted_versions":N,"removed_directories":N,"cancelled_generations":N,
+#     "deleted_translations":N,"errors":[]}
+```
+该端点幂等：任务本就没有报告时返回全 0，不算错误。
+
+失败排查：目录删不掉通常是后台线程仍持有文件句柄——等数分钟后复查；孤儿目录（有目录无注册项）会在下次启动时由 `TaskPersistence::cleanup_orphan_directories`（`TaskManager.cpp:69`）清掉。报告清理若返回 500 且 `errors` 非空，表示行已删但目录删不掉（通常是权限/句柄），按 `errors` 里的路径人工处理。
 
 ## 4. 备份什么 / 怎么恢复
 

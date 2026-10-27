@@ -1,6 +1,7 @@
 """Versioned forensic report snapshot HTTP routes."""
 
 import json
+import logging
 import sqlite3
 from collections.abc import Mapping
 from pathlib import Path
@@ -11,8 +12,13 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from ..services import get_service_manager
-from ..services.forensic_report.service import ReportServiceUnavailable
+from ..services.forensic_report.service import (
+    ReportPurgeIncomplete,
+    ReportServiceUnavailable,
+)
 from ..services.forensic_report.models import ReportVersion, ScopeType
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -40,6 +46,17 @@ def get_report_service():
         raise HTTPException(
             status_code=503, detail="report service is unavailable"
         ) from exc
+
+
+def _translation_cache_path() -> Path:
+    """Translation cache lives beside the report output directory (as the
+    workbench resolves it), so both readers agree on one file."""
+    from ..config import get_project_root, get_settings
+
+    root = Path(get_settings().report_output_dir)
+    if not root.is_absolute():
+        root = get_project_root() / root
+    return root.parent / "initial_analysis_translations.db"
 
 
 def _not_found() -> HTTPException:
@@ -126,6 +143,71 @@ def list_reports(
     service: Any = Depends(get_report_service),
 ) -> list[ReportVersion]:
     return service.list_versions(scope_type, scope_id)
+
+
+@router.delete("/tasks/{task_id}")
+async def delete_task_reports(
+    task_id: Annotated[str, FastAPIPath(min_length=1, max_length=128)],
+    service: Any = Depends(get_report_service),
+) -> dict[str, Any]:
+    """Cascade-delete a task's report versions, snapshots and locks.
+
+    Invoked by the C++ task-deletion path. Immutable
+    ``report_generation_inputs`` rows are retained by design. The
+    initial-analysis translation cache is purged here too: it is task-scoped
+    derived text with no other deletion surface.
+    """
+    cancelled = 0
+    try:
+        executor = get_service_manager().report_generation_executor
+    except RuntimeError:
+        executor = None
+    if executor is not None:
+        # Stop a live worker before its version rows disappear, otherwise it
+        # could publish a manifest with no version record behind it.
+        try:
+            cancelled = await executor.cancel_task(
+                task_id, reason="task was deleted while its report was generating"
+            )
+        except Exception as exc:
+            logger.warning(
+                "Could not cancel report generation for task %s: %s", task_id, exc
+            )
+
+    result: dict[str, Any] = {}
+    try:
+        result = service.purge_task(task_id)
+    except ValueError as exc:
+        # Live generation for this task: deleting rows would strand its worker.
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ReportPurgeIncomplete as exc:
+        # Rows are gone; the leftover directories need operator attention, so
+        # report them instead of pretending the purge was clean.
+        raise HTTPException(
+            status_code=500,
+            detail={"message": str(exc), "errors": exc.errors},
+        ) from exc
+    except ReportServiceUnavailable as exc:
+        raise HTTPException(
+            status_code=503, detail="report service is unavailable"
+        ) from exc
+    result["cancelled_generations"] = cancelled
+
+    try:
+        from ..services.investigation.initial_analysis_translation import (
+            InitialAnalysisTranslationCache,
+        )
+
+        # Only purge_task() is used, which touches nothing but db_path; the
+        # translator is irrelevant here and deliberately not constructed.
+        cache = InitialAnalysisTranslationCache(
+            _translation_cache_path(), None
+        )
+        result["deleted_translations"] = cache.purge_task(task_id)
+    except Exception as exc:  # cache purge must never mask the report purge
+        logger.warning("Translation cache purge failed for task %s: %s", task_id, exc)
+        result["translation_error"] = str(exc)
+    return result
 
 
 @router.get("/{report_id}/status", response_model=ReportVersion)

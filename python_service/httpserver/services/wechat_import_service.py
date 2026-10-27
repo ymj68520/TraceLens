@@ -474,8 +474,10 @@ class WeChatImportService:
                     m = re.match(r"^([^\s:]{1,64}):\n", content)
                     if m:
                         sender, text = m.group(1), content[m.end():]
+                    elif is_send == 1:
+                        sender = (owner.get("username") or talker)
                     else:
-                        sender = talker
+                        sender = ""
                     receiver = talker
                 else:
                     if is_send == 1:
@@ -898,31 +900,38 @@ class WeChatImportService:
             }
             result = []
             for row in con.execute("SELECT * FROM chatroom"):
-                name = self._col(row, "chatroomname", "")
+                name = _as_text(self._col(row, "chatroomname", ""))
                 if not name:
                     continue
-                display = self._col(row, "displayname", "") or self._col(row, "chatroomnick", "")
-                owner_wxid = self._col(row, "roomowner", "")
-                memberlist = self._col(row, "memberlist", "") or ""
+                display = _as_text(self._col(row, "displayname", "")) or _as_text(self._col(row, "chatroomnick", ""))
+                owner_wxid = _as_text(self._col(row, "roomowner", ""))
+                memberlist = _as_text(self._col(row, "memberlist", ""))
                 members = [m for m in memberlist.split(";") if m]
                 member_names = []
                 for m in members:
                     member_names.append(
                         names.get(m) or room_extra.get(name, {}).get(m) or m
                     )
+                raw_mc = self._col(row, "membercount", 0)
+                try:
+                    member_count = int(raw_mc)
+                except (TypeError, ValueError):
+                    member_count = 0
+                if member_count <= 0:
+                    member_count = len(members)
                 result.append({
                     "chatroom_name": name,
                     "display_name": display or name,
                     "owner": owner_wxid,
                     "owner_name": names.get(owner_wxid, owner_wxid),
-                    "member_count": self._col(row, "membercount", 0) or len(members),
+                    "member_count": member_count,
                     "members": [
                         {"username": m, "display_name": dn}
                         for m, dn in zip(members, member_names)
                     ],
                     "create_time": _fmt_ts(self._col(row, "addtime")) if self._col(row, "addtime") else "",
                     "modify_time": _fmt_ts(self._col(row, "modifytime")) if self._col(row, "modifytime") else "",
-                    "notice": self._col(row, "chatroomnotice", "") or "",
+                    "notice": _as_text(self._col(row, "chatroomnotice", "")),
                     "msg_count": msg_counts.get(name, 0),
                 })
             return result
@@ -949,6 +958,21 @@ def _to_ms(ts: Optional[int]) -> Optional[int]:
     if not ts:
         return ts
     return ts * 1000 if ts < 10_000_000_000 else ts
+
+
+def _as_text(value) -> str:
+    """Coerce a DB value to a JSON-safe string (salvaged rows may be BLOB)."""
+    if value is None:
+        return ""
+    if isinstance(value, memoryview):
+        value = value.tobytes()
+    if isinstance(value, (bytes, bytearray)):
+        try:
+            text = value.decode("utf-8")
+        except UnicodeDecodeError:
+            return ""
+        return "" if any(ord(c) < 0x20 for c in text) else text
+    return str(value)
 
 
 def _fmt_ts(ts: Optional[int]) -> str:
@@ -990,6 +1014,10 @@ def _contact_kind(username: str, ctype: int) -> str:
 
 def _strip_group_prefix(content: str, talker: str) -> tuple:
     """Split the ``senderid:\\n`` prefix used in group messages."""
+    if not isinstance(content, str):
+        content = "" if content is None else str(content)
+    if not isinstance(talker, str):
+        talker = ""
     if "@chatroom" in talker:
         m = re.match(r"^([^\s:\n]{1,64}):\n", content)
         if m:
@@ -998,17 +1026,23 @@ def _strip_group_prefix(content: str, talker: str) -> tuple:
 
 
 def _xml_find(text: str, tag: str) -> Optional[str]:
+    if not isinstance(text, str):
+        return None
     m = re.search(rf"<{re.escape(tag)}[^>]*>(.*?)</{re.escape(tag)}>", text, re.S)
     return m.group(1).strip() if m else None
 
 
 def _xml_attr(text: str, tag: str, attr: str) -> Optional[str]:
+    if not isinstance(text, str):
+        return None
     m = re.search(rf"<{re.escape(tag)}[^>]*{re.escape(attr)}=\"([^\"]*)\"", text)
     return m.group(1) if m else None
 
 
 def decode_message_content(mtype: int, text: str, owner_username: str) -> Dict[str, Any]:
     """Decode a native WeChat message body into display-friendly fields."""
+    if not isinstance(text, str):
+        text = "" if text is None else str(text)
     base = mtype & 0xFFFF
     out: Dict[str, Any] = {"content_display": "", "media": None, "referenced": None}
 
@@ -1107,6 +1141,10 @@ def _decode_appmsg(text: str, out: Dict[str, Any]) -> None:
 
 def _thumb_relpath(img_path: Optional[str], md5: Optional[str]) -> Optional[str]:
     """Map THUMBNAIL_DIRPATH://th_<hash> (or an md5) to image2/<a>/<b>/th_<hash>."""
+    if img_path is not None and not isinstance(img_path, str):
+        img_path = str(img_path)
+    if md5 is not None and not isinstance(md5, str):
+        md5 = str(md5)
     h = None
     if img_path:
         m = re.search(r"th_([0-9a-f]{16,})", img_path)
@@ -1133,7 +1171,9 @@ def _chatroom_roomdata_names(con: sqlite3.Connection) -> Dict[str, Dict[str, str
     pat = re.compile(rb"(wxid_[a-z0-9_]{5,25})\x12([\x01-\x40])(.{0,64})", re.S)
     for row in rows:
         data = row[1]
-        if not data:
+        if isinstance(data, memoryview):
+            data = data.tobytes()
+        if not isinstance(data, (bytes, bytearray)):
             continue
         names: Dict[str, str] = {}
         for m in pat.finditer(data):

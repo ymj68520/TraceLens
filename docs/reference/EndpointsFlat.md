@@ -290,6 +290,7 @@
 | POST | `/api/reports/generate` | `task_id`*、`requested_by`*（无证据 409） | 冻结式报告生成（202；输入全服务端组装） | reportGenerationService → GenerateReportPanel | 同上 |
 | GET | `/api/reports/generations/{generation_id}` | `task_id` 查询参数 | 生成状态（exact id 轮询） | useReportGenerationPolling | 同上 |
 | GET | `/api/reports/narrative/versions/{report_id}` | 路径参数 | 叙事版本记录 | 同上 | 同上 |
+| DELETE | `/api/reports/tasks/{task_id}` | 路径参数 | 级联删除任务报告足迹（版本行/快照目录/lock/翻译缓存；不可变 generation_inputs 保留；在途返回 409） | C++ `delete_task` → `LLMPythonProxy::deleteTaskReportData` | [DataAndBackup.md §3](../ops/DataAndBackup.md) |
 
 ### 2.7 调查 API（/api/investigation，规范扁平命名空间）
 

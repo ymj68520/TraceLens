@@ -68,6 +68,8 @@ class WeChatGraphAnalysisMixin:
                 "id": node,
                 "label": node_data.get("label", node),
                 "is_owner": node_data.get("is_owner", False),
+                "node_type": node_data.get("node_type", "联系人"),
+                "member_count": node_data.get("member_count", 0),
                 "message_count": node_data.get("message_count", 0),
                 "pagerank": round(pagerank.get(node, 0.0), 6),
                 "betweenness": round(betweenness.get(node, 0.0), 6),
@@ -77,17 +79,21 @@ class WeChatGraphAnalysisMixin:
         # Assemble edge list
         edges = []
         for u, v, data in G.edges(data=True):
+            edge_type = data.get("edge_type", "private")
             edges.append({
                 "source": u,
                 "target": v,
                 "weight": data.get("weight", 1),
-                "edge_type": data.get("edge_type", "private"),
+                "edge_type": edge_type,
+                "edge_label": data.get("edge_label", "私聊" if edge_type == "private" else "群聊"),
+                "preview": data.get("preview"),
                 "total_chars": data.get("total_chars", 0),
                 "first_time": data.get("first_time"),
                 "last_time": data.get("last_time"),
                 "sent_count": data.get("sent_count", 0),
                 "received_count": data.get("received_count", 0),
                 "chatroom": data.get("chatroom"),
+                "chatroom_label": data.get("chatroom_label"),
             })
 
         # Format communities as list of lists of node IDs
@@ -158,6 +164,8 @@ class WeChatGraphAnalysisMixin:
                 "id": node,
                 "label": node_data.get("label", node),
                 "is_owner": node_data.get("is_owner", False),
+                "node_type": node_data.get("node_type", "联系人"),
+                "member_count": node_data.get("member_count", 0),
                 "message_count": node_data.get("message_count", 0),
                 "pagerank": 0.0,
                 "betweenness": 0.0,
@@ -166,17 +174,21 @@ class WeChatGraphAnalysisMixin:
 
         edges = []
         for u, v, data in G.edges(data=True):
+            edge_type = data.get("edge_type", "private")
             edges.append({
                 "source": u,
                 "target": v,
                 "weight": data.get("weight", 1),
-                "edge_type": data.get("edge_type", "private"),
+                "edge_type": edge_type,
+                "edge_label": data.get("edge_label", "私聊" if edge_type == "private" else "群聊"),
+                "preview": data.get("preview"),
                 "total_chars": data.get("total_chars", 0),
                 "first_time": data.get("first_time"),
                 "last_time": data.get("last_time"),
                 "sent_count": data.get("sent_count", 0),
                 "received_count": data.get("received_count", 0),
                 "chatroom": data.get("chatroom"),
+                "chatroom_label": data.get("chatroom_label"),
             })
 
         return {

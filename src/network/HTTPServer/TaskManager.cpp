@@ -24,6 +24,25 @@ using forensics::FileFilter;
 // forensics) needs qualifying at every use site.
 namespace stage_ledger = forensics::stage_ledger;
 
+namespace {
+
+// Audit details are read by operators long after the enum is gone; spell the
+// status out in the same vocabulary the HTTP API and tasks.json use.
+const char* audit_status_name(TaskStatus status) {
+    switch (status) {
+        case TaskStatus::PENDING: return "pending";
+        case TaskStatus::RUNNING: return "running";
+        case TaskStatus::COMPLETED: return "completed";
+        case TaskStatus::FAILED: return "failed";
+        case TaskStatus::CANCELLED: return "cancelled";
+        case TaskStatus::INTERRUPTED: return "interrupted";
+        case TaskStatus::PAUSED: return "paused";
+        default: return "unknown";
+    }
+}
+
+} // namespace
+
 // JSON serialization is now in TaskSerialization.cpp
 
 TaskManager::TaskManager() {
@@ -386,6 +405,8 @@ bool TaskManager::cancel_task(const std::string& id, const std::string& reason) 
 
 bool TaskManager::delete_task(const std::string& id) {
     std::string task_dir;
+    std::string image_path;
+    TaskStatus previous_status = TaskStatus::PENDING;
     bool is_running = false;
     {
         std::lock_guard<std::mutex> lock(mtx_);
@@ -394,6 +415,8 @@ bool TaskManager::delete_task(const std::string& id) {
         }
         
         is_running = (tasks_[id].status == TaskStatus::RUNNING);
+        previous_status = tasks_[id].status;
+        image_path = tasks_[id].image_path;
         tasks_[id].cancellation_requested = true;
         
         // Try getting task dir from PathManager to delete from disk later
@@ -410,6 +433,17 @@ bool TaskManager::delete_task(const std::string& id) {
         save_tasks_internal();
     }
 
+    // Record the removal before the task is gone from every store. add_audit_log
+    // filters on tasks_ membership, which no longer holds here, so write
+    // straight to the AuditLog singleton and flush: the deletion must leave a
+    // durable trace even if the process dies before the interval flush.
+    {
+        std::string details = std::string("Task deleted (previous status: ") +
+            audit_status_name(previous_status) + ", image: " +
+            (image_path.empty() ? "unknown" : image_path) + ")";
+        AuditLog::instance().log_and_flush(id, "DELETED", details);
+    }
+
     // Detach the deleted task from every case that still references it so
     // cases don't accumulate dead task IDs and stale analysis states.
     CaseManager::instance().remove_task_from_all_cases(id);
@@ -417,6 +451,11 @@ bool TaskManager::delete_task(const std::string& id) {
     // Attempt to delete Graphiti data in Neo4j via Python API
     auto& proxy = forensics::LLMPythonProxy::instance();
     proxy.deleteGraphitiData(id);
+
+    // Report versions, published report snapshots and the reading-overlay
+    // translation cache are task-scoped stores owned by the Python service;
+    // without this call deleting a task left them orphaned forever.
+    proxy.deleteTaskReportData(id);
 
     // D4b: remove this task's LLM extraction scratch (crash leftovers;
     // normal exits are cleaned by the service destructor).
@@ -430,7 +469,10 @@ bool TaskManager::delete_task(const std::string& id) {
             std::filesystem::remove_all(task_dir);
         } catch (const std::exception& e) {
             std::cerr << "Failed to remove task directory " << task_dir << ": " << e.what() << std::endl;
-            // We still return true because it's removed from memory/UI
+            AuditLog::instance().log_and_flush(
+                id, "DELETION_INCOMPLETE",
+                "Task record removed but its directory could not be deleted: " +
+                task_dir + " (" + e.what() + "); orphan is reclaimed on next startup");
         }
     }
 

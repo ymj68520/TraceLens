@@ -94,6 +94,19 @@ public:
     bool deleteGraphitiData(const std::string& task_id);
 
     /**
+     * @brief Delete every Python-side artifact owned by a task
+     *
+     * Removes the task's report versions, published report snapshot
+     * directories, stale report generation bookkeeping and the
+     * initial-analysis translation cache rows. Immutable generation-input
+     * audit rows are intentionally retained. Task deletion otherwise left
+     * these stores orphaned with no product surface to clean them.
+     * @param task_id Task identifier
+     * @return true if the purge succeeded or there was nothing to purge
+     */
+    bool deleteTaskReportData(const std::string& task_id);
+
+    /**
      * @brief Record one pipeline file-analysis result through the Python
      *        atomic three-write (files display cache + file_analyses truth
      *        row + file_descriptions) — llm-throughput-hardening SPEC E.
