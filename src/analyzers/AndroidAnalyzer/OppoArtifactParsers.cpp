@@ -388,9 +388,13 @@ bool analyzeOppoBackup(OppoBackupExtractor& source, AndroidAnalysisDatabase& out
                                       "startTime", "Date", "date", "Time", "time",
                                       "LastConnected"});
                     const auto timestampSeconds = parseIsoToSeconds(timestampRaw);
-                    const std::string sourceKey = section.empty()
-                        ? "row:" + std::to_string(index)
-                        : section + ":row:" + std::to_string(index);
+                    // The mobile_artifacts reader contract (android_artifact_
+                    // reader.py) parses source_key as JSON — the row's primary
+                    // key. Keep Harmony's shape: a JSON object, not a bare string.
+                    const json keyObject = section.empty()
+                        ? json{{"row", index}}
+                        : json{{"section", section}, {"row", index}};
+                    const std::string sourceKey = serialized(keyObject);
                     insertArtifact(kind, packageName, path, sourceTable, sourceKey,
                                    serialized(item), timestampRaw, timestampSeconds);
                     ++rows;
@@ -434,7 +438,7 @@ bool analyzeOppoBackup(OppoBackupExtractor& source, AndroidAnalysisDatabase& out
                                                -1, &update, nullptr) == SQLITE_OK) {
                             sqlite3_bind_text(update, 1, related.c_str(), -1, SQLITE_TRANSIENT);
                             sqlite3_bind_text(update, 2, path.c_str(), -1, SQLITE_TRANSIENT);
-                            const std::string key = "row:" + std::to_string(index);
+                            const std::string key = serialized(json{{"row", index}});
                             sqlite3_bind_text(update, 3, key.c_str(), -1, SQLITE_TRANSIENT);
                             sqlite3_step(update);
                             sqlite3_finalize(update);
@@ -457,7 +461,8 @@ bool analyzeOppoBackup(OppoBackupExtractor& source, AndroidAnalysisDatabase& out
             json record = {{"name", fs::path(path).filename().string()},
                            {"size", entry.size},
                            {"modified", entry.modified}};
-            insertArtifact("device_log", "", path, "logdata", path, serialized(record), {},
+            insertArtifact("device_log", "", path, "logdata",
+                           serialized(json{{"member", path}}), serialized(record), {},
                            std::nullopt);
         }
         output.recordSourceCoverage("device_log", "<LogData>", logMembers > 0 ? "indexed" : "empty",

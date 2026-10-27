@@ -136,7 +136,16 @@ def artifact_detail_from_database(database: Path, task_id: str, kind: str, row_i
             raise FileNotFoundError("Android artifact not found in task")
         if kind == "mobile":
             value = dict(row)
-            source = {"platform": "HarmonyOS", "normalized_path": value["source_path"], "granularity": "logical_database_row",
+            # Platform comes from the writing adapter's manifest row, not a
+            # hardcoded vendor: the same mobile_artifacts table carries
+            # HarmonyOS and OPPO (ThunderForensic) records.
+            platform = "Android"
+            manifest = con.execute("SELECT 1 FROM sqlite_master WHERE name='mobile_backup_manifest'").fetchone()
+            if manifest:
+                seen = con.execute("SELECT platform FROM mobile_backup_manifest LIMIT 1").fetchone()
+                if seen and seen[0]:
+                    platform = seen[0]
+            source = {"platform": platform, "normalized_path": value["source_path"], "granularity": "logical_database_row",
                       "original_table": value["source_table"],
                       "original_primary_key": json.loads(value["source_key"]),
                       "sha256": value.get("source_db_sha256"), "wal_sha256": value.get("source_wal_sha256"),
@@ -152,7 +161,7 @@ def artifact_detail_from_database(database: Path, task_id: str, kind: str, row_i
             return {"task_id": task_id, "source_type": "android_analyzer", "kind": kind,
                     "record": value, "source": source, "source_candidates": [value["source_path"]],
                     "record_hash": raw_row_hash(value), "source_revision": revision,
-                    "warning": "来源为已解密的鸿蒙备份；记录绑定源库、表、主键和 WAL 哈希，未定位物理偏移或 WAL 帧；不代表完整手机。"}
+                    "warning": f"来源为{platform}手机备份的解析记录；记录绑定源容器成员、表和行主键，未定位物理偏移或 WAL 帧；不代表完整手机。"}
         # Old parser tables do not carry per-row source paths/primary keys.
         # A unique coverage path is shown as a candidate only, never a proof.
         candidate_paths = []
