@@ -164,8 +164,19 @@ class CppBackendService:
         timeout: Optional[float] = None,
         max_retries: int = 3,
     ) -> Dict[str, Any]:
-        """List tasks, optionally using a bounded startup/recovery request."""
-        params = {"page": page, "page_size": page_size}
+        """List tasks, optionally using a bounded startup/recovery request.
+
+        The C++ list endpoint pages with ``limit``/``offset`` only; it does not
+        read ``page``/``page_size``. Sending the latter made every request
+        return the same first page, so callers that walked pages until a short
+        page appeared (startup recovery in the secondary-analysis and
+        event-refresh executors) looped forever and burned the whole
+        PYTHON_STARTUP_TIMEOUT, rolling back every service. Translate here so
+        both the call-site signature and the wire format stay honest.
+        """
+        safe_page = max(1, int(page))
+        safe_size = max(1, int(page_size))
+        params = {"limit": safe_size, "offset": (safe_page - 1) * safe_size}
         if status:
             params["status"] = status
         return await self._request(

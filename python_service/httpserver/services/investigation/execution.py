@@ -530,7 +530,11 @@ class SecondaryAnalysisExecutor:
     async def _recover_stale_analyses(self) -> None:
         """Sweep all tasks' investigation.db for stale queued/running rows."""
         page = 1
-        while True:
+        # Hard stop: recovery runs inside the shared startup timeout. If the
+        # backend ever pages incorrectly again, terminate instead of spinning
+        # until PYTHON_STARTUP_TIMEOUT rolls back every initialized service.
+        max_pages = getattr(self._cpp_backend.settings, "recovery_max_pages", 200)
+        while page <= max_pages:
             result = await self._cpp_backend.list_tasks(
                 page=page,
                 page_size=100,
@@ -542,9 +546,15 @@ class SecondaryAnalysisExecutor:
                 break
             for task_summary in tasks:
                 await self._recover_task(task_summary)
-            if len(tasks) < 100:
+            pagination = result.get("pagination") or {}
+            if len(tasks) < 100 or not pagination.get("has_more", True):
                 break
             page += 1
+        else:
+            logger.warning(
+                "Secondary analysis recovery sweep hit the %s-page cap; "
+                "remaining tasks are deferred to the next start", max_pages
+            )
         logger.info("Secondary analysis restart recovery sweep complete")
 
     async def _recover_task(self, task_summary: dict[str, Any]) -> None:

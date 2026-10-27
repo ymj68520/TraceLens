@@ -236,7 +236,10 @@ class EventRefreshExecutor:
 
     async def _recover_stale_refreshes(self) -> None:
         page = 1
-        while True:
+        # Same startup-budget guard as the secondary-analysis recovery sweep:
+        # a backend that ignores paging must not spin for the whole timeout.
+        max_pages = getattr(self._cpp_backend.settings, "recovery_max_pages", 200)
+        while page <= max_pages:
             result = await self._cpp_backend.list_tasks(
                 page=page,
                 page_size=100,
@@ -248,9 +251,15 @@ class EventRefreshExecutor:
                 break
             for summary in tasks:
                 await self._recover_task(summary)
-            if len(tasks) < 100:
+            pagination = result.get("pagination") or {}
+            if len(tasks) < 100 or not pagination.get("has_more", True):
                 break
             page += 1
+        else:
+            logger.warning(
+                "Event refresh recovery sweep hit the %s-page cap; "
+                "remaining tasks are deferred to the next start", max_pages
+            )
 
     async def _recover_task(self, summary: dict[str, Any]) -> None:
         task_id = summary.get("id")
