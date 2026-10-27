@@ -372,6 +372,50 @@ class ReportRepository:
             ).fetchall()
         return [self._to_model(row) for row in rows]
 
+    def delete_task_versions(self, task_id: str) -> list[ReportVersion]:
+        """Delete every report version owned by a task and return them.
+
+        Called when the task record itself is deleted: the versions, their
+        published snapshot trees and their per-report lock files are all
+        task-scoped, so keeping them only accumulates metadata that no API can
+        reach once the task is gone. ``report_generation_inputs`` is NOT
+        touched -- its freeze triggers make those admission records permanent
+        audit evidence.
+
+        Queued/generating versions are refused: deleting the row under a live
+        worker would let the worker publish a manifest with no version record.
+        The caller must cancel or drain them first.
+        """
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            active = conn.execute(
+                "SELECT report_id FROM report_versions "
+                "WHERE scope_type = ? AND scope_id = ? AND status IN (?, ?)",
+                (
+                    ScopeType.TASK.value,
+                    task_id,
+                    ReportStatus.QUEUED.value,
+                    ReportStatus.GENERATING.value,
+                ),
+            ).fetchall()
+            if active:
+                conn.rollback()
+                raise ValueError(
+                    f"task {task_id} still has reports in progress: "
+                    + ", ".join(row["report_id"] for row in active)
+                )
+            rows = conn.execute(
+                "SELECT * FROM report_versions WHERE scope_type = ? AND scope_id = ? "
+                "ORDER BY version DESC",
+                (ScopeType.TASK.value, task_id),
+            ).fetchall()
+            conn.execute(
+                "DELETE FROM report_versions WHERE scope_type = ? AND scope_id = ?",
+                (ScopeType.TASK.value, task_id),
+            )
+            conn.commit()
+        return [self._to_model(row) for row in rows]
+
     def list_unfinished(self) -> list[ReportVersion]:
         with self._connect() as conn:
             rows = conn.execute(

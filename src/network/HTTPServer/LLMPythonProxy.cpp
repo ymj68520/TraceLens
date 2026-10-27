@@ -85,7 +85,10 @@ bool LLMPythonProxy::deleteGraphitiData(const std::string& task_id) {
         httplib::Client cli(python_service_url_);
         configure_field_client(cli);
         cli.set_connection_timeout(5);
-        cli.set_read_timeout(10);
+        // The Python side gives DETACH DELETE on a whole task graph up to 60s
+        // (_status.py delete_task_graph). A shorter client timeout abandoned a
+        // still-running purge and reported success, leaving the graph behind.
+        cli.set_read_timeout(90);
 
         nlohmann::json body = {
             {"task_id", task_id}
@@ -95,8 +98,43 @@ bool LLMPythonProxy::deleteGraphitiData(const std::string& task_id) {
         if (res && (res->status == 200 || res->status == 404)) {
             return true; // Return true if deleted or didn't exist
         }
-    } catch (...) {
-        // Fall back gracefully
+        if (res) {
+            std::cerr << "deleteGraphitiData failed for task " << task_id
+                      << ": HTTP " << res->status << std::endl;
+        } else {
+            std::cerr << "deleteGraphitiData failed for task " << task_id
+                      << ": " << httplib::to_string(res.error()) << std::endl;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "deleteGraphitiData exception for task " << task_id
+                  << ": " << e.what() << std::endl;
+    }
+    return false;
+}
+
+bool LLMPythonProxy::deleteTaskReportData(const std::string& task_id) {
+    try {
+        httplib::Client cli(python_service_url_);
+        configure_field_client(cli);
+        cli.set_connection_timeout(5);
+        // Cascading over report versions also removes published snapshot
+        // trees; allow more than the per-graph ceiling.
+        cli.set_read_timeout(120);
+
+        auto res = cli.Delete(("/api/reports/tasks/" + task_id).c_str());
+        if (res && (res->status == 200 || res->status == 404)) {
+            return true;
+        }
+        if (res) {
+            std::cerr << "deleteTaskReportData failed for task " << task_id
+                      << ": HTTP " << res->status << " " << res->body << std::endl;
+        } else {
+            std::cerr << "deleteTaskReportData failed for task " << task_id
+                      << ": " << httplib::to_string(res.error()) << std::endl;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "deleteTaskReportData exception for task " << task_id
+                  << ": " << e.what() << std::endl;
     }
     return false;
 }

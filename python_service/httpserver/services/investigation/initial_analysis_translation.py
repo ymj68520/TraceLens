@@ -69,6 +69,28 @@ class InitialAnalysisTranslationCache:
                 (task_id, evidence_key, source_hash, PROMPT_VERSION, text, model, int(time.time())),
             )
 
+    def purge_task(self, task_id: str) -> int:
+        """Drop every cached translation for a deleted task.
+
+        The cache is keyed by task id and holds derived text only, so it is
+        safe to regenerate; leaving it behind just accumulates rows no task
+        can ever read again.
+        """
+        if not self.db_path.is_file():
+            return 0
+        with sqlite3.connect(self.db_path, timeout=10) as conn:
+            has_table = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='initial_analysis_translations'"
+            ).fetchone()
+            if not has_table:
+                return 0
+            cursor = conn.execute(
+                "DELETE FROM initial_analysis_translations WHERE task_id=?", (task_id,)
+            )
+            conn.commit()
+            return cursor.rowcount
+
     async def translate(
         self,
         task_id: str,

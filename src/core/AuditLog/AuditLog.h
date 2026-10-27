@@ -51,6 +51,16 @@ public:
              const std::string& details, const std::string& user_id = "");
     
     /**
+     * @brief Log an audit entry and flush it to disk before returning
+     *
+     * Durable variant for events that must survive the caller's process state
+     * (e.g. task deletion removes the task record, so its removal trace must
+     * not stay in the write buffer awaiting the interval flush).
+     */
+    void log_and_flush(const std::string& task_id, const std::string& action,
+                       const std::string& details, const std::string& user_id = "");
+    
+    /**
      * @brief Force flush write buffer to database
      */
     void flush();

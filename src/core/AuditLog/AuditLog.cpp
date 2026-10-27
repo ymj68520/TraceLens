@@ -173,6 +173,13 @@ void AuditLog::log(const std::string& task_id, const std::string& action,
     addToWriteBuffer(entry);
 }
 
+// Log an entry and make it durable before returning
+void AuditLog::log_and_flush(const std::string& task_id, const std::string& action,
+                             const std::string& details, const std::string& user_id) {
+    log(task_id, action, details, user_id);
+    flush();
+}
+
 // Add to write buffer
 void AuditLog::addToWriteBuffer(const AuditLogEntry& entry) {
     std::lock_guard<std::mutex> lock(write_mutex_);

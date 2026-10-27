@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import shutil
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -15,6 +16,14 @@ logger = logging.getLogger(__name__)
 
 class ReportServiceUnavailable(RuntimeError):
     """Raised when shutdown prevents accepting a new report-generation start."""
+
+
+class ReportPurgeIncomplete(RuntimeError):
+    """A task purge could not remove part of its report footprint."""
+
+    def __init__(self, message: str, *, errors: list[str]):
+        super().__init__(message)
+        self.errors = errors
 
 
 class ForensicReportService:
@@ -325,3 +334,105 @@ class ForensicReportService:
         if not search_path.is_file():
             raise FileNotFoundError("report search index is missing")
         return SnapshotSearchIndex.open_readonly(search_path).search(query, offset, limit)
+
+    def purge_task(self, task_id: str) -> dict[str, Any]:
+        """Delete every report artifact owned by a task, best-effort per item.
+
+        Task deletion previously left report versions, published snapshots and
+        lock files behind: no product surface deletes report versions, so they
+        accumulated forever. The immutable ``report_generation_inputs`` audit
+        rows are deliberately preserved.
+
+        Directory removal is confined to the report root and only ever targets
+        trees whose layout is derived from the task id and report id, so a
+        poisoned manifest path cannot escape the root.
+        """
+        versions = self.repository.delete_task_versions(task_id)
+        root = self._report_root()
+        errors: list[str] = []
+        removed_dirs = 0
+        task_segment = safe_segment(task_id)
+
+        # ``root`` is the SnapshotWriter root, which already ends in
+        # "snapshots/" in the production assembly while GenerationReportWriter
+        # is given the report-output root that *contains* snapshots/. Accept
+        # both so neither layout escapes the purge.
+        snapshot_bases = [root]
+        if root.name != "snapshots":
+            snapshot_bases.append(root / "snapshots")
+        # _ReportClaim puts locks beside its report_root (the report-output
+        # root), i.e. <output>/.locks, one level above <output>/snapshots.
+        lock_bases = [root]
+        if root.name == "snapshots":
+            lock_bases.append(root.parent)
+
+        def _confined(candidate: Path) -> Path | None:
+            """Resolve and keep only paths that stay inside the report root."""
+            try:
+                resolved = candidate.resolve(strict=False)
+                resolved.relative_to(root)
+            except (OSError, ValueError):
+                logger.warning(
+                    "Skipping out-of-root report path during purge: %s", candidate
+                )
+                return None
+            return resolved
+
+        for version in versions:
+            candidates: list[Path] = []
+            if version.manifest_path:
+                manifest = Path(version.manifest_path)
+                if not manifest.is_absolute() and ".." not in manifest.parts:
+                    candidates.append(root / manifest.parent)
+            for base in snapshot_bases:
+                # Published narrative layout (GenerationReportWriter) keys the
+                # leaf on the raw report id; the deterministic layout keys it on
+                # safe_segment(report_id).
+                candidates.append(base / "task" / task_segment
+                                  / version.report_id)
+                candidates.append(base / "task" / task_segment
+                                  / safe_segment(version.report_id))
+                candidates.append(base / version.scope_type.value / task_segment
+                                  / version.report_id)
+                candidates.append(base / version.scope_type.value / task_segment
+                                  / safe_segment(version.report_id))
+            for candidate in candidates:
+                resolved = _confined(candidate)
+                if resolved is None or resolved.is_symlink():
+                    continue
+                if not resolved.is_dir():
+                    continue
+                try:
+                    shutil.rmtree(resolved)
+                    removed_dirs += 1
+                except OSError as exc:
+                    errors.append(f"{resolved}: {exc}")
+                    logger.warning("Failed to remove report directory %s: %s",
+                                   resolved, exc)
+            for lock_base in lock_bases:
+                lock_path = lock_base / ".locks" / f"{safe_segment(version.report_id)}.lock"
+                try:
+                    lock_path.unlink(missing_ok=True)
+                except OSError as exc:
+                    errors.append(f"{lock_path}: {exc}")
+
+        # The per-task snapshot parent is only ours when it became empty.
+        for base in snapshot_bases:
+            task_dir = base / "task" / task_segment
+            if task_dir.is_dir() and not any(task_dir.iterdir()):
+                try:
+                    task_dir.rmdir()
+                except OSError as exc:
+                    errors.append(f"{task_dir}: {exc}")
+
+        result = {
+            "task_id": task_id,
+            "deleted_versions": len(versions),
+            "removed_directories": removed_dirs,
+            "errors": errors,
+        }
+        if errors:
+            raise ReportPurgeIncomplete(
+                f"report purge for task {task_id} was incomplete", errors=errors
+            )
+        return result

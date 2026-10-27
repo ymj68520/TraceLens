@@ -358,6 +358,40 @@ class ReportGenerationExecutor:
                 return True
         return False
 
+    async def cancel_task(self, task_id: str, *, reason: str) -> int:
+        """Stop and durably fail every in-flight generation for one task.
+
+        Called before a task deletion purges its report rows: cancelling the
+        worker first means the worker cannot publish a manifest for a version
+        row that is about to disappear. Returns the number cancelled.
+        """
+        stale = [
+            row
+            for row in await asyncio.to_thread(self._repository.list_stale_generations)
+            if row.task_id == task_id
+        ]
+        cancelled = 0
+        async with self._admission_lock:
+            for row in stale:
+                worker = self._tasks.get(row.generation_id)
+                if worker is not None and not worker.done():
+                    worker.cancel()
+                    cancelled += 1
+        for row in stale:
+            try:
+                await asyncio.to_thread(
+                    self._repository.fail_generation,
+                    row.generation_id,
+                    error_code="task_deleted",
+                    error_message=reason,
+                )
+            except Exception:  # pragma: no cover - best effort audit
+                logger.exception(
+                    "Failed to record generation cancellation: %s",
+                    row.generation_id,
+                )
+        return cancelled
+
     async def submit(self, generation_id: str) -> None:
         """Schedule one admitted generation; scheduling failure is durable.
 
