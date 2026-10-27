@@ -245,6 +245,8 @@ class ReportEvidenceService:
         def _read() -> dict:
             conn = sqlite3.connect(f"file:{files_db}?mode=ro", uri=True)
             conn.row_factory = sqlite3.Row
+            # files 表 path 可能含非 UTF-8 字节（真实镜像常见），替换解码避免整批读取被单行炸掉。
+            conn.text_factory = lambda data: data.decode("utf-8", "replace")
             try:
                 has_re_table = False
                 if db_path.exists():
@@ -405,6 +407,9 @@ class ReportEvidenceService:
             conn = sqlite3.connect(str(db_path), timeout=60)
             files_conn = sqlite3.connect(f"file:{files_db}?mode=ro", uri=True)
             files_conn.row_factory = sqlite3.Row
+            # 分析路径集合可能包含非 UTF-8 文件名（替换解码后与原字节不再相等，
+            # 回查不中时按缺行跳过），不能让单行解码错误回滚整批入报。
+            files_conn.text_factory = lambda data: data.decode("utf-8", "replace")
             seeded = skipped_judged = missing_files = 0
             try:
                 conn.execute("BEGIN IMMEDIATE")
@@ -529,6 +534,7 @@ class ReportEvidenceService:
 
         def candidates():
             with sqlite3.connect(f"file:{quote(str(database), safe='/')}?mode=ro", uri=True) as con:
+                con.text_factory = lambda data: data.decode("utf-8", "replace")
                 if not con.execute("SELECT 1 FROM sqlite_master WHERE name='mobile_artifacts'").fetchone():
                     return []
                 return [row[0] for row in con.execute(
