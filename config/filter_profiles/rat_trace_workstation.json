@@ -1,0 +1,211 @@
+{
+    "profile_name": "rat_trace_workstation",
+    "description": "Remote-access-trojan trace on a suspect workstation: RAT controller/payload, anti-forensics tooling, and acquisition traces outrank system bulk. Derived from the PC.E01 evidence set (VMware Windows 10 guest, user admin, Quasar v1.4.1 controller on Desktop).",
+    "version": "1.0.0",
+    "include": {
+        "extensions": [],
+        "path_patterns": [],
+        "filename_patterns": [],
+        "min_size": 0,
+        "max_size": 0,
+        "include_deleted": true,
+        "include_allocated": true
+    },
+    "exclude": {
+        "extensions": [],
+        "path_patterns": [
+            "/proc/*",
+            "/sys/*",
+            "/dev/*",
+            "/run/*",
+            "/Windows/WinSxS/*",
+            "/Windows/assembly/*",
+            "/Windows/System32/DriverStore/*"
+        ],
+        "filename_patterns": []
+    },
+    "combine_mode": "exclude_wins",
+    "selection": {
+        "_comment": "Candidate scoring for LLM file selection. Checked in order; the first rule whose patterns match sets the score. Paths are matched case-insensitively as substrings unless noted. Scores: 100 = must analyse, 90 = strong evidence, 60 = useful context, 5 = noise.",
+        "score_100": {
+            "_comment": "Case-defining artefacts. A report that omits these is wrong regardless of how well it reads.",
+            "path_patterns": [
+                "/winevt/logs/",
+                ".evtx",
+                "/system32/config/",
+                "/appcompat/programs/",
+                "amcache.hve",
+                "syscache.hve",
+                "ntuser.dat",
+                "usrclass.dat",
+                "/windows/prefetch/",
+                "sruedb",
+                "/srum/",
+                "/recentdocs/",
+                "automaticdestinations",
+                "customdestinations",
+                "/etc/shadow",
+                "/etc/passwd",
+                ".bash_history",
+                ".zsh_history"
+            ],
+            "filename_patterns": [
+                "authorized_keys",
+                "known_hosts",
+                "id_rsa",
+                "id_ed25519",
+                "shadow",
+                "passwd",
+                "sudoers",
+                "gshadow"
+            ]
+        },
+        "score_95": {
+            "_comment": "Executables and payloads outside OS-owned trees. On PC.E01 the generic rule skipped all 8,622 executables, including the Quasar controller and client.bin the case was about. Evidence directories named in the case also belong here.",
+            "path_patterns": [
+                "/users/",
+                "/home/",
+                "/root/"
+            ],
+            "path_excludes": [
+                "/programdata/microsoft/",
+                "/appdata/local/programs/",
+                "/chrome/application/",
+                "kingsoft"
+            ],
+            "suffixes": [
+                ".exe",
+                ".bin",
+                ".scr",
+                ".com",
+                ".pif",
+                ".ps1",
+                ".vbs",
+                ".js",
+                ".jse",
+                ".hta",
+                ".bat",
+                ".cmd",
+                ".jar",
+                ".py",
+                ".sh"
+            ]
+        },
+        "score_92": {
+            "_comment": "Files inside a directory whose name describes the case. Matched as a path COMPONENT (surrounded by '/', '\\\\', '_', '-', '.' or string boundary), never as a bare substring: bare 'rat' matched integration/arbitrator/dehydrate — 4,534 false positives on PC.E01 against one real directory.",
+            "directory_keywords": [
+                "控制端",
+                "木马",
+                "远控",
+                "恶意",
+                "样本",
+                "后门",
+                "清理",
+                "反取证",
+                "quasar",
+                "njrat",
+                "darkcomet",
+                "gh0st",
+                "remcos",
+                "asyncrat",
+                "xworm",
+                "cobalt",
+                "meterpreter",
+                "backdoor",
+                "payload",
+                "privazer",
+                "ccleaner",
+                "eraser"
+            ],
+            "directory_only_keywords": [
+                "rat"
+            ]
+        },
+        "score_90": {
+            "_comment": "User data areas and acquisition traces. The user tree holds the case's own working files.",
+            "path_patterns": [
+                "/desktop/",
+                "/documents/",
+                "/downloads/"
+            ]
+        },
+        "score_85": {
+            "_comment": "Acquisition and analysis tooling. Its run time bounds the evidence window and its presence explains later activity.",
+            "filename_terms": [
+                "ftk imager",
+                "ftkimager",
+                "ftk",
+                "encase",
+                "xways",
+                "autopsy",
+                "volatility",
+                "wireshark",
+                "dumpit",
+                "winpmem",
+                "magnet"
+            ]
+        },
+        "score_5": {
+            "_comment": "Bulk the LLM cannot read and that no case turns on. These flood the candidate budget if left at user-tree scores.",
+            "suffixes": [
+                ".dll",
+                ".sys",
+                ".ocx",
+                ".efi",
+                ".msi",
+                ".cab",
+                ".pak",
+                ".kuip",
+                ".mui",
+                ".ico",
+                ".pb",
+                ".tmp",
+                ".swp",
+                ".swo"
+            ],
+            "path_patterns": [
+                "leveldb",
+                "desktop.ini",
+                "thumbs.db",
+                "thumbcache",
+                "pagefile.sys",
+                "hiberfil.sys",
+                "swapfile.sys",
+                "$recycle.bin",
+                "inetcache",
+                "softwaredistribution",
+                "winsxs",
+                "appdata/local/temp",
+                "certificaterevocation",
+                "certificatetransparency",
+                "crashpad",
+                "filetypepolicies",
+                "meipreload",
+                "origintrials",
+                "pnacl",
+                "sslerrorassistant",
+                "subresource filter",
+                "swreporter",
+                "software reporter tool",
+                "widevinecdm",
+                "system profile",
+                "fontcache",
+                "iconcache.db",
+                "__pycache__",
+                "site-packages",
+                "node_modules",
+                "bower_components",
+                ".git/objects",
+                ".git/modules",
+                ".npm/",
+                "_cacache",
+                ".yarn/",
+                ".pnpm-store",
+                ".cargo/registry",
+                ".m2/repository",
+                ".gradle",
+                "go/pkg/mod"
+            ]
+        }
+    }
+}

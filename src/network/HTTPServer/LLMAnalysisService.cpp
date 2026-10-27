@@ -720,6 +720,98 @@ std::vector<std::string> LLMAnalysisService::getPrioritizedCandidates(
     return selectByHeuristic(std::move(kept), budget);
 }
 
+namespace {
+
+// A directory keyword matches as a path COMPONENT, not a substring. A bare
+// "rat" check matched intEGRATion, usbarbiTRATor and dehydRATe — 4,534 false
+// positives on PC.E01 against a single real directory. The keyword must be
+// bounded by a separator, a non-alphanumeric character, or the string edge.
+bool hasPathComponent(const std::string& lowerPath, const std::string& keyword) {
+    const size_t n = keyword.size();
+    if (n == 0) return false;
+    size_t pos = lowerPath.find(keyword);
+    while (pos != std::string::npos) {
+        const bool leftOk = pos == 0 ||
+            !std::isalnum(static_cast<unsigned char>(lowerPath[pos - 1]));
+        const size_t end = pos + n;
+        const bool rightOk = end >= lowerPath.size() ||
+            !std::isalnum(static_cast<unsigned char>(lowerPath[end]));
+        if (leftOk && rightOk) return true;
+        pos = lowerPath.find(keyword, pos + 1);
+    }
+    return false;
+}
+
+// Directories named after the case. A controller directory is evidence as a
+// whole — its DLL dependencies, licence files and config belong in the report
+// because the reader needs to see the toolset, not just one binary.
+bool isCaseNamedDirectory(const std::string& lowerPath, const std::string& keyword) {
+    // Only the directory components are consulted, never the file name:
+    // "rat" appearing in a file name inside System32 is not a case directory.
+    const size_t slash = lowerPath.find_last_of('/');
+    if (slash == std::string::npos) return false;
+    return hasPathComponent(lowerPath.substr(0, slash), keyword);
+}
+
+// "rat" is too short and too collision-prone to allow as a file-name term; it
+// only counts when it names a directory.
+bool hasCaseDirectoryKeyword(const std::string& lowerPath) {
+    static const std::vector<std::string> keywords = {
+        "控制端", "木马", "远控", "恶意", "样本", "后门",
+        "清理", "反取证",
+        "quasar", "njrat", "darkcomet", "gh0st", "remcos", "asyncrat",
+        "xworm", "cobalt", "meterpreter", "backdoor", "payload",
+        "privazer", "ccleaner", "eraser",
+    };
+    for (const auto& keyword : keywords) {
+        if (hasPathComponent(lowerPath, keyword)) return true;
+    }
+    return hasPathComponent(lowerPath.substr(0, lowerPath.find_last_of('/') == std::string::npos
+                                                  ? lowerPath.size()
+                                                  : lowerPath.find_last_of('/')),
+                            "rat");
+}
+
+bool isAcquisitionToolName(const std::string& lowerPath) {
+    static const std::vector<std::string> terms = {
+        "ftk imager", "ftkimager", "ftk", "encase", "xways", "autopsy",
+        "volatility", "wireshark", "dumpit", "winpmem", "magnet"};
+    const size_t slash = lowerPath.find_last_of('/');
+    const std::string name = slash == std::string::npos
+        ? lowerPath : lowerPath.substr(slash + 1);
+    for (const auto& term : terms) {
+        if (name.find(term) != std::string::npos) return true;
+    }
+    return false;
+}
+
+// Script and payload extensions that carry readable text or executable intent.
+bool isUserScriptOrPayload(const std::string& lowerPath) {
+    static const char* suffixes[] = {
+        ".ps1", ".vbs", ".js", ".jse", ".hta", ".bat", ".cmd",
+        ".jar", ".py", ".sh"};
+    for (const char* suffix : suffixes) {
+        const size_t n = std::strlen(suffix);
+        if (lowerPath.size() >= n &&
+            lowerPath.compare(lowerPath.size() - n, n, suffix) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Trees that hold vendor payloads even though they sit under a user profile.
+bool isVendoredProgramTree(const std::string& lowerPath) {
+    static const std::vector<std::string> markers = {
+        "/appdata/local/programs/", "/chrome/application/", "kingsoft"};
+    for (const auto& marker : markers) {
+        if (lowerPath.find(marker) != std::string::npos) return true;
+    }
+    return false;
+}
+
+}  // namespace
+
 int LLMAnalysisService::forensicPathPriority(const std::string& path) {
     // Key-material filenames are data whatever directory they sit in: an
     // authorized_keys copy inside a vendored tree is still evidence.
@@ -819,7 +911,30 @@ int LLMAnalysisService::forensicPathPriority(const std::string& path) {
         const bool inProgramDataVendorTree =
             lower.find("/programdata/") != std::string::npos &&
             lower.find("/programdata/microsoft/") == std::string::npos;
-        if (inUserTree || inProgramDataVendorTree) return 95;
+        if ((inUserTree || inProgramDataVendorTree) && !isVendoredProgramTree(lower)) {
+            return 95;
+        }
+    }
+    // A directory named after the case is evidence as a whole: the controller's
+    // DLL dependencies, licence files and config describe the toolset. This
+    // ranks above a bare executable elsewhere because the directory itself is
+    // the finding. Vendored program trees are still noise.
+    if (!isVendoredProgramTree(lower) && hasCaseDirectoryKeyword(lower)) {
+        return 92;
+    }
+    // Scripts a suspect wrote or dropped read like documents but sit in the
+    // runtime tree, so they would otherwise fall through to the noise band.
+    if (isUserScriptOrPayload(lower) &&
+        (lower.find("/users/") != std::string::npos ||
+         lower.find("/home/") != std::string::npos ||
+         lower.find("/root/") != std::string::npos ||
+         lower.find("/programdata/") != std::string::npos)) {
+        return 95;
+    }
+    // Acquisition tooling bounds the evidence window: its run time tells the
+    // analyst when the image was taken and explains later disk activity.
+    if (isAcquisitionToolName(lower)) {
+        return 85;
     }
     static const std::vector<std::string> binaryResourceSuffixes = {
         ".dll", ".sys", ".ocx", ".efi", ".msi", ".cab", ".pak", ".kuip",
