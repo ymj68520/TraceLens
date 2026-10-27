@@ -867,6 +867,10 @@ async def induce_themes(directions, llm, *, concurrency: int = 1,
 # Narrative chapters the report aims for. Total chapters are this plus the scope
 # chapter and the advisory chapter, so 10 -> 12 published chapters.
 _TARGET_NARRATIVE_CHAPTERS = 10
+# Comparison rows named individually in the difference chapter. The rest are
+# reported as a count: a case with 281 comparisons produced 13 chapters / 70k
+# characters of near-identical "该方向得到材料支持" text.
+_COMPARISON_DETAIL_LIMIT = 12
 # Below this many groups the packing cannot fill the target without splitting a
 # theme across chapters, so the target shrinks to the number of groups.
 _MIN_GROUPS_FOR_FULL_TARGET = 4
@@ -1828,15 +1832,45 @@ def render_stage_report(envelope, materials, directions, comparisons, warnings, 
         sections.append(StructuredReportSection(heading="调查方向与限制",
             content="本次可读材料尚未形成有来源支持的调查方向；这不等于不存在相关活动。"))
     if comparisons:
+        # Comparisons are a status table over the baseline findings, not prose.
+        # Rendering one block per outcome still produced 13 chapters / 70k
+        # characters on PC.E01 (281 comparisons, 71% of the report), because
+        # each row carried its own multi-sentence reason. Summarize instead:
+        # one chapter with the outcome counts, plus the rows that actually
+        # change the picture (contradicted / revised / case_only).
         titles = {d.direction_id: d.title for d in envelope.baseline.directions}
         labels = {"supported": "得到支持", "revised": "需要修正", "weakened": "支持减弱",
                   "contradicted": "存在相反材料", "insufficient": "依据不足", "case_only": "仅案情提出"}
-        for start in range(0, len(comparisons), 8):
-            chosen = comparisons[start:start + 8]
-            sections.append(StructuredReportSection(heading=f"与首次研判的差异（{start // 8 + 1}）",
-                content="\n\n".join(f"{titles[c.baseline_direction_id]}：{labels[c.status]}\n{c.reason}" for c in chosen),
-                citation_ids=tuple(dict.fromkeys(cid[r.material_id] for c in chosen
-                                                 for r in (*c.supporting_refs, *c.counter_refs)))))
+        by_status: dict[str, list] = {}
+        for comparison in comparisons:
+            by_status.setdefault(comparison.status, []).append(comparison)
+        total = len(comparisons)
+        counts = "、".join(
+            f"{labels[status]} {len(by_status[status])} 项"
+            for status in labels if by_status.get(status))
+        lines = [f"本轮以首次研判的 {total} 项方向为基线逐项对照，结果：{counts}。"]
+        # Only outcomes that change the analyst's picture get named; agreement
+        # is reported as a count, because listing 200 confirmations tells the
+        # reader nothing they did not already know.
+        notable = ("contradicted", "revised", "case_only")
+        for status in notable:
+            chosen = by_status.get(status)
+            if not chosen:
+                continue
+            lines.append(f"\n{labels[status]}（{len(chosen)} 项）：")
+            for comparison in chosen[:_COMPARISON_DETAIL_LIMIT]:
+                title = titles.get(comparison.baseline_direction_id, "（基线方向）")
+                lines.append(f"- {title}：{comparison.reason}")
+            remaining = len(chosen) - _COMPARISON_DETAIL_LIMIT
+            if remaining > 0:
+                lines.append(f"- 另有 {remaining} 项同类差异，详见阶段材料清单。")
+        citation_ids = tuple(dict.fromkeys(
+            cid[r.material_id] for status in notable
+            for c in by_status.get(status, ())
+            for r in (*c.supporting_refs, *c.counter_refs)))
+        sections.append(StructuredReportSection(
+            heading="与首次研判的差异", content="\n".join(lines),
+            citation_ids=citation_ids))
     if narrative and dropped_chars:
         warnings.append(f"NARRATIVE_OVERFLOW_DROPPED_{dropped_chars}_CHARS")
     sections.append(StructuredReportSection(heading="人工核查建议",

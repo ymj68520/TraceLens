@@ -455,3 +455,105 @@ async def test_chapter_denying_evidence_is_rewritten_once():
     assert llm.writes == 2
     assert len(sections) == 1
     assert warnings == ()
+
+
+# ---------------------------------------------------------------------------
+# Comparison chapters are bounded by outcome, not by row count
+#
+# A case-guided PC.E01 report had 281 comparisons and rendered one chapter per
+# 8 rows: 36 "与首次研判的差异（n）" chapters, turning a 10-chapter report into
+# 49 chapters / 94k characters.
+# ---------------------------------------------------------------------------
+
+
+def _comparison(status, index):
+    from httpserver.services.forensic_report.models import DirectionComparison, MaterialSpan
+    quote = MaterialSpan(material_id="m001", quote="x", character_start=0,
+                         character_end=1, ambiguous=False)
+    return DirectionComparison(
+        baseline_direction_id=f"d{index:04d}", status=status,
+        reason=f"对照理由{index}：" + "材料支持该判断。" * 5,
+        supporting_refs=(quote,), counter_refs=(), missing_information=(),
+        case_context_quote="",
+    )
+
+
+def _case_envelope(baseline_count=300):
+    from httpserver.services.forensic_report.models import InvestigationDirection, MaterialSpan
+    quote = MaterialSpan(material_id="m001", quote="x", character_start=0,
+                         character_end=1, ambiguous=False)
+    count = baseline_count
+    baseline = tuple(InvestigationDirection(
+        direction_id=f"d{i:04d}", title=f"基线方向{i}", description="基线描述",
+        finding_kind="observation", supporting_refs=(quote,), counter_refs=(),
+        missing_information=(), alternative_explanations=(),
+        baseline_direction_ids=(), case_context_quote="", origin="material",
+    ) for i in range(count))
+
+    baseline_view = type("B", (), {
+        "directions": baseline, "report_id": "r1",
+        "report_sha256": "0" * 64, "priorities": {}})()
+
+    return type("Env", (), {
+        "analysis_mode": "case_guided",
+        "case_description": "案情语境",
+        "evidence_scope_hash": "0" * 64,
+        "baseline": baseline_view,
+    })()
+
+
+def _materials_for_citations(count=3):
+    from httpserver.services.forensic_report.generation_sources import material
+    return tuple(material(f"m{i:03d}", f"file:/case/材料{i}.txt", kind="text",
+                          status="ready", text="x" * 400)
+                 for i in range(1, count + 1))
+
+
+def test_comparison_chapters_are_grouped_by_outcome():
+    """281 comparisons must not become 36 chapters."""
+    comparisons = tuple(
+        _comparison(status, i)
+        for i, status in enumerate(["supported"] * 150 + ["insufficient"] * 80
+                                   + ["weakened"] * 51)
+    )
+
+    response, _stage = gs.render_stage_report(
+        _case_envelope(len(comparisons)), _materials_for_citations(), (),
+        comparisons, ())
+
+    comparison_chapters = [s for s in response.sections
+                           if s.heading.startswith("与首次研判的差异")]
+    # One summary chapter, not one per outcome type or per 8 rows.
+    assert len(comparison_chapters) == 1
+    body = comparison_chapters[0].content
+    assert "得到支持 150 项" in body
+    assert "依据不足 80 项" in body
+
+
+def test_comparison_chapters_cap_total_length():
+    comparisons = tuple(_comparison("supported", i) for i in range(200))
+
+    response, _stage = gs.render_stage_report(
+        _case_envelope(len(comparisons)), _materials_for_citations(), (),
+        comparisons, ())
+
+    comparison_chapters = [s for s in response.sections
+                           if s.heading.startswith("与首次研判的差异")]
+    assert len(comparison_chapters) == 1
+    # Confirmations are summarized, not listed: 200 rows must not become prose.
+    body = comparison_chapters[0].content
+    assert len(body) < 1000
+    assert "得到支持 200 项" in body
+
+
+def test_report_without_comparisons_has_no_difference_chapters():
+    class EvidenceOnlyEnv:
+        analysis_mode = "evidence_only"
+        case_description = ""
+        evidence_scope_hash = "0" * 64
+        baseline = None
+
+    response, _stage = gs.render_stage_report(
+        EvidenceOnlyEnv(), _materials_for_citations(), (), (), ())
+    assert not [s for s in response.sections
+                if s.heading.startswith("与首次研判的差异")]
