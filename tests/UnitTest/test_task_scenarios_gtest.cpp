@@ -174,6 +174,66 @@ TEST(AnalysisTaskTest, CopyPreservesScenarios) {
     EXPECT_EQ(copy.scenarios[1], ForensicScenario::SERVER_CLOUD);
 }
 
+// Task-level analysis budget: 0 means "inherit LLM_MAX_FILES", so a task that
+// never set one must round-trip as 0 rather than as a concrete number.
+TEST(AnalysisTaskTest, LlmMaxFilesSerializationRoundTrip) {
+    AnalysisTask task;
+    task.id = "budget-test";
+    task.llm_max_files = 300;
+
+    nlohmann::json j;
+    to_json(j, task);
+    ASSERT_TRUE(j.contains("llm_max_files"));
+    EXPECT_EQ(j["llm_max_files"].get<int>(), 300);
+
+    AnalysisTask restored;
+    from_json(j, restored);
+    EXPECT_EQ(restored.llm_max_files, 300);
+}
+
+TEST(AnalysisTaskTest, LlmMaxFilesDefaultsToInheritWhenAbsent) {
+    // tasks.json written before the option existed has no llm_max_files key.
+    nlohmann::json j = {
+        {"id", "legacy-no-budget"},
+        {"image_path", "/test/image.dd"},
+        {"status", "PENDING"},
+        {"message", ""},
+        {"output_files_db", ""},
+        {"output_raw_db", ""},
+        {"output_events_db", ""},
+        {"priority", "NORMAL"},
+        {"progress", {
+            {"current_phase", "INITIALIZING"},
+            {"phase_percentage", 0},
+            {"overall_percentage", 0},
+            {"phase_description", ""}
+        }},
+        {"llm_analyze", true},
+        {"llm_mode", "smart"}
+    };
+
+    AnalysisTask task;
+    from_json(j, task);
+
+    EXPECT_EQ(task.llm_max_files, 0);  // 0 = inherit the global LLM_MAX_FILES
+    EXPECT_EQ(task.llm_mode, "smart");
+}
+
+TEST(AnalysisTaskTest, LlmMaxFilesSurvivesCopyAndMove) {
+    AnalysisTask original;
+    original.llm_max_files = 42;
+
+    AnalysisTask copied = original;
+    EXPECT_EQ(copied.llm_max_files, 42);
+
+    AnalysisTask moved = std::move(copied);
+    EXPECT_EQ(moved.llm_max_files, 42);
+
+    AnalysisTask assigned;
+    assigned = moved;
+    EXPECT_EQ(assigned.llm_max_files, 42);
+}
+
 TEST(SceneConfigTest, DefaultValues) {
     AnalysisTask::SceneConfig config;
     EXPECT_FALSE(config.enabled);

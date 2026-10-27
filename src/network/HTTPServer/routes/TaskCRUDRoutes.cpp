@@ -4,6 +4,7 @@
 #include "TaskHelpers.h"
 #include "RouteHelpers.h"
 #include "../SQLiteHelper.h"
+#include "../AnalysisBudget.h"
 #include "../../Swagger/Swagger.h"
 #include "PathManager/PathManager.h"
 #include <ctime>
@@ -310,6 +311,36 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
             metadata["field_outbound_policy"] = "disabled";
         }
         std::string llm_mode = body.value("llm_mode", "smart"); // "full" or "smart"
+
+        // Task-level analysis budget (0 = inherit LLM_MAX_FILES). Reject
+        // non-integers and out-of-range values instead of silently coercing:
+        // a typo that falls back to the global budget is exactly the runaway
+        // cost this option exists to bound.
+        int llm_max_files = 0;
+        if (body.contains("llm_max_files") && !body["llm_max_files"].is_null()) {
+            const auto& raw = body["llm_max_files"];
+            if (!raw.is_number_integer()) {
+                res.code = 400;
+                res.set_header("Content-Type", "application/json");
+                res.write(json{{"error", "llm_max_files must be an integer (0 = inherit LLM_MAX_FILES)"},
+                               {"error_code", "INVALID_LLM_MAX_FILES"}}.dump());
+                return res;
+            }
+            const long long requested = raw.get<long long>();
+            if (requested < analysis_budget::kMinTaskBudget ||
+                requested > analysis_budget::kMaxTaskBudget) {
+                res.code = 400;
+                res.set_header("Content-Type", "application/json");
+                res.write(json{{"error", "llm_max_files must be between " +
+                                              std::to_string(analysis_budget::kMinTaskBudget) +
+                                              " and " +
+                                              std::to_string(analysis_budget::kMaxTaskBudget)},
+                               {"error_code", "INVALID_LLM_MAX_FILES"}}.dump());
+                return res;
+            }
+            llm_max_files = static_cast<int>(requested);
+        }
+
         std::string case_description = body.value("case_description", "");
 
         // Filter profile option
@@ -440,7 +471,8 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
             android_source,
             backup_password,
             file_carving,
-            platform_analyze
+            platform_analyze,
+            llm_max_files
         );
 
         // Check if task can start immediately
@@ -460,6 +492,7 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
             {"llm_analyze", llm_analyze},
             {"llm_event_analyze", llm_event_analyze},
             {"llm_mode", llm_mode},
+            {"llm_max_files", llm_max_files},
             {"file_carving", file_carving},
             {"filter_profile", filter_profile},
             {"android_source", android_source},

@@ -52,6 +52,8 @@ curl -s http://localhost:8666/api/tasks/<task_id>/progress
 背景：LLM 分析是整条管线最贵的一段；三个限额从"分析多少文件、每文件喂多少字、事件簇分析多少个"三个维度控制成本。C++ 侧读取（`ConfigManager.cpp:91-96`）。
 
 - **LLM_MAX_FILES（默认 500）**：smart 与 full 模式都遵守它——full 模式先取全部候选再 `resize(maxFiles)` 截断（`LLMAnalysisService.cpp:138-139`）；smart 模式把它作为选择预算（`TaskManagerAnalysis.cpp:347, 369` 的注释明确"File budget honours LLM_MAX_FILES exactly——此前硬编码 1000 下限导致真实镜像在本地 LLM 上跑数小时"）。当前环境 `.env` 设 80，并注释"本地 27B 模型每文件约 30-60s，80 个文件≈40-80 分钟"——这就是成本曲线的实例：**总耗时 ≈ 预算文件数 × 单文件耗时 ÷ 并发**。
+  - **任务级覆盖**：创建任务时可传 `llm_max_files`（前端「分析文件上限」下拉：系统默认 / 100 / 300 / 500 / 1000 / 自定义），`0` 或缺省 = 继承 `LLM_MAX_FILES`。解析在 `src/network/HTTPServer/AnalysisBudget.h`：任务值 >0 时优先；smart 模式下若超过 `LLM_SMART_CANDIDATE_FILES` 会被钳到候选池（审计日志 `LLM_CONFIG` 会写明 `requested N, clamped`）。**这个数字同时决定知识图谱摄取与报告证据的文件数**——两者都只读 `llm_analyzed_at` 非空的文件，所以按工期压低它比单独调摄取并发更有效。
+
 - **LLM_MAX_CONTENT_LENGTH（默认 10000 字符）**：单文件送模型的内容上限，直接决定每请求 token 数。
 - **LLM_MAX_EVENT_CLUSTERS（默认 0 = 不限）**：smart 模式下事件簇分析的最终数量上限（`TaskManagerAnalysis.cpp:413-421` → `EventClusterAnalyzer::analyzeSmartEventClusters`，`EventClusterAnalyzer.cpp:152-170`）。0 时"选择"环节退化为让 LLM 从全部簇里挑（`EventClusterAnalyzer.cpp:187-203`：簇数≤预算时跳过选择直接全分析；选择失败/解析失败回退"前 N 个"）。
 

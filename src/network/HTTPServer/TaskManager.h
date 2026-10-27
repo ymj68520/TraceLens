@@ -66,6 +66,10 @@ public:
      *                       "miui-backup" (the latter three short-circuit the
      *                       TSK pipeline and run the Android analyzer directly).
      * @param backup_password Runtime-only MIUI/Android backup AES-256 password.
+     * @param llm_max_files Task-level budget for LLM file analysis (0 = inherit
+     *                      the global LLM_MAX_FILES). The same budget caps the
+     *                      knowledge-graph ingestion and the report evidence
+     *                      seed, which both read the analyzed-file set.
      * @return The unique ID of the created task
      */
     std::string create_task(const std::string& path,
@@ -86,7 +90,8 @@ public:
                            const std::string& android_source = "tsk",
                            const std::string& backup_password = "",
                            bool file_carving = false,
-                           bool platform_analyze = true);
+                           bool platform_analyze = true,
+                           int llm_max_files = 0);
 
     // Task status management
     /**

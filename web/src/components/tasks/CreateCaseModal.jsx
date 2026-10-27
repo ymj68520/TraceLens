@@ -12,6 +12,10 @@ import { useMemo, useState } from 'react';
 import Button from '../common/Button';
 import Badge from '../common/Badge';
 import CaseBackgroundField from './CaseBackgroundField';
+import AnalysisBudgetField, {
+  DEFAULT_BUDGET_CHOICE,
+  resolveAnalysisBudget,
+} from './AnalysisBudgetField';
 
 const INIT = {
   name:           '',
@@ -26,6 +30,10 @@ export default function CreateCaseModal({ onSubmit, onClose, existingTasks = [] 
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState('');
   const [associateTaskIds, setAssociateTaskIds] = useState(new Set());
+  // Task-level budget applied to every image task this case creates. Purely
+  // associated (already-analyzed) tasks keep their own budget.
+  const [budgetChoice, setBudgetChoice] = useState(DEFAULT_BUDGET_CHOICE);
+  const [customBudget, setCustomBudget] = useState('');
 
   const set = (key, val) => setForm((f) => ({ ...f, [key]: val }));
 
@@ -80,12 +88,21 @@ export default function CreateCaseModal({ onSubmit, onClose, existingTasks = [] 
       setError('请填写案件名称与案情描述');
       return;
     }
+    // The budget only applies to tasks this submission creates; validate it
+    // whenever new images are present so a typo cannot silently fall back to
+    // the (much larger) global budget.
+    const budget = resolveAnalysisBudget(budgetChoice, customBudget);
+    if (validImagePaths.length > 0 && budget.error) {
+      setError(budget.error);
+      return;
+    }
     setIsCreating(true);
     try {
       await onSubmit({
         ...form,
         imagePaths: validImagePaths,
         associateTaskIds: [...associateTaskIds],
+        ...(budget.value !== undefined ? { llmMaxFiles: budget.value } : {}),
       });
     } catch (err) {
       setError(err?.message || String(err));
@@ -200,6 +217,15 @@ export default function CreateCaseModal({ onSubmit, onClose, existingTasks = [] 
               ))}
             </select>
           </Field>
+
+          <AnalysisBudgetField
+            choice={budgetChoice}
+            onChoiceChange={setBudgetChoice}
+            customValue={customBudget}
+            onCustomChange={setCustomBudget}
+            disabled={isCreating}
+            showDisabledHint
+          />
 
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={form.androidAnalyze} disabled={isCreating}

@@ -82,6 +82,7 @@ C++ HTTP 服务（Crow 框架）提供取证分析任务管理、时间线/文�
 | `db_output_dir` | string | 空 | 数据库输出目录 |
 | `llm_analyze` | bool | false | 是否执行 LLM 分析 |
 | `llm_mode` | string | `smart` | `full / smart` |
+| `llm_max_files` | int | 0 | 任务级分析文件预算。`0`（或缺省/null）= 继承全局 `LLM_MAX_FILES`；`1..100000` = 本任务预算，同时约束逐文件 LLM 分析、知识图谱摄取与报告证据 seed。非整数或越界返回 400 + `INVALID_LLM_MAX_FILES`（不静默回落）；smart 模式下超过 `LLM_SMART_CANDIDATE_FILES` 会被钳到候选池并写入 `LLM_CONFIG` 审计 |
 | `case_description` | string | 空 | 案情描述（LLM 分析上下文） |
 | `filter_profile` | string | 空 | 文件过滤配置名 |
 | `enable_decryption` | bool | false | 启用解密 |
@@ -104,6 +105,7 @@ curl -X POST http://localhost:8080/api/tasks \
     "backup_password": "…",
     "llm_analyze": true,
     "llm_mode": "smart",
+    "llm_max_files": 300,
     "case_description": "调查手机数据泄露"
   }'
 ```
@@ -118,6 +120,7 @@ curl -X POST http://localhost:8080/api/tasks \
   "scenarios": ["android"],
   "llm_analyze": true,
   "llm_mode": "smart",
+  "llm_max_files": 300,
   "file_carving": false,
   "filter_profile": "",
   "android_source": "miui-backup",
@@ -125,7 +128,7 @@ curl -X POST http://localhost:8080/api/tasks \
 }
 ```
 
-请求体非法时返回 `400`，body 为文本 `Invalid request: <原因>`。
+请求体非法时返回 `400`，body 为文本 `Invalid request: <原因>`；`llm_max_files` 非法时 body 为 JSON `{"error": "...", "error_code": "INVALID_LLM_MAX_FILES"}`。
 
 **全字段请求体示例**（字段逐一对应上表，验证自 `TaskCRUDRoutes.cpp::handle_create_task` 的 `body.value(...)` 解析）：
 
@@ -151,7 +154,7 @@ curl -X POST http://localhost:8080/api/tasks \
   }'
 ```
 
-响应 `201` 固定为：`{id, status: "created", priority, scenarios[], llm_analyze, llm_mode, file_carving, filter_profile, android_source, dependencies_count}`（注意：回显体不含 `case_description / metadata` 等输入字段，完整状态需再 GET 任务详情）。
+响应 `201` 固定为：`{id, status: "created", priority, scenarios[], llm_analyze, llm_mode, llm_max_files, file_carving, filter_profile, android_source, dependencies_count}`（注意：回显体不含 `case_description / metadata` 等输入字段，完整状态需再 GET 任务详情）。
 
 ### GET /api/tasks —— 任务列表
 
@@ -159,7 +162,7 @@ curl -X POST http://localhost:8080/api/tasks \
 
 响应：`{tasks: [<task 对象>], pagination: {total, limit, offset, has_more}, filters: {status, priority}}`
 
-`task` 对象字段（`TaskHelpers::task_to_json`）：`id, image_path, status, priority, message, output_files_db, output_raw_db, output_events_db, progress{current_phase, phase_percentage, overall_percentage, phase_description}, timestamps{created, started, completed, execution_time_seconds}(Unix 毫秒), scenarios, scenario_databases, android_analyze, android_source, llm_analyze, llm_mode, file_carving, filter_profile, case_description, xfs_mode, db_output_dir, extraction_directory, cancellation_requested, dependencies, dependents_count, metadata, error_details`。
+`task` 对象字段（`TaskHelpers::task_to_json`）：`id, image_path, status, priority, message, output_files_db, output_raw_db, output_events_db, progress{current_phase, phase_percentage, overall_percentage, phase_description}, timestamps{created, started, completed, execution_time_seconds}(Unix 毫秒), scenarios, scenario_databases, android_analyze, android_source, llm_analyze, llm_mode, llm_max_files, file_carving, filter_profile, case_description, xfs_mode, db_output_dir, extraction_directory, cancellation_requested, dependencies, dependents_count, metadata, error_details`。
 
 **示例——列出运行中的任务（分页）**：
 

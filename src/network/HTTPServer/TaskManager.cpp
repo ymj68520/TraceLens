@@ -112,7 +112,8 @@ std::string TaskManager::create_task(const std::string& path,
                            const std::string& android_source,
                            const std::string& backup_password,
                            bool file_carving,
-                           bool platform_analyze) {
+                           bool platform_analyze,
+                           int llm_max_files) {
     std::lock_guard<std::mutex> lock(mtx_);
     boost::uuids::uuid uuid = boost::uuids::random_generator()();
     std::string id = boost::uuids::to_string(uuid);
@@ -142,6 +143,7 @@ std::string TaskManager::create_task(const std::string& path,
     new_task.llm_analyze = llm_analyze;
     new_task.llm_event_analyze = llm_event_analyze;
     new_task.llm_mode = llm_mode;
+    new_task.llm_max_files = llm_max_files;
     new_task.case_description = case_description;
     new_task.filter_profile = filter_profile;
     // Default to general_forensics so the deterministic C++ FileFilter always

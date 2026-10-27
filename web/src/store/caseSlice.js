@@ -25,7 +25,7 @@ export const fetchCases = createAsyncThunk(
  */
 export const createCaseWithTasks = createAsyncThunk(
   'cases/createWithTasks',
-  async ({ name, description, imagePaths = [], priority = 'normal', androidAnalyze = false, associateTaskIds = [] }, { rejectWithValue }) => {
+  async ({ name, description, imagePaths = [], priority = 'normal', androidAnalyze = false, associateTaskIds = [], llmMaxFiles = undefined }, { rejectWithValue }) => {
     try {
       const analysisOptions = imagePaths.length ? await caseGroupSvc.caseTaskAnalysisOptions() : {};
       // Step 1 — create individual tasks for each NEW image path
@@ -38,6 +38,9 @@ export const createCaseWithTasks = createAsyncThunk(
             ...analysisOptions,
             llm_mode:        'smart',
             android_analyze: androidAnalyze,
+            // Task-level analysis budget for this case's new images. Omitted
+            // when unset so the server inherits its global LLM_MAX_FILES.
+            ...(llmMaxFiles !== undefined ? { llm_max_files: llmMaxFiles } : {}),
           })
         )
       );

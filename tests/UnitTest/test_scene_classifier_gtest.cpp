@@ -7,6 +7,7 @@
 #include "DatabaseManager/DatabaseManagerDataTypes.h"
 #include "DatabaseManager/DatabaseManager.h"
 #include "LLMAnalysisService.h"
+#include "network/HTTPServer/AnalysisBudget.h"
 #include <sqlite3.h>
 #include <cstdio>
 #include <algorithm>
@@ -334,6 +335,16 @@ struct LLMSelectionHeuristicTestAccess {
                                                 size_t budget, bool skipBinary) {
         LLMAnalysisService service;
         return service.getPrioritizedCandidates(dbPath, budget, skipBinary);
+    }
+    // Full-mode candidate query: the resolved task budget reaches the database
+    // as LIMIT maxFiles, so this returns at most `budget` paths (0 = unlimited).
+    static std::vector<std::string> fullModeCandidates(const std::string& dbPath,
+                                                       size_t budget) {
+        LLMAnalysisService service;
+        LLMAnalysisService::AnalysisOptions options;
+        options.maxFiles = budget;
+        options.skipBinaryFiles = false;
+        return service.getFilesFromDatabase(dbPath, options);
     }
 };
 }
@@ -1097,6 +1108,74 @@ TEST_F(SceneClassifierTest, SmartSelectionRealDatabase) {
     EXPECT_EQ(picked[0], head[0]);
     EXPECT_EQ(picked[1], head[2]);
     EXPECT_EQ(picked[2], head[4]);
+}
+
+// Task-level analysis budget -> database query. Full mode truncates with
+// LIMIT maxFiles (LLMAnalysisService.cpp getFilesFromDatabase), so the value
+// resolved from task.llm_max_files must reach this seam unchanged; 0 stays
+// unlimited and must not truncate.
+TEST_F(SceneClassifierTest, FullModeBudgetBecomesSqlLimit) {
+    namespace fs = std::filesystem;
+    const auto dbPath = fs::temp_directory_path() /
+        ("budget_files_" + std::to_string(::getpid()) + ".db");
+    fs::remove(dbPath);
+    sqlite3* db = nullptr;
+    ASSERT_EQ(sqlite3_open(dbPath.string().c_str(), &db), SQLITE_OK);
+    ASSERT_EQ(sqlite3_exec(db,
+        "CREATE TABLE files(path TEXT, category TEXT)", nullptr, nullptr, nullptr),
+        SQLITE_OK);
+    ASSERT_EQ(sqlite3_exec(db,
+        "INSERT INTO files(path, category) VALUES "
+        "('/etc/passwd','Configuration Files'),"
+        "('/var/log/auth.log','Logs'),"
+        "('/home/u/notes.txt','Documents'),"
+        "('/home/u/chat.db','Databases'),"
+        "('/usr/bin/ls','Executables'),"
+        "('/opt/app/config.yml','Configuration Files')", nullptr, nullptr, nullptr),
+        SQLITE_OK);
+    sqlite3_close(db);
+
+    using A = forensics::LLMSelectionHeuristicTestAccess;
+
+    EXPECT_EQ(A::fullModeCandidates(dbPath.string(), 0).size(), 6u);  // unlimited
+    EXPECT_EQ(A::fullModeCandidates(dbPath.string(), 2).size(), 2u);
+    EXPECT_EQ(A::fullModeCandidates(dbPath.string(), 4).size(), 4u);
+    EXPECT_LE(A::fullModeCandidates(dbPath.string(), 100).size(), 6u);  // never exceeds rows
+
+    fs::remove(dbPath);
+}
+
+// The same budget in smart mode bounds the candidate pool, not the SQL row
+// count: an over-large request is clamped by the policy helper, and the
+// resulting pool never exceeds the budget.
+TEST_F(SceneClassifierTest, SmartModeBudgetBoundsTheCandidatePool) {
+    namespace fs = std::filesystem;
+    const auto dbPath = fs::temp_directory_path() /
+        ("budget_pool_" + std::to_string(::getpid()) + ".db");
+    fs::remove(dbPath);
+    sqlite3* db = nullptr;
+    ASSERT_EQ(sqlite3_open(dbPath.string().c_str(), &db), SQLITE_OK);
+    ASSERT_EQ(sqlite3_exec(db,
+        "CREATE TABLE files(path TEXT, category TEXT)", nullptr, nullptr, nullptr),
+        SQLITE_OK);
+    auto insert = [&](int i) {
+        const std::string sql = "INSERT INTO files(path, category) VALUES ('/home/u/note" +
+            std::to_string(i) + ".txt','Documents')";
+        sqlite3_exec(db, sql.c_str(), nullptr, nullptr, nullptr);
+    };
+    for (int i = 0; i < 12; ++i) insert(i);
+    sqlite3_close(db);
+
+    using A = forensics::LLMSelectionHeuristicTestAccess;
+
+    // resolve(task=5) -> pool budget 5 -> at most 5 candidates.
+    const auto budget = forensics::analysis_budget::resolve(5, 500, 5000, true);
+    EXPECT_EQ(budget.files, 5);
+    const auto candidates = A::prioritized(dbPath.string(), (size_t)budget.files, true);
+    EXPECT_LE(candidates.size(), 5u);
+    EXPECT_FALSE(candidates.empty());
+
+    fs::remove(dbPath);
 }
 
 // The prompts must never be starved of the image's own headline evidence: the

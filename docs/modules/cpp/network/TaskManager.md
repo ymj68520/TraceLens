@@ -119,6 +119,7 @@ struct AnalysisTask {
 | `error_details`（:135） | 失败路径、看门狗 → 详情页 | FAILED 具体原因（"Interrupted by server restart" 等） |
 | `metadata`（:136） | 请求体、runLogicalAndroidAnalysis → RouteHelpers 回退解析 | android_db/dll_db/memory_db 的覆盖入口 |
 | `llm_analyze/llm_mode/case_description`（:139-142） | 请求体 → LLMAnalysisService | llm_analyze 只是开关，**results 端点判定 LLM 证据不依赖它**（TaskCRUDRoutes.cpp:360-375 注释） |
+| `llm_max_files`（:143） | 请求体 → `AnalysisBudget::resolve()` → `AnalysisOptions.maxFiles` | 任务级分析文件预算；0=继承 `LLM_MAX_FILES`。同时决定逐文件分析、KG 摄取（ANALYZED_ONLY）与报告证据 seed 的文件数；smart 模式超过 `LLM_SMART_CANDIDATE_FILES` 时被钳到候选池并在审计里注明 |
 | `output_descriptions_db` / `graphiti_job_id`（:141、:143） | 预留 / Graphiti 触发后（TaskManagerAnalysis.cpp:573） | LLM 描述实际写在 _files.db；graphiti_job_id 是 fire-and-forget 作业 ID |
 | `filter_profile` / `file_carving`（:146、:149） | 请求体 → FileFilter / FileCarver | filter_profile 空则默认 general_forensics（TaskManager.cpp:123-125） |
 | `enable_decryption/key_file_dir/decrypt_password`（:152-154） | 请求体 → ImageAnalyzer | 密码用完即清（TaskManagerAnalysis.cpp:212-213），进终态再兜底清（TaskManager.cpp:166-167） |
@@ -283,6 +284,7 @@ struct TaskCleanup {
 | `db_output_dir` | string | "" | `db_output_dir` | :180 |
 | `llm_analyze` | bool | false | `llm_analyze` | :183 |
 | `llm_mode` | "full"/"smart" | "smart"（**无枚举校验**，任意串透传） | `llm_mode` | :184 |
+| `llm_max_files` | int | 0 | `llm_max_files`；0=继承全局 `LLM_MAX_FILES`；越界/非整数 400 `INVALID_LLM_MAX_FILES`（唯一不静默回落的选项） | :185-206 |
 | `case_description` | string | "" | `case_description` | :185 |
 | `filter_profile` | string | ""（create_task 内再默认 general_forensics） | `filter_profile` | :188 |
 | `enable_decryption` | bool | false | `enable_decryption` | :192 |

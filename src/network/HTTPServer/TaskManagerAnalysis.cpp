@@ -8,6 +8,7 @@
 #include "TaskWatchdog.h"
 #include "TaskSerialization.h"
 #include "TaskStageLedger.h"
+#include "AnalysisBudget.h"
 #include "AndroidPreflightAdmission.h"
 #include "RaidTaskAdmission.h"
 #include "AndroidContainerNormalization.h"
@@ -1093,15 +1094,33 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     llmService.setImagePaths(imagePath, effectiveRawDb, task_id);
                     auto& config = forensics::ConfigManager::instance();
                     forensics::LLMAnalysisService::AnalysisOptions llmOpts;
-                    llmOpts.maxFiles = config.getLLMMaxFiles();
+                    // Task-level budget wins over the global cap. It also caps
+                    // knowledge-graph ingestion and the report evidence seed,
+                    // which both read the analyzed-file set (llm_analyzed_at),
+                    // so one number governs the whole cost curve.
+                    const bool smartMode = task.llm_mode != "full";
+                    const auto budget = forensics::analysis_budget::resolve(
+                        task.llm_max_files,
+                        config.getLLMMaxFiles(),
+                        config.getLLMSmartCandidateFiles(),
+                        smartMode);
+                    add_audit_log(task_id, "LLM_CONFIG",
+                                  forensics::analysis_budget::describe(budget, smartMode));
+                    llmOpts.maxFiles = static_cast<size_t>(budget.files);
                     llmOpts.maxContentLength = config.getLLMMaxContentLength();
                     llmOpts.skipBinaryFiles = config.getLLMSkipBinary();
-                    
+
                     int analyzedCount = 0;
+                    // Surfaced on the mode-specific start message below, so the
+                    // budget is visible exactly where the work begins.
+                    const std::string budgetText = budget.files == 0
+                        ? std::string("不限")
+                        : std::to_string(budget.files) + " 个文件";
                     
                     if (task.llm_mode == "full") {
                         // Full mode: analyze all files
-                        update_progress(task_id, TaskPhase::LLM_ANALYSIS, 30, "完整模式：正在分析全部文件…");
+                        update_progress(task_id, TaskPhase::LLM_ANALYSIS, 30,
+                            "完整模式：正在分析文件（预算 " + budgetText + "）…");
                         analyzedCount = llmService.analyzeAllFiles(fileDbPath, llmOpts,
                             [this, task_id](int current, int total, const std::string& file) -> bool {
                                 if (is_task_cancelled(task_id)) return false;
@@ -1123,12 +1142,13 @@ void TaskManager::start_analysis(const std::string& task_id) {
                             });
                     } else {
                         // Smart mode: LLM selects important files first.
-                        // File budget honours LLM_MAX_FILES exactly — the previous
-                        // hardcoded floor of 1000 made real-image tasks run for
-                        // many hours on local LLMs.
-                        update_progress(task_id, TaskPhase::LLM_ANALYSIS, 20, "Smart mode: Selecting important files...");
+                        // File budget honours the resolved budget exactly — the
+                        // previous hardcoded floor of 1000 made real-image tasks
+                        // run for many hours on local LLMs.
+                        update_progress(task_id, TaskPhase::LLM_ANALYSIS, 20,
+                            "智能模式：正在筛选重要文件（预算 " + budgetText + "）…");
                         // 候选扫描范围由 LLM_SMART_CANDIDATE_FILES 控制（selectImportantFiles 内部读取），
-                        // 分析数量上限沿用 LLM_MAX_FILES；两者默认有限（500/1000），显式配置 0 才是全量。
+                        // 分析数量上限用已解析的任务级预算；两者默认有限，显式配置 0 才是全量。
                         analyzedCount = llmService.analyzeSmartFiles(fileDbPath, llmOpts,
                             [this, task_id](int current, int total, const std::string& file) -> bool {
                                 if (is_task_cancelled(task_id)) return false;

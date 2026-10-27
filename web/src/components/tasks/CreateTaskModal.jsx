@@ -24,6 +24,12 @@ import FilterProfileSelector from '../filters/FilterProfileSelector';
 import FilterProfileEditor from '../filters/FilterProfileEditor';
 import RaidImageSource from './RaidImageSource';
 import CaseBackgroundField from './CaseBackgroundField';
+import AnalysisBudgetField, {
+  DEFAULT_BUDGET_CHOICE,
+  budgetChoiceFromTask,
+  customBudgetFromTask,
+  resolveAnalysisBudget,
+} from './AnalysisBudgetField';
 
 // Data source kinds. The value is sent to the backend as android_source and
 // selects the AndroidAnalyzer backend / analysis pipeline branch.
@@ -56,6 +62,9 @@ const INITIAL_FORM = {
   // (task-time event cluster analysis) always false — NOT user settings.
 };
 
+// Task-level analysis budget presets live in AnalysisBudgetField, shared with
+// the case-creation modal so both entry points offer identical choices.
+
 export default function CreateTaskModal({ initialSource = null, onClose = () => {} }) {
   const dispatch = useDispatch();
   const toast = useToast();
@@ -66,6 +75,11 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [raidSource, setRaidSource] = useState(null);
+  // 'default' = inherit the server's LLM_MAX_FILES; a preset value; or
+  // 'custom' with a free-form number. Kept out of `form` so that switching
+  // to "custom" does not erase the picker's own state.
+  const [budgetChoice, setBudgetChoice] = useState(() => budgetChoiceFromTask(initialSource));
+  const [customBudget, setCustomBudget] = useState(() => customBudgetFromTask(initialSource));
   const handleRaidSource = useCallback((value) => setRaidSource(value), []);
 
   const set = (key, val) => setForm((f) => ({ ...f, [key]: val,
@@ -128,6 +142,8 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
       if (isRaid && !raidSource) throw new Error('请先完成 RAID 布局确认和系统镜像准备');
       const isLogical = form.android_source !== 'tsk' && !isRaid && !isAliyun;
       if (isAliyun && !form.preflight_job_id) throw new Error('请先在检材预检中完成完整 SHA-256，再按此来源创建任务');
+      const budget = resolveAnalysisBudget(budgetChoice, customBudget);
+      if (budget.error) throw new Error(budget.error);
       const payload = {
         ...form,
         ...(isRaid ? raidSource : {}),
@@ -138,12 +154,18 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
         // 平台分析任务级开关（创建时选择；默认开启）
         platform_analyze: isAliyun || isArchive || form.platform_analyze !== false,
       };
+      // Omit the key entirely when inheriting: an explicit 0 would also mean
+      // "inherit", but sending nothing keeps old-server compatibility.
+      if (budget.value !== undefined) payload.llm_max_files = budget.value;
+      else delete payload.llm_max_files;
       // Only send backup_password when non-empty (keeps it runtime-only / sparse).
       if (!payload.backup_password) delete payload.backup_password;
       await dispatch(createTask(payload)).unwrap();
       dispatch(closeModal());
       onClose();
       setForm(INITIAL_FORM);
+      setBudgetChoice(DEFAULT_BUDGET_CHOICE);
+      setCustomBudget('');
       dispatch(fetchTasks({}));
       toast.success('任务创建成功');
     } catch (err) {
@@ -242,6 +264,17 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
               ))}
             </select>
           </Field>
+
+          {/* Analysis file budget: the dominant cost lever. The knowledge
+              graph ingests analyzed files only, so this number also bounds
+              ingestion and the report evidence scope. */}
+          <AnalysisBudgetField
+            choice={budgetChoice}
+            onChoiceChange={setBudgetChoice}
+            customValue={customBudget}
+            onCustomChange={setCustomBudget}
+            disabled={isCreating}
+          />
 
           {/* Analysis Scenario (deterministic classifier profile) */}
           {/* The filter profile drives the TSK-pipeline FileFilter; it is not
