@@ -1,4 +1,5 @@
 #include "LLMAnalysisService.h"
+#include "AnalysisBudget.h"
 #include "network/HTTPServer/LLMPythonProxy.h"
 #include "DatabaseManager/SQL/file_classifier_sql.h"
 #include "DatabaseManager/FileExtractor/FileExtractor.h"
@@ -350,20 +351,23 @@ std::vector<std::string> LLMAnalysisService::selectImportantFiles(const std::str
     // unbounded file list overflows context/timeouts and the selection call
     // always fails. Order candidates by forensic priority first so truncation
     // keeps the interesting files, then cap the summary at a char budget.
+    //
+    // The cut itself lives in analysis_budget::summary_row_count so the policy
+    // (two bands, maxFiles not involved) is unit-testable without linking the
+    // HTTP server. maxFiles is deliberately absent from that call: it caps how
+    // many files may be SELECTED, never how many may be OFFERED. Conflating the
+    // two expanded the listing to maxFiles rows regardless of the character
+    // budget — 77,367 characters at LLM_MAX_FILES=1000 and 365,745 at a 5000
+    // candidate budget, after which the selector returned "0 usable paths" and
+    // the pipeline silently fell back to its heuristic.
     auto ranked = selectByHeuristic(candidates, candidates.size());
-    const size_t kMaxSummaryChars = 48000;
-    size_t summaryFiles = 0, summaryChars = 0;
+    std::vector<forensics::analysis_budget::SummaryCandidate> listing;
+    listing.reserve(ranked.size());
     for (const auto& f : ranked) {
-        summaryChars += f.size() + 16;  // "NNNN " prefix + newline overhead
-        if (summaryChars > kMaxSummaryChars) break;
-        summaryFiles++;
+        listing.push_back({forensicPathPriority(f), f.size() + 16});
     }
-    if (summaryFiles < maxFiles) {
-        summaryFiles = std::min(ranked.size(), maxFiles);
-    }
-    if (summaryFiles > ranked.size()) {
-        summaryFiles = ranked.size();
-    }
+    const size_t summaryFiles = forensics::analysis_budget::summary_row_count(
+        listing.data(), listing.size());
     std::vector<std::string> summaryList(ranked.begin(), ranked.begin() + summaryFiles);
 
     // Build summary of file list for LLM

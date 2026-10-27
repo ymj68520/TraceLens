@@ -13,6 +13,7 @@
 // without linking the HTTP server.
 
 #include <algorithm>
+#include <cstddef>
 #include <string>
 
 namespace forensics {
@@ -96,6 +97,77 @@ inline std::string describe(const ResolvedBudget& resolved, bool smart_mode) {
                 ", clamped to the smart-selection candidate pool)";
     }
     return text;
+}
+
+// ---------------------------------------------------------------------------
+// Prompt listing budget
+//
+// The smart selector shows the model an indexed list of candidate paths and
+// asks it to pick the important ones. That list needs a size bound: an
+// unbounded list overflows the context and the selection call fails outright.
+// It needs TWO bounds, because the list is ordered by forensic priority and a
+// single character budget therefore cuts by path length:
+//
+//   * top band — registry hives, event logs, prefetch, case-named directories
+//     and user-tree executables. Few per image (918 of 122,592 selectable
+//     files on PC.E01) and decisive. They get their own, larger ceiling.
+//   * bulk band — everything else, under the original ceiling.
+//
+// With one shared 48k ceiling the cut landed at rank ~590, while the case's
+// own Quasar controller ranked 729-848: the RAT configuration and payload
+// never appeared in the prompt. The list was then silently expanded to
+// `maxFiles` rows regardless (77,367 characters at LLM_MAX_FILES=1000), which
+// is 1.6x the ceiling it was meant to respect — and 7.6x at a 5000 candidate
+// budget, where the selector returned "0 usable paths" and the pipeline fell
+// back to its heuristic without saying so.
+// ---------------------------------------------------------------------------
+
+// Lowest path priority that belongs to the top band. Matches the scoring bands
+// in LLMAnalysisService::forensicPathPriority: 95 = user-tree executable,
+// 92 = case-named directory, 100 = core forensic artefact.
+inline constexpr int kCriticalSummaryPriority = 92;
+
+inline constexpr std::size_t kTopBandSummaryChars = 160000;
+inline constexpr std::size_t kBulkBandSummaryChars = 48000;
+
+// One candidate as the listing sees it.
+struct SummaryCandidate {
+    int priority = 0;
+    std::size_t rendered_chars = 0;  // path length + index prefix + newline
+};
+
+// How many leading candidates fit in the prompt listing.
+//
+// Input order must already be the forensic ranking (best first). The returned
+// count is a prefix length: rows [0, count) go into the prompt.
+//
+// `max_files` is deliberately NOT a parameter. It caps how many files may be
+// SELECTED, not how many may be OFFERED; conflating the two is what let a
+// larger candidate budget inflate the prompt instead of widening the choice.
+inline std::size_t summary_row_count(const SummaryCandidate* rows,
+                                     std::size_t count) {
+    std::size_t used_chars = 0;
+    std::size_t used_rows = 0;
+    bool top_band_done = false;
+    for (std::size_t i = 0; i < count; ++i) {
+        const bool top_band = rows[i].priority >= kCriticalSummaryPriority;
+        // Once the top band stops fitting, every remaining row is bulk, and the
+        // bulk ceiling is lower than the top one — nothing more can fit.
+        if (!top_band && top_band_done) break;
+        const std::size_t limit = top_band ? kTopBandSummaryChars
+                                           : kBulkBandSummaryChars;
+        const std::size_t next = used_chars + rows[i].rendered_chars;
+        if (next > limit) {
+            if (top_band) {
+                top_band_done = true;
+                continue;
+            }
+            break;
+        }
+        used_chars = next;
+        ++used_rows;
+    }
+    return used_rows;
 }
 
 }  // namespace analysis_budget

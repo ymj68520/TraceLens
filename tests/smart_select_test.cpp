@@ -8,6 +8,7 @@
 #include <chrono>
 #include <iostream>
 #include <vector>
+#include <cstdlib>
 
 int main(int argc, char** argv) {
     if (argc < 2) {
@@ -33,7 +34,13 @@ int main(int argc, char** argv) {
 
     std::cout << "SELECTION_RESULT selected=" << selected.size()
               << " budget=" << budget << " elapsed_s=" << elapsed << "\n";
-    const size_t shown = std::min<size_t>(selected.size(), 25);
+    // SMART_SELECT_LIST_ALL=1 prints every selected path. Verifying that a
+    // specific artefact was actually chosen needs the whole list: the 25-row
+    // preview never included the Quasar controller on PC.E01, so a successful
+    // run looked identical to one that had silently dropped it.
+    const bool listAll = std::getenv("SMART_SELECT_LIST_ALL") != nullptr;
+    const size_t shown = listAll ? selected.size()
+                                 : std::min<size_t>(selected.size(), 25);
     for (size_t i = 0; i < shown; ++i) {
         std::cout << "  [" << i << "] " << selected[i] << "\n";
     }

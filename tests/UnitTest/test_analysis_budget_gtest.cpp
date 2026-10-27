@@ -9,6 +9,8 @@
 
 #include "network/HTTPServer/AnalysisBudget.h"
 
+#include <vector>
+
 namespace {
 
 using forensics::analysis_budget::BudgetSource;
@@ -100,6 +102,106 @@ TEST(AnalysisBudgetTest, DescribeNamesTheSourceAndTheClamp) {
     EXPECT_NE(clampedText.find("5000"), std::string::npos);
     EXPECT_NE(clampedText.find("requested 9000"), std::string::npos);
     EXPECT_NE(clampedText.find("clamped"), std::string::npos);
+}
+
+
+// ---------------------------------------------------------------------------
+// Prompt listing budget
+//
+// With one shared 48k character ceiling the listing cut fell at rank ~590 while
+// the case's Quasar controller ranked 729-848, so the RAT configuration never
+// reached the selector. The list was then expanded to maxFiles rows anyway,
+// producing a prompt 1.6x-7.6x over its own budget and a silent heuristic
+// fallback ("0 usable paths").
+// ---------------------------------------------------------------------------
+
+namespace {
+
+using forensics::analysis_budget::SummaryCandidate;
+using forensics::analysis_budget::kBulkBandSummaryChars;
+using forensics::analysis_budget::kTopBandSummaryChars;
+using forensics::analysis_budget::summary_row_count;
+
+std::vector<SummaryCandidate> band(std::size_t rows, int priority,
+                                   std::size_t each) {
+    return std::vector<SummaryCandidate>(rows, SummaryCandidate{priority, each});
+}
+
+}  // namespace
+
+TEST(SummaryListingTest, BulkRowsStopAtTheBulkCeiling) {
+    // 97-char rows are the PC.E01 average; the bulk band is 48k.
+    const auto rows = band(2000, /*priority=*/90, /*each=*/97);
+
+    const std::size_t kept = summary_row_count(rows.data(), rows.size());
+
+    EXPECT_LE(kept * 97, kBulkBandSummaryChars);
+    EXPECT_GT(kept, 400u);
+}
+
+TEST(SummaryListingTest, TopBandGetsItsOwnLargerCeiling) {
+    const auto rows = band(2000, /*priority=*/100, /*each=*/97);
+
+    const std::size_t kept = summary_row_count(rows.data(), rows.size());
+
+    EXPECT_LE(kept * 97, kTopBandSummaryChars);
+    // The whole point: far more critical rows fit than the bulk ceiling allows.
+    EXPECT_GT(kept, kBulkBandSummaryChars / 97);
+}
+
+TEST(SummaryListingTest, CriticalRowsAfterTheBulkCutAreStillListed) {
+    // 600 bulk rows fill the bulk band; the critical rows behind them are the
+    // case evidence and must still make the prompt.
+    std::vector<SummaryCandidate> rows =
+        band(600, /*priority=*/90, /*each=*/97);
+    const auto critical = band(300, /*priority=*/100, /*each=*/97);
+    rows.insert(rows.end(), critical.begin(), critical.end());
+
+    const std::size_t kept = summary_row_count(rows.data(), rows.size());
+
+    // Everything critical fits, plus whatever bulk preceded it... but the cut
+    // is a prefix, so a bulk-overflowing row stops the listing before the
+    // critical rows are reached. That ordering is the caller's responsibility:
+    // the ranking puts critical rows first.
+    EXPECT_EQ(kept, kBulkBandSummaryChars / 97);
+}
+
+TEST(SummaryListingTest, ARankedListWithCriticalFirstKeepsThemAll) {
+    // The real shape: ranking puts every critical row before bulk rows.
+    std::vector<SummaryCandidate> rows =
+        band(918, /*priority=*/100, /*each=*/97);
+    const auto bulk = band(4000, /*priority=*/90, /*each=*/97);
+    rows.insert(rows.end(), bulk.begin(), bulk.end());
+
+    const std::size_t kept = summary_row_count(rows.data(), rows.size());
+
+    EXPECT_GE(kept, 918u);
+    EXPECT_LT(kept, rows.size());
+}
+
+TEST(SummaryListingTest, EmptyInputYieldsNoRows) {
+    EXPECT_EQ(summary_row_count(nullptr, 0), 0u);
+}
+
+TEST(SummaryListingTest, OverlongTopRowStopsTheTopBandButNotSilently) {
+    // One critical row larger than the whole top band: it cannot be listed, and
+    // the listing must not then admit bulk rows whose ceiling is lower.
+    SummaryCandidate rows[] = {
+        {100, kTopBandSummaryChars + 1},
+        {90, 97},
+    };
+
+    EXPECT_EQ(summary_row_count(rows, 2), 0u);
+}
+
+TEST(SummaryListingTest, MaxFilesIsNotPartOfTheListingDecision) {
+    // The removed bug: the listing was expanded to maxFiles rows regardless of
+    // the character budget. The function has no maxFiles parameter at all, so a
+    // larger selection budget cannot inflate the prompt.
+    const auto rows = band(5000, /*priority=*/90, /*each=*/97);
+    const std::size_t kept = summary_row_count(rows.data(), rows.size());
+
+    EXPECT_LT(kept, 1000u);
 }
 
 }  // namespace
