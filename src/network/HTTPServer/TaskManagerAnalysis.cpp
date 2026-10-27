@@ -747,6 +747,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 const auto coverage = inspectAndroidCoverage(logicalResultDb);
                 const bool incomplete = !coverage.available || coverage.unresolved > 0 || coverage.parsed == 0;
                 bool superNormalized = false;
+                bool lockedPersisted = false;
                 {
                     std::lock_guard<std::mutex> lock(mtx_);
                     auto it = tasks_.find(task_id);
@@ -754,7 +755,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
                         const auto prior = it->second.metadata.find("android_coverage_status");
                         superNormalized = prior != it->second.metadata.end() &&
                             prior->second == "SUPER_NORMALIZED_NO_USERDATA";
-                        const bool lockedPersisted = prior != it->second.metadata.end() &&
+                        lockedPersisted = prior != it->second.metadata.end() &&
                             prior->second == "COMPLETED_WITH_LOCKED_USERDATA";
                         if (!superNormalized && !lockedPersisted)
                             it->second.metadata["android_coverage_status"] = incomplete ? "incomplete" : "parsed_sources_present";
@@ -766,6 +767,31 @@ void TaskManager::start_analysis(const std::string& task_id) {
                     "Source coverage: parsed=" + std::to_string(coverage.parsed) +
                     ", unresolved=" + std::to_string(coverage.unresolved) +
                     ", available=" + (coverage.available ? "true" : "false"));
+                // First-stage 材料自主研判 report gate — mirror the TSK/Harmony
+                // completion gate so logical-source tasks (dir/zip/MIUI/OPPO
+                // backups) also end their initial pipeline with the auto report.
+                // Locked/super-normalized tasks carry no analyzable artifacts;
+                // a report over an empty evidence set would be noise.
+                if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "任务已取消"); return; }
+                if (task.llm_analyze && !superNormalized && !lockedPersisted) {
+                    const char* logicalFieldMode = std::getenv("TRACELENS_FIELD_AUTH");
+                    const char* logicalOutbound = std::getenv("FIELD_OUTBOUND_POLICY");
+                    const bool logicalNoIntel = logicalFieldMode &&
+                        std::string(logicalFieldMode) == "enabled" &&
+                        (!logicalOutbound || std::string(logicalOutbound) == "disabled");
+                    if (!logicalNoIntel &&
+                        forensics::ConfigManager::instance().getBool("REPORT_AUTO_GENERATE_ENABLED", true)) {
+                        update_progress(task_id, TaskPhase::FINALIZING, 95,
+                                        "生成首次材料自主研判报告…");
+                        if (!wait_for_pipeline_report(task_id)) {
+                            update_status(task_id, TaskStatus::FAILED,
+                                          "首次材料自主研判报告未完成",
+                                          "报告生成失败或超时；分析产物仍可浏览，请查看报告任务状态。");
+                            add_audit_log(task_id, "ERROR", "Analysis failed at the report completion gate");
+                            return;
+                        }
+                    }
+                }
                 const bool locked = task.android_source == "filesystem-image" &&
                     task.metadata.count("preflight_locked") && task.metadata.at("preflight_locked") == "true";
                 const std::string message = superNormalized
