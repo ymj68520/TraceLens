@@ -436,6 +436,9 @@ set(LIB_SOURCES
     src/analyzers/AndroidAnalyzer/MiuiArtifactParsers.cpp
     src/analyzers/AndroidAnalyzer/QqntArtifactParsers.cpp
     src/analyzers/AndroidAnalyzer/WechatArtifactParsers.cpp
+    # OPPO ThunderForensic extraction source (PhoneData JSON tar, bypassing TSK)
+    src/analyzers/AndroidAnalyzer/OppoBackupExtractor.cpp
+    src/analyzers/AndroidAnalyzer/OppoArtifactParsers.cpp
     src/analyzers/WindowsFilesAnalyzer/Core/WindowsFilesAnalyzerCore.cpp
     src/analyzers/WindowsFilesAnalyzer/Database/WindowsAnalysisDatabase.cpp
     src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_Registry.cpp
@@ -657,6 +660,41 @@ endif()
 
 # Installation
 install(TARGETS forensic_analyzer DESTINATION bin)
+
+# Smart 选文件单独测试台：复用与主程序完全相同的源与链接，
+# 只跑 selectImportantFiles（EXCLUDE_FROM_ALL，不影响默认构建）。
+add_executable(smart_select_test EXCLUDE_FROM_ALL tests/smart_select_test.cpp ${LIB_SOURCES})
+target_compile_options(smart_select_test PRIVATE -include utility)
+target_include_directories(smart_select_test PRIVATE "${CMAKE_BINARY_DIR}/generated")
+target_link_libraries(
+  smart_select_test
+  ${TSK_LIBRARIES}
+  ewf
+  ${SQLITE_LINK_LIBRARIES}
+  ${Boost_LIBRARIES}
+  ${HIVEX_LIBRARIES}
+  ${LIBEVTX_LIBRARIES}
+  ${LIBBFIO_LIBRARIES}
+  ${LIBESEDB_LIBRARIES}
+  ${LIBOLECF_LIBRARIES}
+  ${LIBFSNTFS_LIBRARIES}
+  ${XAPIAN_LIBRARIES}
+  ${POPPLER_LIBRARIES}
+  mysqlclient
+  pq
+  cpp_dotenv
+  duckx
+  ${OSS_SDK_LIB}
+  curl
+  OpenSSL::SSL
+  OpenSSL::Crypto
+  ${ZLIB_LIBRARIES}
+  ${LIBLZMA_LIBRARIES}
+  ${BZIP2_LIBRARIES}
+  ${ZSTD_LIBRARIES}
+  ${LIBZIP_LIBRARIES}
+  ${LIBARCHIVE_LIBRARIES}
+  ${PLATFORM_LIBRARIES})
 install(PROGRAMS scripts/bitlocker_fvek_decrypt.py DESTINATION bin/scripts)
 
 # Enable testing and add tests subdirectory for GTest-based tests

@@ -26,7 +26,7 @@ def android_db_candidates(task: dict) -> list[Path]:
     if isinstance(metadata, dict) and metadata.get("android_db"):
         candidates.append(Path(metadata["android_db"]))
     files_db = task.get("output_files_db")
-    if files_db and task.get("android_source") in {"dir", "zip", "miui-backup", "harmony-backup"}:
+    if files_db and task.get("android_source") in {"dir", "zip", "miui-backup", "harmony-backup", "oppo-backup"}:
         candidates.append(Path(files_db))
     if files_db:
         candidates.append(Path(files_db).with_name("android.db"))

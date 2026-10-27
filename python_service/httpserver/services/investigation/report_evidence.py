@@ -504,7 +504,7 @@ class ReportEvidenceService:
 
         try:
             result = await asyncio.to_thread(_seed)
-            if task.get("android_source") == "harmony-backup":
+            if task.get("android_source") in ("harmony-backup", "oppo-backup"):
                 mobile = await self._seed_analyzed_mobile(task, added_by=added_by)
                 result["mobile_seeded"] = mobile
                 result["seeded"] += mobile

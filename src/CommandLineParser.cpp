@@ -77,7 +77,7 @@ bool optionRequiresNonOptionValue(const std::string& option) {
 
 bool isValidAndroidSource(const std::string& source) {
     static const std::unordered_set<std::string> validSources{
-        "tsk", "dir", "zip", "miui-backup", "harmony-backup", "tar", "seven-zip", "android-backup", "filesystem-image"
+        "tsk", "dir", "zip", "miui-backup", "harmony-backup", "oppo-backup", "tar", "seven-zip", "android-backup", "filesystem-image"
     };
     return validSources.contains(source);
 }
@@ -113,6 +113,7 @@ void CommandLineParser::printUsage(const char* programName) {
     std::cout << "  --android-source <mode>     Android data source: tsk (default, disk image),\n"
                  "                              dir (extracted data/ tree), zip (Image.zip),\n"
                  "                              miui-backup (Xiaomi MIUI .bak folder), harmony-backup (decrypted Huawei folder),\n"
+                 "                              oppo-backup (ThunderForensic OPPO tar or project folder),\n"
                  "                              tar, seven-zip, android-backup (.ab),\n"
                  "                              filesystem-image (userdata EXT4/F2FS RAW/E01)\n";
     std::cout << "  --wechat-password <pass>    WeChat SQLCipher decryption password\n";

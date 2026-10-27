@@ -41,6 +41,7 @@ const DATA_SOURCES = [
   { value: 'zip', label: 'Android ZIP', desc: '逻辑提取打包成的单个 .zip' },
   { value: 'miui-backup', label: 'MIUI 备份', desc: '小米 MIUI 离线备份目录（含 descript.xml + .bak）' },
   { value: 'harmony-backup', label: '华为鸿蒙备份', desc: '已解密备份目录，含 .info.json 和 files' },
+  { value: 'oppo-backup', label: 'OPPO 备份', desc: '雷电手机快取提取的 tar 或工程目录（含 PhoneData）' },
   { value: 'tar', label: 'Android TAR', desc: '.tar / .tar.gz / .tgz / .tar.xz（需完整预检）' },
   { value: 'seven-zip', label: 'Android 7z', desc: '.7z 逻辑提取归档（需完整预检）' },
   { value: 'android-backup', label: '安卓备份', desc: '.ab（需完整预检）' },
@@ -102,7 +103,8 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
   }));
 
   // Label / placeholder for the path input changes with the data source.
-  const pathLabel = isAliyun ? '阿里云系统盘导出包 *' : form.android_source === 'harmony-backup' ? '鸿蒙备份目录 *' : isMiui
+  const isOppo = form.android_source === 'oppo-backup';
+  const pathLabel = isAliyun ? '阿里云系统盘导出包 *' : form.android_source === 'harmony-backup' ? '鸿蒙备份目录 *' : isOppo ? 'OPPO 提取 tar / 工程目录 *' : isMiui
     ? 'MIUI 备份目录 *'
     : form.android_source === 'dir'
     ? 'Android 提取目录 *'
@@ -113,7 +115,9 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
     : isArchive
     ? 'Android 归档/备份文件 *'
     : '检材路径 *';
-  const pathPlaceholder = isAliyun ? '/path/to/file_m-xxx_system.raw.tar.gz' : form.android_source === 'harmony-backup' ? '/path/to/已解密鸿蒙备份/' : isMiui
+  const pathPlaceholder = isAliyun ? '/path/to/file_m-xxx_system.raw.tar.gz' : form.android_source === 'harmony-backup' ? '/path/to/已解密鸿蒙备份/' : isOppo
+    ? '/path/to/20261025OPPO.tar 或 /path/to/20261025OPPO/'
+    : isMiui
     ? '/path/to/MIUI备份目录（含 descript.xml + .bak）'
     : form.android_source === 'dir'
     ? '/path/to/android_logical_extraction/'
