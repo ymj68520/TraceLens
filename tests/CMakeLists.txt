@@ -1280,6 +1280,13 @@ add_test(
   COMMAND python3
           ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_miui_cli_e2e.py
           --analyzer $<TARGET_FILE:forensic_analyzer>)
+add_test(NAME OppoBackupCliEndToEndTests
+  COMMAND python3
+          ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_oppo_backup_cli.py
+          --analyzer $<TARGET_FILE:forensic_analyzer>)
+add_test(NAME OppoBackupHttpEndToEndTests
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_oppo_backup_http.py
+    --analyzer $<TARGET_FILE:forensic_analyzer>)
 install(TARGETS test_android_logical_source_gtest RUNTIME DESTINATION bin/tests)
 
 # Scene Database Tests (SQL schema definitions for scene specialization)
