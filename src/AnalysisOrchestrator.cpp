@@ -452,11 +452,14 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
         const bool platformReusable = platformRequested &&
             stageLedger.reusable(ledger::kPlatformAnalysis, platformFp) && filesDbPresent;
 
-        if (platformRequested && !platformReusable && !filesDbRebuiltInStep3) {
-            // Rebuilding classification + platform together is the only correct
-            // move once files.db must be rewritten: classification's output and
-            // the platform analyzers' output share one artifact. (When Step 3
-            // already rebuilt it for the same reason, that copy is the input.)
+        if (platformRequested && !platformReusable) {
+            // Fresh runs and resume runs both land here: the platform
+            // analyzers must run whenever platform artifacts are requested and
+            // not reusable. Only the classification rebuild below is
+            // conditional — when Step 3 already produced this run's files.db
+            // (filesDbRebuiltInStep3), that copy is the input the analyzers
+            // write into; rebuilding it again would discard nothing but time.
+            if (!filesDbRebuiltInStep3) {
             std::cout << "[Scene] Rebuilding file database (classification + platform artifacts)...\n";
             for (const char* suffix : {"", "-wal", "-shm", "-journal"}) {
                 std::error_code ec;
@@ -473,6 +476,7 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
             }
             classifier.reset();
             stageLedger.mark(ledger::kFileClassification, classifyFp);
+            }
 
         if (args.android_analyze) {
             std::cout << "[Android] Analyzing..." << std::endl;
