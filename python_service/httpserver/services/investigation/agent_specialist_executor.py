@@ -731,9 +731,43 @@ class SpecialistDelegationExecutor:
         # absent) -> semantic/evidence validation on the canonical draft
         # -> deterministic enrichment -> canonical validation.
         proposal: SpecialistResultProposalV1 = raw_result
+
+        # Sanitize follow-up scopes: specialists may suggest cross-source scopes (e.g. linux/android/windows)
+        # for supervisor follow-up, but the validator enforces pack scope boundaries. Clamp to granted scopes
+        # so LLM cross-scope suggestions don't fail the entire specialist result.
+        granted_scopes = {
+            pack.source_scope_id,
+            *pack.source_scope_ids,
+        }
+        if any(
+            any(scope not in granted_scopes for scope in q.suggested_source_scope_ids)
+            for q in proposal.follow_up_questions
+        ):
+            sanitized_follow_ups = []
+            for q in proposal.follow_up_questions:
+                valid_scopes = tuple(s for s in q.suggested_source_scope_ids if s in granted_scopes)
+                if valid_scopes != q.suggested_source_scope_ids:
+                    q = q.model_copy(update={"suggested_source_scope_ids": valid_scopes})
+                sanitized_follow_ups.append(q)
+            proposal = proposal.model_copy(update={"follow_up_questions": tuple(sanitized_follow_ups)})
+
         observations = runtime.list_tool_observations(
             envelope.investigation_id, run_id=envelope.run_id
         )
+        from .agent_tools.visibility import reconstruct_allowed_evidence_ids
+        allowed_refs = reconstruct_allowed_evidence_ids(
+            (item.evidence_key for item in pack.evidence_digests),
+            observations,
+            delegation_id=pack.delegation_id,
+            run_id=pack.run_id,
+        )
+        if any(any(ref not in allowed_refs for ref in o.evidence_refs) for o in proposal.coverage_observations):
+            proposal = proposal.model_copy(update={
+                "coverage_observations": tuple(
+                    o.model_copy(update={"evidence_refs": tuple(x for x in o.evidence_refs if x in allowed_refs)})
+                    for o in proposal.coverage_observations
+                ),
+            })
         validator = SpecialistResultValidator()
         draft = proposal.to_canonical_draft()
         validation = validator.validate(pack, draft, observations)
