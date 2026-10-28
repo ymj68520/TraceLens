@@ -1363,6 +1363,7 @@ class AgentOrchestrator:
                     ),
                     "raw_model_proposal_v2": raw_v2.model_dump(mode="json"),
                 }
+                logger.info(f"[SUPERVISOR_PLAN_DEBUG] raw_v2={raw_v2.model_dump(mode='json')} | decision_actions={decision.actions if decision else None}")
             else:
                 decision = await self._supervisor.plan(planning_context)
         except Exception as exc:  # noqa: BLE001 - supervisor failure is a
@@ -1417,11 +1418,11 @@ class AgentOrchestrator:
                 att_item = items_by_id.get(getattr(action, "attention_item_id", ""))
 
                 # If question is inactive or unknown, attempt repair from attention item's related questions
-                if q_status not in ("open", "in_progress"):
+                if q_status not in ("open", "in_progress", "deferred"):
                     repaired = False
                     if att_item:
                         for cand_qid in getattr(att_item, "related_question_ids", ()):
-                            if question_statuses.get(cand_qid) in ("open", "in_progress"):
+                            if question_statuses.get(cand_qid) in ("open", "in_progress", "deferred"):
                                 q_id = cand_qid
                                 repaired = True
                                 break
@@ -1448,6 +1449,7 @@ class AgentOrchestrator:
                 sanitized_actions.append(action)
 
         if not sanitized_actions and decision.actions:
+            logger.info(f"[SUPERVISOR_PLAN_DEBUG] sanitized_actions was emptied! Original actions: {decision.actions}")
             sanitized_actions = [
                 NoPlanAction(
                     action_id="act-noop",

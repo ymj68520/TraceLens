@@ -472,7 +472,7 @@ class SupervisorPlanDecisionValidator:
                         message="delegation references an unknown question",
                         location=location,
                     ))
-                elif question_status not in ("open", "in_progress"):
+                elif question_status not in ("open", "in_progress", "deferred"):
                     violations.append(PlanViolation(
                         code=PlanViolationCode.PLAN_QUESTION_INACTIVE,
                         message="delegation references an inactive question",

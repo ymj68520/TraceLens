@@ -163,7 +163,7 @@ class MergeGuard:
             status = self._question_status(current_state, dependencies.question_id)
             if status is None:
                 reasons.append(MergeStaleReason.QUESTION_UNKNOWN.value)
-            elif status not in ("open", "in_progress"):
+            elif status not in ("open", "in_progress", "deferred"):
                 reasons.append(MergeStaleReason.QUESTION_INACTIVE.value)
 
         # source scope materially changed: a scope the delegation ran on is
