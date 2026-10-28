@@ -84,8 +84,10 @@ async def test_narrative_sections_render_with_filename_citations():
 
     response, _stage = render_stage_report(_envelope(), _materials(), _directions(), (), (), sections)
     headings = [s.heading for s in response.sections]
-    # Chapter 1 now carries the case overview and the recall table; the two
+    # Chapter 1 now carries the case overview and the thread table; the two
     # generic skeleton headings below it are still re-titled from their content.
+    # The batch path has no direction provenance, so the per-material appendix
+    # is (honestly) absent: nothing can be attributed file-by-file.
     assert headings == [
         "案件总述与证据召回", "本轮共读取两份冻结材料",
         "话术培训文档 7要素.docx 出现在窝点镜像中", "人工核查建议",
@@ -387,6 +389,14 @@ def test_overflow_chapters_are_not_merged_without_bound():
 # ---------------------------------------------------------------------------
 
 
+def _recall_appendix(response):
+    """The per-material detail table now lives in the appendix AFTER all chapters."""
+    for section in response.sections:
+        if section.heading.startswith("附录：证据召回明细"):
+            return section
+    return None
+
+
 def _narrative_rows(materials, directions, *, summary="本章表明存在待核活动，仍需补齐原始凭据。"):
     """A chapter-shaped narrative row carrying its own direction provenance."""
     return [{"heading": "话术培训材料", "content": "材料包含话术培训文档。" * 20,
@@ -413,12 +423,21 @@ def test_chapter_summary_is_optional_for_older_narratives():
     assert chapter.summary == ""
 
 
+def _themed(rows, directions, name="话术培训材料"):
+    from httpserver.services.forensic_report.generation_stages import _ChapterNarrative
+    return _ChapterNarrative(rows, [{"name": name, "directions": tuple(directions)}])
+
+
 def test_first_chapter_carries_overview_and_recall_table():
-    """Chapter 1 = scope paragraph + whole-case overview + recall table."""
+    """Chapter 1 = scope paragraph + whole-case overview + thread table.
+
+    The per-material recall detail moved to the appendix after all chapters
+    (报告契约：先线索，后逐文件明细)."""
     directions = _directions()
     rows = _narrative_rows(_materials(), directions)
     response, _stage = render_stage_report(
-        _envelope(), _materials(), directions, (), (), rows,
+        _envelope(), _materials(), directions, (), (),
+        _themed(rows, directions),
         overview="全案总述正文，说明材料整体呈现什么。")
 
     first = response.sections[0]
@@ -428,16 +447,31 @@ def test_first_chapter_carries_overview_and_recall_table():
     assert "本轮在已入报的 2 份材料范围内研判" in first.content
     assert "全案总述正文" in first.content
     assert first.content.index("全案总述正文") < first.content.index("本轮在已入报的 2 份材料范围内研判")
-    table = first.recall_table
-    assert table is not None
+
+    threads = first.thread_table
+    assert threads is not None
+    # Exhaustive: the only direction is covered by the only thread.
+    assert threads.covered_directions == 1
+    assert threads.total_directions == 1
+    thread = threads.rows[0]
+    assert thread.name
+    assert thread.contribution
+    assert thread.direction_count == 1
+    assert thread.material_count == 1
+    assert thread.citation_ids == ("c001",)
+    assert first.summary
+
+    appendix = _recall_appendix(response)
+    assert appendix is not None and appendix.recall_table is not None
+    # The appendix must be the LAST section, after every chapter.
+    assert response.sections[-1] is appendix
+    table = appendix.recall_table
     # m001 is quoted by the only direction; m002 is readable but nothing cites
     # it, so it must not appear as recalled evidence.
     assert table.total_materials == 2
     assert table.recalled_materials == 1
     assert {row.evidence_name for row in table.rows} == {"7要素.docx"}
     assert any("未被任何章节引用" in note for note in table.notes)
-    # The table's closing statement is the chapter's summary.
-    assert first.summary
 
 
 def test_recall_table_counts_references_and_chapters():
@@ -450,14 +484,18 @@ def test_recall_table_counts_references_and_chapters():
          "summary": "", "direction_ids": ("d1",)},
     ]
     response, _stage = render_stage_report(
-        _envelope(), _materials(), directions, (), (), rows)
+        _envelope(), _materials(), directions, (), (), _themed(rows, directions))
 
-    table = response.sections[0].recall_table
+    table = _recall_appendix(response).recall_table
     row = next(r for r in table.rows if r.evidence_name == "7要素.docx")
     assert row.chapter_count == 2
     # Both chapters cite the same material, so the report refers to it twice.
     assert row.reference_count == 2
     assert table.total_citations == 2
+    # The thread table aggregates the same evidence at case level.
+    threads = response.sections[0].thread_table
+    assert threads.rows[0].direction_count == 1
+    assert threads.rows[0].chapter_numbers == (2, 3)
 
 
 def test_recall_rows_explain_what_each_material_contributed():
@@ -467,7 +505,7 @@ def test_recall_rows_explain_what_each_material_contributed():
     response, _stage = render_stage_report(
         _envelope(), _materials(), directions, (), (), rows)
 
-    table = response.sections[0].recall_table
+    table = _recall_appendix(response).recall_table
     row = table.rows[0]
     assert row.contribution
     # The deterministic fallback names the finding the material backs.
@@ -491,7 +529,7 @@ def test_model_contribution_is_used_when_usable():
         _envelope(), _materials(), directions, (), (), rows,
         recall_contributions=contributions)
 
-    row = response.sections[0].recall_table.rows[0]
+    row = _recall_appendix(response).recall_table.rows[0]
     assert row.contribution.startswith("支撑话术培训材料的认定")
     assert "培训话术正文片段" in row.contribution
 
@@ -534,7 +572,7 @@ async def test_contribution_falls_back_when_the_provider_fails():
     response, _stage = render_stage_report(
         _envelope(), _materials(), directions, (), (),
         _narrative_rows(_materials(), directions), recall_contributions={})
-    assert all(row.contribution for row in response.sections[0].recall_table.rows)
+    assert all(row.contribution for row in _recall_appendix(response).recall_table.rows)
 
 
 def test_recall_table_reports_unreferenced_materials():
@@ -544,7 +582,7 @@ def test_recall_table_reports_unreferenced_materials():
     # Only one material is quoted by the direction.
     response, _stage = render_stage_report(
         _envelope(), _materials(), directions, (), (), rows)
-    table = response.sections[0].recall_table
+    table = _recall_appendix(response).recall_table
     assert table.recalled_materials == 1
     assert any("未被任何章节引用" in note for note in table.notes)
 
@@ -685,6 +723,113 @@ def test_difference_chapter_reason_is_scrubbed_of_material_ids():
     assert "0x37d25f9a" in diff.content
 
 
+def test_duplicate_thread_names_fold_members_together():
+    """Induction may keep two same-subject groups apart (25-direction merge
+    cap); after relabeling they read as one thread, so the table must fold
+    them instead of showing the same case thread twice."""
+    from httpserver.services.forensic_report.generation_stages import (
+        _merge_duplicate_threads,
+    )
+
+    rows = [
+        {"name": "CodeIntegrity 与 DPAPI 重复记录", "members": ("a", "b"),
+         "direction_titles": ("重复验证记录",), "quotes": ("引文甲",),
+         "reference_count": 12, "material_count": 4,
+         "chapter_numbers": (4,), "contribution": "较完整的说明。", "facts": ()},
+        {"name": "CodeIntegrity 与 DPAPI 重复记录", "members": ("c",),
+         "direction_titles": ("重复密文记录",), "quotes": ("引文乙",),
+         "reference_count": 5, "material_count": 2,
+         "chapter_numbers": (10,), "contribution": "", "facts": ()},
+        {"name": "内存转储缺口", "members": ("d",),
+         "direction_titles": ("内存转储",), "quotes": ("引文丙",),
+         "reference_count": 3, "material_count": 1,
+         "chapter_numbers": (9,), "contribution": "独立线索。", "facts": ()},
+    ]
+    _merge_duplicate_threads(rows)
+
+    assert len(rows) == 2
+    folded = rows[0]
+    assert folded["direction_titles"] == ("重复验证记录", "重复密文记录")
+    assert folded["reference_count"] == 17
+    assert folded["chapter_numbers"] == (4, 10)
+    # The stronger contribution survives the fold.
+    assert folded["contribution"] == "较完整的说明。"
+    assert rows[1]["name"] == "内存转储缺口"
+
+
+def test_thread_facts_must_come_from_thread_quotes():
+    """Anchoring: a key fact that appears in no thread quote is dropped."""
+    from httpserver.services.forensic_report.generation_stages import (
+        _clean_thread_fields,
+    )
+
+    row = {"quotes": ("配置指向 192.168.10.30:4782 并写入启动项",)}
+    cleaned = _clean_thread_fields(
+        "Quasar 远控驻留",
+        "客户端配置指向回连地址并写入启动项，服务端同端口监听，两端互证；外联未证实。",
+        ["192.168.10.30:4782", "HideFile=True"],  # HideFile is NOT in the quote
+        row)
+    assert cleaned is not None
+    name, contribution, facts = cleaned
+    assert facts == ("192.168.10.30:4782",)
+
+
+@pytest.mark.asyncio
+async def test_thread_relabel_maps_by_index_and_tolerates_partial_answers():
+    """Answers map by index; a missing/invalid entry falls back for that thread only."""
+    from httpserver.services.forensic_report.generation_stages import (
+        compose_evidence_threads,
+    )
+
+    quote1 = MaterialSpan(material_id="m001", quote="培训话术正文片段", character_start=0,
+                          character_end=8, ambiguous=False)
+    quote2 = MaterialSpan(material_id="m002", quote="转账记录摘录", character_start=0,
+                          character_end=6, ambiguous=False)
+    d1 = InvestigationDirection(
+        direction_id="d1", title="话术培训材料", description="材料包含话术培训文档。",
+        finding_kind="observation", supporting_refs=(quote1,), counter_refs=(),
+        missing_information=(), alternative_explanations=(),
+        baseline_direction_ids=(), case_context_quote="", origin="material")
+    d2 = InvestigationDirection(
+        direction_id="d2", title="账目摘录", description="材料包含转账记录。",
+        finding_kind="observation", supporting_refs=(quote2,), counter_refs=(),
+        missing_information=(), alternative_explanations=(),
+        baseline_direction_ids=(), case_context_quote="", origin="material")
+    rows = _themed([
+        {"heading": "话术培训材料", "content": "材料包含话术培训文档。" * 20,
+         "summary": "", "direction_ids": ("d1",)},
+        {"heading": "账目摘录核对", "content": "账目文件显示转账记录摘录。" * 20,
+         "summary": "", "direction_ids": ("d2",)},
+    ], (d1, d2))
+
+    class RelabelModel:
+        async def chat_completion(self, system, user, **kwargs):
+            body = json.loads(user)
+            # Thread 1 answers with an index; thread 2 is missing entirely.
+            return {"content": json.dumps({"threads": [
+                {"index": 2, "name": "话术与账目核对",
+                 "contribution": "话术文档与转账摘录共同支撑话术演练场景的判断，"
+                                 "但仍缺原始来源，无法关联具体案件行为。",
+                 "key_facts": ["转账记录摘录"]},
+            ]}, ensure_ascii=False)}
+
+    table = await compose_evidence_threads(
+        _envelope(), [{"name": "话术培训材料", "directions": (d1,)},
+                      {"name": "账目摘录", "directions": (d2,)}],
+        _materials(), (d1, d2), rows, llm=RelabelModel())
+
+    assert table.covered_directions == 2
+    assert table.total_directions == 2
+    # The answer carried index 2, so thread 2 got the relabel and thread 1
+    # (missing from the answer) fell back deterministically.
+    assert table.rows[1].name == "话术与账目核对"
+    assert table.rows[0].contribution.startswith("该线索聚合了")
+    assert table.rows[1].key_facts == ("转账记录摘录",)
+    # Both threads still carry their chapter anchors.
+    assert table.rows[0].chapter_numbers == (2,)
+    assert table.rows[1].chapter_numbers == (3,)
+
+
 def test_recall_table_absent_in_fragment_fallback():
     """Without chapters nothing was recalled, so there is no table to show."""
     response, _stage = render_stage_report(
@@ -710,7 +855,7 @@ def test_recall_table_uses_frozen_classification_labels():
         _envelope(), _materials(), directions, (), (), rows,
         classifications=classifications)
 
-    table = response.sections[0].recall_table
+    table = _recall_appendix(response).recall_table
     row = next(r for r in table.rows if r.evidence_name == "7要素.docx")
     assert row.material_type == "document"
     assert row.priority == "P1"
@@ -743,7 +888,7 @@ def test_recall_table_is_bounded_and_says_what_it_omits():
     response, _stage = render_stage_report(
         _envelope(), many, (direction,), (), (), rows)
 
-    table = response.sections[0].recall_table
+    table = _recall_appendix(response).recall_table
     assert len(table.rows) == stages._RECALL_TABLE_LIMIT
     assert table.recalled_materials == len(many)
     assert any("其余" in note for note in table.notes)

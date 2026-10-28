@@ -644,7 +644,7 @@ class ReportGenerationExecutor:
             materialize_images, discover_directions, compare_directions,
             compose_stage_narrative, render_stage_report,
             compose_case_overview, compose_recall_summary,
-            compose_recall_contributions, _recall_stats,
+            compose_recall_contributions, compose_evidence_threads, _recall_stats,
         )
         from .models import StageAnalysis
         models, text_models = set(), set()
@@ -700,6 +700,11 @@ class ReportGenerationExecutor:
             # can fail the report.
             stats = _recall_stats(materials, narrative, directions, classifications) \
                 if narrative else None
+            themes = getattr(narrative, "themes", ()) or ()
+            thread_table = await compose_evidence_threads(
+                envelope, themes, materials, directions, narrative,
+                llm=provider, concurrency=concurrency) \
+                if (stats is not None and themes) else None
             overview = await compose_case_overview(
                 envelope, materials, directions, narrative, comparisons,
                 classifications=classifications, llm=provider) if narrative else None
@@ -715,7 +720,8 @@ class ReportGenerationExecutor:
                 envelope, materials, directions, comparisons, warnings, narrative,
                 overview=overview, recall_summary=recall_summary,
                 classifications=classifications,
-                recall_contributions=recall_contributions)
+                recall_contributions=recall_contributions,
+                thread_table=thread_table)
             stage = StageAnalysis.model_validate({
                 **stage.model_dump(mode="json"), "warnings": warnings,
                 "text_models": tuple(sorted(text_models)),

@@ -155,6 +155,7 @@ const audit = () => {
     const rect = card.getBoundingClientRect();
     const summary = card.querySelector('[data-testid="chapter-summary"]');
     const table = card.querySelector('[data-testid="evidence-recall-table"]');
+    const threadTable = card.querySelector('[data-testid="evidence-thread-table"]');
     // The body paragraph is the report prose, NOT the summary's own inner
     // paragraph — ChapterSummary renders a p.whitespace-pre-wrap too, and the
     // lead placement puts it before the body, which made this selector pick
@@ -183,8 +184,12 @@ const audit = () => {
       tableInside: table ? rect.top <= table.getBoundingClientRect().top && table.getBoundingClientRect().bottom <= rect.bottom + 1 : null,
       tableBeforeSummary: (table && summary)
         ? table.getBoundingClientRect().bottom <= summary.getBoundingClientRect().top + 1 : null,
+      threadInside: threadTable ? rect.top <= threadTable.getBoundingClientRect().top && threadTable.getBoundingClientRect().bottom <= rect.bottom + 1 : null,
+      threadBeforeSummary: (threadTable && summary)
+        ? threadTable.getBoundingClientRect().bottom <= summary.getBoundingClientRect().top + 1 : null,
       hasSummary: Boolean(summary),
       hasTable: Boolean(table),
+      hasThreadTable: Boolean(threadTable),
     };
   });
   const interleaved = [];
@@ -192,9 +197,34 @@ const audit = () => {
     if (sectionRects[i].top < sectionRects[i - 1].bottom - 1) interleaved.push([i - 1, i]);
   }
 
-  // (4) Recall table internals: header and cells must not overlap each other.
+  // (4) Table internals: header and cells must not overlap each other. The
+  // appendix per-material detail table is audited the same way.
   const table = document.querySelector('[data-testid="evidence-recall-table"]');
+  const threadTable = document.querySelector('[data-testid="evidence-thread-table"]');
   let tableAudit = null;
+  if (threadTable) {
+    const threadCells = [...threadTable.querySelectorAll('h5,p,code,button')].filter(visible);
+    const threadOverlaps = [];
+    for (let i = 0; i < threadCells.length; i += 1) {
+      for (let j = i + 1; j < threadCells.length; j += 1) {
+        if (threadCells[i].contains(threadCells[j]) || threadCells[j].contains(threadCells[i])) continue;
+        const ra = threadCells[i].getBoundingClientRect(); const rb = threadCells[j].getBoundingClientRect();
+        if (Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left) > 2
+          && Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top) > 2) {
+          threadOverlaps.push({ a: describe(threadCells[i]), b: describe(threadCells[j]) });
+        }
+      }
+    }
+    tableAudit = {
+      kind: 'threads',
+      rows: threadTable.querySelectorAll('[data-testid="thread-row"]').length,
+      headers: ['线索', '对本案的作用', '支撑'],
+      facts: threadTable.querySelectorAll('code').length,
+      cellsOverlapping: threadOverlaps.slice(0, 10),
+      tableWidth: Math.round(threadTable.getBoundingClientRect().width),
+      viewport: window.innerWidth,
+    };
+  }
   if (table) {
     const cells = [...table.querySelectorAll('th,td')].filter(visible);
     const cellOverlap = [];
@@ -209,6 +239,7 @@ const audit = () => {
     }
     const wrapper = table.querySelector('.overflow-x-auto');
     tableAudit = {
+      kind: 'recall-detail',
       rows: table.querySelectorAll('[data-testid="recall-row"]').length,
       headers: [...table.querySelectorAll('thead th')].map(th => th.textContent.trim()),
       cellsOverlapping: cellOverlap.slice(0, 10),
@@ -226,6 +257,13 @@ const audit = () => {
       summaries: document.querySelectorAll('[data-testid="chapter-summary"]').length,
       recallTables: document.querySelectorAll('[data-testid="evidence-recall-table"]').length,
       recallRows: document.querySelectorAll('[data-testid="recall-row"]').length,
+      threadTables: document.querySelectorAll('[data-testid="evidence-thread-table"]').length,
+      threadRows: document.querySelectorAll('[data-testid="thread-row"]').length,
+      recallInLastSection: (() => {
+        const cards = [...document.querySelectorAll('[data-testid="narrative-section"]')];
+        const last = cards[cards.length - 1];
+        return last ? Boolean(last.querySelector('[data-testid="evidence-recall-table"]')) : null;
+      })(),
       // Prompt-internal ids (m0012) must never reach a reader; the advisory
       // checklist and the difference chapter used to publish them verbatim.
       materialIdLeaks: (() => {
@@ -301,26 +339,35 @@ try {
       if (section.headerInside === false) throw new Error(`heading escapes chapter ${section.index}: ${section.heading}`);
       if (section.bodyInside === false) throw new Error(`body escapes chapter ${section.index}: ${section.heading}`);
       if (section.summaryInside === false) throw new Error(`summary escapes chapter ${section.index}: ${section.heading}`);
-      // Placement contract: later chapters LEAD with the summary under the
-      // heading; chapter 1 (which carries the recall table) closes with it.
-      if (section.hasTable) {
-        if (section.summaryBelowBody === false) throw new Error(`first-chapter summary overlaps body: ${section.heading}`);
-        if (section.tableBeforeSummary === false) throw new Error(`summary rendered before the recall table: ${section.heading}`);
+      // Placement contract: chapters that carry a table (chapter 1 thread
+      // table, appendix detail table) CLOSE with the summary; all other
+      // chapters LEAD with it directly under the heading.
+      if (section.hasTable || section.hasThreadTable) {
+        if (section.summaryBelowBody === false) throw new Error(`summary overlaps body: ${section.heading}`);
+        if (section.threadBeforeSummary === false && section.hasThreadTable) throw new Error(`summary rendered before the thread table: ${section.heading}`);
+        if (section.tableBeforeSummary === false && section.hasTable) throw new Error(`summary rendered before the detail table: ${section.heading}`);
       } else {
         if (section.summaryLeadsBody === false) throw new Error(`summary not under the heading in chapter ${section.index}: ${section.heading}`);
         if (section.summaryUnderHeading === false) throw new Error(`summary not directly under the heading: ${section.heading}`);
       }
-      if (section.tableInside === false) throw new Error(`recall table escapes chapter ${section.index}`);
+      if (section.threadInside === false && section.hasThreadTable) throw new Error(`thread table escapes chapter ${section.index}`);
+      if (section.tableInside === false && section.hasTable) throw new Error(`detail table escapes chapter ${section.index}`);
     }
     if (report.content.summaries !== report.content.sections) {
       throw new Error(`summary count ${report.content.summaries} != chapter count ${report.content.sections}`);
     }
     if (report.table) {
       assert.equal(report.table.cellsOverlapping.length, 0,
-        `recall table cells overlap: ${JSON.stringify(report.table.cellsOverlapping.slice(0, 3))}`);
-      assert.ok(report.table.rows > 0, 'recall table rendered no rows');
-      assert.equal(report.content.recallTables, 1, 'exactly one recall table expected');
+        `table cells overlap: ${JSON.stringify(report.table.cellsOverlapping.slice(0, 3))}`);
+      assert.ok(report.table.rows > 0, 'table rendered no rows');
     }
+    // Layout contract: exactly one thread table in chapter 1, exactly one
+    // per-material detail table, and the detail table is the LAST section.
+    assert.equal(report.content.threadTables, 1, 'exactly one thread table expected');
+    assert.equal(report.content.recallTables, 1, 'exactly one recall detail table expected');
+    assert.equal(report.content.recallInLastSection, true,
+      'the per-material detail table must close the report');
+    assert.ok(report.content.threadRows > 0, 'thread table rendered no rows');
     await page.close();
     console.log(`PASS ${width}px sections=${report.content.sections} summaries=${report.content.summaries} rows=${report.table?.rows ?? 0}`);
   }

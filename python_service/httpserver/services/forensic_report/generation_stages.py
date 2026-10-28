@@ -22,6 +22,7 @@ from .generation_prompts import (STAGE_DISCOVERY_AGGREGATE_V1,
                                  STAGE_CHAPTER_SUMMARY_SYSTEM_V1,
                                  STAGE_RECALL_SUMMARY_SYSTEM_V1,
                                  STAGE_RECALL_CONTRIBUTION_SYSTEM_V1,
+                                 STAGE_EVIDENCE_THREAD_SYSTEM_V1,
                                  STAGE_CASE_OVERVIEW_SYSTEM_V1)
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ from .models import (
     DirectionBatch, InvestigationDirection, MaterialSpan, ComparisonSuggestion,
     DirectionComparison, StageAnalysis, StructuredReportResponse, StructuredReportSection,
     StructuredReportCitation, ClassificationQuestion,
-    EvidenceRecallRow, EvidenceRecallTable,
+    EvidenceRecallRow, EvidenceRecallTable, EvidenceThreadRow, EvidenceThreadTable,
 )
 
 # Directions per discovery request. The per-request byte budget (REQUEST_CHAR_LIMIT)
@@ -2086,7 +2087,22 @@ async def _compose_chapter_narrative(envelope, materials, directions, llm, *,
         return None
     for warning in theme_warnings + pack_warnings + write_warnings:
         logger.info("Chapter narrative warning: %s", warning)
-    return sections
+    # Carry the raw themes out with the sections: the exhaustive thread table
+    # reuses the same (already validated, every-direction-exactly-once)
+    # grouping instead of paying for a second induction pass.
+    return _ChapterNarrative(sections, themes)
+
+
+class _ChapterNarrative(list):
+    """Section rows plus the raw theme grouping they were written from.
+
+    Behaves exactly like the plain list of section dicts every caller and test
+    already handles; ``themes`` is extra payload for the thread table.
+    """
+
+    def __init__(self, sections=(), themes=()):
+        super().__init__(sections)
+        self.themes = tuple(themes)
 
 
 async def compose_stage_narrative(envelope, materials, directions, comparisons, llm,
@@ -3111,9 +3127,262 @@ async def compose_recall_summary(stats, overview, llm=None) -> str:
     return summary or fallback
 
 
+# Concrete values a reader expects to see in a case thread: addresses, config
+# keys, accounts, artifact names, versions, counts. Every candidate is kept
+# only if it occurs verbatim in the thread's own quotes, which are already
+# char-span-anchored in the frozen materials — so a published key fact can
+# never be a value the evidence does not contain.
+_THREAD_FACT_PATTERNS = (
+    r"\b\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?\b",
+    r"(?:HKCU|HKLM|HKU)[\\/][^\s，。；、「」]+",
+    r"[A-Za-z]:\\[^\s，。；、「\"]+",
+    r"\b[\w.\- @[\]]*@[A-Za-z0-9.\-]+",
+    r"\b[\w.\-]+\.(?:exe|dll|txt|ini|xml|evtx|pf|log|7z|dat|db|json|docx|xlsx|lnk)\b",
+    r"\b[a-f0-9]{16,64}\b",
+    r"\b\d+(?:\.\d+){2,3}\b",
+    r"运行\s*\d+\s*次",
+)
+_THREAD_FACT_MAX = 6
+
+
+def _extract_thread_facts(quotes):
+    """Pull concrete values out of a thread's quotes, verbatim-anchored."""
+    facts, seen = [], set()
+    corpus = "\n".join(quotes)
+    for pattern in _THREAD_FACT_PATTERNS:
+        for match in re.findall(pattern, corpus):
+            token = match.strip()
+            # Skip pure section counters and version-like noise under 4 chars.
+            if len(token) < 4 or len(token) > 80 or token.lower() in seen:
+                continue
+            seen.add(token.lower())
+            facts.append(token)
+            if len(facts) >= _THREAD_FACT_MAX:
+                return tuple(facts)
+    return tuple(facts)
+
+
+def _merge_duplicate_threads(theme_rows) -> None:
+    """Fold threads whose relabeled names collapsed to the same thread.
+
+    Induction may keep two groups with near-identical subjects apart (its merge
+    stage refuses to combine groups beyond 25 directions); after relabeling they
+    read as the same case thread, so the members fold back together and the
+    stronger contribution survives. Exhaustiveness is preserved: no direction
+    is dropped or duplicated.
+    """
+    by_name: dict[str, dict] = {}
+    duplicates = []
+    for row in theme_rows:
+        key = re.sub(r"\s+", "", row.get("name") or row["theme_name"])
+        if key not in by_name:
+            by_name[key] = row
+            continue
+        keeper = by_name[key]
+        duplicates.append(row)
+        keeper["members"] = tuple(keeper["members"]) + tuple(row["members"])
+        keeper["direction_titles"] = tuple(dict.fromkeys(
+            (*keeper["direction_titles"], *row["direction_titles"])))
+        keeper["quotes"] = tuple(dict.fromkeys(
+            (*keeper["quotes"], *row["quotes"])))
+        keeper["reference_count"] += row["reference_count"]
+        keeper["material_count"] = max(keeper["material_count"], row["material_count"])
+        keeper["chapter_numbers"] = tuple(dict.fromkeys(
+            (*keeper["chapter_numbers"], *row["chapter_numbers"])))
+        if len(row.get("contribution") or "") > len(keeper.get("contribution") or ""):
+            keeper["contribution"] = row.get("contribution")
+        keeper["facts"] = tuple(dict.fromkeys((
+            *(keeper.get("facts") or ()), *(row.get("facts") or ()))))[:_THREAD_FACT_MAX]
+    for row in duplicates:
+        theme_rows.remove(row)
+
+
+def _fallback_thread(row) -> str:
+    """Deterministic thread summary used when the relabel call is unusable."""
+    titles = row["direction_titles"][:2]
+    base = f"该线索聚合了 {len(row['members'])} 项调查方向"
+    if titles:
+        base += "，包括「" + "」「".join(titles) + "」"
+    base += f"，涉及 {row['material_count']} 份材料、{row['reference_count']} 处引文"
+    if row["chapter_numbers"]:
+        base += "，分布见第 " + "、".join(str(n) for n in row["chapter_numbers"][:4]) + " 章"
+    return base + "；各发现的证据强度以本章正文与缺失信息为准。"
+
+
+
+def _clean_thread_fields(raw_name, raw_contribution, raw_facts, row):
+    """Validate the relabel answer for one thread; None means "use fallback"."""
+    name = _plain_models_text(raw_name)
+    name = re.sub(r"^\d+[.、：:]\s*", "", name).strip()
+    if not (2 <= len(name) <= 24) or _MATERIAL_ID_RE.search(name):
+        return None
+    contribution = _plain_models_text(raw_contribution)
+    contribution = strip_material_ids(contribution)
+    contribution = re.sub(r"\s*\n+\s*", " ", contribution).strip()
+    if len(contribution) < 20 or _MATERIAL_ID_RE.search(contribution):
+        return None
+    if len(contribution) > 220:
+        cut = contribution[:220]
+        boundary = max(cut.rfind("。"), cut.rfind("；"))
+        contribution = cut[:boundary + 1] if boundary >= 20 else contribution
+    facts = []
+    if isinstance(raw_facts, list):
+        allowed = {q.lower() for q in row["quotes"]}
+        lowered = set()
+        for value in raw_facts[:_THREAD_FACT_MAX]:
+            if not isinstance(value, str):
+                continue
+            token = strip_material_ids(value.strip())
+            # A key fact must exist verbatim in the thread's own quotes:
+            # this is what keeps the bolded values anchored to evidence.
+            if len(token) < 4 or token.lower() in lowered:
+                continue
+            if token.lower() not in allowed and not any(token.lower() in q.lower() for q in row["quotes"]):
+                continue
+            lowered.add(token.lower())
+            facts.append(token)
+    return name, contribution, tuple(facts)
+
+
+def _prepare_theme_rows(envelope, themes, materials, directions, narrative):
+    """One row of raw facts per theme, ordered by evidence weight."""
+    cite_order = {m.material_id: i for i, m in enumerate(materials, 1)}
+    offset = 1 + (0 if envelope.analysis_mode == "evidence_only" else 1)
+    chapter_of_direction: dict[str, set[int]] = {}
+    for index, row in enumerate(narrative or ()):
+        number = offset + index + 1
+        # One direction can be cited by several chapters; the thread must show
+        # every chapter it appears in, not just the first.
+        for direction_id in row.get("direction_ids") or ():
+            chapter_of_direction.setdefault(direction_id, set()).add(number)
+    theme_rows = []
+    for theme in themes:
+        members = tuple(theme.get("directions") or ())
+        if not members:
+            continue
+        refs = [r for d in members for r in (*d.supporting_refs, *d.counter_refs)]
+        material_ids = {r.material_id for r in refs}
+        chapter_numbers = tuple(sorted(set().union(*(
+            chapter_of_direction[d.direction_id]
+            for d in members if d.direction_id in chapter_of_direction))))
+        theme_rows.append({
+            "theme_name": (theme.get("name") or "").strip() or "未命名线索",
+            "members": members,
+            "direction_titles": tuple(d.title for d in members),
+            "quotes": tuple(r.quote for r in refs),
+            "reference_count": len(refs),
+            "material_count": len(material_ids),
+            "chapter_numbers": chapter_numbers,
+        })
+    theme_rows.sort(key=lambda r: (-r["reference_count"], -r["material_count"],
+                                   r["theme_name"]))
+    return theme_rows
+
+
+def _build_thread_table(envelope, theme_rows, materials, directions):
+    """Assemble the published table; deterministic names/facts when unlabeled."""
+    cite_order = {m.material_id: i for i, m in enumerate(materials, 1)}
+    by_material = {m.material_id: m for m in materials}
+    rows, covered_materials = [], set()
+    for row in theme_rows:
+        material_ids = {r.material_id for d in row["members"]
+                        for r in (*d.supporting_refs, *d.counter_refs)}
+        covered_materials.update(mid for mid in material_ids if mid in by_material)
+        citation_ids = tuple(
+            f"c{cite_order[mid]:03}" for mid in sorted(
+                material_ids, key=lambda x: cite_order.get(x, 10 ** 9)))
+        rows.append(EvidenceThreadRow(
+            name=row.get("name") or row["theme_name"],
+            contribution=row.get("contribution") or _fallback_thread(row),
+            key_facts=row.get("facts") or _extract_thread_facts(row["quotes"]),
+            direction_count=len(row["members"]),
+            material_count=row["material_count"],
+            reference_count=row["reference_count"],
+            chapter_count=len(row["chapter_numbers"]),
+            chapter_numbers=row["chapter_numbers"],
+            citation_ids=citation_ids,
+        ))
+    covered = sum(r.direction_count for r in rows)
+    notes = [f"全部 {len(directions)} 项调查方向已归入 {len(rows)} 条线索，"
+             "未出现遗漏或重复。"]
+    uncovered = len(directions) - covered
+    if uncovered:
+        notes.append(f"另有 {uncovered} 项方向未归入任何线索。")
+    return EvidenceThreadTable(
+        covered_directions=covered,
+        total_directions=len(directions),
+        total_materials=len(covered_materials),
+        rows=tuple(rows),
+        notes=tuple(notes),
+    )
+
+
+async def compose_evidence_threads(envelope, themes, materials, directions, narrative,
+                                   llm=None, *, concurrency: int = 1):
+    """Build the exhaustive case-thread table from the induced theme grouping.
+
+    Exhaustive by construction: themes come from the same induction pass that
+    the chapters were written from, and induction guarantees every direction
+    lands in exactly one group — so the table covers all findings, per the
+    report's contract. The relabel call only renames threads, writes their
+    contribution and picks anchored key facts; a failed or unusable answer
+    falls back to the deterministic naming and summary per thread.
+
+    Returns an :class:`EvidenceThreadTable`, or ``None`` without themes.
+    """
+    if not themes or not directions:
+        return None
+    theme_rows = _prepare_theme_rows(envelope, themes, materials, directions, narrative)
+    if llm is not None and theme_rows:
+        # ONE relabel call for the whole table: chunked calls renamed similar
+        # themes independently, so the published table grew duplicate threads
+        # ("CodeIntegrity..." twice) and whole chunks fell back when one answer
+        # was malformed. A single call sees every thread and cannot collide.
+        payload = json.dumps({"threads": [
+            {"index": i + 1,
+             "name": row["theme_name"],
+             "found_in_chapters": list(row["chapter_numbers"][:4]),
+             "supports": list(row["direction_titles"][:8]),
+             "samples": [q[:120] for q in row["quotes"][:4]],
+             } for i, row in enumerate(theme_rows)]}, ensure_ascii=False)
+        try:
+            response = await llm.chat_completion(
+                STAGE_EVIDENCE_THREAD_SYSTEM_V1, payload,
+                max_tokens=8000, temperature=0.0)
+            content = response.get("content")
+            if not isinstance(content, str) or not content.strip():
+                raise ValueError("THREAD_RELABEL_EMPTY")
+            parsed = _loads_strict(_plain_models_text(content))
+            items = parsed.get("threads") if isinstance(parsed, dict) else None
+            if not isinstance(items, list):
+                raise ValueError("THREAD_RELABEL_SHAPE")
+            relabeled_count = 0
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                index = item.get("index")
+                if not isinstance(index, int) or not 1 <= index <= len(theme_rows):
+                    continue
+                row = theme_rows[index - 1]
+                cleaned = _clean_thread_fields(
+                    item.get("name"), item.get("contribution"),
+                    item.get("key_facts"), row)
+                if cleaned is None:
+                    continue
+                row["name"], row["contribution"], row["facts"] = cleaned
+                relabeled_count += 1
+            logger.info("Thread relabel: %d/%d threads relabeled",
+                        relabeled_count, len(theme_rows))
+        except Exception as exc:  # noqa: BLE001 - fallback naming stays truthful
+            logger.warning("Thread relabel failed (%s); using grouping names", exc)
+        _merge_duplicate_threads(theme_rows)
+
+    return _build_thread_table(envelope, theme_rows, materials, directions)
+
+
 def render_stage_report(envelope, materials, directions, comparisons, warnings, narrative=None,
                         *, overview=None, recall_summary=None, classifications=None,
-                        recall_contributions=None):
+                        recall_contributions=None, thread_table=None):
     phase_a = envelope.analysis_mode == "evidence_only"
     directions_by_id = {d.direction_id: d for d in directions}
     warnings = list(warnings)
@@ -3148,7 +3417,11 @@ def render_stage_report(envelope, materials, directions, comparisons, warnings, 
         heading=chapter_one_heading(envelope), content=first_content,
         citation_ids=scope_citation_ids,
         summary=(recall_summary or _recall_summary_fallback(stats)) if narrative else "",
-        recall_table=_recall_table(stats, recall_contributions) if narrative else None)]
+        thread_table=(thread_table or _build_thread_table(
+            envelope,
+            _prepare_theme_rows(envelope, getattr(narrative, "themes", ()) or (),
+                                materials, directions, narrative),
+            materials, directions)) if narrative else None)]
     if not phase_a:
         sections.append(StructuredReportSection(
             heading="本次案情（待核语境）", content=envelope.case_description,
@@ -3298,6 +3571,22 @@ def render_stage_report(envelope, materials, directions, comparisons, warnings, 
     sections.append(StructuredReportSection(heading="人工核查建议",
         content=_advisory_text(directions, warnings),
         summary=_advisory_summary(directions, warnings)))
+    # Appendix, AFTER every chapter (contract): the per-material recall detail.
+    # Chapter 1 now leads with the human-readable thread table; this table keeps
+    # the file-level audit trail (which file, cited where, contributing what).
+    if narrative:
+        detail = _recall_table(stats, recall_contributions)
+        if detail.rows:
+            sections.append(StructuredReportSection(
+                heading="附录：证据召回明细",
+                content=(f"以下按引用次数列出全部被正文实际引用的 {detail.recalled_materials} 份材料"
+                         f"（合计 {detail.total_citations} 处引文）；每一行说明该材料在本次研判中"
+                         "支撑或限制了哪个结论，点击引用标记可回查冻结原文。"),
+                citation_ids=(),
+                summary=(f"本附录共登记 {detail.recalled_materials} 份被正文引用的材料、"
+                         f"{detail.total_citations} 处引文；正文结论以各章为准，"
+                         "本表用于逐条回查证据来源。"),
+                recall_table=detail))
     stage = StageAnalysis(
         analysis_mode=envelope.analysis_mode, evidence_scope_hash=envelope.evidence_scope_hash,
         case_description=envelope.case_description,

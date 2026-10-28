@@ -280,36 +280,50 @@ describe('NarrativeReportView', () => {
         expect(screen.queryByTestId('evidence-recall-table')).not.toBeInTheDocument();
     });
 
-    test('first chapter renders the recall table between prose and summary', async () => {
+    test('chapter 1 leads with the thread table; the per-material detail is an appendix', async () => {
         const report = {
             ...NARRATIVE,
-            sections: [{
-                heading: '案件总述与证据召回',
-                content: '本轮在已入报的 2 份材料范围内研判。\n\n全案总述：材料显示存在付款安排。',
-                citation_ids: [],
-                summary: '2 份入报材料中有 1 份被正文实际引用，其余未构成结论依据。',
-                recall_table: {
-                    title: '证据召回表',
-                    total_materials: 2,
-                    recalled_materials: 1,
-                    unavailable_materials: 0,
-                    total_citations: 3,
-                    rows: [{
-                        citation_id: 'c001',
-                        evidence_key: 'file:/case/往来记录.txt',
-                        evidence_name: '往来记录.txt',
-                        material_type: 'document',
-                        priority: 'P1',
-                        topics: ['funds'],
-                        reference_count: 3,
-                        chapter_count: 2,
-                        material_status: 'ready',
-                        contribution: '支撑付款安排的认定，正文引用该记录中的转账摘录；'
-                            + '仍未与具体账户建立归属关系，因此只作为待核线索。',
-                    }],
-                    notes: ['另有 1 份可用材料未被任何章节引用，其内容未进入本报告正文。'],
+            sections: [
+                {
+                    heading: '案件总述与证据召回',
+                    content: '全案总述：材料显示存在付款安排。',
+                    citation_ids: [],
+                    summary: '15 项方向全部归入 2 条线索。',
+                    thread_table: {
+                        title: '案情线索与研判方向',
+                        rows: [{
+                            name: 'Quasar 远控驻留',
+                            contribution: '客户端配置指向 192.168.10.30:4782 并写入启动项；外联未证实。',
+                            key_facts: ['192.168.10.30:4782', 'HideFile=True'],
+                            direction_count: 3, material_count: 4, reference_count: 9,
+                            chapter_count: 1, chapter_numbers: [2], citation_ids: ['c001'],
+                        }],
+                        covered_directions: 3, total_directions: 3, total_materials: 4,
+                        notes: [],
+                    },
                 },
-            }],
+                {
+                    heading: '附录：证据召回明细',
+                    content: '以下列出全部被正文实际引用的材料。',
+                    citation_ids: ['c001'],
+                    summary: '本附录共登记 1 份被正文引用的材料。',
+                    recall_table: {
+                        title: '证据召回表',
+                        total_materials: 1, recalled_materials: 1,
+                        unavailable_materials: 0, total_citations: 3,
+                        rows: [{
+                            citation_id: 'c001',
+                            evidence_key: 'file:/case/往来记录.txt',
+                            evidence_name: '往来记录.txt',
+                            material_type: 'document', priority: 'P1', topics: ['funds'],
+                            reference_count: 3, chapter_count: 1,
+                            material_status: 'ready',
+                            contribution: '支撑付款安排的认定。',
+                        }],
+                        notes: [],
+                    },
+                },
+            ],
             citations: [{ citation_id: 'c001', evidence_key: 'file:/case/往来记录.txt',
                 analysis_id: null, claim_id: null }],
         };
@@ -317,31 +331,32 @@ describe('NarrativeReportView', () => {
         render(<NarrativeReportView taskId="t1" reportId="rep-1"
             fetchNarrative={vi.fn().mockResolvedValue(report)} TracebackPanel={TracebackPanel} />);
 
-        const table = await screen.findByTestId('evidence-recall-table');
-        expect(table).toHaveTextContent('证据召回表');
-        expect(table).toHaveTextContent('入报 2 份');
-        expect(table).toHaveTextContent('往来记录.txt');
-        expect(table).toHaveTextContent('资金活动');
-        expect(screen.getByTestId('recall-row')).toBeInTheDocument();
-        expect(table).toHaveTextContent('未被任何章节引用');
-        // The three former columns (priority / citation count / chapter count)
-        // became one explanation of what the material contributed to the case.
-        expect(table).not.toHaveTextContent('核查优先级');
-        expect(table).not.toHaveTextContent('引用次数');
-        expect(table).not.toHaveTextContent('涉及章节');
-        expect(table).toHaveTextContent('对本案的作用');
-        expect(screen.getByTestId('recall-contribution'))
-            .toHaveTextContent('支撑付款安排的认定');
-        // Counts survive only as a footnote.
-        expect(table).toHaveTextContent('被引 3 处 · 涉及 2 章');
-        const section = table.closest('[data-testid="narrative-section"]');
-        // The chapter badge must describe the table's coverage, not claim zero
-        // citations just because the chapter itself carries no citation_ids.
-        expect(section.textContent).toContain('1 份被引材料');
-        const summary = screen.getByTestId('chapter-summary');
-        expect(section.contains(summary)).toBe(true);
-        expect(table.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        // Chapter 1: thread table between prose and summary; NO per-material table.
+        const ch1 = (await screen.findAllByTestId('narrative-section'))[0];
+        const threads = await screen.findByTestId('evidence-thread-table');
+        expect(ch1.contains(threads)).toBe(true);
+        expect(screen.getAllByTestId('thread-row')).toHaveLength(1);
+        expect(screen.getByText('Quasar 远控驻留')).toBeInTheDocument();
+        expect(screen.getByText('192.168.10.30:4782')).toBeInTheDocument();
+        expect(ch1.querySelector('[data-testid="evidence-recall-table"]')).toBeNull();
+        expect(ch1.textContent).toContain('1 条研判线索');
+        const ch1Summary = ch1.querySelector('[data-testid="chapter-summary"]');
+        expect(threads.compareDocumentPosition(ch1Summary)
+            & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
+        // Appendix: the per-material detail table, last section.
+        const sections = await screen.findAllByTestId('narrative-section');
+        const appendix = sections[sections.length - 1];
+        expect(appendix).toHaveTextContent('附录：证据召回明细');
+        expect(appendix.querySelector('[data-testid="evidence-recall-table"]')).not.toBeNull();
+        expect(appendix).toHaveTextContent('支撑付款安排的认定');
+        expect(appendix).toHaveTextContent('被引 3 处');
+
+        // A thread chapter anchor jumps; an appendix citation opens the traceback.
+        const jumps = [];
+        window.HTMLElement.prototype.scrollIntoView = function () { jumps.push(this); };
+        fireEvent.click(screen.getByTestId('thread-chapter-2'));
+        expect(jumps.length).toBe(1);
         fireEvent.click(screen.getByTestId('recall-citation-c001'));
         await waitFor(() => expect(TracebackPanel).toHaveBeenCalled());
         expect(TracebackPanel.mock.calls[0][0].citation.citation_id).toBe('c001');

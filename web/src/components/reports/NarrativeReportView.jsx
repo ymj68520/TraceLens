@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUpRight, ChevronDown, FileSearch, FileText, Quote } from 'lucide-react';
 import CitationTracebackPanel from './CitationTracebackPanel';
 import EvidenceRecallTable from './EvidenceRecallTable';
+import EvidenceThreadTable from './EvidenceThreadTable';
 import { getInvestigationSnapshot } from '../../services/investigationService';
 import { investigationEvidenceUrl } from '../../utils/evidenceKey';
 import { FIELD_AUTH_ENABLED } from '../../config/runtime';
@@ -226,6 +227,11 @@ const NarrativeReportView = ({
     const openCitation = (citationId) => setOpenCitationId(
         (previous) => (previous === citationId ? null : citationId),
     );
+    // 线索表 → 章节：按发布顺序定位第 N 章的卡片并平滑滚动，不改变路由。
+    const jumpToChapter = (number) => {
+        const card = document.querySelectorAll('[data-testid="narrative-section"]')[number - 1];
+        card?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
     const loadPreview = (citationId) => {
         const citation = citationsById.get(citationId);
         if (!citation || citationPreviews[citationId] || pendingPreviewsRef.current.has(citationId)) return;
@@ -363,9 +369,11 @@ const NarrativeReportView = ({
                                 cursor = end;
                             });
                             prose.push(section.content.slice(cursor));
-                            // 第一章保持原状（正文 → 召回表 → 表后总结）；其余章节把
-                            // 结论提到标题下方，读者先看判断再读论证。
-                            const leadSummary = index > 0 && section.summary;
+                            // 带表的章节（首章线索表、附录明细表）保持
+                            // 「正文 → 表 → 表后总结」；其余章节把结论提到
+                            // 标题下方，读者先看判断再读论证。
+                            const leadsWithTable = Boolean(section.thread_table || section.recall_table);
+                            const leadSummary = Boolean(section.summary) && !leadsWithTable;
                             return (
                                 <section key={`${section.heading}-${index}`} className="rounded-2xl border border-slate-200 bg-white px-5 py-6 shadow-sm dark:border-slate-700 dark:bg-slate-800 md:px-7 md:py-7" data-testid="narrative-section">
                                     <div className={`flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-700 ${leadSummary ? 'mb-3' : 'mb-5'}`}>
@@ -373,15 +381,20 @@ const NarrativeReportView = ({
                                             <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 font-mono text-xs font-bold text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300">{String(index + 1).padStart(2, '0')}</span>
                                             <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{section.heading}</h3>
                                         </div>
-                                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"><FileSearch size={12} aria-hidden />{section.recall_table
-                                            ? `${section.recall_table.recalled_materials} 份被引材料`
-                                            : `${section.citation_ids?.length || 0} 条证据引用`}</span>
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"><FileSearch size={12} aria-hidden />{section.thread_table
+                                            ? `${section.thread_table.rows?.length || 0} 条研判线索`
+                                            : section.recall_table
+                                                ? `${section.recall_table.recalled_materials} 份被引材料`
+                                                : `${section.citation_ids?.length || 0} 条证据引用`}</span>
                                     </div>
                                     {leadSummary && <ChapterSummary summary={section.summary} className="mb-5 mt-0" />}
                                     <p className="whitespace-pre-wrap break-words text-[15px] leading-8 text-slate-700 dark:text-slate-300">{prose}</p>
                                     {/* 首章：正文(范围+总述) → 证据召回表 → 表后总结。表是可点的引用清单，
                                         点击与正文引用标记走同一条 exact 查表路径。 */}
-                                    {section.recall_table && (
+                                    {section.thread_table && (
+                                        <EvidenceThreadTable table={section.thread_table} onJumpToChapter={jumpToChapter} />
+                                    )}
+                                    {section.recall_table && !section.thread_table && (
                                         <EvidenceRecallTable table={section.recall_table} focusCitationId={focusCitationId} onOpenCitation={openCitation} />
                                     )}
                                     {unresolved.length > 0 && (

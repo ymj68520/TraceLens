@@ -745,6 +745,42 @@ class EvidenceRecallRow(BaseModel):
     contribution: str = Field(default="", max_length=600)
 
 
+class EvidenceThreadRow(BaseModel):
+    """One case-level evidence thread in the report's opening table.
+
+    Threads are the human-readable cut of the recall table: every validated
+    direction lands in exactly one thread (exhaustive, enforced by the same
+    membership rules as theme induction), each thread is named in plain case
+    language, and ``key_facts`` are concrete values (addresses, config keys,
+    accounts, counts) anchored verbatim in the thread's own quotes.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1, max_length=64)
+    contribution: str = Field(min_length=1, max_length=600)
+    key_facts: tuple[str, ...] = ()
+    direction_count: int = Field(default=0, ge=0)
+    material_count: int = Field(default=0, ge=0)
+    reference_count: int = Field(default=0, ge=0)
+    chapter_count: int = Field(default=0, ge=0)
+    chapter_numbers: tuple[int, ...] = ()
+    citation_ids: tuple[str, ...] = ()
+
+
+class EvidenceThreadTable(BaseModel):
+    """Exhaustive case-thread table rendered inside the first chapter."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    title: str = Field(default="案情线索与研判方向", min_length=1, max_length=64)
+    rows: tuple[EvidenceThreadRow, ...] = ()
+    covered_directions: int = Field(default=0, ge=0)
+    total_directions: int = Field(default=0, ge=0)
+    total_materials: int = Field(default=0, ge=0)
+    notes: tuple[str, ...] = ()
+
+
 class EvidenceRecallTable(BaseModel):
     """Deterministic evidence recall table rendered inside the first chapter."""
 
@@ -774,6 +810,10 @@ class StructuredReportSection(BaseModel):
     content: str = Field(min_length=1, max_length=100_000)
     citation_ids: tuple[str, ...] = ()
     summary: str = Field(default="", max_length=2000)
+    # Chapter 1: exhaustive case-thread table. The per-material recall detail
+    # lives in the appendix section at the end of the report.
+    thread_table: EvidenceThreadTable | None = None
+    # Appendix: per-material recall detail (name, type, contribution per file).
     recall_table: EvidenceRecallTable | None = None
 
 
