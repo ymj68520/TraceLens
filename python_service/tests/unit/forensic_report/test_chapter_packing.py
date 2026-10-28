@@ -448,6 +448,10 @@ async def test_chapter_denying_evidence_is_rewritten_once():
             body = json.loads(user)
             if "topics" in body:
                 return {"content": "标题"}
+            if "content" in body:
+                # The chapter's closing summary is a separate call against the
+                # finished body; it is not a chapter write and must not count.
+                return {"content": "本章材料显示存在多项执行痕迹，仍需补齐命令行参数。"}
             self.writes += 1
             if self.writes == 1:
                 return {"content": json.dumps({

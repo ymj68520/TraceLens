@@ -18,13 +18,17 @@ from .generation_prompts import (STAGE_DISCOVERY_AGGREGATE_V1,
                                  STAGE_THEME_LOCAL_SYSTEM_V1,
                                  STAGE_THEME_MERGE_SYSTEM_V1,
                                  STAGE_CHAPTER_WRITE_SYSTEM_V1,
-                                 STAGE_CHAPTER_HEADING_SYSTEM_V1)
+                                 STAGE_CHAPTER_HEADING_SYSTEM_V1,
+                                 STAGE_CHAPTER_SUMMARY_SYSTEM_V1,
+                                 STAGE_RECALL_SUMMARY_SYSTEM_V1,
+                                 STAGE_CASE_OVERVIEW_SYSTEM_V1)
 logger = logging.getLogger(__name__)
 
 from .models import (
     DirectionBatch, InvestigationDirection, MaterialSpan, ComparisonSuggestion,
     DirectionComparison, StageAnalysis, StructuredReportResponse, StructuredReportSection,
     StructuredReportCitation, ClassificationQuestion,
+    EvidenceRecallRow, EvidenceRecallTable,
 )
 
 # Directions per discovery request. The per-request byte budget (REQUEST_CHAR_LIMIT)
@@ -1757,15 +1761,114 @@ def _compress_inventories(text: str) -> str:
     return "\n\n".join(paragraphs)
 
 
+async def _chapter_summary(heading: str, body: str, llm) -> str:
+    """The chapter's own one-or-two-sentence closing statement.
+
+    Kept out of the chapter body on purpose: the body is generated per part in
+    parallel, so a "summarize yourself" instruction inside the body either
+    produced several conclusions (one per part) or none. Asking for the
+    summary as a separate, small call against the finished body means exactly
+    one closing statement per chapter and it never competes with the body's
+    token budget.
+
+    Returns "" when the model gives nothing usable. An empty summary renders
+    nothing; the chapter still publishes — prose is never discarded because
+    its closing sentence failed.
+    """
+    try:
+        response = await llm.chat_completion(
+            STAGE_CHAPTER_SUMMARY_SYSTEM_V1,
+            json.dumps({"heading": heading, "content": body[:6000]},
+                       ensure_ascii=False),
+            max_tokens=400, temperature=0.0)
+    except Exception as exc:  # noqa: BLE001 - any provider failure degrades
+        logger.warning("Chapter summary synthesis failed for %r: %s", heading, exc)
+        return ""
+    content = response.get("content")
+    if not isinstance(content, str):
+        return ""
+    summary = _clean_chapter_summary(content)
+    if not summary:
+        logger.info("Chapter summary for %r unusable; publishing without it", heading)
+    return summary
+
+
+# A summary that opens with a stock connector reads as padding: the reader
+# already knows it is the end of the chapter. Only empty openers are stripped —
+# "本章材料共同显示…" is a real statement and is kept verbatim.
+_SUMMARY_LEAD_RE = re.compile(
+    r"^\s*(?:综上所述|综合来看|总体来看|总的来说|综上|总之)[，,：:]\s*")
+_SUMMARY_MIN_CHARS = 20
+_SUMMARY_MAX_CHARS = 220
+
+
+def _plain_models_text(value: str) -> str:
+    """Strip the wrappers a small model puts around a one-line answer.
+
+    A model asked for "just the sentence" still answers with the JSON shape
+    from a neighbouring prompt often enough to matter: this run published
+    ``{"overview":"..."}`` verbatim into the first chapter, because only three
+    key names were recognised. Any single-string object is unwrapped now, so
+    the reader never sees the wrapper.
+    """
+    text = (value or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```[a-zA-Z]*\s*|\s*```$", "", text).strip()
+    if text.startswith("{") and text.endswith("}"):
+        try:
+            parsed = _loads_strict(text)
+        except ValueError:
+            parsed = None
+        if isinstance(parsed, dict):
+            string_values = [v for v in parsed.values() if isinstance(v, str) and v.strip()]
+            for key in ("summary", "overview", "content", "text", "result"):
+                if isinstance(parsed.get(key), str) and parsed[key].strip():
+                    text = parsed[key].strip()
+                    break
+            else:
+                if len(string_values) == 1:
+                    text = string_values[0].strip()
+    return text.strip().strip('"“”「」\u3000 ')
+
+
+def _clean_chapter_summary(raw: str) -> str:
+    """Normalize one chapter summary; return "" when it is not usable.
+
+    Unusable means: empty, still contains a prompt-internal identifier, or so
+    short it cannot be a statement. A summary that merely starts with
+    "综上所述" is repaired, not rejected — the sentence after it carries the
+    content.
+    """
+    text = _plain_models_text(raw)
+    text = strip_material_ids(text)
+    text = re.sub(r"\s*\n+\s*", " ", text).strip()
+    text = _SUMMARY_LEAD_RE.sub("", text).strip()
+    if len(text) < _SUMMARY_MIN_CHARS:
+        return ""
+    if _MATERIAL_ID_RE.search(text) or "evidence_key" in text.lower():
+        return ""
+    if _NO_EVIDENCE_CLAIM_RE.search(text):
+        # The summary must not deny the chapter it summarizes.
+        return ""
+    if len(text) > _SUMMARY_MAX_CHARS:
+        cut = text[:_SUMMARY_MAX_CHARS]
+        boundary = max(cut.rfind("。"), cut.rfind("；"), cut.rfind("！"), cut.rfind("？"))
+        text = cut[:boundary + 1] if boundary >= _SUMMARY_MIN_CHARS else cut
+    return text
+
+
 async def write_chapters(chapters, materials, llm, *, concurrency: int = 1):
-    """Write one chapter per packed chapter (report shape v4).
+    """Write one chapter per packed chapter (report shape v5).
 
     Returns ``(sections, warnings)`` where each section is
-    ``{"heading": str, "content": str, "direction_ids": tuple[str, ...]}``.
+    ``{"heading": str, "content": str, "summary": str,
+    "direction_ids": tuple[str, ...]}``.
     A chapter that does not fit one request is written in parts; every part
     keeps the chapter's heading so the report still has exactly one chapter
     per packed chapter. Parts are role-scoped (first/middle/last) so a joined
     chapter reads as one continuous argument instead of several stapled ones.
+    Each published chapter also carries its own closing summary, synthesized
+    from the finished body (see ``_chapter_summary``).
     """
     cid = {m.material_id: stage_citation_name(m.evidence_key) for m in materials}
     jobs = []
@@ -1881,9 +1984,74 @@ async def write_chapters(chapters, materials, llm, *, concurrency: int = 1):
             body = _strip_repeated_scaffolding(body)
         direction_ids = tuple(
             direction_id for part in parts for direction_id in part["direction_ids"])
-        sections.append({"heading": heading, "content": body,
+        # The summary is derived from the FINAL body (after part joining and
+        # scaffolding cleanup), so it cannot describe text the reader will not
+        # see. Fan out below: summaries are independent of each other.
+        sections.append({"heading": heading, "content": body, "summary": "",
                          "direction_ids": direction_ids})
+    if sections:
+        summaries = await _gather_bounded(
+            [_chapter_summary(section["heading"], section["content"], llm)
+             for section in sections],
+            concurrency)
+        for section, outcome in zip(sections, summaries):
+            if isinstance(outcome, BaseException):
+                logger.warning("Chapter summary rejected for %r: %s",
+                               section["heading"], outcome)
+                continue
+            if outcome:
+                section["summary"] = outcome
+        _deduplicate_summary_openings(sections)
     return sections, tuple(warnings)
+
+
+# Openers that make every chapter's closing sentence sound the same. A live v5
+# run produced seven summaries in a row starting with "现有材料只能说明…", which
+# reads as a template rather than seven distinct judgements. The prompt now
+# forbids these openers; this is the deterministic backstop.
+_SUMMARY_STOCK_OPENERS = (
+    "现有材料只能说明", "现有材料表明", "现有材料显示", "本章材料显示",
+    "本章材料表明", "材料显示", "材料表明", "整体而言", "总体而言",
+)
+
+
+def _strip_stock_opener(summary: str) -> str:
+    """Drop a stock lead-in so the summary starts on its own judgement."""
+    for opener in _SUMMARY_STOCK_OPENERS:
+        if not summary.startswith(opener):
+            continue
+        rest = summary[len(opener):].lstrip("，,：: ")
+        # Only strip when a real clause follows; otherwise the opener IS the
+        # sentence and removing it would leave a fragment.
+        if len(rest) >= _SUMMARY_MIN_CHARS:
+            stripped = rest[:1].upper() + rest[1:] if rest[:1].isascii() else rest
+            return stripped
+    return summary
+
+
+def _deduplicate_summary_openings(sections) -> None:
+    """Rewrite repeated stock openers so chapters do not all sound alike.
+
+    Applies only to openers that occur more than once in the report: one
+    chapter legitimately saying "材料显示" is fine, seven in a row is a tell.
+    """
+    counts: dict[str, int] = {}
+    for section in sections:
+        for opener in _SUMMARY_STOCK_OPENERS:
+            if (section.get("summary") or "").startswith(opener):
+                counts[opener] = counts.get(opener, 0) + 1
+                break
+    repeated = {opener for opener, count in counts.items() if count > 1}
+    if not repeated:
+        return
+    for section in sections:
+        summary = section.get("summary") or ""
+        if not summary:
+            continue
+        if any(summary.startswith(opener) for opener in repeated):
+            stripped = _strip_stock_opener(summary)
+            if stripped != summary:
+                section["summary"] = stripped
 
 
 async def _compose_chapter_narrative(envelope, materials, directions, llm, *,
@@ -2398,7 +2566,12 @@ def _verification_checklist(directions, *, limit: int = 8) -> list[str]:
     checklist: list[str] = []
     for direction in ranked:
         for gap in direction.missing_information:
-            note = gap.strip().rstrip("。；;，,")
+            # These notes come from the discovery model, which sometimes writes
+            # a prompt-internal id ("与 m0178 配置的关联关系") — that note was
+            # published verbatim as checklist item 3, where the reader has no
+            # way to resolve it. Scrub ids at the same boundary as chapter
+            # prose, then drop the note if it was nothing but an id reference.
+            note = strip_material_ids(gap.strip().rstrip("。；;，,"))
             if not note or len(note) < 6:
                 continue
             # Normalize only for de-duplication; publish the original wording.
@@ -2427,7 +2600,387 @@ def _advisory_text(directions, warnings) -> str:
     return "\n".join(lines)
 
 
-def render_stage_report(envelope, materials, directions, comparisons, warnings, narrative=None):
+# The first chapter's recall table is a reading aid, not the evidence index:
+# the stage panel already lists every material. 40 rows is what fits on one
+# screen without turning chapter 1 into a 900-row spreadsheet, and the sort is
+# by how much the report leaned on each item, so the cut is at the least-used
+# tail rather than an arbitrary slice.
+_RECALL_TABLE_LIMIT = 40
+
+_SUBJECT_NAMES_IN_SUMMARY = 3
+
+_RECALL_TOPIC_LABELS = {
+    "funds": "资金", "identity_accounts": "人员账号", "communications": "通讯",
+    "location": "位置", "network": "网络", "tools": "工具",
+}
+_RECALL_TYPE_LABELS = {
+    "document": "文档", "chat_record": "聊天记录", "transaction_record": "交易记录",
+    "image": "图片", "log": "日志", "android_artifact": "Android 工件",
+    "other": "其他材料", "unknown": "类型未定",
+}
+
+
+def _recall_stats(materials, narrative, directions, classifications=None):
+    """Compute the evidence recall table from the report as it will be read.
+
+    Every count comes from the rendered chapters' own citation sets, so the
+    table can never disagree with the prose: a material appears here only when
+    at least one published chapter cites it. ``classifications`` supplies the
+    frozen priority/type labels; without them the row keeps "unassessed" rather
+    than guessing.
+
+    Deterministic: same inputs, same rows. Nothing here is model-written.
+    """
+    directions_by_id = {d.direction_id: d for d in directions}
+    by_material_id = {m.material_id: m for m in materials}
+    cite_order = {m.material_id: index for index, m in enumerate(materials, 1)}
+    classification_by_key = {
+        item.evidence_key: item for item in (getattr(classifications, "items", ()) or ())
+    }
+    # ``references`` counts the quote spans a material contributes to the
+    # published chapters (how much evidence it supplies); ``chapters`` counts
+    # how many chapters cite it (how broadly it is relied on). They answer
+    # different questions, which is why both columns exist.
+    references: dict[str, int] = {}
+    chapters: dict[str, int] = {}
+    rows_by_key: dict[str, dict] = {}
+    for row in narrative or ():
+        direction_ids = row.get("direction_ids")
+        if direction_ids is None:
+            continue
+        material_ids = set()
+        for direction_id in direction_ids:
+            direction = directions_by_id.get(direction_id)
+            if direction is None:
+                continue
+            for ref in (*direction.supporting_refs, *direction.counter_refs):
+                material_ids.add(ref.material_id)
+                references[ref.material_id] = references.get(ref.material_id, 0) + 1
+        for material_id in material_ids:
+            chapters[material_id] = chapters.get(material_id, 0) + 1
+
+    for material_id, reference_count in references.items():
+        material = by_material_id.get(material_id)
+        if material is None:
+            continue
+        item = classification_by_key.get(material.evidence_key)
+        rows_by_key[material.evidence_key] = {
+            "material": material,
+            "citation_id": f"c{cite_order[material_id]:03}",
+            "references": reference_count,
+            "chapters": chapters.get(material_id, 0),
+            "classification": item,
+        }
+    ordered = sorted(
+        rows_by_key.values(),
+        key=lambda entry: (
+            -entry["references"], -entry["chapters"],
+            cite_order[entry["material"].material_id],
+        ),
+    )
+    available = sum(
+        1 for m in materials if m.status != "unavailable" and bool(m.text))
+    return {
+        "total_materials": len(materials),
+        "available_materials": available,
+        "unavailable_materials": len(materials) - available,
+        "recalled": len(ordered),
+        "total_references": sum(entry["references"] for entry in ordered),
+        "entries": ordered,
+    }
+
+
+def _recall_table(stats) -> EvidenceRecallTable:
+    """The published recall table: top rows plus honest coverage notes."""
+    rows = []
+    for entry in stats["entries"][:_RECALL_TABLE_LIMIT]:
+        material = entry["material"]
+        item = entry["classification"]
+        rows.append(EvidenceRecallRow(
+            citation_id=entry["citation_id"],
+            evidence_key=material.evidence_key,
+            evidence_name=stage_citation_name(material.evidence_key),
+            material_type=getattr(item, "material_type", "unknown") or "unknown",
+            priority=getattr(item, "priority", "unassessed") or "unassessed",
+            topics=tuple(getattr(item, "topics", ()) or ()),
+            reference_count=entry["references"],
+            chapter_count=entry["chapters"],
+            material_status=material.status,
+        ))
+    notes = []
+    omitted = stats["recalled"] - len(rows)
+    if omitted > 0:
+        notes.append(f"本表按引用次数列出前 {len(rows)} 份被引材料，"
+                     f"其余 {omitted} 份见本轮材料清单。")
+    unreferenced = stats["available_materials"] - stats["recalled"]
+    if unreferenced > 0:
+        notes.append(f"另有 {unreferenced} 份可用材料未被任何章节引用，"
+                     "其内容未进入本报告正文。")
+    if stats["unavailable_materials"]:
+        notes.append(f"{stats['unavailable_materials']} 份材料不可读，"
+                     "按读取限制处理，未回退使用历史摘要。")
+    return EvidenceRecallTable(
+        total_materials=stats["total_materials"],
+        recalled_materials=stats["recalled"],
+        unavailable_materials=stats["unavailable_materials"],
+        total_citations=stats["total_references"],
+        rows=tuple(rows),
+        notes=tuple(notes),
+    )
+
+
+def _deterministic_overview(envelope, stats, directions) -> str:
+    """Overview fallback used when the overview model call is unavailable.
+
+    It states only counts and the strongest named objects, so it remains true
+    when it replaces the model's prose. Without this the first chapter would
+    open straight into a methods paragraph, which is exactly the gap the
+    overview exists to close.
+    """
+    phase_a = envelope.analysis_mode == "evidence_only"
+    observations = sum(1 for d in directions if d.finding_kind == "observation")
+    hypotheses = len(directions) - observations
+    subjects = []
+    for direction in sorted(directions, key=lambda d: -len(d.supporting_refs)):
+        for token in _SUBJECT_TOKEN_RE.findall(f"{direction.title} {direction.description}"):
+            stem = token.rsplit(".", 1)[0].upper()
+            if stem in _GENERIC_DEPENDENCIES or token.upper() in _SUBJECT_STOPWORDS:
+                continue
+            if _subject_rank(token) != 0 or token in subjects:
+                continue
+            subjects.append(token)
+            if len(subjects) >= 6:
+                break
+        if len(subjects) >= 6:
+            break
+    parts = [
+        f"本轮在 {stats['total_materials']} 份入报材料中形成 {observations} 条有材料支撑的观察"
+        f"与 {hypotheses} 条待核方向，正文有 {stats['recalled']} 份材料被实际引用"
+        f"（合计 {stats['total_references']} 处引用）。",
+    ]
+    if subjects:
+        parts.append("材料中反复出现的具体对象包括 " + "、".join(subjects) + "；"
+                     "它们的用途与关联仍需按各章结论核实。")
+    if phase_a:
+        parts.append("本轮未使用案情描述、人工备注或历史 AI 摘要，"
+                     "因此报告只描述材料本身反映的活动，不对案件性质作推断。")
+    else:
+        parts.append("本轮案情只作为调查语境；材料未支持的部分按待核假设处理，"
+                     "不构成已确认事实。")
+    return "".join(parts)
+
+
+async def compose_case_overview(envelope, materials, directions, narrative,
+                                comparisons=(), classifications=None, llm=None,
+                                *, timeout=None) -> str:
+    """Write the report's opening whole-case summary.
+
+    The model sees the finished chapters' headings and closing summaries plus
+    the strongest directions — never the raw materials — so the overview can
+    only restate what the report already established. Any failure returns the
+    deterministic fallback: a report without an opening is still readable, and
+    the first chapter must never fail because this one call did.
+    """
+    stats = _recall_stats(materials, narrative, directions, classifications)
+    fallback = _deterministic_overview(envelope, stats, directions)
+    if llm is None or not narrative:
+        return fallback
+    chapters = [
+        {"heading": row.get("heading", ""), "summary": row.get("summary", "")}
+        for row in narrative[:_MAX_REPORT_CHAPTERS]
+    ]
+    key_directions = [
+        {"title": d.title, "kind": d.finding_kind, "origin": d.origin,
+         "description": d.description[:300],
+         "supporting": len(d.supporting_refs), "counter": len(d.counter_refs)}
+        for d in sorted(directions, key=lambda d: (-len(d.supporting_refs), d.title))[:12]
+    ]
+    payload = json.dumps({
+        "analysis_mode": envelope.analysis_mode,
+        "case_context": envelope.case_description or None,
+        "scope": {
+            "total_materials": stats["total_materials"],
+            "available_materials": stats["available_materials"],
+            "unavailable_materials": stats["unavailable_materials"],
+            "recalled_materials": stats["recalled"],
+            "total_citations": stats["total_references"],
+        },
+        "chapters": chapters,
+        "key_directions": key_directions,
+        "comparison_counts": (
+            {status: sum(1 for c in comparisons if c.status == status)
+             for status in sorted({c.status for c in comparisons})}
+            if comparisons else {}
+        ),
+    }, ensure_ascii=False)
+    try:
+        response = await llm.chat_completion(
+            STAGE_CASE_OVERVIEW_SYSTEM_V1, payload, max_tokens=1600, temperature=0.0)
+    except Exception as exc:  # noqa: BLE001 - overview never fails the report
+        logger.warning("Case overview synthesis failed; using deterministic summary: %s", exc)
+        return fallback
+    content = response.get("content")
+    if not isinstance(content, str) or not content.strip():
+        return fallback
+    overview = _clean_overview(content)
+    if not overview:
+        logger.warning("Case overview unusable; using deterministic summary")
+        return fallback
+    return overview
+
+
+# Pipeline vocabulary that means nothing to a reader holding the report: the
+# overview once opened with "本批材料围绕…展开", which reads like an internal
+# batch log rather than a case summary.
+_BATCH_VOICE_RE = re.compile(r"本批(?:材料|批次)?|该批(?:材料|批次)")
+
+
+def _clean_overview(raw: str) -> str:
+    """Normalize the overview: no ids, no markdown, no batch voice, sane length."""
+    text = _plain_models_text(raw)
+    text = strip_material_ids(text)
+    text = _BATCH_VOICE_RE.sub("这批材料", text)
+    text = re.sub(r"^\s*#+\s*", "", text, flags=re.MULTILINE)
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    if len(text) < 120:
+        return ""
+    if _MATERIAL_ID_RE.search(text) or "evidence_key" in text.lower():
+        return ""
+    if len(text) > 2400:
+        cut = text[:2400]
+        boundary = max(cut.rfind("。"), cut.rfind("\n"))
+        text = cut[:boundary + 1] if boundary > 0 else cut
+    return text
+
+
+def chapter_one_heading(envelope) -> str:
+    """The first chapter's published title.
+
+    It carries the case overview and the recall table, so naming it
+    "研判范围与方法" alone would undersell what the reader finds there; the
+    scope/methods paragraph is still the section's opening, unchanged.
+    """
+    return "案件总述与证据召回"
+
+
+# A summary that claims the *unrecalled* materials were "recalled but unused"
+# inverts the table. The table's own note says they never entered the prose, so
+# a summary that says otherwise is replaced by the deterministic sentence.
+_RECALL_SUMMARY_CONTRADICTION_RE = re.compile(
+    r"(?:已|虽已|虽然)(?:被)?召回[^。；]{0,20}?未(?:被)?(?:任何)?(?:章节)?引用"
+    r"|召回(?:但|却)[^。；]{0,12}?未(?:被)?引用"
+)
+
+
+def _fragment_summary(directions, *, limit: int = 3) -> str:
+    """Closing statement for a deterministic fragment chapter.
+
+    The fragment renderer is the fallback shape, but a chapter with no closing
+    statement breaks the report's contract just as visibly as the narrative
+    path would. The sentence is built from the fragment's own directions, so it
+    cannot contradict what the fragments above it say.
+    """
+    if not directions:
+        return ""
+    observations = sum(1 for d in directions if d.finding_kind == "observation")
+    hypotheses = len(directions) - observations
+    subjects = [d.title for d in directions[:_SUBJECT_NAMES_IN_SUMMARY]]
+    parts = [f"本组 {len(directions)} 项内容中，材料观察 {observations} 项、"
+             f"待核假设 {hypotheses} 项"]
+    if subjects:
+        parts[0] += "，涉及" + "、".join(subjects)
+    parts[0] += "；以上仅为材料层面的归纳，是否成立仍需按各项缺失信息核查。"
+    return "".join(parts)
+
+
+def _comparison_summary(by_status, labels, total) -> str:
+    """Closing statement for the difference chapter (case-guided only)."""
+    if not total:
+        return ""
+    changing = sum(len(by_status.get(status, ())) for status in ("contradicted", "revised"))
+    weakened = len(by_status.get("weakened", ()))
+    supported = len(by_status.get("supported", ()))
+    if changing:
+        return (f"{total} 项基线方向中，{supported} 项得到支持，"
+                f"{changing} 项被相反材料或修正意见改变；这些方向以本轮对照结论为准。")
+    if weakened:
+        return (f"{total} 项基线方向中，{supported} 项得到支持、{weakened} 项支持减弱，"
+                "没有方向被推翻，但减弱项的原判断不宜直接沿用。")
+    return (f"{total} 项基线方向中 {supported} 项得到本轮材料支持，"
+            "未出现相反材料；首次判断可继续沿用，但仍受本轮读取范围限制。")
+
+
+def _advisory_summary(directions, warnings) -> str:
+    """Closing statement for the manual-review chapter."""
+    gaps = sum(1 for d in directions if d.missing_information)
+    base = (f"{gaps} 项方向记录着直接决定定性的缺口，应优先补齐后再核对本章结论；"
+            "未完成人工复核前，报告中的判断不得作为已确认事实。")
+    if warnings:
+        base += f"另有 {len(warnings)} 项分析或覆盖限制需在复核时一并确认。"
+    return base
+
+
+def _recall_summary_fallback(stats) -> str:
+    """Two sentences that are guaranteed true, used when the model fails."""
+    if not stats["recalled"]:
+        return (f"本轮 {stats['total_materials']} 份入报材料未形成可引用的章节结论，"
+                "证据召回为空，报告仅保留研判范围与核查建议。")
+    top = stats["entries"][0]
+    name = stage_citation_name(top["material"].evidence_key)
+    return (f"{stats['total_materials']} 份入报材料中有 {stats['recalled']} 份被正文实际引用，"
+            f"合计 {stats['total_references']} 处引用；引用最多的 {name} 涉及 "
+            f"{top['chapters']} 个章节。未被引用的材料不构成本报告的结论依据。")
+
+
+async def compose_recall_summary(stats, overview, llm=None) -> str:
+    """The one-to-two-sentence conclusion printed after the recall table.
+
+    Grounded on the table's own numbers, so it can state coverage as fact
+    instead of hedging. Falls back to a deterministic sentence.
+    """
+    fallback = _recall_summary_fallback(stats)
+    if llm is None:
+        return fallback
+    top_rows = [
+        {"name": stage_citation_name(entry["material"].evidence_key),
+         "references": entry["references"], "chapters": entry["chapters"]}
+        for entry in stats["entries"][:10]
+    ]
+    payload = json.dumps({
+        "scope": {
+            "total_materials": stats["total_materials"],
+            "available_materials": stats["available_materials"],
+            "unavailable_materials": stats["unavailable_materials"],
+            "recalled_materials": stats["recalled"],
+            "total_citations": stats["total_references"],
+            # Stated explicitly: the summary must not describe these materials
+            # as "recalled but uncited" — they never reached a chapter.
+            "available_but_not_recalled": max(0, stats["available_materials"] - stats["recalled"]),
+        },
+        "top_recalled": top_rows,
+        "overview": overview[:1200],
+    }, ensure_ascii=False)
+    try:
+        response = await llm.chat_completion(
+            STAGE_RECALL_SUMMARY_SYSTEM_V1, payload, max_tokens=320, temperature=0.0)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Recall summary synthesis failed: %s", exc)
+        return fallback
+    content = response.get("content")
+    if not isinstance(content, str):
+        return fallback
+    summary = _clean_chapter_summary(content)
+    if summary and _RECALL_SUMMARY_CONTRADICTION_RE.search(summary):
+        # The model described non-recalled materials as "recalled but unused",
+        # which is the opposite of what the table's notes say. The deterministic
+        # sentence is correct, so prefer it over a wrong one.
+        logger.warning("Recall summary contradicts the table; using fallback")
+        return fallback
+    return summary or fallback
+
+
+def render_stage_report(envelope, materials, directions, comparisons, warnings, narrative=None,
+                        *, overview=None, recall_summary=None, classifications=None):
     phase_a = envelope.analysis_mode == "evidence_only"
     directions_by_id = {d.direction_id: d for d in directions}
     warnings = list(warnings)
@@ -2435,6 +2988,7 @@ def render_stage_report(envelope, materials, directions, comparisons, warnings, 
                       for i, m in enumerate(materials, 1))
     cid = {m.material_id: c.citation_id for m, c in zip(materials, citations)}
     available = sum(m.status != "unavailable" and bool(m.text) for m in materials)
+    stats = _recall_stats(materials, narrative, directions, classifications)
     scope = (f"本轮在已入报的 {len(materials)} 份材料范围内研判，可用 {available} 份，"
              f"不可用 {len(materials) - available} 份。只使用冻结的解析片段或明确标记的机器观察，"
              "不代表全镜像或全文穷尽分析。引用位置指向冻结文本字符，不是磁盘偏移。")
@@ -2446,10 +3000,29 @@ def render_stage_report(envelope, materials, directions, comparisons, warnings, 
     # got an evidence list where one chapter claimed almost the whole report.
     # The findings chapters carry the citations that belong to specific claims.
     scope_citation_ids = ()
-    sections = [StructuredReportSection(heading="研判范围与方法", content=scope,
-                                       citation_ids=scope_citation_ids)]
+    # Chapter 1 keeps the scope paragraph verbatim and expands it. Order matters:
+    # the reader meets the whole case first, then the reading limits that qualify
+    # it — the scope paragraph in front made the chapter open with "911 份材料、
+    # 116 份不可用" before saying anything about the case.
+    front_overview = overview or _deterministic_overview(envelope, stats, directions)
+    if narrative:
+        first_content = f"{front_overview}\n\n{scope}".strip()
+    else:
+        # Fragment fallback: no chapters were written, so there is nothing to
+        # recall and the overview would only restate the scope paragraph.
+        first_content = scope
+    sections = [StructuredReportSection(
+        heading=chapter_one_heading(envelope), content=first_content,
+        citation_ids=scope_citation_ids,
+        summary=(recall_summary or _recall_summary_fallback(stats)) if narrative else "",
+        recall_table=_recall_table(stats) if narrative else None)]
     if not phase_a:
-        sections.append(StructuredReportSection(heading="本次案情（待核语境）", content=envelope.case_description))
+        sections.append(StructuredReportSection(
+            heading="本次案情（待核语境）", content=envelope.case_description,
+            # The case text is the analyst's own words, so its closing line must
+            # not restate it as a finding. It says what the text is FOR.
+            summary="以上案情由办案人员提供，仅作为本轮研判的调查语境；"
+                    "材料未支持的部分不作为已确认事实。"))
     if narrative:
         # A batch may still answer with the generic skeleton even though the
         # prompt asks for topic headings. Repeating "检材范围与构成（2）（3）…"
@@ -2510,14 +3083,21 @@ def render_stage_report(envelope, materials, directions, comparisons, warnings, 
                 citation_ids = _narrative_citations(row["content"], materials)
             sections.append(StructuredReportSection(
                 heading=heading, content=row["content"],
-                citation_ids=citation_ids))
+                citation_ids=citation_ids,
+                summary=_clean_chapter_summary(row.get("summary", ""))
+                if row.get("summary") else ""))
     else:
         for start in range(0, len(directions), 8):
             chosen = directions[start:start + 8]
             texts, refs = [], []
             for direction in chosen:
+                # These strings come straight from the discovery/comparison
+                # models, so they can carry prompt-internal ids. Scrub at the
+                # publish boundary: the fragment path used to print "与 m0178
+                # 配置的关联关系" and the diff chapter printed the same ids.
                 texts.append(("材料观察：" if direction.finding_kind == "observation" else "待核方向：")
-                             + direction.title + "\n" + direction.description)
+                             + strip_material_ids(direction.title) + "\n"
+                             + strip_material_ids(direction.description))
                 if direction.origin == "case_only":
                     texts.append("此项仅由案情提出，尚无材料支持。")
                 for label, sources in (("支持片段", direction.supporting_refs), ("相反或限制片段", direction.counter_refs)):
@@ -2525,15 +3105,19 @@ def render_stage_report(envelope, materials, directions, comparisons, warnings, 
                         texts.append(f"{label}（{cid[ref.material_id]}）：{ref.quote}")
                         refs.append(cid[ref.material_id])
                 if direction.missing_information:
-                    texts.append("仍缺信息：" + "；".join(direction.missing_information))
+                    texts.append("仍缺信息：" + "；".join(
+                        strip_material_ids(note) for note in direction.missing_information))
                 if direction.alternative_explanations:
-                    texts.append("其他可能解释：" + "；".join(direction.alternative_explanations))
+                    texts.append("其他可能解释：" + "；".join(
+                        strip_material_ids(note) for note in direction.alternative_explanations))
             sections.append(StructuredReportSection(
                 heading=f"{'材料自主发现' if phase_a else '案情对照发现'}（{start // 8 + 1}）",
-                content="\n\n".join(texts), citation_ids=tuple(dict.fromkeys(refs))))
+                content="\n\n".join(texts), citation_ids=tuple(dict.fromkeys(refs)),
+                summary=_fragment_summary(chosen)))
     if not directions:
         sections.append(StructuredReportSection(heading="调查方向与限制",
-            content="本次可读材料尚未形成有来源支持的调查方向；这不等于不存在相关活动。"))
+            content="本次可读材料尚未形成有来源支持的调查方向；这不等于不存在相关活动。",
+            summary="本轮未形成可引用的调查方向，报告不据此推断是否存在相关活动。"))
     if comparisons:
         # Comparisons are a status table over the baseline findings, not prose.
         # Rendering one block per outcome still produced 13 chapters / 70k
@@ -2563,7 +3147,8 @@ def render_stage_report(envelope, materials, directions, comparisons, warnings, 
             lines.append(f"\n{labels[status]}（{len(chosen)} 项）：")
             for comparison in chosen[:_COMPARISON_DETAIL_LIMIT]:
                 title = titles.get(comparison.baseline_direction_id, "（基线方向）")
-                lines.append(f"- {title}：{comparison.reason}")
+                lines.append(f"- {strip_material_ids(title)}："
+                             f"{strip_material_ids(comparison.reason)}")
             remaining = len(chosen) - _COMPARISON_DETAIL_LIMIT
             if remaining > 0:
                 lines.append(f"- 另有 {remaining} 项同类差异，详见阶段材料清单。")
@@ -2573,11 +3158,13 @@ def render_stage_report(envelope, materials, directions, comparisons, warnings, 
             for r in (*c.supporting_refs, *c.counter_refs)))
         sections.append(StructuredReportSection(
             heading="与首次研判的差异", content="\n".join(lines),
-            citation_ids=citation_ids))
+            citation_ids=citation_ids,
+            summary=_comparison_summary(by_status, labels, total)))
     if narrative and dropped_chars:
         warnings.append(f"NARRATIVE_OVERFLOW_DROPPED_{dropped_chars}_CHARS")
     sections.append(StructuredReportSection(heading="人工核查建议",
-        content=_advisory_text(directions, warnings)))
+        content=_advisory_text(directions, warnings),
+        summary=_advisory_summary(directions, warnings)))
     stage = StageAnalysis(
         analysis_mode=envelope.analysis_mode, evidence_scope_hash=envelope.evidence_scope_hash,
         case_description=envelope.case_description,

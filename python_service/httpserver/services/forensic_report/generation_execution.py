@@ -643,6 +643,7 @@ class ReportGenerationExecutor:
         from .generation_stages import (
             materialize_images, discover_directions, compare_directions,
             compose_stage_narrative, render_stage_report,
+            compose_case_overview, compose_recall_summary, _recall_stats,
         )
         from .models import StageAnalysis
         models, text_models = set(), set()
@@ -691,8 +692,22 @@ class ReportGenerationExecutor:
                 logger.warning("Stage narrative composition failed; using fragment sections",
                                exc_info=True)
                 narrative = None
-            response, stage = render_stage_report(envelope, materials, directions, comparisons, warnings,
-                                                  narrative)
+            # The whole-case overview and the recall-table conclusion are
+            # written after the chapters exist, because they can only restate
+            # what the chapters established (and, for the table, count what
+            # they actually cited). Both fall back deterministically; neither
+            # can fail the report.
+            stats = _recall_stats(materials, narrative, directions, classifications) \
+                if narrative else None
+            overview = await compose_case_overview(
+                envelope, materials, directions, narrative, comparisons,
+                classifications=classifications, llm=provider) if narrative else None
+            recall_summary = await compose_recall_summary(stats, overview, llm=provider) \
+                if stats is not None else None
+            response, stage = render_stage_report(
+                envelope, materials, directions, comparisons, warnings, narrative,
+                overview=overview, recall_summary=recall_summary,
+                classifications=classifications)
             stage = StageAnalysis.model_validate({
                 **stage.model_dump(mode="json"), "warnings": warnings,
                 "text_models": tuple(sorted(text_models)),

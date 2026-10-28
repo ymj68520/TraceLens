@@ -42,8 +42,17 @@ REPORT_GENERATION_ENVELOPE_COMPAT: dict[int, frozenset[str]] = {
     4: frozenset({REPORT_GENERATION_PROMPT_V4}),
     5: frozenset({"final-report:evidence-only:v1", "final-report:case-guided:v1",
                   "final-report:evidence-only:v2", "final-report:case-guided:v2",
-                  "final-report:evidence-only:v3", "final-report:case-guided:v3"}),
+                  "final-report:evidence-only:v3", "final-report:case-guided:v3",
+                  "final-report:evidence-only:v4", "final-report:case-guided:v4"}),
 }
+
+# Report shape v5 (prompt suffix ``:v4``). Same analysis stages as ``:v3``;
+# the difference is the rendered shape: the first chapter carries a complete
+# case overview plus a deterministic evidence recall table, and every chapter
+# ends with its own one-sentence closing statement.
+STAGE_PROMPT_VERSION_EVIDENCE_ONLY = "final-report:evidence-only:v4"
+STAGE_PROMPT_VERSION_CASE_GUIDED = "final-report:case-guided:v4"
+STAGE_PROMPT_VERSIONS = (STAGE_PROMPT_VERSION_EVIDENCE_ONLY, STAGE_PROMPT_VERSION_CASE_GUIDED)
 
 # Prompt version -> structured output contract identity.
 REPORT_GENERATION_PROMPT_OUTPUT_CONTRACT: dict[str, str] = {
@@ -562,6 +571,68 @@ STAGE_CHAPTER_WRITE_SYSTEM_V1 = """你负责为调查研判报告撰写一章。
 - 不得输出 Markdown 标记或代码围栏。
 只返回严格 JSON 对象：{"heading":"章节标题","content":"章节正文"}
 不要输出任何解释文字。"""
+
+# ---------------------------------------------------------------------------
+# Report shape v5: a whole-case overview and a closing statement per chapter.
+#
+# The v4 report opened with a methods paragraph and then dropped the reader
+# straight into per-topic chapters, so nothing said what the case as a whole
+# looked like; and every chapter simply stopped, leaving the reader to work out
+# what its findings added up to. These two prompts add exactly those two
+# sentences/paragraphs, and nothing else: neither may introduce a fact the
+# chapters did not already state.
+# ---------------------------------------------------------------------------
+
+STAGE_CASE_OVERVIEW_SYSTEM_V1 = """你负责为数字取证调查报告写开篇的案件总述。
+输入是整份报告全部章节的标题与各章小结、按材料支撑度排序的主要调查方向，
+以及（可能存在的）案情语境与入报范围统计。
+写两到三段、合计 350 到 700 字的简体中文总述，让读者在读细节前先把握全案：
+- 先说这批材料整体上呈现了什么：主机用途与使用痕迹、时间跨度、反复出现的对象类别；
+- 再说最值得追查的具体对象与关键参数（程序名、涉案目录、回连地址与端口、
+  注册表启动项、账号或文件哈希），这些必须来自输入，不得自行补充；
+- 最后说清哪些是材料已支持的观察、哪些仍只是待核假设，以及定性的主要缺口。
+硬性要求：
+- 只使用输入给出的事实；不得新增文件、对象、数字、时间或结论。
+- 读者看到的是一份完整报告，不是流水线批次：禁止使用"本批材料""该批""本批次"
+  这类词，改用"这批材料""本次入报材料"或直接陈述对象。
+- 案情语境只作为调查语境，不得写成已证实事实；材料未支持的内容必须注明仅由案情提出。
+- 不得出现 material_id（如 m0012）、evidence_key、direction_id、"第 N 章"或"上述材料"这类指代。
+- 不得输出罪名认定、置信度百分比、Markdown 标记或代码围栏。
+只返回严格 JSON 对象：{"overview":"总述正文"}
+不要输出任何解释文字。"""
+
+STAGE_CHAPTER_SUMMARY_SYSTEM_V1 = """你负责为调查报告的一章写最终收束句。
+输入 heading 是本章标题，content 是本章正文。
+写出本章最后的一到两句总结：简体中文，40 到 120 字。
+要求：
+- 只概括本章已经写出的事实与结论，不得引入正文没有的对象、数字、文件名或推断。
+- 写成给读者的判断句：这些材料共同说明了什么、还差什么才能定性。
+- 直接以本章的具体对象、具体发现或具体缺口开头。
+- 严禁使用以下套话开头（同一份报告各章不得重复同一种句式）：
+  "现有材料只能说明""现有材料表明""本章材料显示""材料显示""综合来看"
+  "综上所述""本章介绍了""由此可见""整体而言"。
+  判断本身可以直接写，例如"PrivaZer 与计划任务的时间邻近只支持清理行为存在，
+  不足以区分隐私清理与痕迹处理"，而不是先加一句"现有材料只能说明"。
+- 不要复述标题，不要把正文再概括一遍；读者读的是结论，不是摘要。
+- 不得出现 material_id（如 m0012）、evidence_key、direction_id、置信度百分比，
+  也不得声明本章没有材料或无法得出结论。
+只输出这一到两句话本身：不要引号、不要 JSON、不要标题、不要解释。"""
+
+STAGE_RECALL_SUMMARY_SYSTEM_V1 = """你负责为调查报告首章的「证据召回表」写表后总结。
+输入 scope 是本轮入报与引用的统计数字，top_recalled 是引用最多的材料，
+overview 是本报告开篇的案件总述。
+写出表后的一到两句总结：简体中文，40 到 120 字。
+术语约定（不得混用）：
+- "进入正文"与"被引用"是同一件事；scope.recalled_materials 就是这个数量。
+- 未被任何章节引用的材料**没有**进入正文，不得说成"已召回但未被引用"。
+- 引用次数是材料在章节中被引用的处数，不是材料份数。
+要求：
+- 直接陈述这批材料对本报告结论的支撑程度：多少份材料进入正文、引用一共多少处、
+  哪些材料承担了主要支撑、多少份可用材料完全没有进入正文。
+- 数字必须取自输入，不得自行推算或改写；不得引入表中没有的文件名。
+- 不要复述表格标题，不要用"综上所述""上表显示"这类空转句式开头。
+- 不得出现 material_id（如 m0012）、evidence_key、direction_id 或置信度百分比。
+只输出这一到两句话本身：不要引号、不要 JSON、不要标题、不要解释。"""
 
 STAGE_CHAPTER_HEADING_SYSTEM_V1 = """你负责为一章调查研判报告拟定标题。
 输入 topics 是本章包含的若干主题名；subjects 是本章材料中实际出现的具体对象，

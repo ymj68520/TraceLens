@@ -84,9 +84,10 @@ async def test_narrative_sections_render_with_filename_citations():
 
     response, _stage = render_stage_report(_envelope(), _materials(), _directions(), (), (), sections)
     headings = [s.heading for s in response.sections]
-    # The two generic skeleton headings are re-titled from their own content.
+    # Chapter 1 now carries the case overview and the recall table; the two
+    # generic skeleton headings below it are still re-titled from their content.
     assert headings == [
-        "研判范围与方法", "本轮共读取两份冻结材料",
+        "案件总述与证据召回", "本轮共读取两份冻结材料",
         "话术培训文档 7要素.docx 出现在窝点镜像中", "人工核查建议",
     ]
     body = response.sections[1]
@@ -286,7 +287,7 @@ def test_scope_chapter_does_not_claim_every_citation():
     response, _stage = render_stage_report(
         _envelope(), _materials(), _directions(), (), ())
     scope = response.sections[0]
-    assert scope.heading == "研判范围与方法"
+    assert scope.heading == "案件总述与证据召回"
     assert scope.citation_ids == ()
     # The findings still carry their citations.
     assert any(s.citation_ids for s in response.sections[1:])
@@ -379,6 +380,414 @@ def test_overflow_chapters_are_not_merged_without_bound():
     # chapter may exceed what a single batch produced.
     assert max(len(s.content) for s in response.sections) <= len(one_chapter)
     assert any("NARRATIVE_OVERFLOW_DROPPED" in w for w in stage.warnings)
+
+
+# ---------------------------------------------------------------------------
+# Report shape v5: chapter summaries, the case overview and the recall table.
+# ---------------------------------------------------------------------------
+
+
+def _narrative_rows(materials, directions, *, summary="本章表明存在待核活动，仍需补齐原始凭据。"):
+    """A chapter-shaped narrative row carrying its own direction provenance."""
+    return [{"heading": "话术培训材料", "content": "材料包含话术培训文档。" * 20,
+             "summary": summary,
+             "direction_ids": tuple(d.direction_id for d in directions)}]
+
+
+def test_each_chapter_carries_its_own_summary():
+    directions = _directions()
+    response, _stage = render_stage_report(
+        _envelope(), _materials(), directions, (), (),
+        _narrative_rows(_materials(), directions))
+    chapter = next(s for s in response.sections if s.heading == "话术培训材料")
+    assert chapter.summary == "本章表明存在待核活动，仍需补齐原始凭据。"
+
+
+def test_chapter_summary_is_optional_for_older_narratives():
+    """A narrative written before summaries existed still renders."""
+    directions = _directions()
+    rows = _narrative_rows(_materials(), directions, summary="")
+    response, _stage = render_stage_report(
+        _envelope(), _materials(), directions, (), (), rows)
+    chapter = next(s for s in response.sections if s.heading == "话术培训材料")
+    assert chapter.summary == ""
+
+
+def test_first_chapter_carries_overview_and_recall_table():
+    """Chapter 1 = scope paragraph + whole-case overview + recall table."""
+    directions = _directions()
+    rows = _narrative_rows(_materials(), directions)
+    response, _stage = render_stage_report(
+        _envelope(), _materials(), directions, (), (), rows,
+        overview="全案总述正文，说明材料整体呈现什么。")
+
+    first = response.sections[0]
+    assert first.heading == "案件总述与证据召回"
+    # The overview comes first (the reader meets the case), then the reading
+    # limits that qualify it.
+    assert "本轮在已入报的 2 份材料范围内研判" in first.content
+    assert "全案总述正文" in first.content
+    assert first.content.index("全案总述正文") < first.content.index("本轮在已入报的 2 份材料范围内研判")
+    table = first.recall_table
+    assert table is not None
+    # m001 is quoted by the only direction; m002 is readable but nothing cites
+    # it, so it must not appear as recalled evidence.
+    assert table.total_materials == 2
+    assert table.recalled_materials == 1
+    assert {row.evidence_name for row in table.rows} == {"7要素.docx"}
+    assert any("未被任何章节引用" in note for note in table.notes)
+    # The table's closing statement is the chapter's summary.
+    assert first.summary
+
+
+def test_recall_table_counts_references_and_chapters():
+    """Counts come from the chapters' own citation sets, never from the model."""
+    directions = _directions()
+    rows = [
+        {"heading": "话术培训材料", "content": "材料包含话术培训文档。" * 20,
+         "summary": "", "direction_ids": ("d1",)},
+        {"heading": "再次引用同一材料", "content": "材料再次提到培训话术正文片段。" * 20,
+         "summary": "", "direction_ids": ("d1",)},
+    ]
+    response, _stage = render_stage_report(
+        _envelope(), _materials(), directions, (), (), rows)
+
+    table = response.sections[0].recall_table
+    row = next(r for r in table.rows if r.evidence_name == "7要素.docx")
+    assert row.chapter_count == 2
+    # Both chapters cite the same material, so the report refers to it twice.
+    assert row.reference_count == 2
+    assert table.total_citations == 2
+
+
+def test_recall_table_reports_unreferenced_materials():
+    """A readable material no chapter cites is stated, not silently dropped."""
+    directions = _directions()
+    rows = _narrative_rows(_materials()[:1] and _materials(), directions)
+    # Only one material is quoted by the direction.
+    response, _stage = render_stage_report(
+        _envelope(), _materials(), directions, (), (), rows)
+    table = response.sections[0].recall_table
+    assert table.recalled_materials == 1
+    assert any("未被任何章节引用" in note for note in table.notes)
+
+
+def test_every_deterministic_chapter_also_gets_a_summary():
+    """The contract is one closing statement per chapter, whatever shape it took."""
+    response, _stage = render_stage_report(
+        _envelope(), _materials(), _directions(), (), (), None)
+
+    chapters = [s for s in response.sections if s.heading != "案件总述与证据召回"]
+    assert chapters, "fragment fallback produced no chapters"
+    for chapter in chapters:
+        assert chapter.summary, f"chapter without summary: {chapter.heading}"
+
+
+def test_difference_chapter_summary_counts_the_outcomes():
+    from httpserver.services.forensic_report.generation_stages import _comparison_summary
+
+    by_status = {"supported": [1, 2], "revised": [3], "contradicted": []}
+    labels = {"supported": "得到支持", "revised": "需要修正", "weakened": "支持减弱",
+              "contradicted": "存在相反材料", "insufficient": "依据不足", "case_only": "仅案情提出"}
+    summary = _comparison_summary(by_status, labels, 3)
+    assert "3 项基线方向" in summary and "2 项得到支持" in summary and "1 项" in summary
+
+
+def test_overview_drops_pipeline_batch_voice():
+    """"本批材料围绕…" reads like an internal batch log, not a case summary."""
+    from httpserver.services.forensic_report.generation_stages import _clean_overview
+
+    text = ("本批材料围绕受害主机磁盘镜像与相关日志展开，整体呈现 Windows 桌面主机的使用痕迹，"
+            "时间跨度集中在 2025 年 5 月 19 日至 20 日，反复出现服务宿主与清理工具。"
+            "该批材料同时存在大量空日志，构成实质性的分析缺口，需结合原始记录核实。")
+    cleaned = _clean_overview(text)
+    assert "本批" not in cleaned and "该批" not in cleaned
+    assert "这批材料" in cleaned
+
+
+def test_case_context_chapter_has_its_own_closing_line():
+    """Every chapter carries a summary, including the case-context chapter."""
+    class _GuidedEnv(_Env):
+        def __init__(self):
+            super().__init__("case_guided")
+            # StageAnalysis requires the full baseline lineage for a guided
+            # report; the renderer only reads these three attributes here.
+            from types import SimpleNamespace
+            self.baseline = SimpleNamespace(
+                report_id="rep-a", report_sha256="b" * 64,
+                evidence_scope_hash="0" * 64, directions=(), priorities={},
+                text_models=(), materials=())
+
+    response, _stage = render_stage_report(
+        _GuidedEnv(), _materials(), _directions(), (), ())
+    case_chapter = next(s for s in response.sections if s.heading == "本次案情（待核语境）")
+    assert case_chapter.summary
+    assert "调查语境" in case_chapter.summary
+
+
+def test_advisory_checklist_never_publishes_material_ids():
+    """The review checklist quoted "与 m0178 配置的关联关系" to the reader.
+
+    missing_information comes from the discovery model, so it can contain the
+    prompt's own material ids; the advisory chapter is the last place a reader
+    looks for an actionable gap, not for "m0178".
+    """
+    from httpserver.services.forensic_report.generation_stages import (
+        _advisory_text, _verification_checklist,
+    )
+    quote = MaterialSpan(material_id="m001", quote="培训话术正文片段", character_start=0,
+                         character_end=8, ambiguous=False)
+    direction = InvestigationDirection(
+        direction_id="d1", title="话术材料", description="材料包含话术培训文档。",
+        finding_kind="observation", supporting_refs=(quote,), counter_refs=(),
+        missing_information=("与 m0178 配置的关联关系", "缺少该程序的命令行参数"),
+        alternative_explanations=(), baseline_direction_ids=(),
+        case_context_quote="", origin="material",
+    )
+    response, _stage = render_stage_report(
+        _envelope(), _materials(), (direction,), (), ())
+
+    advisory = next(s for s in response.sections if s.heading == "人工核查建议")
+    assert "m0178" not in advisory.content
+    assert "缺少该程序的命令行参数" in advisory.content
+    # The note is scrubbed, not silently dropped when it still says something.
+    assert any("配置的关联关系" in note for note in _verification_checklist((direction,)))
+    assert "m0178" not in _advisory_text((direction,), ())
+
+
+def test_fragment_and_difference_chapters_never_publish_material_ids():
+    """Raw model text published in the fallback paths is scrubbed too."""
+    quote = MaterialSpan(material_id="m001", quote="培训话术正文片段", character_start=0,
+                         character_end=8, ambiguous=False)
+    direction = InvestigationDirection(
+        direction_id="d1", title="与 m0178 配置相关", description="材料显示 m0179 被引用。",
+        finding_kind="observation", supporting_refs=(quote,), counter_refs=(),
+        missing_information=("与 m0178 的关联",), alternative_explanations=(),
+        baseline_direction_ids=(), case_context_quote="", origin="material",
+    )
+    response, _stage = render_stage_report(
+        _envelope(), _materials(), (direction,), (), (), narrative=None)
+
+    fragment = next(s for s in response.sections if s.heading.startswith("材料自主发现"))
+    assert "m0178" not in fragment.content and "m0179" not in fragment.content
+
+
+def test_difference_chapter_reason_is_scrubbed_of_material_ids():
+    """The comparison reason is model text and carried "m0334" into the report."""
+    from httpserver.services.forensic_report.models import DirectionComparison
+
+    quote = MaterialSpan(material_id="m001", quote="培训话术正文片段", character_start=0,
+                         character_end=8, ambiguous=False)
+    baseline_direction = InvestigationDirection(
+        direction_id="d0001", title="Prefetch 哈希差异", description="基线描述",
+        finding_kind="observation", supporting_refs=(quote,), counter_refs=(),
+        missing_information=(), alternative_explanations=(),
+        baseline_direction_ids=(), case_context_quote="", origin="material",
+    )
+    comparison = DirectionComparison(
+        baseline_direction_id="d0001", status="revised",
+        reason="材料实际显示 m0330 为 0x37d25f9a、m0333 为 0x37d25f9e，基线描述需修正。",
+        supporting_refs=(quote,), counter_refs=(), missing_information=(),
+        case_context_quote="",
+    )
+    baseline = type("B", (), {
+        "directions": (baseline_direction,), "report_id": "r1",
+        "report_sha256": "0" * 64, "priorities": {}})()
+
+    class _Guided(_Env):
+        def __init__(self):
+            super().__init__("case_guided")
+            self.baseline = baseline
+
+    response, _stage = render_stage_report(
+        _Guided(), _materials(),
+        (baseline_direction,), (comparison,), ())
+
+    diff = next(s for s in response.sections if s.heading == "与首次研判的差异")
+    assert "m0330" not in diff.content and "m0333" not in diff.content
+    assert "0x37d25f9a" in diff.content
+
+
+def test_recall_table_absent_in_fragment_fallback():
+    """Without chapters nothing was recalled, so there is no table to show."""
+    response, _stage = render_stage_report(
+        _envelope(), _materials(), _directions(), (), (), None)
+    assert response.sections[0].recall_table is None
+    assert response.sections[0].heading == "案件总述与证据召回"
+
+
+def test_recall_table_uses_frozen_classification_labels():
+    from httpserver.services.forensic_report.models import (
+        ReportClassifications, ReportEvidenceClassification,
+    )
+    directions = _directions()
+    rows = _narrative_rows(_materials(), directions)
+    classifications = ReportClassifications(items=(
+        ReportEvidenceClassification(
+            evidence_key="file:/case/话术/7要素.docx", material_type="document",
+            topics=("communications",), priority="P1", reason="涉及话术",
+            basis_type="neutral_material", source_hash="a" * 64,
+        ),
+    ))
+    response, _stage = render_stage_report(
+        _envelope(), _materials(), directions, (), (), rows,
+        classifications=classifications)
+
+    table = response.sections[0].recall_table
+    row = next(r for r in table.rows if r.evidence_name == "7要素.docx")
+    assert row.material_type == "document"
+    assert row.priority == "P1"
+    assert row.topics == ("communications",)
+
+
+def test_recall_table_is_bounded_and_says_what_it_omits():
+    """A 900-material scope must not render a 900-row table."""
+    from httpserver.services.forensic_report import generation_stages as stages
+    from httpserver.services.forensic_report.generation_sources import material
+    from httpserver.services.forensic_report.models import InvestigationDirection, MaterialSpan
+
+    many = tuple(
+        material(f"m{i:03d}", f"file:/case/材料{i}.txt", kind="text",
+                 status="ready", text="材料正文" * 10)
+        for i in range(1, stages._RECALL_TABLE_LIMIT + 15)
+    )
+    direction = InvestigationDirection(
+        direction_id="d1", title="多材料观察", description="大量材料共同支持同一观察。",
+        finding_kind="observation",
+        supporting_refs=tuple(
+            MaterialSpan(material_id=m.material_id, quote="材料正文",
+                         character_start=0, character_end=4, ambiguous=False)
+            for m in many),
+        counter_refs=(), missing_information=(), alternative_explanations=(),
+        baseline_direction_ids=(), case_context_quote="", origin="material",
+    )
+    rows = [{"heading": "多材料观察", "content": "材料正文重复出现。" * 20,
+             "summary": "", "direction_ids": ("d1",)}]
+    response, _stage = render_stage_report(
+        _envelope(), many, (direction,), (), (), rows)
+
+    table = response.sections[0].recall_table
+    assert len(table.rows) == stages._RECALL_TABLE_LIMIT
+    assert table.recalled_materials == len(many)
+    assert any("其余" in note for note in table.notes)
+
+
+def test_overview_fallback_states_counts_without_inventing_facts():
+    from httpserver.services.forensic_report.generation_stages import (
+        _deterministic_overview, _recall_stats,
+    )
+
+    directions = _directions()
+    stats = _recall_stats(_materials(), _narrative_rows(_materials(), directions), directions)
+    overview = _deterministic_overview(_envelope(), stats, directions)
+
+    assert "2 份入报材料" in overview
+    assert "1 条有材料支撑的观察" in overview
+    assert "未使用案情描述" in overview
+
+
+@pytest.mark.asyncio
+async def test_overview_uses_the_model_and_falls_back_on_failure():
+    from httpserver.services.forensic_report.generation_stages import compose_case_overview
+
+    directions = _directions()
+    rows = _narrative_rows(_materials(), directions)
+
+    class OverviewModel:
+        def __init__(self, answer=None, error=None):
+            self.answer, self.error = answer, error
+
+        async def chat_completion(self, system, user, **kwargs):
+            if self.error:
+                raise self.error
+            return {"content": self.answer}
+
+    good = OverviewModel(answer="本案材料的核心是话术培训文档，需要核对原始来源。"
+                               + "材料同时显示该文档被多次打开，其流转路径尚未确定。" * 4)
+    assert "核心是话术培训文档" in await compose_case_overview(
+        _envelope(), _materials(), directions, rows, llm=good)
+
+    broken = OverviewModel(error=RuntimeError("provider down"))
+    fallback = await compose_case_overview(
+        _envelope(), _materials(), directions, rows, llm=broken)
+    assert "2 份入报材料" in fallback
+
+
+@pytest.mark.asyncio
+async def test_overview_rejects_ids_and_short_answers():
+    from httpserver.services.forensic_report.generation_stages import compose_case_overview
+
+    directions = _directions()
+    rows = _narrative_rows(_materials(), directions)
+
+    class ShortModel:
+        async def chat_completion(self, system, user, **kwargs):
+            return {"content": "材料见 m0001。"}
+
+    overview = await compose_case_overview(
+        _envelope(), _materials(), directions, rows, llm=ShortModel())
+    # Unusable answer falls back rather than publishing an id to the reader.
+    assert "m0001" not in overview
+
+
+def test_json_wrapped_chapter_answers_are_unwrapped():
+    """A model answers the summary prompt with JSON; the reader must not see it.
+
+    A live v5 run published `{"overview":"..."}` verbatim as the first
+    chapter's body, because only three key names were unwrapped.
+    """
+    from httpserver.services.forensic_report.generation_stages import _plain_models_text
+
+    assert _plain_models_text('{"overview":"全案总述正文。"}') == "全案总述正文。"
+    assert _plain_models_text('{"summary":"小结句。"}') == "小结句。"
+    assert _plain_models_text('{"result":"结果句。"}') == "结果句。"
+    # A single unrecognised string value is still the answer.
+    assert _plain_models_text('{"whatever":"唯一字符串值。"}') == "唯一字符串值。"
+    # No JSON: unchanged.
+    assert _plain_models_text("裸文本答案。") == "裸文本答案。"
+
+
+def test_recall_summary_contradicting_the_table_is_rejected():
+    """Non-recalled materials must not be described as recalled-but-unused."""
+    from httpserver.services.forensic_report.generation_stages import (
+        _RECALL_SUMMARY_CONTRADICTION_RE,
+    )
+
+    wrong = "388 份材料支持结论；其余可用材料虽已召回，却未被任何章节引用。"
+    assert _RECALL_SUMMARY_CONTRADICTION_RE.search(wrong)
+    right = "388 份材料进入正文，共 780 处引用；其余 407 份可用材料没有进入正文。"
+    assert not _RECALL_SUMMARY_CONTRADICTION_RE.search(right)
+
+
+@pytest.mark.asyncio
+async def test_recall_summary_falls_back_when_the_model_inverts_coverage():
+    from httpserver.services.forensic_report.generation_stages import (
+        _recall_stats, compose_recall_summary,
+    )
+
+    directions = _directions()
+    stats = _recall_stats(_materials(), _narrative_rows(_materials(), directions), directions)
+
+    class InvertingModel:
+        async def chat_completion(self, system, user, **kwargs):
+            return {"content": "388 份材料支持结论，其余可用材料虽已召回，却未被任何章节引用。"}
+
+    summary = await compose_recall_summary(stats, "总述", llm=InvertingModel())
+    assert "虽已召回" not in summary
+    assert "1 处引用" in summary or "被正文实际引用" in summary
+
+
+@pytest.mark.asyncio
+async def test_chapter_summary_rejects_prompt_internal_ids():
+    from httpserver.services.forensic_report.generation_stages import _clean_chapter_summary
+
+    assert _clean_chapter_summary("详见 m0012 与 m0013。") == ""
+    assert _clean_chapter_summary("本章材料不足。") == ""
+    # A stock connector is stripped, not fatal.
+    cleaned = _clean_chapter_summary(
+        "综上所述，本章材料共同显示远控配置已写入，但回连是否实际发生仍需网络日志佐证。")
+    assert cleaned.startswith("本章材料共同显示")
+    assert "综上所述" not in cleaned
 
 
 # ---------------------------------------------------------------------------

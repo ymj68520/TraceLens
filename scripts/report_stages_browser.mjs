@@ -11,6 +11,11 @@ const { createServer } = require('vite');
 const react = require('@vitejs/plugin-react').default;
 const puppeteer = require('puppeteer');
 const webRoot = fileURLToPath(new URL('../web/', import.meta.url));
+// Tailwind resolves its `content` globs and the postcss config relative to the
+// process cwd. Running this script from the repo root produced a page with no
+// utility CSS at all, which silently turned two assertions into false failures
+// ("dashed" border style, overlay geometry).
+process.chdir(webRoot);
 const output = await fs.mkdtemp(path.join(os.tmpdir(), 'tracelens-report-browser-'));
 const browserPath = process.env.CHROME_BIN || (process.platform === 'win32'
   ? 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe' : undefined);
@@ -263,12 +268,19 @@ async function test(name, run, initial, options) {
 try {
   await server.listen();
   origin = `http://127.0.0.1:${server.httpServer.address().port}`;
+  // Root in a container cannot use Chrome's sandbox; this render is our own
+  // local page, reached only through the synthetic request interception.
   browser = await puppeteer.launch({ executablePath: browserPath, headless: true,
-    args: ['--disable-background-networking', '--disable-component-update', '--disable-sync', '--no-first-run'] });
+    args: ['--no-sandbox', '--disable-setuid-sandbox',
+      '--disable-background-networking', '--disable-component-update', '--disable-sync', '--no-first-run'] });
   results.browser = await browser.version();
   await test('first completion opens exact report, even if another newer version exists', async f => {
     await f.start();
-    assert.deepEqual(f.state.posts[0], { task_id: 'synthetic-T', requested_by: '合成分析人', analysis_mode: 'evidence_only' });
+    // The default generate target is the comprehensive (classification)
+    // narrative: commit 9502116f deliberately restored it after the two-stage
+    // flow had made evidence_only the implicit default. The request therefore
+    // carries no analysis_mode at all.
+    assert.deepEqual(f.state.posts[0], { task_id: 'synthetic-T', requested_by: '合成分析人' });
     f.state.publish(report('unrelated-newer', 2));
     f.state.complete(report('report-a', 1));
     await f.page.waitForSelector(versionSelector(2));

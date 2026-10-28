@@ -22,6 +22,19 @@ class ScopeType(str, Enum):
     CASE = "case"
 
 
+# Two-stage prompt versions that may appear in a V5 envelope. Kept as explicit
+# tuples rather than a suffix test so adding a version is a deliberate edit in
+# one place (the compat map in generation_prompts must list it too).
+_EVIDENCE_ONLY_VERSIONS = (
+    "final-report:evidence-only:v1", "final-report:evidence-only:v2",
+    "final-report:evidence-only:v3", "final-report:evidence-only:v4",
+)
+_CASE_GUIDED_VERSIONS = (
+    "final-report:case-guided:v1", "final-report:case-guided:v2",
+    "final-report:case-guided:v3", "final-report:case-guided:v4",
+)
+
+
 class ReportStatus(str, Enum):
     QUEUED = "queued"
     GENERATING = "generating"
@@ -565,10 +578,10 @@ class ReportGenerationEnvelopeV5(ReportGenerationEnvelopeV4):
             )):
                 raise ValueError("case-derived analysis is forbidden in neutral sources")
         if self.analysis_mode == "evidence_only":
-            if self.case_description or self.baseline is not None or self.prompt_version not in ("final-report:evidence-only:v1", "final-report:evidence-only:v2", "final-report:evidence-only:v3"):
+            if self.case_description or self.baseline is not None or self.prompt_version not in _EVIDENCE_ONLY_VERSIONS:
                 raise ValueError("first-stage input must be independent of case context")
         else:
-            if not self.case_description.strip() or self.baseline is None or self.prompt_version not in ("final-report:case-guided:v1", "final-report:case-guided:v2", "final-report:case-guided:v3"):
+            if not self.case_description.strip() or self.baseline is None or self.prompt_version not in _CASE_GUIDED_VERSIONS:
                 raise ValueError("second-stage input requires case context and baseline")
             if self.baseline.evidence_scope_hash != self.evidence_scope_hash:
                 raise ValueError("second-stage evidence scope changed")
@@ -695,14 +708,68 @@ class StructuredReportCitation(BaseModel):
     claim_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
+EvidenceTopic = Literal[
+    "funds", "identity_accounts", "communications", "location", "network", "tools",
+]
+MaterialType = Literal[
+    "document", "chat_record", "transaction_record", "image", "log",
+    "android_artifact", "other", "unknown",
+]
+
+
+class EvidenceRecallRow(BaseModel):
+    """One evidence item the report actually recalled into its chapters.
+
+    The recall table answers a question the material list cannot: of everything
+    admitted to the report, which files did the narrative actually use, and how
+    heavily. Every field is derived from the frozen sections, materials and
+    classifications — never written by a model — so the counts that follow the
+    table can be stated as fact.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    citation_id: str = Field(min_length=1, max_length=256)
+    evidence_key: str = Field(min_length=1, max_length=4096)
+    evidence_name: str = Field(min_length=1, max_length=512)
+    material_type: MaterialType = "unknown"
+    priority: Literal["P1", "P2", "P3", "unassessed"] = "unassessed"
+    topics: tuple[EvidenceTopic, ...] = ()
+    reference_count: int = Field(default=0, ge=0)
+    chapter_count: int = Field(default=0, ge=0)
+    material_status: Literal["ready", "partial", "unavailable"] = "ready"
+
+
+class EvidenceRecallTable(BaseModel):
+    """Deterministic evidence recall table rendered inside the first chapter."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    title: str = Field(default="证据召回表", min_length=1, max_length=64)
+    total_materials: int = Field(default=0, ge=0)
+    recalled_materials: int = Field(default=0, ge=0)
+    unavailable_materials: int = Field(default=0, ge=0)
+    total_citations: int = Field(default=0, ge=0)
+    rows: tuple[EvidenceRecallRow, ...] = ()
+    notes: tuple[str, ...] = ()
+
+
 class StructuredReportSection(BaseModel):
-    """One narrative section with its exact citation references."""
+    """One narrative section with its exact citation references.
+
+    ``summary`` is the chapter's own closing statement (one or two sentences).
+    ``recall_table`` is populated only on the report's first chapter. Both are
+    optional so every manifest published before this format keeps validating
+    unchanged.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     heading: str = Field(min_length=1, max_length=500)
     content: str = Field(min_length=1, max_length=100_000)
     citation_ids: tuple[str, ...] = ()
+    summary: str = Field(default="", max_length=2000)
+    recall_table: EvidenceRecallTable | None = None
 
 
 class StructuredReportResponse(BaseModel):
@@ -792,15 +859,6 @@ class CitationManifestEntry(BaseModel):
     evidence_captured_at: int | None = None
     analysis_version: int | None = None
     claim_type: ClaimType | None = None
-
-
-EvidenceTopic = Literal[
-    "funds", "identity_accounts", "communications", "location", "network", "tools",
-]
-MaterialType = Literal[
-    "document", "chat_record", "transaction_record", "image", "log",
-    "android_artifact", "other", "unknown",
-]
 
 
 class ClassificationQuestion(BaseModel):
@@ -974,10 +1032,10 @@ class GenerationReportManifest(BaseModel):
 
     @model_validator(mode="after")
     def _classification_contract(self):
-        if self.prompt_version in ("final-report:evidence-only:v1", "final-report:case-guided:v1", "final-report:evidence-only:v2", "final-report:case-guided:v2", "final-report:evidence-only:v3", "final-report:case-guided:v3"):
+        if self.prompt_version in (*_EVIDENCE_ONLY_VERSIONS, *_CASE_GUIDED_VERSIONS):
             if self.schema_version != "1.2" or self.stage_analysis is None or self.evidence_classifications is None:
                 raise ValueError("stage report requires frozen analysis and classifications")
-            expected = "evidence_only" if self.prompt_version in ("final-report:evidence-only:v1", "final-report:evidence-only:v2", "final-report:evidence-only:v3") else "case_guided"
+            expected = "evidence_only" if self.prompt_version in _EVIDENCE_ONLY_VERSIONS else "case_guided"
             if self.stage_analysis.analysis_mode != expected:
                 raise ValueError("stage report mode mismatch")
         elif self.stage_analysis is not None:

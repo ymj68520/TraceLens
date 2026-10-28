@@ -244,4 +244,85 @@ describe('NarrativeReportView', () => {
             vi.useRealTimers();
         }
     });
+
+    test('chapter summary renders as a closing block, not inline prose', async () => {
+        const report = {
+            ...NARRATIVE,
+            sections: [{
+                heading: '话术培训材料',
+                content: '材料包含话术培训文档。',
+                citation_ids: [],
+                summary: '本章材料共同显示存在话术培训文档，仍需原始来源才能定性。',
+            }],
+        };
+        render(<NarrativeReportView taskId="t1" reportId="rep-1"
+            fetchNarrative={vi.fn().mockResolvedValue(report)} />);
+        const summary = await screen.findByTestId('chapter-summary');
+        expect(summary).toHaveTextContent('本章小结');
+        expect(summary).toHaveTextContent('仍需原始来源才能定性');
+        expect(screen.getByText('材料包含话术培训文档。')).toBeInTheDocument();
+    });
+
+    test('older reports without a summary render unchanged', async () => {
+        render(<NarrativeReportView taskId="t1" reportId="rep-1"
+            fetchNarrative={vi.fn().mockResolvedValue(NARRATIVE)} />);
+        await screen.findByTestId('narrative-sections');
+        expect(screen.queryByTestId('chapter-summary')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('evidence-recall-table')).not.toBeInTheDocument();
+    });
+
+    test('first chapter renders the recall table between prose and summary', async () => {
+        const report = {
+            ...NARRATIVE,
+            sections: [{
+                heading: '案件总述与证据召回',
+                content: '本轮在已入报的 2 份材料范围内研判。\n\n全案总述：材料显示存在付款安排。',
+                citation_ids: [],
+                summary: '2 份入报材料中有 1 份被正文实际引用，其余未构成结论依据。',
+                recall_table: {
+                    title: '证据召回表',
+                    total_materials: 2,
+                    recalled_materials: 1,
+                    unavailable_materials: 0,
+                    total_citations: 3,
+                    rows: [{
+                        citation_id: 'c001',
+                        evidence_key: 'file:/case/往来记录.txt',
+                        evidence_name: '往来记录.txt',
+                        material_type: 'document',
+                        priority: 'P1',
+                        topics: ['funds'],
+                        reference_count: 3,
+                        chapter_count: 2,
+                        material_status: 'ready',
+                    }],
+                    notes: ['另有 1 份可用材料未被任何章节引用，其内容未进入本报告正文。'],
+                },
+            }],
+            citations: [{ citation_id: 'c001', evidence_key: 'file:/case/往来记录.txt',
+                analysis_id: null, claim_id: null }],
+        };
+        const TracebackPanel = vi.fn(() => <div data-testid="stub-panel" />);
+        render(<NarrativeReportView taskId="t1" reportId="rep-1"
+            fetchNarrative={vi.fn().mockResolvedValue(report)} TracebackPanel={TracebackPanel} />);
+
+        const table = await screen.findByTestId('evidence-recall-table');
+        expect(table).toHaveTextContent('证据召回表');
+        expect(table).toHaveTextContent('入报 2 份');
+        expect(table).toHaveTextContent('往来记录.txt');
+        expect(table).toHaveTextContent('资金活动');
+        expect(screen.getByTestId('recall-row')).toBeInTheDocument();
+        expect(table).toHaveTextContent('未被任何章节引用');
+        const section = table.closest('[data-testid="narrative-section"]');
+        // The chapter badge must describe the table's coverage, not claim zero
+        // citations just because the chapter itself carries no citation_ids.
+        expect(section.textContent).toContain('1 份被引材料');
+        const summary = screen.getByTestId('chapter-summary');
+        expect(section.contains(summary)).toBe(true);
+        expect(table.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('recall-citation-c001'));
+        await waitFor(() => expect(TracebackPanel).toHaveBeenCalled());
+        expect(TracebackPanel.mock.calls[0][0].citation.citation_id).toBe('c001');
+    });
 });

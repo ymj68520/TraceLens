@@ -6,8 +6,9 @@
 // 显示的内容（§12/§16）。citation 点击 = exact citation_id → manifest
 // entry 查表，绝不在正文里做 regex/Markdown token 推导（§13）。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpRight, ChevronDown, FileSearch, FileText } from 'lucide-react';
+import { ArrowUpRight, ChevronDown, FileSearch, FileText, Quote } from 'lucide-react';
 import CitationTracebackPanel from './CitationTracebackPanel';
+import EvidenceRecallTable from './EvidenceRecallTable';
 import { getInvestigationSnapshot } from '../../services/investigationService';
 import { investigationEvidenceUrl } from '../../utils/evidenceKey';
 import { FIELD_AUTH_ENABLED } from '../../config/runtime';
@@ -20,6 +21,20 @@ import StageAnalysisPanel, { StageSourcePanel } from './StageAnalysisPanel';
 function previewText(value, limit) {
     const text = String(value || '').replace(/\s+/g, ' ').trim();
     return text.length > limit ? `${text.slice(0, limit)}…` : text;
+}
+
+// 章节末尾的最终总结。视觉上是正文的收束块而不是又一段正文：
+// 左侧竖线 + 浅色底，标题明确写「本章小结」，读者能一眼区分
+// "模型叙述" 与 "结论句"。没有任何 citation —— 结论只重组本章已引用的事实。
+function ChapterSummary({ summary }) {
+    return (
+        <aside className="mt-6 rounded-xl border border-slate-200 border-l-4 border-l-indigo-400 bg-slate-50/80 px-4 py-3 dark:border-slate-700 dark:border-l-indigo-500 dark:bg-slate-900/40" data-testid="chapter-summary" aria-label="本章小结">
+            <p className="mb-1 inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-indigo-600 dark:text-indigo-300">
+                <Quote size={12} aria-hidden />本章小结
+            </p>
+            <p className="whitespace-pre-wrap break-words text-[15px] font-medium leading-7 text-slate-800 dark:text-slate-100">{summary}</p>
+        </aside>
+    );
 }
 
 // Sustained hover duration before a tooltip becomes pinned (persistent).
@@ -354,9 +369,16 @@ const NarrativeReportView = ({
                                             <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 font-mono text-xs font-bold text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300">{String(index + 1).padStart(2, '0')}</span>
                                             <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{section.heading}</h3>
                                         </div>
-                                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"><FileSearch size={12} aria-hidden />{section.citation_ids?.length || 0} 条证据引用</span>
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"><FileSearch size={12} aria-hidden />{section.recall_table
+                                            ? `${section.recall_table.recalled_materials} 份被引材料`
+                                            : `${section.citation_ids?.length || 0} 条证据引用`}</span>
                                     </div>
                                     <p className="whitespace-pre-wrap break-words text-[15px] leading-8 text-slate-700 dark:text-slate-300">{prose}</p>
+                                    {/* 首章：正文(范围+总述) → 证据召回表 → 表后总结。表是可点的引用清单，
+                                        点击与正文引用标记走同一条 exact 查表路径。 */}
+                                    {section.recall_table && (
+                                        <EvidenceRecallTable table={section.recall_table} focusCitationId={focusCitationId} onOpenCitation={openCitation} />
+                                    )}
                                     {unresolved.length > 0 && (
                                         <details className="group mt-6 border-t border-dashed border-slate-200 pt-4 dark:border-slate-700">
                                             <summary className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-blue-700 dark:text-slate-400 dark:hover:text-blue-300"><ChevronDown size={14} className="transition-transform group-open:rotate-180" aria-hidden />另有 {unresolved.length} 条章节级引用（未推测具体句子）</summary>
@@ -365,6 +387,7 @@ const NarrativeReportView = ({
                                             </div>
                                         </details>
                                     )}
+                                    {section.summary && <ChapterSummary summary={section.summary} />}
                                 </section>
                             );
                         })}
