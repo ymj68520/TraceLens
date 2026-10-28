@@ -31,9 +31,17 @@ int main(int argc, char** argv) {
     const auto selected = service.selectImportantFiles(dbPath, budget);
     const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
                              std::chrono::steady_clock::now() - started).count();
+    const auto& stats = service.lastSelectionStats();
 
     std::cout << "SELECTION_RESULT selected=" << selected.size()
               << " budget=" << budget << " elapsed_s=" << elapsed << "\n";
+    // Provenance is the point of this bench: a 977-file model selection and a
+    // 977-file heuristic fallback are indistinguishable by count alone, and the
+    // silent-fallback regressions were exactly that kind of ambiguity.
+    std::cout << "SELECTION_SOURCE source=" << stats.source
+              << " candidates=" << stats.candidates
+              << " listed=" << stats.listed
+              << " reply_usable=" << stats.reply_usable << "\n";
     // SMART_SELECT_LIST_ALL=1 prints every selected path. Verifying that a
     // specific artefact was actually chosen needs the whole list: the 25-row
     // preview never included the Quasar controller on PC.E01, so a successful
@@ -44,8 +52,13 @@ int main(int argc, char** argv) {
     for (size_t i = 0; i < shown; ++i) {
         std::cout << "  [" << i << "] " << selected[i] << "\n";
     }
-    // 与管线一致的可靠性线（LLMAnalysisService.cpp：少于预算 1/4 即回退启发式）。
-    const bool okay = selected.size() * 4 >= budget;
+    // The selector's own verdict, not a re-derived one. Judging `selected`
+    // against `budget` repeated the bug inside the bench: at budget 4500 the
+    // prompt could only list ~979 rows, and 977 correct picks printed
+    // SELECTION_UNRELIABLE. Only the rejection/fallback paths are failures here;
+    // "heuristic_fits" means the pool was smaller than the budget and needs no
+    // model call at all.
+    const bool okay = stats.source == "llm" || stats.source == "heuristic_fits";
     std::cout << (okay ? "SELECTION_OK" : "SELECTION_UNRELIABLE") << "\n";
     return okay ? 0 : 1;
 }

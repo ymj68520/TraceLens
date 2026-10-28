@@ -1210,6 +1210,18 @@ void TaskManager::start_analysis(const std::string& task_id) {
                                 }
                                 return true;
                             });
+                        // Record how the selection was reached. Without this a
+                        // fallback run is indistinguishable from a successful
+                        // one in the task record, which is how a 5000-candidate
+                        // prompt failure stayed invisible while still producing
+                        // a full-looking analysis.
+                        const auto& selection = llmService.lastSelectionStats();
+                        add_audit_log(task_id, "LLM_SELECTION",
+                            "source=" + selection.source +
+                            " candidates=" + std::to_string(selection.candidates) +
+                            " listed=" + std::to_string(selection.listed) +
+                            " reply_usable=" + std::to_string(selection.reply_usable) +
+                            " selected=" + std::to_string(selection.selected));
                     }
                     
                     update_progress(task_id, TaskPhase::LLM_ANALYSIS, 100, 
