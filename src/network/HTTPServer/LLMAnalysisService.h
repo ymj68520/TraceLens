@@ -45,6 +45,23 @@ public:
      */
     using ProgressCallback = std::function<bool(int current, int total, const std::string& currentFile)>;
 
+    // How the last selectImportantFiles() call reached its result.
+    //
+    // The call has three reachable paths that all return a plausible list:
+    // the model answered, the model's answer was rejected, or the pool already
+    // fit the budget. A caller that only sees the returned size cannot tell a
+    // 977-file model selection from a 977-file heuristic fallback, which is
+    // exactly the ambiguity that hid the "0 usable paths" regressions.
+    struct SelectionStats {
+        std::string source;       // llm | llm_rejected | heuristic_fits | heuristic_fallback | empty
+        size_t candidates = 0;    // rows the candidate pool returned
+        size_t listed = 0;        // rows actually offered to the model
+        size_t reply_usable = 0;  // paths the model's reply resolved to
+        size_t selected = 0;      // paths returned to the caller
+    };
+
+    const SelectionStats& lastSelectionStats() const { return lastSelection_; }
+
     /**
      * @brief Constructor
      */
@@ -165,6 +182,9 @@ private:
 
     // LLM_MAX_CONCURRENCY workers. 1 keeps the historical one-file-at-a-time loop.
     int llmConcurrency() const;
+
+    // Last selection's provenance; see SelectionStats.
+    SelectionStats lastSelection_;
     int runFileAnalyses(const std::string& filesDbPath,
                         const AnalysisOptions& options,
                         const std::vector<std::string>& files,
@@ -197,6 +217,28 @@ private:
     std::string buildFileListSummary(const std::vector<std::string>& files);
     std::vector<std::string> parseImportantFiles(const std::string& llmResponse,
                                                   const std::vector<std::string>& allFiles);
+
+    /**
+     * @brief Trim a model selection to `maxFiles` while keeping artefact variety
+     *
+     * The model often answers with (almost) the whole listing, in path order.
+     * A plain prefix cut then keeps whichever family sorts first — on PC.E01
+     * with a 200-file budget that was 197 Windows event logs, and every
+     * registry hive, prefetch, jump list and the Quasar controller dropped out.
+     * Round-robin across artefact families first, then fill the remainder in
+     * the model's own order.
+     */
+    static std::vector<std::string> truncateWithDiversity(
+        const std::vector<std::string>& ordered, size_t maxFiles);
+
+    /**
+     * @brief Coarse artefact family of a path, used to spread a budget
+     *
+     * Families are the investigation questions, not file formats: event logs
+     * answer "what happened when", registry hives "what was configured",
+     * execution evidence "what ran", user documents "what was taken".
+     */
+    static std::string artefactFamily(const std::string& path);
 
     /**
      * @brief Heuristic forensic importance score for a file path (higher = more important)

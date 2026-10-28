@@ -334,7 +334,10 @@ std::vector<std::string> LLMAnalysisService::selectImportantFiles(const std::str
     } else {
         candidates = getPrioritizedCandidates(filesDbPath, candidateBudget, skipBinary);
     }
+    lastSelection_ = SelectionStats{};
+    lastSelection_.candidates = candidates.size();
     if (candidates.empty()) {
+        lastSelection_.source = "empty";
         return {};
     }
 
@@ -344,7 +347,10 @@ std::vector<std::string> LLMAnalysisService::selectImportantFiles(const std::str
     // old shortcut returned the candidate set verbatim, which is how a PC.E01
     // run spent 68% of its budget on uniformly grey JPGs.
     if (maxFiles > 0 && candidates.size() <= maxFiles) {
-        return selectByHeuristic(std::move(candidates), candidates.size());
+        auto ranked = selectByHeuristic(std::move(candidates), candidates.size());
+        lastSelection_.source = "heuristic_fits";
+        lastSelection_.selected = ranked.size();
+        return ranked;
     }
 
     // Bound the prompt sent to the LLM: on real images (thousands of files) an
@@ -369,6 +375,7 @@ std::vector<std::string> LLMAnalysisService::selectImportantFiles(const std::str
     const size_t summaryFiles = forensics::analysis_budget::summary_row_count(
         listing.data(), listing.size());
     std::vector<std::string> summaryList(ranked.begin(), ranked.begin() + summaryFiles);
+    lastSelection_.listed = summaryList.size();
 
     // Build summary of file list for LLM
     std::string fileListSummary = buildFileListSummary(summaryList);
@@ -381,6 +388,14 @@ std::vector<std::string> LLMAnalysisService::selectImportantFiles(const std::str
     // maxFiles == 0（全量）时 fallback 不截断：selectByHeuristic 的预算参数
     // 取候选总数（传 0 会把列表截成空）。
     const size_t fallbackBudget = (maxFiles == 0) ? candidates.size() : maxFiles;
+    // Every terminal path below records why it was taken; a caller that only
+    // sees the returned list cannot tell a model selection from a fallback.
+    const auto fallback = [&](const char* source) {
+        auto rankedFallback = selectByHeuristic(candidates, fallbackBudget);
+        lastSelection_.source = source;
+        lastSelection_.selected = rankedFallback.size();
+        return rankedFallback;
+    };
     std::string prompt = R"(You are a digital forensics expert. Analyze the following list of files from a forensic disk image and identify the most important files for investigation.
 
 Consider:
@@ -410,14 +425,16 @@ Do not include any explanation, only the JSON array of integers.)";
         if (!response.success) {
             std::cerr << "LLM request failed: " << response.errorMessage
                       << " — falling back to heuristic file selection" << std::endl;
-            return selectByHeuristic(candidates, fallbackBudget);
+            return fallback("heuristic_fallback");
         }
 
         // The model answers with indices into summaryList (stable, unambiguous).
         // Full paths and bare file names are still accepted for older prompts
         // and for models that echo the path instead of the index.
         auto selected = parseImportantFiles(response.content, summaryList);
-        if (selected.empty() || (maxFiles > 0 && selected.size() < maxFiles / 4)) {
+        lastSelection_.reply_usable = selected.size();
+        if (!forensics::analysis_budget::selection_is_usable(
+                selected.size(), summaryList.size(), maxFiles)) {
             // The model responded but returned (nearly) nothing usable —
             // its selection is unreliable, prefer the deterministic ranking.
             // Log enough of the response to diagnose a prompt/format mismatch:
@@ -427,16 +444,22 @@ Do not include any explanation, only the JSON array of integers.)";
                       << " usable paths (budget " << maxFiles << ", listed "
                       << summaryList.size() << ") — falling back to heuristic "
                       << "file selection. Response head: " << snippet << std::endl;
-            return selectByHeuristic(candidates, fallbackBudget);
+            return fallback("llm_rejected");
         }
         if (maxFiles > 0 && selected.size() > maxFiles) {
-            selected.resize(maxFiles);
+            // Not a plain prefix: the model usually answers with most of the
+            // listing in path order, so cutting at maxFiles kept 197 of 200
+            // event logs on PC.E01 while every hive, prefetch and the Quasar
+            // controller fell outside the budget.
+            selected = truncateWithDiversity(selected, maxFiles);
         }
+        lastSelection_.source = "llm";
+        lastSelection_.selected = selected.size();
         return selected;
     } catch (const std::exception& e) {
         std::cerr << "Failed to select important files: " << e.what()
                   << " — falling back to heuristic file selection" << std::endl;
-        return selectByHeuristic(candidates, fallbackBudget);
+        return fallback("heuristic_fallback");
     }
 }
 
@@ -1232,6 +1255,96 @@ std::vector<std::string> LLMAnalysisService::selectByHeuristic(std::vector<std::
     return ranked;
 }
 
+std::string LLMAnalysisService::artefactFamily(const std::string& path) {
+    std::string lower;
+    lower.reserve(path.size());
+    for (char c : path) lower += static_cast<char>(::tolower(static_cast<unsigned char>(c)));
+
+    // Ordered most-specific first: an .evtx under System32/config still belongs
+    // to the log family, so the log test has to win over the hive test.
+    if (lower.find("/winevt/logs/") != std::string::npos ||
+        lower.find(".evtx") != std::string::npos ||
+        lower.find("/var/log/") != std::string::npos) {
+        return "event_logs";
+    }
+    if (lower.find("/system32/config/") != std::string::npos ||
+        lower.find("amcache") != std::string::npos ||
+        lower.find("syscache") != std::string::npos ||
+        lower.find("ntuser.dat") != std::string::npos ||
+        lower.find("usrclass.dat") != std::string::npos ||
+        lower.find("/config/") != std::string::npos) {
+        return "registry";
+    }
+    if (lower.find("/prefetch/") != std::string::npos) return "execution_history";
+    if (lower.find("sruedb") != std::string::npos ||
+        lower.find("/srum/") != std::string::npos ||
+        lower.find("automaticdestinations") != std::string::npos ||
+        lower.find("customdestinations") != std::string::npos ||
+        lower.find("/recentdocs/") != std::string::npos ||
+        lower.find("$recycle.bin") != std::string::npos) {
+        return "user_activity";
+    }
+    // Case directories and user-tree executables are the dropped tooling.
+    if (hasCaseDirectoryKeyword(lower) || isVendoredProgramTree(lower)) return "case_tooling";
+    if (lower.find("/.ssh/") != std::string::npos ||
+        lower.find(".bash_history") != std::string::npos ||
+        lower.find("shadow") != std::string::npos ||
+        lower.find("passwd") != std::string::npos) {
+        return "credentials";
+    }
+    if (lower.find("/users/") != std::string::npos ||
+        lower.find("/home/") != std::string::npos ||
+        lower.find("/root/") != std::string::npos ||
+        lower.find("/desktop/") != std::string::npos ||
+        lower.find("/documents/") != std::string::npos ||
+        lower.find("/downloads/") != std::string::npos) {
+        return "user_files";
+    }
+    if (lower.find("/programdata/") != std::string::npos ||
+        lower.find("/program files") != std::string::npos ||
+        lower.find("/windows/") != std::string::npos) {
+        return "system_state";
+    }
+    return "other";
+}
+
+std::vector<std::string> LLMAnalysisService::truncateWithDiversity(
+        const std::vector<std::string>& ordered, size_t maxFiles) {
+    if (maxFiles == 0 || ordered.size() <= maxFiles) return ordered;
+
+    // Bucket preserving the model's own ranking inside each family.
+    std::vector<std::string> family_order;
+    std::unordered_map<std::string, std::vector<std::string>> buckets;
+    for (const auto& path : ordered) {
+        std::string family = artefactFamily(path);
+        auto it = buckets.find(family);
+        if (it == buckets.end()) {
+            family_order.push_back(family);
+            buckets[family].push_back(path);
+        } else {
+            it->second.push_back(path);
+        }
+    }
+
+    // Round-robin: one row per family per pass, so a family that dominates the
+    // model's reply cannot consume the whole budget before the others appear.
+    std::vector<std::string> trimmed;
+    trimmed.reserve(maxFiles);
+    std::vector<size_t> cursor(buckets.size(), 0);
+    bool progress = true;
+    while (trimmed.size() < maxFiles && progress) {
+        progress = false;
+        for (size_t f = 0; f < family_order.size() && trimmed.size() < maxFiles; ++f) {
+            const auto& bucket = buckets[family_order[f]];
+            if (cursor[f] < bucket.size()) {
+                trimmed.push_back(bucket[cursor[f]++]);
+                progress = true;
+            }
+        }
+    }
+    return trimmed;
+}
+
 std::string LLMAnalysisService::buildFileListSummary(const std::vector<std::string>& files) {
     // One indexed full path per line. The previous directory-grouped layout
     // listed bare file names under a heading, so a model asked for "paths"
@@ -1272,8 +1385,17 @@ std::vector<std::string> LLMAnalysisService::parseImportantFiles(const std::stri
 
     try {
         size_t start = llmResponse.find('[');
+        // A truncated reply has an opening bracket but no closing one. The old
+        // parser required both, so a response that named hundreds of valid
+        // indices was thrown away entirely and the run silently fell back to
+        // the heuristic after ~200s (the model hit its output-token ceiling
+        // mid-array). Every complete entry before the truncation point is still
+        // a real, unambiguous index, so parse up to the text that exists.
         size_t end = llmResponse.rfind(']');
-        if (start != std::string::npos && end != std::string::npos && end > start) {
+        if (start != std::string::npos && (end == std::string::npos || end <= start)) {
+            end = llmResponse.size() > 0 ? llmResponse.size() - 1 : 0;
+        }
+        if (start != std::string::npos && end >= start) {
             std::string jsonStr = llmResponse.substr(start, end - start + 1);
 
             // Single pass so the model's ranking order is preserved: whichever

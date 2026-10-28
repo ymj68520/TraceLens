@@ -327,6 +327,13 @@ struct LLMSelectionHeuristicTestAccess {
         LLMAnalysisService service;
         return service.parseImportantFiles(response, candidates);
     }
+    static std::vector<std::string> truncateDiverse(
+            const std::vector<std::string>& ordered, size_t maxFiles) {
+        return LLMAnalysisService::truncateWithDiversity(ordered, maxFiles);
+    }
+    static std::string family(const std::string& path) {
+        return LLMAnalysisService::artefactFamily(path);
+    }
     static std::string buildSummary(const std::vector<std::string>& files) {
         LLMAnalysisService service;
         return service.buildFileListSummary(files);
@@ -389,6 +396,103 @@ TEST_F(SceneClassifierTest, SmartSelectionParsesIndices) {
     // Out-of-range indices are ignored, not clamped onto a real file.
     auto clamped = A::parseSelection("[0, 99]", candidates);
     EXPECT_TRUE(clamped.empty());
+}
+
+// Regression (PC.E01, 5000-candidate pool): a reply truncated at the model's
+// output-token ceiling has an opening '[' but no closing ']'. The parser used
+// to require both, so a 200-second response carrying hundreds of valid indices
+// resolved to ZERO paths and the run silently fell back to the heuristic. Every
+// complete entry before the truncation point is a real index and must survive;
+// a trailing half-written number must not be guessed at.
+TEST_F(SceneClassifierTest, SmartSelectionParsesTruncatedReply) {
+    using A = forensics::LLMSelectionHeuristicTestAccess;
+
+    std::vector<std::string> candidates = {
+        "/a/one.txt", "/b/two.txt", "/c/three.txt", "/d/four.txt",
+    };
+
+    // Truncated cleanly on a comma: all three complete indices count.
+    auto cleanCut = A::parseSelection("[3, 1, 4,", candidates);
+    ASSERT_EQ(cleanCut.size(), 3u);
+    EXPECT_EQ(cleanCut[0], "/c/three.txt");
+    EXPECT_EQ(cleanCut[1], "/a/one.txt");
+    EXPECT_EQ(cleanCut[2], "/d/four.txt");
+
+    // Truncated mid-number: "2" is complete and index 2 is real; the dangling
+    // "1" is a fragment of an unknown number and must not be read as index 1.
+    auto midNumber = A::parseSelection("[2, 1", candidates);
+    ASSERT_EQ(midNumber.size(), 1u);
+    EXPECT_EQ(midNumber[0], "/b/two.txt");
+
+    // A reply with no bracket at all is still unparseable.
+    EXPECT_TRUE(A::parseSelection("I could not decide", candidates).empty());
+}
+
+// Regression (PC.E01, llm_max_files=200): the model answered with 977 of the
+// 979 listed rows in path order, and the budget was applied as a plain prefix.
+// The first 200 rows were 197 Windows event logs; every registry hive, all
+// prefetch, all jump lists and the Quasar controller fell outside — the report
+// then had nothing to say about what was configured or what ran. The cut must
+// spend the budget across artefact families before following the model's order.
+TEST_F(SceneClassifierTest, SmartSelectionTruncationKeepsArtefactDiversity) {
+    using A = forensics::LLMSelectionHeuristicTestAccess;
+
+    std::vector<std::string> ordered;
+    // 300 event logs first — exactly the shape the model returned.
+    for (int i = 0; i < 300; ++i) {
+        ordered.push_back("/Windows/System32/winevt/Logs/Log" + std::to_string(i) + ".evtx");
+    }
+    ordered.push_back("/Windows/System32/config/SAM");
+    ordered.push_back("/Windows/System32/config/SYSTEM");
+    ordered.push_back("/Windows/appcompat/Programs/Amcache.hve");
+    ordered.push_back("/Users/admin/Desktop/控制端/Quasar v1.4.1/Quasar.exe");
+    ordered.push_back("/Users/admin/Desktop/控制端/Quasar v1.4.1/client.bin");
+    ordered.push_back("/Windows/Prefetch/QUASAR.EXE-1234.pf");
+    ordered.push_back("/Users/admin/NTUSER.DAT");
+    ordered.push_back("/Users/admin/AppData/Roaming/Microsoft/Windows/Recent/AutomaticDestinations/abc.automaticDestinations-ms");
+    ordered.push_back("/Users/admin/.ssh/known_hosts");
+
+    const auto trimmed = A::truncateDiverse(ordered, 200);
+
+    ASSERT_EQ(trimmed.size(), 200u);
+
+    int logs = 0, registry = 0, tooling = 0, other = 0;
+    bool has_quasar = false, has_prefetch = false;
+    for (const auto& p : trimmed) {
+        const std::string f = A::family(p);
+        if (f == "event_logs") ++logs;
+        else if (f == "registry") ++registry;
+        else if (f == "case_tooling") ++tooling;
+        else ++other;
+        if (p.find("Quasar.exe") != std::string::npos) has_quasar = true;
+        if (p.find("Prefetch") != std::string::npos) has_prefetch = true;
+    }
+
+    // The rare, decisive families are all present — that is the whole point.
+    EXPECT_GE(registry, 2);
+    EXPECT_GE(tooling, 2);
+    EXPECT_TRUE(has_quasar);
+    EXPECT_TRUE(has_prefetch);
+    EXPECT_GE(other, 1);          // jump list or credentials
+    // Logs still get the largest share, but no longer the entire budget.
+    EXPECT_GT(logs, 150);
+    EXPECT_LT(logs, 200);
+}
+
+TEST_F(SceneClassifierTest, SmartSelectionTruncationIsStableUnderBudget) {
+    using A = forensics::LLMSelectionHeuristicTestAccess;
+
+    std::vector<std::string> ordered = {
+        "/a/one.txt", "/b/two.txt", "/c/three.txt",
+    };
+    // Nothing to cut: the selection is returned untouched.
+    const auto same = A::truncateDiverse(ordered, 10);
+    ASSERT_EQ(same.size(), 3u);
+    EXPECT_EQ(same, ordered);
+
+    // maxFiles == 0 means unlimited, never "cut everything".
+    const auto unlimited = A::truncateDiverse(ordered, 0);
+    EXPECT_EQ(unlimited.size(), 3u);
 }
 
 TEST_F(SceneClassifierTest, SmartSelectionParsesPathsAndNames) {
