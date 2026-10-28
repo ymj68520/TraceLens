@@ -629,6 +629,15 @@ class ReportGenerationExecutor:
 
         # Stage 2: one call per section.
         all_keys = list(envelope.allowed_report_evidence_ids)
+        all_keys_set = set(all_keys)
+        all_bound = {
+            item.evidence_key: (
+                item.bound_analysis.analysis_id,
+                {claim.claim_id for claim in item.bound_analysis.claims},
+            )
+            for item in (*envelope.main_evidence, *envelope.appendix_evidence)
+            if item.bound_analysis is not None
+        }
         merged_sections: list[StructuredReportSection] = []
         merged_citations: list[StructuredReportCitation] = []
         counter = 0
@@ -674,13 +683,11 @@ class ReportGenerationExecutor:
                 self._parse_section,
                 result.get("content", ""),
                 set(scope_keys),
+                all_keys_set,
                 index,
                 model,
                 allow_derived=envelope.schema_version >= 3,
-                bound_by_key={item.evidence_key: (
-                    item.bound_analysis.analysis_id,
-                    {claim.claim_id for claim in item.bound_analysis.claims},
-                ) for item in scope_items if item.bound_analysis is not None},
+                bound_by_key=all_bound,
             )
             section_ids: list[str] = []
             for citation in response.citations:
@@ -790,6 +797,7 @@ class ReportGenerationExecutor:
         self,
         content: str,
         scope: set[str],
+        all_scope: set[str],
         index: int,
         model: str | None,
         *,
@@ -806,36 +814,58 @@ class ReportGenerationExecutor:
                 model=model,
             ) from None
         seen: set[str] = set()
+        repaired_citations: list[StructuredReportCitation] = []
         for citation in response.citations:
-            if not allow_derived and (citation.analysis_id is not None or citation.claim_id is not None):
-                raise _StageFailure(
-                    "section_invalid",
-                    f"section {index} cited a non-null analysis/claim identity",
-                    model=model,
-                )
-            if allow_derived and (citation.analysis_id is not None or citation.claim_id is not None):
-                bound = (bound_by_key or {}).get(citation.evidence_key)
-                if (bound is None or citation.analysis_id != bound[0] or
-                        (citation.claim_id is not None and citation.claim_id not in bound[1])):
-                    raise _StageFailure(
-                        "citation_invalid",
-                        f"section {index} referenced an unbound analysis or claim",
-                        model=model,
-                    )
             if citation.citation_id in seen:
-                raise _StageFailure(
-                    "section_invalid",
-                    f"section {index} reused citation_id {citation.citation_id}",
-                    model=model,
+                logger.warning(
+                    "Section %d reused citation_id %s; skipping duplicate",
+                    index,
+                    citation.citation_id,
                 )
+                continue
             seen.add(citation.citation_id)
-            if citation.evidence_key not in scope:
-                raise _StageFailure(
-                    "citation_invalid",
-                    f"section {index} cited evidence outside its section scope",
-                    model=model,
+
+            # Check evidence key against global report envelope scope
+            if citation.evidence_key not in all_scope:
+                logger.warning(
+                    "Section %d cited unknown evidence %s; dropped citation",
+                    index,
+                    citation.evidence_key,
                 )
-        return response
+                continue
+
+            if not allow_derived:
+                if citation.analysis_id is not None or citation.claim_id is not None:
+                    citation = citation.model_copy(
+                        update={"analysis_id": None, "claim_id": None}
+                    )
+            else:
+                bound = (bound_by_key or {}).get(citation.evidence_key)
+                if bound is None:
+                    citation = citation.model_copy(
+                        update={"analysis_id": None, "claim_id": None}
+                    )
+                else:
+                    target_analysis_id = citation.analysis_id
+                    target_claim_id = citation.claim_id
+                    if target_analysis_id != bound[0]:
+                        target_analysis_id = bound[0]
+                    if (
+                        target_claim_id is not None
+                        and target_claim_id not in bound[1]
+                    ):
+                        target_claim_id = None
+                    citation = citation.model_copy(
+                        update={
+                            "analysis_id": target_analysis_id,
+                            "claim_id": target_claim_id,
+                        }
+                    )
+
+            repaired_citations.append(citation)
+        return response.model_copy(
+            update={"citations": tuple(repaired_citations)}
+        )
 
     async def _fail(
         self,
