@@ -934,10 +934,8 @@ async def execute_agent_cycle(
                 except Exception as exc:
                     logger.warning(f"Failed to auto-resolve multi-image case scopes: {exc}")
 
-            if not effective_source_scopes:
-                effective_source_scopes = [request.task_id, "windows", "linux", "android", "src_event_logs"]
-            else:
-                effective_source_scopes = list(dict.fromkeys(effective_source_scopes))
+            base_scopes = [request.task_id, "windows", "linux", "android", "src_event_logs", "src_pc", "src_server", "src_phone"]
+            effective_source_scopes = list(dict.fromkeys(effective_source_scopes + base_scopes))
 
             # Canonical input fingerprint for durable idempotency
             effective_guidance = (

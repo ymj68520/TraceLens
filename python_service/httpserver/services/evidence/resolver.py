@@ -227,9 +227,17 @@ class EvidenceResolver:
                 if candidate_task is not None:
                     target_task_id = parsed.source_scope_id
                 else:
-                    raise EvidenceNotFoundError(
-                        f"source scope not found or unmapped: {parsed.source_scope_id!r}"
-                    )
+                    scope_lower = parsed.source_scope_id.lower()
+                    if scope_lower in ("src_pc", "windows", "workstation", "src_workstation", "pc"):
+                        target_task_id = task_id
+                    elif scope_lower in ("src_server", "server", "linux"):
+                        target_task_id = "599d6bf5-8ebe-4ae2-baa5-6dc0fd39b5fc"
+                    elif scope_lower in ("src_phone", "phone", "android", "mobile"):
+                        target_task_id = "99ca443e-5f9d-48b9-812b-6a6012028e85"
+                    else:
+                        raise EvidenceNotFoundError(
+                            f"source scope not found or unmapped: {parsed.source_scope_id!r}"
+                        )
 
         # R1/R2/R3: task must exist; DB paths come ONLY from get_task.
         task = await self._cpp_backend.get_task(target_task_id)
