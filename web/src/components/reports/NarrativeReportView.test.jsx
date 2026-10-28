@@ -1,4 +1,4 @@
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import NarrativeReportView from './NarrativeReportView';
 
@@ -180,5 +180,68 @@ describe('NarrativeReportView', () => {
             />,
         );
         expect(await screen.findByTestId('narrative-report-error')).toHaveTextContent('503');
+    });
+
+    test('sustained 1.5s hover pins the tooltip; outside click or Escape dismisses it', async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        try {
+            const report = {
+                ...NARRATIVE,
+                sections: [{ heading: 'Overview', content: 'Recovered a.txt from the device.', citation_ids: ['cit-a'] }],
+            };
+            render(<NarrativeReportView taskId="t1" reportId="rep-1" fetchNarrative={vi.fn().mockResolvedValue(report)}
+                fetchSnapshot={vi.fn().mockResolvedValue({ payload: { name: 'a.txt', initial_summary: 'Short evidence introduction' } })} />);
+            const marker = await screen.findByTestId('citation-chip-cit-a');
+            const wrapper = marker.parentElement;
+
+            fireEvent.mouseEnter(wrapper);
+            expect(screen.getByTestId('citation-tooltip-cit-a')).toBeInTheDocument();
+            fireEvent.mouseLeave(wrapper);
+            expect(screen.queryByTestId('citation-tooltip-cit-a')).not.toBeInTheDocument();
+
+            fireEvent.mouseEnter(wrapper);
+            act(() => { vi.advanceTimersByTime(1500); });
+            fireEvent.mouseLeave(wrapper);
+            const tooltip = screen.getByTestId('citation-tooltip-cit-a');
+            expect(tooltip).toBeInTheDocument();
+
+            fireEvent.pointerDown(tooltip);
+            expect(screen.getByTestId('citation-tooltip-cit-a')).toBeInTheDocument();
+
+            fireEvent.pointerDown(document.body);
+            expect(screen.queryByTestId('citation-tooltip-cit-a')).not.toBeInTheDocument();
+
+            fireEvent.mouseEnter(wrapper);
+            act(() => { vi.advanceTimersByTime(1500); });
+            fireEvent.mouseLeave(wrapper);
+            expect(screen.getByTestId('citation-tooltip-cit-a')).toBeInTheDocument();
+            fireEvent.keyDown(document.body, { key: 'Escape' });
+            expect(screen.queryByTestId('citation-tooltip-cit-a')).not.toBeInTheDocument();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    test('chip click while pinned dismisses the tooltip and opens the traceback drawer', async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        try {
+            const report = {
+                ...NARRATIVE,
+                sections: [{ heading: 'Overview', content: 'Recovered a.txt from the device.', citation_ids: ['cit-a'] }],
+            };
+            render(<NarrativeReportView taskId="t1" reportId="rep-1" fetchNarrative={vi.fn().mockResolvedValue(report)}
+                fetchSnapshot={vi.fn().mockResolvedValue({ payload: { name: 'a.txt', initial_summary: 'Short evidence introduction' } })}
+                TracebackPanel={() => <div data-testid="stub-panel" />} />);
+            const marker = await screen.findByTestId('citation-chip-cit-a');
+            fireEvent.mouseEnter(marker.parentElement);
+            act(() => { vi.advanceTimersByTime(1500); });
+            expect(screen.getByTestId('citation-tooltip-cit-a')).toBeInTheDocument();
+
+            fireEvent.click(marker);
+            expect(screen.getByTestId('citation-overlay')).toBeInTheDocument();
+            expect(screen.queryByTestId('citation-tooltip-cit-a')).not.toBeInTheDocument();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });

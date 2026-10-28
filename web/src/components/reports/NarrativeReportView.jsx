@@ -5,7 +5,7 @@
 // 之后 Investigation 里的 rebind/新 accepted/claim 变化都不会改变这里
 // 显示的内容（§12/§16）。citation 点击 = exact citation_id → manifest
 // entry 查表，绝不在正文里做 regex/Markdown token 推导（§13）。
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUpRight, ChevronDown, FileSearch, FileText } from 'lucide-react';
 import CitationTracebackPanel from './CitationTracebackPanel';
 import { getInvestigationSnapshot } from '../../services/investigationService';
@@ -22,14 +22,30 @@ function previewText(value, limit) {
     return text.length > limit ? `${text.slice(0, limit)}…` : text;
 }
 
-function CitationMarker({ taskId, reportId, citationId, citation, classification, inline, focused = false, preview, onOpen, onPreview }) {
+// Sustained hover duration before a tooltip becomes pinned (persistent).
+const CITATION_PIN_DELAY_MS = 1500;
+
+function CitationMarker({ taskId, reportId, citationId, citation, classification, inline, focused = false, preview, pinned = false, onPin, onUnpin, onOpen, onPreview }) {
     const [hovered, setHovered] = useState(false);
     const [popupPlacement, setPopupPlacement] = useState({ left: 0, below: false });
     const markerRef = useRef(null);
+    const tooltipRef = useRef(null);
+    const pinTimerRef = useRef(null);
     const isAndroid = citation?.evidence_key?.startsWith('android_artifact:');
     const filename = isAndroid ? `Android 工件 ${citation?.evidence_key?.split(':').slice(-2).join(' #')}`
         : citation?.evidence_key?.slice(5).split(/[\\/]/).pop() || citationId;
     const evidenceUrl = investigationEvidenceUrl(taskId, citation?.evidence_key, { reportId, citationId });
+    const clearPinTimer = () => {
+        if (pinTimerRef.current !== null) {
+            clearTimeout(pinTimerRef.current);
+            pinTimerRef.current = null;
+        }
+    };
+    const dismiss = () => {
+        clearPinTimer();
+        setHovered(false);
+        onUnpin?.();
+    };
     const showPreview = () => {
         const bounds = markerRef.current?.getBoundingClientRect();
         if (bounds) {
@@ -43,12 +59,46 @@ function CitationMarker({ taskId, reportId, citationId, citation, classification
         setHovered(true);
         onPreview(citationId);
     };
+    // Hover keeps the tooltip transient; only a sustained hover promotes it
+    // to a pinned (persistent) tooltip, which survives mouse leave until an
+    // outside click (chip included) or Escape dismisses it.
+    const handleMouseEnter = () => {
+        showPreview();
+        if (pinned || pinTimerRef.current !== null) return;
+        pinTimerRef.current = setTimeout(() => {
+            pinTimerRef.current = null;
+            onPin?.(citationId);
+        }, CITATION_PIN_DELAY_MS);
+    };
+    useEffect(() => clearPinTimer, []);
+    useEffect(() => {
+        if (!pinned) return undefined;
+        const onPointerDown = (event) => {
+            if (tooltipRef.current?.contains(event.target)) return;
+            clearPinTimer();
+            setHovered(false);
+            onUnpin?.();
+        };
+        const onKeyDown = (event) => {
+            if (event.key === 'Escape') {
+                clearPinTimer();
+                setHovered(false);
+                onUnpin?.();
+            }
+        };
+        document.addEventListener('pointerdown', onPointerDown, true);
+        document.addEventListener('keydown', onKeyDown);
+        return () => {
+            document.removeEventListener('pointerdown', onPointerDown, true);
+            document.removeEventListener('keydown', onKeyDown);
+        };
+    }, [pinned, onUnpin]);
     return (
         <span
             ref={markerRef}
             className={`relative inline-block ${inline ? 'ml-1 align-super' : ''}`}
-            onMouseEnter={showPreview}
-            onMouseLeave={() => setHovered(false)}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={() => { clearPinTimer(); setHovered(false); }}
             onFocus={showPreview}
             onBlur={() => setHovered(false)}
         >
@@ -56,7 +106,7 @@ function CitationMarker({ taskId, reportId, citationId, citation, classification
                 type="button"
                 id={`report-citation-${citationId}`}
                 data-testid={`citation-chip-${citationId}`}
-                onClick={() => onOpen(citationId)}
+                onClick={() => { dismiss(); onOpen(citationId); }}
                 data-priority={classification?.priority || 'unassessed'}
                 title={classification ? priorityStyle(classification.priority).label : '历史未分类'}
                 className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono font-semibold transition-all hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${priorityStyle(classification?.priority).tone} ${focused ? 'ring-2 ring-amber-400 ring-offset-2 dark:ring-offset-slate-900' : ''} ${inline ? 'text-[10px] leading-none' : 'text-[11px]'}`}
@@ -64,8 +114,8 @@ function CitationMarker({ taskId, reportId, citationId, citation, classification
             >
                 {citationId}{classification && <span>{priorityStyle(classification.priority).label}</span>}
             </button>
-            {hovered && (
-                <span role="tooltip" data-testid={`citation-tooltip-${citationId}`} style={{ left: popupPlacement.left }} className={`absolute z-40 block w-80 max-w-[80vw] overflow-hidden rounded-2xl border border-slate-200 bg-white text-left text-xs normal-case shadow-[0_16px_40px_rgba(15,23,42,0.18)] ring-1 ring-white/70 dark:border-slate-600 dark:bg-slate-800 dark:ring-slate-700 ${popupPlacement.below ? 'top-full mt-2' : 'bottom-full mb-2'}`}>
+            {(hovered || pinned) && (
+                <span ref={tooltipRef} role="tooltip" data-testid={`citation-tooltip-${citationId}`} style={{ left: popupPlacement.left }} className={`absolute z-40 block w-80 max-w-[80vw] overflow-hidden rounded-2xl border border-slate-200 bg-white text-left text-xs normal-case shadow-[0_16px_40px_rgba(15,23,42,0.18)] ring-1 ring-white/70 dark:border-slate-600 dark:bg-slate-800 dark:ring-slate-700 ${popupPlacement.below ? 'top-full mt-2' : 'bottom-full mb-2'}`}>
                     <span className="flex items-start gap-2.5 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-indigo-50/40 px-3.5 py-3 dark:border-slate-700 dark:from-blue-950/50 dark:to-slate-800">
                         <span className="inline-flex shrink-0 items-center rounded-md bg-blue-600 px-1.5 py-0.5 font-mono font-bold text-white">{citationId}</span>
                         <span className="min-w-0 break-all font-semibold leading-5 text-slate-800 dark:text-slate-100">{preview?.title || filename}</span>
@@ -103,17 +153,23 @@ const NarrativeReportView = ({
     const [report, setReport] = useState(null);
     const [error, setError] = useState(null);
     const [openCitationId, setOpenCitationId] = useState(null);
+    // At most one pinned (persistent) tooltip at a time, mirroring the
+    // single-open traceback drawer; null = no pinned tooltip.
+    const [pinnedCitationId, setPinnedCitationId] = useState(null);
     const [citationPreviews, setCitationPreviews] = useState({});
     const identityRef = useRef(null);
     const pendingPreviewsRef = useRef(new Set());
     const tracebackRef = useRef(null);
     const focusedCitationRef = useRef(null);
+    const pinCitation = useCallback((citationId) => setPinnedCitationId(citationId), []);
+    const unpinCitation = useCallback(() => setPinnedCitationId(null), []);
 
     useEffect(() => {
         identityRef.current = identity;
         setReport(null);
         setError(null);
         setOpenCitationId(null);
+        setPinnedCitationId(null);
         setCitationPreviews({});
         pendingPreviewsRef.current.clear();
         if (!identity) return undefined;
@@ -287,7 +343,7 @@ const NarrativeReportView = ({
                             let cursor = 0;
                             placements.forEach(({ end, citationId }) => {
                                 prose.push(section.content.slice(cursor, end));
-                                prose.push(<CitationMarker key={citationId} taskId={taskId} reportId={reportId} citationId={citationId} citation={citationsById.get(citationId)} classification={classificationsByKey.get(citationsById.get(citationId)?.evidence_key)} inline focused={focusCitationId === citationId} preview={citationPreviews[citationId]} onOpen={openCitation} onPreview={loadPreview} />);
+                                prose.push(<CitationMarker key={citationId} taskId={taskId} reportId={reportId} citationId={citationId} citation={citationsById.get(citationId)} classification={classificationsByKey.get(citationsById.get(citationId)?.evidence_key)} inline focused={focusCitationId === citationId} pinned={pinnedCitationId === citationId} onPin={pinCitation} onUnpin={unpinCitation} preview={citationPreviews[citationId]} onOpen={openCitation} onPreview={loadPreview} />);
                                 cursor = end;
                             });
                             prose.push(section.content.slice(cursor));
@@ -305,7 +361,7 @@ const NarrativeReportView = ({
                                         <details className="group mt-6 border-t border-dashed border-slate-200 pt-4 dark:border-slate-700">
                                             <summary className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-blue-700 dark:text-slate-400 dark:hover:text-blue-300"><ChevronDown size={14} className="transition-transform group-open:rotate-180" aria-hidden />另有 {unresolved.length} 条章节级引用（未推测具体句子）</summary>
                                             <div className="mt-3 flex flex-wrap gap-1.5">
-                                                {unresolved.map((citationId) => <CitationMarker key={citationId} taskId={taskId} reportId={reportId} citationId={citationId} citation={citationsById.get(citationId)} classification={classificationsByKey.get(citationsById.get(citationId)?.evidence_key)} focused={focusCitationId === citationId} preview={citationPreviews[citationId]} onOpen={openCitation} onPreview={loadPreview} />)}
+                                                {unresolved.map((citationId) => <CitationMarker key={citationId} taskId={taskId} reportId={reportId} citationId={citationId} citation={citationsById.get(citationId)} classification={classificationsByKey.get(citationsById.get(citationId)?.evidence_key)} focused={focusCitationId === citationId} pinned={pinnedCitationId === citationId} onPin={pinCitation} onUnpin={unpinCitation} preview={citationPreviews[citationId]} onOpen={openCitation} onPreview={loadPreview} />)}
                                             </div>
                                         </details>
                                     )}
