@@ -460,6 +460,83 @@ def test_recall_table_counts_references_and_chapters():
     assert table.total_citations == 2
 
 
+def test_recall_rows_explain_what_each_material_contributed():
+    """The table says what a material contributed, not just how often it was cited."""
+    directions = _directions()
+    rows = _narrative_rows(_materials(), directions)
+    response, _stage = render_stage_report(
+        _envelope(), _materials(), directions, (), (), rows)
+
+    table = response.sections[0].recall_table
+    row = table.rows[0]
+    assert row.contribution
+    # The deterministic fallback names the finding the material backs.
+    assert "话术培训材料" in row.contribution
+    # ...and reads as a sentence, not a stitched fragment ("的成立").
+    assert "的成立" not in row.contribution
+    assert "支撑「" in row.contribution
+    # Counts are demoted to a footnote, so they must not lead the explanation.
+    assert not row.contribution.startswith("引用")
+
+
+def test_model_contribution_is_used_when_usable():
+    directions = _directions()
+    rows = _narrative_rows(_materials(), directions)
+    contributions = {
+        "file:/case/话术/7要素.docx":
+            "支撑话术培训材料的认定，正文引用的培训话术正文片段表明该文档用于话术演练，"
+            "但缺少原始来源与流转路径。",
+    }
+    response, _stage = render_stage_report(
+        _envelope(), _materials(), directions, (), (), rows,
+        recall_contributions=contributions)
+
+    row = response.sections[0].recall_table.rows[0]
+    assert row.contribution.startswith("支撑话术培训材料的认定")
+    assert "培训话术正文片段" in row.contribution
+
+
+@pytest.mark.asyncio
+async def test_contribution_rejects_counts_and_uses_fallback_per_row():
+    """A rejected per-row answer never leaves the row without an explanation."""
+    from httpserver.services.forensic_report.generation_stages import (
+        _clean_contribution, _recall_stats, compose_recall_contributions,
+    )
+
+    directions = _directions()
+    stats = _recall_stats(_materials(), _narrative_rows(_materials(), directions), directions)
+
+    class CountingModel:
+        async def chat_completion(self, system, user, **kwargs):
+            return {"content": "该材料被引用 5 次，被 2 章引用，对本案很重要。"}
+
+    contributions = await compose_recall_contributions(stats, llm=CountingModel())
+    assert contributions == {}
+    # A count-only answer is not a contribution.
+    assert _clean_contribution("该材料被引用 5 次，被 2 章引用。") == ""
+
+
+@pytest.mark.asyncio
+async def test_contribution_falls_back_when_the_provider_fails():
+    from httpserver.services.forensic_report.generation_stages import (
+        _recall_stats, compose_recall_contributions,
+    )
+
+    directions = _directions()
+    stats = _recall_stats(_materials(), _narrative_rows(_materials(), directions), directions)
+
+    class BrokenModel:
+        async def chat_completion(self, system, user, **kwargs):
+            raise RuntimeError("provider down")
+
+    assert await compose_recall_contributions(stats, llm=BrokenModel()) == {}
+    # The table still publishes a deterministic sentence for each row.
+    response, _stage = render_stage_report(
+        _envelope(), _materials(), directions, (), (),
+        _narrative_rows(_materials(), directions), recall_contributions={})
+    assert all(row.contribution for row in response.sections[0].recall_table.rows)
+
+
 def test_recall_table_reports_unreferenced_materials():
     """A readable material no chapter cites is stated, not silently dropped."""
     directions = _directions()

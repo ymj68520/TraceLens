@@ -721,10 +721,11 @@ class EvidenceRecallRow(BaseModel):
     """One evidence item the report actually recalled into its chapters.
 
     The recall table answers a question the material list cannot: of everything
-    admitted to the report, which files did the narrative actually use, and how
-    heavily. Every field is derived from the frozen sections, materials and
-    classifications — never written by a model — so the counts that follow the
-    table can be stated as fact.
+    admitted to the report, which files did the narrative actually use, and what
+    each one contributed. The counts and identity fields are derived from the
+    frozen sections, materials and classifications; ``contribution`` is the one
+    model-written field, produced from those same frozen facts and re-checked
+    against them before publication (with a deterministic fallback per row).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -738,6 +739,10 @@ class EvidenceRecallRow(BaseModel):
     reference_count: int = Field(default=0, ge=0)
     chapter_count: int = Field(default=0, ge=0)
     material_status: Literal["ready", "partial", "unavailable"] = "ready"
+    # What this material actually contributed to this report: which findings it
+    # backs and with what concrete content. Replaces the priority / reference
+    # count / chapter count columns, which stated how much rather than what.
+    contribution: str = Field(default="", max_length=600)
 
 
 class EvidenceRecallTable(BaseModel):

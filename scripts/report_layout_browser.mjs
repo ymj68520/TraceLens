@@ -155,7 +155,12 @@ const audit = () => {
     const rect = card.getBoundingClientRect();
     const summary = card.querySelector('[data-testid="chapter-summary"]');
     const table = card.querySelector('[data-testid="evidence-recall-table"]');
-    const body = card.querySelector('p.whitespace-pre-wrap');
+    // The body paragraph is the report prose, NOT the summary's own inner
+    // paragraph — ChapterSummary renders a p.whitespace-pre-wrap too, and the
+    // lead placement puts it before the body, which made this selector pick
+    // the summary itself and report the summary as overlapping its own body.
+    const body = [...card.querySelectorAll('p.whitespace-pre-wrap')]
+      .find(p => !p.closest('[data-testid="chapter-summary"]')) || null;
     const header = card.querySelector('h3');
     return {
       index,
@@ -166,8 +171,15 @@ const audit = () => {
       headerInside: header ? rect.top <= header.getBoundingClientRect().top && header.getBoundingClientRect().bottom <= rect.bottom : null,
       bodyInside: body ? rect.top <= body.getBoundingClientRect().top && body.getBoundingClientRect().bottom <= rect.bottom + 1 : null,
       summaryInside: summary ? rect.top <= summary.getBoundingClientRect().top && summary.getBoundingClientRect().bottom <= rect.bottom + 1 : null,
+      // Placement contract: chapter 1 (the one with the recall table) closes
+      // with its summary after the table; every other chapter leads with it,
+      // directly under the heading and before the body text.
+      summaryLeadsBody: (summary && body)
+        ? summary.getBoundingClientRect().bottom <= body.getBoundingClientRect().top + 1 : null,
       summaryBelowBody: (summary && body)
         ? summary.getBoundingClientRect().top >= body.getBoundingClientRect().bottom - 1 : null,
+      summaryUnderHeading: (summary && header)
+        ? header.getBoundingClientRect().bottom <= summary.getBoundingClientRect().top + 1 : null,
       tableInside: table ? rect.top <= table.getBoundingClientRect().top && table.getBoundingClientRect().bottom <= rect.bottom + 1 : null,
       tableBeforeSummary: (table && summary)
         ? table.getBoundingClientRect().bottom <= summary.getBoundingClientRect().top + 1 : null,
@@ -289,9 +301,16 @@ try {
       if (section.headerInside === false) throw new Error(`heading escapes chapter ${section.index}: ${section.heading}`);
       if (section.bodyInside === false) throw new Error(`body escapes chapter ${section.index}: ${section.heading}`);
       if (section.summaryInside === false) throw new Error(`summary escapes chapter ${section.index}: ${section.heading}`);
-      if (section.summaryBelowBody === false) throw new Error(`summary overlaps body in chapter ${section.index}: ${section.heading}`);
+      // Placement contract: later chapters LEAD with the summary under the
+      // heading; chapter 1 (which carries the recall table) closes with it.
+      if (section.hasTable) {
+        if (section.summaryBelowBody === false) throw new Error(`first-chapter summary overlaps body: ${section.heading}`);
+        if (section.tableBeforeSummary === false) throw new Error(`summary rendered before the recall table: ${section.heading}`);
+      } else {
+        if (section.summaryLeadsBody === false) throw new Error(`summary not under the heading in chapter ${section.index}: ${section.heading}`);
+        if (section.summaryUnderHeading === false) throw new Error(`summary not directly under the heading: ${section.heading}`);
+      }
       if (section.tableInside === false) throw new Error(`recall table escapes chapter ${section.index}`);
-      if (section.tableBeforeSummary === false) throw new Error(`summary rendered before the recall table in chapter ${section.index}`);
     }
     if (report.content.summaries !== report.content.sections) {
       throw new Error(`summary count ${report.content.summaries} != chapter count ${report.content.sections}`);

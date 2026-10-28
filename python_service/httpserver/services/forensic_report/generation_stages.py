@@ -21,6 +21,7 @@ from .generation_prompts import (STAGE_DISCOVERY_AGGREGATE_V1,
                                  STAGE_CHAPTER_HEADING_SYSTEM_V1,
                                  STAGE_CHAPTER_SUMMARY_SYSTEM_V1,
                                  STAGE_RECALL_SUMMARY_SYSTEM_V1,
+                                 STAGE_RECALL_CONTRIBUTION_SYSTEM_V1,
                                  STAGE_CASE_OVERVIEW_SYSTEM_V1)
 logger = logging.getLogger(__name__)
 
@@ -2609,6 +2610,11 @@ _RECALL_TABLE_LIMIT = 40
 
 _SUBJECT_NAMES_IN_SUMMARY = 3
 
+# One sentence per table row: short enough to scan, long enough to say which
+# finding the material backs and with what concrete content.
+_CONTRIBUTION_MIN_CHARS = 20
+_CONTRIBUTION_MAX_CHARS = 200
+
 _RECALL_TOPIC_LABELS = {
     "funds": "资金", "identity_accounts": "人员账号", "communications": "通讯",
     "location": "位置", "network": "网络", "tools": "工具",
@@ -2644,11 +2650,16 @@ def _recall_stats(materials, narrative, directions, classifications=None):
     references: dict[str, int] = {}
     chapters: dict[str, int] = {}
     rows_by_key: dict[str, dict] = {}
+    # Which findings each material backed, so the table can say what the
+    # material contributed instead of only how often it was cited.
+    direction_titles: dict[str, list[str]] = {}
+    chapter_headings: dict[str, list[str]] = {}
     for row in narrative or ():
         direction_ids = row.get("direction_ids")
         if direction_ids is None:
             continue
         material_ids = set()
+        heading = (row.get("heading") or "").strip()
         for direction_id in direction_ids:
             direction = directions_by_id.get(direction_id)
             if direction is None:
@@ -2656,8 +2667,15 @@ def _recall_stats(materials, narrative, directions, classifications=None):
             for ref in (*direction.supporting_refs, *direction.counter_refs):
                 material_ids.add(ref.material_id)
                 references[ref.material_id] = references.get(ref.material_id, 0) + 1
+                titles = direction_titles.setdefault(ref.material_id, [])
+                if direction.title not in titles:
+                    titles.append(direction.title)
         for material_id in material_ids:
             chapters[material_id] = chapters.get(material_id, 0) + 1
+            if heading:
+                headings = chapter_headings.setdefault(material_id, [])
+                if heading not in headings:
+                    headings.append(heading)
 
     for material_id, reference_count in references.items():
         material = by_material_id.get(material_id)
@@ -2670,6 +2688,8 @@ def _recall_stats(materials, narrative, directions, classifications=None):
             "references": reference_count,
             "chapters": chapters.get(material_id, 0),
             "classification": item,
+            "direction_titles": tuple(direction_titles.get(material_id, ())),
+            "chapter_headings": tuple(chapter_headings.get(material_id, ())),
         }
     ordered = sorted(
         rows_by_key.values(),
@@ -2690,8 +2710,118 @@ def _recall_stats(materials, narrative, directions, classifications=None):
     }
 
 
-def _recall_table(stats) -> EvidenceRecallTable:
+def _fallback_contribution(entry) -> str:
+    """What a material contributed, derived from the frozen facts alone.
+
+    Used when the per-row model call fails or answers unusably. It names the
+    findings the material backs and what kind of material it is, which is
+    strictly less than the model can say but never wrong — the row must never
+    publish an empty or invented explanation.
+    """
+    material = entry["material"]
+    titles = entry.get("direction_titles") or ()
+    headings = entry.get("chapter_headings") or ()
+    type_label = {"text": "文本记录", "parsed_text": "解析文本",
+                  "android_record": "Android 派生记录", "audio_transcript": "机器转写",
+                  "image": "图像", "machine_visual": "机器视觉观察",
+                  "unavailable": "不可读材料"}.get(material.kind, "材料")
+    parts = [f"该{type_label}"]
+    if titles:
+        parts.append("支撑「" + "」「".join(titles[:3]) + "」")
+        if len(titles) > 3:
+            parts[-1] += f" 等 {len(titles)} 项调查方向"
+    else:
+        parts.append("支撑本章结论")
+    if headings:
+        parts.append("，出现在「" + "」「".join(headings[:2]) + "」")
+        if len(headings) > 2:
+            parts[-1] += f" 等 {len(headings)} 章"
+    if material.status == "partial":
+        parts.append("；本轮仅解析了部分内容，引用范围以冻结片段为准")
+    return "".join(parts) + "。"
+
+
+def _clean_contribution(raw: str) -> str:
+    """Validate one row's contribution; "" means "use the fallback"."""
+    text = _plain_models_text(raw)
+    text = strip_material_ids(text)
+    text = re.sub(r"\s*\n+\s*", " ", text).strip()
+    if len(text) < _CONTRIBUTION_MIN_CHARS:
+        logger.info("Recall contribution too short (%d chars); using fallback", len(text))
+        return ""
+    if len(text) > _CONTRIBUTION_MAX_CHARS:
+        # A long answer is usually a good one that ran on: cut at a sentence
+        # boundary instead of discarding it for the generic fallback.
+        cut = text[:_CONTRIBUTION_MAX_CHARS]
+        boundary = max(cut.rfind("。"), cut.rfind("；"), cut.rfind("，"))
+        text = cut[:boundary + 1] if boundary >= _CONTRIBUTION_MIN_CHARS else cut
+    if _MATERIAL_ID_RE.search(text) or "evidence_key" in text.lower():
+        logger.info("Recall contribution carries an internal id; using fallback")
+        return ""
+    if re.search(r"引用\s*\d+\s*次|被\s*\d+\s*章引用", text):
+        # Counts already sit in the row header; repeating them is noise.
+        logger.info("Recall contribution only restates counts; using fallback")
+        return ""
+    return text
+
+
+async def compose_recall_contributions(stats, llm=None, *, concurrency: int = 1):
+    """One "what did this material contribute" line per published row.
+
+    Each call sees only that row's own frozen facts (its file name, type, the
+    direction titles it backs, and a bounded excerpt of its frozen text), so
+    the explanation cannot describe a material it was not given. Failures are
+    per row: a rejected answer falls back to ``_fallback_contribution`` and the
+    table still publishes.
+
+    Returns a mapping ``evidence_key -> contribution``.
+    """
+    entries = stats["entries"][:_RECALL_TABLE_LIMIT]
+    if llm is None or not entries:
+        return {}
+
+    async def one(entry):
+        material = entry["material"]
+        item = entry["classification"]
+        payload = json.dumps({
+            "name": stage_citation_name(material.evidence_key),
+            "material_type": getattr(item, "material_type", "unknown") or "unknown",
+            "topics": list(getattr(item, "topics", ()) or ()),
+            "priority": getattr(item, "priority", "unassessed") or "unassessed",
+            "found_in_chapters": list(entry.get("chapter_headings") or ()),
+            "supports_directions": list((entry.get("direction_titles") or ())[:6]),
+            "materials": material.text[:1200],
+            "read_status": material.status,
+            "limitations": list(material.limitations)[:3],
+        }, ensure_ascii=False)
+        try:
+            response = await llm.chat_completion(
+                STAGE_RECALL_CONTRIBUTION_SYSTEM_V1, payload,
+                max_tokens=400, temperature=0.0)
+        except Exception as exc:  # noqa: BLE001 - one row never sinks the table
+            logger.warning("Recall contribution failed for %s: %s",
+                           material.evidence_key, exc)
+            return entry["material"].evidence_key, ""
+        content = response.get("content")
+        if not isinstance(content, str):
+            return entry["material"].evidence_key, ""
+        return entry["material"].evidence_key, _clean_contribution(content)
+
+    results = await _gather_bounded([one(entry) for entry in entries], concurrency)
+    contributions: dict[str, str] = {}
+    for outcome in results:
+        if isinstance(outcome, BaseException):
+            logger.warning("Recall contribution rejected: %s", outcome)
+            continue
+        key, text = outcome
+        if text:
+            contributions[key] = text
+    return contributions
+
+
+def _recall_table(stats, contributions=None) -> EvidenceRecallTable:
     """The published recall table: top rows plus honest coverage notes."""
+    contributions = contributions or {}
     rows = []
     for entry in stats["entries"][:_RECALL_TABLE_LIMIT]:
         material = entry["material"]
@@ -2706,6 +2836,8 @@ def _recall_table(stats) -> EvidenceRecallTable:
             reference_count=entry["references"],
             chapter_count=entry["chapters"],
             material_status=material.status,
+            contribution=(contributions.get(material.evidence_key)
+                          or _fallback_contribution(entry)),
         ))
     notes = []
     omitted = stats["recalled"] - len(rows)
@@ -2980,7 +3112,8 @@ async def compose_recall_summary(stats, overview, llm=None) -> str:
 
 
 def render_stage_report(envelope, materials, directions, comparisons, warnings, narrative=None,
-                        *, overview=None, recall_summary=None, classifications=None):
+                        *, overview=None, recall_summary=None, classifications=None,
+                        recall_contributions=None):
     phase_a = envelope.analysis_mode == "evidence_only"
     directions_by_id = {d.direction_id: d for d in directions}
     warnings = list(warnings)
@@ -3015,7 +3148,7 @@ def render_stage_report(envelope, materials, directions, comparisons, warnings, 
         heading=chapter_one_heading(envelope), content=first_content,
         citation_ids=scope_citation_ids,
         summary=(recall_summary or _recall_summary_fallback(stats)) if narrative else "",
-        recall_table=_recall_table(stats) if narrative else None)]
+        recall_table=_recall_table(stats, recall_contributions) if narrative else None)]
     if not phase_a:
         sections.append(StructuredReportSection(
             heading="本次案情（待核语境）", content=envelope.case_description,

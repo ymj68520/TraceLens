@@ -643,7 +643,8 @@ class ReportGenerationExecutor:
         from .generation_stages import (
             materialize_images, discover_directions, compare_directions,
             compose_stage_narrative, render_stage_report,
-            compose_case_overview, compose_recall_summary, _recall_stats,
+            compose_case_overview, compose_recall_summary,
+            compose_recall_contributions, _recall_stats,
         )
         from .models import StageAnalysis
         models, text_models = set(), set()
@@ -704,10 +705,17 @@ class ReportGenerationExecutor:
                 classifications=classifications, llm=provider) if narrative else None
             recall_summary = await compose_recall_summary(stats, overview, llm=provider) \
                 if stats is not None else None
+            # One "what did this material contribute" line per published row.
+            # Fanned out; a rejected row falls back to a deterministic sentence,
+            # so the table always publishes with an explanation.
+            recall_contributions = await compose_recall_contributions(
+                stats, llm=provider, concurrency=concurrency) \
+                if stats is not None else None
             response, stage = render_stage_report(
                 envelope, materials, directions, comparisons, warnings, narrative,
                 overview=overview, recall_summary=recall_summary,
-                classifications=classifications)
+                classifications=classifications,
+                recall_contributions=recall_contributions)
             stage = StageAnalysis.model_validate({
                 **stage.model_dump(mode="json"), "warnings": warnings,
                 "text_models": tuple(sorted(text_models)),

@@ -245,22 +245,31 @@ describe('NarrativeReportView', () => {
         }
     });
 
-    test('chapter summary renders as a closing block, not inline prose', async () => {
+    test('chapter summary sits directly under the heading, before the prose', async () => {
         const report = {
             ...NARRATIVE,
-            sections: [{
-                heading: '话术培训材料',
-                content: '材料包含话术培训文档。',
-                citation_ids: [],
-                summary: '本章材料共同显示存在话术培训文档，仍需原始来源才能定性。',
-            }],
+            sections: [
+                // Chapter 1 keeps its original order (prose … summary);
+                // every later chapter leads with the conclusion.
+                { heading: '案件总述与证据召回', content: '本轮在已入报的材料范围内研判。',
+                  citation_ids: [], summary: '首章的表后总结。' },
+                { heading: '话术培训材料', content: '材料包含话术培训文档。',
+                  citation_ids: [], summary: '本章材料共同显示存在话术培训文档，仍需原始来源才能定性。' },
+            ],
         };
         render(<NarrativeReportView taskId="t1" reportId="rep-1"
             fetchNarrative={vi.fn().mockResolvedValue(report)} />);
-        const summary = await screen.findByTestId('chapter-summary');
+        const sections = await screen.findAllByTestId('narrative-section');
+        const chapters = sections.filter(s => s.querySelector('h3')?.textContent === '话术培训材料');
+        const chapter = chapters[0];
+        const summary = chapter.querySelector('[data-testid="chapter-summary"]');
+        const body = chapter.querySelector('p.whitespace-pre-wrap');
+        const heading = chapter.querySelector('h3');
         expect(summary).toHaveTextContent('本章小结');
         expect(summary).toHaveTextContent('仍需原始来源才能定性');
-        expect(screen.getByText('材料包含话术培训文档。')).toBeInTheDocument();
+        // Summary before body, and after the heading.
+        expect(summary.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(heading.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
     test('older reports without a summary render unchanged', async () => {
@@ -295,6 +304,8 @@ describe('NarrativeReportView', () => {
                         reference_count: 3,
                         chapter_count: 2,
                         material_status: 'ready',
+                        contribution: '支撑付款安排的认定，正文引用该记录中的转账摘录；'
+                            + '仍未与具体账户建立归属关系，因此只作为待核线索。',
                     }],
                     notes: ['另有 1 份可用材料未被任何章节引用，其内容未进入本报告正文。'],
                 },
@@ -313,6 +324,16 @@ describe('NarrativeReportView', () => {
         expect(table).toHaveTextContent('资金活动');
         expect(screen.getByTestId('recall-row')).toBeInTheDocument();
         expect(table).toHaveTextContent('未被任何章节引用');
+        // The three former columns (priority / citation count / chapter count)
+        // became one explanation of what the material contributed to the case.
+        expect(table).not.toHaveTextContent('核查优先级');
+        expect(table).not.toHaveTextContent('引用次数');
+        expect(table).not.toHaveTextContent('涉及章节');
+        expect(table).toHaveTextContent('对本案的作用');
+        expect(screen.getByTestId('recall-contribution'))
+            .toHaveTextContent('支撑付款安排的认定');
+        // Counts survive only as a footnote.
+        expect(table).toHaveTextContent('被引 3 处 · 涉及 2 章');
         const section = table.closest('[data-testid="narrative-section"]');
         // The chapter badge must describe the table's coverage, not claim zero
         // citations just because the chapter itself carries no citation_ids.

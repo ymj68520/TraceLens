@@ -26,9 +26,10 @@ function previewText(value, limit) {
 // 章节末尾的最终总结。视觉上是正文的收束块而不是又一段正文：
 // 左侧竖线 + 浅色底，标题明确写「本章小结」，读者能一眼区分
 // "模型叙述" 与 "结论句"。没有任何 citation —— 结论只重组本章已引用的事实。
-function ChapterSummary({ summary }) {
+// 位置由调用方决定：首章放在召回表之后（结论依赖表格），其余章节放在标题下方。
+function ChapterSummary({ summary, className = 'mt-6' }) {
     return (
-        <aside className="mt-6 rounded-xl border border-slate-200 border-l-4 border-l-indigo-400 bg-slate-50/80 px-4 py-3 dark:border-slate-700 dark:border-l-indigo-500 dark:bg-slate-900/40" data-testid="chapter-summary" aria-label="本章小结">
+        <aside className={`${className} rounded-xl border border-slate-200 border-l-4 border-l-indigo-400 bg-slate-50/80 px-4 py-3 dark:border-slate-700 dark:border-l-indigo-500 dark:bg-slate-900/40`} data-testid="chapter-summary" aria-label="本章小结">
             <p className="mb-1 inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-indigo-600 dark:text-indigo-300">
                 <Quote size={12} aria-hidden />本章小结
             </p>
@@ -362,9 +363,12 @@ const NarrativeReportView = ({
                                 cursor = end;
                             });
                             prose.push(section.content.slice(cursor));
+                            // 第一章保持原状（正文 → 召回表 → 表后总结）；其余章节把
+                            // 结论提到标题下方，读者先看判断再读论证。
+                            const leadSummary = index > 0 && section.summary;
                             return (
                                 <section key={`${section.heading}-${index}`} className="rounded-2xl border border-slate-200 bg-white px-5 py-6 shadow-sm dark:border-slate-700 dark:bg-slate-800 md:px-7 md:py-7" data-testid="narrative-section">
-                                    <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-700">
+                                    <div className={`flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-700 ${leadSummary ? 'mb-3' : 'mb-5'}`}>
                                         <div className="flex min-w-0 items-center gap-3">
                                             <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 font-mono text-xs font-bold text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300">{String(index + 1).padStart(2, '0')}</span>
                                             <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{section.heading}</h3>
@@ -373,6 +377,7 @@ const NarrativeReportView = ({
                                             ? `${section.recall_table.recalled_materials} 份被引材料`
                                             : `${section.citation_ids?.length || 0} 条证据引用`}</span>
                                     </div>
+                                    {leadSummary && <ChapterSummary summary={section.summary} className="mb-5 mt-0" />}
                                     <p className="whitespace-pre-wrap break-words text-[15px] leading-8 text-slate-700 dark:text-slate-300">{prose}</p>
                                     {/* 首章：正文(范围+总述) → 证据召回表 → 表后总结。表是可点的引用清单，
                                         点击与正文引用标记走同一条 exact 查表路径。 */}
@@ -387,7 +392,8 @@ const NarrativeReportView = ({
                                             </div>
                                         </details>
                                     )}
-                                    {section.summary && <ChapterSummary summary={section.summary} />}
+                                    {/* 首章（含召回表）的小结留在表后，其余章节已在标题下。 */}
+                                    {section.summary && !leadSummary && <ChapterSummary summary={section.summary} />}
                                 </section>
                             );
                         })}
