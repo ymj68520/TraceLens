@@ -136,6 +136,28 @@ struct SummaryCandidate {
     std::size_t rendered_chars = 0;  // path length + index prefix + newline
 };
 
+// Is a model reply usable, or should the deterministic ranking take over?
+//
+// A reply that names (almost) nothing is a prompt/format failure. The
+// threshold must be a fraction of what the model was SHOWN, not of the
+// selection budget: the listing is capped by the prompt character budget, so a
+// 4500-file budget can offer only 979 rows. On PC.E01 the model returned 978
+// of those 979 — a near-perfect answer — but `selected < max_files / 4`
+// compared it to 1125 and discarded it, after which the heuristic spent the
+// whole budget on its low-value tail. The budget caps how many files may be
+// SELECTED; it says nothing about how many were offered.
+//
+// `max_files == 0` is unlimited selection: any non-empty reply is accepted,
+// preserving the behaviour that predates the gate.
+inline bool selection_is_usable(std::size_t selected,
+                                std::size_t offered,
+                                std::size_t max_files) {
+    if (selected == 0) return false;
+    if (max_files == 0) return true;
+    const std::size_t target = std::min(max_files, offered);
+    return selected >= target / 4;
+}
+
 // How many leading candidates fit in the prompt listing.
 //
 // Input order must already be the forensic ranking (best first). The returned

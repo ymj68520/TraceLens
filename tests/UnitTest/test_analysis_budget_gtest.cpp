@@ -204,4 +204,45 @@ TEST(SummaryListingTest, MaxFilesIsNotPartOfTheListingDecision) {
     EXPECT_LT(kept, 1000u);
 }
 
+// ---------------------------------------------------------------------------
+// Reply reliability
+//
+// The listing is capped by the prompt character budget, so the model is never
+// shown `max_files` rows when the budget is large: at 4500 on PC.E01 the
+// prompt listed 979 rows. Judging the reply against max_files/4 (1125) threw
+// away a reply naming 978 of those 979 and let the heuristic fill the budget
+// with its low-value tail instead.
+// ---------------------------------------------------------------------------
+
+namespace {
+using forensics::analysis_budget::selection_is_usable;
+}  // namespace
+
+TEST(SelectionReliabilityTest, ReplyCoveringTheListingIsAccepted) {
+    // The real PC.E01 case: offered 979, answered 978, budget 4500.
+    EXPECT_TRUE(selection_is_usable(/*selected=*/978, /*offered=*/979,
+                                    /*max_files=*/4500));
+}
+
+TEST(SelectionReliabilityTest, EmptyReplyIsNeverAccepted) {
+    EXPECT_FALSE(selection_is_usable(0, 979, 4500));
+    EXPECT_FALSE(selection_is_usable(0, 979, 0));
+}
+
+TEST(SelectionReliabilityTest, AQuarterOfTheOfferedRowsIsTheFloor) {
+    EXPECT_TRUE(selection_is_usable(250, 1000, 5000));
+    EXPECT_FALSE(selection_is_usable(249, 1000, 5000));
+}
+
+TEST(SelectionReliabilityTest, OfferedRowsCapTheTargetWhenBudgetIsSmaller) {
+    // Budget 100 with 4000 rows listed: the floor follows the budget (25), not
+    // the listing; a 30-file answer is a real selection, not a failure.
+    EXPECT_TRUE(selection_is_usable(30, 4000, 100));
+    EXPECT_FALSE(selection_is_usable(24, 4000, 100));
+}
+
+TEST(SelectionReliabilityTest, UnlimitedBudgetAcceptsAnyNonEmptyReply) {
+    EXPECT_TRUE(selection_is_usable(1, 979, /*max_files=*/0));
+}
+
 }  // namespace
