@@ -28,7 +28,7 @@ const labels = {
   super_normalized_no_userdata: '已完成 super 规范化，来源不含用户数据分区',
   sms: '短信', sms_messages: '短信', contacts: '联系人', apps: '应用',
   installed_apps: '已安装应用', installed_packages: '安装包信息', wifi: '无线网络', wifi_networks: '无线网络',
-  call_logs: '通话记录', calls: '通话记录', mobile: '鸿蒙记录', mobile_artifacts: '鸿蒙记录',
+  call_logs: '通话记录', calls: '通话记录', mobile: '手机备份记录', mobile_artifacts: '手机备份记录',
   calendar: '日历', recording: '录音', call_recording: '通话录音', media: '媒体元数据', media_file: '媒体文件',
   note: '备忘录', note_content: '备忘录内容', todo: '待办事项', note_block: '思源内容块',
   qq_contact: 'QQ 联系人', qq_group: 'QQ 群资料', qq_recent: 'QQ 最近会话',

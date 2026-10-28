@@ -30,7 +30,8 @@
 | 文档 | 描述 |
 |------|------|
 | [ImageAnalyzer](cpp/analyzers/ImageAnalyzer.md) | 磁盘镜像分析入口：TSK/原生文件系统遍历、加密镜像解密、XFS 支持 |
-| [AndroidAnalyzer](cpp/analyzers/AndroidAnalyzer.md) | Android 取证分析：QQNT/微信/MIUI 备份工件解析、SQLCipher 解密、逻辑提取（dir/zip/miui-backup） |
+| [AndroidAnalyzer](cpp/analyzers/AndroidAnalyzer.md) | Android 取证分析：QQNT/微信/MIUI 备份工件解析、SQLCipher 解密、逻辑提取（dir/zip/miui-backup/thunder-backup） |
+| [ThunderForensicBackup](cpp/analyzers/ThunderForensicBackup.md) | 雷电手机快取（ThunderForensic）通用提取：OPPO/vivo/一加 tar 或工程目录，PhoneData/wifi.xml/App 数据树/加密笔记归档 |
 | [WindowsFilesAnalyzer](cpp/analyzers/WindowsFilesAnalyzer.md) | Windows 系统工件分析（Shimcache/UserAssist/RDP/WiFi 解析器已实现未接线，对应表恒空） |
 | [LinuxFilesAnalyzer](cpp/analyzers/LinuxFilesAnalyzer.md) | Linux 工件分析：日志/journal/auditd/容器/云工件解析与篡改、持久化检测 |
 | [MemoryAnalyzer](cpp/analyzers/MemoryAnalyzer.md) | 内存取证：Volatility3 封装（进程/网络/Bash 历史/启动信息 → `_memory.db`；CLI 专用旁路，HTTP 侧靠命名约定找库） |

@@ -179,7 +179,7 @@ void ReportGenerator::writeSummary(std::ofstream& out) {
     appendRowsForPrefix("windows_", "Windows ");
     appendRowsForPrefix("android_", "Android ");
     for (const auto& [table, label] : std::vector<std::pair<std::string, std::string>>{
-            {"files", "已分类文件"}, {"mobile_artifacts", "鸿蒙手机记录"},
+            {"files", "已分类文件"}, {"mobile_artifacts", "手机备份记录"},
             {"sms_messages", "短信"}, {"contacts", "联系人"}, {"call_logs", "通话记录"},
             {"installed_packages", "安装包信息"}, {"wifi_networks", "无线网络"}}) {
         const int count = tableRowCount(db, table);

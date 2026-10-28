@@ -4,7 +4,7 @@
 
 #include "TaskManager.h"
 #include "AndroidAnalyzer/HarmonyBackupExtractor.h"
-#include "AndroidAnalyzer/OppoBackupExtractor.h"
+#include "AndroidAnalyzer/ThunderForensicBackupExtractor.h"
 #include "TaskPersistence.h"
 #include "TaskWatchdog.h"
 #include "TaskSerialization.h"
@@ -545,22 +545,32 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 tasks_[task_id].metadata["device_platform"] = "HarmonyOS";
                 tasks_[task_id].metadata["source_identity_kind"] = "logical_file_id_not_inode";
             }
-            // Same treatment for OPPO ThunderForensic extractions: the source
-            // may arrive as the tar file or its project directory, whatever the
-            // caller picked, and is routed to the dedicated adapter.
-            const bool oppoBackup = OppoBackupExtractor::recognizes(imagePath);
-            if (task.android_source == "oppo-backup" && !oppoBackup) {
-                update_status(task_id, TaskStatus::FAILED, "INVALID_OPPO_BACKUP");
+            // Same treatment for ThunderForensic extractions (OPPO / vivo /
+            // OnePlus / ...): the source may arrive as the tar file or its
+            // project directory, whatever the caller picked, and is routed to
+            // the generic adapter.
+            std::string thunderBrand;
+            const bool thunderBackup =
+                ThunderForensicBackupExtractor::recognizes(imagePath, &thunderBrand);
+            if (isThunderForensicSource(task.android_source) && !thunderBackup) {
+                update_status(task_id, TaskStatus::FAILED, "INVALID_THUNDERFORENSIC_BACKUP");
                 return;
             }
-            if (oppoBackup) {
-                task.android_source = "oppo-backup";
+            if (thunderBackup) {
+                task.android_source = kThunderForensicSource;
                 task.scenarios = {ForensicScenario::ANDROID};
                 std::lock_guard<std::mutex> lock(mtx_);
                 tasks_[task_id].android_source = task.android_source;
                 tasks_[task_id].scenarios = task.scenarios;
                 tasks_[task_id].metadata["device_platform"] = "Android";
-                tasks_[task_id].metadata["device_brand"] = "OPPO";
+                if (!thunderBrand.empty()) {
+                    const std::size_t space = thunderBrand.find(' ');
+                    tasks_[task_id].metadata["device_brand"] =
+                        thunderBrand.substr(0, space);
+                    if (space != std::string::npos)
+                        tasks_[task_id].metadata["device_model"] =
+                            thunderBrand.substr(space + 1);
+                }
             }
             std::filesystem::path p(imagePath);
             std::string baseName = task.android_source == "aliyun-image" ? "system" : p.stem().string();
@@ -675,7 +685,7 @@ void TaskManager::start_analysis(const std::string& task_id) {
             if (task.android_source == "dir" ||
                 task.android_source == "zip" ||
                 task.android_source == "miui-backup" ||
-                task.android_source == "oppo-backup" ||
+                isThunderForensicSource(task.android_source) ||
                 task.android_source == "tar" ||
                 task.android_source == "seven-zip" ||
                 task.android_source == "android-backup" ||
@@ -1754,7 +1764,7 @@ bool TaskManager::runLogicalAndroidAnalysis(const AnalysisTask& task,
         AndroidSourceMode mode =
             task.android_source == "zip"          ? AndroidSourceMode::Zip :
             task.android_source == "miui-backup"  ? AndroidSourceMode::MiuiBackup :
-            task.android_source == "oppo-backup"  ? AndroidSourceMode::OppoBackup :
+            isThunderForensicSource(task.android_source) ? AndroidSourceMode::ThunderForensicBackup :
             task.android_source == "tar"          ? AndroidSourceMode::Tar :
             task.android_source == "seven-zip"    ? AndroidSourceMode::SevenZip :
             task.android_source == "android-backup" ? AndroidSourceMode::AndroidBackup :

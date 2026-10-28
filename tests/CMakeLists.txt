@@ -1280,13 +1280,21 @@ add_test(
   COMMAND python3
           ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_miui_cli_e2e.py
           --analyzer $<TARGET_FILE:forensic_analyzer>)
-add_test(NAME OppoBackupCliEndToEndTests
+add_test(NAME ThunderForensicCliEndToEndTests
   COMMAND python3
-          ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_oppo_backup_cli.py
+          ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_thunderforensic_backup_cli.py
           --analyzer $<TARGET_FILE:forensic_analyzer>)
-add_test(NAME OppoBackupHttpEndToEndTests
-  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_oppo_backup_http.py
-    --analyzer $<TARGET_FILE:forensic_analyzer>)
+add_test(NAME ThunderForensicHttpEndToEndTests
+  COMMAND ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_thunderforensic_backup_http.py
+          --analyzer $<TARGET_FILE:forensic_analyzer>)
+add_test(NAME ThunderForensicRealSampleAcceptanceTests
+  COMMAND ${CMAKE_SOURCE_DIR}/python_service/.venv/bin/python
+          ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_thunderforensic_real_samples.py
+          --analyzer $<TARGET_FILE:forensic_analyzer>)
+set_tests_properties(ThunderForensicCliEndToEndTests PROPERTIES TIMEOUT 1800)
+set_tests_properties(ThunderForensicHttpEndToEndTests PROPERTIES TIMEOUT 1800)
+set_tests_properties(ThunderForensicRealSampleAcceptanceTests PROPERTIES TIMEOUT 3600)
 install(TARGETS test_android_logical_source_gtest RUNTIME DESTINATION bin/tests)
 
 # Scene Database Tests (SQL schema definitions for scene specialization)

@@ -436,9 +436,11 @@ set(LIB_SOURCES
     src/analyzers/AndroidAnalyzer/MiuiArtifactParsers.cpp
     src/analyzers/AndroidAnalyzer/QqntArtifactParsers.cpp
     src/analyzers/AndroidAnalyzer/WechatArtifactParsers.cpp
-    # OPPO ThunderForensic extraction source (PhoneData JSON tar, bypassing TSK)
-    src/analyzers/AndroidAnalyzer/OppoBackupExtractor.cpp
-    src/analyzers/AndroidAnalyzer/OppoArtifactParsers.cpp
+    # ThunderForensic (雷电手机快取) extraction source: OPPO/vivo/OnePlus tar
+    # or project folder; native header indexing, bypassing TSK.
+    src/analyzers/AndroidAnalyzer/ThunderForensicBackupExtractor.cpp
+    src/analyzers/AndroidAnalyzer/ThunderForensicArtifactParsers.cpp
+    src/analyzers/AndroidAnalyzer/ThunderForensicCaseDatabase.cpp
     src/analyzers/WindowsFilesAnalyzer/Core/WindowsFilesAnalyzerCore.cpp
     src/analyzers/WindowsFilesAnalyzer/Database/WindowsAnalysisDatabase.cpp
     src/analyzers/WindowsFilesAnalyzer/Database/WindowsDBOperations_Registry.cpp

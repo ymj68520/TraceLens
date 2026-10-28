@@ -7,7 +7,7 @@
 #include "HTTPServer/HTTPserver.h"
 #include "AndroidAnalyzer/AndroidAnalyzer.h"
 #include "AndroidAnalyzer/HarmonyBackupExtractor.h"
-#include "AndroidAnalyzer/OppoBackupExtractor.h"
+#include "AndroidAnalyzer/ThunderForensicBackupExtractor.h"
 #include "WindowsFilesAnalyzer/WindowsFilesAnalyzer.h"
 #include "LinuxFilesAnalyzer/LinuxFilesAnalyzer.h"
 #include "MemoryAnalyzer/MemoryAnalyzer.h"
@@ -250,8 +250,10 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
         std::cerr << "INVALID_HARMONY_BACKUP: expected .info.json and files directory" << std::endl;
         return 1;
     }
-    if (args.android_source == "oppo-backup" && !OppoBackupExtractor::recognizes(args.image_path)) {
-        std::cerr << "INVALID_OPPO_BACKUP: expected a ThunderForensic tar or its project folder" << std::endl;
+    if (isThunderForensicSource(args.android_source) &&
+        !ThunderForensicBackupExtractor::recognizes(args.image_path)) {
+        std::cerr << "INVALID_THUNDERFORENSIC_BACKUP: expected a ThunderForensic tar or its project folder"
+                  << std::endl;
         return 1;
     }
     if (HarmonyBackupExtractor::recognizes(args.image_path)) {
@@ -285,11 +287,11 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
     // runs only the Android analyzer against the data source directly.
     if (args.android_analyze && !HarmonyBackupExtractor::recognizes(args.image_path) &&
         (args.android_source == "dir" || args.android_source == "zip" ||
-         args.android_source == "miui-backup" || args.android_source == "oppo-backup" ||
-         // An OPPO ThunderForensic extraction routed through any other source
-         // value still belongs to the logical analyzer; the mode promotion to
-         // OppoBackup happens inside AndroidAnalyzer::initialize().
-         OppoBackupExtractor::recognizes(args.image_path) ||
+         args.android_source == "miui-backup" || isThunderForensicSource(args.android_source) ||
+         // A ThunderForensic extraction routed through any other source value
+         // still belongs to the logical analyzer; the mode promotion to
+         // ThunderForensicBackup happens inside AndroidAnalyzer::initialize().
+         ThunderForensicBackupExtractor::recognizes(args.image_path) ||
          args.android_source == "tar" ||
          args.android_source == "seven-zip" || args.android_source == "android-backup" ||
          args.android_source == "filesystem-image")) {
@@ -736,7 +738,7 @@ int AnalysisOrchestrator::runAndroidLogicalAnalysis(const CommandLineArgs& args)
         AndroidSourceMode mode =
             args.android_source == "zip"         ? AndroidSourceMode::Zip :
             args.android_source == "miui-backup" ? AndroidSourceMode::MiuiBackup :
-            args.android_source == "oppo-backup" ? AndroidSourceMode::OppoBackup :
+            isThunderForensicSource(args.android_source) ? AndroidSourceMode::ThunderForensicBackup :
             args.android_source == "tar"         ? AndroidSourceMode::Tar :
             args.android_source == "seven-zip"   ? AndroidSourceMode::SevenZip :
             args.android_source == "android-backup" ? AndroidSourceMode::AndroidBackup :

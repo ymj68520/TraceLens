@@ -1,11 +1,12 @@
 // MobileBackupSchema.h
 // Shared DDL for the vendor-neutral mobile backup artifact tables.
 //
-// Both the HarmonyOS adapter (HarmonyArtifactParsers) and the OPPO
-// ThunderForensic adapter (OppoArtifactParsers) persist into
-// mobile_backup_manifest / mobile_artifacts so that the backup-overview
-// query, the artifact reader and the report evidence pipeline stay
-// vendor-agnostic. Keep every adapter on this one definition.
+// Both the HarmonyOS adapter (HarmonyArtifactParsers) and the generic
+// ThunderForensic adapter (ThunderForensicArtifactParsers, covering OPPO /
+// vivo / OnePlus and other brands) persist into mobile_backup_manifest /
+// mobile_artifacts so that the backup-overview query, the artifact reader and
+// the report evidence pipeline stay vendor-agnostic. Keep every adapter on
+// this one definition.
 
 #pragma once
 

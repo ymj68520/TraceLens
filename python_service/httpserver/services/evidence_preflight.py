@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import mmap
 import os
 import re
 import stat
@@ -60,32 +61,125 @@ def _candidate_id(path: Path) -> str:
 
 
 
-_OPPO_SCAN_MEMBER_LIMIT = 20_000
+_THUNDERFORENSIC_SCAN_MEMBER_LIMIT = 2_000_000
+_THUNDERFORENSIC_MANIFEST = "ThunderForensic.json"
+_THUNDERFORENSIC_PHONE_DATA = "PhoneData/"
 
 
-def _is_oppo_thunderforensic_tar(path: Path) -> bool:
-    """Bounded tar header walk looking for the ThunderForensic markers.
+def _pax_fields(payload: bytes) -> tuple[str, int | None]:
+    """Return (path, size) from a POSIX PAX extended header."""
+    path = ""
+    size = None
+    position = 0
+    while position < len(payload):
+        space = payload.find(b" ", position)
+        if space <= position:
+            break
+        try:
+            length = int(payload[position:space])
+        except ValueError:
+            break
+        if length <= 0 or position + length > len(payload):
+            break
+        record = payload[position:position + length]
+        if record.endswith(b"\n"):
+            record = record[:-1]
+        record_space = record.find(b" ")
+        if record_space != -1:
+            key, _, value = record[record_space + 1:].partition(b"=")
+            if key == b"path":
+                path = value.decode("utf-8", "replace")
+            elif key == b"size":
+                try:
+                    size = int(value)
+                except ValueError:
+                    size = None
+        position += length
+    return path, size
 
-    The containers are plain ustar and the manifest member position varies
-    (it follows the sdcard payloads), so scan names until both markers show
-    up or the member cap is reached. Data blocks are skipped by seek.
+
+def _is_thunderforensic_tar(path: Path) -> bool:
+    """Bounded ustar header walk looking for the ThunderForensic markers.
+
+    The writer emits a non-octal gid ("-6667000") on some members and, for
+    vivo, on the very first member. libarchive and Python's tarfile reject or
+    slowly iterate such containers, so the header walk is done directly over a
+    read-only mapping. Data blocks are skipped by offset; GNU long names and
+    PAX path/size records are resolved. The manifest can sit at the very end
+    (vivo), so the walk continues until both markers are seen or the member
+    cap is reached.
     """
-    import tarfile
-
     try:
-        with tarfile.open(path, "r:") as archive:
+        with path.open("rb") as source:
+            file_size = os.fstat(source.fileno()).st_size
+            if file_size < 1024:
+                return False
+            try:
+                mapped = mmap.mmap(source.fileno(), 0, access=mmap.ACCESS_READ)
+            except (OSError, ValueError):
+                mapped = None
+
+            def read_at(offset: int, length: int) -> bytes:
+                if mapped is not None:
+                    return mapped[offset:offset + length]
+                return os.pread(source.fileno(), length, offset)
+
             saw_manifest = saw_phone_data = False
-            for count, member in enumerate(archive):
-                if count >= _OPPO_SCAN_MEMBER_LIMIT:
-                    return False
-                name = member.name.lstrip("./")
-                if name == "ThunderForensic.json":
-                    saw_manifest = True
-                if name.startswith("PhoneData/"):
-                    saw_phone_data = True
-                if saw_manifest and saw_phone_data:
-                    return True
-    except (tarfile.TarError, OSError, EOFError):
+            offset = 0
+            scanned = 0
+            long_name = ""
+            pax_path = ""
+            pax_size = None
+            try:
+                while offset + 512 <= file_size:
+                    block = read_at(offset, 512)
+                    if len(block) < 512 or block == b"\0" * 512:
+                        break
+                    if block[257:262] != b"ustar":
+                        return False
+                    raw_size = block[124:136].rstrip(b"\0 ")
+                    try:
+                        size = int(raw_size, 8) if raw_size else 0
+                    except ValueError:
+                        return False
+                    data_offset = offset + 512
+                    if data_offset + size > file_size:
+                        return False
+                    typeflag = block[156:157]
+                    effective = size
+                    if typeflag == b"L":
+                        raw = read_at(data_offset, min(size, 1 << 20))
+                        long_name = raw.split(b"\0", 1)[0].decode("utf-8", "replace")
+                    elif typeflag == b"x":
+                        raw = read_at(data_offset, min(size, 4 << 20))
+                        pax_path, pax_size = _pax_fields(raw)
+                    elif typeflag in (b"g", b"K"):
+                        pass
+                    else:
+                        name = pax_path or long_name or block[:100].split(b"\0", 1)[0].decode(
+                            "utf-8", "replace")
+                        if pax_size is not None:
+                            effective = pax_size
+                            if data_offset + effective > file_size:
+                                return False
+                        if typeflag in (b"0", b"\0", b"7"):
+                            if name == _THUNDERFORENSIC_MANIFEST:
+                                saw_manifest = True
+                            if name.startswith(_THUNDERFORENSIC_PHONE_DATA):
+                                saw_phone_data = True
+                        long_name = ""
+                        pax_path = ""
+                        pax_size = None
+                    offset = data_offset + ((effective + 511) // 512) * 512
+                    scanned += 1
+                    if scanned > _THUNDERFORENSIC_SCAN_MEMBER_LIMIT:
+                        return False
+                    if saw_manifest and saw_phone_data:
+                        return True
+            finally:
+                if mapped is not None:
+                    mapped.close()
+    except (OSError, ValueError):
         return False
     return False
 
@@ -105,19 +199,23 @@ def _probe(path: Path) -> dict:
             return {"kind": "derived_html_report", "adapter": "android_report", "confidence": "high"}
         if (path / "descript.xml").is_file() and any(path.glob("*.bak")):
             return {"kind": "miui_backup", "adapter": "miui-backup", "confidence": "high"}
-        oppo_tar_dir = path / "filesystem" / "1" / "tar"
-        if oppo_tar_dir.is_dir():
+        thunder_tars = []
+        for tar_dir in (path / "filesystem" / "1" / "tar", path):
+            if not tar_dir.is_dir():
+                continue
             try:
-                oppo_tars = [item for item in sorted(oppo_tar_dir.iterdir())
-                             if item.suffix.lower() == ".tar"
-                             and _is_oppo_thunderforensic_tar(item)]
+                thunder_tars = [item for item in sorted(tar_dir.iterdir())
+                                if item.suffix.lower() == ".tar"
+                                and _is_thunderforensic_tar(item)]
             except OSError:
-                oppo_tars = []
-            if oppo_tars:
-                return {"kind": "oppo_thunderforensic_backup", "adapter": "oppo-backup",
-                        "confidence": "high",
-                        "container": oppo_tars[0].name,
-                        "reason": "ThunderForensic（雷电手机快取）OPPO 提取工程目录；适配器在分析阶段解析容器成员"}
+                thunder_tars = []
+            if thunder_tars:
+                break
+        if thunder_tars:
+            return {"kind": "thunderforensic_backup", "adapter": "thunder-backup",
+                    "confidence": "high",
+                    "container": thunder_tars[0].name,
+                    "reason": "ThunderForensic（雷电手机快取）提取工程目录（OPPO/vivo/OnePlus 等）；适配器在分析阶段解析容器成员"}
 
         if any((path / marker).exists() for marker in ("data/data", "data/user/0", "system/build.prop")):
             return {"kind": "android_logical_tree", "adapter": "dir", "confidence": "medium"}
@@ -152,14 +250,11 @@ def _probe(path: Path) -> dict:
         return {"kind": "ewf_candidate", "adapter": None,
                 "confidence": "ewf_header_candidate"}
     if header[257:262] == b"ustar":
-        try:
-            oppo = _is_oppo_thunderforensic_tar(path)
-        except OSError:
-            oppo = False
-        if oppo:
-            return {"kind": "oppo_thunderforensic_backup", "adapter": "oppo-backup",
+        thunder = _is_thunderforensic_tar(path)
+        if thunder:
+            return {"kind": "thunderforensic_backup", "adapter": "thunder-backup",
                     "confidence": "high",
-                    "reason": "ThunderForensic（雷电手机快取）OPPO 提取容器；适配器在分析阶段解析 PhoneData 成员"}
+                    "reason": "ThunderForensic（雷电手机快取）提取容器（OPPO/vivo/OnePlus 等）；适配器在分析阶段解析 PhoneData 成员"}
         return {"kind": "tar_container", "adapter": None, "confidence": "high"}
     if (header.startswith(b"\x1f\x8b") and path.name.lower().endswith((".tar.gz", ".tgz"))) or (
         header.startswith(b"\xfd7zXZ\x00") and path.name.lower().endswith(".tar.xz")

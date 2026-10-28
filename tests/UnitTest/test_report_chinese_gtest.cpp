@@ -25,7 +25,7 @@ TEST(ChineseReport, LocalizesTemplateAndCountsWithoutTranslatingEvidence) {
     std::ifstream stream(reportPath);
     const std::string output((std::istreambuf_iterator<char>(stream)), {});
     EXPECT_NE(output.find("# 取证分析报告"), std::string::npos);
-    EXPECT_NE(output.find("| 鸿蒙手机记录 | 1 |"), std::string::npos);
+    EXPECT_NE(output.find("| 手机备份记录 | 1 |"), std::string::npos);
     EXPECT_NE(output.find("| 短信 | 1 |"), std::string::npos);
     EXPECT_NE(output.find("时间线（前 100 条事件）"), std::string::npos);
     EXPECT_NE(output.find("Original message text"), std::string::npos);

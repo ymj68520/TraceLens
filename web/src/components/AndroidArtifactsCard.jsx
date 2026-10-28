@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom';
 
 const KINDS = [
   ['sms', '短信'], ['contacts', '联系人'], ['apps', '已安装应用'], ['wifi', 'Wi-Fi'],
-  ['mobile', '鸿蒙记录'],
+  ['mobile', '手机备份记录'],
 ];
 
 export default function AndroidArtifactsCard({ taskId, platform }) {

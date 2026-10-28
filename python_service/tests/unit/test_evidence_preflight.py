@@ -166,3 +166,65 @@ def test_quick_directory_scan_is_time_bounded(inbox, monkeypatch):
     assert job["status"] == "partial"
     assert job["inventory_truncated"] is True
     assert job["integrity_status"] == "not_calculated"
+
+
+def _patch_tar_gid(data: bytearray) -> None:
+    """Reproduce ThunderForensic's non-octal gid on every member header."""
+    offset = 0
+    while offset + 512 <= len(data):
+        header = data[offset:offset + 512]
+        if header == b"\0" * 512:
+            break
+        size_field = bytes(header[124:136]).rstrip(b"\0 ")
+        if not size_field or any(c not in b"01234567" for c in size_field):
+            break
+        size = int(size_field, 8)
+        data[offset + 116:offset + 124] = b"-6667000"
+        checksum = (sum(data[offset:offset + 148]) + 32 * 8 +
+                    sum(data[offset + 156:offset + 512]))
+        data[offset + 148:offset + 156] = f"{checksum:06o}\0 ".encode("ascii")
+        offset += 512 + ((size + 511) // 512) * 512
+
+
+def test_thunderforensic_first_header_gid_quirk_is_recognized(tmp_path):
+    import io
+    import tarfile
+
+    members = [
+        (".backup", b'{"model":"vivo","from":"thunderforensic"}'),
+        ("PhoneData/deviceinfo.json", b"[]"),
+        ("PhoneData/application.json", b"[]"),
+        ("ThunderForensic.json", b'{"Device":{"Brand":"vivo","Model":"V1824BA"}}'),
+    ]
+    raw = io.BytesIO()
+    with tarfile.open(fileobj=raw, mode="w", format=tarfile.GNU_FORMAT) as archive:
+        for name, payload in members:
+            record = tarfile.TarInfo(name)
+            record.size = len(payload)
+            archive.addfile(record, io.BytesIO(payload))
+    data = bytearray(raw.getvalue())
+    _patch_tar_gid(data)
+    tar_path = tmp_path / "20261025VIVO.tar"
+    tar_path.write_bytes(bytes(data))
+
+    detected = intake._probe(tar_path)
+    assert detected["kind"] == "thunderforensic_backup"
+    assert detected["adapter"] == "thunder-backup"
+
+    project = tmp_path / "20261025VIVO"
+    tar_dir = project / "filesystem" / "1" / "tar"
+    tar_dir.mkdir(parents=True)
+    (tar_dir / tar_path.name).write_bytes(bytes(data))
+    detected = intake._probe(project)
+    assert detected["kind"] == "thunderforensic_backup"
+    assert detected["adapter"] == "thunder-backup"
+    assert detected["container"] == tar_path.name
+
+    plain = tmp_path / "plain.tar"
+    raw = io.BytesIO()
+    with tarfile.open(fileobj=raw, mode="w", format=tarfile.USTAR_FORMAT) as archive:
+        record = tarfile.TarInfo("readme.txt")
+        record.size = 5
+        archive.addfile(record, io.BytesIO(b"hello"))
+    plain.write_bytes(raw.getvalue())
+    assert intake._probe(plain)["kind"] == "tar_container"

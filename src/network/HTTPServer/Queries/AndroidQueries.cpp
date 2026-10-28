@@ -631,7 +631,7 @@ json SQLiteHelper::get_android_llm_summary(const std::string& android_db) {
         {"system_logs",           "系统日志"},
         {"device_identifiers",    "设备标识"},
         {"wifi_networks",         "WiFi 网络"},
-        {"mobile_artifacts",      "鸿蒙取证记录"}
+        {"mobile_artifacts",      "手机备份记录"}
     };
 
     json coverage = json::array();
