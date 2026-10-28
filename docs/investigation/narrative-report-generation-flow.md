@@ -375,7 +375,7 @@ response, stage = render_stage_report(
 输出的章节顺序固定为：
 
 1. **案件总述与证据召回**（首章）：内容 = 全案总述 + **原研判范围与方法段落原文**；
-   该章携带 `recall_table`（证据召回表）与 `summary`（表后总结）；
+   该章携带 `thread_table`（穷举式案情线索表）与 `summary`（表后总结）；
    **章节级 `citation_ids` 仍为空**（方法说明不认领全报告引用，引用由表内行与后续章节承担）；
 2. **本次案情（待核语境）**：仅 B，原文正文，附一句"仅作调查语境"的小结；
 3. 叙事章节：来自 `narrative`，每章 `citation_ids` 由 `_direction_citations`
@@ -386,12 +386,12 @@ response, stage = render_stage_report(
 6. **人工核查建议**：从各方向的 `missing_information` 去重排序生成核查清单，
    并统计未展开的分析/覆盖限制；带确定性小结。
 
-**证据召回表（`EvidenceRecallTable`）是纯确定性的**：每行由一个已被某章引用的
-`citation_id` 反查材料得到，字段为 `citation_id / evidence_key / evidence_name /
-material_type / priority / topics / reference_count / chapter_count /
-material_status`。排序按 `reference_count` 降序、`chapter_count` 降序、材料登记顺序，
-上限 `_RECALL_TABLE_LIMIT = 40` 行；被截断、可用但未引用、不可读三类情况写进 `notes`，
-因此表后总结里的数字与表本身永远一致（实测 393 份 / 788 处引用 / 402 份未进入正文）。
+**案情线索表（`EvidenceThreadTable`）是首章主表**：行 = 案件级线索，由主题归纳
+的分组（穷举：每个方向恰好归入一条线索）经一次全局改写得到人类可读线索名与
+40–120 字作用说明；`key_facts` 是从该线索自己的引文中确定性抽取并逐字回查冻结
+原文的具体值（地址:端口、配置键、账号、程序名、次数），章节号为可点击锚点。
+按引文数降序排列；逐文件明细（`EvidenceRecallTable`，同前述确定性口径）移至
+全部章节之后的「附录：证据召回明细」，保留文件级审计轨迹。
 
 兜底：若 `narrative is None`，按每 8 条方向生成
 “材料自主发现（n）”或“案情对照发现（n）”片段章节，每条方向包含
