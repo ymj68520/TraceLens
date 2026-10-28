@@ -176,9 +176,30 @@ _HYPOTHESIS_STATUS_TRANSITIONS: dict[HypothesisStatus, frozenset[HypothesisStatu
             HypothesisStatus.retired,
         }
     ),
-    HypothesisStatus.supported: frozenset({HypothesisStatus.retired}),
-    HypothesisStatus.weakened: frozenset({HypothesisStatus.retired}),
-    HypothesisStatus.rejected: frozenset(),
+    HypothesisStatus.supported: frozenset(
+        {
+            HypothesisStatus.active,
+            HypothesisStatus.weakened,
+            HypothesisStatus.rejected,
+            HypothesisStatus.retired,
+        }
+    ),
+    HypothesisStatus.weakened: frozenset(
+        {
+            HypothesisStatus.active,
+            HypothesisStatus.supported,
+            HypothesisStatus.rejected,
+            HypothesisStatus.retired,
+        }
+    ),
+    HypothesisStatus.rejected: frozenset(
+        {
+            HypothesisStatus.active,
+            HypothesisStatus.supported,
+            HypothesisStatus.weakened,
+            HypothesisStatus.retired,
+        }
+    ),
     HypothesisStatus.retired: frozenset(),
 }
 

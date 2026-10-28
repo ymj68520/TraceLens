@@ -141,7 +141,7 @@ class ReferenceBindingTableV1(BaseModel):
 
     def by_handle(self, handle: str) -> Optional[ReferenceBinding]:
         for binding in self.bindings:
-            if binding.handle == handle:
+            if binding.handle == handle or binding.canonical_ref == handle:
                 return binding
         return None
 
@@ -365,7 +365,7 @@ def build_plan_binding_table(
 
     active_questions = [
         entry for entry in pack.question_index
-        if entry.status in ("open", "in_progress")
+        if entry.status not in ("superseded",)
     ]
     for handle, entry in (
         (f"Q{index}", entry)
