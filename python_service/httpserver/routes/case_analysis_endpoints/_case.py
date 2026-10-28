@@ -281,6 +281,34 @@ async def get_case_report_by_case(
         report = case_service.get_cross_image_report(case_id)
 
         if not report:
+            from ..report_generation import _report_root
+            from ...services.forensic_report.narrative_reader import read_narrative_version_strict
+            reports_db = _report_root() / "reports.db"
+            if reports_db.exists():
+                import sqlite3
+                with sqlite3.connect(reports_db) as conn:
+                    cur = conn.cursor()
+                    cur.execute(
+                        "SELECT report_id FROM report_versions WHERE scope_type = 'case' AND scope_id = ? ORDER BY version DESC LIMIT 1",
+                        (case_id,)
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        r_id = row[0]
+                        res = read_narrative_version_strict(reports_db, _report_root(), case_id, r_id, scope_type="case", scope_id=case_id)
+                        if res:
+                            version, manifest = res
+                            md_sections = [f"## {s.heading}\n\n{s.content}" for s in manifest.sections]
+                            full_report_text = f"# {manifest.title}\n\n" + "\n\n".join(md_sections)
+                            return CaseReportResponse(
+                                success=True,
+                                task_id=case_id,
+                                case_description=manifest.title,
+                                report=full_report_text,
+                                filtered_files=[],
+                                generated_at=str(manifest.generated_at),
+                                timestamp=datetime.now().isoformat(),
+                            )
             raise HTTPException(
                 status_code=404,
                 detail="No cross-image report found for this case. "
