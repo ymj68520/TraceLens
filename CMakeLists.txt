@@ -665,6 +665,7 @@ install(TARGETS forensic_analyzer DESTINATION bin)
 
 # Smart 选文件单独测试台：复用与主程序完全相同的源与链接，
 # 只跑 selectImportantFiles（EXCLUDE_FROM_ALL，不影响默认构建）。
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/smart_select_test.cpp")
 add_executable(smart_select_test EXCLUDE_FROM_ALL tests/smart_select_test.cpp ${LIB_SOURCES})
 target_compile_options(smart_select_test PRIVATE -include utility)
 target_include_directories(smart_select_test PRIVATE "${CMAKE_BINARY_DIR}/generated")
@@ -697,6 +698,7 @@ target_link_libraries(
   ${LIBZIP_LIBRARIES}
   ${LIBARCHIVE_LIBRARIES}
   ${PLATFORM_LIBRARIES})
+endif()
 install(PROGRAMS scripts/bitlocker_fvek_decrypt.py DESTINATION bin/scripts)
 
 # Enable testing and add tests subdirectory for GTest-based tests
