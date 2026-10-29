@@ -84,6 +84,10 @@ async def _gather_bounded(coros, limit: int):
 
 READING_CHARS = 4000
 REQUEST_CHAR_LIMIT = 26000
+# Bounded path tail in prompt projections: enough to name the enclosing
+# software/directory, short enough that installed AppX paths do not dominate
+# the request budget (they can exceed 200 characters each).
+_PROMPT_PATH_MAX = 160
 # Narrative shape limits. The prompt asks for 3-6 sections per batch of 400-1200
 # characters; the validator enforces a slightly wider window so a compliant
 # answer is never rejected, while still refusing the degenerate "one 50-char
@@ -175,10 +179,35 @@ async def materialize_images(envelope, llm):
 
 
 def prompt_material(source, text=None):
+    """One material as the discovery model sees it.
+
+    ``path`` is included and is NOT optional. Quasar's config file contains only
+    ``<Hosts>192.168.10.30:4782;</Hosts>`` and ``<Tag>Office04</Tag>`` — nothing
+    that says what program wrote it. Its location
+    ``/Users/admin/Desktop/控制端/Quasar v1.4.1/Profiles/Default.xml`` is the only
+    place the case semantics exist, so a projection without it produces
+    "a config with a remote host" instead of "the Quasar RAT client config".
+    Measured on PC.E01: 83 of 911 materials carry case semantics only in the
+    path; adding it costs ~101 characters per material (+5.6% prompt size).
+    """
     return {"material_id": source.material_id, "source_kind": source.kind,
+            # Path is a locator, not a fact: the discovery prompt forbids
+            # treating a directory name as evidence of what happened.
+            "path": stage_citation_key_path(source.evidence_key),
             "text": source.text[:READING_CHARS] if text is None else text,
             "source_group": source.source_sha256,
             "coverage": source.status, "limitations": source.limitations}
+
+
+def stage_citation_key_path(evidence_key: str) -> str:
+    """The human-readable location of an evidence key, bounded for prompts."""
+    path = evidence_key[5:] if evidence_key.startswith("file:") else evidence_key
+    # Long installed paths (AppX packages with version + hash + locale) would
+    # otherwise add hundreds of characters for no extra signal: the tail is
+    # what names the object, the head is boilerplate.
+    if len(path) > _PROMPT_PATH_MAX:
+        path = "…" + path[-_PROMPT_PATH_MAX:]
+    return path
 
 
 def _prompt_row_size(source) -> int:
@@ -497,34 +526,53 @@ def stage_citation_name(evidence_key: str) -> str:
 
 _THEME_NAME_MAX_CHARS = 20
 # A theme is one chapter, so it must stay small enough to write as one. The
-# prompt asks for <=25 directions, but the model grouped 218 directions under
+# prompt asks for <=30 directions, but the model grouped 218 directions under
 # "系统进程与组件执行痕迹" on PC.E01, which then split into 4 parts that each
 # concluded "常规系统活动" — the same finding stated four times. Oversized
 # themes are split here rather than trusted to the prompt.
-_THEME_MAX_DIRECTIONS = 25
+#
+# Raised from 25 to 30 with the object-level regrouping: object themes are
+# naturally smaller, and the old cap forced distinct case objects to be folded
+# back together (a 46-material PrivaZer install bundle swallowed Quasar's two
+# directions, and the chapter took the largest theme's name).
+_THEME_MAX_DIRECTIONS = 30
 # A theme smaller than this cannot carry a chapter; it is a fragment.
-_THEME_MIN_DIRECTIONS = 8
+# Lowered from 8 because an object-level theme is legitimately small: one
+# suspect program with 3-6 observations is exactly what a reader wants.
+_THEME_MIN_DIRECTIONS = 3
 # Folding only applies once the grouping is clearly fragmented; a report with a
 # handful of genuinely small themes should keep them.
 _THEME_FRAGMENT_FOLD_MIN_THEMES = 12
 _THEME_COUNT_MAX = 24
 
 
-def _direction_projection(direction) -> dict:
+def _direction_projection(direction, paths=None) -> dict:
     """Minimal per-direction row for induction: id, label, kind, short text.
 
     Quotes and full descriptions stay out: induction only needs to recognize
     what a direction is about, and including quotes tripled the payload.
+    ``paths`` adds the directories a direction's evidence lives in, which is
+    what lets induction group by case OBJECT (Quasar 控制端, PrivaZer 安装包)
+    instead of by material type (all Prefetch, all evtx).
     """
-    return {
+    row = {
         "id": direction.direction_id,
         "title": direction.title[:60],
         "kind": direction.finding_kind,
         "description": direction.description[:120],
     }
+    if paths:
+        where = []
+        for ref in (*direction.supporting_refs, *direction.counter_refs):
+            path = paths.get(ref.material_id)
+            if path and path not in where:
+                where.append(path)
+        if where:
+            row["where"] = [w[-100:] for w in where[:3]]
+    return row
 
 
-def _chunk_directions(directions, limit: int = REQUEST_CHAR_LIMIT):
+def _chunk_directions(directions, limit: int = REQUEST_CHAR_LIMIT, paths=None):
     """Split directions into induction chunks that fit one request each.
 
     Sizes are measured from the serialized payload the request actually sends.
@@ -533,7 +581,7 @@ def _chunk_directions(directions, limit: int = REQUEST_CHAR_LIMIT):
     """
     chunks, current, rows, size = [], [], [], 0
     for direction in directions:
-        row = _direction_projection(direction)
+        row = _direction_projection(direction, paths)
         candidate = [*rows, row]
         candidate_size = len(_theme_payload(candidate))
         if current and candidate_size > limit:
@@ -709,7 +757,7 @@ def _consolidate_themes(themes, warnings):
 
 
 async def induce_themes(directions, llm, *, concurrency: int = 1,
-                        split_oversized: bool = True):
+                        split_oversized: bool = True, paths=None):
     """Group directions into report themes (stages 1-2 of the v3 shape).
 
     Stage 1 shards the directions by request budget and asks the model to group
@@ -727,10 +775,10 @@ async def induce_themes(directions, llm, *, concurrency: int = 1,
     by_id = {d.direction_id: d for d in directions}
     allowed = set(by_id)
     warnings: list[str] = []
-    chunks = _chunk_directions(directions)
+    chunks = _chunk_directions(directions, paths=paths)
 
     async def group_chunk(index, chunk):
-        rows = [_direction_projection(d) for d in chunk]
+        rows = [_direction_projection(d, paths) for d in chunk]
         payload = _theme_payload(rows)
         chunk_ids = {d.direction_id for d in chunk}
         response = await llm.chat_completion(
@@ -1261,18 +1309,26 @@ _CHAPTER_MIN_CHARS = 300
 _CHAPTER_MAX_CHARS = 4000
 
 
-def _chapter_write_row(direction, cid) -> dict:
-    """One direction as the chapter writer sees it: label, text, quotes."""
+def _chapter_write_row(direction, cid, paths=None) -> dict:
+    """One direction as the chapter writer sees it: label, text, quotes.
+
+    ``paths`` carries each cited material's directory. The bare file name is
+    not enough to say what an object is: Default.xml alone reads as "some
+    config", while 控制端/Quasar v1.4.1/Profiles/Default.xml names the program.
+    """
+    paths = paths or {}
     return {
         "title": direction.title,
         "kind": direction.finding_kind,
         "description": direction.description,
         "supporting": [
-            {"file": cid.get(ref.material_id, ""), "quote": ref.quote}
+            {"file": cid.get(ref.material_id, ""),
+             "where": paths.get(ref.material_id, ""), "quote": ref.quote}
             for ref in direction.supporting_refs
         ],
         "counter": [
-            {"file": cid.get(ref.material_id, ""), "quote": ref.quote}
+            {"file": cid.get(ref.material_id, ""),
+             "where": paths.get(ref.material_id, ""), "quote": ref.quote}
             for ref in direction.counter_refs
         ],
         "missing_information": list(direction.missing_information)[:3],
@@ -1873,10 +1929,11 @@ async def write_chapters(chapters, materials, llm, *, concurrency: int = 1):
     from the finished body (see ``_chapter_summary``).
     """
     cid = {m.material_id: stage_citation_name(m.evidence_key) for m in materials}
+    paths = {m.material_id: stage_citation_key_path(m.evidence_key) for m in materials}
     jobs = []
     for index, chapter in enumerate(chapters):
         directions = chapter_directions(chapter)
-        rows = [_chapter_write_row(d, cid) for d in directions]
+        rows = [_chapter_write_row(d, cid, paths) for d in directions]
         parts = _split_chapter_rows(rows)
         cursor = 0
         for part_index, part in enumerate(parts):
@@ -2069,9 +2126,15 @@ async def _compose_chapter_narrative(envelope, materials, directions, llm, *,
     Returns ``None`` when induction yields nothing usable so the caller can
     fall back to the batch path or the fragment renderer.
     """
+    # Induction sees where each direction's evidence lives: that is what lets
+    # it group by case object (Quasar 控制端, PrivaZer 安装包) rather than by
+    # material type (all Prefetch / all evtx), which is the difference between
+    # a case-reading table and an artifact inventory.
+    paths = {m.material_id: stage_citation_key_path(m.evidence_key) for m in materials}
     try:
         themes, theme_warnings = await induce_themes(
-            directions, llm, concurrency=concurrency, split_oversized=False)
+            directions, llm, concurrency=concurrency, split_oversized=False,
+            paths=paths)
     except (ValueError, KeyError, TypeError) as exc:
         logger.warning("Theme induction failed (%s); falling back to batch narrative", exc)
         return None
@@ -2628,6 +2691,18 @@ _SUBJECT_NAMES_IN_SUMMARY = 3
 
 # One sentence per table row: short enough to scan, long enough to say which
 # finding the material backs and with what concrete content.
+# The thread table is a case-reading aid, not a chapter: a row large enough to
+# hide a distinct case object is useless, so oversized groups are split by
+# object before they are published.
+_THEME_ROW_MAX_DIRECTIONS = 40
+
+# Objects below this many directions are folded into the parent thread instead
+# of becoming one-line threads of their own.
+_THREAD_OBJECT_MIN_DIRECTIONS = 3
+
+# Thread names are scanned, not read: 24 characters keeps them on one line.
+_THREAD_NAME_MAX = 24
+
 _CONTRIBUTION_MIN_CHARS = 20
 _CONTRIBUTION_MAX_CHARS = 200
 
@@ -3132,16 +3207,25 @@ async def compose_recall_summary(stats, overview, llm=None) -> str:
 # only if it occurs verbatim in the thread's own quotes, which are already
 # char-span-anchored in the frozen materials — so a published key fact can
 # never be a value the evidence does not contain.
+# Ordered by how much they tell an investigator: a C2 address or a registry
+# path beats a file name, and a copyright line tells nothing. The previous
+# order let MIT/Apache license text fill a Quasar thread's fact list.
 _THREAD_FACT_PATTERNS = (
-    r"\b\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?\b",
-    r"(?:HKCU|HKLM|HKU)[\\/][^\s，。；、「」]+",
-    r"[A-Za-z]:\\[^\s，。；、「\"]+",
-    r"\b[\w.\- @[\]]*@[A-Za-z0-9.\-]+",
+    r"\b\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?\b",          # C2 / host:port
+    r"<[A-Za-z][\w]*>[^<\n]{1,80}</[A-Za-z][\w]*>",            # <Hosts>…</Hosts>
+    r"(?:HKCU|HKLM|HKU)[\\/][^\s，。；、「」]+",                 # registry path
+    r"\b[A-Za-z0-9_.\-]+\s*=\s*(?:True|False|\d+)\b",       # Key=False
+    r"\b[\w.\- @[\]]*@[A-Za-z0-9.\-]+",                     # account
+    r"[A-Za-z]:\\[^\s，。；、「\"]+",                           # absolute path
     r"\b[\w.\-]+\.(?:exe|dll|txt|ini|xml|evtx|pf|log|7z|dat|db|json|docx|xlsx|lnk)\b",
-    r"\b[a-f0-9]{16,64}\b",
-    r"\b\d+(?:\.\d+){2,3}\b",
     r"运行\s*\d+\s*次",
+    r"\b[0-9a-f]{32,64}\b",                                    # hashes only
 )
+# License/notice boilerplate is never a case fact.
+_THREAD_FACT_NOISE_RE = re.compile(
+    r"copyright|license|licence|permission is hereby granted|all rights reserved|"
+    r"\bmit\b|\bapache\b|\bbsd\b|warranty|^v?\d+(?:\.\d+)+$",
+    re.IGNORECASE)
 _THREAD_FACT_MAX = 6
 
 
@@ -3152,8 +3236,9 @@ def _extract_thread_facts(quotes):
     for pattern in _THREAD_FACT_PATTERNS:
         for match in re.findall(pattern, corpus):
             token = match.strip()
-            # Skip pure section counters and version-like noise under 4 chars.
             if len(token) < 4 or len(token) > 80 or token.lower() in seen:
+                continue
+            if _THREAD_FACT_NOISE_RE.search(token):
                 continue
             seen.add(token.lower())
             facts.append(token)
@@ -3166,7 +3251,7 @@ def _merge_duplicate_threads(theme_rows) -> None:
     """Fold threads whose relabeled names collapsed to the same thread.
 
     Induction may keep two groups with near-identical subjects apart (its merge
-    stage refuses to combine groups beyond 25 directions); after relabeling they
+    stage refuses to combine groups beyond 30 directions); after relabeling they
     read as the same case thread, so the members fold back together and the
     stronger contribution survives. Exhaustiveness is preserved: no direction
     is dropped or duplicated.
@@ -3210,12 +3295,178 @@ def _fallback_thread(row) -> str:
 
 
 
+# A thread name must name a case OBJECT and say what about it. Names that only
+# list artifacts or only describe a generic activity read as an inventory row:
+# "PrivaZer安装包DLL注册" tells an investigator nothing to chase, while
+# "Quasar 控制端配置与 C2 驻留" does.
+_THREAD_BEHAVIOUR_RE = re.compile(
+    r"驻留|回连|外联|启动|执行|注入|提权|清理|删除|导出|泄露|外传|下载|安装|"
+    r"崩溃|报错|异常|失败|缺失|为空|缺口|遗留|痕迹|配置|写入|加载|调用|"
+    r"连接|登录|枚举|扫描|加密|解密|持久化|反取证|部署|运行|触发|篡改|绕过|"
+    r"无可读|无法读取|未提取|空白|倒置|重复|可疑|暴露|未加密|已关闭|禁用|"
+    r"核对|比对|矛盾|不符|不一致|关联|印证|"
+    r"空数据|无数据|为空|空值|异常值|倒置|错乱|缺失|空白|未激活|未启动|"
+    r"撤销|回滚|覆盖|残留|遗留|同源|重复|并存|邻近|聚集|集中|同步")
+# Names made only of artifact nouns ("DLL 注册", "API", "日志", "记录") without
+# an object that a human would recognise as software/directory/subject.
+_THREAD_VAGUE_OBJECTS = (
+    "材料观察", "系统组件", "组件执行", "系统进程", "其他", "杂项", "综合",
+    "相关内容", "相关执行", "待核线索", "异常记录", "未知对象",
+    "重点可疑对象", "可疑对象", "重点对象", "主要发现", "关键发现",
+)
+
+
+# Generic subsystem labels: they describe a category of activity, not an object
+# an investigator would go and look at.
+_THREAD_GENERIC_SUBJECTS = frozenset({
+    "服务控制", "系统进程", "系统组件", "常规活动", "背景材料", "系统服务",
+    "运行状态", "使用痕迹", "系统配置", "应用活动",
+})
+
+# Technology words that name a mechanism rather than a case object. A thread
+# called "服务控制与驱动加载API" says what the artifacts can DO, not what in
+# this case is worth chasing.
+_THREAD_MECHANISM_RE = re.compile(
+    r"API|\bPID\b|驱动加载|注册表|文件系统|网络协议|句柄|线程|内存页|"
+    r"系统调用|内核|Win32|COM|WMI|RPC", re.IGNORECASE)
+
+
+def _thread_name_is_readable(name: str) -> bool:
+    """True when a thread name names a concrete case object AND a behaviour.
+
+    Deliberately mechanical and testable. Accepted when the name contains:
+      - a behaviour word, AND
+      - a concrete subject: a named artifact token (WMIADAP, PrivaZer,
+        Default.xml), or a CJK noun that is not pure mechanism vocabulary.
+    Rejected names are rebuilt from the thread's own subjects by
+    ``_fallback_thread_name``.
+    """
+    compact = re.sub(r"[\s、，,与和及：:]+", "", name)
+    # Whole-name vagueness only: a named subject plus "相关执行" is fine
+    # ("WMIADAP相关执行"), while a name that IS a vague phrase is not.
+    if compact in _THREAD_VAGUE_OBJECTS:
+        return False
+    for vague in _THREAD_VAGUE_OBJECTS:
+        if name.startswith(vague) and len(compact) - len(vague) < 3:
+            return False
+    if not _THREAD_BEHAVIOUR_RE.search(name):
+        return False
+    identifiers = [token for token in re.findall(r"[A-Za-z][A-Za-z0-9_.\-]{2,}", name)
+                   if token.upper() not in _THREAD_MECHANISM_WORDS]
+    if identifiers:
+        return True
+    stem = _THREAD_BEHAVIOUR_RE.sub("", name)
+    stem = re.sub(r"[A-Za-z0-9_.\-]+", "", stem)
+    for raw in re.split(r"[与和及、，,：:\s]+", stem):
+        word = raw.strip("的")
+        if len(word) < 2 or word in _THREAD_MECHANISM_CJK:
+            continue
+        # A CJK subject qualifies when it is not wholly built from mechanism
+        # vocabulary ("服务控制" vs "内存转储" / "计划任务" / "控制端").
+        if not all(part in _THREAD_MECHANISM_CJK for part in _cjk_segments(word)):
+            return True
+    return False
+
+
+def _cjk_segments(word: str):
+    """Split a CJK word into the mechanism-vocabulary segments it contains."""
+    segments, rest = [], word
+    for term in sorted(_THREAD_MECHANISM_CJK, key=len, reverse=True):
+        if term in rest:
+            segments.append(term)
+            rest = rest.replace(term, "|")
+    segments.extend(part for part in rest.split("|") if part)
+    return segments
+
+
+_THREAD_MECHANISM_WORDS = frozenset({
+    "API", "PID", "DLL", "EXE", "LOG", "EVTX", "PF", "INI", "XML", "COM", "WMI",
+    "RPC", "SQL", "HTTP", "TCP", "UDP", "DNS", "TLS", "SSH",
+})
+
+# CJK mechanism vocabulary: these describe HOW artifacts work, not WHAT in this
+# case is worth chasing. A name made only of these has no case object.
+_THREAD_MECHANISM_CJK = frozenset({
+    "服务控制", "驱动加载", "注册表", "文件系统", "网络协议", "内存", "线程",
+    "内核", "系统调用", "加载", "调用", "控制", "服务", "驱动", "系统",
+    "进程", "组件", "记录", "日志", "执行", "相关", "基线", "活动", "配置",
+})
+
+
+def _fallback_thread_name(row) -> str:
+    """Deterministic object+behaviour name built from the thread's own facts.
+
+    Uses the most specific named subject in the thread's direction titles and
+    quotes (a program, directory component, or config key), then the strongest
+    behaviour word from its titles. Never invents a subject.
+    """
+    text = " ".join(row["direction_titles"]) + " " + " ".join(row["quotes"][:3])
+    subjects = []
+    for token in _SUBJECT_TOKEN_RE.findall(text):
+        stem = token.rsplit(".", 1)[0].upper()
+        if stem in _GENERIC_DEPENDENCIES or token.upper() in _SUBJECT_STOPWORDS:
+            continue
+        if token in subjects:
+            continue
+        subjects.append(token)
+        if len(subjects) >= 2:
+            break
+    behaviour = re.search(_THREAD_BEHAVIOUR_RE, " ".join(row["direction_titles"]))
+    if subjects and behaviour:
+        return _shorten_heading(f"{subjects[0]} {behaviour.group(0)}", 24)
+    if subjects:
+        return _shorten_heading(f"{subjects[0]} 相关痕迹", 24)
+    return _shorten_heading(row["theme_name"], 24)
+
+
+def _trim_thread_label(name: str) -> str:
+    """Shorten an over-long thread name without cutting a word in half.
+
+    A raw slice produced "RuntimeBroker 多实例高频执" and "Windows Store 商店
+    数据库缓" — labels cut mid-word, which read as broken text. Prefer the last
+    separator inside the budget, then the last complete Latin token.
+    """
+    if len(name) <= _THREAD_NAME_MAX:
+        return name
+    budget = name[:_THREAD_NAME_MAX]
+    for sep in ("，", ",", "、", "：", ":", " ", "与", "和", "及"):
+        cut = budget.rfind(sep)
+        if cut >= 6:
+            candidate = budget[:cut].strip(" 与和及、，,：:")
+            if len(candidate) >= 4:
+                return candidate
+    # No separator: drop a trailing partial Latin word or CJK fragment.
+    candidate = re.sub(r"[A-Za-z]+$", "", budget).strip()
+    if len(candidate) >= max(4, _THREAD_NAME_MAX // 2):
+        return candidate
+    candidate = re.sub(r"[\u4e00-\u9fff]{1,2}$", "", budget).strip()
+    return candidate or budget
+
+
 def _clean_thread_fields(raw_name, raw_contribution, raw_facts, row):
     """Validate the relabel answer for one thread; None means "use fallback"."""
     name = _plain_models_text(raw_name)
     name = re.sub(r"^\d+[.、：:]\s*", "", name).strip()
-    if not (2 <= len(name) <= 24) or _MATERIAL_ID_RE.search(name):
+    # An over-long name is a formatting miss, not a reason to discard a good
+    # answer: shorten at a natural boundary instead. A raw slice produced
+    # "RuntimeBroker 多实例高频执" and "Windows Store 商店数据库缓" — labels
+    # cut mid-word, which read as broken text.
+    if len(name) > _THREAD_NAME_MAX:
+        name = _trim_thread_label(name)
+    if not (2 <= len(name) <= _THREAD_NAME_MAX) or _MATERIAL_ID_RE.search(name):
         return None
+    if not _thread_name_is_readable(name):
+        # A name that names no object or no behaviour is repaired from the
+        # thread's own subjects, then from its own titles; never published as
+        # an inventory label.
+        repaired = _object_thread_name(
+            name, row.get("theme_name") or "", row.get("members") or ())
+        if _thread_name_is_readable(repaired):
+            name = repaired
+        else:
+            name = _fallback_thread_name(row)
+        if not _thread_name_is_readable(name):
+            return None
     contribution = _plain_models_text(raw_contribution)
     contribution = strip_material_ids(contribution)
     contribution = re.sub(r"\s*\n+\s*", " ", contribution).strip()
@@ -3237,11 +3488,215 @@ def _clean_thread_fields(raw_name, raw_contribution, raw_facts, row):
             # this is what keeps the bolded values anchored to evidence.
             if len(token) < 4 or token.lower() in lowered:
                 continue
+            # Model-chosen facts go through the same noise filter as extracted
+            # ones: a Quasar thread once listed three copyright lines and no
+            # config value at all.
+            if _THREAD_FACT_NOISE_RE.search(token):
+                continue
             if token.lower() not in allowed and not any(token.lower() in q.lower() for q in row["quotes"]):
                 continue
             lowered.add(token.lower())
             facts.append(token)
     return name, contribution, tuple(facts)
+
+
+# Materials that carry no case semantics: licenses, icons, AppX manifests and
+# signatures ship with every installed program and are evidence of nothing by
+# themselves. A direction built only on them reads as an inventory row, so the
+# thread table ranks it last (it is never dropped from the evidence set or the
+# appendix — the audit trail stays complete).
+_LOW_VALUE_EVIDENCE_RE = re.compile(
+    r"(?:license|licence|copying|notice|thirdparty|third_party|readme|changelog)"
+    r"(?:\.[a-z0-9]+)?$|"
+    r"\.(?:png|jpg|jpeg|gif|ico|svg|bmp|ttf|otf|woff2?)$|"
+    r"appx(?:blockmap|manifest|signature)|manifest\.json$|"
+    r"\b(?:logo|icon|splash|banner)[-.\w]*\.(?:png|jpg|ico|bmp)$",
+    re.IGNORECASE)
+
+
+def _is_low_value_evidence(evidence_key: str) -> bool:
+    """True for bundled artifacts (licenses, icons, package manifests)."""
+    name = stage_citation_name(evidence_key)
+    return bool(_LOW_VALUE_EVIDENCE_RE.search(name))
+
+
+def _object_thread_name(label, parent_name, rows) -> str:
+    """Give a split part a name that says what happened, not just what it is.
+
+    The split label is a directory ("RUNTIMEBROKER.EXE", "SmartScreen"), which
+    names an object but says nothing about it. Add the strongest behaviour word
+    from the part's own direction titles so the thread reads as a finding.
+    Connectors and half-cut words are never allowed to survive a truncation.
+    """
+    title_blob = " ".join(d.title for d in rows)
+    behaviour = _THREAD_BEHAVIOUR_RE.search(title_blob)
+    verb = behaviour.group(0) if behaviour else ""
+    # Prefer a whole phenomenon phrase from the first title ("空数据",
+    # "卷影复制与备份活动"): a single verb loses what the artifact showed.
+    phrase = ""
+    for direction in rows:
+        candidate = direction.title.strip()
+        if _THREAD_BEHAVIOUR_RE.search(candidate):
+            phrase = re.split(r"[，,；;。]", candidate)[0].strip()
+            break
+    base = (label or parent_name or "").strip()
+    if not base:
+        return _fallback_thread_name({"direction_titles": tuple(d.title for d in rows),
+                                      "quotes": (), "theme_name": "未命名线索"})
+    # The label may be a prefix of its own title ("Cortana DOMStore" of
+    # "Cortana DOMStore 空数据"): the remainder is the phenomenon to append.
+    if phrase and phrase.startswith(base) and len(phrase) > len(base):
+        remainder = phrase[len(base):].strip(" 与和及、，,：:-")
+        # A title that repeats the label ("代码完整性…" / "代码完整性重复评估")
+        # leaves repeated words in the remainder; strip the shared prefix.
+        shared = 0
+        for a, b in zip(base, remainder):
+            if a != b:
+                break
+            shared += 1
+        if shared >= 4:
+            remainder = remainder[shared:].strip(" 与和及、，,：:-")
+        if remainder and len(base) + len(remainder) + 1 <= _THREAD_NAME_MAX:
+            return _clean_thread_label(f"{base} {remainder}")
+        return _clean_thread_label(
+            f"{_shorten_heading(base, max(6, _THREAD_NAME_MAX - len(remainder) - 1))} {remainder}")
+    in_label = _THREAD_BEHAVIOUR_RE.search(base)
+    if verb and not in_label:
+        # Use the phenomenon phrase when it fits, else the bare verb.
+        tail = phrase if phrase and len(phrase) <= 12 else verb
+        room = max(6, _THREAD_NAME_MAX - len(tail) - 1)
+        stem = _shorten_heading(base, room)
+        return _clean_thread_label(f"{stem} {tail}")
+    if in_label:
+        # The label already carries a verb; shorten around it so the verb is
+        # the part that survives ("RUNDLL32 与 RUNONCE 执行记录" -> "RUNDLL32 执行").
+        head = base[:in_label.start()].strip(" 与和及、，,：:")
+        head = _clean_thread_label(_shorten_heading(
+            head, max(4, _THREAD_NAME_MAX - len(in_label.group(0)) - 1))) or ""
+        combined = f"{head} {in_label.group(0)}".strip()
+        return combined[:_THREAD_NAME_MAX]
+    return _clean_thread_label(_shorten_heading(base, _THREAD_NAME_MAX)) or base[: _THREAD_NAME_MAX]
+
+
+_DANGLING_THREAD_TAIL = ("与", "和", "及", "的", "在", "对", "将", "把", "从", "向")
+
+
+def _clean_thread_label(text: str) -> str:
+    """Drop a dangling connector / half identifier left by a truncation."""
+    label = text.strip(" 与和及、，,：:-")
+    # A trailing partial Latin word ("RUNONCE 执") is a cut, not a word.
+    label = re.sub(r"[\s]+[A-Za-z]{1,2}$", "", label)
+    for tail in _DANGLING_THREAD_TAIL:
+        if label.endswith(tail):
+            label = label[: -len(tail)].strip(" 与和及、，,：:-")
+    return label
+
+
+def _split_theme_by_object(theme, directions_by_id, paths, limit):
+    """Split an oversized theme along its case OBJECTS, not by count.
+
+    Slicing a 172-direction theme into 30-direction chunks produces parts that
+    all still say "PrivaZer 安装包", which is what buried Quasar: the object
+    never got its own group. Grouping the members by the directory their
+    evidence lives in keeps each part a recognisable object, and only the
+    genuinely undifferentiated tail falls back to size chunks.
+    """
+    members = theme["directions"]
+    buckets: dict[str, list] = {}
+    for direction in members:
+        dirs = []
+        for ref in (*direction.supporting_refs, *direction.counter_refs):
+            path = paths.get(ref.material_id) or ""
+            if path:
+                dirs.append(_object_directory(path))
+        key = max(dirs, key=len) if dirs else ""
+        buckets.setdefault(key, []).append(direction)
+    if len(buckets) <= 1:
+        return None
+    # Objects with real weight become their own thread. The long tail of small
+    # objects is grouped together rather than published as dozens of
+    # single-direction threads: a table of 200 one-row threads is an inventory
+    # again, only sorted differently.
+    ordered = sorted(buckets.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+    major = [(key, rows) for key, rows in ordered
+             if len(rows) >= _THREAD_OBJECT_MIN_DIRECTIONS]
+    minor = [row for key, rows in ordered
+             if len(rows) < _THREAD_OBJECT_MIN_DIRECTIONS for row in rows]
+    parts = [(key, tuple(rows)) for key, rows in major]
+    if minor:
+        # The tail keeps the parent theme's name; it is honestly labelled as a
+        # collection rather than pretending to be one object.
+        parts.append((theme["name"], tuple(minor[:_THEME_ROW_MAX_DIRECTIONS])))
+        for start in range(_THEME_ROW_MAX_DIRECTIONS, len(minor), _THEME_ROW_MAX_DIRECTIONS):
+            parts.append((theme["name"], tuple(
+                minor[start:start + _THEME_ROW_MAX_DIRECTIONS])))
+    return parts
+
+
+def _object_label(rows, paths) -> str:
+    """The most common enclosing directory among a set of directions."""
+    counts: dict[str, int] = {}
+    for direction in rows:
+        for ref in (*direction.supporting_refs, *direction.counter_refs):
+            path = paths.get(ref.material_id) or ""
+            if not path:
+                continue
+            label = _object_directory(path)
+            counts[label] = counts.get(label, 0) + 1
+    if not counts:
+        return ""
+    return max(counts.items(), key=lambda kv: (kv[1], len(kv[0])))[0]
+
+
+# Directory names that describe a file's role inside a product, not the
+# product itself. Skipping them is what makes Default.xml resolve to
+# "Quasar v1.4.1" instead of "Profiles".
+# Shared artifact stores: every program writes here, so a directory under one
+# of them identifies a material TYPE, never a case object.
+_SYSTEM_DIRS = frozenset({
+    "prefetch", "system32", "syswow64", "winevt", "logs", "log", "temp", "tmp",
+    "cache", "recent", "tasks", "drivers", "config", "software", "system",
+    "currentcontrolset", "microsoft", "windows", "users", "programdata",
+    "appdata", "local", "roaming", "desktop", "documents", "downloads",
+})
+
+_STRUCTURAL_DIRS = frozenset({
+    "profiles", "profile", "config", "configs", "settings", "data", "bin",
+    "lib", "libs", "src", "include", "resources", "assets", "plugins",
+    "desktop", "documents", "downloads", "appdata", "local", "roaming",
+    "program files", "program files (x86)", "windows", "system32", "users",
+    "admin", "temp", "tmp", "cache", "logs", "log", "thirdpartylicenses",
+    "3rdpartylicenses", "localstate", "appdata_local", "current", "retail",
+    "release", "debug", "x64", "x86", "amd64",
+})
+
+
+def _object_directory(path: str) -> str:
+    """The case-object directory of a path: the leaf-most meaningful folder.
+
+    Default.xml sits in .../控制端/Quasar v1.4.1/Profiles/, and "Quasar v1.4.1"
+    — not "Profiles" — is what names the object. Walk up from the file and take
+    the first directory that is not a structural role name.
+    """
+    parts = [p for p in re.split(r"[\\/]+", path) if p]
+    if not parts:
+        return path
+    for part in reversed(parts[:-1]):
+        if part.lower() in _STRUCTURAL_DIRS:
+            continue
+        if part.lower() in _SYSTEM_DIRS:
+            # System-wide artifact folders (Prefetch, Logs, System32) are shared
+            # by hundreds of unrelated programs; grouping by them produces one
+            # 114-direction "Prefetch" thread that names no case object.
+            break
+        if len(part) >= 3:
+            return part[:40]
+    # No meaningful directory above the file: fall back to the file's own name
+    # without extension (SVCHOST.EXE-67EC2DA7.pf -> SVCHOST), which at least
+    # names the object rather than the artifact type.
+    stem = re.sub(r"\.[A-Za-z0-9]{2,5}$", "", parts[-1])
+    stem = re.split(r"[-_]", stem)[0]
+    return (stem or parts[-1])[:40]
 
 
 def _prepare_theme_rows(envelope, themes, materials, directions, narrative):
@@ -3255,8 +3710,39 @@ def _prepare_theme_rows(envelope, themes, materials, directions, narrative):
         # every chapter it appears in, not just the first.
         for direction_id in row.get("direction_ids") or ():
             chapter_of_direction.setdefault(direction_id, set()).add(number)
-    theme_rows = []
+    # An oversized theme is split along its case objects before it becomes a
+    # row: a 172-direction "PrivaZer 安装包" group used to swallow Quasar,
+    # Foxmail and every other object that happened to share a directory.
+    expanded = []
     for theme in themes:
+        members = tuple(theme.get("directions") or ())
+        if len(members) > _THEME_ROW_MAX_DIRECTIONS:
+            parts = _split_theme_by_object(
+                {"name": theme.get("name") or "", "directions": members},
+                {d.direction_id: d for d in members},
+                {m.material_id: stage_citation_key_path(m.evidence_key) for m in materials},
+                _THEME_ROW_MAX_DIRECTIONS)
+            if parts:
+                new_parts = []
+                for label, rows in parts:
+                    name = _object_thread_name(label, theme.get("name") or "", rows)
+                    # Same readability gate as a model-written name: a part
+                    # that still names only artifacts is not published.
+                    if not _thread_name_is_readable(name):
+                        name = _fallback_thread_name({
+                            "theme_name": theme.get("name") or "未命名线索",
+                            "direction_titles": tuple(d.title for d in rows),
+                            "quotes": tuple(
+                                r.quote for d in rows
+                                for r in (*d.supporting_refs, *d.counter_refs)),
+                        })
+                    new_parts.append({"name": name, "directions": rows})
+                expanded.extend(new_parts)
+                continue
+        expanded.append(theme)
+
+    theme_rows = []
+    for theme in expanded:
         members = tuple(theme.get("directions") or ())
         if not members:
             continue
@@ -3265,17 +3751,36 @@ def _prepare_theme_rows(envelope, themes, materials, directions, narrative):
         chapter_numbers = tuple(sorted(set().union(*(
             chapter_of_direction[d.direction_id]
             for d in members if d.direction_id in chapter_of_direction))))
+        # A thread is "low value" when every material it cites is a bundled
+        # artifact (license/icon/manifest): it stays in the table for audit but
+        # must not outrank a real case object.
+        material_keys = [m.evidence_key for m in materials if m.material_id in material_ids]
+        low_value = bool(material_keys) and all(
+            _is_low_value_evidence(key) for key in material_keys)
+        raw_name = (theme.get("name") or "").strip()
+        if raw_name in ("未归类材料观察", "未归类", "no_theme", ""):
+            # The induction's catch-all bucket has no object; name it from the
+            # strongest subject it actually contains.
+            raw_name = _fallback_thread_name({
+                "theme_name": raw_name or "未归类",
+                "direction_titles": tuple(d.title for d in members),
+                "quotes": tuple(r.quote for r in refs)})
         theme_rows.append({
-            "theme_name": (theme.get("name") or "").strip() or "未命名线索",
+            "theme_name": raw_name or "未命名线索",
             "members": members,
             "direction_titles": tuple(d.title for d in members),
             "quotes": tuple(r.quote for r in refs),
             "reference_count": len(refs),
             "material_count": len(material_ids),
             "chapter_numbers": chapter_numbers,
+            "low_value": low_value,
         })
-    theme_rows.sort(key=lambda r: (-r["reference_count"], -r["material_count"],
-                                   r["theme_name"]))
+    # Real case objects first; bundled-artifact threads sink to the bottom even
+    # when they happen to have many quotes (an install bundle can out-cite a
+    # single suspicious config).
+    theme_rows.sort(key=lambda r: (
+        bool(r.get("low_value")), -r["reference_count"], -r["material_count"],
+        r["theme_name"]))
     return theme_rows
 
 
@@ -3294,13 +3799,18 @@ def _build_thread_table(envelope, theme_rows, materials, directions):
         rows.append(EvidenceThreadRow(
             name=row.get("name") or row["theme_name"],
             contribution=row.get("contribution") or _fallback_thread(row),
-            key_facts=row.get("facts") or _extract_thread_facts(row["quotes"]),
+            # Quotes are the anchored source of truth; when a thread's quotes
+            # are empty the direction text is the next best place, since those
+            # tokens were themselves derived from quoted material.
+            key_facts=row.get("facts") or _extract_thread_facts(
+                row["quotes"] or row["direction_titles"]),
             direction_count=len(row["members"]),
             material_count=row["material_count"],
             reference_count=row["reference_count"],
             chapter_count=len(row["chapter_numbers"]),
             chapter_numbers=row["chapter_numbers"],
             citation_ids=citation_ids,
+            low_value=bool(row.get("low_value")),
         ))
     covered = sum(r.direction_count for r in rows)
     notes = [f"全部 {len(directions)} 项调查方向已归入 {len(rows)} 条线索，"

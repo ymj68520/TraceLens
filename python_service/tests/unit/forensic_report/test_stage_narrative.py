@@ -723,6 +723,303 @@ def test_difference_chapter_reason_is_scrubbed_of_material_ids():
     assert "0x37d25f9a" in diff.content
 
 
+def test_prompt_projection_includes_the_material_path():
+    """83/911 materials carry case semantics ONLY in the path.
+
+    Default.xml contains <Hosts>192.168.10.30:4782;</Hosts> and nothing that
+    names Quasar; the directory 控制端/Quasar v1.4.1/ is the only place the
+    case object exists. Without the path the model can only say "a config".
+    """
+    from httpserver.services.forensic_report.generation_sources import material
+    from httpserver.services.forensic_report.generation_stages import prompt_material
+
+    source = material(
+        "m001",
+        "file:/Users/admin/Desktop/控制端/Quasar v1.4.1/Profiles/Default.xml",
+        kind="text", status="ready", text="<Hosts>192.168.10.30:4782;</Hosts>")
+    row = prompt_material(source)
+    assert row["path"] == "/Users/admin/Desktop/控制端/Quasar v1.4.1/Profiles/Default.xml"
+    # The text itself never mentions the program: the path has to be there.
+    assert "Quasar" not in row["text"]
+
+
+def test_prompt_path_is_bounded_but_keeps_the_naming_tail():
+    from httpserver.services.forensic_report.generation_sources import material
+    from httpserver.services.forensic_report.generation_stages import (
+        _PROMPT_PATH_MAX, prompt_material,
+    )
+
+    long_key = ("file:/Users/admin/AppData/Local/Packages/"
+                + "MICROSOFT.MICROSOFTOFFICEHUB_19.2505.46065.0_X64__8WEKYB3D8BBWE/"
+                + "x" * 300 + "/Retail/settings.dat")
+    row = prompt_material(material("m002", long_key, kind="text", status="ready", text="t"))
+    assert len(row["path"]) <= _PROMPT_PATH_MAX + 1
+    # The tail (which names the object) survives; the head is boilerplate.
+    assert row["path"].endswith("settings.dat")
+    assert row["path"].startswith("…")
+
+
+def test_discovery_prompt_uses_path_but_forbids_path_only_conclusions():
+    from httpserver.services.forensic_report.generation_prompts import (
+        STAGE_DISCOVERY_AGGREGATE_V1,
+    )
+
+    prompt = STAGE_DISCOVERY_AGGREGATE_V1
+    assert "path 字段是材料的完整存放位置" in prompt
+    # Naming by path is required...
+    assert "必须指出" in prompt
+    # ...but a directory name alone may never become a conclusion.
+    assert "path 只是位置，不是事实" in prompt
+    assert "Crack" in prompt and "凭据泄露" in prompt
+
+
+def test_chapter_writer_receives_the_directory_not_just_the_filename():
+    """A bare file name cannot say what an object is; the writer needs where."""
+    from httpserver.services.forensic_report.generation_stages import _chapter_write_row
+    from httpserver.services.forensic_report.models import InvestigationDirection, MaterialSpan
+
+    quote = MaterialSpan(material_id="m001", quote="培训话术正文片段",
+                         character_start=0, character_end=8, ambiguous=False)
+    direction = InvestigationDirection(
+        direction_id="d1", title="话术材料", description="材料包含话术培训文档。",
+        finding_kind="observation", supporting_refs=(quote,), counter_refs=(),
+        missing_information=(), alternative_explanations=(),
+        baseline_direction_ids=(), case_context_quote="", origin="material")
+    row = _chapter_write_row(
+        direction, {"m001": "Default.xml"},
+        {"m001": "/Users/admin/Desktop/控制端/Quasar v1.4.1/Profiles/Default.xml"})
+
+    assert row["supporting"][0]["file"] == "Default.xml"
+    assert row["supporting"][0]["where"].endswith("控制端/Quasar v1.4.1/Profiles/Default.xml")
+
+
+def test_thread_names_must_name_an_object_and_a_behaviour():
+    """A name is rejected unless it names both a case object and what happened.
+
+    "服务控制与驱动加载API" only names a mechanism; "系统进程执行基线" only
+    names a category. Both read as inventory rows, so they are rebuilt from the
+    thread's own concrete subjects.
+    """
+    from httpserver.services.forensic_report.generation_stages import (
+        _thread_name_is_readable,
+    )
+
+    readable = (
+        "Quasar 控制端配置与 C2 驻留",
+        "PrivaZer 计划任务提权清理",
+        "Edge关闭SmartScreen与崩溃",
+        "WMIADAP相关执行",
+        "RUNDLL32调用控制面板组件",
+        "内存转储无可读字符串",
+    )
+    for name in readable:
+        assert _thread_name_is_readable(name), name
+
+    unreadable = (
+        "服务控制与驱动加载API",
+        "系统进程执行基线",
+        "材料观察",
+        "重点可疑对象",
+        "可疑对象",
+    )
+    for name in unreadable:
+        assert not _thread_name_is_readable(name), name
+
+
+def test_unreadable_thread_name_is_rebuilt_from_its_own_subjects():
+    """The fallback names a real subject from the thread, never an empty label."""
+    from httpserver.services.forensic_report.generation_stages import (
+        _clean_thread_fields,
+    )
+
+    row = {
+        "theme_name": "系统进程执行",
+        "direction_titles": ("PrivaZer 清理后 PowerShell 执行",),
+        "quotes": ("PrivaZer 清理痕迹与 PowerShell 调用相邻",),
+    }
+    cleaned = _clean_thread_fields(
+        "系统进程执行基线",
+        "该线索聚合了若干系统进程的执行记录，需结合其他日志核实其来源与目的。",
+        [], row)
+    assert cleaned is not None
+    name, _contribution, _facts = cleaned
+    assert "PrivaZer" in name
+    assert name != "系统进程执行基线"
+
+
+def test_indication_prompt_groups_by_case_object_not_material_type():
+    """Theme grouping decides what the thread table can say.
+
+    Grouping by material type ("all Prefetch") is what buried Quasar's two
+    directions inside a 103-direction PrivaZer install bundle.
+    """
+    from httpserver.services.forensic_report.generation_prompts import (
+        STAGE_THEME_LOCAL_SYSTEM_V1, STAGE_THEME_MERGE_SYSTEM_V1,
+    )
+
+    local = STAGE_THEME_LOCAL_SYSTEM_V1
+    assert "案件对象" in local
+    assert "where" in local            # the path projection reaches induction
+    assert "不要按材料类型归" in local
+    # The old "8 to 25 per theme" floor forced distinct objects together.
+    assert "3 到 20 个方向" in local
+
+    merge = STAGE_THEME_MERGE_SYSTEM_V1
+    assert "30" in merge
+    assert "PrivaZer 计划任务" in merge
+
+
+def test_low_value_evidence_is_recognised_and_ranked_last():
+    """Bundled artifacts (license/icon/manifest) must not outrank a case object."""
+    from httpserver.services.forensic_report.generation_stages import (
+        _is_low_value_evidence,
+    )
+
+    for key in ("file:/x/PrivaZer/LICENSE", "file:/x/Be.HexEditor_license.txt",
+                "file:/x/Logo150.scale-100.png", "file:/x/AppxManifest.xml",
+                "file:/x/AppxSignature.p7x"):
+        assert _is_low_value_evidence(key), key
+    for key in ("file:/x/Default.xml", "file:/x/foxmail.log",
+                "file:/x/PrivaZer.ini", "file:/x/passwords.txt"):
+        assert not _is_low_value_evidence(key), key
+
+
+def test_threads_backed_only_by_bundled_artifacts_sort_last():
+    from httpserver.services.forensic_report.generation_sources import material
+    from httpserver.services.forensic_report.generation_stages import (
+        _ChapterNarrative, _prepare_theme_rows,
+    )
+    from httpserver.services.forensic_report.models import InvestigationDirection, MaterialSpan
+
+    case_mat = material("m001", "file:/Users/admin/Desktop/控制端/Quasar/Default.xml",
+                        kind="text", status="ready", text="<Hosts>192.168.10.30:4782;</Hosts>")
+    license_mat = material("m002", "file:/Program Files/PrivaZer/LICENSE",
+                           kind="text", status="ready", text="MIT License")
+    q1 = MaterialSpan(material_id="m001", quote="<Hosts>192.168.10.30:4782;</Hosts>",
+                      character_start=0, character_end=29, ambiguous=False)
+    q2 = MaterialSpan(material_id="m002", quote="MIT License", character_start=0,
+                      character_end=11, ambiguous=False)
+    case_dir = InvestigationDirection(
+        direction_id="d1", title="控制端配置与回连参数", description="配置含回连地址。",
+        finding_kind="observation", supporting_refs=(q1,), counter_refs=(),
+        missing_information=(), alternative_explanations=(),
+        baseline_direction_ids=(), case_context_quote="", origin="material")
+    lic_dir = InvestigationDirection(
+        direction_id="d2", title="许可证文件", description="安装包自带许可证。",
+        finding_kind="observation", supporting_refs=(q2,), counter_refs=(),
+        missing_information=(), alternative_explanations=(),
+        baseline_direction_ids=(), case_context_quote="", origin="material")
+    narrative = _ChapterNarrative(
+        [{"heading": "控制端配置", "content": "正文。" * 30, "summary": "",
+          "direction_ids": ("d1", "d2")}],
+        [{"name": "许可证与随附文件", "directions": (lic_dir,)},
+         {"name": "Quasar 控制端配置", "directions": (case_dir,)}])
+
+    rows = _prepare_theme_rows(_envelope(), narrative.themes,
+                              (case_mat, license_mat), (case_dir, lic_dir), narrative)
+    # The case-object thread leads even though the license thread is bunded.
+    assert rows[0]["low_value"] is False
+    assert rows[-1]["low_value"] is True
+
+
+def test_oversized_theme_splits_along_case_objects_not_counts():
+    """A 172-direction install bundle must not swallow a distinct case object."""
+    from httpserver.services.forensic_report.generation_sources import material
+    from httpserver.services.forensic_report.generation_stages import (
+        _ChapterNarrative, _prepare_theme_rows, _split_theme_by_object,
+    )
+    from httpserver.services.forensic_report.models import InvestigationDirection, MaterialSpan
+
+    mats = (
+        material("m001", "file:/Users/admin/Desktop/控制端/Quasar v1.4.1/Profiles/Default.xml",
+                 kind="text", status="ready", text="<Hosts>192.168.10.30:4782;</Hosts>"),
+        material("m002", "file:/Program Files (x86)/PrivaZer/PrivaMenu11.dll",
+                 kind="text", status="ready", text="PrivaZer menu"),
+        material("m003", "file:/Program Files (x86)/PrivaZer/AppxManifest.xml",
+                 kind="text", status="ready", text="manifest"),
+    )
+
+    def direction(did, mid, title):
+        quote = MaterialSpan(material_id=mid, quote=mats[int(mid[1:]) - 1].text[:8],
+                             character_start=0, character_end=8, ambiguous=False)
+        return InvestigationDirection(
+            direction_id=did, title=title, description=title,
+            finding_kind="observation", supporting_refs=(quote,), counter_refs=(),
+            missing_information=(), alternative_explanations=(),
+            baseline_direction_ids=(), case_context_quote="", origin="material")
+
+    dirs = (direction("d1", "m001", "Quasar 控制端配置"),
+            direction("d2", "m002", "PrivaZer 菜单组件"),
+            direction("d3", "m003", "PrivaZer 清单"))
+    paths = {m.material_id: m.evidence_key for m in mats}
+
+    # With the default 3-direction floor each object is the tail; the split is
+    # exercised at limit=2 with the floor lowered via the module constant.
+    import httpserver.services.forensic_report.generation_stages as stages
+    original = stages._THREAD_OBJECT_MIN_DIRECTIONS
+    stages._THREAD_OBJECT_MIN_DIRECTIONS = 1
+    try:
+        parts = _split_theme_by_object(
+            {"name": "PrivaZer 安装包", "directions": dirs},
+            {d.direction_id: d for d in dirs}, paths, limit=2)
+    finally:
+        stages._THREAD_OBJECT_MIN_DIRECTIONS = original
+
+    assert parts is not None
+    labels = [label for label, _rows in parts]
+    # The Quasar directory becomes its own part instead of being absorbed.
+    assert any("Quasar" in label for label in labels), labels
+    assert any("PrivaZer" in label for label in labels), labels
+    # Exhaustive: every direction survives the split exactly once.
+    split_ids = [d.direction_id for _label, rows in parts for d in rows]
+    assert sorted(split_ids) == ["d1", "d2", "d3"]
+
+
+def test_object_directory_skips_structural_folder_names():
+    from httpserver.services.forensic_report.generation_stages import _object_directory
+
+    assert _object_directory(
+        "/Users/admin/Desktop/控制端/Quasar v1.4.1/Profiles/Default.xml") == "Quasar v1.4.1"
+    assert _object_directory(
+        "/Program Files (x86)/PrivaZer/PrivaMenu11.dll") == "PrivaZer"
+    # Hitting only structural names falls back to the parent, never to "Profiles".
+    assert _object_directory("/x/SomeTool/bin/data/file.txt") == "SomeTool"
+
+
+def test_thread_key_facts_prefer_case_values_over_licence_boilerplate():
+    """A Quasar thread's facts must be its C2 and config, not MIT/Apache text."""
+    from httpserver.services.forensic_report.generation_stages import (
+        _extract_thread_facts,
+    )
+
+    facts = _extract_thread_facts([
+        "Copyright (c) 2010-2018 George Mamaladze",
+        "The MIT License",
+        "<Hosts>192.168.10.30:4782;</Hosts>",
+        "<HideFile>True</HideFile>",
+    ])
+    assert any("192.168.10.30:4782" in fact for fact in facts)
+    assert any("HideFile" in fact for fact in facts)
+    assert not any("MIT" in fact or "Copyright" in fact for fact in facts)
+
+
+def test_long_thread_names_are_trimmed_without_cutting_words():
+    """A raw slice produced "RuntimeBroker 多实例高频执" and "…数据库缓"."""
+    from httpserver.services.forensic_report.generation_stages import (
+        _THREAD_NAME_MAX, _trim_thread_label,
+    )
+
+    for raw in ("RuntimeBroker 多实例高频执行记录汇总",
+                "Windows Store 商店数据库缓存与日志"):
+        trimmed = _trim_thread_label(raw)
+        assert len(trimmed) <= _THREAD_NAME_MAX
+        # Never ends on a half-cut Latin word or a dangling connector.
+        assert not trimmed.endswith(("与", "和", "及", "的")), trimmed
+        # A 1-2 char Latin tail ("…JS 错误遥测与崩") is a cut word.
+        tail = trimmed.split()[-1] if trimmed.split() else trimmed
+        assert not (tail.isascii() and len(tail) <= 2 and len(trimmed) > len(tail)), trimmed
+
+
 def test_duplicate_thread_names_fold_members_together():
     """Induction may keep two same-subject groups apart (25-direction merge
     cap); after relabeling they read as one thread, so the table must fold
@@ -807,7 +1104,7 @@ async def test_thread_relabel_maps_by_index_and_tolerates_partial_answers():
             body = json.loads(user)
             # Thread 1 answers with an index; thread 2 is missing entirely.
             return {"content": json.dumps({"threads": [
-                {"index": 2, "name": "话术与账目核对",
+                {"index": 2, "name": "话术文档与账目摘录核对",
                  "contribution": "话术文档与转账摘录共同支撑话术演练场景的判断，"
                                  "但仍缺原始来源，无法关联具体案件行为。",
                  "key_facts": ["转账记录摘录"]},
@@ -822,7 +1119,7 @@ async def test_thread_relabel_maps_by_index_and_tolerates_partial_answers():
     assert table.total_directions == 2
     # The answer carried index 2, so thread 2 got the relabel and thread 1
     # (missing from the answer) fell back deterministically.
-    assert table.rows[1].name == "话术与账目核对"
+    assert table.rows[1].name == "话术文档与账目摘录核对"
     assert table.rows[0].contribution.startswith("该线索聚合了")
     assert table.rows[1].key_facts == ("转账记录摘录",)
     # Both threads still carry their chapter anchors.

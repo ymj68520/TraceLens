@@ -5,12 +5,8 @@ import {
   ChevronUp,
   ChevronLeft,
   ChevronRight,
-  Sparkles,
-  FileText,
   Clock,
   CheckCircle2,
-  AlertCircle,
-  Loader2,
   RotateCcw,
   Search,
 } from 'lucide-react';
@@ -194,8 +190,8 @@ export default function VersionHistory({ versions = [], selectedVersion, onSelec
       </div>
 
       {/* ── 紧凑单行快捷胶囊条（显示最新 6 个版本） ──────────────────────── */}
-      <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-1.5">
-        <span className="text-[11px] text-slate-400 mr-1 select-none flex items-center gap-1">
+      <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-1.5 overflow-x-auto">
+        <span className="text-[11px] text-slate-400 mr-1 select-none flex items-center gap-1 shrink-0">
           <Clock size={11} /> 快速切换:
         </span>
         {recentChips.map((version) => {

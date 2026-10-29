@@ -28,6 +28,9 @@ export default function EvidenceThreadTable({ table, onJumpToChapter }) {
                             <h5 className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
                                 <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded bg-indigo-100 font-mono text-[10px] font-bold text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-200">{String(index + 1).padStart(2, '0')}</span>
                                 {row.name}
+                                {row.low_value && (
+                                    <span className="rounded border border-slate-300 px-1 py-px text-[10px] font-normal text-slate-500 dark:border-slate-600 dark:text-slate-400" title="该线索的材料均为程序自带文件（许可证/图标/包清单），仅作审计留存">随附文件</span>
+                                )}
                             </h5>
                             <span className="text-[10px] text-slate-500 dark:text-slate-400">
                                 {row.direction_count} 项方向 · {row.material_count} 份材料

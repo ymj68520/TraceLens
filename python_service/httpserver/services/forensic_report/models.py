@@ -766,6 +766,10 @@ class EvidenceThreadRow(BaseModel):
     chapter_count: int = Field(default=0, ge=0)
     chapter_numbers: tuple[int, ...] = ()
     citation_ids: tuple[str, ...] = ()
+    # True when every material behind this thread is a bundled artifact
+    # (license/icon/package manifest). Such threads stay in the table for the
+    # audit trail but are listed last and marked as such.
+    low_value: bool = False
 
 
 class EvidenceThreadTable(BaseModel):

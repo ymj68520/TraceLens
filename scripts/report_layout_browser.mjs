@@ -137,7 +137,11 @@ const audit = () => {
   // such as the recall table wrapper).
   const scrollContainers = new Set([...document.querySelectorAll('.overflow-x-auto,.overflow-y-auto,.overflow-auto')]);
   const isInScroller = el => { for (let p = el; p; p = p.parentElement) if (scrollContainers.has(p)) return true; return false; };
-  const overflow = [...document.querySelectorAll('body *')].filter(el => {
+  // Scope: the report body itself. The page chrome around it (sidebar,
+  // version-history chips) is other components' layout; a defect there is
+  // reported by their own tests, and mixing it in hides report regressions.
+  const reportScope = document.querySelector('[data-testid="narrative-report-view"]') || document.body;
+  const overflow = [...reportScope.querySelectorAll('*')].filter(el => {
     if (!visible(el) || isInScroller(el)) return false;
     // A nav drawer parked off-screen to the LEFT is the responsive pattern,
     // not a layout defect; only content that escapes the RIGHT edge (or is

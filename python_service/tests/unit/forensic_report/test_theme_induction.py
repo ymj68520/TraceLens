@@ -235,7 +235,7 @@ async def test_induction_merges_local_themes_across_chunks(monkeypatch):
     """The merge stage is what stops one artifact becoming several themes."""
     directions = _directions(8)
     monkeypatch.setattr(gs, "_chunk_directions",
-                        lambda ds, limit=gs.REQUEST_CHAR_LIMIT: [ds[:4], ds[4:]])
+                        lambda ds, limit=gs.REQUEST_CHAR_LIMIT, paths=None: [ds[:4], ds[4:]])
     llm = FakeLLM(
         [{"themes": [{"name": "SVCHOST 执行", "ids": ["d0001", "d0002"]},
                      {"name": "其他程序", "ids": ["d0003", "d0004"]}], "no_theme": []},
@@ -264,7 +264,7 @@ async def test_induction_keeps_evidence_when_the_merge_fails(monkeypatch):
     """A broken merge must not cost the report its whole grouping."""
     directions = _directions(4)
     monkeypatch.setattr(gs, "_chunk_directions",
-                        lambda ds, limit=gs.REQUEST_CHAR_LIMIT: [ds[:2], ds[2:]])
+                        lambda ds, limit=gs.REQUEST_CHAR_LIMIT, paths=None: [ds[:2], ds[2:]])
     llm = FakeLLM(
         [{"themes": [{"name": "甲", "ids": ["d0001", "d0002"]}], "no_theme": []},
          {"themes": [{"name": "乙", "ids": ["d0003", "d0004"]}], "no_theme": []}],
@@ -282,7 +282,7 @@ async def test_induction_keeps_evidence_when_the_merge_fails(monkeypatch):
 async def test_induction_keeps_evidence_when_a_chunk_is_rejected(monkeypatch):
     directions = _directions(4)
     monkeypatch.setattr(gs, "_chunk_directions",
-                        lambda ds, limit=gs.REQUEST_CHAR_LIMIT: [ds[:2], ds[2:]])
+                        lambda ds, limit=gs.REQUEST_CHAR_LIMIT, paths=None: [ds[:2], ds[2:]])
 
     class HalfBrokenLLM(FakeLLM):
         async def chat_completion(self, system, user, **kwargs):
@@ -346,7 +346,10 @@ async def test_oversized_theme_is_split_into_distinguishable_parts(monkeypatch):
 
     themes, warnings = await gs.induce_themes(directions, llm)
 
-    assert len(themes) == 3  # 60 / 25 -> 25 + 25 + 10
+    # Split at the configured cap, not a hard-coded size: object-level grouping
+    # raised it to 30, and 60 directions then fit in two parts.
+    assert len(themes) == -(-60 // gs._THEME_MAX_DIRECTIONS)
+    assert all(len(t["directions"]) <= gs._THEME_MAX_DIRECTIONS for t in themes)
     assert all(len(t["directions"]) <= gs._THEME_MAX_DIRECTIONS for t in themes)
     names = [t["name"] for t in themes]
     assert len(set(names)) == len(names)
