@@ -381,7 +381,8 @@ bool AndroidAnalysisDatabase::recordContainerCoverage(
 
 int AndroidAnalysisDatabase::artifactRowCount(const std::string& tableName) const {
     static const std::set<std::string> allowed{
-        "sms_messages", "contacts", "installed_packages", "wifi_networks"};
+        "sms_messages", "contacts", "call_logs", "installed_packages",
+        "wifi_networks"};
     if (!allowed.count(tableName)) return -1;
     const std::string sql = "SELECT COUNT(*) FROM " + tableName;
     sqlite3_stmt* stmt = nullptr;

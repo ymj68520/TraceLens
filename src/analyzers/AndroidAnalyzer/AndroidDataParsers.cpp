@@ -2,11 +2,38 @@
 #include "PathManager/PathManager.h"
 #include "WeChatDecryptor.h"
 #include "Logger/Logger.h"
+#include <cstring>
 #include <iostream>
-#include <sqlite3.h>
 #include <limits>
+#include <sqlite3.h>
 
 // Android Data Parsers Implementation
+
+namespace {
+// Provider databases (contacts2.db, mmssms.db) declare schema objects using
+// the runtime-registered collations of their Android providers (PHONEBOOK and
+// friends). Offline analysis has no provider process, so any collation the
+// file requests is satisfied with a binary memcmp stand-in — enough for
+// SQLite to prepare the statement; ordering differences do not affect the
+// extracted records.
+void binaryCollationFallback(void* /*user*/, sqlite3* db, int textRep,
+                             const char* name) {
+    if (!name) return;
+    sqlite3_create_collation(
+        db, name, textRep, nullptr,
+        [](void*, int aLen, const void* a, int bLen, const void* b) {
+            const int n = aLen < bLen ? aLen : bLen;
+            const int cmp = n > 0 ? std::memcmp(a, b, n) : 0;
+            return cmp ? cmp : (aLen - bLen);
+        });
+}
+
+void openProviderDb(const std::string& path, sqlite3** db) {
+    if (sqlite3_open(path.c_str(), db) == SQLITE_OK) {
+        sqlite3_collation_needed(*db, nullptr, binaryCollationFallback);
+    }
+}
+} // namespace
 
 std::string AndroidAnalyzer::makeAnalysisTempPath(const std::string& sourcePath,
                                                   const std::string& suffix) const {
@@ -80,8 +107,10 @@ bool AndroidAnalyzer::extractAndParseDB(const std::string& dbPathInImage, const 
 
 void AndroidAnalyzer::parseSMS(const std::string& dbPath) {
     sqlite3* db;
-    if (sqlite3_open(dbPath.c_str(), &db) != SQLITE_OK) {
-        std::cerr << "Failed to open SMS DB: " << sqlite3_errmsg(db) << std::endl;
+    openProviderDb(dbPath, &db);
+    if (db == nullptr || sqlite3_errcode(db) != SQLITE_OK) {
+        std::cerr << "Failed to open SMS DB: "
+                  << (db ? sqlite3_errmsg(db) : "cannot open") << std::endl;
         return;
     }
 
@@ -110,14 +139,36 @@ void AndroidAnalyzer::parseSMS(const std::string& dbPath) {
 
 void AndroidAnalyzer::parseContacts(const std::string& dbPath) {
     sqlite3* db;
-    if (sqlite3_open(dbPath.c_str(), &db) != SQLITE_OK) {
-        std::cerr << "Failed to open Contacts DB: " << sqlite3_errmsg(db) << std::endl;
+    openProviderDb(dbPath, &db);
+    if (db == nullptr || sqlite3_errcode(db) != SQLITE_OK) {
+        std::cerr << "Failed to open Contacts DB: "
+                  << (db ? sqlite3_errmsg(db) : "cannot open") << std::endl;
         return;
     }
 
-    std::string sql = "SELECT display_name, data1 FROM view_contacts WHERE mimetype = 'vnd.android.cursor.item/phone_v2';";
-    sqlite3_stmt* stmt;
-    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
+    // Schema coverage: view_data (Android 4.x provider views join display
+    // name with data rows), view_contacts (later builds), and a manual join
+    // over the raw tables as the final fallback.
+    const char* contactQueries[] = {
+        "SELECT display_name, data1 FROM view_data "
+        "WHERE mimetype = 'vnd.android.cursor.item/phone_v2';",
+        "SELECT display_name, data1 FROM view_contacts "
+        "WHERE mimetype = 'vnd.android.cursor.item/phone_v2';",
+        "SELECT c.display_name, d.data1 FROM data d "
+        "JOIN raw_contacts r ON d.raw_contact_id = r._id "
+        "JOIN contacts c ON r.contact_id = c._id "
+        "WHERE d.mimetype = 'vnd.android.cursor.item/phone_v2';",
+    };
+    sqlite3_stmt* stmt = nullptr;
+    for (const char* sql : contactQueries) {
+        if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+            break;
+        }
+        std::cerr << "Contacts query not usable: " << sqlite3_errmsg(db)
+                  << " (" << sql << ")" << std::endl;
+        stmt = nullptr;
+    }
+    if (stmt != nullptr) {
         int count = 0;
         while (sqlite3_step(stmt) == SQLITE_ROW) {
             std::map<std::string, std::string> record;
@@ -131,15 +182,17 @@ void AndroidAnalyzer::parseContacts(const std::string& dbPath) {
         if (count == 0) std::cout << "No contacts found in " << dbPath << std::endl;
         sqlite3_finalize(stmt);
     } else {
-        std::cerr << "Failed to prepare Contacts SQL: " << sqlite3_errmsg(db) << std::endl;
+        std::cerr << "Failed to prepare any Contacts SQL for " << dbPath << std::endl;
     }
     sqlite3_close(db);
 }
 
 void AndroidAnalyzer::parseCallLog(const std::string& dbPath) {
     sqlite3* db;
-    if (sqlite3_open(dbPath.c_str(), &db) != SQLITE_OK) {
-        std::cerr << "Failed to open CallLog DB: " << sqlite3_errmsg(db) << std::endl;
+    openProviderDb(dbPath, &db);
+    if (db == nullptr || sqlite3_errcode(db) != SQLITE_OK) {
+        std::cerr << "Failed to open CallLog DB: "
+                  << (db ? sqlite3_errmsg(db) : "cannot open") << std::endl;
         return;
     }
 

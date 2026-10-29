@@ -195,15 +195,20 @@ private:
         }
 
         struct tm tm = {};
-        
-        // Parse month and day
-        int month = std::stoi(timestamp.substr(0, 2));
-        int day = std::stoi(timestamp.substr(3, 2));
-        
-        // Parse time
-        int hour = std::stoi(timestamp.substr(6, 2));
-        int minute = std::stoi(timestamp.substr(9, 2));
-        int second = std::stoi(timestamp.substr(12, 2));
+
+        // The first 17 characters are a timestamp only for well-formed logcat
+        // lines; dropbox entries and tombstones reach this parser as free
+        // text, so every field must tolerate non-numeric input.
+        int month = 0, day = 0, hour = 0, minute = 0, second = 0;
+        try {
+            month = std::stoi(timestamp.substr(0, 2));
+            day = std::stoi(timestamp.substr(3, 2));
+            hour = std::stoi(timestamp.substr(6, 2));
+            minute = std::stoi(timestamp.substr(9, 2));
+            second = std::stoi(timestamp.substr(12, 2));
+        } catch (...) {
+            return 0;
+        }
         
         // Get current year
         time_t now = time(nullptr);
