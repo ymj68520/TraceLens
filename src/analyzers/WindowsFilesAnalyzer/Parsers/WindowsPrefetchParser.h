@@ -96,6 +96,22 @@ uint32_t readUInt32LE(const char* data);
 uint64_t readUInt64LE(const char* data);
 
 /**
+ * Decompress an XPRESS Huffman (MS-XCA / LZ77+Huffman) payload.
+ *
+ * Windows 10 1809+ writes Prefetch files inside a "MAM\x04" container whose
+ * body is XPRESS-compressed. Without this step every header field is read
+ * from compressed bytes: version, executable name and run_count come back as
+ * garbage (a real .pf read as run_count=658809 with last_run_time in 1601).
+ * Follows MS-XCA and is verified against dissect.util's reference decoder.
+ *
+ * @param src Compressed bytes (the payload after the 8-byte MAM header)
+ * @param dst Decompressed output
+ * @return true on success
+ */
+bool decompressXpressHuffman(const std::vector<uint8_t>& src, std::vector<uint8_t>& dst,
+                             size_t expectedSize = 0);
+
+/**
  * Extract executable name from prefetch filename
  * Filename format: EXENAME-HASH.pf or EXENAME-HASH-DEL.pf (deleted)
  */
@@ -161,11 +177,19 @@ private:
     bool readData(char* buffer, size_t size);
     std::string readStringAtOffset(uint32_t offset, uint32_t maxLength);
 
+    // Read a UTF-16LE string out of the decompressed image.
+    std::string readUtf16At(size_t offset, size_t byteLength) const;
+    // Collect the 8 FILETIME run times at `offset`; index 0 is the newest.
+    void collectRunTimes(size_t offset, size_t size);
+
     // File data
     std::string filepath_;
     std::ifstream file_;
     bool valid_;
     std::string lastError_;
+
+    // Decompressed SCCA image (the file itself when it is not MAM-wrapped).
+    std::vector<uint8_t> data_;
 
     // Parsed data
     PrefetchVersion version_;
@@ -180,7 +204,7 @@ private:
     std::vector<std::string> referencedDirectories_;
 
     // Header data
-    char headerData_[1024]; // Raw header data
+    char headerData_[1024]; // First 1024 bytes of the decompressed image
     uint32_t fileSize_;
 };
 

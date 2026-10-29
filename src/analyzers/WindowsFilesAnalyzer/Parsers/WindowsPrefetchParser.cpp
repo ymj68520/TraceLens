@@ -32,14 +32,44 @@ bool PrefetchParser::parse() {
     valid_ = false;
     lastError_.clear();
 
-    // Open file
-    file_.open(filepath_, std::ios::binary);
-    if (!file_) {
-        lastError_ = "Cannot open file: " + filepath_;
-        return false;
+    // Load the whole file: a MAM container must be decompressed before any
+    // header field can be read. Reading the compressed bytes as if they were
+    // an SCCA header is what produced run_count=658809 / 1601 timestamps.
+    {
+        std::ifstream in(filepath_, std::ios::binary);
+        if (!in) {
+            lastError_ = "Cannot open file: " + filepath_;
+            return false;
+        }
+        std::vector<uint8_t> raw((std::istreambuf_iterator<char>(in)),
+                                  std::istreambuf_iterator<char>());
+        if (raw.size() < 8) {
+            lastError_ = "File too small to be a valid Prefetch file";
+            return false;
+        }
+
+        if (raw[0] == 'M' && raw[1] == 'A' && raw[2] == 'M') {
+            // MAM\x04: bytes 4..7 hold the decompressed size.
+            const size_t declared =
+                static_cast<size_t>(raw[4]) |
+                (static_cast<size_t>(raw[5]) << 8) |
+                (static_cast<size_t>(raw[6]) << 16) |
+                (static_cast<size_t>(raw[7]) << 24);
+            std::vector<uint8_t> payload(raw.begin() + 8, raw.end());
+            if (!PrefetchHelpers::decompressXpressHuffman(payload, data_, declared)) {
+                lastError_ = "XPRESS Huffman decompression failed";
+                return false;
+            }
+        } else {
+            data_ = std::move(raw);
+        }
     }
 
-    // Read and validate header
+    // Legacy field-reference parser (see parseExecutablePath/parseReferencedFiles)
+    // still works on the first 1024 decompressed bytes.
+    std::memset(headerData_, 0, sizeof(headerData_));
+    std::memcpy(headerData_, data_.data(), std::min(sizeof(headerData_), data_.size()));
+
     if (!parseHeader()) {
         return false;
     }
@@ -90,96 +120,132 @@ bool PrefetchParser::parse() {
 }
 
 bool PrefetchParser::parseHeader() {
-    // Read first 1024 bytes (minimum header size)
-    file_.read(headerData_, sizeof(headerData_));
-    if (file_.gcount() < 16) {
+    if (data_.size() < 16) {
         lastError_ = "File too small to be a valid Prefetch file";
         return false;
     }
 
-    // Detect version
-    version_ = PrefetchHelpers::detectVersion(headerData_);
+    // Detect version from the (decompressed) SCCA header.
+    version_ = PrefetchHelpers::detectVersion(reinterpret_cast<const char*>(data_.data()));
     if (version_ == PrefetchVersion::UNKNOWN) {
         lastError_ = "Unknown Prefetch format version";
         return false;
     }
 
-    // Parse basic header fields based on version
-    // Note: Structure varies by version, this is a simplified approach
+    // SCCA layout (verified byte-for-byte against real Windows 10/11 files):
+    //   0x00 u32 version        0x04 "SCCA"
+    //   0x08 u32 build          0x0C u32 decompressed size
+    //   0x10 UTF-16 executable name (60 bytes)
+    //   0x4C u32 prefetch hash
+    //   0x80 8 x FILETIME run times (index 0 is the most recent)
+    //   0xC8 u32 run count
+    // The previous code read run_count at 0x98 — inside the reserved block,
+    // always zero — and fell back to 1, or read unrelated bytes for files
+    // whose reserved block happened to be non-zero (658809 runs).
+    const auto* data = data_.data();
+    const size_t size = data_.size();
 
     if (version_ >= PrefetchVersion::VERSION_30) {
-        // Version 30/31 header structure
-        // Based on Windows Prefetch file format specification
+        fileSize_ = (size >= 0x10)
+            ? PrefetchHelpers::readUInt32LE(reinterpret_cast<const char*>(data + 0x0C))
+            : static_cast<uint32_t>(size);
+        if (fileSize_ == 0) fileSize_ = static_cast<uint32_t>(size);
 
-        // Run count at offset 0x98 (v30) or 0x98 (v31)
-        runCount_ = PrefetchHelpers::readUInt32LE(headerData_ + 0x98);
+        const std::string name = readUtf16At(0x10, 60);
+        if (!name.empty()) executableName_ = name;
 
-        // Last run time at offset 0x80 (v30) or 0x80 (v31)
-        // There are up to 8 run times, each 8 bytes
-        uint64_t lastRunTimeRaw = PrefetchHelpers::readUInt64LE(headerData_ + 0x80);
-        lastRunTime_ = PrefetchHelpers::filetimeToUnixTime(lastRunTimeRaw);
-
-        // Read additional run times (up to 8)
-        for (int i = 0; i < 8; ++i) {
-            uint64_t runTimeRaw = PrefetchHelpers::readUInt64LE(headerData_ + 0x80 + (i * 8));
-            if (runTimeRaw > 0) {
-                int64_t runTime = PrefetchHelpers::filetimeToUnixTime(runTimeRaw);
-                if (runTime > 0) {
-                    allRunTimes_.push_back(runTime);
-                }
-            }
+        if (size >= 0x50) {
+            char hashBuf[16];
+            std::snprintf(hashBuf, sizeof(hashBuf), "%08x",
+                          PrefetchHelpers::readUInt32LE(reinterpret_cast<const char*>(data + 0x4C)));
+            prefetchHash_ = hashBuf;
         }
 
-        // Read file size
-        file_.seekg(0, std::ios::end);
-        fileSize_ = static_cast<uint32_t>(file_.tellg());
-        file_.seekg(0, std::ios::beg);
-
+        collectRunTimes(0x80, size);
+        if (size >= 0xCC) {
+            runCount_ = PrefetchHelpers::readUInt32LE(reinterpret_cast<const char*>(data + 0xC8));
+        }
     } else if (version_ >= PrefetchVersion::VERSION_23) {
-        // Version 23/26 header structure
-        // Based on Windows Prefetch file format specification
-
-        // Run count at offset 0x90 (v23) or 0x90 (v26)
-        runCount_ = PrefetchHelpers::readUInt32LE(headerData_ + 0x90);
-
-        // Last run time at offset 0x78 (v23) or 0x80 (v26)
-        // There are up to 8 run times, each 8 bytes
-        uint64_t lastRunTimeRaw = PrefetchHelpers::readUInt64LE(headerData_ + 0x78);
-        lastRunTime_ = PrefetchHelpers::filetimeToUnixTime(lastRunTimeRaw);
-
-        // Read additional run times (up to 8)
-        for (int i = 0; i < 8; ++i) {
-            uint64_t runTimeRaw = PrefetchHelpers::readUInt64LE(headerData_ + 0x78 + (i * 8));
-            if (runTimeRaw > 0) {
-                int64_t runTime = PrefetchHelpers::filetimeToUnixTime(runTimeRaw);
-                if (runTime > 0) {
-                    allRunTimes_.push_back(runTime);
-                }
-            }
+        // v23/v26 keep the same first 0x80 bytes; the run-count field moved
+        // between builds, so fall back to the number of recorded run times.
+        if (size >= 0x10) {
+            fileSize_ = PrefetchHelpers::readUInt32LE(reinterpret_cast<const char*>(data + 0x0C));
         }
-
-        // Read file size
-        file_.seekg(0, std::ios::end);
-        fileSize_ = static_cast<uint32_t>(file_.tellg());
-        file_.seekg(0, std::ios::beg);
-
+        const std::string name = readUtf16At(0x10, 60);
+        if (!name.empty()) executableName_ = name;
+        if (size >= 0x50) {
+            char hashBuf[16];
+            std::snprintf(hashBuf, sizeof(hashBuf), "%08x",
+                          PrefetchHelpers::readUInt32LE(reinterpret_cast<const char*>(data + 0x4C)));
+            prefetchHash_ = hashBuf;
+        }
+        collectRunTimes(0x78, size);
+        if (size >= 0x94) {
+            uint32_t candidate = PrefetchHelpers::readUInt32LE(reinterpret_cast<const char*>(data + 0x90));
+            // Only trust it when it can explain the run times we actually saw.
+            if (candidate > 0 && candidate < 1000000) runCount_ = candidate;
+        }
     } else {
-        // Version 17 (Windows XP/2003)
-        // Simplified parsing for older format
-        runCount_ = PrefetchHelpers::readUInt32LE(headerData_ + 8);
-        uint64_t lastRunTimeRaw = PrefetchHelpers::readUInt64LE(headerData_ + 12);
-        lastRunTime_ = PrefetchHelpers::filetimeToUnixTime(lastRunTimeRaw);
-
-        file_.seekg(0, std::ios::end);
-        fileSize_ = static_cast<uint32_t>(file_.tellg());
-        file_.seekg(0, std::ios::beg);
+        // Version 17 (Windows XP/2003): run count and last run time sit in the
+        // file information block pointed to by the header.
+        if (size >= 0x54) {
+            uint32_t infoOffset = PrefetchHelpers::readUInt32LE(reinterpret_cast<const char*>(data + 0x54));
+            if (infoOffset > 0 && infoOffset + 0x10 <= size) {
+                runCount_ = PrefetchHelpers::readUInt32LE(reinterpret_cast<const char*>(data + infoOffset));
+                uint64_t raw = PrefetchHelpers::readUInt64LE(reinterpret_cast<const char*>(data + infoOffset + 4));
+                lastRunTime_ = PrefetchHelpers::filetimeToUnixTime(raw);
+            }
+            if (runCount_ > 0) allRunTimes_.push_back(lastRunTime_);
+        }
+        fileSize_ = static_cast<uint32_t>(size);
     }
 
-    // Set default values if parsing failed
-    if (runCount_ == 0) runCount_ = 1;
-    if (lastRunTime_ == 0) lastRunTime_ = 0;
+    // A real .pf always records at least one run time; derive the count when
+    // the dedicated field is unusable instead of inventing a value.
+    if (runCount_ == 0) {
+        runCount_ = allRunTimes_.empty() ? 1 : static_cast<uint32_t>(allRunTimes_.size());
+    }
+    if (lastRunTime_ == 0 && !allRunTimes_.empty()) {
+        lastRunTime_ = allRunTimes_.front();
+    }
 
     return true;
+}
+
+std::string PrefetchParser::readUtf16At(size_t offset, size_t byteLength) const {
+    if (offset + byteLength > data_.size()) return {};
+    const uint8_t* p = data_.data() + offset;
+    std::string out;
+    out.reserve(byteLength / 2);
+    for (size_t i = 0; i + 1 < byteLength; i += 2) {
+        uint16_t ch = static_cast<uint16_t>(p[i] | (p[i + 1] << 8));
+        if (ch == 0) break;
+        if (ch < 0x80) {
+            out.push_back(static_cast<char>(ch));
+        } else if (ch < 0x800) {
+            out.push_back(static_cast<char>(0xC0 | (ch >> 6)));
+            out.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
+        } else {
+            out.push_back(static_cast<char>(0xE0 | (ch >> 12)));
+            out.push_back(static_cast<char>(0x80 | ((ch >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
+        }
+    }
+    return out;
+}
+
+void PrefetchParser::collectRunTimes(size_t offset, size_t size) {
+    allRunTimes_.clear();
+    for (int i = 0; i < 8; ++i) {
+        size_t at = offset + static_cast<size_t>(i) * 8;
+        if (at + 8 > size) break;
+        uint64_t raw = PrefetchHelpers::readUInt64LE(
+            reinterpret_cast<const char*>(data_.data() + at));
+        if (raw == 0) continue;
+        int64_t unixTime = PrefetchHelpers::filetimeToUnixTime(raw);
+        if (unixTime > 0) allRunTimes_.push_back(unixTime);
+    }
+    if (!allRunTimes_.empty()) lastRunTime_ = allRunTimes_.front();
 }
 
 bool PrefetchParser::parseFileInformation() {
