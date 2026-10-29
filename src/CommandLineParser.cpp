@@ -70,14 +70,18 @@ bool optionRequiresNonOptionValue(const std::string& option) {
         "--db-dir", "--xfs-mode", "--android-source", "--wechat-password",
         "--backup-password", "--backup-password-fd", "--report-path", "--dump-text-max-size",
         "--vol-symbols-dir", "--dll-db", "--index", "--search",
-        "--filter-profile", "--key-dir", "--key-password", "--carve-out"
+        "--filter-profile", "--key-dir", "--key-password", "--carve-out",
+        "--mobile-package", "--mobile-package-out"
     };
     return valueOptions.contains(option);
 }
 
 bool isValidAndroidSource(const std::string& source) {
     static const std::unordered_set<std::string> validSources{
-        "tsk", "dir", "zip", "miui-backup", "harmony-backup", "thunder-backup", "oppo-backup", "tar", "seven-zip", "android-backup", "filesystem-image"
+        "tsk", "dir", "zip", "miui-backup", "harmony-backup", "thunder-backup", "oppo-backup", "tar", "seven-zip", "android-backup", "filesystem-image",
+        // Extraction-stage artifact: a unified mobile evidence package
+        // (.mep.db). The analysis stage only reads this format.
+        "mobile-evidence"
     };
     return validSources.contains(source);
 }
@@ -116,7 +120,13 @@ void CommandLineParser::printUsage(const char* programName) {
                  "                              thunder-backup (雷电手机快取 tar or project folder; any Android brand),\n"
                  "                              oppo-backup (legacy alias of thunder-backup),\n"
                  "                              tar, seven-zip, android-backup (.ab),\n"
-                 "                              filesystem-image (userdata EXT4/F2FS RAW/E01)\n";
+                 "                              filesystem-image (userdata EXT4/F2FS RAW/E01),\n"
+                 "                              mobile-evidence (unified .mep.db package)\n";
+    std::cout << "  --mobile-extract            Extraction stage only: write a unified\n"
+                 "                              mobile evidence package (.mep.db); no android.db\n";
+    std::cout << "  --mobile-package <path>     Analysis stage only: read an existing .mep.db\n"
+                 "                              instead of the original acquisition\n";
+    std::cout << "  --mobile-package-out <path> Output path for --mobile-extract\n";
     std::cout << "  --wechat-password <pass>    WeChat SQLCipher decryption password\n";
     std::cout << "  --backup-password-stdin     Read backup password from stdin (no echo when interactive)\n";
     std::cout << "  --backup-password-fd <fd>   Read backup password from an already-open file descriptor\n";
@@ -201,11 +211,21 @@ CommandLineArgs CommandLineParser::parse(int argc, char* argv[]) {
             const std::string source = argv[++i];
             if (!isValidAndroidSource(source)) {
                 args.parse_error = "Invalid --android-source '" + source +
-                    "' (expected tsk, dir, zip, miui-backup, harmony-backup, thunder-backup, oppo-backup, tar, seven-zip, android-backup, or filesystem-image)";
+                    "' (expected tsk, dir, zip, miui-backup, harmony-backup, thunder-backup, oppo-backup, tar, seven-zip, android-backup, filesystem-image, or mobile-evidence)";
                 return args;
             }
             args.android_source = source;
-            if (source == "harmony-backup") args.android_analyze = true;
+            if (source == "harmony-backup" || source == "mobile-evidence") {
+                args.android_analyze = true;
+            }
+        } else if (arg == "--mobile-extract") {
+            args.mobile_extract = true;
+            args.android_analyze = true;
+        } else if (arg == "--mobile-package" && i + 1 < argc) {
+            args.mobile_package_path = argv[++i];
+            args.android_analyze = true;
+        } else if (arg == "--mobile-package-out" && i + 1 < argc) {
+            args.mobile_package_out = argv[++i];
         } else if (arg == "--wechat-password" && i + 1 < argc) {
             args.wechat_password = argv[++i];
         } else if (arg == "--backup-password-stdin") {

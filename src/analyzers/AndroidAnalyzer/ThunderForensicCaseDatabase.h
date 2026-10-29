@@ -5,6 +5,10 @@
 #include <map>
 #include <set>
 #include <string>
+#include <vector>
+
+#include "IFileExtractor.h"
+#include "MobileEvidencePackage.h"
 
 class AndroidAnalysisDatabase;
 
@@ -35,4 +39,15 @@ struct ThunderForensicCaseStats {
 ThunderForensicCaseStats analyzeThunderForensicCaseDatabases(
     const std::filesystem::path& projectRoot, AndroidAnalysisDatabase& output,
     const std::map<std::string, std::set<std::string>>& coveredMembers,
+    std::size_t maxRowsPerDatabase = 50000);
+
+/// Extraction-stage variant: reads the same case databases and appends the
+/// rows to a unified package instead of writing the result database directly.
+/// The direct-write overload above delegates here, so both paths share one
+/// parsing implementation.
+ThunderForensicCaseStats buildPackageFromCaseDatabases(
+    const std::filesystem::path& projectRoot,
+    mobile_evidence::Package& package,
+    const std::map<std::string, std::set<std::string>>& coveredMembers,
+    std::vector<AndroidSourceProvenance>* provenance,
     std::size_t maxRowsPerDatabase = 50000);

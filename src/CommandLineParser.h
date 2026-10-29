@@ -33,7 +33,15 @@ struct CommandLineArgs {
     std::string backup_password;   // MIUI/Android backup password (AES-256)
     bool backup_password_stdin = false;
     int backup_password_fd = -1;
-    std::string android_source;  // tsk, dir, zip, miui-backup, tar, seven-zip, android-backup
+    std::string android_source;  // tsk, dir, zip, miui-backup, tar, seven-zip, android-backup, mobile-evidence
+    // ---- Extraction / analysis split (unified mobile evidence package) ----
+    // --mobile-extract: run only the extraction adapter and write a
+    //   .mep.db package. No android.db is produced.
+    // --mobile-package <path>: analyze an existing .mep.db package instead of
+    //   re-reading the original acquisition.
+    bool mobile_extract = false;
+    std::string mobile_package_path;
+    std::string mobile_package_out;  // --mobile-package-out; defaults beside the source
     bool windows_analyze = false;
     bool linux_analyze = false;
     bool memory_analyze = false;

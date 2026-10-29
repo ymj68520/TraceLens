@@ -81,6 +81,17 @@ public:
     void setBackupPassword(const std::string& password) { backupPassword_ = password; }
 
     /**
+     * @brief Run only the extraction backend; do not create or populate
+     *        android.db.
+     *
+     * Used by the extraction/analysis split: the caller consumes
+     * fileExtractor() to build a unified mobile evidence package, and the
+     * analysis stage reads that package instead of this analyzer's database.
+     * Must be called before initialize().
+     */
+    void setExtractionOnly(bool extractionOnly) { extractionOnly_ = extractionOnly; }
+
+    /**
      * @brief Choose where the Android artifacts are sourced from.
      *
      * Default is TSK (block image + _raw.db). Set to LogicalDir or Zip to
@@ -91,6 +102,24 @@ public:
     void setSourceMode(AndroidSourceMode mode) { sourceMode_ = mode; }
     AndroidSourceMode getSourceMode() const { return sourceMode_; }
     const std::string& sourceError() const { return sourceError_; }
+
+    /**
+     * @brief Access the initialized extraction backend.
+     *
+     * Extraction-stage adapters (e.g. the unified mobile evidence package
+     * writer) need the concrete backend to enumerate members; analysis code
+     * must not depend on this and should consume the package instead.
+     * Valid only after initialize().
+     */
+    IFileExtractor* fileExtractor() const { return fileExtractor_.get(); }
+
+    /**
+     * @brief Evidence-disjoint scratch directory created by initialize().
+     *
+     * Extraction adapters that must stage files (database bundles) use this so
+     * temporary data never lands beside the source evidence.
+     */
+    const std::string& temporaryRoot() const { return secureTemporaryRoot_; }
     
     /**
      * @brief Analyze all Android data
@@ -216,4 +245,5 @@ private:
     std::string sourceImageSha256_;
     std::optional<std::uint64_t> expectedPartitionOffset_;
     bool skipAI_ = false;
+    bool extractionOnly_ = false;
 };

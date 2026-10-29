@@ -195,19 +195,23 @@ bool AndroidAnalyzer::initialize() {
         secureTemporaryRoot_ = root.string();
     }
 
-    // Initialize android analysis database
-    std::string androidDbPath = outputDbPath_.empty() ? imagePath_ + "_android.db" : outputDbPath_;
-    androidDb_ = std::make_unique<AndroidAnalysisDatabase>(androidDbPath);
-    if (!androidDb_->initialize()) {
-        std::cerr << "Failed to initialize AndroidAnalysisDatabase" << std::endl;
-        return false;
-    }
+    // Extraction-only runs hand off through a unified package, so no android.db
+    // is created and no analysis-side persistence happens here.
+    if (!extractionOnly_) {
+        // Initialize android analysis database
+        std::string androidDbPath = outputDbPath_.empty() ? imagePath_ + "_android.db" : outputDbPath_;
+        androidDb_ = std::make_unique<AndroidAnalysisDatabase>(androidDbPath);
+        if (!androidDb_->initialize()) {
+            std::cerr << "Failed to initialize AndroidAnalysisDatabase" << std::endl;
+            return false;
+        }
 
-    if (sourceMode_ == AndroidSourceMode::MiuiBackup) {
-        if (auto* miui = dynamic_cast<MiuiBackupExtractor*>(fileExtractor_.get())) {
-            if (!persistMiuiBackupAnalysis(*miui, *androidDb_)) {
-                std::cerr << "Failed to persist MIUI backup analysis" << std::endl;
-                return false;
+        if (sourceMode_ == AndroidSourceMode::MiuiBackup) {
+            if (auto* miui = dynamic_cast<MiuiBackupExtractor*>(fileExtractor_.get())) {
+                if (!persistMiuiBackupAnalysis(*miui, *androidDb_)) {
+                    std::cerr << "Failed to persist MIUI backup analysis" << std::endl;
+                    return false;
+                }
             }
         }
     }

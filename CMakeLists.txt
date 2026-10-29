@@ -436,6 +436,12 @@ set(LIB_SOURCES
     src/analyzers/AndroidAnalyzer/MiuiArtifactParsers.cpp
     src/analyzers/AndroidAnalyzer/QqntArtifactParsers.cpp
     src/analyzers/AndroidAnalyzer/WechatArtifactParsers.cpp
+    # Unified mobile evidence package: the extraction/analysis contract.
+    # Adapters produce one .mep.db; the analysis stage reads only that format.
+    src/analyzers/AndroidAnalyzer/MobileEvidencePackage.cpp
+    src/analyzers/AndroidAnalyzer/MobileEvidenceMiuiAdapter.cpp
+    src/analyzers/AndroidAnalyzer/MobileEvidenceHarmonyAdapter.cpp
+    src/analyzers/AndroidAnalyzer/MobileEvidenceAnalysis.cpp
     # ThunderForensic (雷电手机快取) extraction source: OPPO/vivo/OnePlus tar
     # or project folder; native header indexing, bypassing TSK.
     src/analyzers/AndroidAnalyzer/ThunderForensicBackupExtractor.cpp
