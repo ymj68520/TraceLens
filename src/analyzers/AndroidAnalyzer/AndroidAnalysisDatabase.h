@@ -134,4 +134,7 @@ private:
     // Idempotently add the llm_* analysis columns to a table. Safe to call on
     // tables/columns that already exist (duplicate-column errors are ignored).
     bool addLlmColumns(const std::string& tableName);
+    // Idempotently add one column; a duplicate-column error means it exists.
+    void addColumnIfMissing(const std::string& tableName, const std::string& column,
+                            const std::string& type);
 };

@@ -53,6 +53,12 @@ bool AndroidAnalysisDatabase::createTables() {
     sqlite3_finalize(columns);
     if (!hasSourcePath && !executeSQL("ALTER TABLE wechat_messages ADD COLUMN source_path TEXT"))
         return false;
+    // Older task databases predate the normalized seconds column. `date` keeps
+    // the source's original unit (MIUI ms, ThunderForensic/Meiya s); readers
+    // must be able to sort across sources without guessing.
+    addColumnIfMissing("sms_messages", "date_seconds", "INTEGER");
+    addColumnIfMissing("call_logs", "date_seconds", "INTEGER");
+    addColumnIfMissing("wechat_contacts", "mobile", "TEXT");
     // Add the 5 llm_* columns to every artifact table that the LLM service
     // analyzes. Each ALTER is idempotent: a duplicate-column error is tolerated
     // so re-opening an existing android.db is safe.
@@ -122,8 +128,36 @@ bool AndroidAnalysisDatabase::insertFrameworkFile(const FrameworkFileRecord& fil
     return success;
 }
 
+// `date` keeps whatever unit the source used; `date_seconds` is the normalized
+// value every cross-source reader sorts on. Callers that know the unit set
+// "date_seconds" explicitly, otherwise the epoch magnitude decides.
+namespace {
+long long normalizeDateSeconds(const std::map<std::string, std::string>& record) {
+    const auto explicitIt = record.find("date_seconds");
+    if (explicitIt != record.end() && !explicitIt->second.empty()) {
+        try {
+            return std::stoll(explicitIt->second);
+        } catch (...) {
+        }
+    }
+    const auto dateIt = record.find("date");
+    if (dateIt == record.end() || dateIt->second.empty()) return 0;
+    long long value = 0;
+    try {
+        value = std::stoll(dateIt->second);
+    } catch (...) {
+        return 0;
+    }
+    if (value <= 0) return 0;
+    // 1e12 s is year 33658; anything above is certainly milliseconds.
+    if (value > 100000000000LL) return value / 1000;
+    return value;
+}
+}  // namespace
+
 bool AndroidAnalysisDatabase::insertSMS(const std::map<std::string, std::string>& record) {
-    const char* sql = "INSERT INTO sms_messages (address, body, date, type) VALUES (?, ?, ?, ?);";
+    const char* sql =
+        "INSERT INTO sms_messages (address, body, date, type, date_seconds) VALUES (?, ?, ?, ?, ?);";
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
 
@@ -133,6 +167,7 @@ bool AndroidAnalysisDatabase::insertSMS(const std::map<std::string, std::string>
     sqlite3_bind_text(stmt, 2, get("body"), -1, SQLITE_TRANSIENT);
     try { sqlite3_bind_int64(stmt, 3, std::stoll(get("date"))); } catch (...) { sqlite3_bind_int64(stmt, 3, 0); }
     try { sqlite3_bind_int(stmt, 4, std::stoi(get("type"))); } catch (...) { sqlite3_bind_int(stmt, 4, 0); }
+    sqlite3_bind_int64(stmt, 5, normalizeDateSeconds(record));
 
     bool success = (sqlite3_step(stmt) == SQLITE_DONE);
     sqlite3_finalize(stmt);
@@ -154,7 +189,8 @@ bool AndroidAnalysisDatabase::insertContact(const std::map<std::string, std::str
 }
 
 bool AndroidAnalysisDatabase::insertCallLog(const std::map<std::string, std::string>& record) {
-    const char* sql = "INSERT INTO call_logs (number, date, duration, type) VALUES (?, ?, ?, ?);";
+    const char* sql =
+        "INSERT INTO call_logs (number, date, duration, type, date_seconds) VALUES (?, ?, ?, ?, ?);";
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
 
@@ -163,6 +199,7 @@ bool AndroidAnalysisDatabase::insertCallLog(const std::map<std::string, std::str
     try { sqlite3_bind_int64(stmt, 2, std::stoll(get("date"))); } catch (...) { sqlite3_bind_int64(stmt, 2, 0); }
     try { sqlite3_bind_int(stmt, 3, std::stoi(get("duration"))); } catch (...) { sqlite3_bind_int(stmt, 3, 0); }
     try { sqlite3_bind_int(stmt, 4, std::stoi(get("type"))); } catch (...) { sqlite3_bind_int(stmt, 4, 0); }
+    sqlite3_bind_int64(stmt, 5, normalizeDateSeconds(record));
 
     bool success = (sqlite3_step(stmt) == SQLITE_DONE);
     sqlite3_finalize(stmt);
@@ -355,7 +392,7 @@ int AndroidAnalysisDatabase::artifactRowCount(const std::string& tableName) cons
 }
 
 bool AndroidAnalysisDatabase::insertWeChatContact(const WeChatContact& contact) {
-    const char* sql = "INSERT OR IGNORE INTO wechat_contacts (username, nickname, remark, avatar_path, type, chatroom_flag) VALUES (?, ?, ?, ?, ?, ?);";
+    const char* sql = AndroidAnalysisSQL::INSERT_WECHAT_CONTACT_WITH_MOBILE;
     sqlite3_stmt* stmt;
     if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
 
@@ -365,6 +402,7 @@ bool AndroidAnalysisDatabase::insertWeChatContact(const WeChatContact& contact) 
     sqlite3_bind_text(stmt, 4, contact.avatarPath.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_int(stmt, 5, contact.type);
     sqlite3_bind_int(stmt, 6, contact.isChatroom ? 1 : 0);
+    sqlite3_bind_text(stmt, 7, contact.mobile.c_str(), -1, SQLITE_TRANSIENT);
 
     bool success = (sqlite3_step(stmt) == SQLITE_DONE);
     sqlite3_finalize(stmt);
@@ -890,4 +928,20 @@ bool AndroidAnalysisDatabase::addLlmColumns(const std::string& tableName) {
         }
     }
     return true;
+}
+
+void AndroidAnalysisDatabase::addColumnIfMissing(const std::string& tableName,
+                                                 const std::string& column,
+                                                 const std::string& type) {
+    const std::string sql = "ALTER TABLE " + tableName + " ADD COLUMN " + column + " " + type + ";";
+    char* errMsg = nullptr;
+    const int rc = sqlite3_exec(db_, sql.c_str(), nullptr, nullptr, &errMsg);
+    if (rc != SQLITE_OK) {
+        const std::string err = errMsg ? errMsg : "";
+        sqlite3_free(errMsg);
+        if (err.find("duplicate column name") == std::string::npos) {
+            std::cerr << "Warning: failed to add " << tableName << "." << column
+                      << ": " << err << std::endl;
+        }
+    }
 }

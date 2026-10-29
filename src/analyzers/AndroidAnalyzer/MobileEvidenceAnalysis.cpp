@@ -108,6 +108,8 @@ bool writeCallLog(AndroidAnalysisDatabase& db, const Record& record) {
     row["date"] = dateValue(record, payload);
     row["duration"] = intAsString(payload, "duration_seconds");
     row["type"] = intAsString(payload, "type");
+    // 取数层已经给出规范化秒值；date 保留原值只为回查。
+    if (record.timestampSeconds) row["date_seconds"] = std::to_string(*record.timestampSeconds);
     return db.insertCallLog(row);
 }
 
@@ -118,6 +120,7 @@ bool writeSms(AndroidAnalysisDatabase& db, const Record& record) {
     row["body"] = stringField(payload, "body");
     row["date"] = dateValue(record, payload);
     row["type"] = intAsString(payload, "type");
+    if (record.timestampSeconds) row["date_seconds"] = std::to_string(*record.timestampSeconds);
     return db.insertSMS(row);
 }
 

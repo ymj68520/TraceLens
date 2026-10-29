@@ -504,7 +504,15 @@ class ReportEvidenceService:
 
         try:
             result = await asyncio.to_thread(_seed)
-            if task.get("android_source") in ("harmony-backup", "thunder-backup", "oppo-backup"):
+            # Every logical mobile source can contribute artifact evidence:
+            # Harmony/ThunderForensic carry only mobile_artifacts, while
+            # MIUI/Meiya/unified packages also carry calls/SMS/IM rows in the
+            # standard tables. Android images (TSK) keep the file-centred path.
+            if task.get("android_source") in (
+                    "harmony-backup", "thunder-backup", "oppo-backup",
+                    "miui-backup", "meiya", "mobile-evidence", "dir", "zip",
+                    "tar", "seven-zip", "android-backup", "filesystem-image",
+                    "android-container"):
                 mobile = await self._seed_analyzed_mobile(task, added_by=added_by)
                 result["mobile_seeded"] = mobile
                 result["seeded"] += mobile
@@ -515,12 +523,12 @@ class ReportEvidenceService:
             ) from exc
 
     async def _seed_analyzed_mobile(self, task: dict, *, added_by: str) -> int:
-        """Feed analyzed Harmony rows into the same frozen report evidence path.
+        """Feed already-analyzed mobile rows into the frozen report evidence path.
 
-        The pipeline invokes this after its existing ingestion tail. A bounded
-        selection of already-analyzed rows is used; this does not call a model
-        or automatically claim that every backup record is relevant evidence.
-        Existing analyst judgments, including exclusions, are retained.
+        Selection is deliberately narrow: rows the parser actually stored
+        (mobile_artifacts) plus the communication tables that exist in the
+        standard schema. Nothing is claimed relevant merely for existing; the
+        analyst's own judgments, including exclusions, are retained.
         """
         from ..android_coverage import resolve_android_db
         from ..android_artifact_reader import artifact_detail
@@ -532,30 +540,76 @@ class ReportEvidenceService:
         if database is None:
             return 0
 
-        def candidates():
-            with sqlite3.connect(f"file:{quote(str(database), safe='/')}?mode=ro", uri=True) as con:
+        # kind -> SQL selecting candidate row ids. `mobile` prefers rows the
+        # LLM already described (the pipeline's own relevance signal);
+        # communication tables have no such column, so a bounded window of the
+        # most recent records is used and disclosed in coverage.
+        candidate_queries = (
+            ("mobile",
+             "SELECT id FROM mobile_artifacts WHERE llm_analyzed_at IS NOT NULL "
+             "AND COALESCE(llm_description,'')<>'' ORDER BY id LIMIT 1000"),
+            ("calls",
+             "SELECT id FROM call_logs ORDER BY date_seconds DESC LIMIT 500"),
+            ("sms",
+             "SELECT id FROM sms_messages ORDER BY date_seconds DESC LIMIT 500"),
+            ("im",
+             "SELECT id FROM wechat_messages ORDER BY timestamp DESC LIMIT 500"),
+            ("im_contacts",
+             "SELECT id FROM wechat_contacts ORDER BY id LIMIT 200"),
+            ("contacts",
+             "SELECT id FROM contacts ORDER BY id LIMIT 200"),
+        )
+
+        def candidates() -> list[tuple[str, int]]:
+            found: list[tuple[str, int]] = []
+            with sqlite3.connect(f"file:{quote(str(database), safe='/')}?mode=ro",
+                                 uri=True) as con:
                 con.text_factory = lambda data: data.decode("utf-8", "replace")
-                if not con.execute("SELECT 1 FROM sqlite_master WHERE name='mobile_artifacts'").fetchone():
-                    return []
-                return [row[0] for row in con.execute(
-                    "SELECT id FROM mobile_artifacts WHERE llm_analyzed_at IS NOT NULL "
-                    "AND COALESCE(llm_description,'')<>'' ORDER BY id LIMIT 1000")]
+                tables = {row[0] for row in con.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'")}
+                for kind, query in candidate_queries:
+                    table = {
+                        "mobile": "mobile_artifacts", "calls": "call_logs",
+                        "sms": "sms_messages", "im": "wechat_messages",
+                        "im_contacts": "wechat_contacts", "contacts": "contacts",
+                    }[kind]
+                    if table not in tables:
+                        continue
+                    try:
+                        found.extend((kind, row[0]) for row in con.execute(query))
+                    except sqlite3.Error:
+                        continue
+            return found
 
         task_id = task["id"]
-        judged = {item.evidence_key.rsplit(":", 2)[-1] for item in await self.list(task_id)
-                  if item.evidence_key.startswith("android_artifact:") and ":mobile:" in item.evidence_key}
-        capture = InvestigationCaptureService(self._cpp_backend, EvidenceResolver(self._cpp_backend))
+        existing = await self.list(task_id)
+        judged = {
+            (item.evidence_key.split(":")[4], item.evidence_key.rsplit(":", 1)[-1])
+            for item in existing
+            if item.evidence_key.startswith("android_artifact:")
+            and len(item.evidence_key.split(":")) == 6
+        }
+        capture = InvestigationCaptureService(self._cpp_backend,
+                                              EvidenceResolver(self._cpp_backend))
         count = 0
-        for row_id in await asyncio.to_thread(candidates):
-            if str(row_id) in judged:
+        for kind, row_id in await asyncio.to_thread(candidates):
+            if (kind, str(row_id)) in judged:
                 continue
-            detail = await asyncio.to_thread(artifact_detail, task, "mobile", row_id)
-            frozen = await asyncio.to_thread(freeze_selected_result, task, "mobile", row_id,
-                expected_row_hash=detail["record_hash"], expected_source_revision=detail["source_revision"])
-            key = f"android_artifact:v1:{task_id}:{frozen['result_set_id']}:mobile:{row_id}"
-            await capture.capture(task_id, key)
-            await self.add(task_id, key, report_status="main", added_by=added_by)
-            count += 1
+            try:
+                detail = await asyncio.to_thread(artifact_detail, task, kind, row_id)
+                frozen = await asyncio.to_thread(
+                    freeze_selected_result, task, kind, row_id,
+                    expected_row_hash=detail["record_hash"],
+                    expected_source_revision=detail["source_revision"])
+                key = (f"android_artifact:v1:{task_id}:{frozen['result_set_id']}"
+                       f":{kind}:{row_id}")
+                await capture.capture(task_id, key)
+                await self.add(task_id, key, report_status="main", added_by=added_by)
+                count += 1
+            except (ValueError, OSError, FileNotFoundError):
+                # A row that changed or vanished between listing and capture is
+                # skipped, not silently replaced by a different record.
+                continue
         return count
 
 

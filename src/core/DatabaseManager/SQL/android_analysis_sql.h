@@ -45,7 +45,10 @@ inline constexpr const char* CREATE_ALL_TABLES = R"(
         status INTEGER,
         type INTEGER,
         body TEXT,
-        service_center TEXT
+        service_center TEXT,
+        -- 规范化的秒级时间。date 保留来源原值（MIUI 为毫秒、雷电/美亚为秒），
+        -- 跨源排序与合并只读 date_seconds，避免下游猜单位。
+        date_seconds INTEGER
     );
     CREATE TABLE IF NOT EXISTS contacts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,7 +66,8 @@ inline constexpr const char* CREATE_ALL_TABLES = R"(
         duration INTEGER,
         type INTEGER,
         name TEXT,
-        geocoded_location TEXT
+        geocoded_location TEXT,
+        date_seconds INTEGER
     );
     CREATE TABLE IF NOT EXISTS whatsapp_messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -105,7 +109,10 @@ inline constexpr const char* CREATE_ALL_TABLES = R"(
         remark TEXT,
         avatar_path TEXT,
         type INTEGER,
-        chatroom_flag INTEGER DEFAULT 0
+        chatroom_flag INTEGER DEFAULT 0,
+        -- rcontact.mobile: the only strong key linking a WeChat identity to
+        -- dialler / contacts / SMS identities.
+        mobile TEXT
     );
     CREATE TABLE IF NOT EXISTS wechat_chatrooms (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -328,6 +335,15 @@ inline constexpr const char* INSERT_WECHAT_ENHANCED =
 
 inline constexpr const char* INSERT_WECHAT_CONTACT =
     "INSERT OR IGNORE INTO wechat_contacts (username, nickname, remark, avatar_path, type, chatroom_flag) VALUES (?, ?, ?, ?, ?, ?);";
+
+// Mobile-aware variant: newer parses carry rcontact.mobile for cross-source
+// identity linking. A duplicate username keeps the first row (an existing
+// contact row may predate the mobile column).
+inline constexpr const char* INSERT_WECHAT_CONTACT_WITH_MOBILE =
+    "INSERT INTO wechat_contacts (username, nickname, remark, avatar_path, type, chatroom_flag, mobile) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?) "
+    "ON CONFLICT(username) DO UPDATE SET mobile = CASE "
+    "WHEN COALESCE(excluded.mobile,'') <> '' THEN excluded.mobile ELSE wechat_contacts.mobile END;";
 
 inline constexpr const char* INSERT_WECHAT_CHATROOM =
     "INSERT OR IGNORE INTO wechat_chatrooms (chatroom_name, owner, member_list, member_count, create_time) VALUES (?, ?, ?, ?, ?);";

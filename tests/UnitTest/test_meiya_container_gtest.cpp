@@ -20,11 +20,17 @@
 #include <string>
 #include <vector>
 
+#include "analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.h"
+#include "analyzers/AndroidAnalyzer/MeiyaBackupExtractor.h"
 #include "analyzers/AndroidAnalyzer/MeiyaContainerCrypto.h"
+#include "analyzers/AndroidAnalyzer/MobileEvidenceAnalysis.h"
 #include "analyzers/AndroidAnalyzer/MobileEvidenceMeiyaAdapter.h"
 #include "analyzers/AndroidAnalyzer/MobileEvidencePackage.h"
 
+#include <nlohmann/json.hpp>
+
 namespace fs = std::filesystem;
+using json = nlohmann::json;
 
 namespace {
 
@@ -214,3 +220,148 @@ TEST(MeiyaCryptoTest, GarbageFailsValidationRatherThanSilentlyPassing) {
                                           entries, validationError));
     }
 }
+
+// ---------------------------------------------------------------------------
+// 适配器 → 分析层的规范化投影
+//
+// 美亚原始列名（strContactName / strSMSPhoneNum / strDialogPhoneNum ...）不是
+// 统一包约定的规范键。适配器必须额外产出 display_name / phone_number /
+// address / body / number 等键，否则分析层按规范键取值会得到空行。
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// 建一个含美亚规范化表的明文库，再用掩码混淆成容器文件。
+void buildMeiyaDeviceDatabase(const fs::path& plain) {
+    sqlite3* db = nullptr;
+    ASSERT_EQ(sqlite3_open(plain.c_str(), &db), SQLITE_OK);
+    ASSERT_EQ(sqlite3_exec(db, "PRAGMA page_size=1024;", nullptr, nullptr, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_exec(db, "PRAGMA journal_mode=DELETE;", nullptr, nullptr, nullptr), SQLITE_OK);
+
+    // 先制造空页，让掩码可被自推导（与 MeiyaCryptoTest 同一前提）。
+    ASSERT_EQ(sqlite3_exec(db, "CREATE TABLE scratch(pad TEXT);", nullptr, nullptr, nullptr),
+              SQLITE_OK);
+    for (int row = 0; row < 120; ++row) {
+        const std::string insert =
+            "INSERT INTO scratch(pad) VALUES('" + std::string(900, 'y') + "');";
+        ASSERT_EQ(sqlite3_exec(db, insert.c_str(), nullptr, nullptr, nullptr), SQLITE_OK);
+    }
+    ASSERT_EQ(sqlite3_exec(db, "DROP TABLE scratch;", nullptr, nullptr, nullptr), SQLITE_OK);
+
+    ASSERT_EQ(sqlite3_exec(db,
+        "CREATE TABLE TBL_PR_CONTACT_INFO("
+        "ID INTEGER PRIMARY KEY, strContactName TEXT, strContactNickname TEXT,"
+        "strContactMobilePhone TEXT, strContactHomePhone TEXT, strContactWorkPhone TEXT,"
+        "strContactCustomedNumber TEXT, strContactOtherPhone TEXT, strNote TEXT,"
+        "strLastUpdatedTime TEXT);", nullptr, nullptr, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_exec(db,
+        "INSERT INTO TBL_PR_CONTACT_INFO VALUES"
+        "(1,'张三','小张','13800138000','01088886666','','','','','2026-03-01 10:00:00'),"
+        "(2,'李四','','13900139000','','','','','','2026-03-02 11:00:00');",
+        nullptr, nullptr, nullptr), SQLITE_OK);
+
+    ASSERT_EQ(sqlite3_exec(db,
+        "CREATE TABLE TBL_PR_DIALOG_INFO("
+        "ID INTEGER PRIMARY KEY, strDialogPhoneNum TEXT, strDialogName TEXT,"
+        "dwDialogDuration INTEGER, dwDialogType INTEGER, dwDeleted INTEGER,"
+        "strDialogLocation TEXT, strDialogInitiatedAt TEXT);", nullptr, nullptr, nullptr),
+        SQLITE_OK);
+    ASSERT_EQ(sqlite3_exec(db,
+        "INSERT INTO TBL_PR_DIALOG_INFO VALUES"
+        "(1,'13800138000','张三',65,1,0,'北京','2026-03-03 09:15:00'),"
+        "(2,'13900139000','李四',0,3,0,'上海','2026-03-04 20:05:00');",
+        nullptr, nullptr, nullptr), SQLITE_OK);
+
+    ASSERT_EQ(sqlite3_exec(db,
+        "CREATE TABLE TBL_PR_SMS_INFO("
+        "ID INTEGER PRIMARY KEY, strSMSPhoneNum TEXT, strSMSContents TEXT,"
+        "dwSMSType INTEGER, dwReadStatus INTEGER, dwDeleted INTEGER,"
+        "strSMSCenter TEXT, strSMSName TEXT, strSMSSentAt TEXT);", nullptr, nullptr, nullptr),
+        SQLITE_OK);
+    ASSERT_EQ(sqlite3_exec(db,
+        "INSERT INTO TBL_PR_SMS_INFO VALUES"
+        "(1,'13800138000','晚点到',1,1,0,'+8613800138000','张三','2026-03-05 08:30:00');",
+        nullptr, nullptr, nullptr), SQLITE_OK);
+
+    sqlite3_close(db);
+}
+
+}  // namespace
+
+TEST(MeiyaAdapterTest, EmitsCanonicalPayloadKeysAndRebuildsStandardTables) {
+    TempDir temp;
+    const fs::path caseRoot = temp / "case";
+    const fs::path deviceDir = caseRoot / "V1824BA";
+    fs::create_directories(deviceDir);
+
+    const fs::path plain = temp / "device_plain.db";
+    buildMeiyaDeviceDatabase(plain);
+
+    const auto mask = syntheticMask(0x77aa);
+    writeAll(deviceDir / "V1824BA.dmf", xorWith(readAll(plain), mask));
+
+    meiya::MeiyaBackupExtractor extractor(caseRoot.string());
+    ASSERT_TRUE(extractor.initialize()) << extractor.error();
+
+    mobile_evidence::MeiyaAdapterOptions options;
+    mobile_evidence::Package package;
+    ASSERT_TRUE(mobile_evidence::buildPackageFromMeiya(extractor, options, package))
+        << "buildPackageFromMeiya failed";
+
+    // 适配器层：规范键必须出现，原始列名同时保留。
+    int contacts = 0, sms = 0, calls = 0;
+    for (const auto& record : package.records) {
+        const json payload = json::parse(record.payloadJson);
+        if (record.kind == mobile_evidence::kind::kContact) {
+            ++contacts;
+            EXPECT_TRUE(payload.contains("display_name")) << record.payloadJson;
+            EXPECT_TRUE(payload.contains("phone_number")) << record.payloadJson;
+            EXPECT_TRUE(payload.contains("strContactName"))
+                << "raw column must be preserved for traceability";
+        } else if (record.kind == mobile_evidence::kind::kSms) {
+            ++sms;
+            EXPECT_TRUE(payload.contains("address")) << record.payloadJson;
+            EXPECT_TRUE(payload.contains("body")) << record.payloadJson;
+        } else if (record.kind == mobile_evidence::kind::kCallLog) {
+            ++calls;
+            EXPECT_TRUE(payload.contains("number")) << record.payloadJson;
+            EXPECT_TRUE(payload.contains("duration_seconds")) << record.payloadJson;
+        }
+    }
+    EXPECT_EQ(contacts, 2);
+    EXPECT_EQ(sms, 1);
+    EXPECT_EQ(calls, 2);
+
+    // 分析层：只凭包重建标准表，行与关键字段都要非空。
+    const fs::path androidDb = temp / "android.db";
+    {
+        AndroidAnalysisDatabase database(androidDb.string());
+        ASSERT_TRUE(database.initialize());
+        mobile_evidence::AnalysisOptions analysisOptions;
+        mobile_evidence::AnalysisResult result;
+        ASSERT_TRUE(mobile_evidence::analyzePackage(package, database, analysisOptions, result));
+        EXPECT_EQ(result.contacts, 2u);
+        EXPECT_EQ(result.sms, 1u);
+        EXPECT_EQ(result.callLogs, 2u);
+    }
+
+    sqlite3* db = nullptr;
+    ASSERT_EQ(sqlite3_open_v2(androidDb.c_str(), &db, SQLITE_OPEN_READONLY, nullptr), SQLITE_OK);
+    const auto scalar = [&db](const char* sql) -> sqlite3_int64 {
+        sqlite3_stmt* statement = nullptr;
+        if (sqlite3_prepare_v2(db, sql, -1, &statement, nullptr) != SQLITE_OK) return -1;
+        sqlite3_int64 value = -1;
+        if (sqlite3_step(statement) == SQLITE_ROW) value = sqlite3_column_int64(statement, 0);
+        sqlite3_finalize(statement);
+        return value;
+    };
+    EXPECT_EQ(scalar("SELECT COUNT(*) FROM contacts WHERE phone_number<>''"), 2);
+    EXPECT_EQ(scalar("SELECT COUNT(*) FROM call_logs WHERE number<>''"), 2);
+    EXPECT_EQ(scalar("SELECT COUNT(*) FROM sms_messages WHERE address<>'' AND body<>''"), 1);
+    // 时间：date 保留原值（美亚是秒级 epoch，来自 timestamp_seconds），
+    // date_seconds 必须与之一致，供跨源排序使用。
+    EXPECT_EQ(scalar("SELECT COUNT(*) FROM call_logs WHERE date_seconds > 0"), 2);
+    EXPECT_EQ(scalar("SELECT COUNT(*) FROM sms_messages WHERE date_seconds > 0"), 1);
+    sqlite3_close(db);
+}
+

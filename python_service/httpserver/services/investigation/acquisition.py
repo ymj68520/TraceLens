@@ -149,6 +149,10 @@ def _acquire_android_artifact(resolved: ResolvedEvidence) -> AndroidArtifactSnap
         "apps": ("package_name", "version", "installer"),
         "wifi": ("ssid", "key_mgmt", "last_connected"),
         "mobile": ("kind", "package_name", "app_index", "record_json", "timestamp_raw", "time_unit", "timestamp_seconds"),
+        "calls": ("number", "name", "date", "date_seconds", "duration", "type"),
+        "im": ("sender", "receiver", "sender_nickname", "chatroom_name", "talker",
+               "msg_type", "is_send", "timestamp", "content", "media_type"),
+        "im_contacts": ("username", "nickname", "remark", "mobile", "type"),
     }[resolved.artifact_kind]
     source = detail.get("source")
     coverage = manifest.get("coverage") or {}
@@ -188,8 +192,12 @@ def _acquire_android_artifact(resolved: ResolvedEvidence) -> AndroidArtifactSnap
                            **({"platform": "HarmonyOS"} if resolved.artifact_kind == "mobile" else {})},
         raw_timestamp=fields.get("timestamp_raw") if resolved.artifact_kind == "mobile" else
                       fields.get("date") if resolved.artifact_kind == "sms" else
+                      fields.get("date_seconds") if resolved.artifact_kind == "calls" else
+                      fields.get("timestamp") if resolved.artifact_kind == "im" else
                       fields.get("last_connected") if resolved.artifact_kind == "wifi" else None,
-        timestamp_unit=fields.get("time_unit") if resolved.artifact_kind == "mobile" else None,
+        timestamp_unit=fields.get("time_unit") if resolved.artifact_kind == "mobile" else
+                      "epoch_s" if resolved.artifact_kind == "calls" else
+                      "epoch_ms" if resolved.artifact_kind == "im" else None,
         timestamp_timezone="UTC" if resolved.artifact_kind == "mobile" and fields.get("time_unit") in {"epoch_s", "epoch_ms"} else None,
         timestamp_basis="source_database_value" if resolved.artifact_kind == "mobile" else None,
         parser_name="AndroidAnalyzer/HarmonyBackup" if resolved.artifact_kind == "mobile" else

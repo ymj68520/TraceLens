@@ -23,6 +23,10 @@ KINDS = {
     "apps": ("installed_packages", ("package_name", "version")),
     "wifi": ("wifi_networks", ("ssid", "key_mgmt")),
     "mobile": ("mobile_artifacts", ("kind", "package_name", "record_json")),
+    # Communication evidence: the records a mobile-only case is about.
+    "calls": ("call_logs", ("number", "name")),
+    "im": ("wechat_messages", ("content", "sender", "receiver", "talker")),
+    "im_contacts": ("wechat_contacts", ("username", "nickname", "remark", "mobile")),
 }
 SOURCE_KINDS = {"apps": "installed_apps"}
 

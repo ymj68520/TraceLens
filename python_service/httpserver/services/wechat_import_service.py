@@ -405,7 +405,8 @@ class WeChatImportService:
                 CREATE TABLE wechat_contacts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     username TEXT UNIQUE, nickname TEXT, remark TEXT,
-                    avatar_path TEXT, type INTEGER, chatroom_flag INTEGER DEFAULT 0
+                    avatar_path TEXT, type INTEGER, chatroom_flag INTEGER DEFAULT 0,
+                    mobile TEXT
                 );
                 CREATE TABLE wechat_chatrooms (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -434,8 +435,8 @@ class WeChatImportService:
                     continue
                 dst.execute(
                     "INSERT OR IGNORE INTO wechat_contacts "
-                    "(username, nickname, remark, avatar_path, type, chatroom_flag) "
-                    "VALUES (?,?,?,?,?,?)",
+                    "(username, nickname, remark, avatar_path, type, chatroom_flag, mobile) "
+                    "VALUES (?,?,?,?,?,?,?)",
                     (
                         username,
                         self._col(row, "nickname", "") or "",
@@ -443,6 +444,9 @@ class WeChatImportService:
                         "",
                         self._col(row, "type", 0),
                         self._col(row, "chatroomFlag", 0) or 0,
+                        # rcontact.mobile links this WeChat identity to the
+                        # dialler/SMS identities in the same case.
+                        self._col(row, "mobile", "") or "",
                     ),
                 )
 

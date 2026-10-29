@@ -848,12 +848,16 @@ int AnalysisOrchestrator::runAndroidLogicalAnalysis(const CommandLineArgs& args)
 
     std::string baseName = getBaseName(args.image_path);
     std::string prefix = getDatabaseDir(args);
-    // The package name, not the (possibly absent) acquisition path, determines
-    // the output stem when the analysis stage runs standalone. Strip the
-    // ".mep.db" suffix so "case.mep.db" yields "case_files.db", not
-    // "case.mep_files.db".
-    if (baseName.empty() && !args.mobile_package_path.empty()) {
-        baseName = fs::path(args.mobile_package_path).filename().string();
+    // Analysis-only runs derive the output stem from the package: both
+    // image_path and --mobile-package point at the same `.mep.db`, and
+    // image_path keeps the extension. Strip ".mep.db" so "case.mep.db" yields
+    // "case_files.db" rather than "case.mep_files.db".
+    if (!args.mobile_package_path.empty() || args.android_source == "mobile-evidence") {
+        const std::string packageName =
+            fs::path(!args.mobile_package_path.empty() ? args.mobile_package_path
+                                                       : args.image_path)
+                .filename().string();
+        baseName = packageName;
         for (const char* suffix : {".mep.db", ".db"}) {
             const size_t length = std::char_traits<char>::length(suffix);
             if (baseName.size() > length &&

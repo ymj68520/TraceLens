@@ -616,7 +616,8 @@ class QQImportService:
                 CREATE TABLE wechat_contacts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     username TEXT UNIQUE, nickname TEXT, remark TEXT,
-                    avatar_path TEXT, type INTEGER, chatroom_flag INTEGER DEFAULT 0
+                    avatar_path TEXT, type INTEGER, chatroom_flag INTEGER DEFAULT 0,
+                    mobile TEXT
                 );
                 CREATE TABLE wechat_chatrooms (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,

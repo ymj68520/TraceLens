@@ -256,27 +256,43 @@ std::vector<ChatMessage> AndroidAnalyzer::parseWeChat(const std::string& dbPath)
 
 std::vector<WeChatContact> AndroidAnalyzer::parseWeChatContacts(sqlite3* db) {
     std::vector<WeChatContact> contacts;
-    const char* sql = "SELECT username, nickname, conRemark, type, chatroomFlag FROM rcontact WHERE username NOT LIKE '%@chatroom%' AND username != 'weixin' AND username != 'filehelper';";
-    sqlite3_stmt* stmt;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-        while (sqlite3_step(stmt) == SQLITE_ROW) {
-            WeChatContact contact;
-            const char* username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-            const char* nickname = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
-            const char* remark = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
-
-            contact.username = username ? username : "";
-            contact.nickname = nickname ? nickname : "";
-            contact.remark = remark ? remark : "";
-            contact.type = sqlite3_column_int(stmt, 3);
-            contact.isChatroom = false;
-
-            if (!contact.username.empty()) {
-                contacts.push_back(contact);
-            }
-        }
-        sqlite3_finalize(stmt);
+    // rcontact.mobile exists in every schema generation that carries contacts;
+    // older builds may omit it, in which case the query falls back to a
+    // phone-less projection rather than failing the whole parse.
+    const char* sqlWithMobile =
+        "SELECT username, nickname, conRemark, type, chatroomFlag, mobile FROM rcontact "
+        "WHERE username NOT LIKE '%@chatroom%' AND username != 'weixin' AND username != 'filehelper';";
+    const char* sqlWithoutMobile =
+        "SELECT username, nickname, conRemark, type, chatroomFlag FROM rcontact "
+        "WHERE username NOT LIKE '%@chatroom%' AND username != 'weixin' AND username != 'filehelper';";
+    sqlite3_stmt* stmt = nullptr;
+    const bool hasMobile =
+        sqlite3_prepare_v2(db, sqlWithMobile, -1, &stmt, nullptr) == SQLITE_OK;
+    if (!hasMobile &&
+        sqlite3_prepare_v2(db, sqlWithoutMobile, -1, &stmt, nullptr) != SQLITE_OK) {
+        return contacts;
     }
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        WeChatContact contact;
+        const char* username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+        const char* nickname = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        const char* remark = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+
+        contact.username = username ? username : "";
+        contact.nickname = nickname ? nickname : "";
+        contact.remark = remark ? remark : "";
+        contact.type = sqlite3_column_int(stmt, 3);
+        contact.isChatroom = false;
+        if (hasMobile) {
+            const char* mobile = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5));
+            contact.mobile = mobile ? mobile : "";
+        }
+
+        if (!contact.username.empty()) {
+            contacts.push_back(contact);
+        }
+    }
+    sqlite3_finalize(stmt);
     return contacts;
 }
 

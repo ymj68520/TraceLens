@@ -15,6 +15,7 @@ file_descriptions as if they were raw forensic evidence.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import sqlite3
@@ -226,6 +227,24 @@ def _select_columns(conn: sqlite3.Connection, table: str, wanted: tuple[str, ...
     return [c for c in wanted if c in present]
 
 
+def _order_clause(conn: sqlite3.Connection, table: str, order_by: str | None) -> str:
+    """ORDER BY for artifact tables.
+
+    `date` keeps the source's original unit (MIUI ms, ThunderForensic/Meiya s),
+    so ordering on it mixes units across sources. `date_seconds` is the
+    normalized column written by the analysis layer; prefer it whenever it
+    exists and the caller asked to order by `date`.
+    """
+    if not order_by:
+        return ""
+    columns = _table_columns(conn, table)
+    if order_by in ("date", "date_sent") and "date_seconds" in columns:
+        return ' ORDER BY "date_seconds"'
+    if order_by in columns:
+        return f' ORDER BY "{order_by}"'
+    return ""
+
+
 def _fetch_rows(
     conn: sqlite3.Connection, table: str, wanted: tuple[str, ...],
     order_by: str | None, page: int, page_size: int,
@@ -238,7 +257,7 @@ def _fetch_rows(
     page, page_size, total_pages = _paginated(total, page, page_size)
     col_sql = ", ".join(f'"{c}"' for c in cols)
     offset = (page - 1) * page_size
-    order_sql = f' ORDER BY "{order_by}"' if (order_by and order_by in cols) else ""
+    order_sql = _order_clause(conn, table, order_by)
     rows = conn.execute(
         f'SELECT {col_sql} FROM "{table}"{order_sql} LIMIT ? OFFSET ?',
         (page_size, offset),
@@ -586,12 +605,27 @@ _PLATFORM_SECTIONS: list[_PlatformSection] = [
      ("display_name", "phone_number", "email", "account_type", "account_name"),
      "display_name"),
     ("android", "sms", "短信息", "sms_messages",
-     ("thread_id", "address", "person", "date", "date_sent", "type", "body",
-      "status", "service_center"),
+     ("thread_id", "address", "person", "date", "date_seconds", "date_sent", "type",
+      "body", "status", "service_center"),
      "date"),
     ("android", "call_logs", "通话记录", "call_logs",
-     ("number", "date", "duration", "type", "name", "geocoded_location"),
+     ("number", "date", "date_seconds", "duration", "type", "name", "geocoded_location"),
      "date"),
+    # Instant-messaging sections. These are the material a mobile-only case is
+    # actually about; without them the report reads like a file-system report.
+    ("android", "im_sessions", "即时通讯会话", "wechat_messages",
+     ("chatroom_name", "talker", "sender", "receiver", "sender_nickname",
+      "msg_type", "is_send", "timestamp", "content"),
+     "timestamp"),
+    ("android", "im_contacts", "即时通讯联系人", "wechat_contacts",
+     ("username", "nickname", "remark", "mobile", "type"),
+     "username"),
+    ("android", "im_groups", "群组", "wechat_chatrooms",
+     ("chatroom_name", "owner", "member_count", "member_list"),
+     "chatroom_name"),
+    ("android", "notes", "便签", "app_notes",
+     ("package_name", "title", "content", "tags", "source_db"),
+     "title"),
     ("android", "locations", "位置信息", _resolve_locations_table,
      ("file_name", "file_path", "latitude", "longitude", "ssid",
       "created_time", "modified_time", "file_size"),
@@ -738,6 +772,21 @@ def _find_db_with_table(candidate_dbs: list[str], table: str) -> str | None:
         except sqlite3.Error:
             continue
     return None
+
+
+def _android_coverage_stats(task: dict[str, Any]) -> DirectoryNodeStats:
+    """Row counts for the mobile coverage chapter (0 when unavailable)."""
+    try:
+        from ..services.android_coverage import read_coverage
+
+        payload = read_coverage(task)
+    except Exception:  # pragma: no cover - defensive read path
+        return DirectoryNodeStats()
+    return DirectoryNodeStats(
+        total=len(payload.get("sources") or []),
+        relevant=sum(1 for row in (payload.get("sources") or [])
+                     if row.get("status") == "parsed"),
+    )
 
 
 def _section_total(section: _PlatformSection, candidate_dbs: list[str]) -> int:
@@ -1017,6 +1066,11 @@ async def get_intelligence_report(task_id: str) -> IntelligenceReportResponse:
     # detected platform(s) so placeholders render even when data is empty.
     if "android" in platforms:
         directory.append(DirectoryNode(id="device_info", title="设备基本信息", kind="device_info"))
+        # Mobile-only chapter: which artifacts were parsed / locked / absent.
+        # Without it an empty table is indistinguishable from "not on device".
+        directory.append(DirectoryNode(
+            id="android_coverage", title="数据来源与覆盖度", kind="records",
+            stats=_android_coverage_stats(task)))
     if "windows" in platforms:
         directory.append(DirectoryNode(id="win_device_info", title="系统信息", kind="device_info"))
     if "linux" in platforms:
@@ -1075,7 +1129,8 @@ async def get_intelligence_records(
     task_id: str,
     category: str = Query(
         ..., description="evidence.files | timeline | analysis.* | device_info | "
-                         "win_device_info | linux_device_info | <platform section id>"),
+                         "android_coverage | win_device_info | linux_device_info | "
+                         "<platform section id>"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
 ) -> RecordPage:
@@ -1108,9 +1163,24 @@ async def get_intelligence_records(
         sms_db = _find_db_with_table(candidate_dbs, "sms_messages")
         return _generic_table_records(
             sms_db, "sms_messages",
-            ("thread_id", "address", "person", "date", "date_sent",
+            ("thread_id", "address", "person", "date", "date_seconds", "date_sent",
              "type", "body", "status", "service_center"),
             "date", page, page_size, "sms")
+
+    # ── Android source coverage: which artifacts were parsed, locked, or absent.
+    # A mobile report must state this; an empty table alone cannot distinguish
+    # "not acquired" from "not on the device".
+    if category == "android_coverage":
+        from ..services.android_coverage import read_coverage
+
+        payload = await asyncio.to_thread(read_coverage, task)
+        records = _coverage_records(payload)
+        page, page_size, total_pages = _paginated(len(records), page, page_size)
+        offset = (page - 1) * page_size
+        return RecordPage(
+            category="android_coverage", page=page, page_size=page_size,
+            total=len(records), total_pages=total_pages,
+            records=records[offset:offset + page_size])
 
     # ── generic platform artifact sections via the registry ──
     for sec in _PLATFORM_SECTIONS:
@@ -1122,6 +1192,37 @@ async def get_intelligence_records(
                 section_db, resolved, fields, order_by, page, page_size, section_id)
 
     raise HTTPException(status_code=404, detail=f"unknown category: {category}")
+
+
+def _coverage_records(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Flatten the coverage payload into one row per declared source.
+
+    The first row summarizes the artifact table counts so the reader can see
+    "parsed 0" versus "table missing" at a glance; the rest are the per-source
+    declarations the collector wrote (parsed / locked / unsupported / absent).
+    """
+    records: list[dict[str, Any]] = [{
+        "artifact_kind": "（汇总）",
+        "source_path": payload.get("source_mode") or "—",
+        "status": "available" if payload.get("available") else "unavailable",
+        "detail": "；".join(payload.get("warnings") or []) or "—",
+        "record_count": sum((payload.get("artifact_counts") or {}).values()),
+        "_summary": True,
+    }]
+    for name, count in sorted((payload.get("artifact_counts") or {}).items()):
+        records.append({
+            "artifact_kind": name, "source_path": "（解析条数）", "status": "counted",
+            "detail": "已写入分析库的行数", "record_count": count,
+        })
+    for row in payload.get("sources") or []:
+        records.append({
+            "artifact_kind": row.get("artifact_kind", ""),
+            "source_path": row.get("source_path", ""),
+            "status": row.get("status", ""),
+            "detail": row.get("detail", ""),
+            "record_count": None,
+        })
+    return records
 
 
 async def _files_records(

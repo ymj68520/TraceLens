@@ -79,13 +79,22 @@ json rowToJson(sqlite3_stmt* statement) {
     return row;
 }
 
+// 规范键：分析层只认这些名字（见 MobileEvidenceAnalysis.cpp）。每个键给出
+// 若干候选原始列，按顺序取第一个非空值；美亚各版本表的列名不完全一致。
+struct CanonicalField {
+    const char* name;
+    std::vector<const char*> sources;
+};
+
 struct TableMapping {
     const char* table;
     const char* kind;
-    // 关键列（规范化投影）
+    // 关键列（原样保留，便于回查与调试）
     std::vector<const char*> payloadKeys;
     // 时间列（原文）
     const char* timeColumn;
+    // 规范化投影；缺失时不产出该键，由分析层按空值处理。
+    std::vector<CanonicalField> canonical;
 };
 
 // 只映射语义明确的规范化表；其余表仍以 coverage 声明"已盘点未映射"。
@@ -94,49 +103,91 @@ const std::vector<TableMapping>& mappings() {
         {"TBL_PR_SMS_INFO", kind::kSms,
          {"strSMSPhoneNum", "strSMSContents", "dwSMSType", "dwReadStatus", "dwDeleted",
           "strSMSCenter", "strSMSName"},
-         "strSMSSentAt"},
+         "strSMSSentAt",
+         {{"address", {"strSMSPhoneNum"}},
+          {"body", {"strSMSContents"}},
+          {"type", {"dwSMSType"}},
+          {"read", {"dwReadStatus"}},
+          {"service_center", {"strSMSCenter"}},
+          {"person", {"strSMSName"}}}},
         {"TBL_PR_CONTACT_INFO", kind::kContact,
          {"strContactName", "strContactMobilePhone", "strContactHomePhone",
           "strContactWorkPhone", "strContactCustomedNumber", "strContactOtherPhone",
           "strContactNickname", "strNote"},
-         "strLastUpdatedTime"},
+         "strLastUpdatedTime",
+         {{"display_name", {"strContactName", "strContactNickname", "strNote"}},
+          {"phone_number", {"strContactMobilePhone", "strContactCustomedNumber",
+                            "strContactHomePhone", "strContactWorkPhone",
+                            "strContactOtherPhone"}}}},
         {"TBL_PR_DIALOG_INFO", kind::kCallLog,
          {"strDialogPhoneNum", "strDialogName", "dwDialogDuration", "dwDialogType",
           "dwDeleted", "strDialogLocation"},
-         "strDialogInitiatedAt"},
+         "strDialogInitiatedAt",
+         {{"number", {"strDialogPhoneNum"}},
+          {"name", {"strDialogName"}},
+          {"duration_seconds", {"dwDialogDuration"}},
+          {"type", {"dwDialogType"}},
+          {"geocoded_location", {"strDialogLocation"}}}},
         {"TBL_PR_NOTES_INFO", kind::kNote,
          {"strContents", "strTitle", "strPath", "dwDeleted"},
-         "strCreated"},
+         "strCreated",
+         {{"title", {"strTitle"}},
+          {"content", {"strContents"}},
+          {"note_id", {"ID"}}}},
         {"TBL_PR_CALENDAR_INFO", kind::kCalendarEvent,
          {"strCalendarTitle", "strCalendarContents", "strCalendarLocation",
           "strCalendarStartTime", "strCalendarEndDate1", "strCalendarType"},
-         "strCalendarStartTime"},
+         "strCalendarStartTime",
+         {{"title", {"strCalendarTitle"}},
+          {"description", {"strCalendarContents"}},
+          {"location", {"strCalendarLocation"}},
+          {"start_time", {"strCalendarStartTime"}},
+          {"end_time", {"strCalendarEndDate1"}}}},
         {"TBL_PR_WIFI_LINK_NET_INFO", kind::kWifiNetwork,
          {"strName", "strMAC", "strEncAlgorithm", "strIpAddress", "strLinkType"},
-         "strJoinTime"},
+         "strJoinTime",
+         {{"ssid", {"strName"}}, {"key_mgmt", {"strEncAlgorithm"}}}},
         {"TBL_PR_WIFI_PASSWD_INFO", kind::kWifiNetwork,
          {"strName", "strPassWord", "strAlgorithm"},
-         nullptr},
+         nullptr,
+         {{"ssid", {"strName"}},
+          {"pre_shared_key", {"strPassWord"}},
+          {"key_mgmt", {"strAlgorithm"}}}},
         {"TBL_PR_INSTALL_INFO", kind::kInstalledApp,
          {"strName", "strPackageName", "strVersion", "strType", "iSize", "strPath",
           "strInstallerName"},
-         "strUpdateDate"},
+         "strUpdateDate",
+         {{"display_name", {"strName"}},
+          {"package_name", {"strPackageName"}},
+          {"version_name", {"strVersion"}},
+          {"data_size", {"iSize"}},
+          {"version_code", {"strVersion"}}}},
         {"TBL_PR_MEDIA_INFO", kind::kMediaFile,
          {"strFileName", "strFilePath", "dwFileSize", "iMediaType", "strAlbum",
           "strMediaFileMd5"},
-         "strFileModifiedDate"},
+         "strFileModifiedDate",
+         {{"file_name", {"strFileName"}},
+          {"file_path", {"strFilePath"}},
+          {"file_size", {"dwFileSize"}},
+          {"file_md5", {"strMediaFileMd5"}}}},
         {"TBL_PR_FILE_DOCUMENT_INFO", kind::kDocumentFile,
          {"strFileName", "strFilePath", "dwFileSize"},
-         "strFileModifiedDate"},
+         "strFileModifiedDate",
+         {{"file_name", {"strFileName"}},
+          {"file_path", {"strFilePath"}},
+          {"file_size", {"dwFileSize"}}}},
         {"TBL_PR_SYS_ACCOUNT_INFO", kind::kAccount,
          {"strName", "strType", "strPassWord"},
-         nullptr},
+         nullptr,
+         {{"account", {"strName"}}, {"account_type", {"strType"}}}},
         {"TBL_PR_SYS_BOOT_TIME_INFO", kind::kSystemLog,
          {"strBootTime", "strBootType", "strBootReason"},
-         "strBootTime"},
+         "strBootTime",
+         {{"boot_time", {"strBootTime"}}, {"boot_type", {"strBootType"}}}},
         {"TBL_PR_BT_INFO", kind::kGeneric,
          {"strName", "strMAC", "strDeviceType"},
-         "strLastConnectTime"},
+         "strLastConnectTime",
+         {{"device_name", {"strName"}}, {"mac", {"strMAC"}}}},
     };
     return table;
 }
@@ -199,8 +250,18 @@ std::uint64_t exportTable(Package& package, sqlite3* db, const TableMapping& map
 
         const json full = rowToJson(statement.get());
         json payload = json::object();
+        // 原始列名保留在 payload 里，便于排查；规范键另按 CanonicalField 投影。
         for (const char* key : mapping.payloadKeys) {
             if (full.contains(key)) payload[key] = full[key];
+        }
+        for (const auto& field : mapping.canonical) {
+            for (const char* source : field.sources) {
+                if (!full.contains(source) || full[source].is_null()) continue;
+                json value = full[source];
+                if (value.is_string() && value.get<std::string>().empty()) continue;
+                payload[field.name] = value;
+                break;
+            }
         }
 
         Record record;

@@ -29,6 +29,10 @@ struct WeChatContact {
     std::string nickname;
     std::string remark;
     std::string avatarPath;
+    // rcontact.mobile — the phone number the device user stored for this
+    // contact. It is the only strong key that links a WeChat identity to the
+    // dialler / contacts / SMS identities, so it must survive parsing.
+    std::string mobile;
     int type = 0;
     bool isChatroom = false;
 };

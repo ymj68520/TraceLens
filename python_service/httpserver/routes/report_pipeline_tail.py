@@ -112,9 +112,14 @@ async def _run_tail(task_id: str, requested_by: str) -> None:
             executor=executor,
             cpp_backend=cpp_backend,
         )
-        if summary.get("skipped") == "report_exists":
+        # Any skip means "nothing to generate", not "generation in progress":
+        # settling as failed would make the C++ completion gate fail a task
+        # whose analysis actually succeeded (logical mobile sources have no
+        # `files` table, so there is nothing to seed).
+        if summary.get("skipped"):
             entry.update({"state": "completed", "report_id": None,
-                          "generation_id": None, "error_code": None,
+                          "generation_id": None,
+                          "error_code": summary.get("skipped"),
                           "updated_at": time.time()})
             return
         generation_id = summary.get("generation_id")

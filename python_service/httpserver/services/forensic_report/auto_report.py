@@ -112,11 +112,34 @@ async def auto_generate_pipeline_report(
         )
         return {"task_id": task_id, "skipped": "generation_in_flight"}
 
-    # Register the actual analyzed-file scope before listing it for extraction.
+    # Register the actual analyzed scope before listing it for extraction.
     # A fresh task otherwise has no Report Evidence and freezes missing sources.
-    seed = await evidence_service.seed_analyzed_files(
-        task_id, added_by=AUTO_REPORT_REQUESTER
-    )
+    # Logical mobile sources have no `files` table, so the file-centred seed
+    # raises; the mobile artifact seed below still produces evidence for them.
+    seed: dict = {}
+    try:
+        seed = await evidence_service.seed_analyzed_files(
+            task_id, added_by=AUTO_REPORT_REQUESTER
+        )
+    except Exception as exc:  # EvidenceStoreError("task has no files database")
+        logger.info(
+            "Task %s has no files table (%s); trying mobile artifact evidence",
+            task_id, exc,
+        )
+
+    # Without any report evidence admission raises `no_report_evidence`, the
+    # tail settles as failed, and the C++ completion gate marks a successful
+    # analysis FAILED. Skip explicitly instead — an empty report is noise, and
+    # the analyst can still add evidence and generate a report manually.
+    if not await evidence_service.list(task_id):
+        logger.info(
+            "Task %s has no reportable evidence (no files table and no "
+            "seeded mobile artifacts); auto report generation skipped",
+            task_id,
+        )
+        return {"task_id": task_id, "skipped": "no_reportable_evidence",
+                "seeded": seed.get("seeded")}
+
     copy_summary = None
     if cpp_backend is not None:
         try:
@@ -143,6 +166,7 @@ async def auto_generate_pipeline_report(
     return {
         "task_id": task_id,
         "seeded": seed.get("seeded"),
+        "mobile_seeded": seed.get("mobile_seeded"),
         "copies": copy_summary,
         "generation_id": generation.generation_id,
     }

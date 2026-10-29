@@ -166,6 +166,8 @@ add_executable(
   ../src/analyzers/AndroidAnalyzer/MeiyaContainerCrypto.cpp
   ../src/analyzers/AndroidAnalyzer/MeiyaBackupExtractor.cpp
   ../src/analyzers/AndroidAnalyzer/MobileEvidenceMeiyaAdapter.cpp
+  ../src/analyzers/AndroidAnalyzer/MobileEvidenceAnalysis.cpp
+  ../src/analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.cpp
   ../src/analyzers/AndroidAnalyzer/MobileEvidencePackage.cpp)
 target_include_directories(
   test_meiya_container_gtest
@@ -1347,6 +1349,22 @@ add_test(
   COMMAND python3
           ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_miui_cli_e2e.py
           --analyzer $<TARGET_FILE:forensic_analyzer>)
+# Mobile analysis phase: .mep.db extraction -> android.db -> comm graph,
+# timeline and report chapters. Synthetic fixtures; no vendor data.
+add_test(
+  NAME MobileAnalysisEndToEndTests
+  COMMAND ${CMAKE_SOURCE_DIR}/python_service/.venv/bin/python
+          ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_mobile_analysis_e2e.py
+          $<TARGET_FILE:forensic_analyzer>)
+set_tests_properties(MobileAnalysisEndToEndTests PROPERTIES
+  ENVIRONMENT "PYTHONPATH=${CMAKE_SOURCE_DIR}/python_service" TIMEOUT 900)
+# Unified communication graph over a phone task plus a WeChat import.
+add_test(
+  NAME CommGraphEndToEndTests
+  COMMAND ${CMAKE_SOURCE_DIR}/python_service/.venv/bin/python
+          ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_comm_graph_e2e.py)
+set_tests_properties(CommGraphEndToEndTests PROPERTIES
+  ENVIRONMENT "PYTHONPATH=${CMAKE_SOURCE_DIR}/python_service" TIMEOUT 600)
 add_test(NAME ThunderForensicCliEndToEndTests
   COMMAND python3
           ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_thunderforensic_backup_cli.py

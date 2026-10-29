@@ -29,6 +29,8 @@ import SearchTab from '../components/knowledge-graph/SearchTab';
 import EntitiesTab from '../components/knowledge-graph/EntitiesTab';
 import RelationshipsTab from '../components/knowledge-graph/RelationshipsTab';
 import RelationshipTracePanel from '../components/knowledge-graph/RelationshipTracePanel';
+import CommGraphPanel from '../components/knowledge-graph/CommGraphPanel';
+import CommTimelinePanel from '../components/timeline/CommTimelinePanel';
 
 const escapeGraphTooltip = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -652,6 +654,8 @@ export default function KnowledgeGraph() {
 
     const tabs = [
         { id: 'graph', label: '🕸️ 图谱可视化' },
+        { id: 'comm', label: '📱 综合通讯关系' },
+        { id: 'comm-timeline', label: '🕒 通讯时间线' },
         { id: 'search', label: '🔍 搜索' },
         { id: 'entities', label: '📦 实体' },
         { id: 'relationships', label: '🔗 关系' },
@@ -950,6 +954,8 @@ export default function KnowledgeGraph() {
 
             <Card>
                 {activeTab === 'graph' && renderGraph()}
+                {activeTab === 'comm' && <CommGraphPanel taskId={taskId} />}
+                {activeTab === 'comm-timeline' && <CommTimelinePanel taskId={taskId} />}
                 {activeTab === 'search' && renderSearch()}
                 {activeTab === 'entities' && renderEntities()}
                 {activeTab === 'relationships' && renderRelationships()}

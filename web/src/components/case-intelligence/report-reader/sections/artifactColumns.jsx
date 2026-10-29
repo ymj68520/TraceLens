@@ -14,6 +14,31 @@ import { fmtTime, fileSize, callTypeLabel, smsTypeLabel } from './shared';
 
 const t = fmtTime;
 
+const MSG_TYPES = {
+  1: '文本', 3: '图片', 34: '语音', 42: '名片', 43: '视频', 47: '表情',
+  48: '位置', 49: '分享/应用', 50: '语音通话', 10000: '系统消息', 10002: '撤回',
+};
+
+/** WeChat message type int -> Chinese label; `type & 0xFFFF` strips flags. */
+export function msgTypeLabel(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  const base = Number(value) & 0xFFFF;
+  return MSG_TYPES[base] || String(value);
+}
+
+/** Coverage status -> Chinese label. Unknown values pass through unchanged. */
+export function coverageStatusLabel(value) {
+  const map = {
+    parsed: '已解析', available: '可用', unavailable: '不可用', counted: '已统计',
+    locked: '加密/未解密', encrypted_locked: '已发现未解密',
+    unsupported: '格式不支持', malformed: '格式异常', failed: '解析失败',
+    no_candidate_path: '未发现候选路径', empty: '表为空', empty_table: '表为空',
+    not_found: '未找到', partial: '部分解析', 'empty_table': '表为空',
+  };
+  if (value === null || value === undefined || value === '') return '—';
+  return map[String(value)] || String(value);
+}
+
 export const ARTIFACT_COLUMNS = {
   // ── Android ──
   contacts: [
@@ -59,6 +84,46 @@ export const ARTIFACT_COLUMNS = {
     { key: 'installer', label: '安装来源' },
     { key: 'first_install_time', label: '安装时间', format: fmtTime },
     { key: 'last_update_time', label: '更新时间', format: fmtTime },
+  ],
+
+  // ── Instant messaging / mobile-only evidence ──
+  im_sessions: [
+    { key: 'chatroom_name', label: '群聊' },
+    { key: 'talker', label: '会话' },
+    { key: 'sender', label: '发送方' },
+    { key: 'receiver', label: '接收方' },
+    { key: 'sender_nickname', label: '发送方昵称' },
+    { key: 'msg_type', label: '类型', format: msgTypeLabel },
+    { key: 'is_send', label: '方向', format: (v) => (Number(v) === 1 ? '发出' : '收到') },
+    { key: 'timestamp', label: '时间', format: fmtTime },
+    { key: 'content', label: '内容' },
+  ],
+  im_contacts: [
+    { key: 'username', label: '账号' },
+    { key: 'nickname', label: '昵称' },
+    { key: 'remark', label: '备注' },
+    { key: 'mobile', label: '绑定号码' },
+    { key: 'type', label: '类型' },
+  ],
+  im_groups: [
+    { key: 'chatroom_name', label: '群标识' },
+    { key: 'owner', label: '群主' },
+    { key: 'member_count', label: '成员数' },
+    { key: 'member_list', label: '成员' },
+  ],
+  notes: [
+    { key: 'package_name', label: '应用' },
+    { key: 'title', label: '标题' },
+    { key: 'content', label: '内容' },
+    { key: 'tags', label: '标签' },
+    { key: 'source_db', label: '来源库' },
+  ],
+  android_coverage: [
+    { key: 'artifact_kind', label: '工件类别' },
+    { key: 'source_path', label: '来源' },
+    { key: 'status', label: '状态', format: coverageStatusLabel },
+    { key: 'detail', label: '说明' },
+    { key: 'record_count', label: '条数' },
   ],
 
   // ── Windows ──

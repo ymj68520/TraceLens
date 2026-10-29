@@ -13,12 +13,16 @@ from httpserver.services.forensic_report.auto_report import (
 
 
 class _FakeEvidence:
-    def __init__(self):
+    def __init__(self, evidence=("file:/case/a.txt",)):
         self.calls: list[tuple[str, str]] = []
+        self._evidence = [SimpleNamespace(evidence_key=key) for key in evidence]
 
     async def seed_analyzed_files(self, task_id: str, *, added_by: str):
         self.calls.append((task_id, added_by))
         return {"task_id": task_id, "seeded": 3}
+
+    async def list(self, task_id: str):
+        return list(self._evidence)
 
 
 class _FakeAdmission:
@@ -59,7 +63,8 @@ def test_auto_report_seeds_then_submits():
     assert admission.calls == [("T", "pipeline")]
     assert executor.submitted == ["gen-1"]
     assert summary == {
-        "task_id": "T", "seeded": 3, "generation_id": "gen-1", "copies": None,
+        "task_id": "T", "seeded": 3, "mobile_seeded": None, "generation_id": "gen-1",
+        "copies": None,
     }
 
 
@@ -142,6 +147,9 @@ def test_auto_report_propagates_seed_failure():
         async def seed_analyzed_files(self, task_id, *, added_by):
             raise RuntimeError("store unavailable")
 
+        async def list(self, task_id):
+            raise RuntimeError("store unavailable")
+
     with pytest.raises(RuntimeError):
         asyncio.run(auto_generate_pipeline_report(
             "T",
@@ -149,6 +157,46 @@ def test_auto_report_propagates_seed_failure():
             admission=_FakeAdmission(),
             executor=_FakeExecutor(),
         ))
+
+
+def test_auto_report_seeds_when_files_table_is_absent():
+    """Logical mobile tasks have no `files` table; seeding must not abort."""
+    evidence, admission, executor = _FakeEvidence(), _FakeAdmission(), _FakeExecutor()
+
+    class _NoFilesEvidence(_FakeEvidence):
+        async def seed_analyzed_files(self, task_id, *, added_by):
+            self.calls.append((task_id, added_by))
+            raise RuntimeError("task has no files database")
+
+    service = _NoFilesEvidence()
+
+    summary = asyncio.run(auto_generate_pipeline_report(
+        "T", evidence_service=service, admission=admission, executor=executor,
+    ))
+
+    # The pre-seeded mobile evidence is what lets the report proceed.
+    assert service.calls == [("T", "pipeline")]
+    assert admission.calls == [("T", "pipeline")]
+    assert summary["generation_id"] == "gen-1"
+
+
+def test_auto_report_skips_when_no_reportable_evidence():
+    """Logical mobile sources have no `files` table: nothing can be seeded.
+
+    Admission would raise no_report_evidence and the C++ completion gate would
+    then mark a successful analysis FAILED, so the tail must skip explicitly.
+    """
+    evidence = _FakeEvidence(evidence=())
+    admission, executor = _FakeAdmission(), _FakeExecutor()
+
+    summary = asyncio.run(auto_generate_pipeline_report(
+        "T", evidence_service=evidence, admission=admission, executor=executor,
+    ))
+
+    assert summary["skipped"] == "no_reportable_evidence"
+    assert evidence.calls == [("T", "pipeline")]
+    assert admission.calls == []
+    assert executor.submitted == []
 
 
 def test_extraction_batches_preserve_exact_unicode_paths():
