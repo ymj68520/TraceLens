@@ -90,6 +90,17 @@ def main(binary):
                             assert con.execute("SELECT COUNT(*) FROM files").fetchone()[0] == 3
                         with sqlite3.connect(task["output_events_db"]) as con:
                             assert con.execute("SELECT COUNT(*) FROM events WHERE event_source='HARMONY_BACKUP'").fetchone()[0] == 2
+                        # The unified extraction package must be written by the
+                        # task path too, so Web and CLI hand over the same format.
+                        package = task["metadata"].get("mobile_evidence_package")
+                        assert package and Path(package).is_file(), task["metadata"]
+                        with sqlite3.connect(package) as con:
+                            assert con.execute(
+                                "SELECT value FROM mobile_evidence_meta WHERE key='adapter_name'"
+                            ).fetchone()[0] == "harmony-backup"
+                            assert con.execute(
+                                "SELECT COUNT(*) FROM mobile_evidence_record"
+                            ).fetchone()[0] >= 1
                         _, overview = request(base + "/api/forensics/android/backup-overview?task_id=" + task_id)
                         assert overview["manifest"]["platform"] == "HarmonyOS", overview
                         assert overview["artifact_counts"] == [{"kind": "calendar", "count": 2}], overview

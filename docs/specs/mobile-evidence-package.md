@@ -150,6 +150,22 @@ v1 引入一个**固定骨架 + 可扩展载荷**的中间格式：适配器只�
 
 它们由 `analyzeThunderForensicBackup` / `buildPackageFromCaseDatabases` 的调用方在分析阶段补写，`buildPackageFromThunderForensic` 通过 `caseProvenanceOut` 把案件库 provenance 交回调用方。
 
+### Web 任务同样产出统一包
+
+HTTP 任务链路的四条手机来源都会写 `<任务目录>/<baseName>_mobile_evidence.mep.db`，
+并在任务元数据登记 `mobile_evidence_package`、`mobile_evidence_records`、
+`mobile_evidence_files`、`mobile_evidence_adapter`：
+
+| 来源 | 适配器 | 执行分支 |
+|---|---|---|
+| `miui-backup` | miui-backup | 逻辑分析短路径（AndroidAnalyzer 之后） |
+| `thunder-backup` / `oppo-backup` | thunder-backup | 同上 |
+| `harmony-backup` | harmony-backup | Android 场景分支（鸿蒙不进入逻辑短路径） |
+| `meiya` | meiya-mobilemaster | 独立分支（不走 AndroidAnalyzer） |
+
+包写入失败只记 WARNING、不让任务失败：`android.db` 仍可服务既有页面，
+缺口通过审计日志与元数据可见，而不是静默丢数据。
+
 ## 6. 如何接入新来源
 
 以接入一家新厂商导出为例：

@@ -126,6 +126,18 @@ def main(binary):
                             wifi = con.execute(
                                 "SELECT COUNT(*) FROM wifi_networks").fetchone()[0]
                             assert wifi == 2, (label, wifi)
+                    # Unified extraction package: the task path must hand over
+                    # the same format the CLI produces.
+                    package = metadata.get("mobile_evidence_package")
+                    assert package and Path(package).is_file(), (label, metadata)
+                    with sqlite3.connect(package) as con:
+                        adapter = con.execute(
+                            "SELECT value FROM mobile_evidence_meta "
+                            "WHERE key='adapter_name'").fetchone()
+                        assert adapter and adapter[0] == "thunder-backup", (label, adapter)
+                        records = con.execute(
+                            "SELECT COUNT(*) FROM mobile_evidence_record").fetchone()[0]
+                        assert records >= 20, (label, records)
                     _, overview = request(
                         base + f"/api/forensics/android/backup-overview?task_id={task_id}")
                     assert overview.get("manifest", {}).get("device") == expected_device, \

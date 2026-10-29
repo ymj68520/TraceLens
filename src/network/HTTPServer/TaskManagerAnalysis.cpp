@@ -9,6 +9,10 @@
 #include "AndroidAnalyzer/MobileEvidenceMeiyaAdapter.h"
 #include "AndroidAnalyzer/MobileEvidencePackage.h"
 #include "AndroidAnalyzer/MobileEvidenceAnalysis.h"
+#include "AndroidAnalyzer/MobileEvidenceMiuiAdapter.h"
+#include "AndroidAnalyzer/MobileEvidenceHarmonyAdapter.h"
+#include "AndroidAnalyzer/MiuiBackupExtractor.h"
+#include "AndroidAnalyzer/ThunderForensicArtifactParsers.h"
 #include "TaskPersistence.h"
 #include "TaskWatchdog.h"
 #include "TaskSerialization.h"
@@ -1393,6 +1397,56 @@ void TaskManager::start_analysis(const std::string& task_id) {
                                 androidAnalyzer->setSourceCallbacks([this, task_id](std::size_t) { touch_heartbeat(task_id); },
                                     [this, task_id]() { return is_task_cancelled(task_id); });
                                 if (androidAnalyzer->initialize()) {
+                                    // Harmony tasks reach this scenario branch rather
+                                    // than the logical short-circuit, so the unified
+                                    // package is written here to keep the Web result
+                                    // identical to the CLI's extraction stage.
+                                    if (harmonyBackup) {
+                                        try {
+                                            auto* harmony =
+                                                dynamic_cast<HarmonyBackupExtractor*>(
+                                                    androidAnalyzer->fileExtractor());
+                                            mobile_evidence::Package package;
+                                            mobile_evidence::HarmonyAdapterOptions options;
+                                            if (harmony &&
+                                                mobile_evidence::buildPackageFromHarmony(
+                                                    *harmony, androidAnalyzer->temporaryRoot(),
+                                                    options, package)) {
+                                                const std::string packagePath =
+                                                    (pm.getTaskDir(task_id) /
+                                                     (baseName +
+                                                      "_mobile_evidence.mep.db")).string();
+                                                mobile_evidence::Writer writer(packagePath);
+                                                if (writer.writePackage(package)) {
+                                                    writer.close();
+                                                    std::lock_guard<std::mutex> lock(mtx_);
+                                                    if (tasks_.count(task_id)) {
+                                                        tasks_[task_id].metadata["mobile_evidence_package"] = packagePath;
+                                                        tasks_[task_id].metadata["mobile_evidence_records"] =
+                                                            std::to_string(package.records.size());
+                                                        tasks_[task_id].metadata["mobile_evidence_files"] =
+                                                            std::to_string(package.files.size());
+                                                        tasks_[task_id].metadata["mobile_evidence_adapter"] =
+                                                            "harmony-backup";
+                                                    }
+                                                    add_audit_log(task_id, "INFO",
+                                                        "Mobile evidence package written (harmony-backup, records=" +
+                                                        std::to_string(package.records.size()) +
+                                                        "): " + packagePath);
+                                                } else {
+                                                    add_audit_log(task_id, "WARNING",
+                                                        "Mobile evidence package write failed: " +
+                                                        writer.error());
+                                                }
+                                            }
+                                        } catch (const std::exception& packageError) {
+                                            // android.db still serves the task; record
+                                            // the gap instead of aborting it.
+                                            add_audit_log(task_id, "WARNING",
+                                                std::string("Mobile evidence package error: ") +
+                                                packageError.what());
+                                        }
+                                    }
                                     androidAnalyzer->analyzeAndroidData();
                                     if (harmonyBackup) {
                                         if (!eventExtractor->importAndroidArtifacts(androidDbPath))
@@ -1966,6 +2020,74 @@ bool TaskManager::runLogicalAndroidAnalysis(const AnalysisTask& task,
             add_audit_log(task_id, "ERROR", "Failed to initialize Android analyzer (logical)");
             return false;
         }
+
+        // Extraction/analysis split for the adapters that still run through
+        // AndroidAnalyzer. The package is the source of record for these
+        // sources: it keeps the full original rows and provenance, and makes
+        // the Web result identical to what the CLI produces. Failure to build
+        // it is reported but does not fail the task, because android.db (the
+        // legacy path) is still written below.
+        if (task.android_source == "miui-backup" ||
+            task.android_source == "harmony-backup" ||
+            isThunderForensicSource(task.android_source)) {
+            try {
+                mobile_evidence::Package package;
+                bool built = false;
+                std::string adapterName;
+                if (auto* miui = dynamic_cast<MiuiBackupExtractor*>(
+                        androidAnalyzer->fileExtractor())) {
+                    mobile_evidence::MiuiAdapterOptions options;
+                    built = mobile_evidence::buildPackageFromMiui(*miui, options, package);
+                    adapterName = "miui-backup";
+                } else if (auto* harmony = dynamic_cast<HarmonyBackupExtractor*>(
+                               androidAnalyzer->fileExtractor())) {
+                    mobile_evidence::HarmonyAdapterOptions options;
+                    built = mobile_evidence::buildPackageFromHarmony(
+                        *harmony, androidAnalyzer->temporaryRoot(), options, package);
+                    adapterName = "harmony-backup";
+                } else if (auto* thunder = dynamic_cast<ThunderForensicBackupExtractor*>(
+                               androidAnalyzer->fileExtractor())) {
+                    std::vector<AndroidSourceProvenance> caseProvenance;
+                    built = buildPackageFromThunderForensic(*thunder, package, caseProvenance);
+                    adapterName = "thunder-backup";
+                }
+
+                if (built) {
+                    const std::string packagePath =
+                        (pm.getTaskDir(task_id) /
+                         (baseName + "_mobile_evidence.mep.db")).string();
+                    mobile_evidence::Writer writer(packagePath);
+                    if (writer.writePackage(package)) {
+                        writer.close();
+                        std::lock_guard<std::mutex> lock(mtx_);
+                        if (tasks_.count(task_id)) {
+                            tasks_[task_id].metadata["mobile_evidence_package"] = packagePath;
+                            tasks_[task_id].metadata["mobile_evidence_records"] =
+                                std::to_string(package.records.size());
+                            tasks_[task_id].metadata["mobile_evidence_files"] =
+                                std::to_string(package.files.size());
+                            tasks_[task_id].metadata["mobile_evidence_adapter"] = adapterName;
+                        }
+                        add_audit_log(task_id, "INFO",
+                            "Mobile evidence package written (" + adapterName +
+                            ", records=" + std::to_string(package.records.size()) +
+                            "): " + packagePath);
+                    } else {
+                        add_audit_log(task_id, "WARNING",
+                            "Mobile evidence package write failed: " + writer.error());
+                    }
+                } else {
+                    add_audit_log(task_id, "WARNING",
+                        "Mobile evidence package build returned no data for this source");
+                }
+            } catch (const std::exception& error) {
+                // Never let the package path abort a task that android.db can
+                // still serve; record it so the gap is visible.
+                add_audit_log(task_id, "WARNING",
+                    std::string("Mobile evidence package error: ") + error.what());
+            }
+        }
+
         if (!task.platform_analyze) {
             add_audit_log(task_id, "SKIPPED", "Platform analysis disabled for this task");
         } else {
