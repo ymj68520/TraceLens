@@ -42,6 +42,7 @@ const DATA_SOURCES = [
   { value: 'miui-backup', label: 'MIUI 备份', desc: '小米 MIUI 离线备份目录（含 descript.xml + .bak）' },
   { value: 'harmony-backup', label: '华为鸿蒙备份', desc: '已解密备份目录，含 .info.json 和 files' },
   { value: 'thunder-backup', label: '雷电快取备份', desc: '雷电手机快取提取的 tar 或工程目录（OPPO/vivo/一加等，含 PhoneData）' },
+  { value: 'meiya', label: '美亚 FL-901 案件', desc: '美亚柏科 MobileMaster 取证塔导出目录（含 .mf / 设备 .dmf），容器掩码自动推导' },
   { value: 'oppo-backup', label: 'OPPO 备份（旧）', desc: '兼容旧任务的雷电快取来源别名' },
   { value: 'tar', label: 'Android TAR', desc: '.tar / .tar.gz / .tgz / .tar.xz（需完整预检）' },
   { value: 'seven-zip', label: 'Android 7z', desc: '.7z 逻辑提取归档（需完整预检）' },
@@ -105,7 +106,8 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
 
   // Label / placeholder for the path input changes with the data source.
   const isOppo = form.android_source === 'thunder-backup' || form.android_source === 'oppo-backup';
-  const pathLabel = isAliyun ? '阿里云系统盘导出包 *' : form.android_source === 'harmony-backup' ? '鸿蒙备份目录 *' : isOppo ? '雷电快取提取 tar / 工程目录 *' : isMiui
+  const isMeiya = form.android_source === 'meiya';
+  const pathLabel = isAliyun ? '阿里云系统盘导出包 *' : isMeiya ? '美亚案件导出目录 *' : form.android_source === 'harmony-backup' ? '鸿蒙备份目录 *' : isOppo ? '雷电快取提取 tar / 工程目录 *' : isMiui
     ? 'MIUI 备份目录 *'
     : form.android_source === 'dir'
     ? 'Android 提取目录 *'
@@ -116,7 +118,7 @@ export default function CreateTaskModal({ initialSource = null, onClose = () => 
     : isArchive
     ? 'Android 归档/备份文件 *'
     : '检材路径 *';
-  const pathPlaceholder = isAliyun ? '/path/to/file_m-xxx_system.raw.tar.gz' : form.android_source === 'harmony-backup' ? '/path/to/已解密鸿蒙备份/' : isOppo
+  const pathPlaceholder = isAliyun ? '/path/to/file_m-xxx_system.raw.tar.gz' : isMeiya ? '/path/to/案件目录（含 案件.mf 与 设备/设备.dmf）' : form.android_source === 'harmony-backup' ? '/path/to/已解密鸿蒙备份/' : isOppo
     ? '/path/to/20261025OPPO.tar、20261025VIVO/ 或 20261025OnePlus/'
     : isMiui
     ? '/path/to/MIUI备份目录（含 descript.xml + .bak）'

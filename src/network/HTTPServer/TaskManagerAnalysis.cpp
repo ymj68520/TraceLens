@@ -5,6 +5,10 @@
 #include "TaskManager.h"
 #include "AndroidAnalyzer/HarmonyBackupExtractor.h"
 #include "AndroidAnalyzer/ThunderForensicBackupExtractor.h"
+#include "AndroidAnalyzer/MeiyaBackupExtractor.h"
+#include "AndroidAnalyzer/MobileEvidenceMeiyaAdapter.h"
+#include "AndroidAnalyzer/MobileEvidencePackage.h"
+#include "AndroidAnalyzer/MobileEvidenceAnalysis.h"
 #include "TaskPersistence.h"
 #include "TaskWatchdog.h"
 #include "TaskSerialization.h"
@@ -572,6 +576,29 @@ void TaskManager::start_analysis(const std::string& task_id) {
                             thunderBrand.substr(space + 1);
                 }
             }
+            // Meiya (MobileMaster FL-901) case exports are XOR-obfuscated
+            // SQLite containers, not Android path trees: they are decoded and
+            // converted into the unified package instead of going through
+            // AndroidAnalyzer. Recognition is a bounded header probe.
+            const bool meiyaCase =
+                meiya::MeiyaBackupExtractor::recognizes(imagePath);
+            if (task.android_source == "meiya" && !meiyaCase) {
+                update_status(task_id, TaskStatus::FAILED, "INVALID_MEIYA_CASE_EXPORT",
+                              "Expect a Meiya case directory (containing <case>.mf or "
+                              "<device>/<device>.dmf) or a single .mf file.");
+                return;
+            }
+            if (meiyaCase && (task.android_source == "meiya" || task.android_source.empty() ||
+                              task.android_source == "tsk" || task.android_source == "dir")) {
+                task.android_source = "meiya";
+                task.scenarios = {ForensicScenario::ANDROID};
+                std::lock_guard<std::mutex> lock(mtx_);
+                tasks_[task_id].android_source = task.android_source;
+                tasks_[task_id].scenarios = task.scenarios;
+                tasks_[task_id].metadata["device_platform"] = "Android";
+                tasks_[task_id].metadata["device_brand"] = "Meiya MobileMaster FL-901";
+            }
+
             std::filesystem::path p(imagePath);
             std::string baseName = task.android_source == "aliyun-image" ? "system" : p.stem().string();
 
@@ -685,6 +712,8 @@ void TaskManager::start_analysis(const std::string& task_id) {
             if (task.android_source == "dir" ||
                 task.android_source == "zip" ||
                 task.android_source == "miui-backup" ||
+                task.android_source == "meiya" ||
+                task.android_source == "mobile-evidence" ||
                 isThunderForensicSource(task.android_source) ||
                 task.android_source == "tar" ||
                 task.android_source == "seven-zip" ||
@@ -1696,6 +1725,143 @@ bool TaskManager::runLogicalAndroidAnalysis(const AnalysisTask& task,
                 tasks_[task_id].metadata["android_db"] = androidDbPath;
                 tasks_[task_id].metadata["android_coverage_status"] = "COMPLETED_WITH_LOCKED_USERDATA";
             }
+            return true;
+        }
+
+        // ── Unified mobile evidence package: analysis-only stage.
+        // The package is the hand-off artefact; the original acquisition may
+        // be gone. Mirrors the CLI's --mobile-package path.
+        if (task.android_source == "mobile-evidence") {
+            update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, 20,
+                            "正在读取统一手机取数包…");
+            if (!mobile_evidence::looksLikePackage(imagePath)) {
+                if (failureCode) *failureCode = "INVALID_MOBILE_EVIDENCE_PACKAGE";
+                add_audit_log(task_id, "ERROR",
+                    "Not a mobile evidence package: " + imagePath);
+                return false;
+            }
+            update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, 60,
+                            "正在写入分析库…");
+            AndroidAnalysisDatabase database(androidDbPath.string());
+            if (!database.initialize()) {
+                if (failureCode) *failureCode = "MOBILE_EVIDENCE_ANALYSIS_DB_INIT_FAILED";
+                return false;
+            }
+            mobile_evidence::AnalysisOptions analysisOptions;
+            mobile_evidence::AnalysisResult result;
+            if (!mobile_evidence::analyzePackage(imagePath, database,
+                                                 analysisOptions, result)) {
+                if (failureCode) *failureCode = "MOBILE_EVIDENCE_ANALYSIS_FAILED";
+                return false;
+            }
+            {
+                std::lock_guard<std::mutex> lock(mtx_);
+                if (tasks_.count(task_id)) {
+                    tasks_[task_id].output_files_db = androidDbPath;
+                    tasks_[task_id].metadata["android_db"] = androidDbPath;
+                    tasks_[task_id].metadata["mobile_evidence_package"] = imagePath;
+                    tasks_[task_id].metadata["device_platform"] = "Android";
+                }
+            }
+            set_result_db(task_id, androidDbPath);
+
+            update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, 100,
+                            "统一取数包分析完成");
+            add_audit_log(task_id, "ANDROID_ANALYSIS",
+                "Mobile evidence package analyzed: " + imagePath +
+                ", contacts=" + std::to_string(result.contacts) +
+                ", call_logs=" + std::to_string(result.callLogs) +
+                ", sms=" + std::to_string(result.sms) +
+                ", db=" + androidDbPath.string());
+            return true;
+        }
+
+        // ── Meiya case export: decode containers, then run the unified
+        // analysis on the produced package. AndroidAnalyzer cannot read these
+        // formats, so this branch owns the whole extraction + analysis span.
+        if (task.android_source == "meiya") {
+            const auto taskRoot = pm.getTaskDir(task_id);
+            const std::filesystem::path packagePath =
+                taskRoot / (baseName + "_mobile_evidence.mep.db");
+
+            update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, 20,
+                            "正在解码美亚容器（掩码自推导 + SQLite 校验）…");
+            meiya::MeiyaBackupExtractor extractor(imagePath);
+            if (!extractor.initialize()) {
+                if (failureCode) *failureCode = "MEIYA_CONTAINER_DECODE_FAILED";
+                add_audit_log(task_id, "ERROR",
+                    "Meiya container decode failed: " + extractor.error());
+                return false;
+            }
+            for (const auto& container : extractor.containers()) {
+                add_audit_log(task_id, "INFO",
+                    "Meiya container " + container.sourcePath.filename().string() +
+                    " [" + container.family + "] " + container.status +
+                    (container.detail.empty() ? "" : " - " + container.detail));
+            }
+
+            update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, 55,
+                            "正在转换为统一取数包…");
+            mobile_evidence::MeiyaAdapterOptions adapterOptions;
+            mobile_evidence::Package package;
+            if (!mobile_evidence::buildPackageFromMeiya(extractor, adapterOptions, package)) {
+                if (failureCode) *failureCode = "MEIYA_PACKAGE_BUILD_FAILED";
+                return false;
+            }
+            mobile_evidence::Writer writer(packagePath.string());
+            if (!writer.writePackage(package)) {
+                if (failureCode) *failureCode = "MEIYA_PACKAGE_WRITE_FAILED";
+                add_audit_log(task_id, "ERROR",
+                    "Meiya package write failed: " + writer.error());
+                return false;
+            }
+            writer.close();
+
+            update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, 75,
+                            "正在写入分析库…");
+            AndroidAnalysisDatabase database(androidDbPath.string());
+            if (!database.initialize()) {
+                if (failureCode) *failureCode = "MEIYA_ANALYSIS_DB_INIT_FAILED";
+                return false;
+            }
+            mobile_evidence::AnalysisOptions analysisOptions;
+            mobile_evidence::AnalysisResult result;
+            if (!mobile_evidence::analyzePackage(packagePath.string(), database,
+                                                 analysisOptions, result)) {
+                if (failureCode) *failureCode = "MEIYA_PACKAGE_ANALYSIS_FAILED";
+                return false;
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(mtx_);
+                if (tasks_.count(task_id)) {
+                    tasks_[task_id].output_files_db = androidDbPath;
+                    tasks_[task_id].metadata["android_db"] = androidDbPath;
+                    tasks_[task_id].metadata["mobile_evidence_package"] = packagePath.string();
+                    tasks_[task_id].metadata["meiya_containers_total"] =
+                        std::to_string(extractor.containers().size());
+                    std::size_t decrypted = 0;
+                    for (const auto& container : extractor.containers()) {
+                        if (container.status == "decrypted") ++decrypted;
+                    }
+                    tasks_[task_id].metadata["meiya_containers_decrypted"] =
+                        std::to_string(decrypted);
+                    tasks_[task_id].metadata["meiya_records"] =
+                        std::to_string(package.records.size());
+                }
+            }
+            set_result_db(task_id, androidDbPath);
+
+            update_progress(task_id, TaskPhase::PLATFORM_ANALYSIS, 100,
+                            "美亚案件解析完成");
+            add_audit_log(task_id, "ANDROID_ANALYSIS",
+                "Meiya case decoded: containers=" +
+                std::to_string(extractor.containers().size()) +
+                ", records=" + std::to_string(package.records.size()) +
+                ", contacts=" + std::to_string(result.contacts) +
+                ", call_logs=" + std::to_string(result.callLogs) +
+                ", sms=" + std::to_string(result.sms) +
+                ", db=" + androidDbPath.string());
             return true;
         }
 

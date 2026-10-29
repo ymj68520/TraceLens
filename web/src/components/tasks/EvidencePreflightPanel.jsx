@@ -42,6 +42,7 @@ const adapterLabel = {
   'aliyun-image': '阿里云系统盘校验解包与 Linux 分析',
   android_report: '第三方报告只读索引', 'miui-backup': 'MIUI 备份解析',
   'thunder-backup': '雷电快取解析（OPPO/vivo/一加等）',
+  meiya: '美亚 FL-901 案件解析（容器掩码自推导）',
   'oppo-backup': '雷电快取解析（旧来源别名）',
   dir: 'Android 目录解析', zip: 'Android ZIP 解析',
   sqlite_inventory: 'SQLite 清单', tsk_probe_required: '需验证镜像及文件系统',
@@ -199,7 +200,7 @@ export default function EvidencePreflightPanel({ onCreateTask }) {
         <p>已检查头部；完整容器、gzip 校验和、唯一 RAW 与来源哈希在任务解包阶段再次验证。请预留展开大小及分析结果所需空间。</p>
       </div>}
       {job.status === 'completed' && ['verified', 'manifest_hashed'].includes(job.integrity_status) &&
-        ['dir', 'zip', 'miui-backup', 'harmony-backup', 'thunder-backup', 'oppo-backup', 'tar', 'seven-zip', 'android-backup', 'filesystem-image', 'android-container', 'aliyun-image'].includes(job.detected?.adapter) &&
+        ['dir', 'zip', 'miui-backup', 'harmony-backup', 'thunder-backup', 'oppo-backup', 'meiya', 'tar', 'seven-zip', 'android-backup', 'filesystem-image', 'android-container', 'aliyun-image'].includes(job.detected?.adapter) &&
         (!['tar', 'seven-zip', 'android-backup', 'filesystem-image', 'android-container', 'aliyun-image'].includes(job.detected?.adapter) ||
           (job.integrity_status === 'verified' && (job.archive?.inspected && job.archive?.ready || job.image?.ready || job.image?.selected_partition?.locked || job.container?.ready || job.aliyun_image?.ready))) &&
         (job.detected?.adapter !== 'android-container' || selectedSlot === job.selected_slot) &&

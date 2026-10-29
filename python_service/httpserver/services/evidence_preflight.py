@@ -184,8 +184,75 @@ def _is_thunderforensic_tar(path: Path) -> bool:
     return False
 
 
+def _is_meiya_container(path: Path) -> bool:
+    """True when `path` looks like a Meiya (MobileMaster FL-901) container.
+
+    Meiya stores standard SQLite databases XOR-obfuscated with a fixed
+    1024-byte mask, so the file length is a multiple of the page size and the
+    header is neither plaintext SQLite nor a constant run. Only the header is
+    read here; the mask itself is derived and verified during analysis.
+    """
+    try:
+        stat_result = path.lstat()
+        if not stat.S_ISREG(stat_result.st_mode) or stat_result.st_size <= 0:
+            return False
+        if stat_result.st_size % 1024 != 0:
+            return False
+        with path.open("rb") as source:
+            head = source.read(16)
+    except OSError:
+        return False
+    if len(head) < 16:
+        return False
+    if head.startswith(b"SQLite format 3\x00"):
+        return False
+    return len(set(head)) > 1
+
+
+def _probe_meiya_case(path: Path) -> dict | None:
+    """Detect a Meiya case export directory or a single .mf case file."""
+    try:
+        if path.is_dir():
+            case_files = [item for item in sorted(path.iterdir())
+                          if item.is_file() and item.suffix.lower() == ".mf"
+                          and _is_meiya_container(item)]
+            if case_files:
+                return {"kind": "meiya_case_export", "adapter": "meiya",
+                        "confidence": "high", "container": case_files[0].name,
+                        "reason": "美亚柏科（MobileMaster FL-901）案件导出：容器为 1024 字节周期 XOR 混淆的 SQLite，掩码在分析阶段自推导"}
+            # The selected directory may itself be one device folder.
+            self_dmf = path / f"{path.name}.dmf"
+            if self_dmf.is_file() and _is_meiya_container(self_dmf):
+                return {"kind": "meiya_case_export", "adapter": "meiya",
+                        "confidence": "medium", "container": self_dmf.name,
+                        "reason": "美亚柏科（MobileMaster FL-901）单个设备目录：仅含该设备的规范化库，案件级容器需选择上级案件目录"}
+            device_containers = []
+            for child in sorted(path.iterdir()):
+                if not child.is_dir():
+                    continue
+                candidate = child / f"{child.name}.dmf"
+                if candidate.is_file() and _is_meiya_container(candidate):
+                    device_containers.append(candidate)
+            if device_containers:
+                return {"kind": "meiya_case_export", "adapter": "meiya",
+                        "confidence": "high",
+                        "container": device_containers[0].parent.name,
+                        "reason": "美亚柏科（MobileMaster FL-901）设备目录：含 <设备>.dmf 规范化库"}
+            return None
+        if path.suffix.lower() == ".mf" and _is_meiya_container(path):
+            return {"kind": "meiya_case_export", "adapter": "meiya",
+                    "confidence": "medium", "container": path.name,
+                    "reason": "美亚案件库 .mf 文件；建议选择整个案件目录以同时解析设备库"}
+    except OSError:
+        return None
+    return None
+
+
 def _probe(path: Path) -> dict:
     if path.is_dir():
+        meiya = _probe_meiya_case(path)
+        if meiya is not None:
+            return meiya
         header = path / ".info.json"
         if header.is_file() and not header.is_symlink() and header.stat().st_size <= 8 * 1024 * 1024 and (path / "files").is_dir():
             try:
@@ -265,6 +332,9 @@ def _probe(path: Path) -> dict:
                 return {"kind": "aliyun_raw_export", "adapter": "aliyun-image", "confidence": "high",
                         "reason": "RAW 系统盘导出包候选；解包时继续校验完整容器和来源"}
         return {"kind": "tar_container", "adapter": None, "confidence": "medium"}
+    meiya = _probe_meiya_case(path)
+    if meiya is not None:
+        return meiya
     if suffix in {".mfc", ".m01", ".mf", ".bcp"}:
         return {"kind": "vendor_container_unknown", "adapter": None, "confidence": "extension_only"}
     if suffix in {".e01", ".e02"}:

@@ -95,6 +95,19 @@ forensic_analyzer --android-analyze --mobile-package ./case.mep.db --db-dir ./ou
 
 `case_root` 可以是案件目录（含 `<name>.mf`）、设备目录（含 `<device>.dmf`），或 `.mf` 文件本身。
 
+### Web 端
+
+任务创建页的"数据源"下拉新增 **美亚 FL-901 案件**（`android_source=meiya`）。
+
+- 证据预检识别为 `meiya_case_export`（`confidence=high`），案件目录、单个设备目录与独立的 `.mf` 文件均可识别；
+- 预检面板显示"美亚 FL-901 案件解析（容器掩码自推导）"，预检通过后可直接一键建任务；
+- 任务在 `data/tasks/<task_id>/` 下产出 `android.db` 与 `<name>_mobile_evidence.mep.db`，并在任务元数据写入
+  `mobile_evidence_package`、`meiya_containers_total/decrypted`、`meiya_records`、`device_brand`；
+- 进度阶段依次为：解码容器（20%）→ 转换统一包（55%）→ 写入分析库（75%）→ 完成（100%）。
+
+实测（3 台设备样本）：13 个容器解出 10 个，30,096 条记录转为统一包，`android.db` 得
+contacts 6,078 / call_logs 6,000 / sms 4,662 / app_notes 8 / installed_apps 1,675。
+
 ## 7. 真实样本实测
 
 样本：`1029手机提取`，3 台设备（OnePlus GM1910 / OPPO PBEM00 / vivo V1824BA）。
