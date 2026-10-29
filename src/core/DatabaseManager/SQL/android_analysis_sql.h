@@ -223,6 +223,17 @@ inline constexpr const char* CREATE_MIUI_TABLES = R"(
         package_name TEXT, db_path TEXT, table_name TEXT,
         row_count INTEGER, columns TEXT, open_status TEXT
     );
+    -- External storage (sdcard/) ships beside miui_backup/ in a full MIUI
+    -- export. Media and documents there are evidence in their own right, so
+    -- they get a file-level inventory instead of being dropped with the .bak
+    -- tar members.
+    CREATE TABLE IF NOT EXISTS miui_external_files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        relative_path TEXT NOT NULL,
+        file_name TEXT, extension TEXT, category TEXT,
+        size INTEGER DEFAULT 0, modified_time INTEGER DEFAULT 0,
+        UNIQUE(relative_path)
+    );
     CREATE TABLE IF NOT EXISTS qqnt_artifact_inventory (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         package_name TEXT NOT NULL, source_path TEXT NOT NULL,

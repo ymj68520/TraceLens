@@ -1587,7 +1587,148 @@ TEST(MiuiDbTest, PersistsMiuiBackupMetadataAcrossAllTables) {
     }
 }
 
+// A real export can ship a descript.xml that lists only a handful of the .bak
+// files beside it. The extractor must recover the rest from disk instead of
+// silently analyzing one package.
+TEST(MiuiManifestRecoveryTest, RecoversUnlistedBakFilesFromDisk) {
+    const fs::path dir = uniqueTempPath("miui_recovery_test");
+    fs::create_directories(dir);
+
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << "<?xml version='1.0'?><MIUI-backup><device>cmi</device>"
+           "<miuiVersion>V12</miuiVersion><date>1</date><size>1</size><packages>"
+           "<package><packageName>com.listed</packageName>"
+           "<bakFile>Listed(com.listed).bak</bakFile><bakType>2</bakType>"
+           "<pkgSize>1</pkgSize><sdSize>0</sdSize><state>1</state><error>0</error>"
+           "</package></packages></MIUI-backup>";
+
+    const auto tar = makeUstarTar({{"apps/com.listed/db/x.db", "A"}});
+    std::string tarBytes;
+    {
+        std::ifstream in(tar, std::ios::binary);
+        tarBytes.assign((std::istreambuf_iterator<char>(in)),
+                        std::istreambuf_iterator<char>());
+    }
+    const std::string prefix = "MIUI BACKUP\n2\n";
+    std::ofstream(dir / "Listed(com.listed).bak", std::ios::binary)
+        << prefix << "com.listed Listed\n-1\n0\nANDROID BACKUP\n5\n0\nnone\n" << tarBytes;
+    // Unlisted sibling: package name is only in the filename/header.
+    std::ofstream(dir / "短信(com.android.mms).bak", std::ios::binary)
+        << prefix << "com.android.mms 短信\n-1\n0\nANDROID BACKUP\n5\n0\nnone\n" << tarBytes;
+
+    BackupMeta manifest;
+    ASSERT_TRUE(parseMiuiManifest(dir.string(), manifest));
+    EXPECT_EQ(manifest.packages.size(), 1u);   // pure XML parse stays literal
+
+    ASSERT_TRUE(recoverUnlistedBackupPackages(dir.string(), manifest));
+    EXPECT_TRUE(manifest.recoveredMissingPackages);
+    ASSERT_EQ(manifest.packages.size(), 2u);
+
+    const BackupPackage& recovered = manifest.packages.back();
+    EXPECT_EQ(recovered.packageName, "com.android.mms");
+    EXPECT_EQ(recovered.bakFile, "短信(com.android.mms).bak");
+    EXPECT_TRUE(recovered.discoveredOnDisk);
+    EXPECT_GT(recovered.pkgSize, 0ull);
+    // Size accounting must include the recovered file.
+    EXPECT_GT(manifest.totalSize, 1ull);
+}
+
+TEST(MiuiManifestRecoveryTest, LeavesFullyListedManifestUnchanged) {
+    const fs::path dir = uniqueTempPath("miui_recovery_noop_test");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << "<MIUI-backup><packages><package><packageName>com.foo</packageName>"
+           "<bakFile>Foo(com.foo).bak</bakFile></package></packages></MIUI-backup>";
+    std::ofstream(dir / "Foo(com.foo).bak", std::ios::binary) << "x";
+
+    BackupMeta manifest;
+    ASSERT_TRUE(parseMiuiManifest(dir.string(), manifest));
+    ASSERT_TRUE(recoverUnlistedBackupPackages(dir.string(), manifest));
+    EXPECT_FALSE(manifest.recoveredMissingPackages);
+    EXPECT_EQ(manifest.packages.size(), 1u);
+}
+
+// A full export is miui_backup/ + sdcard/ side by side; the caller may select
+// the parent folder, the backup folder, or the .bak folder directly.
+TEST(MiuiLayoutTest, ResolvesParentOfBackupAndExternalRoots) {
+    const fs::path root = uniqueTempPath("miui_layout_parent");
+    const fs::path backupDir = root / "miui_backup";
+    const fs::path sdcardDir = root / "sdcard" / "DCIM";
+    fs::create_directories(backupDir);
+    fs::create_directories(sdcardDir);
+    std::ofstream(backupDir / "descript.xml", std::ios::binary)
+        << "<MIUI-backup><packages><package><packageName>com.foo</packageName>"
+           "<bakFile>Foo(com.foo).bak</bakFile></package></packages></MIUI-backup>";
+    std::ofstream(backupDir / "Foo(com.foo).bak", std::ios::binary) << "x";
+
+    MiuiBackupLayout layout;
+    ASSERT_TRUE(resolveMiuiBackupLayout(root.string(), layout));
+    EXPECT_TRUE(layout.nested);
+    EXPECT_EQ(fs::canonical(layout.backupRoot), fs::canonical(backupDir));
+    EXPECT_EQ(fs::canonical(layout.externalRoot), fs::canonical(root / "sdcard"));
+
+    // Selecting the backup folder itself resolves to the same pair.
+    ASSERT_TRUE(resolveMiuiBackupLayout(backupDir.string(), layout));
+    EXPECT_FALSE(layout.nested);
+    EXPECT_EQ(fs::canonical(layout.backupRoot), fs::canonical(backupDir));
+    EXPECT_EQ(fs::canonical(layout.externalRoot), fs::canonical(root / "sdcard"));
+}
+
+TEST(MiuiLayoutTest, BackupWithoutSiblingSdcardHasEmptyExternalRoot) {
+    const fs::path dir = uniqueTempPath("miui_layout_no_sdcard");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << "<MIUI-backup><packages><package><packageName>com.foo</packageName>"
+           "<bakFile>Foo(com.foo).bak</bakFile></package></packages></MIUI-backup>";
+    std::ofstream(dir / "Foo(com.foo).bak", std::ios::binary) << "x";
+
+    MiuiBackupLayout layout;
+    ASSERT_TRUE(resolveMiuiBackupLayout(dir.string(), layout));
+    EXPECT_TRUE(layout.externalRoot.empty());
+}
+
+TEST(MiuiLayoutTest, RejectsDirectoryWithoutManifest) {
+    const fs::path dir = uniqueTempPath("miui_layout_none");
+    fs::create_directories(dir);
+    std::ofstream(dir / "unrelated.txt", std::ios::binary) << "x";
+    MiuiBackupLayout layout;
+    EXPECT_FALSE(resolveMiuiBackupLayout(dir.string(), layout));
+}
+
+// End-to-end through the extractor: a one-package manifest plus an unlisted
+// .bak must still yield the unlisted package's tar members.
+TEST(MiuiBackupExtractorTest, ExtractorIndexesDiskRecoveredPackages) {
+    const fs::path dir = uniqueTempPath("miui_ext_recovery_test");
+    fs::create_directories(dir);
+    std::ofstream(dir / "descript.xml", std::ios::binary)
+        << "<MIUI-backup><device>cmi</device><miuiVersion>V12</miuiVersion>"
+           "<date>1</date><size>1</size><packages><package>"
+           "<packageName>com.listed</packageName><bakFile>Listed(com.listed).bak</bakFile>"
+           "</package></packages></MIUI-backup>";
+
+    const auto tarListed = makeUstarTar({{"apps/com.listed/db/a.db", "A"}});
+    const auto tarExtra = makeUstarTar({{"apps/com.extra/db/b.db", "B"}});
+    auto readAll = [](const fs::path& path) {
+        std::ifstream in(path, std::ios::binary);
+        return std::string((std::istreambuf_iterator<char>(in)),
+                           std::istreambuf_iterator<char>());
+    };
+    std::ofstream(dir / "Listed(com.listed).bak", std::ios::binary)
+        << "MIUI BACKUP\n2\ncom.listed Listed\n-1\n0\nANDROID BACKUP\n5\n0\nnone\n"
+        << readAll(tarListed);
+    std::ofstream(dir / "Extra(com.extra).bak", std::ios::binary)
+        << "MIUI BACKUP\n2\ncom.extra Extra\n-1\n0\nANDROID BACKUP\n5\n0\nnone\n"
+        << readAll(tarExtra);
+
+    MiuiBackupExtractor extractor(dir.string());
+    ASSERT_TRUE(extractor.initialize());
+    EXPECT_EQ(extractor.manifest().packages.size(), 2u);
+
+    const fs::path out = dir / "out" / "b.db";
+    ASSERT_TRUE(extractor.extractFileByPath("data/data/com.extra/databases/b.db", out.string()));
+    EXPECT_EQ(readFile(out), "B");
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}
+    return RUN_ALL_TESTS();}

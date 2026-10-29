@@ -5,6 +5,7 @@
 #include "MiuiSecureTemp.h"
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <iostream>
 #include <unordered_set>
@@ -39,25 +40,41 @@ bool MiuiBackupExtractor::initialize() {
     packageFailures_.clear();
     uniqueManifestBakFiles_.clear();
     temporaryRoot_.clear();
+    externalRoot_.clear();
     manifest_ = BackupMeta{};
 
-    fs::path backupRoot;
-    try {
-        backupRoot = fs::canonical(folder_);
-    } catch (const fs::filesystem_error& error) {
-        std::cerr << "MiuiBackupExtractor: cannot resolve backup folder "
-                  << folder_ << ": " << error.what() << std::endl;
+    // A full export is two sibling trees (miui_backup/ + sdcard/), so the
+    // caller may point at either the backup folder or its parent.
+    MiuiBackupLayout layout;
+    if (!resolveMiuiBackupLayout(folder_, layout)) {
+        std::cerr << "MiuiBackupExtractor: no descript.xml reachable from " << folder_
+                  << std::endl;
         return false;
     }
-    if (!fs::is_directory(backupRoot)) {
-        std::cerr << "MiuiBackupExtractor: backup folder is not a directory: "
-                  << backupRoot << std::endl;
-        return false;
+    const fs::path backupRoot(layout.backupRoot);
+    externalRoot_ = layout.externalRoot;
+    if (layout.nested) {
+        std::cout << "MiuiBackupExtractor: resolved nested backup root " << backupRoot
+                  << (externalRoot_.empty() ? "" : " with external storage")
+                  << std::endl;
     }
 
     if (!parseMiuiManifest(backupRoot.string(), manifest_)) {
         std::cerr << "MiuiBackupExtractor: no valid descript.xml in " << folder_ << std::endl;
         return false;
+    }
+    // The manifest is the intended package list, but incomplete exports leave
+    // most .bak files unlisted (observed: 1 declared row for 71 files). Recover
+    // them from disk so the acquisition is not silently reduced to one package.
+    if (!recoverUnlistedBackupPackages(backupRoot.string(), manifest_)) {
+        std::cerr << "MiuiBackupExtractor: cannot enumerate .bak files in " << backupRoot
+                  << std::endl;
+        return false;
+    }
+    if (manifest_.recoveredMissingPackages) {
+        std::cout << "MiuiBackupExtractor: recovered unlisted .bak files; manifest now lists "
+                  << manifest_.packages.size() << " package(s), device "
+                  << manifest_.device << std::endl;
     }
 
     if (!miui_secure_temp::createDirectory(backupRoot, "tracelens-miui", temporaryRoot_)) {
@@ -76,6 +93,16 @@ bool MiuiBackupExtractor::initialize() {
             continue;
         }
         uniqueManifestBakFiles_[packageIndex] = true;
+        if (package.packageName.empty()) {
+            // Disk-recovered row whose name and header both failed to yield a
+            // package; the tar could still be indexed but nothing could be
+            // attributed to a package, so report it instead of guessing.
+            std::cerr << "MiuiBackupExtractor: cannot determine package for "
+                      << package.bakFile << std::endl;
+            packageFailures_.push_back(
+                {package.packageName, package.bakFile, "unknown_package"});
+            continue;
+        }
         const fs::path declaredPath(package.bakFile);
         if (declaredPath.empty() || declaredPath.is_absolute() || declaredPath.has_parent_path()) {
             std::cerr << "MiuiBackupExtractor: unsafe backup filename for "
@@ -327,4 +354,38 @@ bool MiuiBackupExtractor::extractBakMember(const std::string& bakFile,
         return indexes_[indexPos]->readEntry(entry, outPath);
     }
     return false;
+}
+
+bool MiuiBackupExtractor::enumerateExternalFiles(
+    const std::function<bool(const ExternalFile&)>& visitor) const {
+    if (!initialized_ || !visitor || externalRoot_.empty()) return false;
+
+    std::error_code error;
+    const fs::path root(externalRoot_);
+    if (!fs::is_directory(root, error) || error) return false;
+
+    // recursive_directory_iterator follows no symlinks by default, which keeps
+    // the walk inside the evidence tree even if the export contains links.
+    for (fs::recursive_directory_iterator it(root, fs::directory_options::none, error), end;
+         !error && it != end; it.increment(error)) {
+        std::error_code statusError;
+        if (it->is_symlink(statusError) || statusError) continue;
+        if (!it->is_regular_file(statusError) || statusError) continue;
+
+        ExternalFile file;
+        file.absolutePath = it->path().string();
+        file.relativePath = fs::relative(it->path(), root, statusError).generic_string();
+        if (statusError) continue;
+        file.size = it->file_size(statusError);
+        if (statusError) file.size = 0;
+        file.modifiedTime = 0;
+        const auto modified = it->last_write_time(statusError);
+        if (!statusError) {
+            const auto sinceEpoch = modified.time_since_epoch();
+            file.modifiedTime = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::seconds>(sinceEpoch).count());
+        }
+        if (!visitor(file)) return true;  // visitor asked to stop
+    }
+    return !error;
 }

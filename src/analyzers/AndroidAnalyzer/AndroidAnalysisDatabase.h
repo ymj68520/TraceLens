@@ -80,6 +80,9 @@ public:
     bool insertAppDbInventory(const std::string& packageName, const std::string& dbPath,
                               const std::string& tableName, uint64_t rowCount,
                               const std::string& columns, const std::string& openStatus);
+    bool insertMiuiExternalFile(const std::string& relativePath, const std::string& fileName,
+                                const std::string& extension, const std::string& category,
+                                uint64_t size, uint64_t modifiedTime);
 
     // QQNT MIUI-backup artifacts
     bool insertQqntArtifactInventory(const std::string& packageName, const std::string& sourcePath,

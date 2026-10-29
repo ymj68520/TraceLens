@@ -25,21 +25,25 @@ namespace fs = std::filesystem;
 // Detect whether a directory is actually a MIUI offline backup folder, even
 // when the caller picked the generic "dir" source. A MIUI backup is identified
 // by a descript.xml whose root tag is <MIUI-backup> plus at least one .bak
-// file. Returns true and (optionally) parses the manifest when it is.
+// file. The folder may be the backup root itself or the export parent that
+// holds miui_backup/ and sdcard/ side by side. Returns true and (optionally)
+// parses the manifest when it is.
 static bool dirLooksLikeMiuiBackup(const std::string& dirPath, BackupMeta* outManifest = nullptr) {
     std::error_code ec;
     if (!fs::is_directory(dirPath, ec)) return false;
-    const fs::path manifestPath = fs::path(dirPath) / "descript.xml";
-    if (!fs::exists(manifestPath, ec)) return false;
+
+    MiuiBackupLayout layout;
+    if (!resolveMiuiBackupLayout(dirPath, layout)) return false;
+    const fs::path backupRoot(layout.backupRoot);
 
     BackupMeta manifest;
-    if (!parseMiuiManifest(dirPath, manifest)) return false;
+    if (!parseMiuiManifest(backupRoot.string(), manifest)) return false;
 
-    // Require at least one .bak file referenced by the manifest to avoid
-    // matching an unrelated descript.xml.
+    // Require at least one .bak file next to the manifest to avoid matching an
+    // unrelated descript.xml.
     bool hasBak = false;
     for (const auto& pkg : manifest.packages) {
-        if (!pkg.bakFile.empty() && fs::exists(fs::path(dirPath) / pkg.bakFile, ec)) {
+        if (!pkg.bakFile.empty() && fs::exists(backupRoot / pkg.bakFile, ec)) {
             hasBak = true;
             break;
         }
@@ -270,10 +274,10 @@ void AndroidAnalyzer::analyzeAndroidData() {
     stageKnownDatabase("calls", "data/data/com.android.providers.contacts/databases/calllog.db", "parseCallLog");
 
     // MIUI offline backups do not include the system provider databases under
-    // data/data/com.android.providers.*; contacts and call logs ride along as
-    // custom protobuf records inside apps/com.android.contacts/miui_bak/_tmp_bak
-    // (one such member per 联系人/通话记录/通讯录与拨号 .bak). SMS content,
-    // when the backup includes it, stays on the standard telephony path above.
+    // data/data/com.android.providers.*; contacts, call logs and SMS ride along
+    // as custom protobuf records inside <package>/miui_bak/_tmp_bak (one such
+    // member per 联系人/通话记录/短信 .bak). Those members are the only copy of
+    // this evidence in the export.
     if (sourceMode_ == AndroidSourceMode::MiuiBackup) {
         parseMiuiProtoBakArtifacts();
     }
@@ -464,7 +468,9 @@ void AndroidAnalyzer::parseMiuiProtoBakArtifacts() {
 
     std::set<std::pair<std::string, std::string>> seenContacts;
     std::set<std::tuple<std::string, uint64_t, int>> seenCalls;
-    size_t contactRows = 0, callRows = 0;
+    std::set<std::tuple<std::string, uint64_t, std::string>> seenMessages;
+    std::set<std::tuple<std::string, std::string, std::string>> seenNotes;
+    size_t contactRows = 0, callRows = 0, messageRows = 0, noteRows = 0;
 
     for (const auto& [bakFile, memberName] : members) {
         const std::string tempPath = makeAnalysisTempPath(memberName);
@@ -510,12 +516,47 @@ void AndroidAnalyzer::parseMiuiProtoBakArtifacts() {
                 record["type"] = std::to_string(row.type);
                 if (androidDb_->insertCallLog(record)) ++callRows;
             }
+        } else if (kind == MiuiBakKind::Sms) {
+            std::vector<MiuiProtoSmsRow> rows;
+            if (!parseMiuiSmsBak(bytes, rows)) continue;
+            for (const auto& row : rows) {
+                // Same body/address/date triple can appear in both 短信 and
+                // 短信设置 .bak files; keep one row per distinct message.
+                if (!seenMessages.emplace(row.address, row.dateMs, row.body).second) continue;
+                std::map<std::string, std::string> record;
+                record["address"] = row.address;
+                record["body"] = row.body;
+                record["date"] = std::to_string(row.dateMs);
+                record["type"] = std::to_string(row.type);
+                if (androidDb_->insertSMS(record)) ++messageRows;
+            }
+        } else if (kind == MiuiBakKind::Notes) {
+            std::vector<MiuiProtoNoteRow> rows;
+            if (!parseMiuiNotesBak(bytes, rows)) continue;
+            for (const auto& row : rows) {
+                if (!seenNotes.emplace(row.noteId, row.title, row.snippet).second) continue;
+                if (androidDb_->insertAppNote("com.miui.notes", row.noteId, row.title,
+                                              row.snippet, row.kind, 0, bakFile)) {
+                    ++noteRows;
+                }
+            }
         }
     }
 
-    if (contactRows > 0 || callRows > 0) {
+    if (contactRows > 0 || callRows > 0 || messageRows > 0 || noteRows > 0) {
         std::cout << "MIUI backup protobuf records: contacts=" << contactRows
-                  << ", callLogs=" << callRows << std::endl;
+                  << ", callLogs=" << callRows << ", sms=" << messageRows
+                  << ", notes=" << noteRows << std::endl;
+    }
+    if (messageRows > 0) {
+        // The standard telephony stage above recorded this path as absent;
+        // replace that row so coverage does not claim SMS is missing.
+        androidDb_->recordSourceCoverage("sms", "<miui-backup>/miui_bak/_tmp_bak", "parsed",
+            "Recovered " + std::to_string(messageRows) +
+                " message(s) from MIUI protobuf app state");
+    } else {
+        androidDb_->recordSourceCoverage("sms", "<miui-backup>", "no_candidate_path",
+            "No SMS protobuf records found in miui_bak/_tmp_bak members");
     }
 }
 
