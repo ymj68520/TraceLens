@@ -38,7 +38,7 @@ export default {
     'investigation_graph.unconfirmed': 'Unconfirmed',
     'investigation_graph.select_hint': 'Click a node to inspect its provenance',
     'task.interruptedAt': 'Interrupted at',
-    'app.title': 'Digital Forensics Tool',
+    'app.title': 'Multi-Source Heterogeneous Data Forensic Intelligent Fusion Analysis System',
     'sidebar.collapse': 'Collapse',
     'sidebar.expand': 'Expand',
     'system.status': 'System Status',
