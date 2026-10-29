@@ -14,6 +14,8 @@
 #include "AndroidAnalyzer/MobileEvidenceMiuiAdapter.h"
 #include "AndroidAnalyzer/ThunderForensicArtifactParsers.h"
 #include "AndroidAnalyzer/MobileEvidencePackage.h"
+#include "AndroidAnalyzer/MeiyaBackupExtractor.h"
+#include "AndroidAnalyzer/MobileEvidenceMeiyaAdapter.h"
 #include "WindowsFilesAnalyzer/WindowsFilesAnalyzer.h"
 #include "LinuxFilesAnalyzer/LinuxFilesAnalyzer.h"
 #include "MemoryAnalyzer/MemoryAnalyzer.h"
@@ -312,6 +314,10 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
          // A unified mobile evidence package (or an extraction run that will
          // produce one) is handled by the split extraction/analysis path.
          args.android_source == "mobile-evidence" || args.mobile_extract ||
+         // Meiya case exports are decoded by their own container layer.
+         args.android_source == "meiya" ||
+         (args.android_source.empty() &&
+          meiya::MeiyaBackupExtractor::recognizes(args.image_path)) ||
          !args.mobile_package_path.empty())) {
         return runAndroidLogicalAnalysis(args);
     }
@@ -734,6 +740,95 @@ int AnalysisOrchestrator::runAndroidLogicalAnalysis(const CommandLineArgs& args)
         return 1;
     }
 
+    // ---- Meiya Pico (MobileMaster FL-901) case export ----
+    // Container masks are derived at runtime from the evidence itself and
+    // verified with SQLite's own integrity_check; no vendor key is compiled in.
+    if (args.android_source == "meiya" ||
+        (args.android_source.empty() && meiya::MeiyaBackupExtractor::recognizes(args.image_path))) {
+        std::cout << "=== Meiya (MobileMaster FL-901) Case Analyzer ===" << std::endl;
+        std::cout << "Source: " << args.image_path << std::endl;
+
+        if (!meiya::MeiyaBackupExtractor::recognizes(args.image_path)) {
+            std::cerr << "Error: not a Meiya case export: " << args.image_path << std::endl;
+            return 1;
+        }
+
+        auto extractor = std::make_unique<meiya::MeiyaBackupExtractor>(args.image_path);
+        if (!extractor->initialize()) {
+            std::cerr << "Error: Failed to decode Meiya containers"
+                      << (extractor->error().empty() ? "" : " (" + extractor->error() + ")")
+                      << std::endl;
+            return 1;
+        }
+
+        std::cout << "[Meiya] Containers:" << std::endl;
+        for (const auto& container : extractor->containers()) {
+            std::cout << "  " << container.sourcePath.filename().string()
+                      << " [" << container.family << "] " << container.status;
+            if (container.status == "decrypted") {
+                std::cout << " mask=" << container.encryptionLabel
+                          << " schema=" << container.schemaEntries;
+            } else if (!container.detail.empty()) {
+                std::cout << " (" << container.detail << ")";
+            }
+            std::cout << std::endl;
+        }
+
+        mobile_evidence::MeiyaAdapterOptions adapterOptions;
+        mobile_evidence::Package package;
+        if (!mobile_evidence::buildPackageFromMeiya(*extractor, adapterOptions, package)) {
+            std::cerr << "Error: Failed to build mobile evidence package" << std::endl;
+            return 1;
+        }
+
+        const std::string packagePath = !args.mobile_package_out.empty()
+            ? args.mobile_package_out
+            : mobile_evidence::defaultPackagePath(args.image_path);
+
+        mobile_evidence::Writer writer(packagePath);
+        if (!writer.writePackage(package)) {
+            std::cerr << "Error: Failed to write mobile evidence package: "
+                      << writer.error() << std::endl;
+            return 1;
+        }
+        writer.close();
+
+        std::cout << "✓ Package: " << packagePath << std::endl;
+        std::cout << "  records=" << package.records.size()
+                  << " files=" << package.files.size()
+                  << " coverage=" << package.coverage.size() << std::endl;
+
+        // Unless extraction-only was requested, run the unified analysis on it
+        // immediately so a single command still produces android.db.
+        if (!args.mobile_extract) {
+            std::string baseName = getBaseName(args.image_path);
+            if (baseName.empty()) baseName = "meiya_case";
+            const std::string fileDbPath = getDatabaseDir(args) + baseName + "_files.db";
+
+            AndroidAnalysisDatabase database(fileDbPath);
+            if (!database.initialize()) {
+                std::cerr << "Error: Failed to initialize Android analysis database" << std::endl;
+                return 1;
+            }
+            mobile_evidence::AnalysisOptions analysisOptions;
+            mobile_evidence::AnalysisResult result;
+            if (!mobile_evidence::analyzePackage(packagePath, database, analysisOptions, result)) {
+                std::cerr << "Error: Failed to analyze mobile evidence package" << std::endl;
+                return 1;
+            }
+            std::cout << "✓ contacts=" << result.contacts
+                      << " call_logs=" << result.callLogs
+                      << " sms=" << result.sms
+                      << " notes=" << result.notes
+                      << " installed_apps=" << result.installedApps
+                      << " files=" << result.files
+                      << " coverage=" << result.coverageEntries << std::endl;
+            std::cout << "✓ Artifact database: " << fileDbPath << std::endl;
+        } else {
+            std::cout << "=== Extraction Complete (analysis not run) ===" << std::endl;
+        }
+        return 0;
+    }
 
     std::cout << "=== Android Logical Extraction Analyzer ===" << std::endl;
     if (!args.mobile_package_path.empty() || args.android_source == "mobile-evidence") {

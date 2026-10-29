@@ -81,7 +81,10 @@ bool isValidAndroidSource(const std::string& source) {
         "tsk", "dir", "zip", "miui-backup", "harmony-backup", "thunder-backup", "oppo-backup", "tar", "seven-zip", "android-backup", "filesystem-image",
         // Extraction-stage artifact: a unified mobile evidence package
         // (.mep.db). The analysis stage only reads this format.
-        "mobile-evidence"
+        "mobile-evidence",
+        // Meiya Pico (MobileMaster FL-901) case export: XOR-obfuscated SQLite
+        // containers whose mask is derived at runtime, never hard-coded.
+        "meiya"
     };
     return validSources.contains(source);
 }
@@ -121,7 +124,8 @@ void CommandLineParser::printUsage(const char* programName) {
                  "                              oppo-backup (legacy alias of thunder-backup),\n"
                  "                              tar, seven-zip, android-backup (.ab),\n"
                  "                              filesystem-image (userdata EXT4/F2FS RAW/E01),\n"
-                 "                              mobile-evidence (unified .mep.db package)\n";
+                 "                              mobile-evidence (unified .mep.db package),\n"
+                 "                              meiya (MobileMaster FL-901 case export)\n";
     std::cout << "  --mobile-extract            Extraction stage only: write a unified\n"
                  "                              mobile evidence package (.mep.db); no android.db\n";
     std::cout << "  --mobile-package <path>     Analysis stage only: read an existing .mep.db\n"
@@ -215,7 +219,8 @@ CommandLineArgs CommandLineParser::parse(int argc, char* argv[]) {
                 return args;
             }
             args.android_source = source;
-            if (source == "harmony-backup" || source == "mobile-evidence") {
+            if (source == "harmony-backup" || source == "mobile-evidence" ||
+                source == "meiya") {
                 args.android_analyze = true;
             }
         } else if (arg == "--mobile-extract") {

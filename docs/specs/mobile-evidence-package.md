@@ -89,7 +89,7 @@ v1 引入一个**固定骨架 + 可扩展载荷**的中间格式：适配器只�
 | `database_table` | `app_db_inventory` |
 | `generic` + `nativeKind` | `mobile_artifacts`（`mobileArtifact=true` 时）|
 
-已由适配器产出并落入覆盖度/文件表、但尚无专用分析落表的类别：`calendar_event`、`account`、`media_file`、`document_file`、`system_log`。
+已由美亚适配器产出并落入覆盖度/文件表、但尚无专用分析落表的类别：`calendar_event`、`wifi_network`、`account`、`media_file`、`document_file`、`system_log`、`generic`。
 
 已预留、当前只计入覆盖度的类别：`mms`、`im_message`、`im_conversation`、`im_contact`、`browser_history`、`browser_bookmark`、`device_identity`、`location`。
 
@@ -125,6 +125,7 @@ v1 引入一个**固定骨架 + 可扩展载荷**的中间格式：适配器只�
 | 来源 | 适配器 | 入口 | 说明 |
 |---|---|---|---|
 | Xiaomi MIUI 离线备份 | `MobileEvidenceMiuiAdapter` | `--android-source miui-backup` | `miui_bak/_tmp_bak` protobuf（联系人/通话/短信/笔记） |
+| 美亚柏科 MobileMaster FL-901 | `MobileEvidenceMeiyaAdapter` | `--android-source meiya` | 1024 字节 XOR 容器运行时自推导掩码；`TBL_PR_*` 映射。详见 [meiya-container-parsing.md](./meiya-container-parsing.md) |
 | 华为鸿蒙已解密备份 | `MobileEvidenceHarmonyAdapter` | `--android-source harmony-backup` | 模块清单、数据库 schema 盘点与业务表行级记录（calendar/note/media/recording 等） |
 | 雷电手机快取（OPPO/vivo/一加等） | `ThunderForensicArtifactParsers::buildPackageFromThunderForensic` | `--android-source thunder-backup` | PhoneData JSON、wifi.xml、LogData/sdcard 清单、per-app 数据树、note.zip 等厂商信封、`data/evidence_*` 案件库 |
 

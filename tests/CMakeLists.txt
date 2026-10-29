@@ -157,6 +157,25 @@ target_link_libraries(test_mobile_evidence_adapters_gtest GTest::gtest_main
 add_test(NAME MobileEvidenceAdapterTests COMMAND test_mobile_evidence_adapters_gtest)
 
 
+# Meiya Pico (MobileMaster FL-901) container mask derivation.
+# Fixtures are synthetic: a real SQLite obfuscated with an arbitrary XOR mask.
+# No vendor key is embedded, so the test asserts the self-derivation mechanism.
+add_executable(
+  test_meiya_container_gtest
+  UnitTest/test_meiya_container_gtest.cpp
+  ../src/analyzers/AndroidAnalyzer/MeiyaContainerCrypto.cpp
+  ../src/analyzers/AndroidAnalyzer/MeiyaBackupExtractor.cpp
+  ../src/analyzers/AndroidAnalyzer/MobileEvidenceMeiyaAdapter.cpp
+  ../src/analyzers/AndroidAnalyzer/MobileEvidencePackage.cpp)
+target_include_directories(
+  test_meiya_container_gtest
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer
+          ${NLOHMANN_JSON_INCLUDE_DIRS})
+target_link_libraries(test_meiya_container_gtest GTest::gtest_main
+                      sqlite3 pthread ${ZLIB_LIBRARIES} OpenSSL::Crypto)
+add_test(NAME MeiyaContainerTests COMMAND test_meiya_container_gtest)
+
 # Android LLM analysis persistence tests
 add_executable(
   test_android_llm_gtest

@@ -441,6 +441,11 @@ set(LIB_SOURCES
     src/analyzers/AndroidAnalyzer/MobileEvidencePackage.cpp
     src/analyzers/AndroidAnalyzer/MobileEvidenceMiuiAdapter.cpp
     src/analyzers/AndroidAnalyzer/MobileEvidenceHarmonyAdapter.cpp
+    # Meiya Pico (MobileMaster FL-901) case export: 1024-byte XOR masks are
+    # derived at runtime and verified with SQLite, never hard-coded.
+    src/analyzers/AndroidAnalyzer/MeiyaContainerCrypto.cpp
+    src/analyzers/AndroidAnalyzer/MeiyaBackupExtractor.cpp
+    src/analyzers/AndroidAnalyzer/MobileEvidenceMeiyaAdapter.cpp
     src/analyzers/AndroidAnalyzer/MobileEvidenceAnalysis.cpp
     # ThunderForensic (雷电手机快取) extraction source: OPPO/vivo/OnePlus tar
     # or project folder; native header indexing, bypassing TSK.
