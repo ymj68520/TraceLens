@@ -386,6 +386,34 @@ response, stage = render_stage_report(
 6. **人工核查建议**：从各方向的 `missing_information` 去重排序生成核查清单，
    并统计未展开的分析/覆盖限制；带确定性小结。
 
+**案情线索表（`EvidenceThreadTable`）是首章主表**，行 = 案件级线索。生成链：
+
+1. **主题归纳按案件对象归组**（不再按材料类型）：`_direction_projection` 携带
+   `where`（证据目录），提示词明确禁止"所有 Prefetch / 所有 evtX"式归组，
+   目标 3–20 方向/主题。
+2. **超大主题按对象拆分**（`_split_theme_by_object`）：只要一个主题超过 40 方向，
+   就按其成员证据的对象目录拆开。`_object_directory` 跳过结构性目录名
+   （Profiles/bin/config/localstate）与共享工件库（Prefetch/System32/winevt），
+   因此 `Default.xml` 归到 `Quasar v1.4.1`、Prefetch 归到 `SVCHOST`；
+   小于 3 方向的对象并入父线索，避免几十条单行线索。
+3. **一次全局改写**（`STAGE_EVIDENCE_THREAD_SYSTEM_V1`）：线索名必须是
+   「对象 + 行为」（`_thread_name_is_readable` 校验，不合格用线索自身对象重建），
+   说明 40–120 字，关键事实必须逐字出现在该线索的引文中。
+4. **低价值线索**（全部材料都是许可证/图标/包清单）标记 `low_value` 并排到最后，
+   前端显示「随附文件」；不从证据集删除。
+
+关键事实（`key_facts`）按价值排序抽取：C2 地址 > 配置键值 > 注册表路径 >
+账号 > 绝对路径 > 文件名 > 运行次数；版权/许可证噪声一律过滤。
+
+**路径为什么必须进提示词**：`prompt_material` 的 `path` 字段是分析层识别
+对象的唯一依据。`Default.xml` 的内容只有 `<Hosts>192.168.10.30:4782;</Hosts>`
+与误导性的 `<Tag>Office04</Tag>`，不含 "Quasar" 也不含"控制端"；实测
+911 份材料里有 83 份的案件语义只存在于路径。代价约 +101 字符/材料（+5.6%）。
+提示词同时约束"路径是定位不是事实"：不得仅凭目录名或文件名定性。
+
+质量验收脚本：`python_service/.venv/bin/python scripts/report_quality_audit.py <manifest.json>`
+（线索穷举性、名称合格率、关键事实覆盖、最大线索占比、章节命名、内部 ID 泄漏）。
+
 **案情线索表（`EvidenceThreadTable`）是首章主表**：行 = 案件级线索，由主题归纳
 的分组（穷举：每个方向恰好归入一条线索）经一次全局改写得到人类可读线索名与
 40–120 字作用说明；`key_facts` 是从该线索自己的引文中确定性抽取并逐字回查冻结
