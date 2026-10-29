@@ -38,7 +38,7 @@ export default {
     'investigation_graph.unconfirmed': '未确认',
     'investigation_graph.select_hint': '点击节点查看溯源详情',
     'task.interruptedAt': '中断于',
-    'app.title': '数字取证工具',
+    'app.title': '多源异构数据取证智能融合分析系统',
     'sidebar.collapse': '收起',
     'sidebar.expand': '展开',
     'system.status': '系统状态',

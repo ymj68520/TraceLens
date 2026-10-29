@@ -84,7 +84,7 @@ const Layout = ({ children }) => {
           <span className="sr-only">打开侧边栏</span>
           {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
-        <h1 className="ml-3 text-lg font-bold text-slate-900 dark:text-white tracking-tight">
+        <h1 className="ml-3 min-w-0 truncate text-base font-bold text-slate-900 dark:text-white tracking-tight">
           {t('app.title')}
         </h1>
       </div>
@@ -95,12 +95,12 @@ const Layout = ({ children }) => {
       >
         <div className="flex flex-col h-full bg-gradient-to-b from-slate-900 via-slate-900 to-primary-950 border-r border-slate-700/30">
           {/* Logo */}
-          <div className="hidden lg:flex items-center h-16 px-6 border-b border-slate-700/30">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-purple-500 flex items-center justify-center">
+          <div className="hidden lg:flex items-center px-6 py-4 border-b border-slate-700/30">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 flex-shrink-0 rounded-lg bg-gradient-to-br from-primary-500 to-purple-500 flex items-center justify-center">
                 <Search size={16} className="text-white" />
               </div>
-              <h1 className="text-lg font-bold text-white tracking-tight">{t('app.title')}</h1>
+              <h1 className="text-base font-bold text-white tracking-tight leading-snug">{t('app.title')}</h1>
             </div>
           </div>
 
