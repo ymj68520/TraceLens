@@ -585,6 +585,28 @@ bool AndroidAnalysisDatabase::insertInstalledApp(const std::string& packageName,
     return success;
 }
 
+bool AndroidAnalysisDatabase::insertMiuiExternalFile(const std::string& relativePath,
+                                                     const std::string& fileName,
+                                                     const std::string& extension,
+                                                     const std::string& category,
+                                                     uint64_t size,
+                                                     uint64_t modifiedTime) {
+    const char* sql = "INSERT OR REPLACE INTO miui_external_files (relative_path, file_name, extension, category, size, modified_time) VALUES (?, ?, ?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    sqlite3_bind_text(stmt, 1, relativePath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, fileName.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, extension.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, category.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 5, static_cast<sqlite3_int64>(size));
+    sqlite3_bind_int64(stmt, 6, static_cast<sqlite3_int64>(modifiedTime));
+
+    const bool success = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return success;
+}
+
 bool AndroidAnalysisDatabase::insertAppDbInventory(const std::string& packageName,
                                                    const std::string& dbPath,
                                                    const std::string& tableName,

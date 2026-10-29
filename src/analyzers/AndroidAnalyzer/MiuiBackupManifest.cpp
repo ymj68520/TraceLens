@@ -8,10 +8,12 @@
 #include <unistd.h>
 #endif
 
+#include <algorithm>
 #include <charconv>
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -192,4 +194,152 @@ bool parseMiuiManifest(const std::string& backupFolder, BackupMeta& out) {
         out.packages.push_back(std::move(package));
     }
     return true;
+}
+
+namespace {
+
+// "短信设置(com.android.mms).bak" -> "com.android.mms". The display name may
+// contain spaces and CJK, so the trailing "(<package>)" group is the anchor.
+std::string packageFromBakFilename(const std::string& filename) {
+    const std::string extension = ".bak";
+    if (filename.size() <= extension.size()) return "";
+    const std::string base = filename.substr(0, filename.size() - extension.size());
+    if (filename.compare(filename.size() - extension.size(), extension.size(), extension) != 0) {
+        return "";
+    }
+    const size_t open = base.rfind('(');
+    if (open == std::string::npos || base.empty() || base.back() != ')') return "";
+    const std::string candidate = base.substr(open + 1, base.size() - open - 2);
+    if (candidate.empty() || candidate.find('/') != std::string::npos ||
+        candidate.find('\\') != std::string::npos || candidate.find_first_of(" \t\r\n") != std::string::npos) {
+        return "";
+    }
+    return candidate;
+}
+
+// Fallback for .bak files whose name does not follow the MIUI convention: the
+// header's second line is "<packageName> <displayName>".
+std::string packageFromBakHeader(const fs::path& bakPath) {
+    std::ifstream input(bakPath, std::ios::binary);
+    if (!input) return "";
+    std::string line;
+    if (!std::getline(input, line) || line.rfind("MIUI BACKUP", 0) != 0) return "";
+    if (!std::getline(input, line)) return "";      // MIUI format version
+    if (!std::getline(input, line)) return "";      // "<package> <display>"
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    const size_t space = line.find(' ');
+    const std::string package = space == std::string::npos ? line : line.substr(0, space);
+    if (package.empty() || package.size() > kMaximumManifestFieldBytes) return "";
+    return package;
+}
+
+}  // namespace
+
+bool recoverUnlistedBackupPackages(const std::string& backupFolder, BackupMeta& manifest) {
+    std::error_code error;
+    const fs::path root = fs::canonical(backupFolder, error);
+    if (error || !fs::is_directory(root, error) || error) return false;
+
+    std::set<std::string> listed;
+    for (const auto& package : manifest.packages) listed.insert(package.bakFile);
+
+    std::vector<std::string> unlisted;
+    for (fs::directory_iterator it(root, error), end; !error && it != end; it.increment(error)) {
+        const fs::path& path = it->path();
+        if (path.extension() != ".bak") continue;
+        const std::string name = path.filename().string();
+        if (listed.count(name)) continue;
+        std::error_code statusError;
+        if (!fs::is_regular_file(path, statusError) || statusError) continue;
+        unlisted.push_back(name);
+    }
+    if (error) return false;
+    std::sort(unlisted.begin(), unlisted.end());
+    unlisted.erase(std::unique(unlisted.begin(), unlisted.end()), unlisted.end());
+
+    for (const auto& bakFile : unlisted) {
+        if (manifest.packages.size() >= kMaximumManifestPackages) break;
+        BackupPackage package;
+        package.bakFile = bakFile;
+        package.packageName = packageFromBakFilename(bakFile);
+        if (package.packageName.empty()) {
+            package.packageName = packageFromBakHeader(root / bakFile);
+        }
+        std::error_code sizeError;
+        package.pkgSize = fs::file_size(root / bakFile, sizeError);
+        if (sizeError) package.pkgSize = 0;
+        package.state = 1;
+        package.discoveredOnDisk = true;
+        manifest.packages.push_back(std::move(package));
+        manifest.totalSize += manifest.packages.back().pkgSize;
+    }
+    if (!unlisted.empty()) manifest.recoveredMissingPackages = true;
+    return true;
+}
+
+namespace {
+
+bool holdsManifest(const fs::path& directory) {
+    std::error_code error;
+    return fs::is_regular_file(directory / "descript.xml", error) && !error;
+}
+
+bool holdsBakFiles(const fs::path& directory) {
+    std::error_code error;
+    for (fs::directory_iterator it(directory, error), end; !error && it != end;
+         it.increment(error)) {
+        if (it->path().extension() == ".bak") return true;
+    }
+    return false;
+}
+
+}  // namespace
+
+bool resolveMiuiBackupLayout(const std::string& requestedPath, MiuiBackupLayout& out) {
+    out = MiuiBackupLayout{};
+    std::error_code error;
+    const fs::path requested = fs::canonical(requestedPath, error);
+    if (error || !fs::is_directory(requested, error) || error) return false;
+
+    // Case 1: the requested folder is the backup root itself.
+    if (holdsManifest(requested)) {
+        out.backupRoot = requested.string();
+        const fs::path external = requested.parent_path() / "sdcard";
+        if (fs::is_directory(external, error) && !error) out.externalRoot = external.string();
+        return true;
+    }
+
+    // Case 2: the requested folder is the export parent holding miui_backup/
+    // and sdcard/ side by side. Only a bounded set of names is probed so an
+    // unrelated directory tree cannot turn this into a deep scan.
+    static const char* kCandidateNames[] = {"miui_backup", "MIUI-BACKUP", "backup"};
+    for (const char* name : kCandidateNames) {
+        const fs::path candidate = requested / name;
+        if (!holdsManifest(candidate)) continue;
+        out.backupRoot = candidate.string();
+        out.nested = true;
+        const fs::path external = requested / "sdcard";
+        if (fs::is_directory(external, error) && !error) out.externalRoot = external.string();
+        return true;
+    }
+
+    // Case 3: the requested folder is one level above the export parent (some
+    // archives wrap everything in a device-named directory).
+    for (fs::directory_iterator it(requested, error), end; !error && it != end;
+         it.increment(error)) {
+        std::error_code childError;
+        if (!fs::is_directory(it->path(), childError) || childError) continue;
+        for (const char* name : kCandidateNames) {
+            const fs::path candidate = it->path() / name;
+            if (!holdsManifest(candidate) || !holdsBakFiles(candidate)) continue;
+            out.backupRoot = candidate.string();
+            out.nested = true;
+            const fs::path external = it->path() / "sdcard";
+            if (fs::is_directory(external, childError) && !childError) {
+                out.externalRoot = external.string();
+            }
+            return true;
+        }
+    }
+    return false;
 }

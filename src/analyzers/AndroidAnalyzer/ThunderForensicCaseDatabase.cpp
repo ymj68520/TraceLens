@@ -1,5 +1,6 @@
 #include "ThunderForensicCaseDatabase.h"
 #include "AndroidAnalysisDatabase.h"
+#include "MobileEvidenceAnalysis.h"
 #include "ThunderForensicBackupExtractor.h"
 
 #include <sqlite3.h>
@@ -254,20 +255,54 @@ bool insertCaseArtifact(sqlite3* dest, const std::string& kind,
 
 }  // namespace
 
-ThunderForensicCaseStats analyzeThunderForensicCaseDatabases(
-    const fs::path& projectRoot, AndroidAnalysisDatabase& output,
+ThunderForensicCaseStats buildPackageFromCaseDatabases(
+    const fs::path& projectRoot, mobile_evidence::Package& package,
     const std::map<std::string, std::set<std::string>>& coveredMembers,
+    std::vector<AndroidSourceProvenance>* provenanceOut,
     std::size_t maxRowsPerDatabase) {
+    using mobile_evidence::Record;
+    using mobile_evidence::Coverage;
+    using mobile_evidence::kind::kGeneric;
+
     ThunderForensicCaseStats stats;
     if (projectRoot.empty()) return stats;
-    // mobile_artifacts lives in the analysis result database, never in the
-    // evidence case database being read.
-    sqlite3* dest = output.handle();
-    if (!dest) return stats;
     std::error_code ec;
     const fs::path dataDir = projectRoot / "data";
     if (!fs::is_directory(dataDir, ec) || fs::is_symlink(fs::symlink_status(dataDir, ec)))
         return stats;
+
+    // Case-database coverage keeps the published ThunderForensic vocabulary
+    // (parsed/empty/PARTIAL/ERROR/PARTIAL); downstream filters on it verbatim.
+    const auto addCoverage = [&package](const std::string& artifactKind,
+                                        const std::string& sourcePath,
+                                        const std::string& state,
+                                        const std::string& detail,
+                                        std::uint64_t count = 0) {
+        Coverage entry;
+        entry.artifactKind = artifactKind;
+        entry.sourcePath = sourcePath;
+        entry.status = state;
+        entry.nativeStatus = state;
+        entry.detail = detail;
+        entry.recordCount = count;
+        package.coverage.push_back(std::move(entry));
+    };
+    const auto addStandardRecord = [&package](const std::string& recordKind,
+                                              const std::string& payloadJson,
+                                              const std::string& sourcePath,
+                                              const std::string& sourceTable,
+                                              const std::string& sourceKey,
+                                              const std::string& rawJson) {
+        Record record;
+        record.kind = recordKind;
+        record.sourcePath = sourcePath;
+        record.sourceTable = sourceTable;
+        record.sourceKey = sourceKey;
+        record.rawJson = rawJson;
+        record.payloadJson = payloadJson;
+        record.parserVersion = kParserVersion;
+        package.records.push_back(std::move(record));
+    };
 
     std::vector<fs::path> databases;
     for (const auto& item : fs::directory_iterator(dataDir, ec)) {
@@ -280,8 +315,8 @@ ThunderForensicCaseStats analyzeThunderForensicCaseDatabases(
     }
     std::sort(databases.begin(), databases.end());
     if (databases.empty()) {
-        output.recordSourceCoverage("case_database", "<data>", "not_found",
-                                    "no data/evidence_* case database in the project folder");
+        addCoverage("case_database", "<data>", "not_found",
+                    "no data/evidence_* case database in the project folder");
         return stats;
     }
     stats.found = true;
@@ -299,8 +334,8 @@ ThunderForensicCaseStats analyzeThunderForensicCaseDatabases(
             if (second != std::string::npos) suffix = filename.substr(second + 1);
         }
         if (suffix.empty()) {
-            output.recordSourceCoverage("case_database", filename, "UNSUPPORTED",
-                                        "unrecognized case database name");
+            addCoverage("case_database", filename, "UNSUPPORTED",
+                        "unrecognized case database name");
             continue;
         }
         const CaseKindRule* rule = ruleFor(suffix);
@@ -313,15 +348,15 @@ ThunderForensicCaseStats analyzeThunderForensicCaseDatabases(
         {
             std::ifstream probe(path, std::ios::binary);
             if (!probe) {
-                output.recordSourceCoverage(kind, filename, "EXTRACT_FAILED",
-                                            "case database could not be opened");
+                addCoverage(kind, filename, "EXTRACT_FAILED",
+                            "case database could not be opened");
                 continue;
             }
             probe.read(magic.data(), magic.size());
         }
         if (std::string(magic.data(), 16) != std::string("SQLite format 3\0", 16)) {
-            output.recordSourceCoverage(kind, filename, "UNSUPPORTED",
-                                        "non-SQLite header; not proof of encryption");
+            addCoverage(kind, filename, "UNSUPPORTED",
+                        "non-SQLite header; not proof of encryption");
             continue;
         }
 
@@ -329,7 +364,7 @@ ThunderForensicCaseStats analyzeThunderForensicCaseDatabases(
         if (sqlite3_open_v2(path.string().c_str(), &source,
                             SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nullptr) != SQLITE_OK) {
             if (source) sqlite3_close(source);
-            output.recordSourceCoverage(kind, filename, "ERROR", "sqlite_open_failed");
+            addCoverage(kind, filename, "ERROR", "sqlite_open_failed");
             continue;
         }
         struct Close {
@@ -363,11 +398,11 @@ ThunderForensicCaseStats analyzeThunderForensicCaseDatabases(
             if (rc != SQLITE_DONE && rc != SQLITE_ROW)
                 throw std::runtime_error("schema_read_failed");
         } catch (const std::exception&) {
-            output.recordSourceCoverage(kind, filename, "ERROR", "schema_read_failed");
+            addCoverage(kind, filename, "ERROR", "schema_read_failed");
             continue;
         }
         if (tables.empty()) {
-            output.recordSourceCoverage(kind, filename, "empty", "no user table");
+            addCoverage(kind, filename, "empty", "no user table");
             continue;
         }
         if (tables.size() > kMaxTablesPerDatabase) {
@@ -473,66 +508,142 @@ ThunderForensicCaseStats analyzeThunderForensicCaseDatabases(
                             relatedStatus = "reported_by_case_database";
                         }
                     }
-                    if (!insertCaseArtifact(dest, kind, filename, table, recordKey,
-                                            serialized(record), timestampRaw, epoch,
-                                            relatedPath, relatedStatus)) {
-                        failure = "artifact_write_failed";
-                        break;
+
+                    Record artifact;
+                    artifact.kind = kGeneric;
+                    artifact.nativeKind = kind;
+                    artifact.mobileArtifact = true;
+                    artifact.sourcePath = filename;
+                    artifact.sourceTable = table;
+                    artifact.sourceKey = recordKey;
+                    artifact.rawJson = serialized(record);
+                    artifact.timestampRaw = timestampRaw;
+                    if (epoch) {
+                        artifact.timestampUnit = mobile_evidence::time_unit::kSeconds;
+                        artifact.timestampSeconds = *epoch;
                     }
+                    artifact.parserVersion = kParserVersion;
+                    artifact.relatedPath = relatedPath;
+                    artifact.relatedStatus = relatedStatus;
+                    package.records.push_back(std::move(artifact));
                     ++databaseRows;
                     ++totalRows;
 
                     if (projection.app) {
                         const std::string packageName = pick(row, {"package_name"});
                         if (!packageName.empty()) {
-                            output.insertInstalledApp(
-                                packageName, pick(row, {"app_name"}),
-                                pick(row, {"version_code"}), pick(row, {"version_name"}),
-                                0, 0, 0, serialized(record));
+                            addStandardRecord(
+                                mobile_evidence::kind::kInstalledApp,
+                                serialized(json{
+                                    {"package_name", packageName},
+                                    {"display_name", pick(row, {"app_name"})},
+                                    {"version_code", pick(row, {"version_code"})},
+                                    {"version_name", pick(row, {"version_name"})},
+                                    {"data_size", "0"},
+                                    {"sd_size", "0"},
+                                    {"bak_type", "0"},
+                                }),
+                                filename, table, packageName, serialized(record));
                             ++databaseStandardRows;
                         }
                     } else if (projection.sms) {
-                        std::map<std::string, std::string> sms;
-                        sms["address"] = pick(row, {"phone_number"});
-                        sms["body"] = pick(row, {"content"});
-                        sms["type"] = pick(row, {"type"});
-                        sms["date"] = epoch ? std::to_string(*epoch) : std::string{};
-                        if ((!sms["address"].empty() || !sms["body"].empty()) &&
-                            output.insertSMS(sms))
+                        const std::string address = pick(row, {"phone_number"});
+                        const std::string body = pick(row, {"content"});
+                        if (!address.empty() || !body.empty()) {
+                            Record sms;
+                            sms.kind = mobile_evidence::kind::kSms;
+                            sms.sourcePath = filename;
+                            sms.sourceTable = table;
+                            sms.sourceKey = recordKey;
+                            sms.rawJson = serialized(record);
+                            sms.payloadJson = serialized(json{
+                                {"address", address},
+                                {"body", body},
+                                {"date", epoch ? std::to_string(*epoch) : std::string{}},
+                                {"type", pick(row, {"type"})},
+                            });
+                            if (epoch) {
+                                sms.timestampUnit = mobile_evidence::time_unit::kSeconds;
+                                sms.timestampSeconds = *epoch;
+                            }
+                            sms.parserVersion = kParserVersion;
+                            package.records.push_back(std::move(sms));
                             ++databaseStandardRows;
+                        }
                     } else if (projection.call) {
-                        std::map<std::string, std::string> call;
-                        call["number"] = pick(row, {"phone_number"});
-                        call["duration"] = pick(row, {"duration"});
-                        call["type"] = pick(row, {"type"});
-                        call["date"] = epoch ? std::to_string(*epoch) : std::string{};
-                        if (!call["number"].empty() && output.insertCallLog(call))
+                        const std::string number = pick(row, {"phone_number"});
+                        if (!number.empty()) {
+                            Record call;
+                            call.kind = mobile_evidence::kind::kCallLog;
+                            call.sourcePath = filename;
+                            call.sourceTable = table;
+                            call.sourceKey = recordKey;
+                            call.rawJson = serialized(record);
+                            call.payloadJson = serialized(json{
+                                {"number", number},
+                                {"date", epoch ? std::to_string(*epoch) : std::string{}},
+                                {"duration_seconds", pick(row, {"duration"})},
+                                {"type", pick(row, {"type"})},
+                            });
+                            if (epoch) {
+                                call.timestampUnit = mobile_evidence::time_unit::kSeconds;
+                                call.timestampSeconds = *epoch;
+                            }
+                            call.parserVersion = kParserVersion;
+                            package.records.push_back(std::move(call));
                             ++databaseStandardRows;
+                        }
                     } else if (projection.contact) {
-                        std::map<std::string, std::string> contact;
-                        contact["display_name"] = pick(row, {"name", "nick_name"});
-                        contact["phone"] = pick(row, {"phone_number"});
-                        if (output.insertContact(contact)) ++databaseStandardRows;
+                        Record contact;
+                        contact.kind = mobile_evidence::kind::kContact;
+                        contact.sourcePath = filename;
+                        contact.sourceTable = table;
+                        contact.sourceKey = recordKey;
+                        contact.rawJson = serialized(record);
+                        contact.payloadJson = serialized(json{
+                            {"display_name", pick(row, {"name", "nick_name"})},
+                            {"phone_number", pick(row, {"phone_number"})},
+                        });
+                        contact.parserVersion = kParserVersion;
+                        package.records.push_back(std::move(contact));
+                        ++databaseStandardRows;
                     } else if (projection.wifi) {
-                        WifiNetwork network;
                         std::string ssid = pick(row, {"ssid"});
                         if (ssid.size() >= 2 && ssid.front() == '"' && ssid.back() == '"')
                             ssid = ssid.substr(1, ssid.size() - 2);
-                        network.ssid = ssid;
-                        network.preSharedKey = pick(row, {"password"});
-                        network.keyMgmt = pick(row, {"key_type"});
-                        if (!network.ssid.empty() &&
-                            wifiSeen.insert(toLower(network.ssid)).second &&
-                            output.insertWifiNetwork(network))
+                        if (!ssid.empty() && wifiSeen.insert(toLower(ssid)).second) {
+                            Record wifi;
+                            wifi.kind = mobile_evidence::kind::kWifiNetwork;
+                            wifi.sourcePath = filename;
+                            wifi.sourceTable = table;
+                            wifi.sourceKey = recordKey;
+                            wifi.rawJson = serialized(record);
+                            wifi.payloadJson = serialized(json{
+                                {"ssid", ssid},
+                                {"pre_shared_key", pick(row, {"password"})},
+                                {"key_mgmt", pick(row, {"key_type"})},
+                            });
+                            wifi.parserVersion = kParserVersion;
+                            package.records.push_back(std::move(wifi));
                             ++databaseStandardRows;
+                        }
                     } else if (projection.sim) {
-                        output.insertDeviceIdentifier("iccid", pick(row, {"iccid"}),
-                                                      "", filename);
-                        output.insertDeviceIdentifier("imsi", pick(row, {"imsi"}),
-                                                      "", filename);
-                        output.insertDeviceIdentifier("phonenumber",
-                                                      pick(row, {"phone_number"}),
-                                                      "", filename);
+                        for (const char* identifier : {"iccid", "imsi", "phonenumber"}) {
+                            const std::string value = pick(row, {identifier});
+                            if (value.empty()) continue;
+                            Record identity;
+                            identity.kind = mobile_evidence::kind::kDeviceIdentity;
+                            identity.sourcePath = filename;
+                            identity.sourceTable = table;
+                            identity.sourceKey = std::string(identifier) + "|" + value;
+                            identity.rawJson = serialized(record);
+                            identity.payloadJson = serialized(json{
+                                {"identifier_type", identifier},
+                                {"value", value},
+                            });
+                            identity.parserVersion = kParserVersion;
+                            package.records.push_back(std::move(identity));
+                        }
                     }
                 }
                 if (rc != SQLITE_DONE && rc != SQLITE_ROW && !truncated)
@@ -543,7 +654,7 @@ ThunderForensicCaseStats analyzeThunderForensicCaseDatabases(
             if (!failure.empty() || truncated) break;
         }
 
-        std::string status = truncated ? "PARTIAL"
+        std::string state = truncated ? "PARTIAL"
             : failure.empty() ? (databaseRows ? "parsed" : "empty")
                               : (databaseRows ? "PARTIAL" : "ERROR");
         std::string detail = "rows=" + std::to_string(databaseRows) +
@@ -552,30 +663,50 @@ ThunderForensicCaseStats analyzeThunderForensicCaseDatabases(
         if (truncated)
             detail += "; truncated_at=" + std::to_string(maxRowsPerDatabase) + " (row limit)";
         if (!failure.empty()) detail += "; " + failure;
-        output.recordSourceCoverage(kind, filename, status, detail);
+        addCoverage(kind, filename, state, detail, databaseRows);
 
         // Provenance: the case database is a parsed derivative of the
         // container, not the container itself, so it is recorded separately.
-        AndroidSourceProvenance provenance;
-        provenance.sourceContainer = path.string();
-        provenance.containerSha256 = ThunderForensicBackupExtractor::sha256(path);
-        provenance.sourceMemberPath = filename;
-        provenance.normalizedAndroidPath = filename;
-        provenance.memberSize = static_cast<std::size_t>(fs::file_size(path, ec));
-        provenance.memberSha256 = provenance.containerSha256;
-        provenance.adapterType = kThunderForensicSource;
-        provenance.adapterVersion = kParserVersion;
-        output.insertSourceProvenance(provenance);
+        if (provenanceOut) {
+            AndroidSourceProvenance provenance;
+            provenance.sourceContainer = path.string();
+            provenance.containerSha256 = ThunderForensicBackupExtractor::sha256(path);
+            provenance.sourceMemberPath = filename;
+            provenance.normalizedAndroidPath = filename;
+            provenance.memberSize = static_cast<std::size_t>(fs::file_size(path, ec));
+            provenance.memberSha256 = provenance.containerSha256;
+            provenance.adapterType = kThunderForensicSource;
+            provenance.adapterVersion = kParserVersion;
+            provenanceOut->push_back(std::move(provenance));
+        }
         stats.rows += databaseRows;
     }
 
-    output.recordSourceCoverage(
-        "case_database", "<data>", stats.rows ? "parsed" : "empty",
-        "databases=" + std::to_string(stats.databases) +
-            "; rows=" + std::to_string(stats.rows) +
-            "; skipped_duplicate_rows=" + std::to_string(stats.skippedDuplicateRows) +
-            (stats.truncatedDatabases
-                 ? "; truncated_databases=" + std::to_string(stats.truncatedDatabases)
-                 : ""));
+    addCoverage("case_database", "<data>", stats.rows ? "parsed" : "empty",
+                "databases=" + std::to_string(stats.databases) +
+                    "; rows=" + std::to_string(stats.rows) +
+                    "; skipped_duplicate_rows=" + std::to_string(stats.skippedDuplicateRows) +
+                    (stats.truncatedDatabases
+                         ? "; truncated_databases=" + std::to_string(stats.truncatedDatabases)
+                         : ""));
+    return stats;
+}
+
+ThunderForensicCaseStats analyzeThunderForensicCaseDatabases(
+    const fs::path& projectRoot, AndroidAnalysisDatabase& output,
+    const std::map<std::string, std::set<std::string>>& coveredMembers,
+    std::size_t maxRowsPerDatabase) {
+    mobile_evidence::Package package;
+    std::vector<AndroidSourceProvenance> provenance;
+    const auto stats = buildPackageFromCaseDatabases(projectRoot, package,
+                                                     coveredMembers, &provenance,
+                                                     maxRowsPerDatabase);
+    mobile_evidence::AnalysisOptions options;
+    options.mirrorFiles = false;
+    mobile_evidence::AnalysisResult result;
+    if (!mobile_evidence::analyzePackage(package, output, options, result)) {
+        return stats;
+    }
+    for (const auto& item : provenance) output.insertSourceProvenance(item);
     return stats;
 }

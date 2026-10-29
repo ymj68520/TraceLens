@@ -63,6 +63,20 @@ public:
     bool extractBakMember(const std::string& bakFile, const std::string& memberName,
                           const std::string& outPath) const;
     bool entrySize(const std::string& memberName, uint64_t& size) const;
+
+    // External storage (sdcard/) is a plain directory sibling to the .bak
+    // folder in a full MIUI export, so it is enumerated off the filesystem
+    // rather than a tar index. Paths are reported relative to that root.
+    struct ExternalFile {
+        std::string relativePath;   // e.g. "DCIM/Camera/IMG_0001.jpg"
+        std::string absolutePath;
+        uint64_t size = 0;
+        uint64_t modifiedTime = 0;
+    };
+    bool hasExternalRoot() const { return !externalRoot_.empty(); }
+    const std::string& externalRoot() const { return externalRoot_; }
+    bool enumerateExternalFiles(const std::function<bool(const ExternalFile&)>& visitor) const;
+
     const std::vector<PackageFailure>& packageFailures() const { return packageFailures_; }
     // Only later manifest entries that repeat a .bak name are excluded from
     // installed-app persistence and archive-member attribution.
@@ -82,6 +96,7 @@ private:
     std::vector<PackageFailure> packageFailures_;
     std::vector<bool> uniqueManifestBakFiles_;
     std::filesystem::path temporaryRoot_;
+    std::string externalRoot_;
     bool initialized_ = false;
 };
 

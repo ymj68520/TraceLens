@@ -47,6 +47,9 @@ add_executable(test_harmony_backup_gtest
   UnitTest/test_harmony_backup_gtest.cpp
   ../src/analyzers/AndroidAnalyzer/HarmonyBackupExtractor.cpp
   ../src/analyzers/AndroidAnalyzer/HarmonyArtifactParsers.cpp
+  ../src/analyzers/AndroidAnalyzer/MobileEvidencePackage.cpp
+  ../src/analyzers/AndroidAnalyzer/MobileEvidenceHarmonyAdapter.cpp
+  ../src/analyzers/AndroidAnalyzer/MobileEvidenceAnalysis.cpp
   ../src/analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.cpp)
 target_include_directories(test_harmony_backup_gtest PRIVATE ${CMAKE_SOURCE_DIR}/src
   ${CMAKE_SOURCE_DIR}/src/core ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer)
@@ -108,6 +111,70 @@ target_include_directories(
           ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer)
 target_link_libraries(test_miui_proto_bak_gtest ${GTEST_LIBRARIES} pthread)
 add_test(NAME MiuiProtoBakTests COMMAND test_miui_proto_bak_gtest)
+
+# Unified mobile evidence package (.mep.db): extraction/analysis contract.
+# Covers the package round-trip, idempotent rewrite, MIUI adapter output and
+# the analysis stage rebuilding artifacts from the package alone.
+add_executable(
+  test_mobile_evidence_package_gtest
+  UnitTest/test_mobile_evidence_package_gtest.cpp
+  ../src/analyzers/AndroidAnalyzer/MobileEvidencePackage.cpp
+  ../src/analyzers/AndroidAnalyzer/MobileEvidenceMiuiAdapter.cpp
+  ../src/analyzers/AndroidAnalyzer/MobileEvidenceAnalysis.cpp
+  ../src/analyzers/AndroidAnalyzer/AndroidBackupHeader.cpp
+  ../src/analyzers/AndroidAnalyzer/TarIndex.cpp
+  ../src/analyzers/AndroidAnalyzer/MiuiBackupManifest.cpp
+  ../src/analyzers/AndroidAnalyzer/MiuiBackupExtractor.cpp
+  ../src/analyzers/AndroidAnalyzer/MiuiBakProtoParsers.cpp
+  ../src/analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.cpp)
+target_include_directories(
+  test_mobile_evidence_package_gtest
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer
+          ${CMAKE_SOURCE_DIR}/libs/DuckX/thirdparty/pugixml
+          ${NLOHMANN_JSON_INCLUDE_DIRS})
+target_link_libraries(test_mobile_evidence_package_gtest GTest::gtest_main
+                      sqlite3 pthread ${ZLIB_LIBRARIES} duckx OpenSSL::Crypto)
+add_test(NAME MobileEvidencePackageTests COMMAND test_mobile_evidence_package_gtest)
+# Unified package contract for the Harmony and ThunderForensic adapters:
+# extraction produces a package, analysis rebuilds android.db from it alone.
+add_executable(
+  test_mobile_evidence_adapters_gtest
+  UnitTest/test_mobile_evidence_adapters_gtest.cpp
+  ../src/analyzers/AndroidAnalyzer/MobileEvidencePackage.cpp
+  ../src/analyzers/AndroidAnalyzer/MobileEvidenceAnalysis.cpp
+  ../src/analyzers/AndroidAnalyzer/MobileEvidenceHarmonyAdapter.cpp
+  ../src/analyzers/AndroidAnalyzer/HarmonyBackupExtractor.cpp
+  ../src/analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.cpp)
+target_include_directories(
+  test_mobile_evidence_adapters_gtest
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/core
+          ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer
+          ${NLOHMANN_JSON_INCLUDE_DIRS})
+target_link_libraries(test_mobile_evidence_adapters_gtest GTest::gtest_main
+                      sqlite3 pthread ${LIBARCHIVE_LIBRARIES} OpenSSL::Crypto)
+add_test(NAME MobileEvidenceAdapterTests COMMAND test_mobile_evidence_adapters_gtest)
+
+
+# Meiya Pico (MobileMaster FL-901) container mask derivation.
+# Fixtures are synthetic: a real SQLite obfuscated with an arbitrary XOR mask.
+# No vendor key is embedded, so the test asserts the self-derivation mechanism.
+add_executable(
+  test_meiya_container_gtest
+  UnitTest/test_meiya_container_gtest.cpp
+  ../src/analyzers/AndroidAnalyzer/MeiyaContainerCrypto.cpp
+  ../src/analyzers/AndroidAnalyzer/MeiyaBackupExtractor.cpp
+  ../src/analyzers/AndroidAnalyzer/MobileEvidenceMeiyaAdapter.cpp
+  ../src/analyzers/AndroidAnalyzer/MobileEvidencePackage.cpp)
+target_include_directories(
+  test_meiya_container_gtest
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer
+          ${NLOHMANN_JSON_INCLUDE_DIRS})
+target_link_libraries(test_meiya_container_gtest GTest::gtest_main
+                      sqlite3 pthread ${ZLIB_LIBRARIES} OpenSSL::Crypto)
+add_test(NAME MeiyaContainerTests COMMAND test_meiya_container_gtest)
 
 # Android LLM analysis persistence tests
 add_executable(

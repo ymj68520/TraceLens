@@ -11,9 +11,11 @@
 #include <unistd.h>
 #endif
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstring>
+#include <cctype>
 #include <charconv>
 #include <chrono>
 #include <cstdlib>
@@ -474,19 +476,102 @@ bool isMiuiWeChatDatabaseMember(const std::string& memberName) {
     return isMiuiWeChatDatabaseMemberName(memberName);
 }
 
+// apps/<package>/_manifest is a flat newline-delimited record, not XML:
+//   0: "1"                    format marker
+//   1: <packageName>
+//   2: <versionCode>
+//   3: <sdkVersion>
+//   4: <installerPackage>
+//   5: <count marker>
+//   6: <count marker>
+//   7: <signature(s), hex-encoded>
+// The identity and version come from lines 1-2; the signature prefix is kept
+// as a bounded correlation handle instead of inlining kilobytes of hex.
+struct MiuiAppManifestInfo {
+    std::string packageName;
+    std::string versionCode;
+    std::string installerPackage;
+    std::string signaturePrefix;
+    std::string signatureCount;
+};
+
+bool parseMiuiAppManifest(const std::string& bytes, MiuiAppManifestInfo& out) {
+    std::vector<std::string> lines;
+    size_t start = 0;
+    while (start < bytes.size() && lines.size() < 16) {
+        const size_t end = bytes.find('\n', start);
+        const std::string line = bytes.substr(
+            start, end == std::string::npos ? std::string::npos : end - start);
+        lines.push_back(line);
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+    if (lines.size() < 3 || lines[0] != "1") return false;
+    if (lines[1].empty() || lines[2].empty()) return false;
+
+    out = MiuiAppManifestInfo{};
+    out.packageName = lines[1];
+    out.versionCode = lines[2];
+    if (lines.size() > 4) out.installerPackage = lines[4];
+    if (lines.size() > 7 && lines[7].size() > 32) {
+        const std::string& signatures = lines[7];
+        size_t count = 1;
+        for (char c : signatures) {
+            if (c == ',') ++count;
+        }
+        out.signatureCount = std::to_string(count);
+        out.signaturePrefix = signatures.substr(0, 64);
+    }
+    return true;
+}
+
 bool writeMiuiManifestRows(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) {
     const BackupMeta& manifest = src.manifest();
     bool success = db.insertMiuiBackupManifest(
         manifest.device, manifest.miuiVersion, manifest.date, manifest.totalSize,
         static_cast<int>(manifest.packages.size()), manifest.sourceFolder);
 
-    for (size_t packageIndex = 0; packageIndex < manifest.packages.size(); ++packageIndex) {
+    for (size_t packageIndex = 0; packageIndex < manifest.packages.size(); packageIndex++) {
         if (!success) break;
         if (!src.hasUniqueManifestBakFile(packageIndex)) continue;
         const BackupPackage& package = manifest.packages[packageIndex];
-        success = db.insertInstalledApp(package.packageName, "", "", "",
-                                        package.pkgSize, package.sdSize,
-                                        package.bakType, "");
+
+        // Each .bak tar carries apps/<package>/_manifest with the installed
+        // version and signing cert. descript.xml has neither, so reading the
+        // member is the only way to populate those columns.
+        MiuiAppManifestInfo appInfo;
+        bool haveAppInfo = false;
+        const std::string memberName = "apps/" + package.packageName + "/_manifest";
+        TarEntry entry;
+        if (src.getEntry(memberName, entry) && entry.size > 0 &&
+            entry.size <= kMaximumBundleBytes) {
+            TemporaryDirectory temporaryDirectory;
+            if (temporaryDirectory.create(src.temporaryRoot())) {
+                const fs::path memberPath = temporaryDirectory.path() / "app-manifest.txt";
+                if (makePrivateFile(memberPath) &&
+                    src.extractTarMember(memberName, memberPath.string())) {
+                    std::ifstream input(memberPath, std::ios::binary);
+                    if (input) {
+                        const std::string bytes((std::istreambuf_iterator<char>(input)),
+                                                std::istreambuf_iterator<char>());
+                        haveAppInfo = parseMiuiAppManifest(bytes, appInfo);
+                    }
+                }
+            }
+        }
+
+        std::string summary;
+        if (haveAppInfo) {
+            summary = "installer=" + appInfo.installerPackage;
+            if (!appInfo.signatureCount.empty()) {
+                summary += "; signatures=" + appInfo.signatureCount +
+                           "; cert_prefix=" + appInfo.signaturePrefix;
+            }
+        }
+        success = db.insertInstalledApp(package.packageName, "", 
+                                        haveAppInfo ? appInfo.versionCode : "",
+                                        "", package.pkgSize, package.sdSize,
+                                        package.bakType, summary);
     }
     return success;
 }
@@ -607,9 +692,67 @@ bool writeAppDbInventory(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) 
     return false;
 }
 
+bool writeMiuiExternalStorageRows(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) {
+    if (!src.hasExternalRoot()) {
+        return db.recordSourceCoverage("sdcard_files", "<sdcard>", "not_found",
+                                       "No sibling sdcard/ tree in this acquisition");
+    }
+
+    size_t files = 0;
+    uint64_t bytes = 0;
+    bool success = src.enumerateExternalFiles([&](const MiuiBackupExtractor::ExternalFile& file) {
+        const fs::path path(file.relativePath);
+        const std::string name = path.filename().string();
+        std::string extension = path.extension().string();
+        if (!extension.empty() && extension.front() == '.') extension.erase(0, 1);
+        std::transform(extension.begin(), extension.end(), extension.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+        static const std::unordered_set<std::string> kImage{"jpg", "jpeg", "png", "gif", "webp",
+                                                            "bmp", "heic", "dng", "raw"};
+        static const std::unordered_set<std::string> kVideo{"mp4", "mov", "3gp", "mkv", "avi",
+                                                            "webm", "ts", "m4v"};
+        static const std::unordered_set<std::string> kAudio{"mp3", "m4a", "aac", "amr", "wav",
+                                                            "ogg", "flac", "opus"};
+        static const std::unordered_set<std::string> kDocument{"pdf", "doc", "docx", "xls",
+                                                               "xlsx", "ppt", "pptx", "txt",
+                                                               "csv", "rtf"};
+        std::string category = "other";
+        if (kImage.count(extension)) category = "image";
+        else if (kVideo.count(extension)) category = "video";
+        else if (kAudio.count(extension)) category = "audio";
+        else if (kDocument.count(extension)) category = "document";
+
+        if (!db.insertMiuiExternalFile(file.relativePath, name, extension, category,
+                                       file.size, file.modifiedTime)) {
+            success = false;
+            return false;
+        }
+        ++files;
+        bytes += file.size;
+        return true;
+    });
+
+    if (success) {
+        success = db.recordSourceCoverage(
+            "sdcard_files", "<sdcard>", files > 0 ? "indexed" : "empty",
+            "files=" + std::to_string(files) + "; bytes=" + std::to_string(bytes) +
+                "; payloads remain in the external storage tree");
+    }
+    return success;
+}
+
+bool writeMiuiExternalStorage(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) {
+    if (!db.beginTransaction()) return false;
+    if (writeMiuiExternalStorageRows(src, db) && db.commitTransaction()) return true;
+    db.rollbackTransaction();
+    return false;
+}
+
 bool persistMiuiBackupAnalysis(MiuiBackupExtractor& src, AndroidAnalysisDatabase& db) {
     if (!db.beginTransaction()) return false;
     if (writeMiuiManifestRows(src, db) && writeAppDbInventoryRows(src, db) &&
+        writeMiuiExternalStorageRows(src, db) &&
         persistQqntBackupAnalysis(src, db) && persistWechatBackupAnalysis(src, db) &&
         db.commitTransaction()) {
         return true;

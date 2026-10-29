@@ -8,6 +8,14 @@
 #include "AndroidAnalyzer/AndroidAnalyzer.h"
 #include "AndroidAnalyzer/HarmonyBackupExtractor.h"
 #include "AndroidAnalyzer/ThunderForensicBackupExtractor.h"
+#include "AndroidAnalyzer/MiuiBackupExtractor.h"
+#include "AndroidAnalyzer/MobileEvidenceAnalysis.h"
+#include "AndroidAnalyzer/MobileEvidenceHarmonyAdapter.h"
+#include "AndroidAnalyzer/MobileEvidenceMiuiAdapter.h"
+#include "AndroidAnalyzer/ThunderForensicArtifactParsers.h"
+#include "AndroidAnalyzer/MobileEvidencePackage.h"
+#include "AndroidAnalyzer/MeiyaBackupExtractor.h"
+#include "AndroidAnalyzer/MobileEvidenceMeiyaAdapter.h"
 #include "WindowsFilesAnalyzer/WindowsFilesAnalyzer.h"
 #include "LinuxFilesAnalyzer/LinuxFilesAnalyzer.h"
 #include "MemoryAnalyzer/MemoryAnalyzer.h"
@@ -266,18 +274,23 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
         }
     }
     const bool reportOnly = args.generate_report && !args.image_path.empty() && fs::exists(args.image_path);
+    // Analysis of an existing .mep.db package needs no live acquisition: the
+    // package is the evidence hand-off, so the source path may be gone.
+    const bool packageOnly = !args.mobile_package_path.empty();
     if (args.image_path.empty() || !fs::exists(args.image_path)) {
-        if (args.image_path.empty() && !reportOnly) {
-            std::cerr << "Error: Image path required" << std::endl;
-            return 1;
-        }
-        if (!args.image_path.empty() && !fs::exists(args.image_path)) {
-            std::cerr << "Error: Image file not found: " << args.image_path << std::endl;
-            return 1;
+        if (!packageOnly) {
+            if (args.image_path.empty() && !reportOnly) {
+                std::cerr << "Error: Image path required" << std::endl;
+                return 1;
+            }
+            if (!args.image_path.empty() && !fs::exists(args.image_path)) {
+                std::cerr << "Error: Image file not found: " << args.image_path << std::endl;
+                return 1;
+            }
         }
     }
 
-    if (!fs::exists(args.image_path)) {
+    if (!packageOnly && !fs::exists(args.image_path)) {
         std::cerr << "Error: Image file not found: " << args.image_path << std::endl;
         return 1;
     }
@@ -285,7 +298,10 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
     // Android logical extraction (directory or zip) does not need — and cannot
     // use — the TSK disk-image pipeline. Route it to a dedicated path that
     // runs only the Android analyzer against the data source directly.
-    if (args.android_analyze && !HarmonyBackupExtractor::recognizes(args.image_path) &&
+    // An extraction-only run always takes this path: its whole purpose is the
+    // unified package, which the TSK pipeline never produces.
+    if (args.android_analyze && (args.mobile_extract || !args.mobile_package_path.empty() ||
+                                 !HarmonyBackupExtractor::recognizes(args.image_path)) &&
         (args.android_source == "dir" || args.android_source == "zip" ||
          args.android_source == "miui-backup" || isThunderForensicSource(args.android_source) ||
          // A ThunderForensic extraction routed through any other source value
@@ -294,7 +310,15 @@ int AnalysisOrchestrator::runAnalysis(const CommandLineArgs& args) {
          ThunderForensicBackupExtractor::recognizes(args.image_path) ||
          args.android_source == "tar" ||
          args.android_source == "seven-zip" || args.android_source == "android-backup" ||
-         args.android_source == "filesystem-image")) {
+         args.android_source == "filesystem-image" ||
+         // A unified mobile evidence package (or an extraction run that will
+         // produce one) is handled by the split extraction/analysis path.
+         args.android_source == "mobile-evidence" || args.mobile_extract ||
+         // Meiya case exports are decoded by their own container layer.
+         args.android_source == "meiya" ||
+         (args.android_source.empty() &&
+          meiya::MeiyaBackupExtractor::recognizes(args.image_path)) ||
+         !args.mobile_package_path.empty())) {
         return runAndroidLogicalAnalysis(args);
     }
 
@@ -715,10 +739,107 @@ int AnalysisOrchestrator::runAndroidLogicalAnalysis(const CommandLineArgs& args)
         std::cerr << "Error: archive passwords must be supplied via stdin or an open file descriptor, not argv" << std::endl;
         return 1;
     }
+
+    // ---- Meiya Pico (MobileMaster FL-901) case export ----
+    // Container masks are derived at runtime from the evidence itself and
+    // verified with SQLite's own integrity_check; no vendor key is compiled in.
+    if (args.android_source == "meiya" ||
+        (args.android_source.empty() && meiya::MeiyaBackupExtractor::recognizes(args.image_path))) {
+        std::cout << "=== Meiya (MobileMaster FL-901) Case Analyzer ===" << std::endl;
+        std::cout << "Source: " << args.image_path << std::endl;
+
+        if (!meiya::MeiyaBackupExtractor::recognizes(args.image_path)) {
+            std::cerr << "Error: not a Meiya case export: " << args.image_path << std::endl;
+            return 1;
+        }
+
+        auto extractor = std::make_unique<meiya::MeiyaBackupExtractor>(args.image_path);
+        if (!extractor->initialize()) {
+            std::cerr << "Error: Failed to decode Meiya containers"
+                      << (extractor->error().empty() ? "" : " (" + extractor->error() + ")")
+                      << std::endl;
+            return 1;
+        }
+
+        std::cout << "[Meiya] Containers:" << std::endl;
+        for (const auto& container : extractor->containers()) {
+            std::cout << "  " << container.sourcePath.filename().string()
+                      << " [" << container.family << "] " << container.status;
+            if (container.status == "decrypted") {
+                std::cout << " mask=" << container.encryptionLabel
+                          << " schema=" << container.schemaEntries;
+            } else if (!container.detail.empty()) {
+                std::cout << " (" << container.detail << ")";
+            }
+            std::cout << std::endl;
+        }
+
+        mobile_evidence::MeiyaAdapterOptions adapterOptions;
+        mobile_evidence::Package package;
+        if (!mobile_evidence::buildPackageFromMeiya(*extractor, adapterOptions, package)) {
+            std::cerr << "Error: Failed to build mobile evidence package" << std::endl;
+            return 1;
+        }
+
+        const std::string packagePath = !args.mobile_package_out.empty()
+            ? args.mobile_package_out
+            : mobile_evidence::defaultPackagePath(args.image_path);
+
+        mobile_evidence::Writer writer(packagePath);
+        if (!writer.writePackage(package)) {
+            std::cerr << "Error: Failed to write mobile evidence package: "
+                      << writer.error() << std::endl;
+            return 1;
+        }
+        writer.close();
+
+        std::cout << "✓ Package: " << packagePath << std::endl;
+        std::cout << "  records=" << package.records.size()
+                  << " files=" << package.files.size()
+                  << " coverage=" << package.coverage.size() << std::endl;
+
+        // Unless extraction-only was requested, run the unified analysis on it
+        // immediately so a single command still produces android.db.
+        if (!args.mobile_extract) {
+            std::string baseName = getBaseName(args.image_path);
+            if (baseName.empty()) baseName = "meiya_case";
+            const std::string fileDbPath = getDatabaseDir(args) + baseName + "_files.db";
+
+            AndroidAnalysisDatabase database(fileDbPath);
+            if (!database.initialize()) {
+                std::cerr << "Error: Failed to initialize Android analysis database" << std::endl;
+                return 1;
+            }
+            mobile_evidence::AnalysisOptions analysisOptions;
+            mobile_evidence::AnalysisResult result;
+            if (!mobile_evidence::analyzePackage(packagePath, database, analysisOptions, result)) {
+                std::cerr << "Error: Failed to analyze mobile evidence package" << std::endl;
+                return 1;
+            }
+            std::cout << "✓ contacts=" << result.contacts
+                      << " call_logs=" << result.callLogs
+                      << " sms=" << result.sms
+                      << " notes=" << result.notes
+                      << " installed_apps=" << result.installedApps
+                      << " files=" << result.files
+                      << " coverage=" << result.coverageEntries << std::endl;
+            std::cout << "✓ Artifact database: " << fileDbPath << std::endl;
+        } else {
+            std::cout << "=== Extraction Complete (analysis not run) ===" << std::endl;
+        }
+        return 0;
+    }
+
     std::cout << "=== Android Logical Extraction Analyzer ===" << std::endl;
-    std::cout << "Source: " << args.image_path << std::endl;
-    std::cout << "Mode:   " << args.android_source
-              << " (no TSK / no _raw.db)" << std::endl;
+    if (!args.mobile_package_path.empty() || args.android_source == "mobile-evidence") {
+        std::cout << "Source: " << (!args.mobile_package_path.empty()
+            ? args.mobile_package_path : args.image_path) << std::endl;
+        std::cout << "Mode:   mobile-evidence (analysis-only, reads .mep.db)" << std::endl;
+    } else {
+        std::cout << "Source: " << args.image_path << std::endl;
+        std::cout << "Mode:   " << args.android_source
+                  << " (no TSK / no _raw.db)" << std::endl;
+    }
 
     if (!args.android_analyze) {
         std::cerr << "Error: --android-analyze is required for logical mode" << std::endl;
@@ -727,10 +848,63 @@ int AnalysisOrchestrator::runAndroidLogicalAnalysis(const CommandLineArgs& args)
 
     std::string baseName = getBaseName(args.image_path);
     std::string prefix = getDatabaseDir(args);
+    // The package name, not the (possibly absent) acquisition path, determines
+    // the output stem when the analysis stage runs standalone. Strip the
+    // ".mep.db" suffix so "case.mep.db" yields "case_files.db", not
+    // "case.mep_files.db".
+    if (baseName.empty() && !args.mobile_package_path.empty()) {
+        baseName = fs::path(args.mobile_package_path).filename().string();
+        for (const char* suffix : {".mep.db", ".db"}) {
+            const size_t length = std::char_traits<char>::length(suffix);
+            if (baseName.size() > length &&
+                baseName.compare(baseName.size() - length, length, suffix) == 0) {
+                baseName.erase(baseName.size() - length);
+                break;
+            }
+        }
+        if (baseName.empty()) baseName = "mobile_evidence";
+    }
 
     // Android artifacts are written into <baseName>_files.db, mirroring the
-    // integrated-scene convention used by the TSK pipeline.
+    // integrated-scene convention used by the TSK pipeline. Extraction-only
+    // runs produce just the package, so this path is never opened.
     std::string fileDbPath = prefix + baseName + "_files.db";
+
+    // ---- Extraction / analysis split (unified mobile evidence package) ----
+    // Analysis-only: read an existing .mep.db instead of the original
+    // acquisition. This is the path every downstream consumer should use.
+    if (!args.mobile_package_path.empty() || args.android_source == "mobile-evidence") {
+        const std::string packagePath = !args.mobile_package_path.empty()
+            ? args.mobile_package_path : args.image_path;
+        std::cout << "[MobileEvidence] Analyzing package: " << packagePath << std::endl;
+
+        if (!mobile_evidence::looksLikePackage(packagePath)) {
+            std::cerr << "Error: not a mobile evidence package: " << packagePath << std::endl;
+            return 1;
+        }
+
+        AndroidAnalysisDatabase database(fileDbPath);
+        if (!database.initialize()) {
+            std::cerr << "Error: Failed to initialize Android analysis database" << std::endl;
+            return 1;
+        }
+        mobile_evidence::AnalysisOptions options;
+        mobile_evidence::AnalysisResult result;
+        if (!mobile_evidence::analyzePackage(packagePath, database, options, result)) {
+            std::cerr << "Error: Failed to analyze mobile evidence package" << std::endl;
+            return 1;
+        }
+        std::cout << "✓ contacts=" << result.contacts
+                  << " call_logs=" << result.callLogs
+                  << " sms=" << result.sms
+                  << " notes=" << result.notes
+                  << " installed_apps=" << result.installedApps
+                  << " files=" << result.files
+                  << " coverage=" << result.coverageEntries << std::endl;
+        std::cout << "✓ Artifact database: " << fileDbPath << std::endl;
+        std::cout << "=== Analysis Complete ===" << std::endl;
+        return 0;
+    }
 
     try {
         auto androidAnalyzer = std::make_unique<AndroidAnalyzer>(args.image_path, nullptr);
@@ -771,6 +945,69 @@ int AnalysisOrchestrator::runAndroidLogicalAnalysis(const CommandLineArgs& args)
         }
         androidAnalyzer->setSkipAI(args.skip_ai);
         androidAnalyzer->setOutputDatabasePath(fileDbPath);
+
+        // Extraction-only: stop after the adapter produces the unified package.
+        // No android.db is written, so the package is the sole hand-off.
+        const bool extractionOnly = args.mobile_extract &&
+            (args.android_source == "miui-backup" || args.android_source == "harmony-backup" ||
+             isThunderForensicSource(args.android_source));
+        if (extractionOnly) {
+            androidAnalyzer->setExtractionOnly(true);
+            androidAnalyzer->setSkipAI(true);
+            const std::string packagePath = args.mobile_package_out.empty()
+                ? mobile_evidence::defaultPackagePath(args.image_path)
+                : args.mobile_package_out;
+            std::cout << "[MobileEvidence] Extracting to package: " << packagePath << std::endl;
+
+            if (!androidAnalyzer->initialize()) {
+                std::cerr << "Error: Failed to initialize Android analyzer"
+                          << (androidAnalyzer->sourceError().empty() ? "" :
+                              " (" + androidAnalyzer->sourceError() + ")") << std::endl;
+                return 1;
+            }
+
+            mobile_evidence::Package package;
+            bool built = false;
+            if (auto* miui = dynamic_cast<MiuiBackupExtractor*>(
+                    androidAnalyzer->fileExtractor())) {
+                mobile_evidence::MiuiAdapterOptions adapterOptions;
+                built = mobile_evidence::buildPackageFromMiui(*miui, adapterOptions, package);
+            } else if (auto* harmony = dynamic_cast<HarmonyBackupExtractor*>(
+                           androidAnalyzer->fileExtractor())) {
+                // Harmony needs a scratch directory for staged databases; the
+                // analyzer already created one that is disjoint from evidence.
+                mobile_evidence::HarmonyAdapterOptions adapterOptions;
+                built = mobile_evidence::buildPackageFromHarmony(
+                    *harmony, androidAnalyzer->temporaryRoot(), adapterOptions, package);
+            } else if (auto* thunder = dynamic_cast<ThunderForensicBackupExtractor*>(
+                           androidAnalyzer->fileExtractor())) {
+                std::vector<AndroidSourceProvenance> caseProvenance;
+                built = buildPackageFromThunderForensic(*thunder, package, caseProvenance);
+            } else {
+                std::cerr << "Error: --mobile-extract does not support this source adapter"
+                          << std::endl;
+                return 1;
+            }
+            if (!built) {
+                std::cerr << "Error: Failed to build mobile evidence package" << std::endl;
+                return 1;
+            }
+
+            mobile_evidence::Writer writer(packagePath);
+            if (!writer.writePackage(package)) {
+                std::cerr << "Error: Failed to write mobile evidence package: "
+                          << writer.error() << std::endl;
+                return 1;
+            }
+            writer.close();
+
+            std::cout << "✓ Package: " << packagePath << std::endl;
+            std::cout << "  records=" << package.records.size()
+                      << " files=" << package.files.size()
+                      << " coverage=" << package.coverage.size() << std::endl;
+            std::cout << "=== Extraction Complete (analysis not run) ===" << std::endl;
+            return 0;
+        }
 
         std::cout << "[Android] Analyzing logical extraction..." << std::endl;
         if (!androidAnalyzer->initialize()) {

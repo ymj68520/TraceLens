@@ -143,11 +143,17 @@ bool parseCallLogShape(const std::string& bytes, std::vector<MiuiProtoCallRow>& 
 
 // ContactRecord: repeated top-level f1, each holding DataRecord f2 with
 // NameDetail f5 and PhoneRecord f6. One output row per DataRecord.
+//
+// The container also carries non-contact DataRecords - notably a trailing
+// group record that has only an id and status fields. Those are skipped rather
+// than treated as corruption: rejecting the payload over one of them discarded
+// every real contact in the same backup (observed: 668 contacts lost to the
+// final record of a real MIUI 12 export).
 bool parseContactsShape(const std::string& bytes, std::vector<MiuiProtoContactRow>& out) {
     std::vector<ProtoField> top;
     if (!readFields(bytes, top)) return false;
 
-    bool sawRecord = false;
+    bool sawContact = false;
     for (const auto& field : top) {
         if (field.number != 1 || field.wireType != 2) continue;
         std::vector<ProtoField> contact;
@@ -184,12 +190,86 @@ bool parseContactsShape(const std::string& bytes, std::vector<MiuiProtoContactRo
                     havePhone = true;
                 }
             }
-            if (!haveName && !havePhone) return false;
+            if (!haveName && !havePhone) continue;  // grouping/metadata record
             out.push_back(row);
-            sawRecord = true;
+            sawContact = true;
         }
     }
-    return sawRecord;
+    return sawContact;
+}
+
+// One SMS/MMS entry. f4 address is the only field MIUI always writes; the
+// body and timestamp are optional so a delivery report still yields a row.
+bool parseSmsEntry(const std::string& buf, MiuiProtoSmsRow& row) {
+    std::vector<ProtoField> fields;
+    if (!readFields(buf, fields)) return false;
+    if (!findString(fields, 4, row.address)) return false;
+
+    findString(fields, 6, row.body);
+    findString(fields, 10, row.serviceCenter);
+    uint64_t value = 0;
+    if (findVarint(fields, 7, value)) row.dateMs = value;
+    if (findVarint(fields, 11, value)) row.threadId = value;
+    if (findVarint(fields, 3, value)) row.type = static_cast<int>(value);
+    if (findVarint(fields, 8, value)) row.read = static_cast<int>(value);
+    if (findVarint(fields, 9, value)) row.status = static_cast<int>(value);
+    return true;
+}
+
+// MessageList: entries nested under a single top-level f4 wrapper. Entries
+// that carry neither an address nor a body (thread/grouping records) are
+// skipped, matching the contact-record policy.
+bool parseSmsShape(const std::string& bytes, std::vector<MiuiProtoSmsRow>& out) {
+    std::vector<ProtoField> top;
+    if (!readFields(bytes, top)) return false;
+
+    bool sawMessage = false;
+    for (const auto& field : top) {
+        if (field.number != 4 || field.wireType != 2) continue;
+        std::vector<ProtoField> wrapper;
+        if (!readFields(field.bytes, wrapper)) return false;
+        for (const auto& inner : wrapper) {
+            if (inner.number != 1 || inner.wireType != 2) continue;
+            MiuiProtoSmsRow row;
+            if (!parseSmsEntry(inner.bytes, row)) continue;
+            if (row.address.empty() && row.body.empty()) continue;
+            out.push_back(std::move(row));
+            sawMessage = true;
+        }
+    }
+    return sawMessage;
+}
+
+// Notes: f6 wrapper holding repeated f2 NoteRecord. A record is accepted when
+// it has an id, a title or a snippet, so empty template rows are skipped.
+bool parseNotesShape(const std::string& bytes, std::vector<MiuiProtoNoteRow>& out) {
+    std::vector<ProtoField> top;
+    if (!readFields(bytes, top)) return false;
+
+    bool sawNote = false;
+    for (const auto& field : top) {
+        if (field.number != 6 || field.wireType != 2) continue;
+        std::vector<ProtoField> wrapper;
+        if (!readFields(field.bytes, wrapper)) return false;
+        for (const auto& inner : wrapper) {
+            if (inner.number != 2 || inner.wireType != 2) continue;
+            std::vector<ProtoField> record;
+            if (!readFields(inner.bytes, record)) return false;
+
+            MiuiProtoNoteRow row;
+            findString(record, 2, row.noteId);
+            findString(record, 8, row.snippet);
+            findString(record, 14, row.title);
+            findString(record, 15, row.kind);
+            uint64_t value = 0;
+            if (findVarint(record, 5, value)) row.createdMs = value;
+            if (findVarint(record, 6, value)) row.modifiedMs = value;
+            if (row.noteId.empty() && row.title.empty() && row.snippet.empty()) continue;
+            out.push_back(std::move(row));
+            sawNote = true;
+        }
+    }
+    return sawNote;
 }
 
 }  // namespace
@@ -201,6 +281,10 @@ MiuiBakKind classifyMiuiBakContent(const std::string& bytes) {
     if (parseCallLogShape(bytes, calls)) return MiuiBakKind::CallLog;
     std::vector<MiuiProtoContactRow> contacts;
     if (parseContactsShape(bytes, contacts)) return MiuiBakKind::Contacts;
+    std::vector<MiuiProtoSmsRow> messages;
+    if (parseSmsShape(bytes, messages)) return MiuiBakKind::Sms;
+    std::vector<MiuiProtoNoteRow> notes;
+    if (parseNotesShape(bytes, notes)) return MiuiBakKind::Notes;
     return MiuiBakKind::Unknown;
 }
 
@@ -214,4 +298,16 @@ bool parseMiuiContactsBak(const std::string& bytes, std::vector<MiuiProtoContact
     out.clear();
     if (looksLikeJson(bytes)) return false;
     return parseContactsShape(bytes, out);
+}
+
+bool parseMiuiSmsBak(const std::string& bytes, std::vector<MiuiProtoSmsRow>& out) {
+    out.clear();
+    if (looksLikeJson(bytes)) return false;
+    return parseSmsShape(bytes, out);
+}
+
+bool parseMiuiNotesBak(const std::string& bytes, std::vector<MiuiProtoNoteRow>& out) {
+    out.clear();
+    if (looksLikeJson(bytes)) return false;
+    return parseNotesShape(bytes, out);
 }

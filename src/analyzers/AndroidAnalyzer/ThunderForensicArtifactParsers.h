@@ -1,6 +1,10 @@
 #pragma once
 
 #include <filesystem>
+#include <vector>
+
+#include "IFileExtractor.h"
+#include "MobileEvidencePackage.h"
 
 class ThunderForensicBackupExtractor;
 class AndroidAnalysisDatabase;
@@ -22,3 +26,12 @@ class AndroidAnalysisDatabase;
 //   <package>.tar/**, <package>.ab/**  per-app data trees
 bool analyzeThunderForensicBackup(ThunderForensicBackupExtractor& source,
                                   AndroidAnalysisDatabase& output);
+
+// Extraction-stage entry point: the same parsing rules, but the result is a
+// unified package instead of a written database. analyzeThunderForensicBackup
+// delegates here, so the two paths cannot drift apart.
+// `caseProvenanceOut` receives the case-database provenance rows that the
+// analysis stage must persist separately from package records.
+bool buildPackageFromThunderForensic(
+    ThunderForensicBackupExtractor& source, mobile_evidence::Package& out,
+    std::vector<AndroidSourceProvenance>& caseProvenanceOut);
