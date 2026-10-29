@@ -644,6 +644,10 @@ class QQImportService:
                         # drops entirely.
                         receiver = owner_uin
                         sender_name = nick.get(message["sender"], message["sender"])
+                if sender == receiver:
+                    # Degenerate record (self-addressed system notifications
+                    # keep senderuin == owner): no relationship edge to draw.
+                    continue
                 dst.execute(
                     "INSERT INTO wechat_messages (sender, receiver, content, "
                     "timestamp, media_url, media_type, msg_type, is_send, "

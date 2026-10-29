@@ -327,7 +327,13 @@ def extract_all(db_path: str, device_id: str) -> Dict[str, Any]:
             out["messages"].extend(
                 _read_messages(con, table, key, group_uin=group_uin)
             )
+        # The buddy list keeps a self row, so md5(owner) names a real roaming
+        # table of self-addressed system records (pokes etc.) — no edge value.
+        owner_digest = hashlib.md5(owner_uin.encode()).hexdigest().lower()
         for table in friend_tables:
+            digest_part = table[len("mr_friend_"):-len("_New")].lower()
+            if digest_part == owner_digest:
+                continue
             out["messages"].extend(
                 _read_messages(con, table, key, group_uin="")
             )

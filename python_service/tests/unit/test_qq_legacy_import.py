@@ -105,6 +105,17 @@ def legacy_db(tmp_path):
         f"INSERT INTO mr_friend_{friend_md5}_New VALUES (2, ?, ?, ?, 1395400060, -1000, 1)",
         (_xor("10086"), _xor(OWNER_UIN), _xor("在的，什么事")),
     )
+    # self-addressed records (md5(owner) table) carry no relationship edge
+    owner_md5 = hashlib.md5(OWNER_UIN.encode()).hexdigest().upper()
+    con.execute(
+        f"CREATE TABLE mr_friend_{owner_md5}_New ("
+        "_id INTEGER PRIMARY KEY, frienduin TEXT, senderuin TEXT, msgData TEXT, "
+        "time INTEGER, msgtype INTEGER, issend INTEGER)"
+    )
+    con.execute(
+        f"INSERT INTO mr_friend_{owner_md5}_New VALUES (1, ?, ?, ?, 1395450000, -2018, 0)",
+        (_xor(OWNER_UIN), _xor(OWNER_UIN), ""),
+    )
     con.commit()
     con.close()
     return str(path)
