@@ -482,8 +482,28 @@ class InvestigationGraphReader:
                 payload.get("representative_timestamp"),
             )
         else:
-            candidates = (payload.get("mtime"), payload.get("ctime"))
-        return [int(ts) for ts in candidates if ts is not None]
+            # File evidence carries MACB, and — once artifact rows are
+            # attached — the artifact's own timestamps. Without the latter a
+            # Prefetch/nginx-backed event would render with no time at all.
+            candidates = (
+                payload.get("mtime"), payload.get("ctime"),
+                payload.get("artifact_timestamp"),
+                payload.get("last_run_time"), payload.get("access_time"),
+                payload.get("visit_time"), payload.get("deletion_time"),
+            )
+        points = []
+        for ts in candidates:
+            if ts is None:
+                continue
+            try:
+                value = int(ts)
+            except (TypeError, ValueError):
+                continue
+            # Artifact timestamps are Unix seconds; drop clearly bogus values
+            # (0, pre-2001, or far future) instead of putting them on the axis.
+            if 978307200 <= value <= 4102444800:
+                points.append(value)
+        return points
 
     def get_report_evidence(self, evidence_key: str) -> ReportEvidenceItem | None:
         def read(conn: sqlite3.Connection) -> ReportEvidenceItem | None:

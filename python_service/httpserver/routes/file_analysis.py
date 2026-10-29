@@ -235,9 +235,106 @@ async def record_file_analysis(request: FileAnalysisRecordRequest):
             status_code=500,
             detail=f"persist_to_files_db failed for {request.file_path!r}",
         )
+
+    # File-centric investigation event, generated in the same pass as the file
+    # analysis so the workbench's left column is populated without a separate
+    # cluster run. Best-effort by design: an event-side failure must never
+    # lose the analysis we just committed, and the bootstrap sweep re-seeds
+    # any file this hook misses.
+    event_result = await _seed_file_event(service_manager, _task_info, request, llm_service)
+
     return {
         "persisted": True,
         "task_id": request.task_id,
         "file_path": request.file_path,
         "trigger_source": "pipeline",
+        "investigation_event": event_result,
     }
+
+
+async def _seed_file_event(service_manager, task_info, request, llm_service):
+    """Build and persist the file's investigation event node."""
+    from ..services.investigation.file_events import (
+        build_file_event_node,
+        read_file_artifacts,
+        read_macb_events,
+    )
+    from ..services.investigation.file_events import _NARRATIVE_PROMPT
+
+    try:
+        artifacts = await asyncio.to_thread(
+            read_file_artifacts, task_info, request.file_path
+        )
+        macb = await asyncio.to_thread(read_macb_events, task_info, request.file_path)
+        node = build_file_event_node(
+            task_info,
+            {"path": request.file_path, "name": request.file_path.rsplit("/", 1)[-1]},
+            artifacts,
+            macb,
+        )
+
+        # One short LLM call turns the collected rows into an investigative
+        # narrative. It runs only when there is something beyond the bare
+        # MACB timestamps the panel already shows.
+        if artifacts and llm_service is not None:
+            try:
+                response = await llm_service.analyze(
+                    node["summary"], prompt=_NARRATIVE_PROMPT, max_tokens=400
+                )
+                # analyze() returns {"analysis": {"summary", "description"}, ...}
+                analysis = (response or {}).get("analysis") or {}
+                narrative = (analysis.get("summary") or analysis.get("description") or "").strip()
+                if narrative:
+                    node["summary"] = narrative[:4000]
+            except Exception as exc:  # noqa: BLE001 - narrative is optional
+                logger.warning("event narrative failed for %s: %s", request.file_path, exc)
+
+        seed = await _persist_event(service_manager, request.task_id, node, request.file_path)
+        return seed
+    except Exception as exc:  # noqa: BLE001 - never fail the analysis write
+        logger.warning("investigation event seed failed for %s: %s", request.file_path, exc)
+        return {"seeded": False, "error": str(exc)[:200]}
+
+
+async def _persist_event(service_manager, task_id: str, node, file_path: str):
+    """Write one file-seeded event through the repository-v7 module.
+
+    Reuses ``bulk_seed_cluster_events`` so the snapshot + link + event rows
+    commit as one transaction, exactly like bootstrap. The seed marker is the
+    file path, which is what makes a re-run idempotent.
+    """
+    from ..services.evidence.resolver import EvidenceResolver
+    from ..services.investigation.acquisition import build_snapshot_candidate
+    from ..services.investigation.paths import investigation_db_path_for_task
+    from ..services.investigation.repository import InvestigationRepository
+
+    task = await service_manager.cpp_backend.get_task(task_id)
+    if not isinstance(task, dict) or task.get("id") != task_id:
+        return {"seeded": False, "reason": "task_not_available"}
+
+    db_path = investigation_db_path_for_task(task)
+    repository = InvestigationRepository(db_path, task_id)
+    existing = await asyncio.to_thread(repository.list_seed_markers)
+    marker = f"file_seed:{file_path}"
+    if marker in existing:
+        return {"seeded": False, "reason": "already_seeded", "marker": marker}
+
+    resolver = EvidenceResolver(service_manager.cpp_backend)
+    candidates = {}
+    for key in node["evidence_keys"]:
+        try:
+            resolved = await resolver.resolve_evidence(task_id, key)
+        except Exception:  # noqa: BLE001 - unresolved evidence is skipped
+            continue
+        candidates[key] = await asyncio.to_thread(build_snapshot_candidate, resolved)
+
+    plan = {
+        "seed_marker": marker,
+        "title": node["title"],
+        "summary": node["summary"],
+        "evidence_keys": [k for k in node["evidence_keys"] if k in candidates],
+    }
+    result = await asyncio.to_thread(
+        repository.bulk_seed_cluster_events, [plan], candidates
+    )
+    return {"seeded": True, "marker": marker, **result}

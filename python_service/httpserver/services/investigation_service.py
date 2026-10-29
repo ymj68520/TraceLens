@@ -558,6 +558,7 @@ class InvestigationService:
         from .evidence.exceptions import EvidenceNotFoundError
         from .evidence.resolver import EvidenceResolver as SourceEvidenceResolver
         from .investigation.acquisition import build_snapshot_candidate
+        from .investigation.file_events import build_file_event_nodes
         from .investigation.graph_reader import InvestigationGraphReader
         from .investigation.repository import InvestigationRepository
 
@@ -568,34 +569,58 @@ class InvestigationService:
         lock = self._bootstrap_locks.setdefault(task_id, asyncio.Lock())
         async with lock:
             repository = InvestigationRepository(db_path, task_id)
-            clusters = self._load_analyzed_clusters(paths["events_db"])
             seeded_markers = await asyncio.to_thread(repository.list_seed_markers)
             plans = []
-            for cluster in clusters:
-                cluster_key = make_cluster_key(
-                    cluster["time_window"], cluster["event_type"]
-                )
-                seed_marker = f"cluster_seed:{cluster_key}"
-                if seed_marker in seeded_markers:
-                    continue
-                title = (
-                    cluster.get("llm_summary")
-                    or f"{cluster['event_type']} 活动聚类（{cluster['event_count']} 个事件）"
-                )
-                evidence_keys = [cluster_key]
-                if cluster.get("cluster_start") is not None:
-                    evidence_keys.extend(
-                        key for key, _path in self._cluster_related_file_keys(
-                            paths["files_db"], paths["raw_db"],
-                            cluster["cluster_start"],
-                        )
+            file_nodes = 0
+
+            # Primary source: one event per LLM-analyzed file. The workbench's
+            # left column is file-centric, so seeding from clusters (which are
+            # keyed on minute+event_type and only exist when the optional
+            # event-cluster LLM stage ran) left it permanently empty.
+            task = await self._cpp_backend.get_task(task_id)
+            if isinstance(task, dict) and task.get("id") == task_id:
+                nodes = await asyncio.to_thread(build_file_event_nodes, task)
+                for node in nodes:
+                    seed_marker = f"file_seed:{node['file_path']}"
+                    if seed_marker in seeded_markers:
+                        continue
+                    plans.append({
+                        "seed_marker": seed_marker,
+                        "title": node["title"],
+                        "summary": node["summary"],
+                        "evidence_keys": node["evidence_keys"],
+                    })
+                file_nodes = len(plans)
+
+            # Fallback: tasks whose files were never LLM-analyzed still get
+            # cluster events when that stage did run.
+            clusters = self._load_analyzed_clusters(paths["events_db"])
+            if not plans:
+                for cluster in clusters:
+                    cluster_key = make_cluster_key(
+                        cluster["time_window"], cluster["event_type"]
                     )
-                plans.append({
-                    "seed_marker": seed_marker,
-                    "title": title[:200],
-                    "summary": cluster.get("llm_description") or "",
-                    "evidence_keys": evidence_keys,
-                })
+                    seed_marker = f"cluster_seed:{cluster_key}"
+                    if seed_marker in seeded_markers:
+                        continue
+                    title = (
+                        cluster.get("llm_summary")
+                        or f"{cluster['event_type']} 活动聚类（{cluster['event_count']} 个事件）"
+                    )
+                    evidence_keys = [cluster_key]
+                    if cluster.get("cluster_start") is not None:
+                        evidence_keys.extend(
+                            key for key, _path in self._cluster_related_file_keys(
+                                paths["files_db"], paths["raw_db"],
+                                cluster["cluster_start"],
+                            )
+                        )
+                    plans.append({
+                        "seed_marker": seed_marker,
+                        "title": title[:200],
+                        "summary": cluster.get("llm_description") or "",
+                        "evidence_keys": evidence_keys,
+                    })
 
             if plans:
                 # S5: resolve + acquire every snapshot candidate OUTSIDE the
@@ -641,6 +666,7 @@ class InvestigationService:
                 "analysis_count": 0,
                 "report_evidence_count": len(report_items),
                 "seeded_clusters": len(clusters),
+                "seeded_files": file_nodes,
                 "new_events": len(plans),
             }
 
