@@ -18,6 +18,7 @@ Design notes:
 """
 
 import asyncio
+import glob
 import hashlib
 import json
 import logging
@@ -34,6 +35,7 @@ from typing import Any, Dict, List, Optional
 
 from ..config import get_data_root, get_project_root, get_settings
 from . import wechat_decrypt
+from . import qq_legacy
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +68,84 @@ _APPMSG_SUBTYPE_LABELS = {
     63: "视频号直播", 87: "群直播", 88: "视频号名片", 2000: "转账", 2001: "红包",
     2003: "红包封面",
 }
+
+
+def _harvest_key_material(db_path: str) -> Dict[str, str]:
+    """Pull uin / device id / wxid out of the acquired image around the db.
+
+    EnMicroMsg.db lives at ``com.tencent.mm/MicroMsg/<md5>/EnMicroMsg.db``;
+    the pre-7.x key material sits in siblings of that layout:
+    ``shared_prefs/{system_config_prefs,auth_info_key_prefs}.xml`` for the uin
+    and ``MicroMsg[/<md5>]/]CompatibleInfo.cfg`` (Java-serialized map, key
+    258) for the device id. Everything stays within the extraction tree.
+    """
+    harvested: Dict[str, str] = {}
+    try:
+        account_dir = os.path.dirname(os.path.abspath(db_path))  # MicroMsg/<md5>
+        mm_root = os.path.dirname(account_dir)                   # MicroMsg
+        com_mm = os.path.dirname(mm_root)                        # com.tencent.mm
+        prefs_dir = os.path.join(com_mm, "shared_prefs")
+        if not os.path.isdir(prefs_dir):
+            return harvested
+        uin_patterns = (
+            ('default_uin', os.path.join(prefs_dir, "system_config_prefs.xml")),
+            ('_auth_uin', os.path.join(prefs_dir, "auth_info_key_prefs.xml")),
+            ('default_uin', os.path.join(prefs_dir, "com.tencent.mm_preferences.xml")),
+        )
+        for name, path in uin_patterns:
+            value = _xml_int_value(path, name)
+            if value:
+                harvested["uin"] = value
+                break
+        cfg_candidates = [
+            os.path.join(mm_root, "CompatibleInfo.cfg"),
+            os.path.join(account_dir, "CompatibleInfo.cfg"),
+            os.path.join(com_mm, "CompatibleInfo.cfg"),
+        ]
+        cfg_candidates.extend(
+            p for p in glob.glob(os.path.join(mm_root, "*", "CompatibleInfo.cfg"))
+        )
+        for cfg_path in cfg_candidates:
+            strings = qq_legacy._java_cfg_strings(cfg_path)
+            for key in (258, 256):
+                value = strings.get(key, "")
+                if value and len(value) >= 10:
+                    harvested["imei"] = value
+                    break
+            if "imei" in harvested:
+                break
+        for prefs_name in ("com.tencent.mm_preferences.xml", "system_config_prefs.xml"):
+            path = os.path.join(prefs_dir, prefs_name)
+            wxid = _xml_string_value(path, "default_account") or ""
+            if wxid:
+                harvested["wxid"] = wxid
+                break
+    except OSError:
+        pass
+    return harvested
+
+
+def _xml_int_value(path: str, name: str) -> str:
+    """Read ``<int name="..." value="N"/>`` out of a SharedPreferences xml."""
+    try:
+        content = open(path, "r", encoding="utf-8", errors="replace").read()
+    except OSError:
+        return ""
+    match = re.search(
+        r'<int[^>]*name="%s"[^>]*value="(-?\d+)"' % re.escape(name), content
+    )
+    return match.group(1) if match else ""
+
+
+def _xml_string_value(path: str, name: str) -> str:
+    try:
+        content = open(path, "r", encoding="utf-8", errors="replace").read()
+    except OSError:
+        return ""
+    match = re.search(
+        r'<string[^>]*name="%s"[^>]*>([^<]+)</string>' % re.escape(name), content
+    )
+    return match.group(1).strip() if match else ""
 
 
 # =============================================================================
@@ -241,7 +321,18 @@ class WeChatImportService:
         try:
             pwd_bytes = password.encode() if password else b""
             if not pwd_bytes:
-                # derive candidates from key material if possible
+                # derive candidates from key material if possible; harvest
+                # uin / device id straight from the acquired image when the
+                # caller did not pass them (db_path inside the extraction).
+                if not key_material.get("uin"):
+                    harvested = _harvest_key_material(db_path)
+                    for field, value in harvested.items():
+                        key_material.setdefault(field, value)
+                    if harvested:
+                        meta["key_material"].update({
+                            k: v for k, v in harvested.items()
+                            if k in ("uin", "imei", "wxid")
+                        })
                 hit = wechat_decrypt.detect_scheme(src_copy, b"")
                 if hit is None:
                     candidates = []

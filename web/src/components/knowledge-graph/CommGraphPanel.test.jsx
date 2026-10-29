@@ -9,6 +9,18 @@ vi.mock('../../services/commGraphService', () => ({
     getCommEdgeDetail: vi.fn(),
 }));
 
+vi.mock('../../services/wechatForensicsService', () => ({
+    listWeChatImports: vi.fn(async () => ({ imports: [
+        { import_id: 'wxface01', name: '微信-案例A', status: 'ready' },
+    ] })),
+}));
+
+vi.mock('../../services/qqForensicsService', () => ({
+    listQQImports: vi.fn(async () => ({ imports: [
+        { import_id: 'qqface01', name: '老QQ-案例A', status: 'ready' },
+    ] })),
+}));
+
 // force-graph needs a real canvas; jsdom has none. The canvas is not what these
 // tests assert — the panel's data wiring and coverage disclosure are.
 vi.mock('react-force-graph-2d', () => ({
@@ -101,7 +113,7 @@ describe('CommGraphPanel', () => {
             records: [{ timestamp: 1772359200, kind: 'call', kind_label: '通话', dataset: 'task:T1', actor: '张三', peer: '本人', direction: 'received', summary: '通话 65 秒', record_ref: 'task:T1|call_logs|1' }],
             total: 1, truncated: 0, source: 'p_owner', target: 'p_zhang', relation: 'call', ref: 'edge:x',
         });
-        render(<CommGraphPanel taskId="T1" />);
+        render(<CommGraphPanel taskId="T1" wechatImports={[]} qqImports={[]} />);
         await waitFor(() => expect(getCommGraph).toHaveBeenCalled());
 
         await userEvent.click(await screen.findByRole('button', { name: 'edge-call' }));
@@ -122,6 +134,26 @@ describe('CommGraphPanel', () => {
             expect.objectContaining({
                 wechatImports: ['abcdef123456'],
                 qqImports: ['123456abcdef'],
+            }),
+        ));
+    });
+
+    it('auto-merges ready imports into the graph by default', async () => {
+        render(<CommGraphPanel taskId="T1" />);
+        await waitFor(() => expect(getCommGraph).toHaveBeenCalledWith(
+            'T1',
+            expect.objectContaining({
+                wechatImports: ['wxface01'],
+                qqImports: ['qqface01'],
+            }),
+        ));
+        // 数据集可以被摘除
+        await userEvent.click(screen.getByLabelText('微信 微信-案例A'));
+        await waitFor(() => expect(getCommGraph).toHaveBeenCalledWith(
+            'T1',
+            expect.objectContaining({
+                wechatImports: [],
+                qqImports: ['qqface01'],
             }),
         ));
     });

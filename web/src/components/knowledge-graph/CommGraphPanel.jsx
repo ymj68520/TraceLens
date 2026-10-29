@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
 import { RefreshCw } from 'lucide-react';
 import { getCommEdgeDetail, getCommGraph } from '../../services/commGraphService';
+import { listQQImports } from '../../services/qqForensicsService';
+import { listWeChatImports } from '../../services/wechatForensicsService';
 
 const RELATION_STYLE = {
     call: { color: '#38bdf8', label: '通话', dash: [] },
@@ -46,7 +48,7 @@ const fmtTime = (seconds) => {
  * 待确认候选列出，不会自动合并。节点/边的上限、被截断的数量与不可读的
  * 数据集都在覆盖度里显式展示。
  */
-export default function CommGraphPanel({ taskId, wechatImports = [], qqImports = [] }) {
+export default function CommGraphPanel({ taskId, wechatImports, qqImports }) {
     const [graph, setGraph] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -56,8 +58,48 @@ export default function CommGraphPanel({ taskId, wechatImports = [], qqImports =
     const [range, setRange] = useState({ start: '', end: '' });
     const container = useRef(null);
     const [width, setWidth] = useState(600);
+    // 可合并的微信/QQ 导入（自动发现）。显式 props 优先；否则默认全部并入，
+    // 用户可逐个摘除——关系图的价值就在把检材与 IM 账号汇成一张图。
+    const [discovered, setDiscovered] = useState({ wechat: [], qq: [] });
+    const [excluded, setExcluded] = useState(() => ({ wechat: new Set(), qq: new Set() }));
 
-    const importKey = useMemo(() => JSON.stringify([wechatImports, qqImports]), [wechatImports, qqImports]);
+    const autoDiscover = wechatImports === undefined && qqImports === undefined;
+
+    useEffect(() => {
+        if (!autoDiscover) return;
+        let cancelled = false;
+        const pick = (list) => (list || []).filter((item) => item.status === 'ready');
+        Promise.allSettled([
+            listWeChatImports(),
+            listQQImports(),
+        ]).then(([wx, qq]) => {
+            if (cancelled) return;
+            const wxList = pick(wx.status === 'fulfilled' ? wx.value?.imports : []);
+            const qqList = pick(qq.status === 'fulfilled' ? qq.value?.imports : []);
+            setDiscovered({
+                wechat: wxList.map((item) => ({ id: item.import_id, label: item.name || item.import_id })),
+                qq: qqList.map((item) => ({ id: item.import_id, label: item.name || item.import_id })),
+            });
+        }).catch(() => { /* 数据集枚举失败时按检材单图展示 */ });
+        return () => { cancelled = true; };
+    }, [autoDiscover]);
+
+    const effectiveImports = useMemo(() => {
+        if (!autoDiscover) {
+            return { wechat: wechatImports || [], qq: qqImports || [] };
+        }
+        return {
+            wechat: discovered.wechat
+                .filter((item) => !excluded.wechat.has(item.id)).map((item) => item.id),
+            qq: discovered.qq
+                .filter((item) => !excluded.qq.has(item.id)).map((item) => item.id),
+        };
+    }, [autoDiscover, wechatImports, qqImports, discovered, excluded]);
+
+    const importKey = useMemo(
+        () => JSON.stringify([effectiveImports.wechat, effectiveImports.qq]),
+        [effectiveImports],
+    );
 
     const load = useCallback(async () => {
         if (!taskId) return;
@@ -79,7 +121,9 @@ export default function CommGraphPanel({ taskId, wechatImports = [], qqImports =
         setError('');
         try {
             const result = await getCommGraph(taskId, {
-                wechatImports, qqImports, startTime, endTime,
+                wechatImports: effectiveImports.wechat,
+                qqImports: effectiveImports.qq,
+                startTime, endTime,
             });
             setGraph(result);
         } catch (err) {
@@ -128,14 +172,14 @@ export default function CommGraphPanel({ taskId, wechatImports = [], qqImports =
         try {
             const result = await getCommEdgeDetail(taskId,
                 { source: edge.source, target: edge.target, relation: edge.relation },
-                { wechatImports, qqImports });
+                { wechatImports: effectiveImports.wechat, qqImports: effectiveImports.qq });
             setDetail(result);
         } catch (err) {
             setDetail({ error: err?.data?.detail || err?.message || '回查失败', records: [] });
         } finally {
             setDetailLoading(false);
         }
-    }, [taskId, importKey, wechatImports, qqImports]);
+    }, [taskId, importKey, effectiveImports]);
 
     const coverage = graph?.coverage;
     const nodes = graph?.nodes?.length || 0;
@@ -161,6 +205,35 @@ export default function CommGraphPanel({ taskId, wechatImports = [], qqImports =
                     仅按号码 / wxid / QQ 号一致合并人物；同名不同号码列为待确认。
                 </p>
             </div>
+
+            {autoDiscover && (discovered.wechat.length > 0 || discovered.qq.length > 0) && (
+                <div className="flex flex-wrap items-center gap-2 text-xs" aria-label="已并入的数据集">
+                    <span className="text-slate-500">并入数据集：</span>
+                    <span className="rounded-full bg-slate-200 px-2 py-0.5 dark:bg-slate-700">手机检材</span>
+                    {discovered.wechat.map((item) => (
+                        <label key={`wx_${item.id}`} className="flex items-center gap-1">
+                            <input type="checkbox" checked={!excluded.wechat.has(item.id)}
+                                onChange={() => setExcluded((prev) => {
+                                    const next = new Set(prev.wechat);
+                                    if (next.has(item.id)) next.delete(item.id); else next.add(item.id);
+                                    return { ...prev, wechat: next };
+                                })} />
+                            微信 {item.label}
+                        </label>
+                    ))}
+                    {discovered.qq.map((item) => (
+                        <label key={`qq_${item.id}`} className="flex items-center gap-1">
+                            <input type="checkbox" checked={!excluded.qq.has(item.id)}
+                                onChange={() => setExcluded((prev) => {
+                                    const next = new Set(prev.qq);
+                                    if (next.has(item.id)) next.delete(item.id); else next.add(item.id);
+                                    return { ...prev, qq: next };
+                                })} />
+                            QQ {item.label}
+                        </label>
+                    ))}
+                </div>
+            )}
 
             {error && <p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-800">{error}</p>}
 

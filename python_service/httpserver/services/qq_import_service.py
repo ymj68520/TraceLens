@@ -39,6 +39,7 @@ from typing import Any, Dict, List, Optional
 
 from ..config import get_data_root, get_project_root, get_settings
 from . import qq_decrypt
+from . import qq_legacy
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,16 @@ QQ_OUTER_LABELS = {
     2: "文本",
     9: "卡片/红包",
     10: "灰条通知",
+}
+
+# legacy (mobile QQ 4.x mr_*) message type labels
+QQ_LEGACY_TYPE_LABELS = {
+    -1000: "文本",
+    -1035: "卡片/链接",
+    -1040: "图片",
+    -2000: "图片",
+    -3000: "文件",
+    -4000: "语音",
 }
 
 
@@ -154,6 +165,7 @@ def _meta_summary(meta: Dict[str, Any]) -> Dict[str, Any]:
         "error": meta.get("error"),
         "created_at": meta.get("created_at"),
         "backup_source": meta.get("backup_source", ""),
+        "format": meta.get("format", ""),
         "key_material": meta.get("key_material") or {},
         "decryption": meta.get("decryption") or {},
         "owner": meta.get("owner") or {},
@@ -283,6 +295,12 @@ class QQImportService:
         if not db_path or not os.path.isfile(db_path):
             raise FileNotFoundError(f"database file not found: {db_path or '(none)'}")
 
+        # Pre-NTQQ account databases (mobile QQ 4.x) are plaintext SQLite with
+        # device-id XOR obfuscation; they have no nt_db/ layout at all and are
+        # handled by the legacy extractor into the same normalized graph.db.
+        if qq_legacy.looks_legacy_qq4(db_path):
+            return self._create_legacy_import_sync(payload, db_path)
+
         nt_dir = os.path.dirname(db_path)
         key = (payload.get("password") or payload.get("key") or "").strip()
         key_material = payload.get("key_material") or {}
@@ -406,6 +424,250 @@ class QQImportService:
         meta["status"] = "ready"
         _write_meta(import_id, meta)
         return _meta_summary(meta)
+
+    # ------------------------------------------------------------------ #
+    # legacy mobile QQ 4.x (pre-NTQQ) imports
+    # ------------------------------------------------------------------ #
+
+    def _create_legacy_import_sync(
+        self, payload: Dict[str, Any], db_path: str
+    ) -> Dict[str, Any]:
+        """Import a pre-NTQQ account database into the same import layout.
+
+        The database is copied untouched into ``source/`` and normalized into
+        ``graph.db`` (the shared wechat_* shape); the read endpoints answer
+        from graph.db for these imports, so no native nt_msg.db is produced.
+        """
+        key_material = payload.get("key_material") or {}
+        import_id = uuid.uuid4().hex[:12]
+        wdir = _import_dir(import_id)
+        os.makedirs(os.path.join(wdir, "source"), exist_ok=True)
+
+        meta: Dict[str, Any] = {
+            "import_id": import_id,
+            "name": payload.get("name")
+            or os.path.basename(os.path.dirname(db_path)),
+            "status": "importing",
+            "created_at": int(time.time() * 1000),
+            "backup_source": payload.get("backup_source", ""),
+            "format": "legacy_qq4",
+            "key_material": {
+                "uin": qq_legacy.owner_uin(db_path),
+                "device_id": str(key_material.get("device_id") or "").strip(),
+            },
+            "decryption": {},
+            "owner": {},
+            "stats": {},
+        }
+
+        src_copy = os.path.join(wdir, "source", os.path.basename(db_path))
+        shutil.copy2(db_path, src_copy)
+
+        device_id, how = qq_legacy.resolve_device_id(
+            db_path, meta["key_material"]["device_id"]
+        )
+        if not device_id:
+            meta["status"] = "failed"
+            meta["error"] = (
+                "缺少设备ID: 老版QQ库使用设备ID异或混淆，"
+                "请在 key_material.device_id 提供设备ID"
+                "（同镜像微信 CompatibleInfo.cfg 的 258 键值）"
+            )
+            _write_meta(import_id, meta)
+            return _meta_summary(meta)
+
+        data = qq_legacy.extract_all(db_path, device_id)
+        meta["key_material"]["device_id"] = device_id
+        meta["decryption"] = {
+            "scheme": "XOR(device_id)",
+            "formula": f"plaintext = stored XOR device_id({device_id})",
+            "source": how,
+        }
+        owner_name = ""
+        owner = next(
+            (f for f in data["friends"] if f["uin"] == data["owner_uin"]), None
+        )
+        if owner:
+            owner_name = owner["nickname"]
+        meta["owner"] = {
+            "username": data["owner_uin"],
+            "nickname": owner_name or data["owner_uin"],
+            "uin": int(data["owner_uin"]) if data["owner_uin"].isdigit() else None,
+        }
+        meta["stats"] = {
+            "friends": len(data["friends"]),
+            "groups": len(data["troops"]),
+            "group_members": len(data["members"]),
+            "messages": len(data["messages"]),
+        }
+
+        try:
+            self._build_legacy_graph_db(
+                import_id, data, os.path.join(wdir, "graph.db"), meta
+            )
+        except sqlite3.Error as e:
+            meta["status"] = "failed"
+            meta["error"] = f"graph.db build failed: {e}"
+            _write_meta(import_id, meta)
+            return _meta_summary(meta)
+
+        meta["status"] = "ready"
+        _write_meta(import_id, meta)
+        return _meta_summary(meta)
+
+    def _build_legacy_graph_db(
+        self,
+        import_id: str,
+        data: Dict[str, Any],
+        graph_db: str,
+        meta: Dict[str, Any],
+    ) -> None:
+        """Normalize legacy extraction into the shared wechat_* graph.db.
+
+        Same temp-then-rename contract as the NT builder: a failed build must
+        never leave an empty graph.db behind.
+        """
+        owner_uin = data["owner_uin"]
+        tmp_db = f"{graph_db}.{uuid.uuid4().hex}.building"
+
+        nick: Dict[str, str] = {}
+        for friend in data["friends"]:
+            nick[friend["uin"]] = friend["remark"] or friend["nickname"]
+        alias: Dict[str, str] = {}
+        for member in data["members"]:
+            if member["alias"]:
+                alias.setdefault(member["member"], member["alias"])
+
+        dst = sqlite3.connect(tmp_db)
+        try:
+            dst.executescript(
+                """
+                CREATE TABLE wechat_messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sender TEXT, receiver TEXT, content TEXT,
+                    timestamp INTEGER, media_url TEXT, media_type TEXT,
+                    msg_type INTEGER DEFAULT 1, is_send INTEGER DEFAULT 0,
+                    chatroom_name TEXT, sender_nickname TEXT, talker TEXT
+                );
+                CREATE TABLE wechat_contacts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE, nickname TEXT, remark TEXT,
+                    avatar_path TEXT, type INTEGER, chatroom_flag INTEGER DEFAULT 0,
+                    mobile TEXT
+                );
+                CREATE TABLE wechat_chatrooms (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chatroom_name TEXT UNIQUE, owner TEXT, member_list TEXT,
+                    member_count INTEGER, create_time INTEGER
+                );
+                CREATE TABLE wechat_owner_info (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE, nickname TEXT, uin INTEGER, imei TEXT
+                );
+                """
+            )
+            dst.execute(
+                "INSERT OR REPLACE INTO wechat_owner_info "
+                "(username, nickname, uin, imei) VALUES (?,?,?,?)",
+                (
+                    owner_uin,
+                    (meta.get("owner") or {}).get("nickname", owner_uin),
+                    meta.get("owner", {}).get("uin"),
+                    data.get("device_id", ""),
+                ),
+            )
+
+            for uin in sorted(nick):
+                if uin == owner_uin:
+                    continue
+                dst.execute(
+                    "INSERT OR IGNORE INTO wechat_contacts "
+                    "(username, nickname, remark, avatar_path, type, chatroom_flag) "
+                    "VALUES (?,?,?,?,?,?)",
+                    (uin, nick[uin] or uin, "", "", 0, 0),
+                )
+            for member in data["members"]:
+                if member["member"] == owner_uin:
+                    continue
+                display = nick.get(member["member"]) or alias.get(
+                    member["member"], ""
+                )
+                dst.execute(
+                    "INSERT OR IGNORE INTO wechat_contacts "
+                    "(username, nickname, remark, avatar_path, type, chatroom_flag) "
+                    "VALUES (?,?,?,?,?,?)",
+                    (member["member"], display or member["member"], "", "", 0, 0),
+                )
+
+            membership: Dict[str, List[str]] = {}
+            for member in data["members"]:
+                membership.setdefault(member["troop"], []).append(member["member"])
+            for troop in data["troops"]:
+                members = membership.get(troop["uin"], [])
+                dst.execute(
+                    "INSERT OR IGNORE INTO wechat_chatrooms "
+                    "(chatroom_name, owner, member_list, member_count, create_time) "
+                    "VALUES (?,?,?,?,?)",
+                    (
+                        troop["uin"],
+                        "",
+                        ",".join(members),
+                        len(members),
+                        0,
+                    ),
+                )
+
+            for message in data["messages"]:
+                sender = message["sender"]
+                if message["chatroom"]:
+                    receiver = message["chatroom"]
+                    is_send = message["is_send"]
+                    if is_send:
+                        sender = owner_uin
+                    sender_name = (
+                        (meta.get("owner") or {}).get("nickname", "")
+                        if is_send
+                        else (
+                            alias.get(message["sender"])
+                            or nick.get(message["sender"], message["sender"])
+                        )
+                    )
+                else:
+                    if message["is_send"]:
+                        receiver, sender_name = message["peer"], ""
+                        sender = owner_uin
+                    else:
+                        receiver = message["sender"]
+                        sender_name = nick.get(receiver, receiver)
+                dst.execute(
+                    "INSERT INTO wechat_messages (sender, receiver, content, "
+                    "timestamp, media_url, media_type, msg_type, is_send, "
+                    "chatroom_name, sender_nickname, talker) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        sender,
+                        receiver,
+                        message["content"],
+                        message["timestamp"],
+                        None,
+                        None,
+                        message["msg_type"],
+                        message["is_send"],
+                        message["chatroom"] or None,
+                        sender_name,
+                        message["peer"] or receiver,
+                    ),
+                )
+            dst.commit()
+        except BaseException:
+            dst.close()
+            try:
+                os.remove(tmp_db)
+            except OSError:
+                pass
+            raise
+        dst.close()
+        os.replace(tmp_db, graph_db)
 
     # ------------------------------------------------------------------ #
     # import sub-steps
@@ -781,6 +1043,274 @@ class QQImportService:
         dst.close()
         os.replace(tmp_db, graph_db)
 
+    def _is_legacy(self, import_id: str) -> bool:
+        return (_read_meta(import_id).get("format") == "legacy_qq4")
+
+    def _legacy_graph_path(self, import_id: str) -> str:
+        path = os.path.join(_import_dir(import_id), "graph.db")
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"normalized graph.db not found for {import_id}")
+        return path
+
+    def _legacy_owner(self, meta: Dict[str, Any]) -> Dict[str, Any]:
+        owner = dict(meta.get("owner") or {})
+        owner.setdefault("username", "")
+        return owner
+
+    def _legacy_overview(self, import_id: str) -> Dict[str, Any]:
+        meta = _read_meta(import_id)
+        con = sqlite3.connect(self._legacy_graph_path(import_id))
+        try:
+            type_stats = [
+                {
+                    "base_type": r[0],
+                    "count": r[1],
+                    "label": QQ_LEGACY_TYPE_LABELS.get(r[0], QQ_CONTENT_LABELS.get(r[0], f"类型{r[0]}")),
+                }
+                for r in con.execute(
+                    "SELECT msg_type, COUNT(*) FROM wechat_messages "
+                    "GROUP BY msg_type ORDER BY COUNT(*) DESC"
+                )
+            ]
+            day_stats = [
+                {"date": r[0], "count": r[1]}
+                for r in con.execute(
+                    "SELECT date(timestamp / 1000, 'unixepoch', '+8 hours') d, "
+                    "COUNT(*) FROM wechat_messages GROUP BY d ORDER BY d"
+                )
+            ]
+            sessions = self._legacy_sessions(import_id)
+            return {
+                "meta": _meta_summary(meta),
+                "owner": self._legacy_owner(meta),
+                "key_material": _safe_key_material(meta),
+                "decryption": meta.get("decryption") or {},
+                "stats": meta.get("stats") or {},
+                "type_stats": type_stats,
+                "day_stats": day_stats,
+                "top_sessions": sorted(
+                    sessions, key=lambda s: -s["msg_count"]
+                )[:8],
+            }
+        finally:
+            con.close()
+
+    def _legacy_sessions(self, import_id: str) -> List[Dict[str, Any]]:
+        meta = _read_meta(import_id)
+        owner_uin = self._legacy_owner(meta).get("username", "")
+        con = sqlite3.connect(self._legacy_graph_path(import_id))
+        try:
+            names = {
+                str(r[0]): (r[1] or "")
+                for r in con.execute("SELECT username, nickname FROM wechat_contacts")
+            }
+            group_members = {
+                str(r[0]): (r[1] or 0)
+                for r in con.execute(
+                    "SELECT chatroom_name, member_count FROM wechat_chatrooms"
+                )
+            }
+            result: List[Dict[str, Any]] = []
+            for talker, count, first, last in con.execute(
+                "SELECT talker, COUNT(*), MIN(timestamp), MAX(timestamp) "
+                "FROM wechat_messages WHERE chatroom_name IS NULL "
+                "AND talker IS NOT NULL GROUP BY talker"
+            ):
+                preview = con.execute(
+                    "SELECT content FROM wechat_messages "
+                    "WHERE chatroom_name IS NULL AND talker = ? "
+                    "ORDER BY timestamp DESC LIMIT 1",
+                    (talker,),
+                ).fetchone()
+                result.append({
+                    "talker": talker,
+                    "kind": "private",
+                    "display_name": names.get(talker) or talker,
+                    "msg_count": count,
+                    "member_count": None,
+                    "first_ts": first,
+                    "last_ts": last,
+                    "last_preview": (preview[0] or "")[:60] if preview else "",
+                })
+            for talker, count, first, last in con.execute(
+                "SELECT chatroom_name, COUNT(*), MIN(timestamp), MAX(timestamp) "
+                "FROM wechat_messages WHERE chatroom_name IS NOT NULL "
+                "GROUP BY chatroom_name"
+            ):
+                preview = con.execute(
+                    "SELECT content FROM wechat_messages "
+                    "WHERE chatroom_name = ? ORDER BY timestamp DESC LIMIT 1",
+                    (talker,),
+                ).fetchone()
+                result.append({
+                    "talker": talker,
+                    "kind": "group",
+                    "display_name": f"群 {talker}",
+                    "msg_count": count,
+                    "member_count": group_members.get(talker),
+                    "first_ts": first,
+                    "last_ts": last,
+                    "last_preview": (preview[0] or "")[:60] if preview else "",
+                })
+            result.sort(key=lambda s: -(s.get("last_ts") or 0))
+            return result
+        finally:
+            con.close()
+
+    def _legacy_messages(
+        self,
+        import_id: str,
+        talker: Optional[str],
+        keyword: Optional[str],
+        msg_type: Optional[int],
+        start_ts: Optional[int],
+        end_ts: Optional[int],
+        limit: int,
+        offset: int,
+    ) -> Dict[str, Any]:
+        meta = _read_meta(import_id)
+        owner = self._legacy_owner(meta)
+        owner_uin = owner.get("username", "")
+        con = sqlite3.connect(self._legacy_graph_path(import_id))
+        try:
+            names = {
+                str(r[0]): (r[1] or "")
+                for r in con.execute("SELECT username, nickname FROM wechat_contacts")
+            }
+            where = ["1=1"]
+            params: List[Any] = []
+            if talker:
+                where.append(
+                    "(chatroom_name = ? OR (chatroom_name IS NULL AND "
+                    "(talker = ? OR sender = ?)))"
+                )
+                params.extend([talker, talker, talker])
+            if msg_type is not None:
+                where.append("msg_type = ?")
+                params.append(msg_type)
+            if start_ts is not None:
+                where.append("timestamp >= ?")
+                params.append(start_ts)
+            if end_ts is not None:
+                where.append("timestamp <= ?")
+                params.append(end_ts)
+            if keyword:
+                where.append("content LIKE ?")
+                params.append(f"%{keyword}%")
+            clause = " AND ".join(where)
+            total = con.execute(
+                f"SELECT COUNT(*) FROM wechat_messages WHERE {clause}", params
+            ).fetchone()[0]
+            rows = con.execute(
+                f"SELECT id, sender, receiver, content, timestamp, msg_type, "
+                f"is_send, chatroom_name, sender_nickname, talker "
+                f"FROM wechat_messages WHERE {clause} "
+                f"ORDER BY timestamp ASC LIMIT ? OFFSET ?",
+                [*params, limit, offset],
+            ).fetchall()
+            messages = []
+            for mid, sender, receiver, content, ts, mtype, is_send, chatroom, nick, talk in rows:
+                is_group = chatroom is not None
+                session = chatroom if is_group else (talk or receiver or sender)
+                session_name = (
+                    f"群 {session}"
+                    if is_group and session
+                    else (names.get(session, session) if session else session)
+                )
+                messages.append({
+                    "id": mid,
+                    "talker": talk or session,
+                    "session_name": session_name,
+                    "is_group": is_group,
+                    "sender": sender,
+                    "sender_name": nick or names.get(sender, sender),
+                    "is_owner_sender": bool(is_send) or sender == owner_uin,
+                    "direction": "send" if (is_send or sender == owner_uin) else "receive",
+                    "type_code": mtype,
+                    "base_type": mtype,
+                    "type_label": QQ_LEGACY_TYPE_LABELS.get(mtype, QQ_CONTENT_LABELS.get(mtype, f"类型{mtype}")),
+                    "timestamp_ms": ts,
+                    "time_display": _fmt_ts((ts or 0) // 1000),
+                    "content_display": content or "",
+                    "media": None,
+                    "chatroom_name": chatroom,
+                })
+            return {
+                "messages": messages,
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+            }
+        finally:
+            con.close()
+
+    def _legacy_contacts(self, import_id: str) -> List[Dict[str, Any]]:
+        con = sqlite3.connect(self._legacy_graph_path(import_id))
+        try:
+            counts = {
+                str(r[0]): r[1]
+                for r in con.execute(
+                    "SELECT sender, COUNT(*) FROM wechat_messages "
+                    "WHERE chatroom_name IS NULL GROUP BY sender"
+                )
+            }
+            result = [
+                {
+                    "username": str(r[0]),
+                    "nickname": r[1] or str(r[0]),
+                    "remark": r[2] or "",
+                    "msg_count": counts.get(str(r[0]), 0),
+                    "kind": "buddy",
+                }
+                for r in con.execute(
+                    "SELECT username, nickname, remark FROM wechat_contacts "
+                    "ORDER BY id"
+                )
+            ]
+            result.sort(key=lambda c: -c["msg_count"])
+            return result
+        finally:
+            con.close()
+
+    def _legacy_chatrooms(self, import_id: str) -> List[Dict[str, Any]]:
+        con = sqlite3.connect(self._legacy_graph_path(import_id))
+        try:
+            stats = {
+                str(r[0]): (r[1], r[2])
+                for r in con.execute(
+                    "SELECT chatroom_name, COUNT(*), MAX(timestamp) "
+                    "FROM wechat_messages WHERE chatroom_name IS NOT NULL "
+                    "GROUP BY chatroom_name"
+                )
+            }
+            senders: Dict[str, List[str]] = {}
+            for name, sender in con.execute(
+                "SELECT chatroom_name, sender FROM wechat_messages "
+                "WHERE chatroom_name IS NOT NULL LIMIT 5000"
+            ):
+                bucket = senders.setdefault(str(name), [])
+                if sender not in bucket and len(bucket) < 12:
+                    bucket.append(sender)
+            result = []
+            for name, owner, member_list, member_count, _ in con.execute(
+                "SELECT chatroom_name, owner, member_list, member_count, "
+                "create_time FROM wechat_chatrooms"
+            ):
+                gid = str(name)
+                count, last = stats.get(gid, (0, None))
+                result.append({
+                    "chatroom_name": gid,
+                    "display_name": f"群 {gid}",
+                    "member_count": member_count,
+                    "msg_count": count,
+                    "last_ts": last,
+                    "members_preview": senders.get(gid, []),
+                })
+            result.sort(key=lambda c: -c["msg_count"])
+            return result
+        finally:
+            con.close()
+
     # ------------------------------------------------------------------ #
     # connections & lookups
     # ------------------------------------------------------------------ #
@@ -857,6 +1387,8 @@ class QQImportService:
 
     def _overview_sync(self, import_id: str) -> Dict[str, Any]:
         meta = _read_meta(import_id)
+        if meta.get("format") == "legacy_qq4":
+            return self._legacy_overview(import_id)
         con = self._connect(import_id)
         try:
             type_stats = []
@@ -908,6 +1440,8 @@ class QQImportService:
     def _sessions_sync(
         self, import_id: str, con: Optional[sqlite3.Connection] = None
     ) -> List[Dict[str, Any]]:
+        if con is None and self._is_legacy(import_id):
+            return self._legacy_sessions(import_id)
         own_con = con is None
         if own_con:
             con = self._connect(import_id)
@@ -1033,6 +1567,10 @@ class QQImportService:
         meta = _read_meta(import_id)
         owner = meta.get("owner") or {}
         owner_uin = owner.get("username", "")
+        if meta.get("format") == "legacy_qq4":
+            return self._legacy_messages(
+                import_id, talker, keyword, msg_type, start_ts, end_ts, limit, offset
+            )
         con = self._connect(import_id)
         try:
             group_names = self._group_names(import_id)
@@ -1124,6 +1662,8 @@ class QQImportService:
         return await asyncio.to_thread(self._contacts_sync, import_id)
 
     def _contacts_sync(self, import_id: str) -> List[Dict[str, Any]]:
+        if self._is_legacy(import_id):
+            return self._legacy_contacts(import_id)
         uin_names = self._uid_display_names(import_id)
         con = self._connect(import_id)
         try:
@@ -1160,6 +1700,8 @@ class QQImportService:
         return await asyncio.to_thread(self._chatrooms_sync, import_id)
 
     def _chatrooms_sync(self, import_id: str) -> List[Dict[str, Any]]:
+        if self._is_legacy(import_id):
+            return self._legacy_chatrooms(import_id)
         con = self._connect(import_id)
         group_names = self._group_names(import_id)
         try:

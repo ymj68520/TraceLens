@@ -276,6 +276,13 @@ void AndroidAnalyzer::analyzeAndroidData() {
     stageKnownDatabase("sms", "data/data/com.android.providers.telephony/databases/mmssms.db", "parseSMS");
     stageKnownDatabase("contacts", "data/data/com.android.providers.contacts/databases/contacts2.db", "parseContacts");
     stageKnownDatabase("calls", "data/data/com.android.providers.contacts/databases/calllog.db", "parseCallLog");
+    // Older builds fold the call history into the contacts provider database
+    // itself (the `calls` table of contacts2.db) and ship no calllog.db. When
+    // the dedicated database produced nothing, parse the same table out of
+    // contacts2.db before declaring call logs absent.
+    if (androidDb_->artifactRowCount("call_logs") == 0) {
+        stageKnownDatabase("calls", "data/data/com.android.providers.contacts/databases/contacts2.db", "parseCallLog");
+    }
 
     // MIUI offline backups do not include the system provider databases under
     // data/data/com.android.providers.*; contacts, call logs and SMS ride along
