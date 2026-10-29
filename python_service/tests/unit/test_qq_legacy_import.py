@@ -12,7 +12,11 @@ import sqlite3
 import pytest
 
 from httpserver.services import qq_legacy
-from httpserver.services.qq_import_service import QQImportService
+from httpserver.services.qq_import_service import (
+    QQImportService,
+    _import_dir as _import_dir_of,
+    decode_message_body,
+)
 
 DEVICE_ID = "a00000420ce2b6"
 OWNER_UIN = "2950002133"
@@ -235,6 +239,20 @@ def test_legacy_import_creates_graph_db_and_reads(legacy_db):
     assert sent_private and sent_private[0]["content_display"] == "在的，什么事"
     received = [m for m in private if m["direction"] == "receive"]
     assert received and received[0]["sender"] == "10086"
+
+    # graph.db: received private messages must face the owner, not themselves
+    graph = os.path.join(_import_dir_of(summary["import_id"]), "graph.db")
+    con = sqlite3.connect(graph)
+    self_loops = con.execute(
+        "SELECT COUNT(*) FROM wechat_messages WHERE sender = receiver"
+    ).fetchone()[0]
+    assert self_loops == 0
+    inbound = con.execute(
+        "SELECT receiver FROM wechat_messages WHERE is_send = 0 "
+        "AND chatroom_name IS NULL LIMIT 1"
+    ).fetchone()
+    assert inbound and inbound[0] == OWNER_UIN
+    con.close()
 
     sessions = svc._sessions_sync(import_id)
     private_sessions = [s for s in sessions if s["kind"] == "private"]

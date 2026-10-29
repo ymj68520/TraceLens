@@ -132,6 +132,17 @@ private:
     std::shared_ptr<llm::ModelRouter> router_;
     bool initialized_ = false;
 
+    // Router accessors for the worker pool: each concurrent worker owns a
+    // dedicated service instance because a shared ModelRouter serialises
+    // chat() on its single httplib handle.
+    llm::ModelRouter& router() { return *router_; }
+    std::string modelName() const { return router_ ? router_->getConfig().model : ""; }
+
+    // Type-dispatching analyzer for one record (the switch formerly inlined
+    // in analyzeArtifactType), so worker-owned instances can analyze records
+    // through their own router.
+    AnalysisResult analyzeSingleArtifact(ArtifactType artifactType, const ArtifactRecord& artifact);
+
     // Internal helpers
     bool storeArtifactAnalysis(sqlite3* db,
                                const std::string& tableName,

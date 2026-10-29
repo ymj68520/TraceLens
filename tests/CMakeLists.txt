@@ -194,6 +194,47 @@ target_link_libraries(test_android_llm_gtest ${GTEST_LIBRARIES}
                       ${GMOCK_LIBRARIES} sqlite3 pthread ${ZLIB_LIBRARIES} duckx OpenSSL::Crypto)
 add_test(NAME AndroidLlmGTests COMMAND test_android_llm_gtest)
 
+# Android artifact LLM concurrency tests. Each scenario runs as its own
+# process (one ctest entry per filter) because the dotenv-backed config reads
+# the process environment and never overwrites a key it has already seen.
+add_executable(
+  test_android_llm_concurrency_gtest
+  UnitTest/test_android_llm_concurrency_gtest.cpp
+  ../src/network/HTTPServer/AndroidLLMAnalysisService.cpp
+  ../src/network/HTTPServer/AndroidLLMAnalysisService_ArtifactAnalyzers.cpp
+  ../src/network/HTTPServer/AndroidLLMAnalysisService_Database.cpp
+  ../src/integration/LLMIntegration/LLMClient.cpp
+  ../src/integration/LLMIntegration/ModelRouter.cpp
+  ../src/core/ConfigManager/ConfigManager.cpp
+  ../src/core/PathManager/PathManager.cpp
+  ../src/analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.cpp)
+
+target_include_directories(
+  test_android_llm_concurrency_gtest
+  PRIVATE ${CMAKE_SOURCE_DIR}/src
+          ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer
+          ${CMAKE_SOURCE_DIR}/src/integration/LLMIntegration
+          ${CMAKE_SOURCE_DIR}/libs/cpp-mcp/common
+          ${CMAKE_SOURCE_DIR}/libs/DuckX/thirdparty/pugixml)
+
+target_link_libraries(
+  test_android_llm_concurrency_gtest
+  ${GTEST_LIBRARIES} ${GMOCK_LIBRARIES} sqlite3 pthread ${ZLIB_LIBRARIES}
+  duckx OpenSSL::Crypto nlohmann_json::nlohmann_json cpp_dotenv)
+
+add_test(NAME AndroidLlmConcurrency.Knob
+         COMMAND test_android_llm_concurrency_gtest
+                 --gtest_filter=AndroidArtifactConcurrencyKnob.*)
+add_test(NAME AndroidLlmConcurrency.Parallel
+         COMMAND test_android_llm_concurrency_gtest
+                 --gtest_filter=AndroidArtifactConcurrencyRun.ParallelWorkersOverlapAndWriteBack)
+add_test(NAME AndroidLlmConcurrency.Serial
+         COMMAND test_android_llm_concurrency_gtest
+                 --gtest_filter=AndroidArtifactConcurrencyRun.SerialModeAnalyzesAllSequentially)
+add_test(NAME AndroidLlmConcurrency.Batch
+         COMMAND test_android_llm_concurrency_gtest
+                 --gtest_filter=AndroidArtifactConcurrencyRun.BatchChunksRunInParallel)
+
 add_executable(test_report_chinese_gtest UnitTest/test_report_chinese_gtest.cpp
   ../src/report/ReportGenerator.cpp)
 target_include_directories(test_report_chinese_gtest PRIVATE ${CMAKE_SOURCE_DIR}/src)

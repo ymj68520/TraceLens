@@ -637,8 +637,13 @@ class QQImportService:
                         receiver, sender_name = message["peer"], ""
                         sender = owner_uin
                     else:
-                        receiver = message["sender"]
-                        sender_name = nick.get(receiver, receiver)
+                        # Received private message: the counterpart is the
+                        # owner. Modeling receiver as the sender (the raw
+                        # peer convention) degenerates every inbound edge
+                        # into a self-loop, which the relationship graph
+                        # drops entirely.
+                        receiver = owner_uin
+                        sender_name = nick.get(message["sender"], message["sender"])
                 dst.execute(
                     "INSERT INTO wechat_messages (sender, receiver, content, "
                     "timestamp, media_url, media_type, msg_type, is_send, "
@@ -1340,6 +1345,8 @@ class QQImportService:
         nt_db = os.path.join(wdir, "nt_msg.db")
         if os.path.exists(path) and not self._graph_db_stale(path, nt_db):
             return path
+        if self._is_legacy(import_id):
+            return self._ensure_legacy_graph_db(import_id, path)
         decrypted = {
             base: os.path.join(wdir, base)
             for base in ("nt_msg.db", "profile_info.db", "group_info.db")
@@ -1352,6 +1359,32 @@ class QQImportService:
             logger.info("qq graph.db rebuilt for import %s", import_id)
         except Exception as e:
             logger.warning("qq graph.db rebuild failed for %s: %s", import_id, e)
+        return path
+
+    def _ensure_legacy_graph_db(self, import_id: str, path: str) -> str:
+        """Re-extract the legacy account db and rebuild its normalized graph.
+
+        A legacy import keeps only the obfuscated source database; the graph
+        is a projection that can always be regenerated from it plus the
+        recorded device id.
+        """
+        meta = _read_meta(import_id)
+        sources = os.listdir(os.path.join(_import_dir(import_id), "source"))
+        if not sources:
+            logger.warning("legacy qq graph.db rebuild: no source for %s", import_id)
+            return path
+        db_path = os.path.join(_import_dir(import_id), "source", sources[0])
+        device_id = (meta.get("key_material") or {}).get("device_id") or ""
+        device_id = device_id or (qq_legacy.resolve_device_id(db_path)[0] or "")
+        if not device_id:
+            return path
+        try:
+            data = qq_legacy.extract_all(db_path, device_id)
+            self._build_legacy_graph_db(import_id, data, path, meta)
+            logger.info("legacy qq graph.db rebuilt for import %s", import_id)
+        except Exception as e:
+            logger.warning("legacy qq graph.db rebuild failed for %s: %s",
+                           import_id, e)
         return path
 
     @staticmethod

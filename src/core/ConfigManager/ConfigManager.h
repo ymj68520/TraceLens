@@ -55,6 +55,9 @@ public:
     bool getLLMSkipBinary() const;
     // LLM_MAX_CONCURRENCY：文件分析与事件簇分析同时在飞的 LLM 调用数。1 = 串行。
     int getLLMMaxConcurrency() const;
+    // ANDROID_ARTIFACT_LLM_CONCURRENCY：安卓工件逐条分析同时在飞的 LLM 调用数。
+    // 每个并发 worker 持有独立 ModelRouter 与 sqlite 连接，1 = 串行。
+    int getAndroidArtifactLLMConcurrency() const;
     // MVP 裁剪（mvp-phase1-acceptance §4.8）：Windows/Linux 工件 LLM 分析管线
     // 逃生舱开关，默认关闭；置 true 恢复。Android 分析不受影响。
     bool getWinLinuxArtifactLlmEnabled() const;

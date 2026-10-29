@@ -144,6 +144,16 @@ int ConfigManager::getLLMMaxConcurrency() const {
     if (workers > 64) return 64;
     return workers;
 }
+// Android artifact analysis fans out per artifact record; like
+// getLLMMaxConcurrency this is a hard worker cap (0/负值按 1 处理), never an
+// unlimited opt-in. Default 32: the cloud text endpoint sustains it and the
+// 500-per-type system_logs backlog is otherwise a multi-hour tail.
+int ConfigManager::getAndroidArtifactLLMConcurrency() const {
+    int workers = getInt("ANDROID_ARTIFACT_LLM_CONCURRENCY", 32);
+    if (workers < 1) return 1;
+    if (workers > 64) return 64;
+    return workers;
+}
 // MVP trim (mvp-phase1-acceptance §4.8): the post-extraction Windows/Linux
 // artifact LLM pipeline is cut from the acceptance scope; structured
 // extraction is unaffected and Android keeps its own analysis.
