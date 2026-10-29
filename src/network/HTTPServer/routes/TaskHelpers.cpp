@@ -56,6 +56,17 @@ nlohmann::json TaskHelpers::task_to_json(const AnalysisTask& task) {
         }
     }
 
+    // Flatten the scenario map into the per-platform fields Python readers
+    // expect. Empty when that scenario did not run (or produced no DB).
+    const auto pick_db = [&scenario_databases](const char* key) -> std::string {
+        auto it = scenario_databases.find(key);
+        return it == scenario_databases.end() ? std::string() : it->get<std::string>();
+    };
+    const std::string output_windows_db = pick_db("windows");
+    const std::string output_linux_db = pick_db("linux");
+    const std::string output_android_db = pick_db("android");
+    const std::string output_oss_db = pick_db("server_cloud");
+
     // Scenarios as string array for API
     json scenarios_json = json::array();
     for (auto s : task.scenarios) {
@@ -86,6 +97,14 @@ nlohmann::json TaskHelpers::task_to_json(const AnalysisTask& task) {
         }},
         {"scenarios", scenarios_json},
         {"scenario_databases", scenario_databases},
+        // Flat per-scenario database paths. Python readers
+        // (case_analysis_endpoints/_windows.py, artifact/investigation code)
+        // look these up by name; without them every artifact reader resolved
+        // an empty path and silently produced no data.
+        {"output_windows_db", output_windows_db},
+        {"output_linux_db", output_linux_db},
+        {"output_android_db", output_android_db},
+        {"output_oss_db", output_oss_db},
         {"android_analyze", task.get_android_analyze()},  // Backward compat
         {"android_source", task.android_source},
         {"llm_analyze", task.llm_analyze},
