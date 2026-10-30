@@ -46,8 +46,10 @@ class TimelineSource:
     def identity(self):
         return {"kind": self.kind, "scope_id": self.scope_id,
                 "record_origin": ("derived_event_table" if self.kind == "events" else
-                                  "parsed_message_table" if self.kind == "wechat_task" else "decrypted_import_table"),
-                "timestamp_unit": "milliseconds" if self.kind in ("wechat_import", "wechat_task") else "seconds"}
+                                  "parsed_message_table" if self.kind == "wechat_task" else
+                                  "normalized_import_table" if self.kind == "qq_legacy" else "decrypted_import_table"),
+                "timestamp_unit": "milliseconds"
+                if self.kind in ("wechat_import", "wechat_task", "qq_legacy") else "seconds"}
 
     def revision(self):
         if not self.path.is_file() or self.path.is_symlink():
@@ -97,6 +99,8 @@ class TimelineSource:
             "wechat_import": ("message",),
             "wechat_task": ("wechat_messages",),
             "qq_import": ("c2c_msg_table", "group_msg_table"),
+            # 老版QQ（pre-NTQQ）导入没有 nt_msg.db，只有归一化 graph.db
+            "qq_legacy": ("wechat_messages",),
         }[self.kind]
         tables = [t for t in expected if t in available]
         if not tables:
@@ -114,7 +118,7 @@ class TimelineSource:
             required = {"msgId", "createTime", "isSend", "talker", "type"}
             fields = ("msgId", "msgSvrId", "createTime", "isSend", "talker", "type", "content")
             mapping = {"talker": "talker"}
-        elif self.kind == "wechat_task":
+        elif self.kind in ("wechat_task", "qq_legacy"):
             required = {"id", "timestamp", "is_send", "talker", "msg_type"}
             fields = ("id", "timestamp", "is_send", "talker", "msg_type", "content", "sender", "receiver")
             mapping = {"talker": "talker"}
@@ -163,7 +167,7 @@ class TimelineSource:
             content = str(r.get("content") or "")
             payload = {k: v for k, v in r.items() if k not in ("__rowid", "msgId", "msgSvrId")}
             system = isinstance(code, int) and code & 65535 in (10000, 10002)
-        elif self.kind == "wechat_task":
+        elif self.kind in ("wechat_task", "qq_legacy"):
             timestamp, flag, talker, code = r["timestamp"], r["is_send"], r["talker"], r["msg_type"]
             original = r["id"]
             stable_id = ["derived_row", original]
@@ -188,7 +192,7 @@ class TimelineSource:
         direction = "system" if system else "sent" if flag in sent else "received" if flag == 0 else "unknown"
         return {"record_ref": reference, "original_id": str(original), "timestamp_raw": timestamp,
                 "direction": direction, "talker": str(talker or ""), "event_type": str(code),
-                "event_source": "QQ" if self.kind == "qq_import" else "WECHAT",
+                "event_source": "QQ" if self.kind in ("qq_import", "qq_legacy") else "WECHAT",
                 "time_basis": "message", "content": content, "raw": r,
                 "dedup_key": [table, str(talker or ""), *stable_id], "payload": payload}
 
