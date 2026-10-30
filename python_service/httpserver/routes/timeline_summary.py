@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import json
 import re
 import sqlite3
 from pathlib import Path
@@ -48,8 +49,18 @@ def import_source(platform: str, import_id: str):
     root = get_data_root() / f"{platform}_imports" / import_id
     if root.is_symlink():
         raise SourceUnavailable("导入目录不可用")
-    return TimelineSource(root / ("EnMicroMsg.db" if platform == "wechat" else "nt_msg.db"),
-                          f"{platform}_import", import_id)
+    if platform == "qq":
+        # 老版QQ（pre-NTQQ）导入没有 nt_msg.db：时间规律直接读归一化
+        # graph.db 的 wechat_messages 投影（与微信任务库同形状）。
+        meta_path = root / "meta.json"
+        try:
+            legacy = json.loads(meta_path.read_text(encoding="utf-8")).get("format") == "legacy_qq4"
+        except (OSError, ValueError):
+            legacy = False
+        if legacy:
+            return TimelineSource(root / "graph.db", "qq_legacy", import_id)
+        return TimelineSource(root / "nt_msg.db", "qq_import", import_id)
+    return TimelineSource(root / "EnMicroMsg.db", f"{platform}_import", import_id)
 
 
 async def read_summary(request: Request, *, platform=None, import_id=None, records=False):
