@@ -166,6 +166,8 @@ def _meta_summary(meta: Dict[str, Any]) -> Dict[str, Any]:
         "created_at": meta.get("created_at"),
         "backup_source": meta.get("backup_source", ""),
         "format": meta.get("format", ""),
+        "message_count": (meta.get("stats") or {}).get("total_messages")
+        if meta.get("format") == "legacy_qq4" else meta.get("message_count"),
         "key_material": meta.get("key_material") or {},
         "decryption": meta.get("decryption") or {},
         "owner": meta.get("owner") or {},
@@ -499,6 +501,7 @@ class QQImportService:
             "groups": len(data["troops"]),
             "group_members": len(data["members"]),
             "messages": len(data["messages"]),
+                "total_messages": len(data["messages"]),
         }
 
         try:
@@ -1384,6 +1387,22 @@ class QQImportService:
             return path
         try:
             data = qq_legacy.extract_all(db_path, device_id)
+            # 重建按当前解码器重算机主昵称：解码策略升级后（不可靠文本置空、
+            # 回退 QQ 号）旧 meta 里的展示名必须跟着刷新，否则 owner 节点
+            # 继续显示乱码。
+            owner_row = next(
+                (f for f in data["friends"] if f["uin"] == data["owner_uin"]), None)
+            owner_nick = (owner_row or {}).get("nickname") or ""
+            meta.setdefault("owner", {})
+            meta["owner"]["nickname"] = owner_nick or data["owner_uin"]
+            meta["stats"] = {
+                "friends": len(data["friends"]),
+                "groups": len(data["troops"]),
+                "group_members": len(data["members"]),
+                "messages": len(data["messages"]),
+                "total_messages": len(data["messages"]),
+            }
+            _write_meta(import_id, meta)
             self._build_legacy_graph_db(import_id, data, path, meta)
             logger.info("legacy qq graph.db rebuilt for import %s", import_id)
         except Exception as e:
