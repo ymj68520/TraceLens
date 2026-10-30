@@ -53,6 +53,10 @@ api.interceptors.response.use(
 pythonApi.interceptors.request.use(
   (config) => {
     if (FIELD_AUTH_ENABLED && getFieldToken()) config.headers.Authorization = `Bearer ${getFieldToken()}`;
+    // 同源演示部署的证据判定新行内容 API 门禁（evidence-intake）：
+    // 令牌来自服务端 .env 经构建注入；现场部署由入口代理注入，与此互补。
+    const fieldToken = import.meta.env.VITE_FIELD_API_TOKEN;
+    if (fieldToken) config.headers['x-tracelens-field-token'] = fieldToken;
     return config;
   },
   (error) => Promise.reject(error)
