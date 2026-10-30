@@ -177,10 +177,13 @@ def xor_text(value: Any, key: bytes) -> bytes:
 
 
 def decode_xored(value: Any, key: bytes) -> str:
-    """XOR-decode a stored TEXT column into display text.
+    """XOR-decode a stored identity TEXT column (nickname/群名/备注).
 
-    UTF-8 wins when the plaintext round-trips; legacy builds stored GBK
-    bytes, so GBK (with replacement) is the fallback.
+    This QQ build writes TEXT as UTF-8 — every roaming message body decodes
+    as strict UTF-8 with the same key — so a name whose XOR round-trip is not
+    valid UTF-8 is not a decoding miss but unrecoverable obfuscated content
+    (this case ships scrambled nicknames). Returning "" lets callers fall
+    back to the QQ number instead of leaking mojibake into graph labels.
     """
     raw = xor_text(value, key)
     if not raw:
@@ -188,10 +191,7 @@ def decode_xored(value: Any, key: bytes) -> str:
     try:
         return raw.decode("utf-8")
     except UnicodeDecodeError:
-        pass
-    text = raw.decode("gbk", errors="replace")
-    # A truncated multibyte tail turns into U+FFFD; drop only trailing junk.
-    return text.rstrip("\ufffd")
+        return ""
 
 
 def validate_key(db_path: str, key: str) -> float:
