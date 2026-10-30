@@ -264,6 +264,11 @@ namespace forensics {
         if (!authorization.empty()) headers.emplace("Authorization", authorization);
         const std::string accept = req.get_header_value("Accept");
         if (!accept.empty()) headers.emplace("Accept", accept);
+        // 证据判定新行内容 API 的现场令牌：入口代理（或同源前端）注入的
+        // x-tracelens-field-token 必须透传，否则 /python 代理会把带凭据的
+        // 请求变成 401。
+        const std::string field_token = req.get_header_value("x-tracelens-field-token");
+        if (!field_token.empty()) headers.emplace("x-tracelens-field-token", field_token);
 
         httplib::Result result;
         if (req.method == "POST"_method) {

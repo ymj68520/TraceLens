@@ -44,6 +44,11 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     define: {
       'import.meta.env.VITE_FIELD_RELEASE_ID': JSON.stringify(env.VITE_FIELD_RELEASE_ID || 'UNFROZEN_WORKTREE'),
+      // 证据判定新行内容 API 的本地令牌：同源演示部署没有注入
+      // x-tracelens-field-token 的入口代理，由构建期把服务端 .env 的令牌
+      // 带进 bundle 供 pythonApi 自动附加。现场（FIELD_AUTH）部署不受影响
+      // ——那条路径走全局认证，不看这个头。
+      'import.meta.env.VITE_FIELD_API_TOKEN': JSON.stringify(env.TRACELENS_FIELD_API_TOKEN || ''),
       // Make root .env service ports available to browser code without
       // exposing the complete server environment to the client bundle.
       'import.meta.env.VITE_CPP_PORT': JSON.stringify(env.VITE_CPP_PORT || env.HTTP_SERVER_PORT || ''),
