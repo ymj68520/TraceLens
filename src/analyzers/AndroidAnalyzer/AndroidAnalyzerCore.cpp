@@ -8,6 +8,10 @@
 #include "HarmonyArtifactParsers.h"
 #include "ThunderForensicBackupExtractor.h"
 #include "ThunderForensicArtifactParsers.h"
+#include "IosBackupExtractor.h"
+#include "IosArtifactParsers.h"
+#include "VivoBackupExtractor.h"
+#include "VivoArtifactParsers.h"
 #include "MiuiBackupExtractor.h"
 #include "ArchiveFileExtractor.h"
 #include "FilesystemEvidenceSource.h"
@@ -142,6 +146,14 @@ bool AndroidAnalyzer::initialize() {
             fileExtractor_ = std::move(image);
             break;
         }
+        case AndroidSourceMode::IosBackup:
+            // Initialized with the other extractors below so a failure is
+            // reported through the shared sourceError_ path.
+            fileExtractor_ = std::make_unique<IosBackupExtractor>(imagePath_);
+            break;
+        case AndroidSourceMode::VivoBackup:
+            fileExtractor_ = std::make_unique<VivoBackupExtractor>(imagePath_, vivoIndexPath_);
+            break;
         case AndroidSourceMode::TSK:
         default:
             // Legacy path: requires a populated _raw.db produced by the TSK
@@ -160,6 +172,10 @@ bool AndroidAnalyzer::initialize() {
         ? harmony->loadIndex(dbManager_->getDb()) : fileExtractor_->initialize();
     if (!initialized) {
         if (harmony) sourceError_ = harmony->error();
+        if (auto* ios = dynamic_cast<IosBackupExtractor*>(fileExtractor_.get()))
+            sourceError_ = ios->error();
+        if (auto* vivo = dynamic_cast<VivoBackupExtractor*>(fileExtractor_.get()))
+            sourceError_ = vivo->error();
         if (auto* archive = dynamic_cast<ArchiveFileExtractor*>(fileExtractor_.get()))
             sourceError_ = archive->errorCode();
         if (auto* image = dynamic_cast<FilesystemEvidenceFileExtractor*>(fileExtractor_.get()))
@@ -184,6 +200,8 @@ bool AndroidAnalyzer::initialize() {
     } else {
         const bool sourceIsDirectory = sourceMode_ == AndroidSourceMode::LogicalDir ||
             sourceMode_ == AndroidSourceMode::HarmonyBackup ||
+            sourceMode_ == AndroidSourceMode::IosBackup ||
+            sourceMode_ == AndroidSourceMode::VivoBackup ||
             (sourceMode_ == AndroidSourceMode::ThunderForensicBackup && fs::is_directory(imagePath_));
         fs::path evidenceRoot;
         fs::path root;
@@ -226,6 +244,29 @@ void AndroidAnalyzer::analyzeAndroidData() {
             throw std::runtime_error("HARMONY_ANALYSIS_FAILED");
         analyzeWithLLM();
         AuditLog::instance().log("SYSTEM", "HARMONY_ANALYSIS_COMPLETE", imagePath_);
+        return;
+    }
+    // An iOS backup has no Android provider databases: its artifacts live in
+    // Apple's stores behind a Manifest.db index, so the data/data scan below
+    // would find nothing.
+    if (auto* vivo = dynamic_cast<VivoBackupExtractor*>(fileExtractor_.get())) {
+        const vivo_artifacts::VivoParseResult parsed =
+            vivo_artifacts::analyzeVivoBackup(*vivo, *androidDb_);
+        std::cout << "vivo analysis: apps=" << parsed.applications
+                  << " records=" << parsed.fileRecords
+                  << " categories=" << parsed.categories
+                  << " failures=" << parsed.failures << std::endl;
+        AuditLog::instance().log("SYSTEM", "VIVO_ANALYSIS_COMPLETE", imagePath_);
+        return;
+    }
+    if (auto* ios = dynamic_cast<IosBackupExtractor*>(fileExtractor_.get())) {
+        const ios_artifacts::IosParseResult parsed =
+            ios_artifacts::analyzeIosBackup(*ios, *androidDb_, secureTemporaryRoot_);
+        std::cout << "iOS analysis: sms=" << parsed.sms << " contacts=" << parsed.contacts
+                  << " notes=" << parsed.notes << " calendar=" << parsed.calendar
+                  << " apps=" << parsed.installedApps
+                  << " failures=" << parsed.failures << std::endl;
+        AuditLog::instance().log("SYSTEM", "IOS_ANALYSIS_COMPLETE", imagePath_);
         return;
     }
     // ThunderForensic extractions carry pre-parsed JSON artifacts rather

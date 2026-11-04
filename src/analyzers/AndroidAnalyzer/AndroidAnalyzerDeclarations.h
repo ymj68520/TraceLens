@@ -39,7 +39,9 @@ enum class AndroidSourceMode {
     Tar,
     SevenZip,
     AndroidBackup,
-    FilesystemImage
+    FilesystemImage,
+    IosBackup,
+    VivoBackup
 };
 
 /**
@@ -100,6 +102,8 @@ public:
      * Must be called before initialize().
      */
     void setSourceMode(AndroidSourceMode mode) { sourceMode_ = mode; }
+    /** vivo backup: path to the LevelDB index serialised by the Python bridge. */
+    void setVivoIndexPath(const std::string& path) { vivoIndexPath_ = path; }
     AndroidSourceMode getSourceMode() const { return sourceMode_; }
     const std::string& sourceError() const { return sourceError_; }
 
@@ -242,6 +246,7 @@ private:
     std::string backupPassword_;
     std::string secureTemporaryRoot_;
     std::string sourceError_;
+    std::string vivoIndexPath_;
     std::string sourceImageSha256_;
     std::optional<std::uint64_t> expectedPartitionOffset_;
     bool skipAI_ = false;

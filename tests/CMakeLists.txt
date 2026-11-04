@@ -56,6 +56,32 @@ target_include_directories(test_harmony_backup_gtest PRIVATE ${CMAKE_SOURCE_DIR}
 target_link_libraries(test_harmony_backup_gtest GTest::gtest_main sqlite3 ${LIBARCHIVE_LIBRARIES} OpenSSL::Crypto)
 add_test(NAME HarmonyBackupTests COMMAND test_harmony_backup_gtest)
 
+# iOS logical-backup extractor and artifact parsers
+add_executable(test_ios_backup_gtest
+  UnitTest/test_ios_backup_gtest.cpp
+  ../src/analyzers/IosAnalyzer/BinaryPlist.cpp
+  ../src/analyzers/IosAnalyzer/IosBackupExtractor.cpp
+  ../src/analyzers/IosAnalyzer/IosArtifactParsers.cpp
+  ../src/analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.cpp)
+target_include_directories(test_ios_backup_gtest PRIVATE ${CMAKE_SOURCE_DIR}/src
+  ${CMAKE_SOURCE_DIR}/src/core ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer
+  ${CMAKE_SOURCE_DIR}/src/analyzers/IosAnalyzer)
+target_link_libraries(test_ios_backup_gtest GTest::gtest_main sqlite3 OpenSSL::Crypto)
+add_test(NAME IosBackupTests COMMAND test_ios_backup_gtest)
+
+# vivo backup extractor and artifact parser
+add_executable(test_vivo_backup_gtest
+  UnitTest/test_vivo_backup_gtest.cpp
+  ../src/analyzers/VivoAnalyzer/VivoDeobfuscator.cpp
+  ../src/analyzers/VivoAnalyzer/VivoBackupExtractor.cpp
+  ../src/analyzers/VivoAnalyzer/VivoArtifactParsers.cpp
+  ../src/analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.cpp)
+target_include_directories(test_vivo_backup_gtest PRIVATE ${CMAKE_SOURCE_DIR}/src
+  ${CMAKE_SOURCE_DIR}/src/core ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer
+  ${CMAKE_SOURCE_DIR}/src/analyzers/VivoAnalyzer)
+target_link_libraries(test_vivo_backup_gtest GTest::gtest_main sqlite3 OpenSSL::Crypto)
+add_test(NAME VivoBackupTests COMMAND test_vivo_backup_gtest)
+
 # Linux Analyzer GTest Tests
 add_executable(
   test_linux_analyzer_gtest

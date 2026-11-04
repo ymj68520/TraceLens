@@ -29,6 +29,12 @@ const kindLabel = {
   android_raw_super: 'Android raw super',
   android_sparse_super: 'Android sparse super',
   android_full_disk_super: '完整镜像中的 super 分区',
+  ios_backup: 'iOS 备份（iTunes/Finder）',
+  ios_backup_encrypted: '已加密 iOS 备份',
+  ios_backup_unsupported: '不支持的 iOS 备份 变体',
+  vivo_backup: 'vivo/iQOO 备份',
+  vivo_backup_encrypted: '已加密 vivo 备份',
+  vivo_backup_unsupported: '不支持的 vivo 备份 变体',
 };
 const stateLabel = {
   queued: '排队中', running: '检查中', completed: '预检完成',
@@ -50,10 +56,16 @@ const adapterLabel = {
   'android-backup': '安卓备份 按需提取',
   'filesystem-image': 'Android EXT4/F2FS 镜像只读分析',
   'android-container': 'AOSP sparse / LP 规范化',
+  'ios-backup': 'iOS 备份按需提取（Manifest.db 索引）',
+  'vivo-backup': 'vivo 备份索引解析（LevelDB db/）',
 };
 const archiveWarningLabel = {
   archive_path_escape: '归档含越界路径', archive_symlink: '归档含符号链接',
   encrypted_entries: '归档含加密成员', extreme_compression_ratio: '压缩比异常',
+};
+const iosArtifactLabel = {
+  sms: '短信 / iMessage 数据库', contacts: '通讯录', call_logs: '通话记录',
+  safari: 'Safari 浏览历史', notes: '备忘录', calendar: '日历',
 };
 
 export default function EvidencePreflightPanel({ onCreateTask }) {
@@ -158,6 +170,55 @@ export default function EvidencePreflightPanel({ onCreateTask }) {
       <p>已检查文件：{Number(job.file_count || 0).toLocaleString()}；已读取：{Number(job.bytes_read || 0).toLocaleString()} 字节</p>
       {job.sha256 && <p className="break-all font-mono text-xs">源文件 SHA-256：{job.sha256}</p>}
       {job.tree_manifest_sha256 && <p className="break-all font-mono text-xs">目录文件清单摘要：{job.tree_manifest_sha256}（不是原介质哈希）</p>}
+      {job.detected?.ios_backup && <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs dark:border-sky-900 dark:bg-slate-900" data-testid="ios-backup-summary">
+        <p className="font-semibold text-sky-900 dark:text-sky-300">iOS 备份索引</p>
+        <p>设备：{job.detected.ios_backup.device?.product_type || '未识别'}
+          {job.detected.ios_backup.device?.product_version ? ` · iOS ${job.detected.ios_backup.device.product_version}` : ''}
+          {job.detected.ios_backup.device?.build_version ? ` (${job.detected.ios_backup.device.build_version})` : ''}</p>
+        {job.detected.ios_backup.device?.unique_device_id &&
+          <p className="break-all font-mono">UDID：{job.detected.ios_backup.device.unique_device_id}</p>}
+        {job.detected.ios_backup.device?.serial_number &&
+          <p className="font-mono">序列号：{job.detected.ios_backup.device.serial_number}</p>}
+        <p>备份版本：{job.detected.ios_backup.backup_version || '未知'} · 应用 {Number(job.detected.ios_backup.application_count || 0).toLocaleString()} 个 · 文件条目 {Number(job.detected.ios_backup.file_entries || 0).toLocaleString()}</p>
+        <p>可解析关键工件：{job.detected.ios_backup.artifacts_present || 0} 类</p>
+        {job.detected.ios_backup.artifacts && <ul className="mt-1 space-y-0.5">
+          {Object.entries(job.detected.ios_backup.artifacts).map(([name, detail]) =>
+            <li key={name} className={detail.present ? '' : 'text-slate-400'}>
+              {iosArtifactLabel[name] || name}：{detail.present ? `已找到 ${Number(detail.size || 0).toLocaleString()} 字节` : '来源中未找到'}
+              <span className="ml-1 break-all font-mono text-[10px] text-slate-400">{detail.source_path}</span>
+            </li>)}
+        </ul>}
+        {job.detected.ios_backup.manifest_sha256 &&
+          <p className="mt-1 break-all font-mono text-[10px]">Manifest.db SHA-256：{job.detected.ios_backup.manifest_sha256}</p>}
+        {job.detected.ios_backup.warnings?.length > 0 &&
+          <p className="mt-1 text-amber-700">备份警告：{job.detected.ios_backup.warnings.join('、')}</p>}
+        <p className="mt-1 text-slate-500">仅索引识别；短信、通讯录等记录需在任务分析阶段解析后才能引用。</p>
+      </div>}
+      {job.detected?.vivo_backup && <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 text-xs dark:border-violet-900 dark:bg-slate-900" data-testid="vivo-backup-summary">
+        <p className="font-semibold text-violet-900 dark:text-violet-300">vivo 备份索引</p>
+        <p>机型：{job.detected.vivo_backup.model || '未识别'} · 备份包版本 {job.detected.vivo_backup.backup_package_version ?? '未知'} · 索引版本 {job.detected.vivo_backup.index_version || '未知'}</p>
+        <p>索引条目：{Number(job.detected.vivo_backup.item_total || 0).toLocaleString()} · 应用 {Number(job.detected.vivo_backup.application_count || 0).toLocaleString()} 个 · 类别 {job.detected.vivo_backup.category_count || 0} 个</p>
+        {job.detected.vivo_backup.payload && <div className={`mt-1 rounded p-2 ${job.detected.vivo_backup.payload.obfuscated ? 'bg-amber-50 text-amber-800' : ''}`}>
+          <p>负载文件：索引 {Number(job.detected.vivo_backup.payload.files_indexed || 0).toLocaleString()} · 实存 {Number(job.detected.vivo_backup.payload.files_present || 0).toLocaleString()} · 缺失 {Number(job.detected.vivo_backup.payload.files_missing || 0).toLocaleString()}</p>
+          {job.detected.vivo_backup.payload.obfuscated
+            ? <p className="font-semibold">负载为 vivo XOR 混淆：分析阶段用内置密钥解码后解析（解码结果经文件头校验）</p>
+            : <p>负载未混淆，可进入内容解析</p>}
+        </div>}
+        {!!(job.detected.vivo_backup.file_categories || []).length && <div className="mt-1">
+          <p className="font-medium">文件型类别（有实体文件）</p>
+          <ul className="space-y-0.5">{(job.detected.vivo_backup.file_categories || []).map((row) =>
+            <li key={row.key}>{row.label || row.key}：索引 {Number(row.count || 0).toLocaleString()} 条 · 实际条目 {Number((job.detected.vivo_backup.item_counts || {})[row.key] || 0).toLocaleString()}</li>)}
+          </ul>
+        </div>}
+        {!!(job.detected.vivo_backup.record_categories || []).length && <div className="mt-1">
+          <p className="font-medium">结构化类别（本备份包内无实体文件）</p>
+          <ul className="space-y-0.5 text-slate-500">{(job.detected.vivo_backup.record_categories || []).map((row) =>
+            <li key={row.key}>{row.label || row.key}：手机侧计数 {Number(row.count || 0).toLocaleString()}（仅为手机统计，不是备份内记录数）</li>)}
+          </ul>
+        </div>}
+        {job.detected.vivo_backup.warnings?.length > 0 &&
+          <p className="mt-1 text-amber-700">备份警告：{job.detected.vivo_backup.warnings.join('、')}</p>}
+      </div>}
       {job.archive?.warnings?.length > 0 && <p className="text-amber-700">归档警告：{job.archive.warnings.map((code) => archiveWarningLabel[code] || code).join('、')}</p>}
       {job.archive?.reason && <p className="text-amber-700">归档清单未展开：{job.archive.reason}</p>}
       {job.archive && ['tar_container', 'seven_zip_container', 'android_backup'].includes(job.detected?.kind) &&

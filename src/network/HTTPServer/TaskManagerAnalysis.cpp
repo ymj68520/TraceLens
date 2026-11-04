@@ -33,6 +33,7 @@
 #include "../../analyzers/WindowsFilesAnalyzer/Common/WindowsAnalyzerDeclarations.h"
 #include "../../analyzers/LinuxFilesAnalyzer/Common/LinuxAnalyzerDeclarations.h"
 #include <fstream>
+#include <cstdio>
 #include <filesystem>
 #include <thread>
 #include <cstdlib>
@@ -723,6 +724,8 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 task.android_source == "seven-zip" ||
                 task.android_source == "android-backup" ||
                 task.android_source == "filesystem-image" ||
+                task.android_source == "ios-backup" ||
+                task.android_source == "vivo-backup" ||
                 task.android_source == "android-container") {
 
                 if (is_task_cancelled(task_id)) {
@@ -1977,6 +1980,49 @@ bool TaskManager::runLogicalAndroidAnalysis(const AnalysisTask& task,
             }
         }
 
+        // A vivo backup's index is a LevelDB store. C++ has no LevelDB reader
+        // here, so materialise it once through the fixed-argv Python bridge and
+        // hand the JSON to the extractor. This is a data transform, not an
+        // analysis step: it only re-serialises what preflight already read.
+        std::string vivoIndexPath;
+        if (task.android_source == "vivo-backup") {
+            // PathManager's projectRoot_ falls back to the executable directory,
+            // which is build/ for this binary. Walk up until scripts/ appears so
+            // the bridge resolves regardless of how the server was started.
+            fs::path repository = forensics::PathManager::instance().getProjectRoot();
+            for (int depth = 0; depth < 4 && !fs::is_directory(repository / "scripts"); ++depth) {
+                if (!repository.has_parent_path() || repository.parent_path() == repository) break;
+                repository = repository.parent_path();
+            }
+            const std::string projectRoot = repository.string();
+            const std::string script = projectRoot + "/scripts/vivo_backup_index_cli.py";
+            const std::string python = projectRoot + "/python_service/.venv/bin/python";
+            const std::string output = (pm.getTaskDir(task_id) / "vivo_index.json").string();
+            if (!fs::is_regular_file(script) || !fs::is_regular_file(python)) {
+                if (failureCode) *failureCode = "VIVO_INDEX_BRIDGE_MISSING";
+                return false;
+            }
+            const std::string command = "\"" + python + "\" \"" + script + "\" \"" +
+                imagePath + "\" \"" + output + "\" 2>&1";
+            FILE* pipe = popen(command.c_str(), "r");
+            if (!pipe) {
+                if (failureCode) *failureCode = "VIVO_INDEX_BRIDGE_FAILED";
+                return false;
+            }
+            std::string bridgeOutput;
+            char buffer[512];
+            while (fgets(buffer, sizeof(buffer), pipe) != nullptr) bridgeOutput += buffer;
+            const int status = pclose(pipe);
+            if (status != 0 || !fs::is_regular_file(output)) {
+                add_audit_log(task_id, "ERROR", "vivo index bridge: " + bridgeOutput);
+                if (failureCode) *failureCode = "VIVO_INDEX_BRIDGE_FAILED";
+                return false;
+            }
+            vivoIndexPath = output;
+            add_audit_log(task_id, "VIVO_INDEX", bridgeOutput);
+        }
+
+
         // dbManager is nullptr: logical sources have no _raw.db to read from.
         auto androidAnalyzer = std::make_unique<AndroidAnalyzer>(analysisImagePath, nullptr);
 
@@ -1988,9 +2034,12 @@ bool TaskManager::runLogicalAndroidAnalysis(const AnalysisTask& task,
             task.android_source == "tar"          ? AndroidSourceMode::Tar :
             task.android_source == "seven-zip"    ? AndroidSourceMode::SevenZip :
             task.android_source == "android-backup" ? AndroidSourceMode::AndroidBackup :
+            task.android_source == "ios-backup"   ? AndroidSourceMode::IosBackup :
+            task.android_source == "vivo-backup"  ? AndroidSourceMode::VivoBackup :
             (task.android_source == "filesystem-image" || containerImage) ? AndroidSourceMode::FilesystemImage :
                                                      AndroidSourceMode::LogicalDir;
         androidAnalyzer->setSourceMode(mode);
+        if (!vivoIndexPath.empty()) androidAnalyzer->setVivoIndexPath(vivoIndexPath);
         if (containerImage) {
             androidAnalyzer->setSourceImageSha256(analysisImageSha256);
             androidAnalyzer->setExpectedPartitionOffset(0);

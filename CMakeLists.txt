@@ -254,6 +254,8 @@ include_directories(
   ${CMAKE_SOURCE_DIR}/src/analyzers/MemoryAnalyzer/Parsers
   ${CMAKE_SOURCE_DIR}/src/analyzers/MemoryAnalyzer/Database
   ${CMAKE_SOURCE_DIR}/src/analyzers/AndroidAnalyzer
+  ${CMAKE_SOURCE_DIR}/src/analyzers/IosAnalyzer
+  ${CMAKE_SOURCE_DIR}/src/analyzers/VivoAnalyzer
   ${CMAKE_SOURCE_DIR}/src/analyzers/ImageAnalyzer
   ${CMAKE_SOURCE_DIR}/src/analyzers/VisionAnalysis
   ${CMAKE_SOURCE_DIR}/src/analyzers/PDFAnalyzer
@@ -403,6 +405,12 @@ set(LIB_SOURCES
     src/network/HTTPServer/routes/OSSStatsRoutes.cpp
     src/analyzers/OfficeAnalyzer/OfficeAnalyzer.cpp
     src/analyzers/AndroidAnalyzer/AndroidAnalyzerCore.cpp
+    src/analyzers/IosAnalyzer/BinaryPlist.cpp
+    src/analyzers/IosAnalyzer/IosBackupExtractor.cpp
+    src/analyzers/IosAnalyzer/IosArtifactParsers.cpp
+    src/analyzers/VivoAnalyzer/VivoDeobfuscator.cpp
+    src/analyzers/VivoAnalyzer/VivoBackupExtractor.cpp
+    src/analyzers/VivoAnalyzer/VivoArtifactParsers.cpp
     src/analyzers/AndroidAnalyzer/AndroidDataParsers.cpp
     src/analyzers/AndroidAnalyzer/AndroidSystemParsers.cpp
     src/analyzers/AndroidAnalyzer/AndroidAnalysisDatabase.cpp

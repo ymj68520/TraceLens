@@ -79,6 +79,10 @@ bool optionRequiresNonOptionValue(const std::string& option) {
 bool isValidAndroidSource(const std::string& source) {
     static const std::unordered_set<std::string> validSources{
         "tsk", "dir", "zip", "miui-backup", "harmony-backup", "thunder-backup", "oppo-backup", "tar", "seven-zip", "android-backup", "filesystem-image",
+        // iOS iTunes/Finder logical backup (Manifest.plist + Manifest.db).
+        "ios-backup",
+        // vivo/iQOO PC-assistant backup (.backup + LevelDB db/ index).
+        "vivo-backup",
         // Extraction-stage artifact: a unified mobile evidence package
         // (.mep.db). The analysis stage only reads this format.
         "mobile-evidence",
@@ -215,12 +219,12 @@ CommandLineArgs CommandLineParser::parse(int argc, char* argv[]) {
             const std::string source = argv[++i];
             if (!isValidAndroidSource(source)) {
                 args.parse_error = "Invalid --android-source '" + source +
-                    "' (expected tsk, dir, zip, miui-backup, harmony-backup, thunder-backup, oppo-backup, tar, seven-zip, android-backup, filesystem-image, or mobile-evidence)";
+                    "' (expected tsk, dir, zip, miui-backup, harmony-backup, thunder-backup, oppo-backup, tar, seven-zip, android-backup, filesystem-image, ios-backup, vivo-backup, or mobile-evidence)";
                 return args;
             }
             args.android_source = source;
             if (source == "harmony-backup" || source == "mobile-evidence" ||
-                source == "meiya") {
+                source == "meiya" || source == "ios-backup" || source == "vivo-backup") {
                 args.android_analyze = true;
             }
         } else if (arg == "--mobile-extract") {

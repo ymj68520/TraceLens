@@ -49,6 +49,8 @@ const DATA_SOURCES = [
   { value: 'android-backup', label: '安卓备份', desc: '.ab（需完整预检）' },
   { value: 'filesystem-image', label: 'Android userdata 镜像', desc: 'EXT4/F2FS RAW/E01（需完整预检）' },
   { value: 'android-container', label: 'Android sparse / super', desc: '需完整预检及规范化计划' },
+  { value: 'ios-backup', label: 'iOS 备份', desc: 'iTunes/Finder 逻辑备份目录（Manifest.plist + Manifest.db）；加密备份需先解密' },
+  { value: 'vivo-backup', label: 'vivo/iQOO 备份', desc: 'vivo 互传/手机助手备份目录（.backup + db/ LevelDB 索引）；内置 XOR 密钥可解出负载' },
 ];
 
 const INITIAL_FORM = {

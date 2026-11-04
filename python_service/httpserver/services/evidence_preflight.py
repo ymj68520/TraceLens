@@ -23,6 +23,8 @@ from pathlib import Path, PurePosixPath
 
 from . import android_archive_preflight, android_image_preflight, android_container_pipeline
 from . import aliyun_image
+from . import ios_backup_preflight
+from . import vivo_backup_preflight
 from .android_sparse_image import validate_sparse
 
 from ..config import get_data_root, get_project_root
@@ -253,6 +255,60 @@ def _probe(path: Path) -> dict:
         meiya = _probe_meiya_case(path)
         if meiya is not None:
             return meiya
+        vivo = vivo_backup_preflight.inspect(path)
+        if vivo.get("kind") != "unknown_directory":
+            # A vivo backup's LevelDB index is authoritative for what is in
+            # the package; report its verdict and never imply the obfuscated
+            # payload bytes were parsed.
+            return {
+                "kind": vivo["kind"],
+                "adapter": "vivo-backup",
+                "confidence": "high" if vivo.get("index_available") else "medium",
+                "reason": vivo.get("reason") or "vivo backup header and LevelDB index recognized",
+                "encryption_status": vivo.get("encryption_status", "unknown"),
+                "vivo_backup": {
+                    "backup_root": vivo.get("backup_root"),
+                    "model": vivo.get("model"),
+                    "backup_package_version": vivo.get("backup_package_version"),
+                    "backup_time_ms": vivo.get("backup_time_ms"),
+                    "backup_success": vivo.get("backup_success"),
+                    "index_version": vivo.get("index_version"),
+                    "device_properties": vivo.get("device_properties"),
+                    "category_count": vivo.get("category_count"),
+                    "categories": vivo.get("categories"),
+                    "record_categories": vivo.get("record_categories"),
+                    "file_categories": vivo.get("file_categories"),
+                    "payload": vivo.get("payload"),
+                    "application_count": vivo.get("application_count"),
+                    "item_total": vivo.get("item_total"),
+                    "item_counts": vivo.get("item_counts"),
+                    "hashed_entries": vivo.get("hashed_entries"),
+                    "warnings": vivo.get("warnings", []),
+                },
+            }
+        ios = ios_backup_preflight.inspect(path)
+        if ios.get("kind") != "unknown_directory":
+            # iOS backups are hash-sharded directories: the Manifest.db index
+            # is authoritative, so report its verdict rather than guessing
+            # from a handful of member names.
+            return {
+                "kind": ios["kind"],
+                "adapter": "ios-backup",
+                "confidence": "high" if ios.get("ready") else "medium",
+                "reason": ios.get("reason") or "Manifest.plist + Manifest.db recognized",
+                "encryption_status": ios.get("encryption_status", "unknown"),
+                "ios_backup": {
+                    "backup_root": ios.get("backup_root"),
+                    "backup_version": ios.get("backup_version"),
+                    "device": ios.get("device"),
+                    "application_count": ios.get("application_count"),
+                    "file_entries": ios.get("file_entries"),
+                    "artifacts_present": ios.get("artifacts_present"),
+                    "artifacts": ios.get("artifacts"),
+                    "manifest_sha256": ios.get("manifest_sha256"),
+                    "warnings": ios.get("warnings", []),
+                },
+            }
         header = path / ".info.json"
         if header.is_file() and not header.is_symlink() and header.stat().st_size <= 8 * 1024 * 1024 and (path / "files").is_dir():
             try:

@@ -166,7 +166,7 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
         {
             const std::string source_kind = body.value("android_source", "tsk");
             static const std::set<std::string> supportedSources{
-                "tsk", "dir", "zip", "miui-backup", "harmony-backup", "thunder-backup", "oppo-backup", "meiya", "mobile-evidence", "tar", "seven-zip", "android-backup", "filesystem-image", "android-container", "aliyun-image"};
+                "tsk", "dir", "zip", "miui-backup", "harmony-backup", "thunder-backup", "oppo-backup", "meiya", "mobile-evidence", "tar", "seven-zip", "android-backup", "filesystem-image", "android-container", "aliyun-image", "ios-backup", "vivo-backup"};
             if (!supportedSources.count(source_kind)) {
                 res.code = 400;
                 res.set_header("Content-Type", "application/json");
@@ -177,7 +177,7 @@ crow::response TaskCRUDRoutes::handle_create_task(const crow::request& req) {
             // thunder-backup (and its legacy oppo-backup alias) accepts either
             // the ThunderForensic tar or the project directory that contains
             // it; the analyzer re-validates the layout.
-            const bool wants_directory = (source_kind == "dir" || source_kind == "miui-backup" || source_kind == "harmony-backup");
+            const bool wants_directory = (source_kind == "dir" || source_kind == "miui-backup" || source_kind == "harmony-backup" || source_kind == "ios-backup" || source_kind == "vivo-backup");
             const bool accepts_either = source_kind == "thunder-backup" ||
                 source_kind == "oppo-backup" || source_kind == "meiya";
             std::error_code ec;
