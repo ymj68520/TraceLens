@@ -1,4 +1,4 @@
-import { useContext, useState, useCallback, useRef } from 'react';
+import { useContext, useState, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, XCircle, Info, AlertTriangle, X } from 'lucide-react';
 // context 单一来源：所有入口都从 toastContextBase.js 共享同一个实例，
@@ -28,12 +28,23 @@ export function ToastProvider({ children }) {
         return id;
     }, [removeToast]);
 
-    const toast = {
-        success: (msg, dur) => addToast('success', msg, dur),
-        error: (msg, dur) => addToast('error', msg, dur ?? 8000),
-        info: (msg, dur) => addToast('info', msg, dur),
-        warning: (msg, dur) => addToast('warning', msg, dur ?? 6000),
-    };
+    const toast = useMemo(() => {
+        const dispatch = (type, msg, dur) => addToast(type, msg, dur);
+        return {
+            success: (msg, dur) => addToast('success', msg, dur),
+            error: (msg, dur) => addToast('error', msg, dur ?? 8000),
+            info: (msg, dur) => addToast('info', msg, dur),
+            warning: (msg, dur) => addToast('warning', msg, dur ?? 6000),
+            // Several panels call the older `show(message, type)` shape. Keep it
+            // as a thin alias so those toasts actually surface instead of
+            // throwing "show is not a function".
+            show: (msg, type = 'info', dur) => dispatch(
+                ['success', 'error', 'info', 'warning'].includes(type) ? type : 'info',
+                msg,
+                dur,
+            ),
+        };
+    }, [addToast]);
 
     const iconMap = {
         success: <CheckCircle size={18} className="text-emerald-400" />,

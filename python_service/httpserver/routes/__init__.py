@@ -24,6 +24,7 @@ _ROUTE_MODULES = frozenset(
         "multi_analysis",
         "dll",
         "qq_forensics",
+        "whatsapp_forensics",
     }
 )
 

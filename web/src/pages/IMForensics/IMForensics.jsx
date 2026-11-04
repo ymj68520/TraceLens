@@ -24,6 +24,13 @@ import {
   QQImportModal, QQOverviewTab, QQSessionsTab,
   QQMessagesTab, QQContactsTab, QQChatroomsTab,
 } from './QQPanels';
+import {
+  listWhatsAppImports, deleteWhatsAppImport, getWhatsAppForensicsOverview,
+} from '../../services/whatsappForensicsService';
+import {
+  WhatsAppImportModal, WhatsAppOverviewTab, WhatsAppSessionsTab,
+  WhatsAppMessagesTab, WhatsAppContactsTab, WhatsAppChatroomsTab,
+} from './WhatsAppPanels';
 import GraphTab from './GraphTab';
 import TimelineSummaryPanel from '../../components/timeline/TimelineSummaryPanel';
 
@@ -76,6 +83,23 @@ const PLATFORMS = {
     },
     emptyHint: '点击「导入数据库」，填写 nt_msg.db 路径（支持 SQLCipher 加密原件，自动离线推导密钥并解密）以及 nt_uid / QQ 号，即可开始 QQ 取证分析。',
   },
+  whatsapp: {
+    key: 'whatsapp',
+    label: 'WhatsApp',
+    taskPrefix: 'wa_',
+    listImports: listWhatsAppImports,
+    deleteImport: deleteWhatsAppImport,
+    getOverview: getWhatsAppForensicsOverview,
+    panels: {
+      ImportModal: WhatsAppImportModal,
+      OverviewTab: WhatsAppOverviewTab,
+      SessionsTab: WhatsAppSessionsTab,
+      MessagesTab: WhatsAppMessagesTab,
+      ContactsTab: WhatsAppContactsTab,
+      ChatroomsTab: WhatsAppChatroomsTab,
+    },
+    emptyHint: '点击「导入数据库」，填写 iOS 备份中 ChatStorage.sqlite 的路径（或其所在目录），同目录的 ContactsV2.sqlite / CallHistory.sqlite 会自动一并导入，即可开始 WhatsApp 取证分析。',
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -83,7 +107,8 @@ const PLATFORMS = {
 export default function IMForensics() {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const platformKey = searchParams.get('platform') === 'qq' ? 'qq' : 'wechat';
+  const requestedPlatform = searchParams.get('platform') || 'wechat';
+  const platformKey = PLATFORMS[requestedPlatform] ? requestedPlatform : 'wechat';
   const platform = PLATFORMS[platformKey];
   const rawTab = searchParams.get('tab');
   const activeTab = TAB_IDS.has(rawTab) ? rawTab : 'overview';
