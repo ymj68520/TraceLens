@@ -1,0 +1,16 @@
+{
+  "BackupFileHeaderInfo": {
+    "deviceModel": "HUAWEI Mate 60 Pro",
+    "backupTime": 1709340000000
+  },
+  "BackupFileVersionInfo": {
+    "versionName": "HarmonyOS 4.0.0"
+  },
+  "BackupFileModuleInfo": [
+    {
+      "moduleName": "com.huawei.hmos.calendardata",
+      "appName": "Calendar",
+      "appIndex": 0
+    }
+  ]
+}

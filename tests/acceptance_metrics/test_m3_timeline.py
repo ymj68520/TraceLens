@@ -18,7 +18,6 @@ import pytest
 from conftest import CPP_BASE, PY_BASE, fixture_path, run_analysis_task
 
 
-@pytest.mark.llm
 _TEXT_EXT = (".txt", ".html", ".csv", ".md")
 _IMAGE_EXT = (".png", ".jpg", ".jpeg")
 
@@ -35,6 +34,7 @@ def _evidence_kinds(items: list) -> set[str]:
     return kinds
 
 
+@pytest.mark.llm
 def test_m3_1_multimodal_event_aggregation(api, llm_ready):
     """多模态同一事件聚合：同一分钟内的文本与图像必须挂在同一个事件上。
 

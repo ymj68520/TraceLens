@@ -1,0 +1,1 @@
+[{"fileName": "part.0.tar", "isBigFile": false, "information": {"path": "/data/storage/el2/base/.backup/part.0.tar", "stat": {"st_size": 10240}}}, {"fileName": "wal_blob", "isBigFile": true, "information": {"path": "/data/storage/el2/database/entry/rdb/calendardata.db-wal", "stat": {"st_size": 12392}}}]

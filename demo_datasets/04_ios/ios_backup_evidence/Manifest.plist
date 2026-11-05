@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>IsEncrypted</key>
+  <false/>
+  <key>Version</key>
+  <string>10.0</string>
+  <key>Lockdown</key>
+  <dict>
+    <key>ProductType</key>
+    <string>iPhone14,2</string>
+    <key>ProductVersion</key>
+    <string>16.5</string>
+    <key>BuildVersion</key>
+    <string>20F66</string>
+    <key>UniqueDeviceID</key>
+    <string>d5747fae8f4ddba485f17710026bd6bff268acb0</string>
+    <key>SerialNumber</key>
+    <string>F2LDM0000001</string>
+    <key>DeviceName</key>
+    <string>张伟的 iPhone</string>
+  </dict>
+</dict>
+</plist>

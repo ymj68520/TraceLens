@@ -131,7 +131,6 @@ def test_m4_1a_report_structure(api, llm_ready):
 
 
 @pytest.mark.llm
-@pytest.mark.llm
 def test_m4_1b_role_consistency(api, llm_ready):
     """角色基本一致：报告具名角色 ⊆ 夹具植入角色集，且身份不互换。
 

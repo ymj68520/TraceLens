@@ -1,0 +1,4 @@
+# 大型二进制镜像文件可通过 python3 tests/acceptance_metrics/prepare_fixtures.py 随时重新生成
+*.img
+*.raw*
+*.tar.gz

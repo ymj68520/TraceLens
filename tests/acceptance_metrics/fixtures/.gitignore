@@ -4,7 +4,12 @@
 *.dd
 *.mp4
 *.png
+*.tar.gz
 _text_sample.html
 _md_in/
 _md_out/
 _markitdown_out/
+ios_backup_evidence/
+miui_backup_evidence/
+harmony_backup_evidence/
+vivo_backup_evidence/

@@ -34,8 +34,13 @@
 | 1(1) 磁盘镜像 RAW | `test_m1_1a_raw_image_ingest` | 任务 COMPLETED 且 raw 库提取全部植入文件 | `raw_basic.img` |
 | 1(1) 磁盘镜像 DD | `test_m1_1b_dd_image_ingest` | 同上（.dd 逐字节副本） | `dd_basic.dd` |
 | 1(1) 磁盘镜像 E01 | `test_m1_1c_e01_image_ingest` | 任务 COMPLETED 且提取 >0 文件 | `TRACELENS_E01_IMAGE` |
-| 1(1) Android 移动设备 | `test_m1_1d_android_source` | 任务 COMPLETED 且 android.db 建表 | `android_test_gen.img`（prepare_fixtures 调 scripts/create_android_image.sh，需 sqlite3 CLI） |
-| 1(1) 服务器日志 | `test_m1_1e_server_logs` + `_events` | oss.db（SERVER_CLOUD 场景的解析工件库）解析出日志/账户工件；events 库 >0 | `logs_server.img` |
+| 1(1) 移动设备 iOS | `test_m1_1d_ios_source` | 任务 COMPLETED，解析 Manifest.plist/db 并入库短信/通讯录 | `ios_backup_evidence`（iTunes/Finder 逻辑备份） |
+| 1(1) 移动设备 Android(小米) | `test_m1_1d_android_miui_source` | 任务 COMPLETED，解析 descript.xml 及 Contacts/Mms 备份入库 | `miui_backup_evidence`（小米 MIUI 备份） |
+| 1(1) 移动设备 Android(华为鸿蒙) | `test_m1_1d_android_harmony_source` | 任务 COMPLETED，解析 .info.json 及 calendardata tarx/wal 备份入库 | `harmony_backup_evidence`（华为鸿蒙备份） |
+| 1(1) 移动设备 Android(vivo/雷电) | `test_m1_1d_android_vivo_source` | 任务 COMPLETED，解析 .backup 及 index.json 索引并提取工件 | `vivo_backup_evidence`（vivo/雷电快取备份） |
+| 1(1) 服务器日志 Linux | `test_m1_1e_server_logs` + `_events` | oss.db（SERVER_CLOUD 场景）解析出日志/账户工件；events 库 >0 | `logs_server.img` |
+| 1(1) 服务器日志/云 阿里云OSS | `test_m1_1e_aliyun_oss_source` | 完成安全预检，解包并分析 Alibaba Cloud Linux 与 nginx/oss 访问日志 | `file_m-demo_aliyun_system.raw.tar.gz` |
+| 1(1) 操作系统 Windows | `test_m1_1f_windows_source` | 任务 COMPLETED，提取并分析 Prefetch/EVTX/LNK/注册表 Hive | `windows_evidence.img` |
 | 1(2) 过滤吞吐 ≥10MB/s | `test_m1_2a_throughput_ge_10mb_s` | 镜像字节 / (审计 CREATED→RESULT_SET 窗口) ≥10 | `raw_basic.img` |
 | 1(2) 低价值剔除率 ≥70% | `test_m1_2b_low_value_reject_ge_70pct` | 1 - scene_priority>0 文件数/全量 ≥70% | 同上 |
 | 1(2) 待分析压缩至 12-15% | `test_m1_2c_pending_compress_12_to_15pct` | scene_priority>0 字节 / 全量字节 ∈ [12%,15%] | 同上 |

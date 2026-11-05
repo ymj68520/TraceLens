@@ -6,5 +6,12 @@
   "logs_server.img": "/var/log 与 /etc/passwd 的 Linux 服务器夹具",
   "_md_in/_text_sample.html": "文本提取输入（MarkItDown 转换样例）",
   "sample.png": "视觉分析输入（含编号文字的样例图）",
-  "sample.mp4": "视频内容分析输入（ffmpeg 2 秒测试片）"
+  "sample.mp4": "视频内容分析输入（ffmpeg 2 秒测试片）",
+  "ios_backup_evidence": "iOS 逻辑备份夹具：Manifest.plist/db + 短信/通讯录/备忘录/日程分片",
+  "miui_backup_evidence": "Android 小米 MIUI 备份夹具：descript.xml + Contacts/Mms .bak",
+  "harmony_backup_evidence": "Android 华为鸿蒙备份夹具：.info.json + calendardata tarx/wal",
+  "vivo_backup_evidence": "Android vivo/雷电快取备份夹具：.backup + index.json + 相册/文档",
+  "file_m-demo_aliyun_system.raw.tar.gz": "阿里云 OSS/ECS 导出演示包：Alibaba Cloud Linux + nginx/oss 日志",
+  "windows_evidence.img": "Windows 证据夹具：Prefetch(CMD/PowerShell) + EVTX + LNK + 注册表 Hive",
+  "linux_evidence.img": "Linux 系统取证与轻量化过滤演示镜像"
 }

@@ -1,0 +1,65 @@
+{
+  "format": "tracelens-vivo-index-v1",
+  "model": "vivo X90 Pro+",
+  "backup_package_version": 2,
+  "backup_time_ms": 1709340000000,
+  "obfuscated": false,
+  "items": [
+    {
+      "category": "album",
+      "index": 0,
+      "hash": "1111111111111111111111111111111111111111",
+      "original_path": "storage/emulated/0/DCIM/Camera/IMG_20260302_001.jpg",
+      "size": 7201,
+      "mtime_ms": 1709340000000
+    },
+    {
+      "category": "document",
+      "index": 0,
+      "hash": "2222222222222222222222222222222222222222",
+      "original_path": "storage/emulated/0/Documents/涉案合同.html",
+      "size": 245,
+      "mtime_ms": 1709340000000
+    }
+  ],
+  "applications": [
+    {
+      "package": "com.tencent.mm",
+      "kind": "apk",
+      "hash": "3333333333333333333333333333333333333333",
+      "file_name": "app_com.tencent.mm.apk",
+      "size": 65536,
+      "app_name": "微信",
+      "version_name": "8.0.45",
+      "version_code": 2500,
+      "with_data": true
+    }
+  ],
+  "categories": [
+    {
+      "key": "album",
+      "label": "相册",
+      "count": 1,
+      "size": 7201,
+      "stored_as_files": true
+    },
+    {
+      "key": "document",
+      "label": "文档",
+      "count": 1,
+      "size": 245,
+      "stored_as_files": true
+    }
+  ],
+  "record_categories": [
+    {
+      "key": "sms",
+      "label": "信息",
+      "data_type": 2,
+      "count": 10,
+      "size": 2000,
+      "stored_as_files": false
+    }
+  ],
+  "warnings": []
+}

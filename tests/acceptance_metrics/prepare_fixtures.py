@@ -14,11 +14,16 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
+import io
 import json
 import shutil
+import sqlite3
 import struct
 import subprocess
 import sys
+import tarfile
+import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -387,12 +392,449 @@ def build_android() -> Path | None:
         return None
 
 
+def build_demo_ios(target_dir: Path | None = None) -> Path:
+    target_dir = target_dir or (FIXTURES / "ios_backup_evidence")
+    target_dir.mkdir(parents=True, exist_ok=True)
+    plist_xml = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>IsEncrypted</key>
+  <false/>
+  <key>Version</key>
+  <string>10.0</string>
+  <key>Lockdown</key>
+  <dict>
+    <key>ProductType</key>
+    <string>iPhone14,2</string>
+    <key>ProductVersion</key>
+    <string>16.5</string>
+    <key>BuildVersion</key>
+    <string>20F66</string>
+    <key>UniqueDeviceID</key>
+    <string>d5747fae8f4ddba485f17710026bd6bff268acb0</string>
+    <key>SerialNumber</key>
+    <string>F2LDM0000001</string>
+    <key>DeviceName</key>
+    <string>张伟的 iPhone</string>
+  </dict>
+</dict>
+</plist>
+"""
+    (target_dir / "Manifest.plist").write_text(plist_xml, encoding="utf-8")
+
+    manifest_db_path = target_dir / "Manifest.db"
+    con = sqlite3.connect(manifest_db_path)
+    con.execute("CREATE TABLE IF NOT EXISTS Files (fileID TEXT PRIMARY KEY, domain TEXT, relativePath TEXT, flags INTEGER, file BLOB);")
+
+    # Member 1: sms.db
+    with tempfile.NamedTemporaryFile(suffix=".db") as f_sms:
+        sdb = sqlite3.connect(f_sms.name)
+        sdb.execute("CREATE TABLE handle(ROWID INTEGER PRIMARY KEY, id TEXT);")
+        sdb.execute("CREATE TABLE message(ROWID INTEGER PRIMARY KEY, guid TEXT, text TEXT, subject TEXT, date INTEGER, is_from_me INTEGER, service TEXT, attributedBody BLOB, handle_id INTEGER);")
+        sdb.execute("INSERT INTO handle VALUES(1, '+8613800000002');")
+        sdb.execute("INSERT INTO message VALUES(1, 'MSG-001', '货款走王五的私人账户，单据照旧做平。', '', 794220000000000000, 0, 'SMS', NULL, 1);")
+        sdb.commit()
+        sdb.close()
+        sms_bytes = Path(f_sms.name).read_bytes()
+
+    # Member 2: AddressBook.sqlitedb
+    with tempfile.NamedTemporaryFile(suffix=".db") as f_ab:
+        adb = sqlite3.connect(f_ab.name)
+        adb.execute("CREATE TABLE ABPerson(ROWID INTEGER PRIMARY KEY, First TEXT, Last TEXT, Middle TEXT, Organization TEXT, Nickname TEXT, JobTitle TEXT, Department TEXT);")
+        adb.execute("CREATE TABLE ABMultiValue(record_id INTEGER, property INTEGER, value TEXT);")
+        adb.execute("INSERT INTO ABPerson VALUES(1, '伟', '张', '', '某某贸易有限公司', '主管', '仓库主管', '仓储部');")
+        adb.execute("INSERT INTO ABMultiValue VALUES(1, 3, '13800000001');")
+        adb.execute("INSERT INTO ABPerson VALUES(2, '娜', '李', '', '某某贸易有限公司', '财务', '财务经理', '财务部');")
+        adb.execute("INSERT INTO ABMultiValue VALUES(2, 3, '13800000002');")
+        adb.execute("INSERT INTO ABPerson VALUES(3, '五', '王', '', '某某贸易有限公司', '客户', '业务代理', '采购部');")
+        adb.execute("INSERT INTO ABMultiValue VALUES(3, 3, '13800000003');")
+        adb.commit()
+        adb.close()
+        ab_bytes = Path(f_ab.name).read_bytes()
+
+    # Member 3: notes.sqlite
+    with tempfile.NamedTemporaryFile(suffix=".db") as f_note:
+        ndb = sqlite3.connect(f_note.name)
+        ndb.execute("CREATE TABLE ZICCLOUDSYNCINGOBJECT(Z_PK INTEGER PRIMARY KEY, ZTITLE1 TEXT, ZSNIPPET TEXT, ZIDENTIFIER TEXT);")
+        ndb.execute("INSERT INTO ZICCLOUDSYNCINGOBJECT VALUES(1, '换班备忘', '今晚 11 点后仓库换班，监控停两小时。', 'NOTE-001');")
+        ndb.commit()
+        ndb.close()
+        note_bytes = Path(f_note.name).read_bytes()
+
+    # Member 4: Calendar.sqlitedb
+    with tempfile.NamedTemporaryFile(suffix=".db") as f_cal:
+        cdb = sqlite3.connect(f_cal.name)
+        cdb.execute("CREATE TABLE CalendarItem(ROWID INTEGER PRIMARY KEY, summary TEXT, description TEXT, start_date INTEGER, end_date INTEGER, location TEXT);")
+        cdb.execute("INSERT INTO CalendarItem VALUES(1, '仓库换班交割', '386,000 异常调拨交割', 794220000, 794223600, '一号仓库');")
+        cdb.commit()
+        cdb.close()
+        cal_bytes = Path(f_cal.name).read_bytes()
+
+    members = [
+        ("HomeDomain", "Library/SMS/sms.db", sms_bytes),
+        ("HomeDomain", "Library/AddressBook/AddressBook.sqlitedb", ab_bytes),
+        ("HomeDomain", "Library/Notes/notes.sqlite", note_bytes),
+        ("HomeDomain", "Library/Calendar/Calendar.sqlitedb", cal_bytes),
+    ]
+
+    for domain, rel, data in members:
+        fid = hashlib.sha1(f"{domain}-{rel}".encode()).hexdigest()
+        shard_dir = target_dir / fid[:2]
+        shard_dir.mkdir(exist_ok=True)
+        (shard_dir / fid).write_bytes(data)
+        con.execute("INSERT OR REPLACE INTO Files VALUES(?,?,?,?,NULL)", (fid, domain, rel, 1))
+
+    con.commit()
+    con.close()
+    return target_dir
+
+
+def build_demo_android_miui(target_dir: Path | None = None) -> Path:
+    target_dir = target_dir or (FIXTURES / "miui_backup_evidence")
+    target_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(suffix=".db") as f_db:
+        db = sqlite3.connect(f_db.name)
+        db.execute("CREATE TABLE raw_contacts (_id INTEGER PRIMARY KEY, display_name TEXT);")
+        db.execute("CREATE TABLE data (_id INTEGER PRIMARY KEY, raw_contact_id INTEGER, mimetype_id INTEGER, data1 TEXT);")
+        db.execute("CREATE TABLE mimetypes (_id INTEGER PRIMARY KEY, mimetype TEXT);")
+        db.execute("INSERT INTO mimetypes VALUES (1, 'vnd.android.cursor.item/phone_v2');")
+        db.execute("INSERT INTO raw_contacts VALUES (1, '张伟（仓库主管）');")
+        db.execute("INSERT INTO data VALUES (1, 1, 1, '13800000001');")
+        db.execute("INSERT INTO raw_contacts VALUES (2, '李娜（财务）');")
+        db.execute("INSERT INTO data VALUES (2, 2, 1, '13800000002');")
+        db.execute("INSERT INTO raw_contacts VALUES (3, '王五（收款账户）');")
+        db.execute("INSERT INTO data VALUES (3, 3, 1, '13800000003');")
+        db.commit()
+        db.close()
+        db_bytes = Path(f_db.name).read_bytes()
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w", format=tarfile.USTAR_FORMAT) as tar:
+        ti = tarfile.TarInfo("apps/com.android.contacts/db/contacts2.db")
+        ti.size = len(db_bytes)
+        tar.addfile(ti, io.BytesIO(db_bytes))
+    tar_bytes = buf.getvalue()
+    bak_bytes = b"ANDROID BACKUP\n5\n0\nnone\n" + tar_bytes
+    (target_dir / "Contacts(com.android.contacts).bak").write_bytes(bak_bytes)
+
+    with tempfile.NamedTemporaryFile(suffix=".db") as f_mms:
+        mdb = sqlite3.connect(f_mms.name)
+        mdb.execute("CREATE TABLE sms (_id INTEGER PRIMARY KEY, address TEXT, body TEXT, date INTEGER, type INTEGER);")
+        mdb.execute("INSERT INTO sms VALUES (1, '13800000002', '货款走王五的私人账户，单据照旧做平。', 1709340000000, 1);")
+        mdb.execute("INSERT INTO sms VALUES (2, '13800000001', '已断电，动手。', 1709385480000, 1);")
+        mdb.commit()
+        mdb.close()
+        mms_bytes = Path(f_mms.name).read_bytes()
+
+    buf_mms = io.BytesIO()
+    with tarfile.open(fileobj=buf_mms, mode="w", format=tarfile.USTAR_FORMAT) as tar:
+        ti = tarfile.TarInfo("apps/com.android.mms/db/mmssms.db")
+        ti.size = len(mms_bytes)
+        tar.addfile(ti, io.BytesIO(mms_bytes))
+    mms_bak_bytes = b"ANDROID BACKUP\n5\n0\nnone\n" + buf_mms.getvalue()
+    (target_dir / "Mms(com.android.mms).bak").write_bytes(mms_bak_bytes)
+
+    xml = ('<?xml version="1.0"?><MIUI-backup>'
+           '<device>Xiaomi 13 Pro</device><miuiVersion>V14.0.1</miuiVersion>'
+           '<date>1709340000</date><size>204800</size><packages>'
+           '<package><packageName>com.android.contacts</packageName>'
+           '<bakFile>Contacts(com.android.contacts).bak</bakFile>'
+           '<bakType>1</bakType><pkgSize>' + str(len(bak_bytes)) + '</pkgSize><sdSize>0</sdSize>'
+           '<state>1</state><error>0</error></package>'
+           '<package><packageName>com.android.mms</packageName>'
+           '<bakFile>Mms(com.android.mms).bak</bakFile>'
+           '<bakType>1</bakType><pkgSize>' + str(len(mms_bak_bytes)) + '</pkgSize><sdSize>0</sdSize>'
+           '<state>1</state><error>0</error></package>'
+           '</packages></MIUI-backup>')
+    (target_dir / "descript.xml").write_text(xml, encoding="utf-8")
+    return target_dir
+
+
+def build_demo_android_harmony(target_dir: Path | None = None) -> Path:
+    target_dir = target_dir or (FIXTURES / "harmony_backup_evidence")
+    target_dir.mkdir(parents=True, exist_ok=True)
+    package = "com.huawei.hmos.calendardata"
+    app = target_dir / "files" / "BASIC" / package
+    app.mkdir(parents=True, exist_ok=True)
+    (target_dir / ".info.json").write_text(json.dumps({
+        "BackupFileHeaderInfo": {"deviceModel": "HUAWEI Mate 60 Pro", "backupTime": 1709340000000},
+        "BackupFileVersionInfo": {"versionName": "HarmonyOS 4.0.0"},
+        "BackupFileModuleInfo": [{"moduleName": package, "appName": "Calendar", "appIndex": 0}],
+    }, indent=2), encoding="utf-8")
+
+    with tempfile.TemporaryDirectory() as td:
+        cal_db = Path(td) / "calendar.db"
+        con = sqlite3.connect(cal_db)
+        con.execute("PRAGMA journal_mode=WAL")
+        con.execute("CREATE TABLE Events(_id INTEGER PRIMARY KEY, title TEXT, dtstart INTEGER)")
+        con.execute("INSERT INTO Events VALUES(1, '仓库换班交割', 1709340000000)")
+        con.execute("INSERT INTO Events VALUES(2, '王五私人账户对账', 1709343600000)")
+        con.commit()
+        primary = cal_db.read_bytes()
+        wal_path = Path(str(cal_db) + "-wal")
+        wal = wal_path.read_bytes() if wal_path.exists() else b""
+        con.close()
+
+    original = "/data/storage/el2/database/entry/rdb/calendardata.db"
+    archive = app / "part.0.tarx"
+    with tarfile.open(archive, "w", format=tarfile.GNU_FORMAT) as tar:
+        d = tarfile.TarInfo("/data/storage/el2/database")
+        d.type = tarfile.DIRTYPE
+        d.size = 3440
+        tar.addfile(d)
+        m = tarfile.TarInfo(original)
+        m.size = len(primary)
+        m.mtime = 1709340000
+        tar.addfile(m, io.BytesIO(primary))
+
+    (app / "wal_blobx").write_bytes(wal)
+    (app / "manage.jsonx").write_text(json.dumps([
+        {"fileName": "part.0.tar", "isBigFile": False,
+         "information": {"path": "/data/storage/el2/base/.backup/part.0.tar", "stat": {"st_size": archive.stat().st_size}}},
+        {"fileName": "wal_blob", "isBigFile": True,
+         "information": {"path": original + "-wal", "stat": {"st_size": len(wal)}}},
+    ]), encoding="utf-8")
+    return target_dir
+
+
+def build_demo_android_vivo(target_dir: Path | None = None) -> Path:
+    target_dir = target_dir or (FIXTURES / "vivo_backup_evidence")
+    target_dir.mkdir(parents=True, exist_ok=True)
+    (target_dir / "db").mkdir(exist_ok=True)
+    (target_dir / ".backup").write_text(
+        '{"model":"vivo X90 Pro+","createTime":1709340000000,"encrypted":false,"backupPackageVer":2,"success":true}',
+        encoding="utf-8"
+    )
+    cam = target_dir / "storage/emulated/0/DCIM/Camera"
+    cam.mkdir(parents=True, exist_ok=True)
+    (cam / "IMG_20260302_001.jpg").write_bytes(_scene_photo())
+    
+    docs = target_dir / "storage/emulated/0/Documents"
+    docs.mkdir(parents=True, exist_ok=True)
+    (docs / "涉案合同.html").write_text(CASE_DOC_HTML, encoding="utf-8")
+
+    idx = {
+        "format": "tracelens-vivo-index-v1",
+        "model": "vivo X90 Pro+",
+        "backup_package_version": 2,
+        "backup_time_ms": 1709340000000,
+        "obfuscated": False,
+        "items": [
+            {
+                "category": "album",
+                "index": 0,
+                "hash": "1" * 40,
+                "original_path": "storage/emulated/0/DCIM/Camera/IMG_20260302_001.jpg",
+                "size": len(_scene_photo()),
+                "mtime_ms": 1709340000000
+            },
+            {
+                "category": "document",
+                "index": 0,
+                "hash": "2" * 40,
+                "original_path": "storage/emulated/0/Documents/涉案合同.html",
+                "size": len(CASE_DOC_HTML.encode("utf-8")),
+                "mtime_ms": 1709340000000
+            }
+        ],
+        "applications": [
+            {
+                "package": "com.tencent.mm",
+                "kind": "apk",
+                "hash": "3" * 40,
+                "file_name": "app_com.tencent.mm.apk",
+                "size": 65536,
+                "app_name": "微信",
+                "version_name": "8.0.45",
+                "version_code": 2500,
+                "with_data": True
+            }
+        ],
+        "categories": [
+            {"key": "album", "label": "相册", "count": 1, "size": len(_scene_photo()), "stored_as_files": True},
+            {"key": "document", "label": "文档", "count": 1, "size": len(CASE_DOC_HTML.encode("utf-8")), "stored_as_files": True}
+        ],
+        "record_categories": [
+            {"key": "sms", "label": "信息", "data_type": 2, "count": 10, "size": 2000, "stored_as_files": False}
+        ],
+        "warnings": []
+    }
+    (target_dir / "index.json").write_text(json.dumps(idx, ensure_ascii=False, indent=2), encoding="utf-8")
+    return target_dir
+
+
+def build_demo_aliyun_oss(target_file: Path | None = None) -> Path:
+    target_file = target_file or (FIXTURES / "file_m-demo_aliyun_system.raw.tar.gz")
+    target_file.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        tree = root / "tree"
+        line = '127.0.0.1 - - [02/Mar/2026:10:14:00 +0800] "GET /oss/transfer/386000 HTTP/1.1" 200 1024\n'
+        for name, content in {
+            'etc/os-release': 'NAME="Alibaba Cloud Linux"\nID=alinux\nVERSION_ID="3"\nPRETTY_NAME="Alibaba Cloud Linux 3 (Soフラ)"\n',
+            'etc/passwd': 'root:x:0:0:root:/root:/bin/bash\necs-user:x:1001:1001::/home/ecs-user:/bin/bash\n',
+            'var/log/nginx/access.log': line * 10,
+            'www/wwwlogs/oss.log': line * 5,
+        }.items():
+            p = tree / name
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(content, encoding="utf-8")
+        raw = root / "system.raw"
+        with raw.open("wb") as s:
+            s.truncate(32 * 1024 * 1024)
+        run(['mke2fs', '-q', '-F', '-t', 'ext4', '-d', str(tree), str(raw)])
+        with tarfile.open(target_file, "w:gz") as archive:
+            archive.add(raw, arcname="file_m-demo_aliyun_system.raw")
+    return target_file
+
+
+def build_demo_windows(target_file: Path | None = None) -> Path:
+    target_file = target_file or (FIXTURES / "windows_evidence.img")
+    target_file.parent.mkdir(parents=True, exist_ok=True)
+    build_ext4(target_file, 32)
+    pf_mam = b"MAM\x04" + b"\x00" * 1024
+    pf_scca = b"\x1e\x00\x00\x00SCCA" + b"\x00" * 1024
+    lnk_hdr = struct.pack("<I16sI", 0x0000004C,
+                          bytes.fromhex("0114020000000000c000000000000046"),
+                          0x00000001) + b"\x00" * 512
+    evtx = b"ElfFile\x00" + b"\x00" * 4088
+    regf = b"regf" + b"\x00" * 4092
+
+    files = {
+        "/Windows/Prefetch/CMD.EXE-A1B2C3D4.pf": pf_mam,
+        "/Windows/Prefetch/POWERSHELL.EXE-B2C3D4E5.pf": pf_scca,
+        "/Windows/System32/winevt/Logs/Security.evtx": evtx,
+        "/Windows/System32/config/SYSTEM": regf,
+        "/Windows/System32/config/SOFTWARE": regf,
+        "/Users/Administrator/Desktop/涉案账目.lnk": lnk_hdr,
+        "/Users/Administrator/Documents/财务审计报告.txt": "涉案财务账目明细：386,000 元调拨至王五账户\n".encode("utf-8"),
+    }
+    debugfs_inject(target_file, files)
+    return target_file
+
+
+def build_demo_linux(target_file: Path | None = None) -> Path:
+    target_file = target_file or (FIXTURES / "linux_evidence.img")
+    raw = build_raw_basic()
+    if target_file != raw:
+        shutil.copyfile(raw, target_file)
+    return target_file
+
+
+def build_all_demo_datasets(output_root: Path | None = None) -> Path:
+    root = output_root or (HERE.parents[1] / "demo_datasets")
+    root.mkdir(parents=True, exist_ok=True)
+
+    # 1. Windows
+    win_dir = root / "01_windows"
+    win_dir.mkdir(exist_ok=True)
+    build_demo_windows(win_dir / "windows_evidence.img")
+
+    # 2. Linux
+    lin_dir = root / "02_linux"
+    lin_dir.mkdir(exist_ok=True)
+    build_demo_linux(lin_dir / "linux_evidence.img")
+
+    # 3. 阿里云 OSS
+    oss_dir = root / "03_aliyun_oss"
+    oss_dir.mkdir(exist_ok=True)
+    build_demo_aliyun_oss(oss_dir / "file_m-demo_aliyun_system.raw.tar.gz")
+
+    # 4. iOS
+    ios_dir = root / "04_ios" / "ios_backup_evidence"
+    if ios_dir.exists():
+        shutil.rmtree(ios_dir)
+    build_demo_ios(ios_dir)
+
+    # 5. Android MIUI
+    miui_dir = root / "05_android_miui" / "miui_backup_evidence"
+    if miui_dir.exists():
+        shutil.rmtree(miui_dir)
+    build_demo_android_miui(miui_dir)
+
+    # 6. Android HarmonyOS
+    harmony_dir = root / "06_android_harmony" / "harmony_backup_evidence"
+    if harmony_dir.exists():
+        shutil.rmtree(harmony_dir)
+    build_demo_android_harmony(harmony_dir)
+
+    # 7. Android vivo
+    vivo_dir = root / "07_android_vivo" / "vivo_backup_evidence"
+    if vivo_dir.exists():
+        shutil.rmtree(vivo_dir)
+    build_demo_android_vivo(vivo_dir)
+
+    readme_content = """# TraceLens 第三方测试验收演示数据集 (Demo Datasets)
+
+本目录为面向第三方权威测试机构的现场验收演示专用数据集。数据集覆盖项目合同指标要求的全部来源，
+包括 1 份 Windows、1 份 Linux、1 份阿里云 OSS、1 份 iOS、以及 3 份主流国产 Android 移动设备数据。
+
+各数据集均已进行脱敏，且植入了统一的案情证据链（涉案嫌疑人：张伟-仓库主管、李娜-财务经理、王五-收款账户；涉案标的：￥386,000 设备采购与异常调拨款项）。
+
+---
+
+## 演示数据集清单与指标对应关系
+
+| 序号 | 演示数据集目录 / 文件 | 数据源类型与品牌 | 包含核心工件与内容 | 对应验收指标 |
+| :--- | :--- | :--- | :--- | :--- |
+| **01** | `01_windows/windows_evidence.img` | **Windows 操作系统镜像** | Prefetch 执行痕迹(CMD/PowerShell)、EVTX 系统日志、LNK 快捷方式、注册表 Hive(SYSTEM/SOFTWARE)、财务审计报告文档 | 指标 1(1) 磁盘镜像与操作系统接入 |
+| **02** | `02_linux/linux_evidence.img` | **Linux 操作系统镜像** (RAW/DD) | 涉案沟通记录、涉案合同、财务台账、syslog/auth.log、重复文件对、低价值混合系统文件 | 指标 1(1) 兼容RAW/DD<br>指标 1(2) 轻量化过滤(10MB/s, 剔除率≥70%, 压缩至12-15%)<br>指标 2(2) 重复证据去重 |
+| **03** | `03_aliyun_oss/file_m-demo_aliyun_system.raw.tar.gz` | **阿里云 OSS / ECS 导出包** | Alibaba Cloud Linux、nginx 访问日志、OSS 接口转账调用日志、系统用户与服务日志 | 指标 1(1) 服务器日志与云数据源接入 |
+| **04** | `04_ios/ios_backup_evidence/` | **苹果 iOS 移动设备逻辑备份** | iTunes/Finder 备份规范(Manifest.plist, Manifest.db)、涉案短信 iMessage (sms.db)、通讯录 (AddressBook)、涉案备忘录、日程 | 指标 1(1) IOS 移动设备接入 |
+| **05** | `05_android_miui/miui_backup_evidence/` | **Android (小米 MIUI 备份)** | 小米备份清单 descript.xml、Contacts(com.android.contacts).bak 联系人库、Mms(com.android.mms).bak 短信库 | 指标 1(1) Android 移动设备 (类别 1: 小米) |
+| **06** | `06_android_harmony/harmony_backup_evidence/` | **Android (华为鸿蒙 HarmonyOS 备份)** | 鸿蒙备份清单 .info.json、分卷归档 part.0.tarx、WAL 日志、日历与通讯工件库 | 指标 1(1) Android 移动设备 (类别 2: 华为鸿蒙) |
+| **07** | `07_android_vivo/vivo_backup_evidence/` | **Android (vivo / OPPO 雷电快取备份)** | .backup 头、LevelDB 索引规范 index.json、涉案转账截图相册、涉案合同文档、微信应用包 | 指标 1(1) Android 移动设备 (类别 3: vivo/OPPO) |
+
+---
+
+## 演示与验收测试方法
+
+### 方法一：全自动化第三方验收测试套件（自动化验证指标）
+在 TraceLens 根目录下运行（无需任何人工交互）：
+```bash
+# 1. 一键生成测试夹具与演示数据集
+python3 tests/acceptance_metrics/prepare_fixtures.py
+
+# 2. 运行第三方指标验收测试（非 LLM 部分，耗时约 1 分钟）
+python_service/.venv/bin/python -m pytest tests/acceptance_metrics -v -m "not llm"
+
+# 3. 运行含大模型案情推演与多模态聚合的完整验收测试
+python_service/.venv/bin/python -m pytest tests/acceptance_metrics -v
+```
+
+### 方法二：图形化 Web 前端界面演示（人工交互验收）
+1. 打开浏览器访问前端（默认 `http://localhost:5173` 或部署地址）；
+2. 点击 **“新建任务”**；
+3. 选择对应演示数据路径：
+   - 导入 Windows 演示数据：选择 `01_windows/windows_evidence.img`，场景勾选 **Windows**；
+   - 导入 Linux 演示数据：选择 `02_linux/linux_evidence.img`，场景勾选 **Linux**；
+   - 导入 阿里云 OSS 数据：选择 `03_aliyun_oss/file_m-demo_aliyun_system.raw.tar.gz`，来源类型选择 **aliyun-image**；
+   - 导入 iOS 移动备份：选择 `04_ios/ios_backup_evidence`，来源类型选择 **ios-backup**；
+   - 导入 小米 备份：选择 `05_android_miui/miui_backup_evidence`，来源类型选择 **miui-backup**；
+   - 导入 华为鸿蒙 备份：选择 `06_android_harmony/harmony_backup_evidence`，来源类型选择 **harmony-backup**；
+   - 导入 vivo 备份：选择 `07_android_vivo/vivo_backup_evidence`，来源类型选择 **vivo-backup**；
+4. 任务分析完成后，可在 **工件卡片**、**重复证据列表**、**动态时间线** 以及 **案情推演报告** 中查看完整的结构化研判成果。
+"""
+    (root / "README.md").write_text(readme_content, encoding="utf-8")
+    return root
+
+
+
 BUILDERS = {
     "raw": build_raw_basic,
     "dd": build_dd,
     "timeline": build_timeline,
     "logs": build_logs,
     "raw_llm": build_raw_llm,
+    "ios": build_demo_ios,
+    "miui": build_demo_android_miui,
+    "harmony": build_demo_android_harmony,
+    "vivo": build_demo_android_vivo,
+    "aliyun_oss": build_demo_aliyun_oss,
+    "windows": build_demo_windows,
+    "linux": build_demo_linux,
+    "demo_datasets": build_all_demo_datasets,
 }
 
 
@@ -433,12 +875,36 @@ def main() -> int:
             manifest[img.name] = "Android 取证夹具（scripts/create_android_image.sh 产物）"
         else:
             print("android 夹具未生成（需要 sqlite3 且脚本可执行）")
+    if "ios" in wanted:
+        build_demo_ios()
+        manifest["ios_backup_evidence"] = "iOS 逻辑备份夹具：Manifest.plist/db + 短信/通讯录/备忘录/日程分片"
+    if "miui" in wanted:
+        build_demo_android_miui()
+        manifest["miui_backup_evidence"] = "Android 小米 MIUI 备份夹具：descript.xml + Contacts/Mms .bak"
+    if "harmony" in wanted:
+        build_demo_android_harmony()
+        manifest["harmony_backup_evidence"] = "Android 华为鸿蒙备份夹具：.info.json + calendardata tarx/wal"
+    if "vivo" in wanted:
+        build_demo_android_vivo()
+        manifest["vivo_backup_evidence"] = "Android vivo/雷电快取备份夹具：.backup + index.json + 相册/文档"
+    if "aliyun_oss" in wanted:
+        build_demo_aliyun_oss()
+        manifest["file_m-demo_aliyun_system.raw.tar.gz"] = "阿里云 OSS/ECS 导出演示包：Alibaba Cloud Linux + nginx/oss 日志"
+    if "windows" in wanted:
+        build_demo_windows()
+        manifest["windows_evidence.img"] = "Windows 证据夹具：Prefetch(CMD/PowerShell) + EVTX + LNK + 注册表 Hive"
+    if "linux" in wanted:
+        build_demo_linux()
+        manifest["linux_evidence.img"] = "Linux 系统取证与轻量化过滤演示镜像"
+    if "demo_datasets" in wanted:
+        demo_dir = build_all_demo_datasets()
+        print(f"第三方演示数据集已生成至: {demo_dir}")
 
     (FIXTURES / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"夹具目录: {FIXTURES}")
     for name, desc in manifest.items():
-        print(f"  {name:22s} {desc}")
+        print(f"  {name:30s} {desc}")
     if not (FIXTURES / "e01.E01").exists() and not shutil.which("ewfacquire"):
         print("\n提示: E01 夹具无法用开源工具凭空生成，请设置 TRACELENS_E01_IMAGE 指向真实 E01 镜像，")
         print("      或将 E01 复制为 fixtures/e01.E01（可含分段 .E01/.E02）。")
