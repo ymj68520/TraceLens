@@ -4,6 +4,7 @@ import Button from '../../../components/common/Button';
 import Spinner from '../../../components/common/Spinner';
 import EvidenceCard from './EvidenceCard';
 import EvidencePicker from './EvidencePicker';
+import { getEvidenceDetail } from '../../../services/investigationService';
 
 const filters = [
   ['all', '全部'], ['primary', '主要证据'], ['supporting', '辅助证据'],
@@ -29,7 +30,7 @@ export default function EventEvidencePanel({ taskId, eventId, event, evidence, l
     if (!historicalKeys.length) { setHistoricalResolution({}); return undefined; }
     Promise.all(historicalKeys.map(async (key) => {
       try {
-        const response = await import('../../../services/investigationService').then(({ getEvidenceDetail }) => getEvidenceDetail(taskId, key));
+        const response = await getEvidenceDetail(taskId, key);
         return [key, { resolution: 'resolved', detail: response.evidence }];
       } catch (err) { return [key, { resolution: 'unavailable', error: err }]; }
     })).then((entries) => { if (active) setHistoricalResolution(Object.fromEntries(entries)); });

@@ -33,7 +33,7 @@ export function coverageStatusLabel(value) {
     locked: '加密/未解密', encrypted_locked: '已发现未解密',
     unsupported: '格式不支持', malformed: '格式异常', failed: '解析失败',
     no_candidate_path: '未发现候选路径', empty: '表为空', empty_table: '表为空',
-    not_found: '未找到', partial: '部分解析', 'empty_table': '表为空',
+    not_found: '未找到', partial: '部分解析',
   };
   if (value === null || value === undefined || value === '') return '—';
   return map[String(value)] || String(value);

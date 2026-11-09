@@ -1,6 +1,12 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// 构建时 caniuse-lite 数据会随时间变旧并打出 "browsers data is 11 months
+// old" 提示。该提示只关乎数据新鲜度，不影响产物正确性；在此统一压制，
+// 让 run.sh / Makefile 等所有构建入口都不再刷这条噪音。
+// 需要真正更新数据时执行：npx update-browserslist-db@latest
+process.env.BROWSERSLIST_IGNORE_OLD_DATA = '1';
+
 export default defineConfig(({ mode }) => {
   const env = {
     ...loadEnv(mode, process.cwd(), ''),
@@ -93,12 +99,25 @@ export default defineConfig(({ mode }) => {
       outDir: 'dist',
       assetsDir: 'assets',
       sourcemap: env.VITE_FIELD_RELEASE_BUILD === '1' ? false : true,
+      // 按库拆包后主包约 710 KB，仍高于 Vite 默认的 500 KB 阈值。该阈值是
+      // 提醒而非硬限制：此处留出余量设 750，只在主包再次明显膨胀时才报警。
+      chunkSizeWarningLimit: 750,
       rollupOptions: {
         output: {
+          // 按库拆包：主包从 1527 KB 降到 ~710 KB。项目代码 25 个页面都是
+          // routes.jsx 静态导入，只靠 manualChunks 无法再往下压；要到 500 KB
+          // 以下得把路由全量改成 React.lazy（会引入首屏加载态，属行为变更）。
           manualChunks: {
             'react-vendor': ['react', 'react-dom', 'react-router-dom'],
             'd3-vendor': ['d3'],
             'redux-vendor': ['@reduxjs/toolkit', 'react-redux'],
+            'charts-vendor': ['recharts'],
+            'motion-vendor': ['framer-motion'],
+            'graph-vendor': ['react-force-graph-2d'],
+            'doc-vendor': ['docx-preview', 'jszip'],
+            'virtual-vendor': ['react-virtuoso'],
+            'http-vendor': ['axios'],
+            'icons-vendor': ['lucide-react'],
           },
         },
       },
