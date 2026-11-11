@@ -21,26 +21,27 @@
 | 5 | `--analyze-dlls-only` | `runDLLAnalysis` | main.cpp:118；AnalysisOrchestrator.cpp:710 |
 | 6 | 其余（默认） | `runAnalysis` | main.cpp:123；AnalysisOrchestrator.cpp:149 |
 
-`runAnalysis` 内部还有两个旁路（AnalysisOrchestrator.cpp:170-181）：
-`--android-analyze` 且 `--android-source dir|zip|miui-backup` → `runAndroidLogicalAnalysis`（:468）；
-`--memory-analyze` → `runMemoryAnalysis`（:534）。
+`runAnalysis` 内部还有两个旁路（AnalysisOrchestrator.cpp:298-330）：
+`--android-analyze` 且数据源属于逻辑源清单（dir / zip / miui-backup / thunder-backup|oppo-backup / tar / seven-zip / android-backup / filesystem-image / mobile-evidence / meiya，含雷电/美亚自动识别与 `--mobile-extract` / `--mobile-package` 运行）→ `runAndroidLogicalAnalysis`（:736）；
+`--memory-analyze` → `runMemoryAnalysis`（:329，实现 :1035 起）。
 
 ## 2. 通用参数
 
 | 参数 | 取值 | 默认 | 说明 / 代码路径 |
 |---|---|---|---|
-| `<image_path>`（位置参数） | 路径 | 无 | 解析于 CommandLineParser.cpp:291-292；分析模式要求存在（AnalysisOrchestrator.cpp:151-165），雕刻/内存模式仅要求非空 |
+| `<image_path>`（位置参数） | 路径 | 无 | 解析于 CommandLineParser.cpp:326-327；分析模式要求存在（AnalysisOrchestrator.cpp:151-165），雕刻/内存模式仅要求非空 |
 | `--help` / `-h` | 标志 | — | 打印用法并退出 0（main.cpp:90-93） |
 | `--version` / `-v` | 标志 | — | 输出 "Forensic Image Analyzer v1.0 / Using The Sleuth Kit 4.14.0"，退出 0（main.cpp:95-99） |
 | `--db-dir <path>` | 目录 | 空（当前目录） | 产物前缀目录，尾随 `/` 会被剥掉（AnalysisOrchestrator.cpp:137-147）；亦用于全文索引路径（:636-639） |
-| `--overwrite` | 标志 | false | 解析于 CommandLineParser.cpp:177-178；**解析后无消费者**（`args.overwrite` 未被 Orchestrator 读取），http_agent 启动 CLI 时会传它（http_agent/command_executor.cpp:76），属已知空转参数 |
-| `--xfs-mode <mode>` | `auto` / `native` / `pure` | `Auto` | CommandLineParser.cpp:179-187 → `ImageAnalyzer::setXFSMode`（AnalysisOrchestrator.cpp:208）。非法值仅打印错误，不置 `parse_error`，继续用原值 |
-| `--http-server [port]` | 可选端口 | 8080 | CommandLineParser.cpp:188-192；无值或下一 token 以 `-` 开头则用 8080。端口经 `std::stoi` 解析，非数字会抛未捕获异常。进入 Crow HTTP 服务（AnalysisOrchestrator.cpp:703-708） |
+| `--overwrite` | 标志 | false | 解析于 CommandLineParser.cpp:200-201；**现在有消费者**：强制删除 CLI 阶段台账 `<stem>_stages.json`，下次运行全量重跑各阶段（AnalysisOrchestrator.cpp:353-356 注释明确"finally gives that flag the meaning its help text always implied"）；http_agent 启动 CLI 时也会传它（http_agent/command_executor.cpp） |
+| `--xfs-mode <mode>` | `auto` / `native` / `pure` | `Auto` | CommandLineParser.cpp:202-210 → `ImageAnalyzer::setXFSMode`（AnalysisOrchestrator.cpp:208）。非法值仅打印错误，不置 `parse_error`，继续用原值 |
+| `--http-server [port]` | 可选端口 | 8080 | CommandLineParser.cpp:211-215；无值或下一 token 以 `-` 开头则用 8080。端口经 `std::stoi` 解析，非数字会抛未捕获异常。进入 Crow HTTP 服务（AnalysisOrchestrator.cpp:703-708） |
 
-取值型参数白名单（缺值即报 "Missing value"，CommandLineParser.cpp:66-75）：
+取值型参数白名单（缺值即报 "Missing value"，CommandLineParser.cpp:67-77）：
 `--database --extract-file --extract-ext --output-dir --db-dir --xfs-mode --android-source
 --wechat-password --backup-password --backup-password-fd --report-path --dump-text-max-size
---vol-symbols-dir --dll-db --index --search --filter-profile --key-dir --key-password --carve-out`。
+--vol-symbols-dir --dll-db --index --search --filter-profile --key-dir --key-password --carve-out
+--mobile-package --mobile-package-out`。
 
 ## 3. 分析模式（默认路径）
 
@@ -51,43 +52,58 @@ FileClassifier → `_files.db`（:249）→ EventExtractor → `_events.db`（:3
 
 | 参数 | 取值 | 默认 | 说明 / 代码路径 |
 |---|---|---|---|
-| `--android-analyze` | 标志 | false | TSK 管线内启动 AndroidAnalyzer，产物并入 `_files.db`（AnalysisOrchestrator.cpp:276-293）；与 `--android-source dir|zip|miui-backup` 组合则改走逻辑旁路（:170-174） |
-| `--android-source <mode>` | `tsk` / `dir` / `zip` / `miui-backup` | 空（等效 `tsk`） | 四值校验（CommandLineParser.cpp:77-82,195-202）。后端实例化见第 4 节 |
-| `--wechat-password <pass>` | 字符串 | 空 | SQLCipher 微信库解密口令，`AndroidAnalyzer::setWeChatPassword`（AnalysisOrchestrator.cpp:283-285、512-514） |
-| `--backup-password <pass>` | 字符串 | 空 | **已弃用**（argv 可被 ps 看到）。仅提示告警并保留 encrypted ADB v5 密文（CommandLineParser.cpp:217-222） |
-| `--backup-password-stdin` | 标志 | false | 交互时关回显读一行（AnalysisOrchestrator.cpp:39-107；逻辑分析中读取于 :496-507） |
-| `--backup-password-fd <fd>` | 非负整数 | -1 | 从已打开 fd 读，上限 4096 字节，遇 `\n` 截断（CommandLineParser.cpp:207-216；AnalysisOrchestrator.cpp:109-129） |
+| `--android-analyze` | 标志 | false | TSK 管线内启动 AndroidAnalyzer（AndroidAnalyzer 场景步骤，AnalysisOrchestrator.cpp:517-535），产物并入 `_files.db`；与逻辑源组合则改走逻辑旁路（:303-322） |
+| `--android-source <mode>` | 15 值：`tsk`（默认，磁盘镜像）/ `dir`（已提取 data/ 树）/ `zip` / `miui-backup`（MIUI .bak 目录）/ `harmony-backup`（已解密鸿蒙目录）/ `thunder-backup`（雷电快取 tar 或工程目录）/ `oppo-backup`（thunder-backup 旧别名）/ `tar` / `seven-zip` / `android-backup`（.ab）/ `filesystem-image`（userdata EXT4/F2FS RAW/E01）/ `mobile-evidence`（统一 .mep.db 包）/ `meiya`（美亚 MobileMaster FL-901 案件导出）/ `ios-backup`（iOS iTunes/Finder 逻辑备份）/ `vivo-backup`（vivo/iQOO PC 助手备份） | 空（等效 `tsk`） | 15 值硬校验（CommandLineParser.cpp:79-94,218-229；**注意**：parse_error 提示文案漏列 `meiya`，实际可接受）。`harmony-backup / mobile-evidence / meiya / ios-backup / vivo-backup` 五值**自动隐含 `--android-analyze`**。后端实例化见第 4 节 |
+| `--mobile-extract` | 标志 | false | **仅取数阶段**：跑适配器写出统一手机取数包 `.mep.db`（不产 android.db），并隐含 `--android-analyze`（CommandLineParser.cpp:230-232）。仅 `miui-backup / harmony-backup / thunder-backup(含 oppo-backup)` 源进入 extraction-only 分支（AnalysisOrchestrator.cpp:955-957），输出路径取 `--mobile-package-out` 或默认包路径 |
+| `--mobile-package <path>` | `.mep.db` 路径 | 空 | **仅分析阶段**：直接分析既有统一取数包，替代原始取材（源路径可已不存在，AnalysisOrchestrator.cpp:277-296 `packageOnly` 豁免镜像存在性检查）；隐含 `--android-analyze`。产物为 `<包stem去.mep.db>_files.db`（:851-875） |
+| `--mobile-package-out <path>` | 路径 | 默认包路径 | `--mobile-extract` 的输出位置（CommandLineParser.cpp:236-238；使用于 AnalysisOrchestrator.cpp:784-786） |
+| `--wechat-password <pass>` | 字符串 | 空 | SQLCipher 微信库解密口令，`AndroidAnalyzer::setWeChatPassword`（AnalysisOrchestrator.cpp:947-949） |
+| `--backup-password <pass>` | 字符串 | 空 | **已弃用**（argv 可被 ps 看到）。仅提示告警并保留 encrypted ADB v5 密文（CommandLineParser.cpp:252-257） |
+| `--backup-password-stdin` | 标志 | false | 交互时关回显读一行（AnalysisOrchestrator.cpp:39-107；逻辑分析中读取于 :926-943） |
+| `--backup-password-fd <fd>` | 非负整数 | -1 | 从已打开 fd 读，上限 4096 字节，遇 `\n` 截断（CommandLineParser.cpp:242-251；AnalysisOrchestrator.cpp:109-129） |
 | `--windows-analyze` | 标志 | false | WindowsFilesAnalyzer，产物并入 `_files.db`（AnalysisOrchestrator.cpp:295-310）；`--no-ai` 透传 `setSkipAI`（:304） |
 | `--linux-analyze` | 标志 | false | LinuxFilesAnalyzer，产物并入 `_files.db`（AnalysisOrchestrator.cpp:312-327） |
-| `--no-ai` | 标志 | false | 跳过 AI/LLM 分析（离线/无 key），`skip_ai`（CommandLineParser.cpp:227-228） |
+| `--no-ai` | 标志 | false | 跳过 AI/LLM 分析（离线/无 key），`skip_ai`（CommandLineParser.cpp:262-263） |
 | `--memory-analyze` | 标志 | false | 旁路至 `runMemoryAnalysis`，Volatility3，仅产 `<stem>_memory.db`（AnalysisOrchestrator.cpp:179-181,534-565） |
 | `--vol-symbols-dir <path>` | 目录 | 空（vol3 默认搜索） | ISF 符号目录，`MemoryAnalyzer::setSymbolDir`（AnalysisOrchestrator.cpp:548-550） |
-| `--filter-profile <name>` | profile 名 | `general_forensics` | 从 `config/filter_profiles/` 加载；现有 `general_forensics / telecom_fraud / virus_intrusion / data_breach`（CommandLineParser.cpp:270-271；AnalysisOrchestrator.cpp:224-245；过滤失败回退未过滤数据） |
+| `--filter-profile <name>` | profile 名 | `general_forensics` | 从 `config/filter_profiles/` 加载；现有 `general_forensics / telecom_fraud / virus_intrusion / data_breach`（CommandLineParser.cpp:305-306；AnalysisOrchestrator.cpp:224-245；过滤失败回退未过滤数据） |
 
-## 4. `--android-source` 四值的后端实例化
+## 4. `--android-source` 各值的后端实例化
 
-映射发生在 `AndroidAnalyzer::initialize()`（AndroidAnalyzerCore.cpp:78-100）：
+file-access 后端在 `AndroidAnalyzer::initialize()` 按源模式实例化（AndroidAnalyzerCore.cpp:112-167）：
 
-| 值 | `AndroidSourceMode` | 实例化的 file-access 后端 | 位置 |
+| 值 | `AndroidSourceMode` | 实例化的 file-access 后端 | 备注 |
 |---|---|---|---|
-| `tsk`（默认） | `TSK` | `FileExtractor(imagePath, dbManager->getDbPath())`，依赖已生成的 `_raw.db` | AndroidAnalyzerCore.cpp:91-100 |
-| `dir` | `LogicalDir` | `LogicalDirExtractor(imagePath)` | AndroidAnalyzerCore.cpp:85-87 |
-| `zip` | `Zip` | `ZipArchiveExtractor(imagePath)` | AndroidAnalyzerCore.cpp:88-90 |
-| `miui-backup` | `MiuiBackup` | `MiuiBackupExtractor(imagePath)`，可注入备份口令 | AndroidAnalyzerCore.cpp:79-84 |
+| `tsk`（默认） | `TSK` | `FileExtractor(imagePath, dbManager->getDbPath())`，依赖已生成的 `_raw.db` | 需 DatabaseManager |
+| `dir` | `LogicalDir` | `LogicalDirExtractor(imagePath)` | 自动探测 MIUI 备份并提升为 `miui-backup`（descript.xml + .bak，:87-94） |
+| `zip` | `Zip` | `ZipArchiveExtractor(imagePath)` | — |
+| `tar` | `Tar` | `TarArchiveExtractor(imagePath)` | — |
+| `seven-zip` | `SevenZip` | `SevenZipArchiveExtractor(imagePath, backupPassword_)` | 接受备份口令 |
+| `android-backup` | `AndroidBackup` | `AndroidBackupExtractor(imagePath, backupPassword_)` | 加密 ADB v5 仍 locked |
+| `miui-backup` | `MiuiBackup` | `MiuiBackupExtractor(imagePath)`，可注入备份口令 | 解密到安全临时根 |
+| `harmony-backup` | `HarmonyBackup` | `HarmonyBackupExtractor(imagePath)` | `LogicalDir/TSK` 模式下识别到鸿蒙目录亦自动提升（:81-82） |
+| `thunder-backup` / `oppo-backup` | `ThunderForensicBackup` | `ThunderForensicBackupExtractor(imagePath)` | 任何模式识别到雷电快取都自动提升（:100-107） |
+| `filesystem-image` | `FilesystemImage` | `FilesystemEvidenceFileExtractor(imagePath, expectedPartitionOffset_)` | 可注入源镜像 SHA-256 |
+| `ios-backup` | `IosBackup` | `IosBackupExtractor(imagePath)` | 初始化失败经共享 `sourceError_` 上报 |
+| `vivo-backup` | `VivoBackup` | `VivoBackupExtractor(imagePath, vivoIndexPath_)` | 索引桥脚本 `scripts/vivo_backup_index_cli.py`（HTTP 管线自动生成 `vivo_index.json`，TaskManagerAnalysis.cpp:1990-2023；CLI 未接线该桥） |
+| `mobile-evidence` | —（不走 AndroidAnalyzer） | `mobile_evidence::analyzePackage`（AnalysisOrchestrator.cpp:880-911） | 读 `.mep.db`，产物 `<stem>_files.db` |
+| `meiya` | — | 美亚专用容器层（XOR 混淆 SQLite，运行期推导掩码；`meiya::MeiyaBackupExtractor`） | 源为空时自动识别美亚导出（AnalysisOrchestrator.cpp:318-320,746-747） |
 
-注意：CLI 只在 `--android-analyze` 且源为 dir/zip/miui-backup 时走 `runAndroidLogicalAnalysis`
-（AnalysisOrchestrator.cpp:170-174），此时 `setSourceMode` 于 :490-494 完成三值映射（tsk 不进入该路径）。
-`dir` 模式会自动探测 MIUI 备份并提升为 `miui-backup`（descript.xml + .bak，AndroidAnalyzerCore.cpp:61-73）。
-逻辑模式产物统一写 `<stem>_files.db`（AnalysisOrchestrator.cpp:485），并跳过 TSK/事件/分类管线。
+CLI 分派注意：
+
+- **逻辑旁路清单**（AnalysisOrchestrator.cpp:303-321）包含 dir / zip / miui-backup / thunder-backup(oppo-backup) / tar / seven-zip / android-backup / filesystem-image / mobile-evidence / meiya，外加雷电/美亚包自动识别与 `--mobile-extract`、`--mobile-package` 运行；`runAndroidLogicalAnalysis` 内的模式映射（:916-924）覆盖 zip/miui/thunder/tar/seven-zip/android-backup/filesystem-image，其余归 `LogicalDir`（供 `dir` 使用）。
+- **`harmony-backup` 不在逻辑旁路清单内**：其前置校验（:257-275 的 `INVALID_HARMONY_BACKUP` / 输出目录隔离检查）后走标准管线，`AndroidAnalyzer::initialize()` 内由 TSK/LogicalDir 自动提升为 Harmony 后端；HTTP 任务管线同理（Harmony 走 ANDROID 场景分支而非逻辑短路，TaskManagerAnalysis.cpp:1407-1436，并额外落 `<stem>_mobile_evidence.mep.db` 包）。
+- **`ios-backup` / `vivo-backup` 目前仅在 HTTP 任务管线的逻辑分析路径接线**（TaskManagerAnalysis.cpp:2030-2042 的 `setSourceMode` 映射）；CLI 的逻辑旁路清单与模式映射均未包含这两个取值，CLI 下它们会随 `--android-analyze` 进入 TSK 管线且不会切到专用后端——CLI 使用这两个源暂不可用，属已知接线缺口。
+- 逻辑模式产物统一写 `<stem>_files.db`（AnalysisOrchestrator.cpp:875），并跳过 TSK/事件/分类管线。
 
 ## 5. 解密（BitLocker / LUKS / VeraCrypt）
 
 | 参数 | 取值 | 默认 | 说明 / 代码路径 |
 |---|---|---|---|
-| `--decrypt` | 标志 | false | 自动探测加密分区并解锁（CommandLineParser.cpp:272-273）；`ImageAnalyzer::setEnableDecryption/setKeyFileDir/setDecryptPassword`（AnalysisOrchestrator.cpp:209-213） |
+| `--decrypt` | 标志 | false | 自动探测加密分区并解锁（CommandLineParser.cpp:307-308）；`ImageAnalyzer::setEnableDecryption/setKeyFileDir/setDecryptPassword`（AnalysisOrchestrator.cpp:209-213） |
 | `--key-dir <path>` | 目录 | 镜像所在目录 | `.key` 文件搜索目录（AnalysisOrchestrator.cpp:211） |
 | `--key-password-stdin` | 标志 | false | 无回显读口令；与弃用 argv 口令同时给出时 stdin 优先（AnalysisOrchestrator.cpp:184-190） |
-| `--key-password <pass>` | 字符串 | 空 | **已弃用**，仅打印安全告警（CommandLineParser.cpp:278-282） |
+| `--key-password <pass>` | 字符串 | 空 | **已弃用**，仅打印安全告警（CommandLineParser.cpp:313-317） |
 
 密钥文件约定（printUsage:138-139）：`<imageBase>.part<N>.key`（分区级，如 `disk.part2.key`）
 或 `<imageBase>.key`（整盘加密）。
@@ -100,22 +116,22 @@ FileClassifier → `_files.db`（:249）→ EventExtractor → `_events.db`（:3
 
 | 参数 | 取值 | 默认 | 说明 |
 |---|---|---|---|
-| `--database <db_path>` | 路径 | 无（必需） | 提取所依据的库（CommandLineParser.cpp:160-161） |
-| `--extract-file <pattern>` | 通配 `*`/`?` | — | 按文件名提取（CommandLineParser.cpp:162-164；执行 :613） |
-| `--extract-ext <exts>` | 逗号分隔 | — | 按扩展名提取（CommandLineParser.cpp:165-167；执行 :615） |
-| `--extract-all` | 标志 | — | 全量提取（CommandLineParser.cpp:168-169；执行 :617） |
-| `--include-deleted`（别名 `--extract-deleted`） | 标志 | false | 含已删除文件；仅作用于 `extractAll`（CommandLineParser.cpp:170-172；AnalysisOrchestrator.cpp:617） |
-| `--output-dir <path>` | 目录 | `extracted_files` | 输出目录（CommandLineParser.cpp:173-174；默认值 CommandLineParser.h:17） |
+| `--database <db_path>` | 路径 | 无（必需） | 提取所依据的库（CommandLineParser.cpp:183-184） |
+| `--extract-file <pattern>` | 通配 `*`/`?` | — | 按文件名提取（CommandLineParser.cpp:185-187；执行 :613） |
+| `--extract-ext <exts>` | 逗号分隔 | — | 按扩展名提取（CommandLineParser.cpp:188-190；执行 :615） |
+| `--extract-all` | 标志 | — | 全量提取（CommandLineParser.cpp:191-192；执行 :617） |
+| `--include-deleted`（别名 `--extract-deleted`） | 标志 | false | 含已删除文件；仅作用于 `extractAll`（CommandLineParser.cpp:193-195；AnalysisOrchestrator.cpp:617） |
+| `--output-dir <path>` | 目录 | `extracted_files` | 输出目录（CommandLineParser.cpp:196-197；默认值 CommandLineParser.h:17） |
 
 ## 7. DLL 分析
 
 | 参数 | 取值 | 默认 | 说明 / 代码路径 |
 |---|---|---|---|
 | `--analyze-dlls` | 标志 | false | 在分析管线第 4 步内附加 DLL 分析（AnalysisOrchestrator.cpp:344-377） |
-| `--analyze-dlls-only` | 标志 | false | **独立模式**：跳过其余步骤（main.cpp:118-120 → runDLLAnalysis:710-752），同时隐含 `analyze_dlls=true`（CommandLineParser.cpp:255-257） |
-| `--dll-db <path>` | 路径 | `<prefix><stem>_dll.db` | DLL 数据库路径（CommandLineParser.cpp:258-259；AnalysisOrchestrator.cpp:346、716-722） |
-| `--dll-threshold <score>` | 整数 | 30 | **解析后无消费者**：`args.dll_threshold` 无人读取（CommandLineParser.cpp:260-261；默认值 CommandLineParser.h:25） |
-| `--no-verify-signatures` | 标志 | 验证开启 | `verify_signatures=false` → `DLLAnalyzer::enableSignatureVerification(false)`（CommandLineParser.cpp:262-263；AnalysisOrchestrator.cpp:349、730） |
+| `--analyze-dlls-only` | 标志 | false | **独立模式**：跳过其余步骤（main.cpp:118-120 → runDLLAnalysis:710-752），同时隐含 `analyze_dlls=true`（CommandLineParser.cpp:290-292） |
+| `--dll-db <path>` | 路径 | `<prefix><stem>_dll.db` | DLL 数据库路径（CommandLineParser.cpp:293-294；AnalysisOrchestrator.cpp:346、716-722） |
+| `--dll-threshold <score>` | 整数 | 30 | **解析后无消费者**：`args.dll_threshold` 无人读取（CommandLineParser.cpp:295-296；默认值 CommandLineParser.h:25） |
+| `--no-verify-signatures` | 标志 | 验证开启 | `verify_signatures=false` → `DLLAnalyzer::enableSignatureVerification(false)`（CommandLineParser.cpp:297-298；AnalysisOrchestrator.cpp:349、730） |
 
 与 `--windows-analyze` 组合时会只读挂接 `_files.db` 做关联（AnalysisOrchestrator.cpp:354-366）。
 
@@ -123,19 +139,19 @@ FileClassifier → `_files.db`（:249）→ EventExtractor → `_events.db`（:3
 
 | 参数 | 取值 | 默认 | 说明 / 代码路径 |
 |---|---|---|---|
-| `--index <dir>` | 目录 | 无 | 递归索引文本文件，Xapian 索引默认 `search_index_xapian`（受 `--db-dir` 影响）（CommandLineParser.cpp:264-266；AnalysisOrchestrator.cpp:641-667） |
-| `--search <query>` | 查询串 | 无 | 在已建索引上检索，输出 top 10（CommandLineParser.cpp:267-269；AnalysisOrchestrator.cpp:670-685） |
-| `--carve` | 标志 | false | 雕刻模式，需位置参数镜像路径（CommandLineParser.cpp:283-284；AnalysisOrchestrator.cpp:690-701） |
-| `--carve-out <dir>` | 目录 | `carved_files` | 雕刻输出目录（CommandLineParser.cpp:285-286；默认值 CommandLineParser.h:20） |
+| `--index <dir>` | 目录 | 无 | 递归索引文本文件，Xapian 索引默认 `search_index_xapian`（受 `--db-dir` 影响）（CommandLineParser.cpp:299-301；AnalysisOrchestrator.cpp:641-667） |
+| `--search <query>` | 查询串 | 无 | 在已建索引上检索，输出 top 10（CommandLineParser.cpp:302-304；AnalysisOrchestrator.cpp:670-685） |
+| `--carve` | 标志 | false | 雕刻模式，需位置参数镜像路径（CommandLineParser.cpp:318-319；AnalysisOrchestrator.cpp:690-701） |
+| `--carve-out <dir>` | 目录 | `carved_files` | 雕刻输出目录（CommandLineParser.cpp:320-321；默认值 CommandLineParser.h:20） |
 
 ## 9. 报告与文本导出（分析模式内的可选步骤）
 
 | 参数 | 取值 | 默认 | 说明 / 代码路径 |
 |---|---|---|---|
-| `--report` | 标志 | false | 生成人类可读 Markdown 报告，无需 AI（CommandLineParser.cpp:229-230；`ReportGenerator::writeMarkdown`，AnalysisOrchestrator.cpp:380-391） |
-| `--report-path <path>` | 路径 | `<prefix><stem>_report.md` | 自定义报告路径，**给出即隐含 `--report`**（CommandLineParser.cpp:231-233） |
+| `--report` | 标志 | false | 生成人类可读 Markdown 报告，无需 AI（CommandLineParser.cpp:264-265；`ReportGenerator::writeMarkdown`，AnalysisOrchestrator.cpp:380-391） |
+| `--report-path <path>` | 路径 | `<prefix><stem>_report.md` | 自定义报告路径，**给出即隐含 `--report`**（CommandLineParser.cpp:266-268） |
 | `--dump-text` | 标志 | false | 经 python_service 将提取文件转 Markdown，需 `--linux/--windows-analyze`（printUsage:124-125；TextDumpExporter 流程 AnalysisOrchestrator.cpp:404-455） |
-| `--dump-text-max-size <SIZE>` | `正整数+K/M/G/T` | 无限制 | 二进制软上限（如 `500M`、`2G`），**给出即隐含 `--dump-text`**；拒绝符号/小数/0/溢出（解析器 CommandLineParser.cpp:16-60、236-248）。产物：`<stem>_extracted_files/` 原件 + `<stem>_extracted_text/` Markdown（AnalysisOrchestrator.cpp:408-411） |
+| `--dump-text-max-size <SIZE>` | `正整数+K/M/G/T` | 无限制 | 二进制软上限（如 `500M`、`2G`），**给出即隐含 `--dump-text`**；拒绝符号/小数/0/溢出（解析器 CommandLineParser.cpp:16-60、271-283）。产物：`<stem>_extracted_files/` 原件 + `<stem>_extracted_text/` Markdown（AnalysisOrchestrator.cpp:408-411） |
 
 ## 10. 退出码
 
@@ -143,11 +159,11 @@ FileClassifier → `_files.db`（:249）→ EventExtractor → `_events.db`（:3
 |---|---|---|
 | 0 | 成功 / `--help` / `--version` | main.cpp:92、98；各模式正常返回 |
 | 1 | 运行期错误（镜像缺失、库缺失、初始化失败、异常） | 例：AnalysisOrchestrator.cpp:153-159、217、571、582、600、646、665、682、712、733；异常兜底 :460-463 等 |
-| 2 | 命令行解析错误（缺值、非法 `--android-source`、非法 `--backup-password-fd`、非法 SIZE） | main.cpp:84-87；置 `parse_error` 于 CommandLineParser.cpp:156、198-200、213、238-246 |
+| 2 | 命令行解析错误（缺值、非法 `--android-source`、非法 `--backup-password-fd`、非法 SIZE） | main.cpp:84-87；置 `parse_error` 于 CommandLineParser.cpp:177-180（缺值）、221-224（android-source）、248-250（fd）、272-280（SIZE） |
 
 未定义其他退出码；HTTP 服务模式正常路径恒返回 0（AnalysisOrchestrator.cpp:703-708）。
 
-## 11. `--help` 全文（printUsage 原样，CommandLineParser.cpp:86-146）
+## 11. `--help` 全文（printUsage 原样，CommandLineParser.cpp:98-169）
 
 ```text
 Forensic Image Analyzer with File Extraction
@@ -184,11 +200,22 @@ Platform Analysis:
   --android-analyze           Analyze Android data
   --android-source <mode>     Android data source: tsk (default, disk image),
                               dir (extracted data/ tree), zip (Image.zip),
-                              miui-backup (Xiaomi MIUI .bak folder)
+                              miui-backup (Xiaomi MIUI .bak folder), harmony-backup (decrypted Huawei folder),
+                              thunder-backup (雷电手机快取 tar or project folder; any Android brand),
+                              oppo-backup (legacy alias of thunder-backup),
+                              tar, seven-zip, android-backup (.ab),
+                              filesystem-image (userdata EXT4/F2FS RAW/E01),
+                              mobile-evidence (unified .mep.db package),
+                              meiya (MobileMaster FL-901 case export)
+  --mobile-extract            Extraction stage only: write a unified
+                              mobile evidence package (.mep.db); no android.db
+  --mobile-package <path>     Analysis stage only: read an existing .mep.db
+                              instead of the original acquisition
+  --mobile-package-out <path> Output path for --mobile-extract
   --wechat-password <pass>    WeChat SQLCipher decryption password
   --backup-password-stdin     Read backup password from stdin (no echo when interactive)
   --backup-password-fd <fd>   Read backup password from an already-open file descriptor
-  --backup-password <pass>    Deprecated: password in argv; encrypted ADB v5 remains locked
+  --backup-password <pass>    Deprecated: password in argv; rejected for 7z/Android Backup
   --windows-analyze           Analyze Windows artifacts
   --linux-analyze             Analyze Linux artifacts
   --no-ai                     Skip AI/LLM analysis (for offline/no-key environments)
@@ -222,26 +249,33 @@ File Carving:
   --carve-out <dir>           Carving output directory
 ```
 
+> 注意：`--help` 文案中的 `--android-source` 列表**不含** `ios-backup` / `vivo-backup`，但解析器实际接受这两个值（CommandLineParser.cpp:79-94）——帮助文本滞后于实现。
+
 ## 12. 参数解析行为与注意事项
 
-以下行为直接来自 `CommandLineParser::parse`（CommandLineParser.cpp:148-297）的实现细节：
+以下行为直接来自 `CommandLineParser::parse`（CommandLineParser.cpp:171-332）的实现细节：
 
 - **取值参数防漏读**：所有取值型参数（第 2 节白名单）若位于 argv 末尾或下一 token
-  以 `-` 开头，立即置 `parse_error` 并退出码 2（CommandLineParser.cpp:154-158）。
+  以 `-` 开头，立即置 `parse_error` 并退出码 2（CommandLineParser.cpp:177-180）。
   因此 `--output-dir -o` 会被判为缺值而非把 `-o` 当目录名。
 - **`--xfs-mode` 非法值不致命**：仅向 stderr 打印
-  `Error: Invalid XFS mode ... Valid options: auto, native, pure`（:184-187），
+  `Error: Invalid XFS mode ... Valid options: auto, native, pure`（:208-209），
   不置 `parse_error`，进程继续且模式保持默认 `Auto`——与 `--android-source`
   的硬失败（退出码 2）行为不一致。
-- **`--http-server` 端口用 `std::stoi` 裸解析**（:191）：`--http-server abc` 会抛
+- **`--http-server` 端口用 `std::stoi` 裸解析**（:214）：`--http-server abc` 会抛
   未捕获的 `std::invalid_argument` 导致非正常终止，而非退出码 2。`--dll-threshold`
-  同样用 `std::stoi`（:261）。
+  同样用 `std::stoi`（:296）。
 - **未识别的 `-` 开头 token 被静默忽略**（无 else 分支报错）；不以 `-` 开头的
-  未知位置参数会覆盖先前的 `image_path`（:291-293，后值胜出）。
-- **`--include-deleted` 与 `--extract-deleted` 双拼写等价**（:170-172，注释明确
+  未知位置参数会覆盖先前的 `image_path`（:326-327，后值胜出）。
+- **`--include-deleted` 与 `--extract-deleted` 双拼写等价**（:193-195，注释明确
   "printUsage documents --include-deleted"）。
-- **`--report-path` 隐含 `--report`**（:231-233）；**`--dump-text-max-size` 隐含
-  `--dump-text`**（:248）；**`--analyze-dlls-only` 隐含 `--analyze-dlls`**（:257）。
+- **`--report-path` 隐含 `--report`**（:266-268）；**`--dump-text-max-size` 隐含
+  `--dump-text`**（:282-283）；**`--analyze-dlls-only` 隐含 `--analyze-dlls`**（:290-292）；
+  **`--android-source harmony-backup|mobile-evidence|meiya|ios-backup|vivo-backup`
+  与 `--mobile-extract` / `--mobile-package` 均隐含 `--android-analyze`**（:226-235）。
+- **`--android-source` 校验失败信息滞后**：parse_error 文案列出 14 个值（漏列实际可接受的
+  `meiya`，CommandLineParser.cpp:221-224 对 :80-93 的 `validSources`）；`--help` 文案同样
+  未列 `ios-backup / vivo-backup`——以第 3/4 节的实现清单为准。
 - **`--backup-password`（argv）优先级最低**：stdin/fd 读取成功时覆盖 argv 值并打
   告警（AnalysisOrchestrator.cpp:496-507）；解密口令同理（:184-190）。
 - **口令读取的回显控制**：stdin 模式仅在 tty 上关闭回显（`isatty`/`tcsetattr`，
@@ -264,6 +298,8 @@ File Carving:
 | `<stem>_dll.db` | DLLAnalyzer | `--analyze-dlls[-only]` | :346、:721 |
 | `<stem>_memory.db` | MemoryAnalyzer | `--memory-analyze` | :543 |
 | `<stem>_android.db` | AndroidAnalyzer（未指定输出库时的兜底名） | TSK 模式内 | AndroidAnalyzerCore.cpp:130 |
+| `<stem>_stages.json` | CliStageLedger | 默认分析（阶段台账；`--overwrite` 强制删除以全量重跑） | AnalysisOrchestrator.cpp:356 |
+| `<stem>_mobile_evidence.mep.db`（或 `--mobile-package-out`） | mobile_evidence::Writer | `--mobile-extract`（miui/harmony/thunder 源）；Harmony 任务在 HTTP 管线亦自动落包 | AnalysisOrchestrator.cpp:784-786、955-970 |
 | `<stem>_report.md` | ReportGenerator | `--report` | :382 |
 | `<stem>_extracted_files/` `_extracted_text/` | TextDumpExporter | `--dump-text` | :408-411 |
 | `extracted_files/` | FileExtractor | 提取模式默认 | CommandLineParser.h:17 |
@@ -287,6 +323,11 @@ echo 'pass' | ./forensic_analyzer disk.dd --decrypt --key-dir ./keys --key-passw
 ./forensic_analyzer ~/miui_backup/ --android-analyze --android-source miui-backup \
     --backup-password-stdin --db-dir ./out
 
+# 手机取数-分析分离：先出统一包，再对包做分析（原始取材可下线）
+./forensic_analyzer ~/miui_backup/ --android-source miui-backup --mobile-extract \
+    --mobile-package-out ./out/case.mep.db
+./forensic_analyzer --mobile-package ./out/case.mep.db --db-dir ./out
+
 # RAM 镜像（Volatility3）
 ./forensic_analyzer lime.dump --memory-analyze --vol-symbols-dir ~/symbols
 
@@ -304,4 +345,4 @@ echo 'pass' | ./forensic_analyzer disk.dd --decrypt --key-dir ./keys --key-passw
 ./forensic_analyzer --http-server
 ```
 
-**最后更新**: 2026-08-24（新建，参考手册）
+**最后更新**: 2026-11-10（增量核对分支 feature/model-routing：`--android-source` 扩到 15 值并补 `--mobile-extract` / `--mobile-package` / `--mobile-package-out`；第 4 节按 AndroidAnalyzerCore 现源码重写；`--overwrite` 台账语义、`_stages.json` / `.mep.db` 产物、parse_error 行号更新）

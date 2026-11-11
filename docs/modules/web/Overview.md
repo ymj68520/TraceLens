@@ -52,54 +52,72 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 
 - `Provider store`：Redux store（见 Store.md），任何路由下的页面都能读 `state.tasks` 等；
 - `ToastProvider`：来自 `components/common/ToastContext.jsx`，向全部页面注入 `useToast()`；
-- `RouterProvider`：路由树由 `routes.jsx:136` 的 `createBrowserRouter(appRoutes)` 创建，
+- `RouterProvider`：路由树由 `routes.jsx:185` 的 `createBrowserRouter(appRoutes)` 创建，
   `appRoutes` 被导出供 `routes.test.jsx` 直接做 `matchRoutes` 断言（见 Testing.md）。
 
 `web/src/App.jsx:7-25` 只做两件事：监听 `state.settings.theme` 给 `<html>` 加/去 `dark`
 class（暗色主题开关，Tailwind `darkMode: 'class'`），以及用 `ErrorBoundary` 包住
 `Layout + <Outlet/>`——任何页面渲染抛错都只会落到兜底 UI 而不是白屏。
 
-路由树（`web/src/routes.jsx:31-155`）分两层：`/login` 独立成页（无侧栏），其余 27 个
-子路由项（含 index 重定向、`/wechat-forensics` 等三条旧路由重定向与
-`/reports/task|case` 两条迁移路由）全部挂在 `path: '/'`
-的 `App` 下；`index: true` 用 `<Navigate to="/dashboard" replace/>`
-重定向。唯一懒加载的页面是即时通讯取证（含关系图谱）：
+路由树（`web/src/routes.jsx:33-183`）分两层：`/login` 独立成页（无侧栏），`path: '/'`
+的 `App` 下挂 28 个带 `path` 键的子路由项（含 `/wechat-forensics`/`/qq-forensics`/
+`/wechat-graph`/`/investigation-graph` 四条旧路由重定向、`/reports/task|case` 两条
+迁移路由与 `*` 兜底）和 1 个无 `path` 键的 index 重定向；`index: true` 用
+`<Navigate to="/dashboard" replace/>` 重定向（:43）。唯一懒加载的页面是即时通讯取证（含关系图谱）：
 
 ```jsx
 const IMForensics = React.lazy(() => import('./pages/IMForensics/IMForensics'));
 ```
 
-（`web/src/routes.jsx:29`），对应路由 `im-forensics` 包了 `<React.Suspense fallback={...}>`
-（`routes.jsx:72-79`）。构建产物里能看到独立的 `IMForensics-*.js` chunk。
+（`web/src/routes.jsx:31`），对应路由 `im-forensics` 包了 `<React.Suspense fallback={...}>`
+（`routes.jsx:81-88`）。构建产物里能看到独立的 `IMForensics-*.js` chunk。
 
 ### 构建（vite.config.js）
 
-`web/vite.config.js:66-79` 的 `build` 块做了两件值得注意的事：
+`web/vite.config.js:98-124` 的 `build` 块做了三件值得注意的事：
 
 ```js
 build: {
   outDir: 'dist',
   assetsDir: 'assets',
-  sourcemap: true,
+  sourcemap: env.VITE_FIELD_RELEASE_BUILD === '1' ? false : true,
+  chunkSizeWarningLimit: 750,
   rollupOptions: {
     output: {
       manualChunks: {
         'react-vendor': ['react', 'react-dom', 'react-router-dom'],
         'd3-vendor': ['d3'],
         'redux-vendor': ['@reduxjs/toolkit', 'react-redux'],
+        'charts-vendor': ['recharts'],
+        'motion-vendor': ['framer-motion'],
+        'graph-vendor': ['react-force-graph-2d'],
+        'doc-vendor': ['docx-preview', 'jszip'],
+        'virtual-vendor': ['react-virtuoso'],
+        'http-vendor': ['axios'],
+        'icons-vendor': ['lucide-react'],
       },
     },
   },
 },
 ```
 
-- `sourcemap: true`：生产包带 sourcemap，方便线上报错回溯到源码；
-- `manualChunks`：手动拆出 `react-vendor` / `d3-vendor` / `redux-vendor` 三个长缓存包
-  （`web/dist/assets/` 下已能看到对应的产物文件），业务代码变动时 vendor chunk 的 hash
-  不变，浏览器可继续用缓存。
+- `sourcemap`：默认开启（线上报错回溯源码）；**现场发布构建**设
+  `VITE_FIELD_RELEASE_BUILD=1` 时关闭（:101）——现场产物不带源码映射；
+- `manualChunks`：按库拆出 **10 个 vendor 长缓存包**（:110-121）。注释记录了动机与
+  上限（:102-109）：主包从 1527 KB 降到 ~710 KB；25 个页面都是 routes.jsx 静态导入，
+  只靠 manualChunks 无法再压到 Vite 默认 500 KB 以下（全量 React.lazy 属行为变更），
+  于是 `chunkSizeWarningLimit` 留余量设 750，只在主包再次明显膨胀时报警；
+- `define` 块（:51-66）把服务端 .env 的少量值编译进 bundle：`VITE_FIELD_RELEASE_ID`
+  （默认 `'UNFROZEN_WORKTREE'`，现场发布用冻结 ID 标记产物）、`VITE_FIELD_API_TOKEN`
+  （`TRACELENS_FIELD_API_TOKEN` 的 bundle 侧影子——同源演示部署没有注入
+  `x-tracelens-field-token` 的入口代理，由 pythonApi 自动附加该头；现场 FIELD_AUTH
+  部署走全局认证、不看这个头，:53-57 注释）、以及三个端口与三个 API URL 的显式传递
+  （:58-65 注释："without exposing the complete server environment"）。
 
-`vite.config.js:14-19` 还内嵌了 Vitest 配置（`environment: 'jsdom'`、`globals: true`、
-`setupFiles: './src/test/setup.js'`、`css: true`），详见 Testing.md。
+`vite.config.js:67-72` 还内嵌了 Vitest 配置（`environment: 'jsdom'`、`globals: true`、
+`setupFiles: './src/test/setup.js'`、`css: true`），详见 Testing.md。另有
+`TRACELENS_TEST_MODE=ISOLATED_TEST` 的隔离测试护栏（:27-47）：隔离 Vite 实例必须显式
+提供三个代理目标且强制非生产回环端口（8666/8090/8091 被禁止），防测试继承根 .env。
 
 ### 三个 axios 客户端（services/api.js）
 
@@ -144,21 +162,29 @@ const pythonApi = axios.create({
 
 ### Vite 代理表（开发态）
 
-`web/vite.config.js:4-10` 先合并当前目录与**上级目录**（仓库根）的 env 文件：
+`web/vite.config.js:11-14` 先合并当前目录与**上级目录**（仓库根）的 env 文件，然后派生
+三个代理目标（:15-23），每个都有三级回退：
 
 ```js
-const env = { ...loadEnv(mode, process.cwd(), ''), ...loadEnv(mode, '..', '') };
 const cppTarget = env.VITE_CPP_PROXY_TARGET
-  || `http://localhost:${env.HTTP_SERVER_PORT || '8080'}`;
+  || env.CPP_BACKEND_URL
+  || `http://${env.HTTP_SERVER_HOST || '127.0.0.1'}:${env.HTTP_SERVER_PORT || '8080'}`;
+const pythonTarget = env.VITE_PYTHON_PROXY_TARGET
+  || env.PYTHON_SERVICE_URL
+  || `http://${env.PYTHON_HTTP_HOST || '127.0.0.1'}:${env.PYTHON_HTTP_PORT || '8090'}`;
+const csTarget = env.VITE_CS_PROXY_TARGET
+  || env.CS_SERVICE_URL
+  || `http://${env.CS_HOST || env.HOST || '127.0.0.1'}:${env.CS_PORT || env.PORT || '8091'}`;
 ```
 
-代理规则（`vite.config.js:22-64`）按前缀从长到短排列，短前缀 `/api` 兜底：
+代理规则（`vite.config.js:76-96`）按前缀从长到短排列，短前缀 `/api` 兜底：
 
 | 前缀 | 目标 | 说明 |
 |---|---|---|
-| `/csapi` | `http://localhost:8091` | `rewrite` 去掉 `/csapi` 前缀 |
-| `/tasks` | `cppTarget`（:8080） | C++ 任务接口 |
-| `/api/reports`、`/api/graphiti`、`/api/llm`、`/api/office`、`/api/db`、`/api/wechat`、`/api/investigation` | `http://localhost:8090` | Python 服务 |
+| `/python` | `pythonTarget` | `rewrite` 去掉 `/python` 前缀——浏览器侧经同源代理访问 Python 服务的第二条路 |
+| `/csapi` | `csTarget` | `rewrite` 去掉 `/csapi` 前缀 |
+| `/tasks` | `cppTarget`（默认 :8080） | C++ 任务接口 |
+| `/api/reports`、`/api/graphiti`、`/api/llm`、`/api/office`、`/api/db`、`/api/wechat`、`/api/investigation` | `pythonTarget`（默认 :8090） | Python 服务 |
 | `/api`（兜底） | `cppTarget` | C++ 其余接口（forensics/system/search/filter…） |
 
 注意一个不对称：`pythonApi` 在浏览器里**直连** `http://<host>:8090`（不经过代理，依赖
@@ -169,13 +195,19 @@ Python 服务开 CORS），而 `api` 走同源相对路径 + 代理。生产部�
 
 | 变量 | 作用 | 读取处 |
 |---|---|---|
-| `VITE_CPP_PROXY_TARGET` | 开发代理的 C++ 目标 | `vite.config.js:9` |
-| `HTTP_SERVER_PORT` | C++ 端口兜底（代理与客户端两处） | `vite.config.js:10`、`api.js:4` |
+| `VITE_CPP_PROXY_TARGET`（回退 `CPP_BACKEND_URL`） | 开发代理的 C++ 目标 | `vite.config.js:15-17` |
+| `VITE_PYTHON_PROXY_TARGET`（回退 `PYTHON_SERVICE_URL`） | 开发代理的 Python 目标 | `vite.config.js:18-20` |
+| `VITE_CS_PROXY_TARGET`（回退 `CS_SERVICE_URL`） | 开发代理的 C/S 目标 | `vite.config.js:21-23` |
+| `HTTP_SERVER_PORT` / `HTTP_SERVER_HOST` | C++ 端口/主机兜底（代理与客户端两处） | `vite.config.js:17`、`api.js:4` |
 | `VITE_CPP_PORT` | C++ 客户端端口 | `api.js:4` |
 | `VITE_API_BASE_URL` | C++ 客户端 baseURL | `api.js:21` |
 | `VITE_PYTHON_API_URL` | Python 客户端 baseURL | `api.js:23` |
 | `VITE_CPP_API_URL` | 导出的 CPP_BASE_URL | `api.js:25` |
 | `VITE_CS_API_URL` | 分布式客户端 baseURL | `api.js:131` |
+| `VITE_FIELD_RELEASE_BUILD` | `=1` 时现场发布构建关 sourcemap | `vite.config.js:101` |
+| `VITE_FIELD_RELEASE_ID` | 现场发布标识（缺失时 bundle 内为 `'UNFROZEN_WORKTREE'`） | `vite.config.js:52` |
+| `TRACELENS_FIELD_API_TOKEN` | 经 `VITE_FIELD_API_TOKEN` define 进 bundle，pythonApi 自动附加的行级令牌 | `vite.config.js:57` |
+| `TRACELENS_TEST_MODE=ISOLATED_TEST` | 隔离测试护栏：代理目标必须显式给非生产回环地址 | `vite.config.js:27-47` |
 
 ## 二轮补充走读：任务上下文与鉴权头
 
@@ -288,8 +320,8 @@ api.interceptors.response.use(
 [ServiceContracts.md §7 前端 ↔ 双后端](../../reference/ServiceContracts.md)是同一事实的
 两种视角，核对结论一致：
 
-1. **代理表**：`vite.config.js:22-64` 的前缀表与 ServiceContracts.md §7.1 逐条相同
-   （`/csapi` rewrite 剥前缀 → :8091；`/api/{reports,graphiti,llm,office,db,wechat,
+1. **代理表**：`vite.config.js:76-96` 的前缀表与 ServiceContracts.md §7.1 逐条相同
+   （`/python` 与 `/csapi` rewrite 剥前缀 → :8090/:8091；`/api/{reports,graphiti,llm,office,db,wechat,
    investigation}` → :8090；`/tasks` 与 `/api` 兜底 → C++）。已知漂移：
    `/api/markitdown` 不在专属前缀表里，dev 下若前端直调会落入 `/api` 兜底错打到 C++
    （当前无前端调用方，属潜在坑）。
@@ -337,4 +369,4 @@ cd web && npm test        # Vitest，48 个测试文件（见 Testing.md）
 - 代理验证：DevTools Network 里 `/api/tasks` 应是同源请求（经代理到 :8080），
   `/api/llm/...` 是直连 `<host>:8090`。
 
-**最后更新**: 2026-08-24（二轮深化：补代码走读与契约对应）
+**最后更新**: 2026-11-10（修订：10 vendor manualChunks、VITE_FIELD_RELEASE_BUILD/define 块、三目标代理回退链、/python 前缀、环境变量表）

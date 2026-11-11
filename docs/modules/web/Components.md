@@ -2,11 +2,12 @@
 
 ## 为什么要有这篇文档
 
-`web/src/components/` 有 12 个子目录、60+ 组件。它们不是均质的"UI 库"：common/ 是真
+`web/src/components/` 有 12 个子目录、80+ 组件。它们不是均质的"UI 库"：common/ 是真
 正的通用件，reports/ 与 case-intelligence/ 是面向数据契约的渲染器族，investigation/
-是调查图谱的自绘族（由 /investigation 中栏 Graph Tab 消费），timeline/ 只有一只抽屉。
-本文按组说明职责与复用关系，并标出"看似通用实则无人使用"的成员（ThemeProvider、
-bare toastContext）。
+是调查图谱的自绘族（由 /investigation 中栏 Graph Tab 消费），timeline/ 是"一只簇调查
+抽屉 + 两只统计/通讯面板"，knowledge-graph/ 已扩为四视图图谱族（Comm/People/Event/
+RelationshipTrace）。本文按组说明职责与复用关系，并标出"看似通用实则无人使用"的成员
+（ThemeProvider、bare toastContext）。
 
 ## 代码位置
 
@@ -67,7 +68,7 @@ const toast = {
 固定右上 `z-[9999]`，AnimatePresence 出场动画。而 `toastContext.js` 只是
 `createContext(null)`，`useToast.js` 从它取 context——与 Provider 提供的不是同一个
 context 实例。全站 8 个消费方里 7 个从 `ToastContext` 导入（正确），唯独
-`pages/AnalysisCenter.jsx:13` 从 `useToast` 导入（渲染即抛错，见 Pages.md）。
+`pages/AnalysisCenter.jsx:10` 从 `useToast` 导入（渲染即抛错，见 Pages.md）。
 
 ### Layout/ — 应用骨架
 
@@ -76,7 +77,7 @@ context 实例。全站 8 个消费方里 7 个从 `ToastContext` 导入（正�
 `getLinkUrl`（51-57 行，13 个任务上下文页透传 `task_id`）与 `isActive`（48-49 行，
 `/reports/*` 前缀特判）。导航标签全走 `t()`（I18nTheming.md 的缺键问题即出在此）。
 
-### reports/ — 取证快照报告渲染器族（14 文件）
+### reports/ — 取证快照报告渲染器族（22 文件）
 
 页面侧由 ForensicReportPage 组装（Pages.md）；组件分工：
 
@@ -87,7 +88,17 @@ context 实例。全站 8 个消费方里 7 个从 `ToastContext` 导入（正�
 - `VersionHistory`：版本列表单选；
 - `GenerateReportPanel`：R2 生成入口（admission + `useReportGenerationPolling` +
   ERROR_HINTS 错误文案表，`GenerateReportPanel.jsx:12-26`）；
-- `NarrativeReportView`：`report_kind==='llm_generation'` 的叙事版只读视图；
+- `NarrativeReportView`：`report_kind==='llm_generation'` 的叙事版只读视图（含
+  `narrativeCitationPlacement.js` 的引用落位工具，独立配测试）；
+- `StageAnalysisPanel`：分阶段生成的过程面板——`{stage, taskId, classifications,
+  onOpenMaterial}`（StageAnalysisPanel.jsx:66）+ 导出的 `StageSourcePanel`（:39，
+  单材料溯源弹层），对应 generation_stages 的发现/对照/主题阶段产物；
+- `EvidenceThreadTable`：首章"案情线索与研判方向"表——`{table, onJumpToChapter}`
+  （:8），只读渲染 manifest 的 `section.thread_table`，行内值逐字锚定冻结引文、
+  章节号是可点击锚点（文件头注释 :2-6）；`EvidenceRecallTable`（`{table,
+  onOpenCitation, focusCitationId}` :34）是配套的回查表渲染；
+- `EvidenceClassification`：证据分类视图（`ClassificationBadges`/`ClassificationDetails`
+  导出，:21/:34）——LLM 证据分类（supports/inconsistent 等问题级关系）的徽章与详情；
 - `CitationTracebackPanel`：引用回溯面板；
 - `ReportStatusPanel` / `ReportToolbar`：状态徽章与工具栏。
 
@@ -143,7 +154,7 @@ AnalysisCenter 使用）。`markdownRenderer.jsx` 提供 Markdown 渲染。
 DetailPanel + 7 个表单——只被死页 `pages/Investigation.jsx` 引用，已随 2026-09 清理
 删除；其"前端从不增删节点，一切以服务端 selection 为准"原则由 View 族继承。）
 
-### timeline/ — 簇调查抽屉
+### timeline/ — 簇调查抽屉 + 通讯/时间规律面板（3 个）
 
 `ClusterInvestigationDrawer.jsx`（193 行）：右滑抽屉（AnimatePresence + spring），
 三块内容——AI 分析结论（无 `llm_summary` 时显示 Analyze 按钮，有则 Reanalyze，
@@ -151,16 +162,45 @@ DetailPanel + 7 个表单——只被死页 `pages/Investigation.jsx` 引用，�
 `clusterKey`（26-31 行）把 `group_descriptor` 序列化成 Set 的 key，供
 `analyzingClusters` 去重。全部 props 受控，数据/动作在 Timeline 页。
 
+- `TimelineSummaryPanel.jsx`：**时间规律统计面板**——props `{endpoint, scopeParams,
+  communication, title, loadSummary, loadRecords}`（:22-28），内置时区/日期窗/方向/
+  会话筛选、24h 分布、按天变化分页（dayPage）、以及"点柱子回查原始记录"的 selector
+  钻取（loadRecords 携带统计响应里的 source_version + summary_id，见 TimelineSummary
+  路由文档）。`communication` prop 开关通讯方向视图；`endpoint` 注入使同一组件服务
+  任务域（`/api/associations/timeline-summary`）与 IM 导入域（Timeline 页 :793 与
+  IMForensics 页 :321-324 两处挂载）。
+- `CommTimelinePanel.jsx`：**统一通讯时间线面板**——props `{taskId, wechatImports=[],
+  qqImports=[]}`（:40），消费 commGraphService 的 getCommTimeline/getCommEdgeDetail
+  （`/api/comm/*`），与 knowledge-graph/CommGraphPanel 共用同一数据源清单语义。
+
 ### files/、tasks/、filters/、knowledge-graph/、llm-descriptions/ — 页面子组件
 
 - `files/`（7 个）：FilesHeader、FileFilters、ExtractionControls、FileListTable、
   ExtensionAnalysisTab、OfficePreviewTab、ReanalyzeModal——把 1047 行的 Files 页拆薄。
-- `tasks/`（5 个）：TaskTable（状态/进度/优先级列 + 操作）、CreateTaskModal、
-  CreateCaseModal、AddTasksToCaseModal、ComposeCaseModal。
+- `tasks/`（9 个）：TaskTable（状态/进度/优先级列 + 操作）、CreateTaskModal、
+  CreateCaseModal、AddTasksToCaseModal、ComposeCaseModal，外加四个新字段/面板：
+  `AnalysisBudgetField`（任务级分析文件预算选择器——预设/自定义两态，`resolveAnalysisBudget`
+  /`budgetChoiceFromTask` 纯函数配测试 :24-49；对应 C++ AnalysisBudget::resolve 的
+  0=继承 LLM_MAX_FILES 语义）、`CaseBackgroundField`（案情背景编辑 + 预设推荐，
+  `CaseBackgroundPresetPicker` :28，被改版后的 /analysis-center 与 CreateCaseModal 消费）、
+  `EvidencePreflightPanel`（`{onCreateTask}` :71——陌生检材进场前的预检作业面板，
+  evidenceIntakeService candidates/jobs 全链）、`RaidImageSource`（RAID 盘组选择字段，
+  直调 `/api/evidence-intake/raid`，"a field in the existing task form, not a new page"
+  :1——allow_partial 需 admin 的约束在面板上也有对应开关）。
 - `filters/`（3 个）：FilterProfileSelector/FilterProfileEditor/ScenarioPicker，
   消费 filterSlice。
-- `knowledge-graph/`（4 个）：SearchTab/EntitiesTab/RelationshipsTab + graphConstants
-  （NODE_COLORS 共享色板）。
+- `knowledge-graph/`（18 个 = 14 个具名文件 + 4 个 *.test.jsx）：原 SearchTab/EntitiesTab/RelationshipsTab +
+  graphConstants（NODE_COLORS 共享色板）之上，新增**四视图图谱族**：
+  `CommGraphPanel`（`{taskId, wechatImports, qqImports}` :51——统一通讯图谱视图，
+  commGraphService `/api/comm/*`）、`CommunicationGraphEntry`（入口壳 :3）、
+  `PeopleGraphPanel`（`{taskId, view='people', initialRunId, onRunChange, ...}` :23
+  ——人员图谱托管分析视图，peopleGraphService `/api/graphiti/people-analysis/*`，
+  202 提交 + 2s 轮询）、`PeopleGraphCanvas`/`peopleGraphStyles`（canvas 自绘 +
+  色板）、`EventGraphPanel`（`{taskId, view, initialRunId, service, peopleLoader,
+  pollMs=2000}` :16——事件关联视图，eventGraphService 的 event-views 活视图与
+  event-analysis runs）、`EventGraphCanvas`/`EventGraphDetail`/`eventGraphConstants`、
+  `RelationshipTracePanel`（`{taskId, trace, loading, error, onClose}` :26——关系
+  追溯抽屉，是 `/graph-source-file` 页的上游入口）。三只 Panel 均配 *.test.jsx（RelationshipTracePanel 同样有同名测试，共 4 份）。
 - `llm-descriptions/`（2 个）：LLMTaskSelector、LLMReanalyzeModal——**只被死页面
   LLMDescriptions.jsx 使用**，同属死代码。
 
@@ -170,12 +210,17 @@ DetailPanel + 7 个表单——只被死页 `pages/Investigation.jsx` 引用，�
 index.jsx ─ ToastProvider(common/ToastContext) ┐
 App.jsx ─ ErrorBoundary ─ Layout(common+TaskSelector) ┤
   └ Outlet → 各页面                                │
-       ForensicReportPage → reports/* → renderers/registry ─┘（注册表扩展）
+       ForensicReportPage → reports/*（含 NarrativeReportView/EvidenceThreadTable/
+       │                    StageAnalysisPanel）→ renderers/registry ─┘（注册表扩展）
        CaseIntelligence → case-intelligence/report-reader/*
-       AnalysisCenter  → case-intelligence/{ClusterFilesDrawer,FileClustersDrawer}
-       Timeline        → timeline/ClusterInvestigationDrawer
+       AnalysisCenter  → investigation/ReportEvidenceJudgment + tasks/CaseBackgroundField
+       Timeline        → timeline/ClusterInvestigationDrawer + TimelineSummaryPanel
+       Memory          →（memoryService 直调，无子组件目录）
+       /im-forensics   → IMForensics/{WeChat,QQ,WhatsApp}Panels + timeline/TimelineSummaryPanel
+       /knowledge-graph → knowledge-graph/ 四视图族（CommGraph/People/Event/RelationshipTrace）
        Files           → files/*
-       Tasks/Cases     → tasks/* + ConfirmDialog + Modal
+       Tasks/Cases     → tasks/*（含 AnalysisBudgetField/CaseBackgroundField/
+       │                EvidencePreflightPanel/RaidImageSource）+ ConfirmDialog + Modal
        /investigation 工作台 → investigation/InvestigationGraphView
          → InvestigationGraphCanvas + InvestigationNodeDetailPanel
 ```
@@ -344,4 +389,4 @@ cd web && npx vitest run src/components/
 | LLMTaskSelector/ReanalyzeModal | taskId、files | 重分析 | llm-descriptions 组件族（部分死代码页引用） |
 
 报告渲染器：registry 按 manifest 的 renderer 名分发；未注册回落 GenericTableRenderer；现有专用渲染器（KeyValue/AttachmentList/RecordBadges 等）见报告域文档。
-**最后更新**: 2026-08-24（二轮深化：补代码走读与契约对应）
+**最后更新**: 2026-11-10（修订：knowledge-graph 四视图族、tasks 四新字段/面板、reports 分阶段面板与线索表、timeline 面板、AnalysisCenter 锚点）

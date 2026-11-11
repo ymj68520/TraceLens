@@ -8,7 +8,7 @@ Python 服务分两部分：
 
 | 服务 | 端口 | 框架 | 认证 |
 |------|------|------|------|
-| **httpserver**（本地分析服务） | **8090**（`PYTHON_HTTP_PORT`，`httpserver/config.py:133`） | FastAPI | 无（本地服务） |
+| **httpserver**（本地分析服务） | **8090**（`PYTHON_HTTP_PORT`，`httpserver/config.py:133`） | FastAPI | 默认无（本地服务）；`TRACELENS_FIELD_AUTH=enabled` 时启用现场认证（`main.py::field_authentication` 中间件：用户走 Bearer，C++ 服务间走 `X-TraceLens-Service-Token`，出站策略关闭时 `/api/graphiti`、`/api/llm/`、oss、embedding 一律 503） |
 | **分布式 C/S server** | **8091**（`PORT`，`server/config.py:39`；注释明确 8091 与 8090 区分） | FastAPI | **JWT Bearer**（客户端走 client credential） |
 
 - httpserver 交互式文档：`http://localhost:8090/docs`（Swagger）、`/redoc`、`/openapi.json`。
@@ -35,6 +35,12 @@ Python 服务分两部分：
 14. [OSS AI 分析 API](#14-oss-ai-分析-api)
 15. [系统 API](#15-系统-api)
 16. [分布式 C/S 服务（8091，JWT）](#16-分布式-cs-服务8091jwt)
+17. [IM 即时通讯取证（/api/wechat/forensics、/api/qq、/api/whatsapp）](#17-im-即时通讯取证apiwechatforensicsapiqqapiwhatsapp)
+18. [统一通信图谱 API（/api/comm）](#18-统一通信图谱-apiapicomm)
+19. [第三方 Android 报告导入 API（/api/android-report）](#19-第三方-android-报告导入-apiapiandroid-report)
+20. [证据收件与 RAID API（/api/evidence-intake）](#20-证据收件与-raid-apiapievidence-intake)
+21. [音视频内容分析 API（/api/video-analysis、/api/audio-analysis）](#21-音视频内容分析-apiapivideo-analysisapiaudio-analysis)
+22. [现场认证 API（/api/field-auth）](#22-现场认证-apiapifield-auth)
 
 ---
 
@@ -173,6 +179,40 @@ curl -X DELETE http://localhost:8090/api/graphiti/tasks/task_xxx
 
 响应要点：`status` 为 `{status, neo4j_connected, total_entities, total_relationships, task_id?, timestamp}`；`tasks` 为 `{success, task_ids[], count, timestamp}`；`graph` 为可视化用的节点/边数据（KnowledgeGraph 页消费）。
 
+### 2.6 人员/事件图谱运行与源文件溯源（graphiti_endpoints/_people.py、_events.py、_trace.py）
+
+人员图谱（`people-analysis`，二次 LLM 分析后台运行）：
+
+| 方法 | 路径 | 用途 |
+|------|------|------|
+| POST | `/api/graphiti/people-analysis/runs`（**202**） | 启动人员图谱分析 run（`StartRequest`：`task_id`*、`mode="discover"\|"assess"`、`base_run_id?`、`requested_by="analyst"`、`case_description?`(≤8000)、`max_files=200`、`max_graph_relations=500`、`max_assessments=100`） |
+| GET | `/api/graphiti/people-analysis/runs?task_id=` | run 列表 |
+| GET | `/api/graphiti/people-analysis/runs/{run_id}?task_id=` | run 状态 |
+| GET | `/api/graphiti/people-analysis/runs/{run_id}/graph?task_id=` | run 图数据 |
+| GET | `/api/graphiti/people-analysis/runs/{run_id}/targets/{target_id}?task_id=` | 单目标详情 |
+| POST | `/api/graphiti/people-analysis/runs/{run_id}/identity/review` | 身份合并/拆分复核（`operation: merge\|split` + `person_ids[]`/`mention_ids[]`） |
+| POST | `/api/graphiti/people-analysis/runs/{run_id}/cancel` | 取消 run |
+
+事件图谱（`event-analysis`）：
+
+| 方法 | 路径 | 用途 |
+|------|------|------|
+| GET | `/api/graphiti/event-views?task_id=` | 事件在线视图（`ViewFilter` 查询参数过滤） |
+| GET | `/api/graphiti/event-views/detail?task_id=&target_id=&source_version=` | 单事件明细 |
+| POST | `/api/graphiti/event-analysis/runs`（**202**） | 启动事件图谱分析 run（`StartRequest`：`task_id`*、`people_run_id?`（`pg_` 前缀）、`event_ids[]`(≤50)、`case_description?`、`requested_by`*、`max_pairs=100`(1–500)） |
+| GET | `/api/graphiti/event-analysis/runs?task_id=` | run 列表 |
+| GET | `/api/graphiti/event-analysis/runs/{run_id}?task_id=` | run 状态 |
+| GET | `/api/graphiti/event-analysis/runs/{run_id}/graph?task_id=` | run 图数据（可带视图过滤参数） |
+| GET | `/api/graphiti/event-analysis/runs/{run_id}/detail?task_id=&target_id=` | 单事件明细 |
+| POST | `/api/graphiti/event-analysis/runs/{run_id}/cancel` | 取消 run |
+
+run 冲突 409、参数无效 422、存储/模型不可用 503（已有版本保持不变）。前端消费方为 `peopleGraphService.js` / `eventGraphService.js`。
+
+源文件溯源（`_trace.py`）：
+
+- `GET /api/graphiti/source-file?task_id=&evidence_key=`：按证据键读任务源文件（非法 key 400，找不到 404，存储不可用 503）。
+- `GET /api/graphiti/relationships/{relationship_id}/trace?task_id=`：图关系溯源（relationship_id 必须为 UUID，否则 400），返回经证据链富化的 `relationship` 对象。
+
 ---
 
 ## 3. LLM 分析 API
@@ -232,6 +272,11 @@ curl -X POST http://localhost:8090/api/llm/analyze-event-cluster \
 | POST | `/api/llm/toggle-cluster-relevance` | 切换事件簇相关性标记 |
 | GET | `/api/llm/status` | LLM 服务状态 |
 | POST | `/api/llm/analyze/dll` | LLM 分析 DLL/共享库安全性（`routes/dll.py`） |
+| POST | `/api/llm/file-analysis/estimate` | 文件分析预算干跑（`routes/file_analysis.py`） |
+| POST | `/api/llm/file-analysis/run` | 后台批量文件描述生成 job |
+| GET | `/api/llm/file-analysis/run/{job_id}` | 上述 job 进度 |
+| GET | `/api/llm/file-analyses` | 追加式文件分析记录版本链 |
+| POST | `/api/llm/file-analysis/record` | C++ 管线回写单条分析结果（原子三写） |
 
 **上传文件分析**（multipart，查询参数 `model_type=text`、`prompt?`）：
 
@@ -276,6 +321,23 @@ curl -X POST http://localhost:8090/api/llm/analyze/dll \
 ```
 
 响应要点（`DLLAnalysisResponse`）：`{success, analysis{}, model_used, tokens_used, processing_time_ms, timestamp}`——内部先调 C++ `/api/forensics/dlls/analyze` 解析 PE/ELF，再做 LLM 安全评估。
+
+**文件分析族**（`routes/file_analysis.py`，与事件簇分析同构的 estimate/run/job/records 四件套）：
+
+```bash
+curl -X POST http://localhost:8090/api/llm/file-analysis/estimate \
+  -H "Content-Type: application/json" -d '{"task_id": "task_xxx"}'
+curl -X POST http://localhost:8090/api/llm/file-analysis/run \
+  -H "Content-Type: application/json" \
+  -d '{"task_id": "task_xxx", "file_paths": ["/ws/extract/chat.db"], "case_description": "电信诈骗案"}'
+curl http://localhost:8090/api/llm/file-analysis/run/job_aaa
+curl "http://localhost:8090/api/llm/file-analyses?task_id=task_xxx&file_path=/ws/extract/chat.db&limit=100"
+```
+
+- `estimate` 响应：`{task_id, filtered_total, analyzed, pending, stale, estimated_llm_calls, estimated_chars}`——`pending` 即后续 `run` 的确切工作量。
+- `run` 请求：`{task_id, file_paths?（缺省取任务过滤文件列表）, case_description=""}`；响应 `{job_id, task_id, total, status: "running"}`；无候选文件 400。
+- `GET file-analyses` 返回追加式记录版本链 `{task_id, file_path?, total, records[]}`。
+- `POST file-analysis/record`（C++ 管线专用回写）：`{task_id, file_path, description, summary="", keywords=""（逗号分隔）, model_used="", extraction_method=""}`（markitdown / raw_text / vision / metadata_only）；`files_db` 一律由任务记录解析（D2b 信任源），调用方无法改写目标库。
 
 ### 事件簇分析运行（event_cluster_analysis.py，2026-09 Phase C）
 
@@ -459,6 +521,7 @@ curl -X POST http://localhost:8090/api/llm/cases/smart-create \
 - `GET /api/reports/{report_id}/manifest`：报告清单。
 - `GET /api/reports/{report_id}/categories/{category_id}/pages/{page}`：分页读取章节内容。
 - `GET /api/reports/{report_id}/search`：报告内检索（`{total, offset, limit, ...}`）。
+- `DELETE /api/reports/tasks/{task_id}`：级联删除任务报告足迹（版本行/快照目录/lock/翻译缓存；不可变的 `generation_inputs` 保留；在途生成 409）。由 C++ `delete_task` 经 `LLMPythonProxy::deleteTaskReportData` 调用，详见 [DataAndBackup.md §3](../ops/DataAndBackup.md)。
 
 ```bash
 curl -X POST http://localhost:8090/api/reports \
@@ -524,6 +587,17 @@ curl "http://localhost:8090/api/reports/generations/gen_aaa?task_id=task_xxx"
 ```bash
 curl http://localhost:8090/api/reports/narrative/versions/r1
 ```
+
+### 6.5 报告证据补充与管线收尾（report_evidence.py 增量 + report_pipeline_tail.py）
+
+**证据候选清单**：`GET /api/reports/evidence/file-candidates?task_id=`——证据复核页读模型：任务 files 与当前 report_evidence 判定的连接表（`null` = 从未判定）。参数：`search`（路径子串，≤512）、`status=all|main|appendix|excluded|unjudged`、`analyzed=false`（true 时限定已有 AI 分析产物的文件）、`page=1`、`page_size=50`(1–200)。纯只读，判定本身仍是 POST/PUT `/evidence` 的显式动作。
+
+**初管全量入报**：`POST /api/reports/evidence/seed-analyzed`——请求 `{task_id, added_by}`（`extra="forbid"`）。把初次流水线覆盖的全部"已分析文件"判为正文证据；口径与文件时间线一致，任何已有判定（含事后排除）一律跳过、幂等。任务不存在 404。
+
+**报告管线收尾**（`report_pipeline_tail.py`，任务完成尾部的自动出报；前端不直调，C++ 完成门消费）：
+
+- `POST /api/reports/pipeline-tail`（**202**）：`{task_id, requested_by}`。服务端判断证据/生成条件（skip 时落 `state=completed` 并带 `error_code=<skip 原因>`，"无内容可生成"不等于失败）；生成关闭（`report_auto_generate_enabled=false`）返回 503。
+- `GET /api/reports/pipeline-tail/status?task_id=`：`{task_id, state: pending|running|completed|failed, report_id?, generation_id?, error_code?, error_message?, updated_at}`；未启动 404。
 
 ---
 
@@ -636,7 +710,7 @@ curl "http://localhost:8090/api/investigation/graph?task_id=task_xxx&max_base_no
 | POST | `/{task_id}/events/{event_id}/versions/{version_id}/claims/{claim_id}/accept` | 采纳声明 |
 | POST | `.../claims/{claim_id}/reject` | **固定 409**：声明驳回不在本地契约内 |
 | GET | `/{task_id}/claims/{claim_id}` | 声明溯源 |
-| POST / GET | `/{task_id}/notes` | POST **固定 409**（等待规范 schema 决策）；GET 可读 |
+| POST / GET | `/{task_id}/notes` | 保存/读取批注（已实现；POST body `WorkbenchNoteRequest`：`target_type: evidence\|event`、`target_key`、`content`≤20000、`author?`，200 返回 `{success, note}`） |
 | PUT / GET / POST | `/{task_id}/report-evidence`（+/remove） | 管理报告证据集 |
 | GET | `/{task_id}/graph/local` | 本地调查图 |
 | GET | `/{task_id}/final-reports` | 终版报告列表 |
@@ -817,12 +891,14 @@ curl -X POST http://localhost:8090/api/markitdown/batch-convert \
 | GET | `/api/wechat/owner` | 账号所有者信息 |
 | GET | `/api/wechat/contacts` | 联系人列表（`include_chatrooms=false` 可含群组条目） |
 | GET | `/api/wechat/graph` | 关系图谱数据（`include_metrics=true` 含 PageRank/介数/社区） |
-| GET | `/api/wechat/graph/timeline` | 通信时间线（参数 `interval="month"|"week"`，非法值 400） |
+| GET | `/api/wechat/graph/timeline` | 通信时间线（参数 `interval`，取 `month`/`week`，非法值 400） |
 | GET | `/api/wechat/graph/community` | 社区发现（Louvain） |
 | GET | `/api/wechat/graph/person/{username}` | 个人 ego 网络 |
 | POST | `/api/wechat/graph/invalidate` | 清除图谱缓存（`task_id` 为查询参数） |
 
 > **参数勘误（本次核对源码 `wechat_graph_endpoints/_data.py`、`_graph.py` 后修正）**：旧表写"按 talker 过滤"、"chatroom_name"、"start_time/end_time"均不正确——实际为 `user1/user2`、`chatroom`、`interval`。
+>
+> 本节 router 同时挂载微信取证导入面 `/api/wechat/forensics/*`（直连解密库导入、时间规律摘要），详见 [第 17 节](#17-im-即时通讯取证apiwechatforensicsapiqqapiwhatsapp)。导入数据集亦可通过 `task_id=wx_<import_id>` / `qq_<import_id>` 直接复用本节的 graph 查询面。
 
 **示例——双人会话与群聊**：
 
@@ -1188,9 +1264,179 @@ curl -X POST http://localhost:8091/api/tasks/task_uuid/cancel -H "Authorization:
 
 ---
 
+## 17. IM 即时通讯取证（/api/wechat/forensics、/api/qq、/api/whatsapp）
+
+> 源码：`routes/wechat_forensics.py`（经 `wechat_graph.py` 挂到 `/api/wechat`）、`routes/qq_forensics.py`（`/api/qq`）、`routes/whatsapp_forensics.py`（`/api/whatsapp`）。三者路由面同构：导入 CRUD + overview/sessions/messages/contacts/chatrooms（微信另含 media 与 timeline-summary；QQ 另含 timeline-summary），导入产物可直接进关系图谱管线。
+
+### 17.1 微信取证导入（/api/wechat/forensics/*）
+
+| 方法 | 路径 | 用途 |
+|------|------|------|
+| POST | `/api/wechat/forensics/imports` | 创建导入（见下方请求体） |
+| GET | `/api/wechat/forensics/imports` | 导入列表 |
+| GET / DELETE | `/api/wechat/forensics/imports/{import_id}` | 导入摘要 / 删除导入 |
+| GET | `.../overview`、`.../sessions`、`.../contacts`、`.../chatrooms` | 概览 / 会话 / 联系人 / 群聊 |
+| GET | `.../messages` | 分页消息：`talker?`、`msg_type?`（1/3/47/49…）、`keyword?`、`start_ts?/end_ts?`（毫秒）、`limit=200`(1–2000)、`offset=0` |
+| GET | `.../media/{rel_path}` | 按导入内相对路径取媒体文件（FileResponse；找不到 404、越界 400） |
+| GET | `.../timeline-summary`、`.../timeline-summary/records` | 时间规律摘要（`wechat_router`，参数与过滤器见下） |
+
+创建导入请求体（`db_path` 必填，其余可选）：`db_path`（EnMicroMsg.db 绝对路径，加密或明文）、`wal_path?`（缺省自动探测同目录 -wal）、`password?`（SQLCipher 口令；缺省由 `key_material` 推导）、`media_dir?`（含 image2/ 等的账号目录）、`key_material?`（`{uin, imei, wxid, account_dir}`，推导并留档）、`name?`、`backup_source?`（来源描述，如 MIUI 备份路径）。响应 `{success, import}`；文件不存在 404。
+
+### 17.2 QQ 取证导入（/api/qq/forensics/*）
+
+| 方法 | 路径 | 用途 |
+|------|------|------|
+| POST | `/api/qq/forensics/imports` | 创建导入：`db_path`*（NTQQ `nt_db` 的 nt_msg.db，加密或明文）、`password?`（32-hex 库密钥；缺省由 `key_material{nt_uid, uin}` 推导）、`key_material?`、`name?`、`backup_source?` |
+| GET | `/api/qq/forensics/imports` / `/{import_id}` | 列表 / 摘要 |
+| DELETE | `/api/qq/forensics/imports/{import_id}` | 删除导入 |
+| GET | `.../overview`、`.../sessions`、`.../contacts`、`.../chatrooms` | 概览 / 会话 / 联系人 / 群聊 |
+| GET | `.../messages` | 分页消息：`talker?`（对端/群 uin）、`msg_type?`（外层类型如 40011）、`keyword?`、`start_ts?/end_ts?`（毫秒）、`limit=200`(1–2000)、`offset=0` |
+| GET | `.../timeline-summary`、`.../timeline-summary/records` | 时间规律摘要（挂 `qq_router`） |
+
+导入数据集直接进既有关系分析管线：`GET /api/wechat/graph?task_id=qq_<import_id>` 即该导入的归一化 `graph.db`。**老版 QQ**（pre-NTQQ，`meta.json.format == "legacy_qq4"`，无 nt_msg.db）的 timeline-summary 自动切换 `qq_legacy` 源（读 `graph.db` 的 wechat_messages 投影，与微信任务库同形状）。
+
+### 17.3 WhatsApp 取证导入（/api/whatsapp/forensics/*）
+
+| 方法 | 路径 | 用途 |
+|------|------|------|
+| POST | `/api/whatsapp/forensics/imports` | 创建导入：`db_path`*（iOS 备份的 ChatStorage.sqlite，或包含它的目录——ContactsV2.sqlite / CallHistory.sqlite 同目录时自动拾取）、`name?`、`backup_source?` |
+| GET | `/api/whatsapp/forensics/imports` / `/{import_id}` | 列表 / 摘要 |
+| DELETE | `/api/whatsapp/forensics/imports/{import_id}` | 删除导入 |
+| GET | `.../overview`、`.../sessions`、`.../contacts`、`.../chatrooms` | 概览 / 会话 / 联系人 / 群聊 |
+| GET | `.../messages` | 分页消息：`talker?`、`msg_type?`、`keyword?`、`start?/end?`、`page=1`、`page_size=50`(1–200) |
+
+路由面镜像 `/api/qq` 与 `/api/wechat`，共享 IM 面板把 WhatsApp 当第三个平台消费（`whatsappForensicsService.js`）。WhatsApp 无 timeline-summary。
+
+**时间规律摘要通用约定**（`timeline_summary.py`）：查询参数仅接受 `SummaryFilters` 已知字段 + 数据源定位字段，未知/重复参数 400；任务侧 `GET /api/qq/...` 之外还有挂在 associations 的任务级 `/api/associations/timeline-summary`（`task_id` + `source=events|wechat`）与微信导入级 `.../timeline-summary`（`task_id=wx_<id>`/`qq_<id>` 亦可作为 task_id 直接查询）。
+
+```bash
+curl -X POST http://localhost:8090/api/qq/forensics/imports \
+  -H "Content-Type: application/json" \
+  -d '{"db_path": "/evidence/nt_db/nt_msg.db", "name": "嫌疑人A-QQ", "backup_source": "MIUI 备份"}'
+curl "http://localhost:8090/api/qq/forensics/imports/ab12cd34ef56/messages?talker=10000&keyword=%E8%BD%AC%E8%B4%A6&limit=50"
+curl "http://localhost:8090/api/qq/forensics/imports/ab12cd34ef56/timeline-summary"
+```
+
+---
+
+## 18. 统一通信图谱 API（/api/comm）
+
+> 源码：`routes/comm_graph.py`（前缀 `/api/comm`）。把任务的 android.db 与微信/QQ 导入合并成一张统一通信图；全部为 GET 只读。数据集定位：`wechat_imports`/`qq_imports`（可重复查询参数）、`dataset=wx_<id>|qq_<id>` 简写或显式数据集名。
+
+| 方法 | 路径 | 关键参数 | 用途 |
+|------|------|----------|------|
+| GET | `/api/comm/graph` | `task_id`*、`wechat_imports[]/qq_imports[]/dataset[]`、`start_time/end_time`（秒，start>end 422）、`min_edge_weight=1`(1–1e6)、`include_union=true`、`max_nodes=500`(1–2000)、`max_edges=2000`(1–10000)、`communities=true` | 统一图（`UnifiedGraph`：`nodes[]`（Person：id/label/kind∈person·group·owner·unknown/identities/datasets/计数/时间跨度/is_owner…）、`edges[]`（Edge：source/target/relation∈call·sms·im_private·im_group·group_member/direction/weight/duration_seconds/sample/record_refs…）、`communities[][]`、`coverage`、`metrics`、`datasets`、`candidates`、`filters`） |
+| GET | `/api/comm/timeline` | `task_id`*、数据集参数、`start_time/end_time`、`kind[]`（子集 `call/sms/im_private/im_group/im_artifact`，未知值 422）、`limit=200`(1–500) | 统一通信时间线（响应含 `coverage`，并附 `coverage.unavailable_datasets`） |
+| GET | `/api/comm/edge` | `task_id`*、`source`*、`target`*、`relation=""`（∈ 空串或上述关系 + `group_member`，非法 422） | 边下钻明细 |
+| GET | `/api/comm/datasets` | `task_id`*、`wechat_imports[]/qq_imports[]` | 数据集解析结果：`datasets[]（dataset_id/kind/id/label）` + `unavailable[]` |
+
+任务无 android.db 且无可用导入时 404 `该任务没有可读的通讯数据源（无 android.db）`；数据集解析失败 422。前端消费方 `commGraphService.js`（CommGraph 页）。
+
+```bash
+curl "http://localhost:8090/api/comm/graph?task_id=task_xxx&dataset=wx_ab12cd34ef56&min_edge_weight=3&max_nodes=300"
+curl "http://localhost:8090/api/comm/timeline?task_id=task_xxx&kind=call&kind=im_group&limit=100"
+curl "http://localhost:8090/api/comm/edge?task_id=task_xxx&source=wxid_a&target=wxid_b&relation=im_private"
+curl "http://localhost:8090/api/comm/datasets?task_id=task_xxx"
+```
+
+---
+
+## 19. 第三方 Android 报告导入 API（/api/android-report）
+
+> 源码：`routes/android_report.py`（前缀 `/api/android-report`）。只读导入第三方取证报告（如手机取证大师导出）并挂接到任务。前端 `androidReportService.js`。
+
+| 方法 | 路径 | 用途 |
+|------|------|------|
+| GET | `/api/android-report/candidates` | 可导入报告候选清单 |
+| POST | `/api/android-report/imports`（**201**） | 从候选创建导入：`{candidate_id}`*（缺失/非法 400，报告无效 400） |
+| GET | `/api/android-report/imports?task_id=` | 导入列表（可按挂接任务过滤） |
+| POST | `/api/android-report/imports/{import_id}/tasks` | 挂接到任务：`{task_id}`*（任务不存在 404） |
+| DELETE | `/api/android-report/imports/{import_id}/tasks/{task_id}` | 解除挂接 |
+| GET | `/api/android-report/imports/{import_id}/overview` / `manifest` / `coverage` | 概览 / 清单 / 覆盖率 |
+| GET | `/api/android-report/imports/{import_id}/records` | 记录分页：`query`（≤200）、`category`（≤80）、`page=1`、`page_size=50`(1–100) |
+| GET | `/api/android-report/imports/{import_id}/records/{record_id}` | 单条记录详情 |
+| GET | `/api/android-report/imports/{import_id}/attachment?path=` | 附件下载（`application/octet-stream` 附件；报告无效 409） |
+| GET | `/api/android-report/imports/{import_id}/source-page?path=` | 原始报告页文本（text/plain 附件） |
+| GET | `/api/android-report/imports/{import_id}/source-location/{record_id}` | 记录在原始报告中的定位（HTML，带严格 CSP） |
+
+---
+
+## 20. 证据收件与 RAID API（/api/evidence-intake）
+
+> 源码：`routes/evidence_intake.py` 与 `routes/raid_task_intake.py`（均挂 `/api/evidence-intake`）。证据收件为"有界、只读"的陌生证据包 preflight；RAID 为标准镜像准备。**行内容 API 受现场门禁 `_field_gate`**：现场策略开启时要求已认证主体，否则要求请求头 `X-TraceLens-Field-Token` 与 `TRACELENS_FIELD_API_TOKEN`（HMAC 比较；服务端未配置 503、不匹配 401）。
+
+### 20.1 证据 preflight 与 Android 制品取数
+
+| 方法 | 路径 | 用途 |
+|------|------|------|
+| GET | `/api/evidence-intake/candidates` | 证据包候选 |
+| POST | `/api/evidence-intake/jobs`（**202**） | 启动 preflight job：`{candidate_id, full_hash=false, password="", selected_slot=0}`（`selected_slot` 0–31；`password` ≤1024 字符，仅运行期使用） |
+| GET | `/api/evidence-intake/jobs/{job_id}` | job 状态（不存在 404） |
+| POST | `/api/evidence-intake/jobs/{job_id}/cancel` | 取消 job |
+| GET | `/api/evidence-intake/jobs/{job_id}/manifest` | preflight 清单（`completed/partial` 才可用，否则 409） |
+| GET | `/api/evidence-intake/tasks/{task_id}/android-artifacts/{kind}` | Android 制品行分页读取 |
+| POST | `/api/evidence-intake/tasks/{task_id}/android-artifacts/{kind}/search` | 制品行搜索 |
+| GET | `/api/evidence-intake/tasks/{task_id}/android-artifacts/{kind}/{row_id}` | 制品行详情 |
+| POST | `/api/evidence-intake/tasks/{task_id}/android-artifacts/{kind}/{row_id}/capture` | **选中行冻结**：body 严格 `{record_hash, source_revision}`（行变更 409 `ArtifactChanged`；成功返回证据键 `android_artifact:v1:<task_id>:<result_set_id>:<kind>:<row_id>` 与不可变快照） |
+| GET | `/api/evidence-intake/tasks/{task_id}/android-result-sets/{result_set_id}/{kind}/{row_id}` | 读冻结结果集制品 |
+| GET | `/api/evidence-intake/tasks/{task_id}/android-coverage` / `android-coverage-manifest` / `android-normalization-manifest` | 覆盖率与归一化清单（manifest 为 JSON 附件） |
+
+### 20.2 RAID 镜像准备（/api/evidence-intake/raid/*）
+
+| 方法 | 路径 | 用途 |
+|------|------|------|
+| GET | `/raid/candidates` | RAID 成员候选 |
+| POST | `/raid/jobs`（**202**） | 建 job：body 严格 `{member_ids}`（写角色：admin/analyst/reviewer；否则 403） |
+| GET | `/raid/jobs/{job_id}` | job 状态（仅 owner 可读） |
+| POST | `/raid/jobs/{job_id}/prepare` | 启动准备：`{candidate_id}` 必填、`allow_partial=false`；`allow_partial=true` 需 admin（403 部分诊断需管理员） |
+| POST | `/raid/jobs/{job_id}/cancel` | 取消 |
+| GET | `/api/evidence-intake/tasks/{task_id}/raid-source` | 任务的 RAID 源核对（metadata `source_kind != "raid"` 时 `{"success": true, "source": null}`；校验 owner/状态/清单哈希三方一致） |
+
+准备完成的任务经 C++ `POST /api/tasks` 以 `image_source="raid"` + `raid_job_id` + `raid_manifest_sha256` 准入（见 CPP_REST_API.md §1），manifest 哈希不符 409。前端 `evidenceIntakeService.js`。
+
+---
+
+## 21. 音视频内容分析 API（/api/video-analysis、/api/audio-analysis）
+
+> 源码：`routes/video_analysis.py`、`routes/audio_analysis.py`。主要调用方是 **C++ 任务管线**（文件描述阶段取代直接喂原始字节），交互流程亦经 `services/llm` 直调。文件读取边界与 markitdown 相同（`task_id` 锚或弃用的 `workspace_root`；越界 400）。
+
+### POST /api/video-analysis/describe
+
+视频内容描述（分段抽帧 → 多图 vision 串行 → 综合）。请求体（`VideoDescribeRequest`）：`task_id?`、`workspace_root?`（弃用）、`file_path`*（视频绝对路径，扩展名不在白名单 400）、`prompt?`（融入综合阶段的分析师提示）。响应（`VideoDescribeResponse`）：`{success, description, summary, keywords[], model, extraction_method, tokens_used, processing_time_ms}`。超过 `LLM_VIDEO_MAX_DURATION_SEC` 的长视频返回元数据级描述（标记待回填）；不分析音轨。
+
+### POST /api/audio-analysis/transcribe
+
+音频转写 + 取证描述（SenseVoice-small STT，silero VAD 分块）。请求体（`AudioTranscribeRequest`）：`task_id?`、`workspace_root?`（弃用）、`file_path`*（音频扩展名白名单）、`prompt?`。响应（`AudioTranscribeResponse`）：`{success, description, summary, keywords[], model, extraction_method, processing_time_ms}`。完整转写写入任务 `_files.db` 的 `audio_transcripts` 表；超过 `LLM_AUDIO_MAX_DURATION_SEC`（默认 60 分钟）的音频落 `pending_backfill` 行并返回元数据级描述。
+
+```bash
+curl -X POST http://localhost:8090/api/video-analysis/describe \
+  -H "Content-Type: application/json" \
+  -d '{"task_id": "task_xxx", "file_path": "/ws/extract/screen_record.mp4"}'
+curl -X POST http://localhost:8090/api/audio-analysis/transcribe \
+  -H "Content-Type: application/json" \
+  -d '{"task_id": "task_xxx", "file_path": "/ws/extract/voicemail.m4a"}'
+```
+
+---
+
+## 22. 现场认证 API（/api/field-auth）
+
+> 源码：`routes/field_auth.py`（前缀 `/api/field-auth`）。现场（field）部署专用：本地登录与供 C++ 中间件回调的令牌自省。`login` 与 `introspect` 在认证中间件中豁免；`/health/live` 亦豁免。
+
+| 方法 | 路径 | 用途 |
+|------|------|------|
+| GET | `/api/field-auth/status` | 自检：`{field_security_version, release_id, release_layout_version, source_commit, source_tree_sha256, field_auth: bool, required_auth: bool, outbound_policy}`（与 C++ `/api/security/status` 同源字段） |
+| POST | `/api/field-auth/login` | 本地登录：`{username, password}` → 令牌；现场模式未开启时 404 `field login is disabled`；凭据错误 401 |
+| GET | `/api/field-auth/me` | 当前用户 `{id, role}`（须为用户主体，服务主体 401） |
+| POST | `/api/field-auth/introspect` | **内部端点**（须 `X-TraceLens-Service-Token`，方向 cpp_to_python，回环 peer；否则 401）：请求 `{authorization, method, path}`；校验 Bearer 令牌并授权 method+path，返回 `{principal: {id, role, ...}}`；令牌无效 401、权限不足 403、请求形态非法 400 |
+
+C++ 侧 `FieldAuthMiddleware`（`FieldApp.cpp`）在每个 `/api/*` 请求上回调 `introspect`：401/403 原样透传，其余非 200 视为 503 `field authentication unavailable`；服务间互信走双向 `FIELD_CPP_TO_PYTHON_TOKEN` / `FIELD_PYTHON_TO_CPP_TOKEN`，且 Python 侧把 C++ 服务主体限制在 `/health`、`/api/graphiti/*`、`/api/llm/file-analysis/record`（其余 403 `service scope denied`）。
+
+---
+
 ## 错误响应
 
-httpserver 未捕获异常：`500 {success: false, message: "Internal server error", error, timestamp}`；参数校验失败：`422 {success: false, message: "Validation error", errors, timestamp}`。各路由业务错误为 FastAPI 标准 `{"detail": "..."}` + 4xx。C/S 服务未授权返回 `401`（Bearer）。
+httpserver 未捕获异常：`500 {success: false, message: "Internal server error", error, timestamp}`；参数校验失败：`422 {success: false, message: "Validation error", errors, timestamp}`。各路由业务错误为 FastAPI 标准 `{"detail": "..."}` + 4xx。C/S 服务未授权返回 `401`（Bearer）。现场认证开启时：401 `authentication required`（带 WWW-Authenticate: Bearer）、403 `insufficient permission` / `service scope denied`、可选智能服务被关闭时 503 `optional intelligence services disabled`。
 
 ---
 
@@ -1216,7 +1462,7 @@ httpserver 未捕获异常：`500 {success: false, message: "Internal server err
 | `/api/llm/toggle-relevance` | llmService.js（toggleFileRelevance） | AnalysisCenter | llm_service | `_files.db`（files.llm_is_relevant 等） |
 | `/api/llm/analyze-event-cluster` | forensicsService.js（analyzeEventCluster/reanalyze） | Timeline、AnalysisCenter | case_analysis 服务 | `_events.db` llm_* 列 |
 | `/api/llm/analyze/dll` | llmService.js（analyzeDLL） | Files 页 | dll 服务（调 C++ 解析） | `_files.db` + LLM API |
-| case-description / reanalyze-files / case-analysis/{job} / case-report / filtered-files | caseAnalysisService.js | AnalysisCenter、Files | case_analysis_service | `_files.db`、tasks.json（经 C++） |
+| case-description / reanalyze-files / case-analysis/{job} / case-report / filtered-files（注：其中 legacy 一键 case-analysis 生成已退役，`POST /api/llm/case-analysis` 固定 410，该前端链路不可用；`case-analysis/{job}` 现仅用于轮询 reanalyze-files/windows job） | caseAnalysisService.js | AnalysisCenter、Files | case_analysis_service | `_files.db`、tasks.json（经 C++） |
 | windows-analysis / windows-report / windows-export | （暂无页面直调） | — | case_analysis（_windows） | `_files.db` |
 | intelligence-report 系列 | intelligenceReportService.js | IntelligenceReportReader（case-intelligence Tab） | intelligence_report 读取器 | `_files.db` 等任务库 + 元数据持久化 |
 | `/api/llm/cases` CRUD、associate-tasks、smart-create | caseGroupService.js | caseSlice、Cases 页 | httpx 代理 C++ `/api/cases` | data/cases.json（C++ 侧） |
@@ -1233,6 +1479,15 @@ httpserver 未捕获异常：`500 {success: false, message: "Internal server err
 | `/api/associations/cluster-files`、`file-clusters` | associationService.js | AnalysisCenter 双抽屉 | associations.py | `_files.db`（mtime/ctime）+ `_raw.db`（atime/crtime）+ `_events.db` |
 | `/api/forensics/oss/ai/filter`、`analyze` | （前端 ossService 指向 C++ 未注册路由；Python AI 组为集成方入口） | — | oss_analysis_service | OSS 对象库（oss_db_path）+ 下载目录 |
 | `/api/system/logs`、`logs/{service}`、`logs-stream/{service}` | systemService.js（部分） | Terminal | system.py | 服务日志文件 |
+| `/api/llm/file-analysis/*`（estimate/run/job/records/record） | 前端暂无页面直调（record 为 C++ 管线回写口） | — | case_analysis 文件描述三写 | `_files.db`（file_analyses 版本链 + 显示缓存） |
+| `/api/graphiti/people-analysis/*`、`event-analysis/*`、`event-views`、`source-file`、`relationships/{id}/trace` | peopleGraphService.js、eventGraphService.js | PeopleGraph、EventGraph 页 | people_graph / event_graph 服务 | 图谱存储 + investigation.db（证据链） |
+| `/api/wechat/forensics/*`、`/api/qq/forensics/*`、`/api/whatsapp/forensics/*` | wechatForensicsService.js、qqForensicsService.js、whatsappForensicsService.js | IM 取证导入页（三平台同构） | wechat/qq/whatsapp import_service | `<data_root>/{wechat,qq}_imports/<id>/`（解密库 + 归一化 graph.db） |
+| `*/timeline-summary`（qq/wechat/associations 挂载） | timelineSummaryService.js | 时间规律页（老版 QQ 走 qq_legacy 源） | timeline_summary 服务 | nt_msg.db / graph.db（只读） |
+| `/api/comm/*` | commGraphService.js | CommGraph 页 | CommGraphService | 任务 `_android.db` + 微信/QQ 导入 graph.db（合并视图） |
+| `/api/android-report/*` | androidReportService.js | Android 离线报告导入页 | android_report_import | `<data_root>` 报告导入目录（只读 + FileResponse 附件） |
+| `/api/evidence-intake/*`（含 raid） | evidenceIntakeService.js | 证据收件 / RAID 页 | evidence_preflight、raid_task_intake、android_artifact_reader | 任务 `_android.db`（只读）+ 冻结结果集 + investigation.db 快照 |
+| `/api/video-analysis/describe`、`/api/audio-analysis/transcribe` | （C++ 任务管线为主调用方） | — | video_analyzer / audio_analyzer（SenseVoice） | LLM API + `_files.db`（audio_transcripts） |
+| `/api/field-auth/*` | fieldResource.js / fieldSession.js | 现场登录页 | field_security 服务 | 环境变量配置（无持久化） |
 
 ### B. 分布式 C/S 服务（:8091）
 
@@ -1258,4 +1513,4 @@ httpserver 未捕获异常：`500 {success: false, message: "Internal server err
 
 ---
 
-**最后更新**: 2026-08-24（扩充：全端点示例与映射附录）
+**最后更新**: 2026-11-10（增量核对分支 feature/model-routing：新增 §17–§22 IM 取证/通信图谱/Android 报告导入/证据收件与 RAID/音视频分析/现场认证；Graphiti 人员与事件运行、file-analysis 族、报告 pipeline-tail 与证据补充按现源码补录）

@@ -40,7 +40,7 @@ struct EventLogEntry {
 
 | 方法 | 语义 | 调用方 | 失败行为 |
 |------|------|--------|---------|
-| `bool initialize()` | 初始化输出库与提取目录 | HTTP `TaskManagerAnalysis.cpp:470-485` / CLI `AnalysisOrchestrator.cpp:295-310` | false 即中止 |
+| `bool initialize()` | 初始化输出库与提取目录 | HTTP `TaskManagerAnalysis.cpp:1477` / CLI `AnalysisOrchestrator.cpp:540-555` | false 即中止 |
 | `void analyzeWindowsData()` | 主流程：注册表→事件日志→Prefetch→LNK→JumpList→回收站→MFT→用户配置→浏览器→计划任务/Amcache/SRUM→LLM | 两个入口的第二步 | 各子方法独立容错 |
 | `void setOutputDatabasePath(path)` / `setSkipAI(bool)` | 输出库与 `--no-ai` | 入口设置 | — |
 | `void analyzeWithLLM()` | 15 类工件的 LLM 增强 | 主流程尾部 | 双闸门跳过（见第 5 节） |
@@ -52,8 +52,8 @@ struct EventLogEntry {
 
 两个入口：
 
-- **HTTP 模式**：SceneDetector 检测到 WINDOWS 场景后，`TaskManagerAnalysis.cpp:470-485` 构造 `WindowsFilesAnalyzer(imagePath, dbManager)` 并 `analyzeWindowsData()`，输出 `data/tasks/<id>/<镜像名>_windows.db`（约 32 张表，含 DLLAnalyzer 用的 7 张 `dll_*` 表——建表 SQL 是共享的，见第 6 节）。
-- **CLI 模式**：`--windows-analyze`，输出并入 `<镜像名>_files.db`（`AnalysisOrchestrator.cpp:295-310`），可用 `--no-ai` 跳过 AI 阶段。
+- **HTTP 模式**：SceneDetector 检测到 WINDOWS 场景后，`TaskManagerAnalysis.cpp:1477` 构造 `WindowsFilesAnalyzer(imagePath, dbManager)` 并 `analyzeWindowsData()`（调用在 `:1484`），输出 `data/tasks/<id>/<镜像名>_windows.db`（约 32 张表，含 DLLAnalyzer 用的 7 张 `dll_*` 表——建表 SQL 是共享的，见第 6 节）。
+- **CLI 模式**：`--windows-analyze`，输出并入 `<镜像名>_files.db`（`AnalysisOrchestrator.cpp:540-555`，构造在 `:546`），可用 `--no-ai` 跳过 AI 阶段。
 
 输入：镜像路径 + 指向（过滤后）raw.db 的 `DatabaseManager`。工作目录约定：提取出来的中间文件放在输出库旁边的 `<镜像名>_extracted_files/`（`WindowsFilesAnalyzerCore.cpp:37-50`），按 `registry/`、`eventlogs/`、`prefetch/`、`mft/` 等子目录组织，方便人工复核。
 
@@ -75,7 +75,7 @@ struct EventLogEntry {
 "查询-提取"两步的真实实现（全部子分析器共用这一个函数）：
 
 ```cpp
-// Core/WindowsFilesAnalyzerCore.cpp:191-235（节选）
+// Core/WindowsFilesAnalyzerCore.cpp:213-303（节选）
 std::vector<FileRecord> WindowsFilesAnalyzer::queryFilesByPattern(const std::string& pathPattern) {
     std::vector<FileRecord> results;
     sqlite3* db = dbManager_->getDb();
@@ -212,7 +212,7 @@ LLM 侧语句族（windows_analysis_sql_llm.h，31 条 SELECT + UPDATE）：15 �
     }
 ```
 
-关键设计是**双段读取**：先 `libevtx_file_get_number_of_records` 读正常记录，再 `libevtx_file_get_number_of_recovered_records` 读"已损坏/被清除但仍可恢复"的记录（第 303-309、331-354 行）——攻击者清日志后残存的事件就是从第二段捞回来的，恢复数单独计数并写审计日志（`EVTX_PARSE_SUCCESS` 条目里带 recovered 数）。前置检查：魔数 `ElfFile\0` 校验（`analyzeEventLogs()`，`WindowsEventLogParser.cpp:198-254`），4KB 以下文件跳过。每条记录经 `extractEventLogEntry` 抽出 recordId/时间/来源/级别/消息（FILETIME→Unix 时间换算见 `WindowsFilesAnalyzerCore.cpp:366-376`），成批 `insertEventLogEntries` 落表。内存上限 10 万条预留（第 318 行的 reserve cap）。读取失败的记录级错误只告警 continue，一个坏记录不拖垮整个日志文件。
+关键设计是**双段读取**：先 `libevtx_file_get_number_of_records` 读正常记录，再 `libevtx_file_get_number_of_recovered_records` 读"已损坏/被清除但仍可恢复"的记录（第 303-309、331-354 行）——攻击者清日志后残存的事件就是从第二段捞回来的，恢复数单独计数并写审计日志（`EVTX_PARSE_SUCCESS` 条目里带 recovered 数）。前置检查：魔数 `ElfFile\0` 校验（`analyzeEventLogs()`，`WindowsEventLogParser.cpp:198-254`），4KB 以下文件跳过。每条记录经 `extractEventLogEntry` 抽出 recordId/时间/来源/级别/消息（FILETIME→Unix 时间换算见 `WindowsFilesAnalyzerCore.cpp:388-397`），成批 `insertEventLogEntries` 落表。内存上限 10 万条预留（第 318 行的 reserve cap）。读取失败的记录级错误只告警 continue，一个坏记录不拖垮整个日志文件。
 
 **链路三：SAM hive → 用户账号（`parseUserAccountsFromSAM`，`WindowsRegistryArtifacts.cpp:24-89`）。** 典型的 hive 专项解析：
 
@@ -245,11 +245,11 @@ LLM 侧语句族（windows_analysis_sql_llm.h，31 条 SELECT + UPDATE）：15 �
 
 最"怪但真实"的一步是 RID 的藏身处：`SAM\Domains\Account\Users\Names` 下每个用户子节点的**默认值（空名值）的类型字段**里存着 RID——hivex 的 `hivex_value_type` 本来是报告 REG_DWORD 之类的类型的地方，SAM 却把 RID 塞在这里。拿到 RID 后格式化成 `%08X` 去 `Users\` 下找同名节点，再读 F 值（最后登录时间等）和 V 值（全名、注释）；`rid == 500` 判定内置管理员（第 82 行）。产物写 user_accounts 表。错误路径：hive 打不开/路径走不到都返回空列表，不抛异常。
 
-**链路四：Prefetch → 程序执行痕迹（`WindowsArtifactsParsers_ExecutionTraces.cpp:26-44`）。** `analyzePrefetchFiles()` 提取每个 `.pf` 后交给 `PrefetchParser`：按 MAM 版本号（Win10 的 30 / Win8 的 26 / Win7 的 23）解析引用文件与引用目录列表（版本差异处理见 `WindowsPrefetchParser.cpp:35-43`），产出可执行文件名、路径、运行次数、最后运行时间、prefetch 哈希。有个兜底细节值得知道：解析失败时从文件名反推（`NOTEPAD.EXE-ABC12312.pf` 的命名约定），保证至少留一条记录而不是空手而归（第 55-67 行）。
+**链路四：Prefetch → 程序执行痕迹（`WindowsArtifactsParsers_ExecutionTraces.cpp:26-44`）。** `analyzePrefetchFiles()` 提取每个 `.pf` 后交给 `PrefetchParser`。`parse()` 的第一步是**整文件读入并处理 MAM 容器**（`WindowsPrefetchParser.cpp:31-66`）：Win10 1809+ 的 Prefetch 不是裸 SCCA 头，而是 `MAM\x04` 容器——`raw[0..2]=='MAM'` 识别后，字节 4..7 是解压后大小，字节 8 起是 XPRESS-Huffman 压缩流，解压失败即 `XPRESS Huffman decompression failed`（`:51-62`）。不先解压就把压缩字节当 SCCA 头读，正是历史上 `run_count=658809`/1601 年时间戳这类乱值的来源（`:35-37` 的注释把事故写得很清楚）。解压实现 `PrefetchHelpers::decompressXpressHuffman`（`WindowsPrefetchParser_Helpers.cpp:161-229`，MS-XCA）：头 256 字节是唯一一张 Huffman 码表（`buildTree`，重新进入外层循环会重读表并使输出翻倍——注释记录了 36076 字节的 .pf 解成 65538 字节的教训，`:166-170`）；按 65536 字节分块的 LZ77 回溯复制，`length==15` 的扩展长度含 270 的双字节延伸（`:190-208`）；解码以调用方声明的期望大小（MAM 头或 SCCA 0x0C）为停止条件——位流耗尽后 reader 会持续返回零位并被"合法地"解码成垃圾符号，所以必须按声明大小截停（`:176-183`）。解压之后才走版本判定：`detectVersion` 现在看到的**一定是解压后的 SCCA 头**（+0x04 处必须是 `SCCA`，否则 UNKNOWN，`Helpers:232-249`），按版本号（Win10 的 30 / Win8 的 26 / Win7 的 23）决定是否解析引用文件/引用目录。产出可执行文件名、路径、运行次数、最后运行时间、prefetch 哈希。有个兜底细节值得知道：解析失败时从文件名反推（`NOTEPAD.EXE-ABC12312.pf` 的命名约定），保证至少留一条记录而不是空手而归（`ExecutionTraces:55-67`）。单测夹具对 `PREFETCH_SIGNATURE_MAM` 有断言（`test_windows_parsers_gtest.cpp:59`）。
 
 **链路五：$MFT → 全盘文件级时间线（`analyzeNTFSMetadata()`，`WindowsArtifactsParsers_SystemAnalysis.cpp:26-...`）。** 提取 `$MFT` 后用 libfsntfs 的 MFT metadata file API 逐条枚举，默认只处理前 10 万条防止内存爆掉（第 84-85 行），事务批量插入 mft_entries。相比 raw.db（来自目录项遍历），MFT 直接读 inode 记录，能覆盖更多已删除/无目录项的文件记录。
 
-### 5.1 代码走读：normalizeWindowsPath 的分隔符与盘符归一（WindowsFilesAnalyzerCore.cpp:317-350）
+### 5.1 代码走读：normalizeWindowsPath 的分隔符与盘符归一（WindowsFilesAnalyzerCore.cpp:339-380）
 
 ```cpp
 std::string WindowsFilesAnalyzer::normalizeWindowsPath(const std::string& input) {
@@ -261,9 +261,9 @@ std::string WindowsFilesAnalyzer::normalizeWindowsPath(const std::string& input)
 }
 ```
 
-逐块解释（骨架，全实现 :317-350）：为什么要归一——镜像里的工件内容（注册表键、LNK 目标、Prefetch 路径）用的是 Windows 原生写法，而 raw.db 的 files.path 是 TSK 归一后的 `/` 风格（ImageAnalyzer.md 链路二的路径规范化）；两套写法不统一，"Prefetch 里引用的 DLL 是否在 files 表里"这类跨表 join 就永远 join 不上。归一化把三种输入形态（盘符式/设备路径式/已归一式）压成同一种，是全部工件表路径列可对齐 files 表的前提。已知局限：只处理结构不处理大小写（Windows 路径大小写不敏感但 SQLite LIKE 默认敏感——join 时需要 LOWER() 或 COLLATE NOCASE 配合，当前查询未做）。
+逐块解释（骨架，全实现 :339-380）：为什么要归一——镜像里的工件内容（注册表键、LNK 目标、Prefetch 路径）用的是 Windows 原生写法，而 raw.db 的 files.path 是 TSK 归一后的 `/` 风格（ImageAnalyzer.md 链路二的路径规范化）；两套写法不统一，"Prefetch 里引用的 DLL 是否在 files 表里"这类跨表 join 就永远 join 不上。归一化把三种输入形态（盘符式/设备路径式/已归一式）压成同一种，是全部工件表路径列可对齐 files 表的前提。已知局限：只处理结构不处理大小写（Windows 路径大小写不敏感但 SQLite LIKE 默认敏感——join 时需要 LOWER() 或 COLLATE NOCASE 配合，当前查询未做）。
 
-### 5.2 代码走读：readUTF16LEString 的 ASCII 截断（WindowsFilesAnalyzerCore.cpp:386-404）
+### 5.2 代码走读：readUTF16LEString 的 ASCII 截断（WindowsFilesAnalyzerCore.cpp:408-426）
 
 ```cpp
 std::string WindowsFilesAnalyzer::readUTF16LEString(const uint8_t* data, size_t maxChars) {
@@ -282,11 +282,11 @@ std::string WindowsFilesAnalyzer::readUTF16LEString(const uint8_t* data, size_t 
 
 ## 7. 与其他模块的协作 / 注意事项
 
-- **第三方库**：hivex（注册表）、libevtx（事件日志）、libesedb（SRUM 的 ESE 库）、libfsntfs（MFT）；Prefetch/LNK/JumpList/回收站 `$I` 文件是自研二进制解析器（`WindowsLnkParser.cpp` 573 行、`WindowsPrefetchParser.cpp` 482 行，公有解析接口可单测）。
+- **第三方库**：hivex（注册表）、libevtx（事件日志）、libesedb（SRUM 的 ESE 库）、libfsntfs（MFT）；Prefetch/LNK/JumpList/回收站 `$I` 文件是自研二进制解析器（`WindowsLnkParser.cpp` 744 行、`WindowsPrefetchParser.cpp` 548 行——含 MAM 容器的 XPRESS-Huffman 解压，见链路四，公有解析接口可单测）。
 - **与 DLLAnalyzer 的关系**：windows.db 建表时一并创建了 7 张 `dll_*` 表（共享 SQL 文件 `windows_analysis_sql_tables.h`），DLLAnalyzer 把它当只读关联库查询（`AnalysisOrchestrator.cpp:351-367`）。
 - **未接线的工件（重要）**：`parseShimcacheFromRegistry`（`WindowsRegistryArtifacts.cpp:339`）、`parseUserAssistFromRegistry`（第 433 行）、`parseRDPConnectionsFromRegistry`、`parseWiFiProfilesFromRegistry` 均有完整实现与落表方法，但**没有任何调用方**；`shell_bag_entries` 表有建表和 INSERT 语句但连解析器都没有。这些表在真实分析里会是空的，二次开发时可考虑把调用补上（Shimcache 接 SYSTEM hive、UserAssist/RDP 接 NTUSER.DAT 即可激活）。
-- **路径规范化**：镜像里的 Windows 路径是 `\` 分隔且可能带盘符，`normalizeWindowsPath`（`WindowsFilesAnalyzerCore.cpp:317-350`）统一成 `/` 开头的 Unix 风格，与 TSK walker 的路径规范对齐；`readUTF16LEString` 只保 ASCII（非 ASCII 替换为 `?`，第 386-404 行注释解释了取舍），中文路径/内容可能丢字。
-- **查询只取未删除文件**（`queryFilesByPattern` 的 SQL 带 `is_deleted=0`，`WindowsFilesAnalyzerCore.cpp:199-201`）——已删除的工件文件不会被分析，但 EVTX 内部的"恢复记录"和 MFT 层面弥补了一部分。
+- **路径规范化**：镜像里的 Windows 路径是 `\` 分隔且可能带盘符，`normalizeWindowsPath`（`WindowsFilesAnalyzerCore.cpp:339-380`）统一成 `/` 开头的 Unix 风格，与 TSK walker 的路径规范对齐；`readUTF16LEString` 只保 ASCII（非 ASCII 替换为 `?`，第 409-412 行注释解释了取舍），中文路径/内容可能丢字。
+- **查询只取未删除文件**（`queryFilesByPattern` 的 SQL 带 `is_deleted=0`，`WindowsFilesAnalyzerCore.cpp:221-223`）——已删除的工件文件不会被分析，但 EVTX 内部的"恢复记录"和 MFT 层面弥补了一部分。
 
 ## 8. 如何验证与扩展
 
@@ -298,29 +298,29 @@ std::string WindowsFilesAnalyzer::readUTF16LEString(const uint8_t* data, size_t 
 
 | 方法 | 定义 | 语义 | 调用方 |
 |---|---|---|---|
-| `initialize()` | Core:26-61 | 输出库+提取目录准备 | 两个入口 |
+| `initialize()` | Core:23-61 | 输出库+提取目录准备 | 两个入口 |
 | `analyzeWindowsData()` | Core:63-109 | 11 段主流程编排 | 同上 |
 | `setOutputDatabasePath/setSkipAI` | .h | 配置 | 入口 |
 | `analyzeWithLLM()` | Core:111-177 | 15 类工件 LLM（双闸门） | 主流程尾 |
-| `queryFilesByPattern(pattern)` | Core:191-235 | raw.db LIKE 定位（is_deleted=0） | 各 analyzeXxx |
+| `queryFilesByPattern(pattern)` | Core:213-303 | raw.db LIKE 定位（is_deleted=0） | 各 analyzeXxx |
 | `extractFileToPath(inode, out, partition=-1)` | Core | 按 inode 回镜像提取 | 同上 |
 | `getExtractPath(subdir, name)` | Core | 提取目录路径规划 | 同上 |
 | `analyzeRegistryHives/parseRegistryHive` | RegistryParser:28-165 | hivex DFS 全量+专项 | 主流程段 1 |
 | `analyzeEventLogs` | EventLogParser:198-361 | EVTX 双段（正常+恢复） | 段 2 |
-| `analyzePrefetchFiles` | ExecutionTraces:26-44 | MAM 版本分派 | 段 3 |
+| `analyzePrefetchFiles` | ExecutionTraces:26-44 | MAM 容器解压 + 版本分派 | 段 3 |
 | `analyzeLNKFiles/analyzeJumpLists` | ExecutionTraces | LNK/dest-ms 解析 | 段 4-5 |
 | `analyzeRecycleBin` | SystemAnalysis | $I/$R 解析 | 段 6 |
 | `analyzeNTFSMetadata` | SystemAnalysis:26+ | $MFT（10 万条上限） | 段 7 |
 | `analyzeUserProfiles/analyzeBrowsers` | BrowserAnalyzer:31-111 | Chrome/Edge/Firefox | 段 8-9 |
 | `analyzeScheduledTasks/analyzeAmcache/analyzeSRUM` | SystemAnalysis:369-411+ | XML/hive/ESE | 段 10-12 |
 | `parseShimcache/UserAssist/RDP/WiFiFromRegistry` | RegistryArtifacts:339-433+ | **无调用方**（第 7 节） | — |
-| `normalizeWindowsPath/readUTF16LEString/FILETIME 转换` | Core:317-404 | 基础设施 | 各解析器 |
+| `normalizeWindowsPath/readUTF16LEString/FILETIME 转换` | Core:339-426 | 基础设施 | 各解析器 |
 
 ## 10. 关联矩阵
 
 | 对端 | 方向 | 交互点 | 数据形态 |
 |---|---|---|---|
-| TaskManagerAnalysis.cpp:470-485 / Orchestrator:295-310 | 上游 | WINDOWS 场景构造 | windows.db 或 files.db |
+| TaskManagerAnalysis.cpp:1477 / Orchestrator:540-555 | 上游 | WINDOWS 场景构造 | windows.db 或 files.db |
 | DatabaseManager（raw.db） | 输入 | queryFilesByPattern | FileRecord vector |
 | FileExtractor（经 dbManager） | 下游 | extractFileToPath | 提取目录文件 |
 | windows_analysis_sql_tables.h（32 表） | 输出 | CREATE_ALL_TABLES | DDL |
@@ -353,7 +353,7 @@ std::string WindowsFilesAnalyzer::readUTF16LEString(const uint8_t* data, size_t 
 - **可调参数影响**：MFT/EVTX 两个 cap 是覆盖度与资源的天平；--skip-ai 省下 15 类 × 10000 条的 LLM 往返。
 
 
-## 10. 常见任务配方
+## 13. 常见任务配方
 
 ### 配方 A：接线一个未接线解析器（以 Shimcache 为例）
 1. 确认 Parser 存在（Shimcache 解析已在 Parsers/）。
@@ -367,4 +367,4 @@ std::string WindowsFilesAnalyzer::readUTF16LEString(const uint8_t* data, size_t 
 
 ### 配方 C：扩展浏览器解析器
 `WindowsBrowserParser*` 系列加引擎分支（现有 Chromium/Firefox 模板）；产出统一落 browser_history 六表。
-**最后更新**: 2026-08-24（二轮深化：补全表列说明与方法清单）
+**最后更新**: 2026-11-10（Prefetch 链路四按代码重写：MAM 容器 + XPRESS-Huffman 解压；其余章节按代码复核）

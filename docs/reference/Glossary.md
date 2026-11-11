@@ -32,11 +32,16 @@
 | 取证场景 | scenario(s) | 任务级分析开关：`android / windows / linux / server_cloud` 多选 | [场景选择](../features/forensic-scenario-selection.md)、[CPP_REST_API](../api_reference/CPP_REST_API.md) |
 | 场景检测 | SceneDetector | 任务早期自动判定镜像类型/平台，产出场景库与 scene_* 字段 | [SceneDetector](../modules/cpp/network/SceneDetector.md) |
 | 过滤画像 | filter profile | `config/filter_profiles/*.json` 的场景过滤规则集（include/exclude 规则、combine_mode） | [FileFilter](../modules/cpp/core/FileFilter.md)、[FilterRoutes](../modules/cpp/network/routes/FilterRoutes.md) |
-| 内置画像 | general_forensics 等 | 仓库自带四个画像：general_forensics（默认）/ telecom_fraud / data_breach / virus_intrusion | [CommonTasks §12](../getting-started/CommonTasks.md) |
+| 内置画像 | general_forensics 等 | 仓库自带七个画像：general_forensics（默认）/ telecom_fraud / data_breach / virus_intrusion / rat_trace_workstation / 诈骗平台服务器专项 / 诈骗窝点工作站专项 | [CommonTasks §12](../getting-started/CommonTasks.md) |
 | 平台工件 | artifact | Windows/Linux/Android 分析器从系统痕迹（注册表、日志、App 数据库）提取的结构化记录 | [WindowsDB](../schema/WindowsDB.md)、[LinuxDB](../schema/LinuxDB.md) |
 | 内存取证 | memory forensics | Volatility3 分析内存镜像（进程/网络/bash 历史/启动信息 → `_memory.db`） | [MemoryAnalyzer](../modules/cpp/analyzers/MemoryAnalyzer.md)、[MemoryForensics 教程](../tutorials/MemoryForensics.md) |
 | ISF 符号 | Volatility3 ISF | Volatility3 按内核版本所需的符号表，`scripts/build-vol3-isf.sh` 生成 | [CommonTasks §8](../getting-started/CommonTasks.md) |
-| Android 数据源 | android_source | 四种 Android 输入：`tsk`（镜像，默认）/ `dir`（已解包目录）/ `zip` / `miui-backup`；非 tsk 短路磁盘管线 | [AndroidAnalyzer](../modules/cpp/analyzers/AndroidAnalyzer.md) |
+| Android 数据源 | android_source | 15 种 CLI 合法输入（`tsk` 镜像默认 / `dir` / `zip` / `tar` / `seven-zip` / `android-backup` / `filesystem-image` / `miui-backup` / `harmony-backup` / `thunder-backup` / `oppo-backup` / `vivo-backup` / `ios-backup` / `mobile-evidence` / `meiya`）；非 tsk 短路磁盘管线 | [AndroidAnalyzer](../modules/cpp/analyzers/AndroidAnalyzer.md)、[android-input-support-matrix](../android-input-support-matrix.md) |
+| 统一取数包 | mobile evidence package / `.mep.db` | "取数—分析分离"的单文件 SQLite 交接物：取数机 `--mobile-extract` 产出，分析机按 `android_source=mobile-evidence` 只读包分析 | [MobileBackupForensics 教程](../tutorials/MobileBackupForensics.md)、[统一取数格式设计](../specs/mobile-evidence-package.md) |
+| qq_legacy | legacy QQ 4.x | 老版 Android QQ（mobile QQ 4.x，约 2013-2015）账库时间源：明文 SQLite + 设备号 XOR 混淆，由 legacy 提取器归一进 graph.db（毫秒时间戳） | [QQDecryptionProcess](../tutorials/QQDecryptionProcess.md)、[QQForensicsImport](../tutorials/QQForensicsImport.md) |
+| harmony-backup | HarmonyOS 备份 | 鸿蒙系统备份逻辑来源（HarmonyBackupExtractor / HarmonyArtifactParsers） | [android-input-support-matrix](../android-input-support-matrix.md) |
+| thunder-backup | 雷电手机快取 | 雷电取证（ThunderForensic）产出的 ustar 容器逻辑来源（ThunderForensicBackupExtractor，含 OPPO/vivo/OnePlus 等品牌工件） | [android-input-support-matrix](../android-input-support-matrix.md) |
+| 三 IM 平台 | WeChat / QQ / WhatsApp | Android 工件解析支持的三个即时通信平台：微信（wechat_*）、QQ（qqnt/legacy）、WhatsApp（whatsapp_messages/summary/by_type 查询与 LLM 分析） | [WhatsAppForensicsImport](../tutorials/WhatsAppForensicsImport.md)、[AndroidAnalyzer](../modules/cpp/analyzers/AndroidAnalyzer.md) |
 | SQLCipher 解密 | wechat password | Android 微信/QQNT 数据库的 SQLCipher 密钥解密（`--wechat-password`） | [AndroidWechat 教程](../tutorials/AndroidWechat.md) |
 | 磁盘加密解密 | enable_decryption | BitLocker/LUKS/VeraCrypt 解密；密钥文件约定 `<imageBase>.part<N>.key` | [ImageAnalyzer](../modules/cpp/analyzers/ImageAnalyzer.md)、[CommonTasks §8](../getting-started/CommonTasks.md) |
 | XFS 模式 | xfs_mode | XFS 文件系统解析策略：`auto`（默认）/ `native`（内核）/ `pure`（纯库） | [ImageAnalyzer](../modules/cpp/analyzers/ImageAnalyzer.md) |
@@ -52,11 +57,12 @@
 
 | 术语 | 英文/代码名 | 一句话定义 | 详见 |
 |------|-------------|-----------|------|
-| 三后端拓扑 | topology | C++ 取证引擎（:8080/8666）+ Python httpserver（:8090）+ 分布式 C/S server（:8091），一个 React SPA 消费 | [Overview](../architecture/Overview.md)、[ServiceContracts §1](ServiceContracts.md) |
+| 三后端拓扑 | topology | C++ 取证引擎（:8080，`.env` 可改）+ Python httpserver（:8090）+ 分布式 C/S server（:8091），一个 React SPA 消费 | [Overview](../architecture/Overview.md)、[ServiceContracts §1](ServiceContracts.md) |
 | 任务 | task | HTTP 模式的分析单元：一次镜像分析的全生命周期（状态、进度、产物库路径） | [TaskManager](../modules/cpp/network/TaskManager.md) |
 | CLI 分析 | CLI mode | 直接运行 `forensic_analyzer <镜像>` 的无服务分析，产库名带镜像前缀 | [AnalysisOrchestrator](../modules/cpp/core/AnalysisOrchestrator.md)、[CLI](CLI.md) |
 | 任务持久化 | tasks.json | C++ TaskManager 把全部任务元数据落 `data/tasks.json`（相对可执行文件） | [Troubleshooting §7](../getting-started/Troubleshooting.md) |
-| 任务状态机 | task status | 全小写字符串：`pending / running / completed / failed / cancelled` | [CPP_REST_API 响应约定](../api_reference/CPP_REST_API.md) |
+| 任务状态机 | task status | 全小写字符串：`pending / running / completed / failed / cancelled / interrupted / paused`（后两者为阶段账本引入：重启中断与协作式暂停） | [CPP_REST_API 响应约定](../api_reference/CPP_REST_API.md)、[ServiceRunbook §4.5](../ops/ServiceRunbook.md) |
+| 暂停/恢复 | pause / resume | `POST /api/tasks/{id}/pause`（协作式：当前阶段跑完在阶段边界停靠 PAUSED）与 `POST /api/tasks/{id}/resume`（从阶段账本续跑，FAILED/CANCELLED/INTERRUPTED/PAUSED 均可，输入指纹未变的已完成阶段自动跳过） | [ServiceRunbook §4.5](../ops/ServiceRunbook.md)、[CommonTasks §1.3](../getting-started/CommonTasks.md) |
 | 任务阶段 | phase | 进度的八个阶段：initializing → image_analysis → event_extraction → file_classification → llm_analysis → platform_analysis → file_carving → finalizing | [CPP_REST_API 响应约定](../api_reference/CPP_REST_API.md) |
 | 任务优先级 | priority | `low / normal / high / critical`（priority 端点目前只回显不生效） | [CPP_REST_API §1](../api_reference/CPP_REST_API.md) |
 | 任务看门狗 | TaskWatchdog | 每 60s 巡检：RUNNING 超 `TASK_WATCHDOG_STALE_MINUTES`（默认 30 分钟）无进度即标 FAILED | [Troubleshooting §7](../getting-started/Troubleshooting.md) |
@@ -145,16 +151,17 @@ AI 分析的开关/模式、事件簇、Graphiti 图谱栈与 token 优化格式
 | 健康探针三口径 | health endpoints | C++ 探 Python 用 `/health`、Python 探 C++ 用 `/api/health`、run.sh 探 C++ 用 `/api/system/health` 三个口径并存 | [ServiceContracts §9-8](ServiceContracts.md) |
 | 存活/就绪探针 | live / ready | `live` 只探进程活着；`ready` 探依赖（C++ 的 ready 检 task_manager/database，Python 的 ready 中 cpp_backend 为硬依赖） | [CPP_REST_API §6](../api_reference/CPP_REST_API.md)、[Python_REST_API §1](../api_reference/Python_REST_API.md) |
 | 可选依赖降级 | graceful degradation | Python 的 Neo4j/LLM/Redis 不可用只降级不阻断（Graphiti disabled、队列转内存、`/health` 仍 ready） | [Troubleshooting §4-5,§9](../getting-started/Troubleshooting.md)、[Deployment](../architecture/Deployment.md) |
-| 尽力而为 | fire-and-forget | C++ 任务尾部触发 Graphiti ingest 的语义：失败不影响任务成败，不等待不重试 | [ServiceContracts §8.5](ServiceContracts.md)、[LLMPythonProxy](../modules/cpp/network/LLMPythonProxy.md) |
-| run.sh | — | 一键构建并前台启动三服务的脚本：C++ 端口兜底 8666，日志集中 `build/logs/` | [QuickStart §3](../getting-started/QuickStart.md) |
+| 尽力而为 | fire-and-forget | C++ 任务尾部触发 Graphiti ingest 的语义：失败不影响任务成败；FINALIZING 现默认等待摄取（`GRAPHITI_INGEST_WAIT_TIMEOUT_MIN`，0 才恢复 fire-and-forget） | [ServiceContracts §2.2](ServiceContracts.md)、[Environment §6](Environment.md) |
+| run.sh | — | 一键构建并前台启动三服务的脚本：C++ 端口随 `.env`（未设置回退 8080），日志集中 `build/logs/` | [QuickStart §3](../getting-started/QuickStart.md) |
 | 环境变量文件 | .env | ConfigManager 与 Python config 共读的配置文件（`cp .env.example .env`） | [Environment](Environment.md)、[ConfigManager](../modules/cpp/core/ConfigManager.md) |
 | 基址约定 | base URLs | C++→Python 用 `PYTHON_SERVICE_URL`（否则 PYTHON_HTTP_PORT），Python→C++ 用 `CPP_BACKEND_URL` | [ServiceContracts §1](ServiceContracts.md) |
 | 改端口检查清单 | port checklist | 改端口需同步 .env 三处 + `PYTHON_SERVICE_URL` + run.sh 回退 + 前端重启/重建 | [ServiceContracts 附录 B](ServiceContracts.md) |
 | 三 axios 客户端 | api / pythonApi / csApi | 前端分别指向 C++（同源）、Python 8090、C/S 8091 的三个客户端，统一拦截器解包 | [web/Overview](../modules/web/Overview.md)、[ServiceContracts §7.2](ServiceContracts.md) |
 | Vite 代理表 | proxy prefixes | dev 模式按前缀分发：`/csapi`→8091（剥前缀）、`/api/{reports,graphiti,llm,office,db,wechat,investigation}`→8090、兜底 `/api` 与 `/tasks`→C++ | [web/Overview](../modules/web/Overview.md)、[ServiceContracts §7.1](ServiceContracts.md) |
 | 动态 host 推导 | currentHost() | pythonApi/csApi 按浏览器当前 hostname 拼端口，解决跨机访问时 localhost 指向客户端自身的问题 | [web/Overview](../modules/web/Overview.md) |
-| 双 token | auth_token / cs_auth_token | 本地 mock 登录与分布式 JWT 各自独立存储，401 行为不同（前者跳登录页，后者仅清除） | [web/Overview](../modules/web/Overview.md)、[ServiceContracts §7.2](ServiceContracts.md) |
-| mock 登录 | mock login | `/login` 任意账密即发假 JWT（`mock_jwt_token_<ts>`），无路由守卫 | [web/Pages](../modules/web/Pages.md) |
+| 双 token | fieldSession / cs_auth_token | 现场认证 JWT（fieldSession）与分布式 C/S JWT 各自独立存储，401 行为不同（前者清凭据跳登录页，后者仅清除） | [web/Overview](../modules/web/Overview.md)、[ServiceContracts §7.2](ServiceContracts.md) |
+| 现场认证登录 | field-auth login | `/login` 提交 `POST /api/field-auth/login` 校验账密签发短期 JWT（`TRACELENS_FIELD_AUTH=enabled` 才可用）；未启用的本地构建无路由守卫、该端点 404 | [Deployment §10](../architecture/Deployment.md)、[web/Pages](../modules/web/Pages.md) |
+| field 模式角色 | viewer / analyst / reviewer / admin | 现场认证的四角色，权限递增：read / +write / +review / +admin（`field_security.py ROLES`） | [android-field-security-6a](../android-field-security-6a.md)、[Deployment §10](../architecture/Deployment.md) |
 | 任务上下文传播 | task_id query | 当前任务靠 URL query 在 13+ 个任务页间透传（TaskSelector ↔ Layout.getLinkUrl） | [web/Overview](../modules/web/Overview.md)、[web/Pages](../modules/web/Pages.md) |
 | identity 轮询 | identity polling | 轮询 hooks 把对象多元组拼成 identity 字符串，identity 变化即丢弃全部旧状态、null 不发请求 | [web/Hooks](../modules/web/Hooks.md) |
 | requestId 防陈旧 | stale-guard | 单调递增计数器 + key ref，旧请求的晚到响应（成功或失败）一律不落 state | [web/Hooks](../modules/web/Hooks.md) |
@@ -251,7 +258,7 @@ AI 分析的开关/模式、事件簇、Graphiti 图谱栈与 token 优化格式
 
 ## 统计与维护说明
 
-- 本表共 **120 条**术语：取证 23 / 架构 28 / 数据库 17 / LLM 24 / 运维前端 28；另有
+- 本表共 **127 条**术语：取证 28 / 架构 29 / 数据库 17 / LLM 24 / 运维前端 29；另有
   同名对照 9 条、缩写 14 条、代码名反查 23 条作为辅助索引（不计入术语数）。
 - 维护约定见文首"如何使用本表"；统计行随内容同步更新。
 
@@ -267,7 +274,7 @@ AI 分析的开关/模式、事件簇、Graphiti 图谱栈与 token 优化格式
 | 提交-轮询 | submit-poll | C++ 触发 Python 长任务的模式（async_ingest 拿 job_id 再查） | [LLMPythonProxy](../modules/cpp/network/LLMPythonProxy.md) |
 | 降级启动 | degraded startup | 依赖缺失时服务仍启动、功能缺席（initialized-but-disabled） | [ServiceManager](../modules/python/httpserver/services/ServiceManager.md) |
 | 冻结准入信封 | admission envelope | 报告生成前对输入集做 input_hash 冻结，保证幂等 | [ForensicReportService](../modules/python/services/ForensicReportService.md) |
-| 证据键 | evidence_key | `file:`/`cluster:v1:<minute>:<type>` 的冻结语法 | [InvestigationService](../modules/python/services/InvestigationService.md) |
+| 证据键 | evidence_key | `file:` / `cluster:v1:<minute>:<type>` / `android_artifact:v1:<task_id>:<result_set_id>:<kind>:<row_id>` 的冻结语法 | [InvestigationContracts §2](InvestigationContracts.md) |
 | 终端写保护 | terminal write guard | 任务删除后拒绝新写入（existing-only） | [TaskInfrastructure](../modules/cpp/network/TaskInfrastructure.md) |
 | TOCTOU 防复活 | no-resurrection | 删除与写入竞态的防护（D4b） | docs/hardening/d4b |
 | SQL-as-headers | SQL/ 头文件 | 建表语句以常量集中在头文件、编译期校验 | [DatabaseManager](../modules/cpp/core/DatabaseManager.md) |
@@ -302,4 +309,4 @@ AI 分析的开关/模式、事件簇、Graphiti 图谱栈与 token 优化格式
 | 大小写双轨 | case duality | API 小写/落盘大写/图谱大写三处三样 | [Glossary 对照] |
 | 三口径健康 | health trio | /health、/api/health、/api/system/health | [EndpointsFlat 附录](EndpointsFlat.md) |
 
-**最后更新**: 2026-08-24（新建，术语表）
+**最后更新**: 2026-11-10（补统一取数包/qq_legacy/harmony-backup/thunder-backup/三 IM/现场认证词条；对齐 15 种数据源、7 个画像、端口 8080、pause/resume 状态与 field-auth 登录）

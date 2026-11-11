@@ -43,7 +43,15 @@
 | `LLM_VISION_TEMPERATURE` | `0.5` / `0.5` | C++ :122；Py :180 | |
 | `LLM_TIMEOUT_SECONDS` | `120` / `120` | C++ :89；Py :182 | |
 | `LLM_MAX_RETRIES` | `3` / `3` | C++ :90；Py :183 | |
-| `LLM_MAX_EVENT_CLUSTERS` | `0`（不限） | C++ :92-95；消费点 TaskManagerAnalysis.cpp:416 | |
+| `LLM_MAX_CONCURRENCY` | C++ `1`（钳 1..64）；Py `1`（ge=1 le=64） | C++ ConfigManager.cpp:142-149；Py config.py:227 | C++ 侧 0/负值按 1 处理（worker 池不能无界）；每个 worker 独立 LLMClient。.env.example 示例 32 |
+| `LLM_THINKING_MODE` | 空（不注入 thinking 字段）；仅接受 `enabled`/`disabled`，其余按空处理 | C++ ConfigManager.cpp:101-104；Py config.py:194-201 | DeepSeek 式思考开关，作为顶层 `thinking` 请求字段发送 |
+| `LLM_MAX_ARTIFACTS` | C++ `500`（钳 1..100000，`0`=显式不限）；Py `500`（ge=1 le=100000） | C++ ConfigManager.cpp:124；Py config.py:347 | 工件 LLM 分析预算 |
+| `LLM_SMART_CANDIDATE_FILES` | `1000`（钳 1..100000，`0`=显式不限） | C++ ConfigManager.cpp:123（Python 侧不读，见 config.py:336 注释"owned by the C++ side"） | smart 粗选扫描上限，应 ≥ `LLM_MAX_FILES`。.env.example 示例 5000 |
+| `LLM_ARTIFACT_BATCH_SIZE` | `1`（钳 1..64，`0`=显式不限） | C++ ConfigManager.cpp:134 | 工件按 N 条/请求打包（1=旧式逐条调用） |
+| `LLM_ARTIFACT_BATCH_RETRIES` | `1`（钳 1..5） | C++ ConfigManager.cpp:135 | 工件批量调用失败重试次数 |
+| `ANDROID_ARTIFACT_LLM_CONCURRENCY` | `32`（钳 1..64，0/负值按 1） | C++ ConfigManager.cpp:152-158 | Android 工件逐条扇出的硬 worker 上限；不在 .env.example |
+| `WIN_LINUX_ARTIFACT_LLM_ENABLED` | `false` | C++ ConfigManager.cpp:160 | 提取后 Windows/Linux 工件 LLM 管线开关（MVP §4.8 裁剪为默认关）；不影响结构化提取与 Android |
+| `LLM_MAX_EVENT_CLUSTERS` | `200`（有界缺省，钳 1..100000；显式设 `0` 才是"不限"） | C++ ConfigManager.cpp:122（`bounded_limit`）；消费点 TaskManagerAnalysis.cpp | .env.example 示例同步为 200 |
 | `LLM_CONTEXT_LENGTH` | C++ `4096`；Py `4096` | C++ :176；Py :184 | .env.example 写 `163840`，**代码缺省远小于示例值** |
 | `LLM_RESERVED_TOKENS` | —（无读取点） | 仅 .env.example | **未接线** |
 | `LLM_CHARS_PER_TOKEN` | —（无读取点） | 仅 .env.example | **未接线** |
@@ -91,11 +99,19 @@ httpserver 的 `Settings` 与 `GraphitiConfig.from_env` 都会读这些变量，
 | `EMBEDDING_BASE_URL` / `EMBEDDING_MODEL` / `EMBEDDING_API_KEY` / `EMBEDDING_DIM` | — / `text-embedding-nomic-embed-text-v1.5` / 空=回落图谱 key→文本 key→`LLM_API_KEY`→`OPENAI_API_KEY` / `768` | graphiti `from_env`；Py `embedding_api_key` | |
 | `GRAPHITI_DB_PATH` | 空 | graphiti config.py:103 | 不在 .env.example |
 
+C++ 侧的摄取等待预算（`TaskManagerAnalysis.cpp` 读取，TaskManager 自带轮询取代了旧的 `LLMPythonProxy::wait_for_job_completion`，见 TaskManagerAnalysis.cpp:310-325 注释）：
+
+| 变量 | 默认 | 读取点 | 备注 |
+|---|---|---|---|
+| `GRAPHITI_INGEST_WAIT_TIMEOUT_MIN` | `720`（分钟，与 Python 侧 12h 对齐） | TaskManagerAnalysis.cpp:316,1668 | C++ FINALIZING 等待 Graphiti 摄取 job 的预算；`0` 恢复旧的 fire-and-forget 完成。.env.example 示例 720 |
+| `GRAPHITI_INGEST_RETRIES` | `2`（总尝试 = 1 + RETRIES） | TaskManagerAnalysis.cpp:323 | 摄取失败重试次数；仅在 .env.example 的注释中被提及，无显式示例行 |
+| `GRAPHITI_INGEST_POLL_SECONDS` | `10` | TaskManagerAnalysis.cpp:365 | 自带轮询的间隔；仅在 .env.example 注释中被提及 |
+
 ## 7. 端口与服务地址（联动关系）
 
 | 变量 | 默认值 | 读取点 | 备注 |
 |---|---|---|---|
-| `HTTP_SERVER_PORT` | C++ `8080`；Py `8080` | C++ ConfigManager.cpp:140（供信息接口）；Py config.py:142；vite.config.js:10（前端代理缺省 8080）；web/src/services/api.js:4 | **run.sh 回退是 `8666`**（run.sh:79 `CPP_PORT="${HTTP_SERVER_PORT:-8666}"`）——.env 缺该变量时，run.sh 用 8666 而 C++ 代码内缺省仍是 8080，务必显式写入 .env |
+| `HTTP_SERVER_PORT` | C++ `8080`；Py `8080` | C++ ConfigManager.cpp:140（供信息接口）；Py config.py:142；vite.config.js:10（前端代理缺省 8080）；web/src/services/api.js:4 | run.sh 经 `scripts/lib/tracelens_env.sh:38` 的 `: "${HTTP_SERVER_PORT:=8080}"` 同样回退 **8080**——与代码缺省一致。`8666` 只是 `.env.example` 模板示例值（复制模板部署时生效） |
 | `HTTP_SERVER_HOST` | `0.0.0.0` / `0.0.0.0` | C++ :141；Py :143 | |
 | `PYTHON_HTTP_PORT` | `8090` | Py config.py:133；C++ ConfigManager.cpp:142（组装 Python 服务 URL 的回退端口）；run.sh:80 | |
 | `PYTHON_HTTP_HOST` | `0.0.0.0` | Py config.py:134 | |
@@ -160,6 +176,15 @@ httpserver 的 `Settings` 与 `GraphitiConfig.from_env` 都会读这些变量，
 | `TRACELENS_MIUI_MAX_MANIFEST_PACKAGES/_FIELD_BYTES/_METADATA_BYTES` | 见源文件 | MiuiBackupManifest.cpp:26-31 | MIUI 清单解析上限 |
 | `TRACELENS_MIUI_MAX_CANDIDATES` | 见源文件 | MiuiArtifactParsers.cpp:49,149 | MIUI 工件候选上限 |
 
+现场认证 / 安全开关（均不在 .env.example，属现场部署变量，详见 [Deployment §10](../architecture/Deployment.md)）：
+
+| 变量 | 触发值 | 读取点 | 用途 |
+|---|---|---|---|
+| `TRACELENS_FIELD_AUTH` | `enabled` | C++ ConfigManager.cpp:15（`field_ai_disabled`）、HTTPserver.cpp:92-108、:135；scripts/android_field_check.py:54 | 现场模式总开关：启用后 `/api/security/status` 的 `field_auth=true`、CORS 不再放行 `*`，且要求服务绑定 loopback（127.0.0.1/::1）并完成 field runtime 自检；`enabled` + `FIELD_OUTBOUND_POLICY` 缺省/disabled 时 C++ 侧禁用出站 AI |
+| `TRACELENS_REQUIRE_FIELD_AUTH` | `1` | HTTPserver.cpp:86-87（启动校验）、:135-136 | 强制现场认证：置 1 而 `TRACELENS_FIELD_AUTH` 未 enabled 时 C++ 拒绝启动；同时驱动认证中间件口径 |
+| `TRACELENS_REQUIRE_RELEASE_LAYOUT` | `1` | HTTPserver.cpp:97-107；FieldApp.cpp:97；AndroidContainerNormalization.cpp:50；FilesystemEvidenceSource.cpp:94 | 发布布局校验：要求 `TRACELENS_RELEASE_ID` 与编译期身份一致（工作树构建的 `UNFROZEN_WORKTREE` 会被拒绝） |
+| `VITE_FIELD_RELEASE_BUILD` | `1` | web/vite.config.js:101（构建期） | 前端发布构建开关：置 1 时关闭 sourcemap（现场部署产物不带映射） |
+
 ## 11. 分布式 C/S server（python_service/server，端口 8091）
 
 | 变量 | 默认 | 读取点 | 备注 |
@@ -188,7 +213,7 @@ httpserver 的 `Settings` 与 `GraphitiConfig.from_env` 都会读这些变量，
 以下覆盖代码缺省中"必须显式对齐"的项；其余均可依赖缺省：
 
 ```bash
-# ---- 端口（避免 run.sh 8666 与代码 8080 漂移）----
+# ---- 端口（代码与 run.sh 兜底一致为 8080；按需显式对齐）----
 HTTP_SERVER_PORT=8080
 PYTHON_HTTP_PORT=8090
 CPP_BACKEND_URL=http://localhost:8080
@@ -215,36 +240,41 @@ DATABASE_URL=postgresql://postgres:<口令>@localhost:5432/tracelens
 
 ## 14. 全量配置集样例
 
-与 `.env.example` 逐行对应（含注释原义；标注★的行存在缺省不一致或未接线，见上文各节）：
+与 `.env.example` 主体对应（节选；标注★的行存在缺省不一致或未接线，见上文各节）：
 
 ```bash
 # 路径
 # PROJECT_ROOT=/abs/path            # 留空自动检测；run.sh 会忽略此行
 DATA_DIR=data
 
-# LLM 共享
-LLM_BASE_URL=http://192.168.31.170:1234
+# LLM 共享（.env.example 现示例为云端占位；本地 LM Studio 兜底为注释行）
+LLM_BASE_URL=https://api.example.com
 LLM_ENDPOINT=/v1/chat/completions
 LLM_API_KEY=
 
 # 文本模型（LLM_TEXT_API_KEY 留空回落 LLM_API_KEY）
-LLM_TEXT_BASE_URL=http://192.168.31.170:1234
+LLM_TEXT_BASE_URL=https://api.example.com
 LLM_TEXT_API_KEY=
-LLM_TEXT_MODEL=qwen/qwen3.6-35b-a3b
-LLM_TEXT_MAX_TOKENS=4096            # ★C++ 缺省 2048
+LLM_TEXT_MODEL=step-5-preview
+LLM_TEXT_MAX_TOKENS=256000          # ★C++ 缺省 2048
 LLM_TEXT_TEMPERATURE=0.7
 
 # 视觉模型（LLM_VISION_API_KEY 留空回落 LLM_API_KEY）
-LLM_VISION_BASE_URL=http://192.168.31.170:1234
+LLM_VISION_BASE_URL=https://api.example.com
 LLM_VISION_API_KEY=
-LLM_VISION_MODEL=qwen/qwen3.6-35b-a3b
-LLM_VISION_MAX_TOKENS=4096
+LLM_VISION_MODEL=step-5-preview
+LLM_VISION_MAX_TOKENS=256000
 LLM_VISION_TEMPERATURE=0.5
 
 # 公共
-LLM_TIMEOUT_SECONDS=120
+LLM_TIMEOUT_SECONDS=600             # ★代码缺省 120
 LLM_MAX_RETRIES=3
-LLM_MAX_EVENT_CLUSTERS=0
+LLM_MAX_CONCURRENCY=32              # ★代码缺省 1（钳 1..64）
+LLM_THINKING_MODE=                  # 空 = 不发送 thinking 字段
+LLM_MAX_EVENT_CLUSTERS=200          # ★旧样例写 0（不限）——现缺省有界 200
+LLM_MAX_FILES=50                    # ★代码缺省 500
+LLM_SMART_CANDIDATE_FILES=5000      # ★代码缺省 1000
+LLM_MAX_ARTIFACTS=500
 
 # MCP（★整组未接线）
 MCP_SERVER_PORT=8890
@@ -265,16 +295,18 @@ NEO4J_USER=neo4j
 NEO4J_PASSWORD=change-me
 GRAPHITI_LLM_API_KEY=             # 留空回落 LLM_TEXT_API_KEY，再回落 LLM_API_KEY
 GRAPHITI_USE_LOCAL_LLM=true
-GRAPHITI_BATCH_SIZE=25              # ★Settings 缺省 50 / GraphitiConfig 缺省 10
+GRAPHITI_BATCH_SIZE=50              # ★Settings 缺省 50 / GraphitiConfig 缺省 10 / .env.example 示例 50
+GRAPHITI_MAX_CONCURRENCY=32         # ★Settings/GraphitiConfig 缺省 1
 GRAPHITI_MAX_RETRIES=3
 GRAPHITI_GROUP_ID=forensics_files
 GRAPHITI_INCLUDE_FULL_DESC=true     # ★GraphitiConfig 缺省 false
-GRAPHITI_MAX_EPISODE_TOKENS=3000
+GRAPHITI_MAX_EPISODE_TOKENS=256000  # ★代码缺省 3000
+GRAPHITI_INGEST_WAIT_TIMEOUT_MIN=720  # C++ FINALIZING 等待摄取预算（0 = 恢复 fire-and-forget）
 
 # Python HTTP 服务
 PYTHON_HTTP_PORT=8090
 PYTHON_HTTP_HOST=0.0.0.0
-CPP_BACKEND_URL=http://localhost:8080
+CPP_BACKEND_URL=http://localhost:8666     # 模板示例值；与 HTTP_SERVER_PORT 同步改
 CPP_STARTUP_REQUEST_TIMEOUT=5
 CPP_RECOVERY_TIMEOUT=8
 NEO4J_CONNECT_TIMEOUT=5
@@ -283,14 +315,17 @@ OPTIONAL_SERVICE_INIT_TIMEOUT=12
 PYTHON_STARTUP_TIMEOUT=30
 
 # C++ HTTP 服务
-HTTP_SERVER_PORT=8080               # ★run.sh 缺省回退 8666
+HTTP_SERVER_PORT=8666               # ★模板示例值；代码与 run.sh 兜底均为 8080
 HTTP_SERVER_HOST=0.0.0.0
 
 # 上下文窗口
-LLM_CONTEXT_LENGTH=163840           # ★代码缺省 4096
+LLM_CONTEXT_LENGTH=1000000          # ★代码缺省 4096
 LLM_RESERVED_TOKENS=512             # ★未接线
 LLM_CHARS_PER_TOKEN=4.0             # ★未接线
-FILE_ANALYSIS_MAX_CONTENT_LIMIT=50000   # ★Python 代码缺省 12000
+FILE_ANALYSIS_MAX_CONTENT_LIMIT=12000   # ★.env.example 示例已改 12000，与 Python 缺省一致
+
+# 平台工件 LLM（MVP §4.8 默认关）
+WIN_LINUX_ARTIFACT_LLM_ENABLED=false
 
 # 调试
 DEBUG_OUTPUT_MODE=stdout
@@ -308,7 +343,7 @@ DB_JOURNAL_MODE=WAL
 
 # DLL
 DLL_ANALYSIS_ENABLED=true
-DLL_CPP_BACKEND_URL=http://localhost:8080   # ★未接线
+DLL_CPP_BACKEND_URL=http://localhost:8666   # ★未接线（示例值随模板端口）
 DLL_ANALYSIS_TIMEOUT=30
 
 # OSS
@@ -330,4 +365,4 @@ DB_POOL_TIMEOUT=5
 DB_STARTUP_TIMEOUT=30
 ```
 
-**最后更新**: 2026-08-24（新建，参考手册）
+**最后更新**: 2026-11-10（对齐：LLM 有界缺省与新变量、GRAPHITI_INGEST_* 预算、现场认证变量、run.sh 回退 8080、.env.example 现示例值）

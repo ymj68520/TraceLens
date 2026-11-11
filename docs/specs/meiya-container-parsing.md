@@ -2,6 +2,16 @@
 
 > 状态：已实现并通过单元测试与真实样本端到端验证。
 > 代码：`src/analyzers/AndroidAnalyzer/Meiya*.{h,cpp}`、`MobileEvidenceMeiyaAdapter.{h,cpp}`
+>
+> **实施状态（2026-11-10 对照代码复核，已实施并在用）**
+>
+> - 掩码自推导：候选生成与 `integrity_check` 采信在 `MeiyaContainerCrypto.cpp:361-369`（`zero_page` / `byte_mode`）；SQLite 头部 16 字节精确修正（`kHeaderProbe` / `kSqliteMagic`，`:24-25`）；同族缺失借用其他族的掩码（`MeiyaBackupExtractor.cpp:174-175`，标注 `+borrowed_from_<族>`）。
+> - 容器族判定：`MeiyaBackupExtractor.cpp:149-150`（`kPreferredOrder`，`_RECORD_MFC` 后缀特判在 `:57-59`）。
+> - `TBL_PR_*` 映射：`MobileEvidenceMeiyaAdapter.cpp:103-122` 起；未映射表写 `unmapped_table` 覆盖度（`:446`）；时间三元组（`text` / 秒）`:289-293`；适配器标识 `meiya-mobilemaster`（`:356`）。
+> - Web 分支：解码(20%) → 转换统一包(55%) → 写分析库(75%) → 完成(100%)（`TaskManagerAnalysis.cpp:1839-1923`；元数据键 `mobile_evidence_package` / `meiya_containers_total` / `meiya_containers_decrypted` / `meiya_records`）。
+> - 证据预检识别 `meiya_case_export`：`python_service/httpserver/services/evidence_preflight.py:214-245`。
+>
+> **实现与规范的差异**（规范正文保持原样，差异如实记录在此）：§6 说预检 `confidence=high` 一概而论，与实现不符——实际分档（`evidence_preflight.py`）：案件目录（含 `<name>.mf`）为 high（`:223`）、设备子目录组为 high（`:240`）、"选中目录本身就是一个设备目录"为 `medium`（`:229`）、**独立的 `.mf` 文件也是 `medium`（`:246`）**。即正文对 `.mf` 文件与单设备目录两种形态的 `confidence=high` 表述均不准。其余各节（掩码推导、容器族、映射范围、时间语义、已知限制）与实现一致。
 
 ## 1. 现象与性质
 
@@ -133,6 +143,6 @@ contacts 6,078 / call_logs 6,000 / sms 4,662 / app_notes 8 / installed_apps 1,67
 
 ## 9. 验证
 
-- `tests/UnitTest/test_meiya_container_gtest.cpp`（6 项）：合成容器（真实 SQLite + 任意 XOR 掩码，**不含任何厂商密钥**）的掩码推导、精确往返、同族共享、明文库拒绝、非页对齐拒绝、随机数据必须校验失败。
+- `tests/UnitTest/test_meiya_container_gtest.cpp`（7 项：6 个 `MeiyaCryptoTest` + 1 个 `MeiyaAdapterTest`）：合成容器（真实 SQLite + 任意 XOR 掩码，**不含任何厂商密钥**）的掩码推导、精确往返、同族共享、明文库拒绝、非页对齐拒绝、随机数据必须校验失败，以及适配器规范化负载键与标准表重建（`:291`）。
 - 合成夹具刻意构造"删除大表后留下的全零空闲页"，因为真实容器正是靠这类空页泄露掩码；不复现该条件，测试验证的就是不存在的假设。
 - 回归：`ctest -R "Meiya|MobileEvidence|Miui|Harmony"` 全部 8 个套件通过。

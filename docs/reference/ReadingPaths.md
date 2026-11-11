@@ -8,10 +8,11 @@
 2. [Overview §1-3](../architecture/Overview.md)——心智模型与两种模式（30m）
 3. [IncidentTriage](../tutorials/IncidentTriage.md)——未知镜像初筛决策树（45m）
 4. 按场景选一门主教程：[Linux 入侵](../tutorials/LinuxIntrusion.md) / [Windows](../tutorials/WindowsCase.md) / [Android/微信](../tutorials/AndroidWechat.md)（各 1-2h）
-5. [SqlCookbook](SqlCookbook.md)——把"看"变成"查"（1h）
-6. [schema/ 对应库](../schema/LinuxDB.md)——字段级参考，按需查
-7. [KnowledgeGraphReports](../tutorials/KnowledgeGraphReports.md)——图谱与报告出证（1h）
-8. [FAQ](../faq.md)——随用随查
+5. 手机取证/IM 深挖（按检材选读）：[MobileBackupForensics](../tutorials/MobileBackupForensics.md)（统一取数包 .mep.db）/ [QQForensicsImport](../tutorials/QQForensicsImport.md) + [QQDecryptionProcess](../tutorials/QQDecryptionProcess.md) / [WeChatForensicsImport](../tutorials/WeChatForensicsImport.md) + [WeChatDecryptionProcess](../tutorials/WeChatDecryptionProcess.md) / [WhatsAppForensicsImport](../tutorials/WhatsAppForensicsImport.md)（各 0.5-1h）
+6. [SqlCookbook](SqlCookbook.md)——把"看"变成"查"（1h）
+7. [schema/ 对应库](../schema/LinuxDB.md)——字段级参考，按需查
+8. [KnowledgeGraphReports](../tutorials/KnowledgeGraphReports.md)——图谱与报告出证（1h）
+9. [FAQ](../faq.md)——随用随查
 
 ## C++ 后端开发者
 
@@ -54,6 +55,7 @@
 5. [DataAndBackup](../ops/DataAndBackup.md) + [UpgradeMigration](../ops/UpgradeMigration.md)（1.5h）
 6. [CapacityPlanning](../ops/CapacityPlanning.md) + [PerformanceTuning](../ops/PerformanceTuning.md)（1.5h）
 7. [SecurityHardening](../ops/SecurityHardening.md) + [ThreatModel](../architecture/ThreatModel.md)（1.5h）
+8. 现场（field）部署专项：[Deployment §10](../architecture/Deployment.md)（deploy/field 资产、认证模型、fail-closed 链路）+ [android-field-security-6a](../android-field-security-6a.md)；pause/resume 运维语义见 [ServiceRunbook §4.5](../ops/ServiceRunbook.md)（1h）
 
 ## 分布式 C/S 管理员
 
@@ -81,4 +83,4 @@
 
 ---
 
-**最后更新**: 2026-08-24（新建：按角色阅读路线）
+**最后更新**: 2026-11-10（分析师线补手机取证/IM 教程入口；运维线补 field 部署与 pause/resume 指引）

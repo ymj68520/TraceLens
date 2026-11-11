@@ -113,7 +113,11 @@ void AndroidAnalyzer::analyzeWithLLM() {
 
 ## 5. 工作流程走读
 
-`analyzeAndroidArtifacts`（AndroidLLMAnalysisService.cpp:44-107）：惰性 initialize（ConfigManager 取文本模型建 ModelRouter，:19-42）→ 按开关逐类调 `analyzeArtifactType`。后者的类型路由（节选）：
+`analyzeAndroidArtifacts`（AndroidLLMAnalysisService.cpp:44-123）：惰性 initialize（ConfigManager 取文本模型建 ModelRouter，:19-42）→ 按开关逐类调 `analyzeArtifactType`。
+
+**`analyzeArtifactType` 的执行序（:125-123 后的并发池化，llm-throughput-hardening SPEC C/D）**：一次性 SELECT 该表 PENDING 工件后**立即关库**（:143-144 注释："records are in memory; writers open their own handles"）→ 打包工作块（:151-166：`LLM_ARTIFACT_BATCH_SIZE` >1 时按批装箱，否则单条成块——两种形状走同一 worker 池）→ **worker 池**（:168-174：`ConfigManager::getAndroidArtifactLLMConcurrency()` 取并发数，钳到 [1, min(workers, chunks)]；:168-171 注释给出共享实例不可行的原因——"One shared ModelRouter serialises chat() on its httplib handle, so each worker analyzes through its own service instance (own router) and writes through its own sqlite connection; the busy timeout absorbs write collisions between workers"）→ 每个 worker `atomic<size_t> next` 抢索引消费块（:177-192，进度回调带锁 :180）。
+
+类型路由（worker 内，节选）：
 
 ```cpp
 // src/network/HTTPServer/AndroidLLMAnalysisService.cpp:144-191（节选）
@@ -155,7 +159,11 @@ try {
 
 可见"泛型助手"在 switch 层的用法：同族消息类只换平台名字符串。调用端（AndroidAnalyzerCore.cpp:310-325）硬编码全开选项、传 stdout 进度回调，返回值写进 `ANDROID_LLM_ANALYSIS_COMPLETE` 审计。
 
+**批块的梯级回退**（:196-229）：size>1 的块经 `llmbatch::analyzeWithLadder(workerService.router(), tableName, items, batchRetries, outcome)` 一次多件；批内未解析的条目回落 `analyzeSingleArtifact`（:198-200 注释："unresolved items fall back to analyzeSingleArtifact so coverage never drops below the legacy floor"）——批量失败不降低覆盖率，只增加调用量。
+
 失败模式：与 Linux 相同——LLM 挂了每条 chat 失败、函数返回 0，任务不受影响，表保持 PENDING 等下次增量（且 Android 有 §3.2 的端点预检，通常根本不会进入这条慢路）。
+
+**并发与默认值**：`ANDROID_ARTIFACT_LLM_CONCURRENCY` 默认 **32**、硬钳 [1, 64]（ConfigManager.cpp:151-157，0/负值按 1 处理——"a worker pool cannot be unbounded"；注释 :148-150：默认 32 是因为云端文本端点撑得住、否则 500 条/类的 system_logs 积压是数小时尾延迟）。每个并发 worker 持有独立 ModelRouter 与 sqlite 连接（ConfigManager.h:58-60），写冲突由 `DB_BUSY_TIMEOUT` 吸收（AndroidLLMAnalysisService.cpp:187）。
 
 ## 6. 与其他模块的协作
 
@@ -231,6 +239,8 @@ android_analysis_sql_llm.h:20-77 逐表列出进 prompt 的 JSON 字段与截断
 | `LLM_TEXT_BASE_URL` | 回退 LLM_BASE_URL | 同上第二条件 | 同上 |
 | `LLM_TEXT_*` 五项 | 见 Environment.md | initialize() → ModelRouter | 每条工件模型调用 |
 | `LLM_TIMEOUT_SECONDS` / `LLM_MAX_RETRIES` | 120 / 3 | LLMClient | 端点配置了但不可达时仍逐条超时（门控不检测连通性，只查配置非空） |
+| `ANDROID_ARTIFACT_LLM_CONCURRENCY` | **32**（硬钳 1..64，0/负值按 1） | ConfigManager.cpp:151-157 → analyzeArtifactType worker 池（AndroidLLMAnalysisService.cpp:172-174） | 工件逐条分析同时在飞的 LLM 调用数；每 worker 独立 ModelRouter + sqlite 连接（busy timeout 吸收写冲突）；1=串行（旧行为） |
+| `LLM_ARTIFACT_BATCH_SIZE` / `LLM_ARTIFACT_BATCH_RETRIES` | 1 / 见 env | analyzeArtifactType 装箱与梯级重试（:153-175） | >1 时 N 条打包一次请求，未解析条目回落单条分析（覆盖率不低于旧地板） |
 | `--no-ai`（CLI flag） | false | skipAI_ → analyzeWithLLM 第一道门 | HTTP 任务路径无此开关（skipAI_ 恒 false），只有 CLI 能触发 |
 | （无 maxArtifacts env） | 1000 | AnalysisOptions（h:57） | 调用方硬编码全开 |
 | `TRACELENS_MIUI_*` | 见源文件 | MIUI 解析侧（上游） | 影响 manifest 表的行数而非本模块行为 |
@@ -292,4 +302,4 @@ curl -s ":8080/api/forensics/android/miui-wechat-records?task_id=<id>&kind=kv&re
 curl -s ":8080/api/forensics/android/llm-summary?task_id=<id>" | jq .totals
 ```
 
-**最后更新**: 2026-08-24（二轮深化：补全方法清单与契约细节）
+**最后更新**: 2026-11-10（补：ANDROID_ARTIFACT_LLM_CONCURRENCY 并发池、批量梯级回退、§11 配置行）

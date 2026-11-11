@@ -6,8 +6,8 @@
 
 | 端口 | 服务 |
 |------|------|
-| 8666 | `./run.sh` 启动的 C++ 服务（`HTTP_SERVER_PORT` 未设置时的兜底默认） |
-| 8080 | C++ 服务默认端口（`.env.example` / `make cpp` / `--http-server` 无参时） |
+| 8666 | `.env.example` 模板示例值（`HTTP_SERVER_PORT=8666`，复制模板部署时生效） |
+| 8080 | C++ 服务兜底默认（代码缺省 / run.sh 经 `scripts/lib/tracelens_env.sh` 回退 / `make cpp` / `--http-server` 无参时） |
 | 8090 | Python httpserver |
 | 8091 | 分布式 C/S server（`PORT`） |
 | 7687 / 7474 | Neo4j Bolt / 浏览器 |
@@ -46,7 +46,7 @@ curl http://localhost:8091/health/ready     # 数据库不可用时返回 503
 | 来源 | 位置 / 获取方式 |
 |------|----------------|
 | run.sh 启动的三个服务 | `build/logs/cpp_server.log`、`build/logs/python_service.log`、`build/logs/cs_server.log` |
-| C++ 运行时 | `<DATA_DIR>/logs/`（默认 `data/logs/`，相对可执行文件，即 `build/data/logs/`），文件名由 `.env` 的 `LOG_FILE=forensics.log` 与 `DEBUG_LOG_FILE=debug.log` 决定 |
+| C++ 运行时 | `<DATA_DIR>/logs/`（默认 `data/logs/`，相对可执行文件，即 `build/data/logs/`）。文件名是 PathManager **硬编码**的 `forensics.log` / `debug.log`（PathManager.cpp:92-97）——`.env` 的 `LOG_FILE`/`DEBUG_LOG_FILE` 未接线，改了不生效 |
 | C++ 日志 API | `GET http://localhost:8666/api/system/logs` |
 | Python 日志 API | `GET http://localhost:8090/api/system/logs?lines=200&level=ERROR`（解析本服务日志）；`GET /api/system/logs/{service}`（cpp/python，读取 `build/logs/` 下对应文件）；`GET /api/system/logs-stream/{service}`（SSE 流式） |
 
@@ -115,14 +115,16 @@ Graphiti 全功能还要求 LLM 端点同时加载 `openai/gpt-oss-20b` 与 `tex
 **症状**：AI 分析报 `LLMConnectionFailed`(200) 或超时；报告缺少 LLM 描述。
 
 ```bash
-# 1. 端点可达性（.env.example 默认是局域网 LM Studio：192.168.31.170:1234）
-curl http://192.168.31.170:1234/v1/models
+# 1. 端点可达性（以 .env 的 LLM_BASE_URL 为准；.env.example 主示例是 api.example.com 占位，
+#    局域网 LM Studio 192.168.31.170:1234 只是模板中注释掉的本地兜底示例）
+grep '^LLM_BASE_URL' .env
+curl http://<LLM_BASE_URL 去掉 /v1>/v1/models
 
 # 2. 模型名必须与 LLM_TEXT_MODEL / LLM_VISION_MODEL 完全一致
 grep LLM_ .env
 
 # 3. 实测一次 chat
-curl -X POST http://192.168.31.170:1234/v1/chat/completions \
+curl -X POST <LLM_BASE_URL>/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model": "<LLM_TEXT_MODEL 的值>", "messages": [{"role": "user", "content": "ping"}]}'
 
@@ -130,7 +132,7 @@ curl -X POST http://192.168.31.170:1234/v1/chat/completions \
 ./build/forensic_analyzer image.dd --no-ai
 ```
 
-超时可调 `LLM_TIMEOUT_SECONDS`（默认 120）/ `LLM_MAX_RETRIES`（默认 3）。
+超时可调 `LLM_TIMEOUT_SECONDS`（代码缺省 120，`.env.example` 示例 600）/ `LLM_MAX_RETRIES`（默认 3）。
 
 ---
 
@@ -184,9 +186,9 @@ curl http://localhost:8090/health/ready            # 看 checks 各项
 curl http://localhost:8666/api/system/health       # 确认 C++ 正常
 tail -f build/logs/python_service.log
 
-# 回连地址错了（C++ 不在 8080）
-grep CPP_BACKEND_URL .env     # .env.example 默认 http://localhost:8080
-                              # run.sh 用 8666 时应改为 http://localhost:8666
+# 回连地址错了（C++ 不在 .env 声明的端口）
+grep CPP_BACKEND_URL .env     # .env.example 示例 http://localhost:8666（与模板端口示例一致）
+                              # 换端口部署时同步改为实际 C++ 端口
 ```
 
 ---
@@ -409,7 +411,7 @@ RUNNING → Neo4j 慢或嵌入模型未加载（缺嵌入模型在摄取时直�
 | 仓库根出现 forensics_audit.db | 审计库默认相对 CWD，PathManager 未接线 | [AuditLog §7](../modules/cpp/core/AuditLog.md) |
 | `/api/system/logs/stream` 404 | system_logs.py 的 router 未注册（死代码） | [Python_REST_API §15](../api_reference/Python_REST_API.md) |
 | legacy 案情分析报 410 | 端点已退役，须走报告生成 | [Python_REST_API §4](../api_reference/Python_REST_API.md)、[ErrorCodes](../reference/ErrorCodes.md) |
-| run.sh 与 .env 端口口径打架 | run.sh 兜底 8666、其余默认 8080 | 本文 §1、[ServiceContracts 附录 B](../reference/ServiceContracts.md) |
+| 端口口径混乱 | 旧版 run.sh 兜底 8666 与代码 8080 不一致——已消除：现兜底统一 8080，8666 只是 .env.example 示例值 | 本文 §1、[ServiceContracts 附录 B](../reference/ServiceContracts.md) |
 | tasks.json 与 API 状态值大小写不同 | 序列化层两套字面量 | [TaskManager](../modules/cpp/network/TaskManager.md) |
 
 ---
@@ -463,4 +465,4 @@ cat .env          # 注意抹去密码/key
 
 ---
 
-**最后更新**: 2026-08-24（扩充：高级工作流/深挖工具箱/产出导览）
+**最后更新**: 2026-11-10（对齐：端口兜底 8080、日志文件名硬编码、LLM 端点示例口径）

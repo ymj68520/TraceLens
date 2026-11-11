@@ -62,7 +62,7 @@
 | `linux_cloud_logs` | 容器与云 | 云厂商 agent 日志 | 24 |
 | `linux_apache_access_logs` | Web 与中间件 | Apache 访问日志 | 11 |
 | `linux_apache_vhosts` | Web 与中间件 | Apache 虚拟主机 | 6 |
-| `linux_nginx_access_logs` | Web 与中间件 | Nginx 访问日志 | 11 |
+| `linux_nginx_access_logs` | Web 与中间件 | Nginx 访问日志（含行级溯源列族） | 19 |
 | `linux_nginx_server_blocks` | Web 与中间件 | Nginx server 块 | 8 |
 | `linux_web_error_logs` | Web 与中间件 | Web 错误日志 | 18 |
 | `linux_middleware_logs` | Web 与中间件 | 中间件应用日志 | 18 |
@@ -761,11 +761,11 @@ Apache/Nginx 访问日志 + 配置解析（vhosts/server blocks）+ 错误/中�
 | id | INTEGER | PRIMARY KEY AUTOINCREMENT | 行号 |
 | server_name / document_root / server_aliases / ssl_certificates / config_file_path | TEXT | — | vhost 五要素 |
 
-#### linux_nginx_access_logs（`:604-616`，写入 `crud.h:187-190`）
+#### linux_nginx_access_logs（`:604-619`，写入 `crud.h:187-191` 18 列，调用方 `LinuxWebServerOperations.cpp:226`）
 
-同 Apache 十列里的九列（无 http_version）+ `request_time REAL`（耗时秒）+ `upstream_addr TEXT`（上游）。索引 3（`:617-619`）。
+同 Apache 11 列中的 9 列（无 http_version 与 vhost）+ `request_time REAL`（耗时秒）+ `upstream_addr TEXT`（上游）+ **8 列行级溯源列族**：`source_file TEXT`（原始日志文件）、`source_line INTEGER`（行号）、`source_offset INTEGER`（字节偏移）、`source_inode INTEGER` / `source_partition INTEGER`（回指 raw.db 事实行）、`source_hash TEXT`（原始行哈希）、`raw_record TEXT`（原始行全文）、`parser_version TEXT`。注意不对称：Apache 表（`:575-587`）没有这组列。索引 3（`:620-622`）。
 
-#### linux_nginx_server_blocks（`:622-632`，写入 `crud.h:192-195`）
+#### linux_nginx_server_blocks（`:625-632`，写入 `crud.h:193-196`）
 
 | 列 | 类型 | 约束/默认 | 含义 |
 |----|------|-----------|------|
@@ -1352,4 +1352,4 @@ SELECT chain_id, attack_type, summary, confidence FROM linux_attack_chains;
 - [ ] 73 表中"结论表"（攻击链/异常/关联）非空才可引用
 - [ ] 服务日志五表的 timestamp 与 timestamp_unix 双列一致性
 - [ ] LLM5 列：七类坏 SELECT 对应工件恒空属已知缺陷（5.1 节）
-**最后更新**: 2026-08-24（补：写入时序与查询手册）
+**最后更新**: 2026-11-10（linux_nginx_access_logs 新增 8 列行级溯源列族，19 列；写入方 LinuxWebServerOperations）

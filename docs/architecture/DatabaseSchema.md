@@ -1,6 +1,6 @@
 # 数据库模式设计
 
-> 本文档是**参考手册**：所有表名均直接取自源码中的建表 SQL，每个库标注其 schema 定义位置。想理解"为什么分这么多库、谁在什么时候写它们"，先读下面两节，再按需查表。**注意：旧文档称文件分类为 13 类，实际代码为 24 张分类表**（`FileClassifier.cpp` 的 `FileCategory` 枚举）。
+> 本文档是**参考手册**：所有表名均直接取自源码中的建表 SQL，每个库标注其 schema 定义位置。想理解"为什么分这么多库、谁在什么时候写它们"，先读下面两节，再按需查表。**注意：旧文档称文件分类为 13 类，实际代码为 24 张分类表**（`FileCategory` 枚举，定义在 `src/core/DatabaseManager/FileClassifier/FileClassifier.h:11`）。
 
 ## 1. 先讲道理：这套 schema 的三个设计决定
 
@@ -21,8 +21,8 @@ raw.db（事实） ──► events.db（时间线观点）      ┐
 
 | 模式 | 位置 | 说明 |
 |------|------|------|
-| HTTP 任务 | `data/tasks/<task_id>/` | `raw.db`、`events.db`、`files.db`、`android.db`、`windows.db`、`linux.db`、`oss.db`（SERVER_CLOUD 场景的 linux_* 工件库，见第 8 节同名澄清；`PathManager.cpp getTaskDbPaths`） |
-| CLI 模式 | 镜像同目录 | `<image>_raw.db`、`<image>_events.db`、`<image>_files.db`（平台工件并入 files.db）、`<image>_dll.db`（`--analyze-dlls`）、`<image>_memory.db`（`--memory-analyze`） |
+| HTTP 任务 | `data/tasks/<task_id>/` | `raw.db`、`events.db`、`files.db`、`android.db`、`windows.db`、`linux.db`、`oss.db`（SERVER_CLOUD 场景的 linux_* 工件库，见第 8 节同名澄清；`PathManager.cpp getTaskDbPaths`）；手机备份任务另有统一取数包 `<base>_mobile_evidence.mep.db`（`TaskManagerAnalysis.cpp:1421,1842,2107`） |
+| CLI 模式 | 镜像同目录 | `<image>_raw.db`、`<image>_events.db`、`<image>_files.db`（平台工件并入 files.db）、`<image>_dll.db`（`--analyze-dlls`）、`<image>_memory.db`（`--memory-analyze`）、`<base>_mobile_evidence.mep.db`（手机备份统一取数包，`AnalysisOrchestrator.cpp:788,1000`；`--mobile-package` 可直接分析既有包） |
 | 审计 | `data/audit/forensics_audit.db` | `PathManager.h:73`；`AUDIT_LOG_DB` 可覆盖 |
 | 任务状态 | `data/tasks.json` | TaskPersistence |
 | C/S | PostgreSQL（`DATABASE_URL`） | 3 个迁移（`migrations/postgresql/`） |
@@ -38,6 +38,7 @@ graph TB
         LI[linux.db]
         OS[oss.db]
         ME[memory db]
+        MEP[统一取数包 .mep.db]
         AU[forensics_audit.db]
     end
     PG[(PostgreSQL<br/>C/S 10 张表)]
@@ -48,6 +49,7 @@ graph TB
     FL --> WI
     FL --> LI
     FL --> OS
+    MEP --> AN
     style RAW fill:#e8f5e9
     style EV fill:#fff3e0
     style FL fill:#e3f2fd
@@ -92,7 +94,7 @@ raw.db 是后续所有阶段的唯一输入源（事件提取、文件分类、�
 
 ## 4. files.db — 文件分类与场景（分拣层）
 
-定义位置：`src/core/DatabaseManager/SQL/file_classifier_sql.h`、`FileClassifier.cpp`、`LLMAnalysisService.cpp`
+定义位置：`src/core/DatabaseManager/SQL/file_classifier_sql.h`、`src/core/DatabaseManager/FileClassifier/FileClassifier.h`、`LLMAnalysisService.cpp`
 
 设计意图：回答"几十万个文件里哪些值得看"。分类是手段，场景优先级和 LLM 结论才是目的——所以 LLM 列和场景列放在**每行都在**的主 `files` 表上，而 24 张分类表只是按类别物化的查询副本（由统一模板创建）。Python 侧重分析/报告/图谱也都落回这张主表。
 
@@ -107,7 +109,7 @@ raw.db 是后续所有阶段的唯一输入源（事件提取、文件分类、�
 
 **重要**：LLM 列与场景列**只在主 `files` 表**上；24 张分类表由统一模板创建（`CREATE_CATEGORY_TABLE_TEMPLATE`），仅含基础列 + `partition_num`，不含 LLM/场景列。
 
-### 4.2 24 张分类表（`FileClassifier.cpp` `FileCategory` → 表名）
+### 4.2 24 张分类表（`src/core/DatabaseManager/FileClassifier/FileClassifier.h:11` 的 `FileCategory` → 表名）
 
 | 分类表 | 分类表 | 分类表 | 分类表 |
 |--------|--------|--------|--------|
@@ -122,9 +124,9 @@ raw.db 是后续所有阶段的唯一输入源（事件提取、文件分类、�
 
 ---
 
-## 5. android.db — Android 工件（33 张表）
+## 5. android.db — Android 工件（41 张表）
 
-定义位置：`src/core/DatabaseManager/SQL/android_analysis_sql.h`
+定义位置：`src/core/DatabaseManager/SQL/android_analysis_sql.h`；统一备份两表的 DDL 在 `src/analyzers/AndroidAnalyzer/MobileBackupSchema.h`（由鸿蒙/雷电/vivo/iOS 适配器与统一取数包分析**按需现建**）
 
 | 分组 | 表 |
 |------|-----|
@@ -132,11 +134,13 @@ raw.db 是后续所有阶段的唯一输入源（事件提取、文件分类、�
 | 微信 | `wechat_messages`、`wechat_contacts`、`wechat_chatrooms`、`wechat_owner_info`、`wechat_artifact_inventory`、`wechat_kv_records`、`wechat_sqlite_records`、`wechat_log_events` |
 | QQNT | `qqnt_artifact_inventory`、`qqnt_kv_records`、`qqnt_sqlite_records`、`qqnt_log_events` |
 | 设备与系统 | `system_build_properties`、`system_apps`、`framework_files`、`system_logs`、`device_identifiers`、`wifi_networks`、`chrome_history` |
-| 应用 | `installed_packages`、`installed_apps`、`usage_stats`、`app_database_files`、`app_notes`、`app_db_inventory` |
+| 应用 | `installed_packages`、`installed_apps`、`usage_stats`、`app_database_files`、`app_notes`、`app_db_inventory`、`miui_external_files` |
 | 备份与加密 | `miui_backup_manifest`、`encrypted_db_inventory` |
+| 统一备份 | `mobile_backup_manifest`、`mobile_artifacts`（鸿蒙/雷电 OPPO·一加/vivo/iOS 备份的厂商中立表族；iOS 工件也直接落通信/笔记/浏览等同构表） |
+| 溯源与覆盖 | `android_source_coverage`、`android_source_provenance`、`android_container_coverage`、`android_filesystem_provenance`、`android_filesystem_metrics` |
 | 进度 | `android_analysis_progress` |
 
-微信库解密（SQLCipher）支持 `--wechat-password`、`--backup-password[-stdin|-fd]`（避免密码进入 argv，见 Security.md）。
+微信库解密（SQLCipher）支持 `--wechat-password`、`--backup-password[-stdin|-fd]`（避免密码进入 argv，见 Security.md）。逐表见 [schema/AndroidDB.md](../schema/AndroidDB.md)。
 
 ---
 
@@ -179,7 +183,8 @@ DLL 分析表同时用于 CLI 独立输出 `<image>_dll.db`（`--analyze-dlls` �
 
 | 库/表 | 定义位置 | 用途 |
 |-------|---------|------|
-| 内存分析库（`<image>_memory.db`）：`processes`、`network_connections`、`bash_history`、`boot_info`、`cmdline`、`analysis_meta` | `src/core/DatabaseManager/SQL/memory_analysis_sql_tables.h` | Volatility3 内存取证结果 |
+| 内存分析库（`<image>_memory.db`）：`processes`、`network_connections`、`bash_history`、`boot_info`、`cmdline`、`analysis_meta` | `src/core/DatabaseManager/SQL/memory_analysis_sql_tables.h` | Volatility3 内存取证结果（Linux/Windows 镜像自动识别，共用同一 schema） |
+| 统一取数包（`<base>_mobile_evidence.mep.db`）：`mobile_evidence_meta`、`mobile_evidence_record`、`mobile_evidence_file`、`mobile_evidence_coverage`（+ 视图 `v_record_flat`） | `src/analyzers/AndroidAnalyzer/MobileEvidenceSchema.h` | 美亚/MIUI/鸿蒙/雷电等手机备份先规约成统一 Package 落此包库，再由分析层回写 android.db；写 `mobile_evidence::Writer`、读 `Reader`（只读双保险）。逐表见 [schema/MobileEvidenceDB.md](../schema/MobileEvidenceDB.md) |
 | `oss_objects`、`oss_access_logs`、`oss_buckets`（+ 视图 `oss_objects_summary`、`oss_access_timeline`） | `src/core/DatabaseManager/SQL/oss_sql.h` | 阿里云 OSS 对象存储取证。注意：OSSAnalyzer 当前**无生产调用方**（消费路由未注册，仅单测调用），这些表不会在任务产出中出现；任务目录里的 `oss.db` 是 SERVER_CLOUD 场景由 LinuxFilesAnalyzer 写入的 `linux_*` 表族，与此同名不同物 |
 | `event_chains`、`event_chain_nodes`、`causal_relationships` | `src/core/EventCorrelationEngine/Detail/EventCorrelationEngineCore.cpp` | 事件因果链分析（写入 events.db）。同 `event_correlations`：引擎未接入生产流水线，任务产出中通常为空 |
 | `carved_files` | `src/analyzers/FileCarving/FileCarver.cpp:575` | 雕刻恢复文件记录 |
@@ -243,4 +248,4 @@ Python 侧 `graphiti_integration/database_reader/` 以同样方式发现并读�
 
 ---
 
-**最后更新**: 2026-08-23（解释式重写：开场补充三个设计决定，各库补设计意图；表清单以代码为准）
+**最后更新**: 2026-11-10（android.db 33→41 张：统一备份两表/溯源五表/miui_external_files 入册；新增统一取数包 .mep.db 条目与产出位置）

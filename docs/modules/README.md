@@ -5,7 +5,7 @@
 - 模块文档已经过技术深化：叙事结构之外，每篇补了真实代码走读、字段/方法清单、性能并发、调用矩阵与配置影响；数据库字段详见 [schema](../schema/)，跨层入口详见 [源码导览](../reference/SourceMap.md)。
 - 模块文档按目录组织，与源码位置对应：`docs/modules/cpp/**` 对应 `src/**`，`docs/modules/python/**` 对应 `python_service/**`。
 - 每篇模块文档按统一的**解释式结构**组织：`为什么有这个模块 → 在系统中的位置 → 核心概念与设计 → 工作流程走读（含 file:line 锚点）→ 与其他模块的协作 → 注意事项与已知问题 → 如何验证与扩展`。先读 [架构总览](../architecture/Overview.md) 和 [数据流](../architecture/DataFlow.md) 建立全局图景，再按需深入单个模块。
-- 文档于 2026-08-23 按代码重写；后续代码演进时**请以代码为准**。
+- 文档于 2026-08-23 按代码重写；2026-11-10 增补手机取证（vivo/iOS/美亚/统一取数包）、IM 三平台、Field 野外链路、内存取证路由等新模块并按代码复核；后续代码演进时**请以代码为准**。
 - 下表描述均依据当前代码核实编写；个别模块在代码中已处于过时/死代码状态，见下方"过时与死代码模块"标注。
 
 ## 过时与死代码模块
@@ -30,8 +30,14 @@
 | 文档 | 描述 |
 |------|------|
 | [ImageAnalyzer](cpp/analyzers/ImageAnalyzer.md) | 磁盘镜像分析入口：TSK/原生文件系统遍历、加密镜像解密、XFS 支持 |
-| [AndroidAnalyzer](cpp/analyzers/AndroidAnalyzer.md) | Android 取证分析：QQNT/微信/MIUI 备份工件解析、SQLCipher 解密、逻辑提取（dir/zip/miui-backup/thunder-backup） |
-| [ThunderForensicBackup](cpp/analyzers/ThunderForensicBackup.md) | 雷电手机快取（ThunderForensic）通用提取：OPPO/vivo/一加 tar 或工程目录，PhoneData/wifi.xml/App 数据树/加密笔记归档 |
+| [AndroidAnalyzer](cpp/analyzers/AndroidAnalyzer.md) | Android 取证分析：QQNT/微信/MIUI/鸿蒙/雷电/美亚 备份工件解析、SQLCipher 解密、`--android-source` 12 值多源分派（dir/zip/tar/miui/harmony/thunder/meiya/ios/vivo 等） |
+| [MobileEvidencePackage](cpp/analyzers/MobileEvidencePackage.md) | 统一手机取数格式 `.mep.db`：三主表契约、Writer 单事务/Reader 只读、`--mobile-extract/--mobile-package` 两阶段与 analyzePackage 分析消费 |
+| [MeiyaBackupExtractor](cpp/analyzers/MeiyaBackupExtractor.md) | 美亚 MobileMaster FL-901：XOR 混淆容器解密（掩码运行时双假设推导 + integrity_check 判据）、六容器族、`--android-source meiya` |
+| [ThunderForensicBackup](cpp/analyzers/ThunderForensicBackup.md) | 雷电手机快取（ThunderForensic）通用提取：OPPO/vivo/一加 tar 或工程目录，PhoneData/wifi.xml/App 数据树/加密笔记归档；已迁移取数-分析分离（buildPackage→analyzePackage） |
+| [HarmonyBackup（顶层）](../modules/HarmonyBackup.md) | 已解密的华为鸿蒙备份：识别/限额/libarchive 解包，解析规则收敛到 MobileEvidenceHarmonyAdapter |
+| [AliyunImage（顶层）](../modules/AliyunImage.md) | 阿里云 Linux 系统盘导出包：C++ posix_spawn 薄壳 + Python 解包脚本、`ALIYUN_*` 错误码族 |
+| [VivoAnalyzer](cpp/analyzers/VivoAnalyzer.md) | vivo/iQOO PC 助手备份：JSON 头 + LevelDB 索引 + SHA-1 载荷、8 字节循环 XOR 去混淆、索引落库（HTTP 链路，CLI 未接线） |
+| [IosAnalyzer](cpp/analyzers/IosAnalyzer.md) | iOS 逻辑备份（iTunes/Finder）：Manifest.db 路由、BinaryPlist 读取、六类 Apple 工件并入 android.db 共享表（HTTP 链路，CLI 未接线） |
 | [WindowsFilesAnalyzer](cpp/analyzers/WindowsFilesAnalyzer.md) | Windows 系统工件分析（Shimcache/UserAssist/RDP/WiFi 解析器已实现未接线，对应表恒空） |
 | [LinuxFilesAnalyzer](cpp/analyzers/LinuxFilesAnalyzer.md) | Linux 工件分析：日志/journal/auditd/容器/云工件解析与篡改、持久化检测 |
 | [MemoryAnalyzer](cpp/analyzers/MemoryAnalyzer.md) | 内存取证：Volatility3 封装（进程/网络/Bash 历史/启动信息 → `_memory.db`；CLI 专用旁路，HTTP 侧靠命名约定找库） |
@@ -86,7 +92,9 @@
 | [LLMAnalysisService](cpp/network/LLMAnalysisService.md) | 文件级 LLM 分析服务：FULL/SMART 两种模式（deprecated 标注但仍活跃，见上方标注） |
 | [LinuxLLMAnalysisService](cpp/network/LinuxLLMAnalysisService.md) | Linux 工件的 LLM 批量分析服务 |
 | [WindowsLLMAnalysisService](cpp/network/WindowsLLMAnalysisService.md) | Windows 工件的 LLM 批量分析服务 |
-| [AndroidLLMAnalysisService](cpp/network/AndroidLLMAnalysisService.md) | Android 工件的 LLM 批量分析服务（活跃；与 Linux/Windows 版的差异：有端点可用性门控） |
+| [AndroidLLMAnalysisService](cpp/network/AndroidLLMAnalysisService.md) | Android 工件的 LLM 批量分析服务（活跃；与 Linux/Windows 版的差异：有端点可用性门控；worker 池并发 `ANDROID_ARTIFACT_LLM_CONCURRENCY` 默认 32 钳 1..64） |
+| [FieldApp](cpp/network/FieldApp.md) | 野外（field）fail-closed 认证：FieldAuthMiddleware 全局中间件、introspect 转发裁决链（不可达 503）、field_runtime_ready 启动闸 |
+| [MemoryForensicsRoutes](cpp/network/MemoryForensicsRoutes.md) | 内存取证查询路由（五端点直读 `_memory.db`；READONLY 开库，缺失 404 不建库） |
 | [LLMPythonProxy](cpp/network/LLMPythonProxy.md) | 将 C++ 侧 LLM 请求代理给 Python 服务的过渡层 |
 | [SQLiteHelper](cpp/network/SQLiteHelper.md) | HTTP 层使用的 SQLite 查询助手 |
 | [TaskInfrastructure](cpp/network/TaskInfrastructure.md) | TaskManager 内部支撑组件：任务执行（`TaskManagerAnalysis.cpp`）、持久化、序列化、看门狗 |
@@ -161,6 +169,14 @@
 | [System](python/httpserver/routes/System.md) | 服务日志路由（logs/logs-stream SSE；`system_logs.py` 为未注册死代码） |
 | [Associations](python/httpserver/routes/Associations.md) | 事件簇↔文件关联路由（analysis-center 抽屉的数据源） |
 | [OssAnalysis](python/httpserver/routes/OssAnalysis.md) | Python 侧 OSS AI 过滤（已注册但无活跃调用方，见文档标注） |
+| [IMForensics](python/httpserver/routes/IMForensics.md) | IM 三平台取证路由（whatsapp/qq/wechat：imports CRUD、overview/sessions/messages/contacts；wx_/qq_ 伪任务身份解析链） |
+| [TimelineSummary](python/httpserver/routes/TimelineSummary.md) | 时间规律路由（qq/wechat 导入域 + qq_legacy 时间源；qq_legacy 毫秒、qq_import 秒） |
+| [CommGraph](python/httpserver/routes/CommGraph.md) | 统一通讯关系图路由（/api/comm 四端点：graph/timeline/edge/datasets） |
+| [EvidenceIntake](python/httpserver/routes/EvidenceIntake.md) | 证据预检与摄入路由（evidence_intake + raid_task_intake：预检作业、capture 冻结、RAID 绑定、`_field_gate` 三态） |
+| [FieldAuth](python/httpserver/routes/FieldAuth.md) | 现场认证路由（status/login/me/introspect + main.py 全局中间件；field_security 权限决策） |
+| [AndroidReport](python/httpserver/routes/AndroidReport.md) | 第三方厂商 HTML 报告导入路由（资源上限族、厂商内容"三不"、来源漂移 409） |
+| [TaskAnalysisRuns](python/httpserver/routes/TaskAnalysisRuns.md) | 事件簇/文件分析运行路由（estimate/run、记录真源、SPEC E 单一写者） |
+| [MediaAnalysis](python/httpserver/routes/MediaAnalysis.md) | 音视频分析路由（转写/描述、pending_backfill 降级、时长限额、任务归属门） |
 
 #### 服务（python/httpserver/services/）
 
@@ -176,11 +192,16 @@
 | [GraphitiService](python/services/GraphitiService.md) | Graphiti 服务封装（`services/graphiti_service.py`） |
 | [LLMService](python/services/LLMService.md) | LLM 服务（`services/llm_service.py`：文本/视觉模型调用） |
 | [ForensicReportService](python/services/ForensicReportService.md) | 取证报告域：A 链确定性快照、R2 链 LLM 叙事、终版报告装配/发布 |
-| [InvestigationService](python/services/InvestigationService.md) | 调查域：schema v7 仓储状态机、E1-E11 执行器不变量、证据键与 grounding 规则 |
+| [InvestigationService](python/services/InvestigationService.md) | 调查域：schema v8 仓储状态机（v7 只读迁移）、E1-E11 执行器不变量、证据键与 grounding 规则 |
 | [CaseAnalysisService](python/services/CaseAnalysisService.md) | 案件分析：四条流水线（full/multi/smart/incremental）与双模式文件过滤 |
 | [IngestionJobManager](python/services/IngestionJobManager.md) | Graphiti 摄取后台任务队列（Redis 持久化 + 内存回退，五模式） |
 | [TaskStore](python/services/TaskStore.md) | 任务归属路径解析（D2b fail-closed 数据边界的安全基石） |
 | [WeChatGraphService](python/services/WeChatGraphService.md) | 微信关系图服务（networkx 指标/社区/时间线；注意路由层每请求新建实例致缓存失效，见文档标注） |
+| [IMImportServices](python/services/IMImportServices.md) | IM 三平台导入服务（微信密钥自动推导 `_harvest_key_material`、QQ 4.x/NTQQ 双支线与 qq_legacy、WhatsApp 解析与 graph.db 自愈） |
+| [CommGraphService](python/services/CommGraphService.md) | 统一通讯关系图服务（dataset 三入口归一、不可变版本链、身份归组先验证后落库） |
+| [PeopleGraphService](python/services/PeopleGraphService.md) | 人员发现图谱服务（LLM 提取 + quote 逐字验证、单活跃运行、身份复核） |
+| [EventGraphService](python/services/EventGraphService.md) | 事件图谱服务（快照冻结 + freshness 三态、回查契约） |
+| [TimelineSummaryService](python/services/TimelineSummaryService.md) | 时间规律总结服务（context_id 全语境摘要、单事务统计+钻取、多源时间线归一） |
 | [DocumentExtractors](python/services/DocumentExtractors.md) | 文档提取器定位器与回退链（`config/extractor_mapping.json` + markitdown 主路径） |
 
 ### 分布式 C/S 服务端（python/server/）
@@ -195,7 +216,7 @@
 | 文档 | 描述 |
 |------|------|
 | [Overview](web/Overview.md) | 前端架构：入口链、三 axios 客户端、vite 代理与分包 |
-| [Pages](web/Pages.md) | 23 条路由逐页走读 + 死代码页面与已知问题 |
+| [Pages](web/Pages.md) | 30 条路由逐页走读（含 IM 三平台/取证报告/调查工作台/内存取证）+ 死代码页面与已知问题 |
 | [Services](web/Services.md) | 24 个 service 文件的方法↔端点↔消费者三向映射 |
 | [Store](web/Store.md) | 7 个 Redux slice 逐个：state/thunk/localStorage |
 | [Hooks](web/Hooks.md) | 16 个 hooks：轮询身份绑定模式、死 hooks 标注 |
@@ -215,4 +236,4 @@
 
 ---
 
-**最后更新**: 2026-08-23（以代码为准重写；同日补齐 27 个此前无文档的子系统）
+**最后更新**: 2026-11-10（按代码增补手机取证/IM/Field/内存取证等新模块，2026-08-23 首轮以代码为准重写）

@@ -18,7 +18,7 @@ Linux 取证的证据形态是"文本为主、散布极广"。一台被入侵的
 |------|------|--------|---------|
 | `bool initialize()` | 准备输出库与提取目录 | 两个入口构造后调用 | false 即中止 |
 | `void setOutputDatabasePath(path)` / `setExtractDirectory(dir)` / `setSkipAI(bool)` | 输出库路径 / 中间文件目录 / `--no-ai` | HTTP（任务路径）与 CLI | — |
-| `void analyzeLinuxData()` | 主流程：21 Phase + 五引擎 + LLM | LINUX 场景（`TaskManagerAnalysis.cpp:486-501`）与 CLI `--linux-analyze` | 每 Phase 独立 try/catch |
+| `void analyzeLinuxData()` | 主流程：21 Phase + 五引擎 + LLM | LINUX 场景（`TaskManagerAnalysis.cpp:1497-1504`）与 CLI `--linux-analyze` | 每 Phase 独立 try/catch |
 | `void analyzeServerCloudArtifacts()` | 服务器/云入口——实现就是一句 `analyzeLinuxData()`（`LinuxFilesAnalyzerCore.cpp:218-231`） | SERVER_CLOUD 场景 | 同上 |
 | `void analyzeWithLLM()` | 25+ 类工件的 LLM 增强 | 主流程尾部 | 跳过条件同其他平台 |
 | `void analyzeWithRuleEngine()` / `correlateEvents()` / `reconstructTimeline()` / `detectAnomalies()` | 四个推理引擎 | 主流程 Phase 16 之后依次调用 | 引擎失败不回滚已落表 |
@@ -83,8 +83,8 @@ enum class PersistenceType {
 
 两个入口：
 
-- **HTTP 模式**：LINUX 或 SERVER_CLOUD 场景。前者写 `data/tasks/<id>/<镜像名>_linux.db`（`TaskManagerAnalysis.cpp:486-501`）；后者复用同一个类，只是入口换成 `analyzeServerCloudArtifacts()`、输出写 `<镜像名>_oss.db`——它的实现就是一句 `analyzeLinuxData()`（`LinuxFilesAnalyzerCore.cpp:218-231`），即"服务器/云场景 = 完整 Linux 分析换了个输出库名"。
-- **CLI 模式**：`--linux-analyze`，工件并入 `<镜像名>_files.db`（`AnalysisOrchestrator.cpp:312-327`）。
+- **HTTP 模式**：LINUX 或 SERVER_CLOUD 场景。前者写 `data/tasks/<id>/<镜像名>_linux.db`（`TaskManagerAnalysis.cpp:1497-1504`）；后者复用同一个类，只是入口换成 `analyzeServerCloudArtifacts()`、输出写 `<镜像名>_oss.db`（构造 `TaskManagerAnalysis.cpp:1519`，ossDb 路径 `:1520`）——它的实现就是一句 `analyzeLinuxData()`（`LinuxFilesAnalyzerCore.cpp:218-231`），即"服务器/云场景 = 完整 Linux 分析换了个输出库名"。
+- **CLI 模式**：`--linux-analyze`，工件并入 `<镜像名>_files.db`（`AnalysisOrchestrator.cpp:557-572`，构造在 `:563`）。
 
 输入：镜像路径 + raw.db（`DatabaseManager`）。中间产物（解压的日志、提出的配置）落在输出库旁的 `<镜像名>_extracted_files/`（`LinuxFilesAnalyzerCore.cpp:55-68`）。输出：linux.db，73 张表左右（表清单在 `src/core/DatabaseManager/SQL/linux_analysis_sql_tables.h`），另有 `llm_*` 列由 `linux_analysis_sql_llm.h` 的语句维护。
 
@@ -100,7 +100,7 @@ enum class PersistenceType {
 | 账号与认证 | `/etc/passwd`、`/etc/shadow`、`/etc/group`、wtmp/btmp、`~/.ssh/authorized_keys`、known_hosts | linux_users / linux_login_records / linux_ssh_keys |
 | 命令与扩展历史 | `~/.bash_history` 等 + Phase 13 的 `~/.python_history`、`~/.mysql_history`、`~/.gitconfig`、`~/.kube/config`、AWS/gcloud/az 凭证文件 | linux_shell_history / linux_extended_history |
 | 持久化与配置 | cron、systemd 单元与 timer、`/etc/rc.local`、init.d、shell profile、`/etc/ld.so.preload`、sudoers、udev/polkit/xinetd 规则、at 任务 | linux_cron_jobs / linux_systemd_services / linux_persistence_entries |
-| 容器与 Web | `var/lib/docker/containers/%/config.json`、docker 运行日志（`*-json.log`）、Podman、Apache/Nginx access log 与 vhost、modsecurity | linux_docker_* / linux_apache_* / linux_nginx_* / linux_modsecurity_logs |
+| 容器与 Web | `var/lib/docker/containers/%/config.json`、docker 运行日志（`*-json.log`）、Podman、Apache/Nginx access log 与 vhost（含 `www/server/nginx/conf/`、`www/server/panel/vhost/nginx/`）、宝塔面板请求日志（`www/wwwlogs/request/%.json`、`www/server/panel/logs/request/%.json`）、modsecurity | linux_docker_* / linux_apache_* / linux_nginx_* / **linux_panel_requests / linux_panel_request_sources** / linux_modsecurity_logs |
 | 安全基线与网络 | setuid 文件、capabilities、SELinux AVC、AppArmor、防火墙规则、DNS 配置、USB/挂载事件 | linux_setuid_files / linux_selinux_avc_denials / linux_firewall_rules |
 | 行为痕迹 | 浏览器 profile（Chromium/Firefox）、XDG 最近文档/回收站、CUPS 打印、systemd-coredump、Snap/Flatpak 包 | linux_browser_* / linux_recent_documents / linux_trash_entries |
 
@@ -116,9 +116,9 @@ enum class PersistenceType {
 | `linux_attack_chains`（:728+） | `chain_id/attack_type/events/timeline/summary/confidence` | 攻击链：events/timeline 是序列化的事件 ID 与时间线 |
 | `linux_timeline_events` / `linux_timeline_gaps` | `timestamp/source_type/event_type/username/ip_address` / 空档区间 | 统一时间线与"无法解释的空档"（空档本身是证据） |
 
-### 4.2 产出表全清单概览与列级抽查（linux_analysis_sql_tables.h，74 张表）
+### 4.2 产出表全清单概览与列级抽查（linux_analysis_sql_tables.h 74 张 + 内联 2 张 = 76 张表）
 
-74 张表按证据域聚合（每族含 2-8 张同构表，全部带 parser_name/parser_version 溯源列与 5 个 llm_* 列——**llm_* 由 LLM 服务 ALTER 补列或建表自带**）：
+76 张表按证据域聚合（每族含 2-8 张同构表，全部带 parser_name/parser_version 溯源列与 5 个 llm_* 列——**llm_* 由 LLM 服务 ALTER 补列或建表自带**；宝塔面板两张表是例外：DDL 内联在 `LinuxFilesAnalyzerEnhanced.cpp:159-175`，不在共享 SQL 头里）：
 
 | 族 | 表数 | 代表表与关键列 |
 |---|---|---|
@@ -127,7 +127,7 @@ enum class PersistenceType {
 | 历史与行为 | 4 | linux_shell_history、linux_extended_history（python/mysql/git/kube/AWS 凭证）、browser_* 两张 |
 | 持久化 | 3 | linux_cron_jobs、linux_systemd_services(+timers)、linux_persistence_entries（14 机制） |
 | 容器 | 5 | linux_docker_containers/images、linux_container_logs、container_security_findings |
-| Web/中间件 | 8 | apache_access/error、nginx_access/error、linux_web_error_logs、linux_middleware_logs、linux_modsecurity_logs |
+| Web/中间件 | 10 | apache_access/error、nginx_access/error、linux_web_error_logs、linux_middleware_logs、linux_modsecurity_logs、linux_panel_requests（宝塔面板 JSON 请求日志：timestamp_raw/client_address/method/url/user_agent/form_data…，时间保留原文不定时区）、linux_panel_request_sources（同内容副本的来源映射，同文件只解析一次） |
 | 安全 | 9 | setuid/capabilities/selinux_avc/apparmor/firewall_rules + 安全发现类 |
 | 专项日志 | 12 | database/email/vpn/security_product/package 各"logs+findings"两张 + suspicious_packages |
 | 分析层产物 | 8 | tampering_findings、correlated_events、timeline_events/gaps、anomalies、rule_matches、attack_chains |
@@ -277,7 +277,7 @@ inline constexpr const char* SELECT_TAMPERING_FINDINGS_PENDING_ANALYSIS =
 
 - **命名陷阱（必读）**：`LinuxFilesAnalyzer/Analysis/LogCorrelationEngine` 与 `src/core/EventCorrelationEngine/` 是**两个无关模块**。前者只服务 Linux 日志（产出 linux_correlated_events）；后者是流水线级的事件关联（events.db 侧）。搜代码时别混。
 - **外部依赖**：zlib/xz/bzip2/zstd（压缩日志，`CompressedLogParser.cpp` 直接链库而非 popen 外部命令）；TSK/FileExtractor；其余解析全部自研（auditd、journal、wtmp 都是二进制手工解析，可单测）。`JournalParser` 是自研的 journald 二进制格式解析器：直接读 journal 文件的 header、entry array、data object 与 field hash table（`JournalParser.h:63-74` 的结构定义）——不调 `journalctl` 是因为取证环境里通常不能（也不该）在镜像上执行二进制，这也是整个项目"用户态解析优先"哲学的体现。
-- **SERVER_CLOUD 场景的输出库**叫 `oss.db` 但内容是 Linux 工件（PathManager 的 ossDb 路径，`TaskManagerAnalysis.cpp:509`）；真正的 OSS（阿里云对象存储）分析在独立的 OSSAnalyzer 模块，两者无关，只是历史命名撞车。
+- **SERVER_CLOUD 场景的输出库**叫 `oss.db` 但内容是 Linux 工件（PathManager 的 ossDb 路径，`TaskManagerAnalysis.cpp:1361` 与 `:1520`，SERVER_CLOUD 分支构造在 `:1519`）；真正的 OSS（阿里云对象存储）分析在独立的 OSSAnalyzer 模块，两者无关，只是历史命名撞车。
 - **容错设计**：主流程对每个 Phase 单独 catch，一个解析器崩溃不会拖垮整个分析（错误进审计日志）；这也是为什么有些表在某些镜像上会是空的——通常是"证据不存在"而非"解析失败"，排查时先查 `linux_analysis_progress` 表。
 - **auditd 聚合**：原始 auditd 一行一条（一个 syscall 拆多行），`AuditdAggregator::aggregate` 把它们按事件序号聚合成完整事件再入库（`AuditdAggregator.h:95-99`），否则没法按"一次文件操作"来分析。
 
@@ -319,8 +319,8 @@ inline constexpr const char* SELECT_TAMPERING_FINDINGS_PENDING_ANALYSIS =
 
 | 对端 | 方向 | 交互点 | 数据形态 |
 |---|---|---|---|
-| TaskManagerAnalysis.cpp:486-501/509 | 上游 | LINUX/SERVER_CLOUD 场景 | linux.db 或 oss.db 路径 |
-| AnalysisOrchestrator.cpp:312-327 | 上游 | CLI --linux-analyze | files.db 并库 |
+| TaskManagerAnalysis.cpp:1497-1504 / :1361 / :1519-1520 | 上游 | LINUX/SERVER_CLOUD 场景 | linux.db 或 oss.db 路径 |
+| AnalysisOrchestrator.cpp:557-572 | 上游 | CLI --linux-analyze | files.db 并库 |
 | DatabaseManager(raw.db) | 输入 | queryFilesByPattern 路径定位 | SELECT |
 | FileExtractor/IFileExtractor | 下游 | getExtractPath/extractFileToPath | 临时文件 |
 | linux_analysis_sql_tables.h（74 表） | 输出 | CREATE_ALL_TABLES | DDL |
@@ -400,7 +400,7 @@ inline constexpr const char* SELECT_TAMPERING_FINDINGS_PENDING_ANALYSIS =
 **验证**：`grep -n "T1190" RuleEngine.cpp` 确认映射存在；重跑后 `SELECT DISTINCT attck_technique, attack_stage FROM linux_rule_matches` 中该技术行出现且 stage 非空；含该命中的 `linux_attack_chains.timeline` 里它排在 Initial Access 位置。
 
 
-## 9. 常见任务配方
+## 14. 常见任务配方
 
 ### 配方 A：新增一种日志/工件解析器（四步）
 1. `Parsers/` 写解析器（或加进 LinuxLogParser 分派）；产出结构体放 `Common/LinuxDataTypes.h`。
@@ -414,4 +414,4 @@ inline constexpr const char* SELECT_TAMPERING_FINDINGS_PENDING_ANALYSIS =
 
 ### 配法 C：把 EventCorrelationEngine 接进流水线（如果要）
 调用点应在"证据全入库后"（先物证后推理架构）；接 `EventExtractor::analyzeEventCorrelations()`（当前无调用方）；注意 engine 版 event_correlations 是 10 列而生产表 6 列——先统一 DDL（schema/EventsDB"已知边界"）。
-**最后更新**: 2026-08-24（补：常见任务配方）
+**最后更新**: 2026-11-10（补：宝塔面板请求日志 `linux_panel_requests`/`linux_panel_request_sources` 与 `www/server/` 路径族；表数 74→76）

@@ -59,6 +59,12 @@ CLI 结果沿用 `<baseName>_files.db`；HTTP Task 结果在 `android.db`，由 
 
 `android_source_coverage` 逐成员给 `parsed` / `empty` / `parse_failed` / `LOCKED` / `indexed` / `not_found`，并带 `rows=` 与 `standard_table_rows=`；合成聚合项：`<containers>`、`wifi_xml`、`note_archive`、`encrypted_artifact`、`vendor_archive`、`<LogData>`、`<sdcard>`、`case_database`/`<data>`、`container_root:thunder-backup`。`android_container_coverage` 记录容器名、哈希策略与重复成员数。每条解析过的成员在 `android_source_provenance` 留有 `thunder-backup` / `thunderforensic-v2` 来源行与 SHA-256；案件库作为解析派生物单独一行（`source_member_path=evidence_*`）。
 
+## 取数-分析分离（适配器迁移）
+
+`analyzeThunderForensicBackup` 现在的实现是"构建统一取数包 → 统一分析写库"：先 `buildPackageFromThunderForensic` 产出 `mobile_evidence::Package`（含案件库 provenance 的 `caseProvenanceOut` 回传），再经 `mobile_evidence::analyzePackage` 写入 android.db，最后由本适配器补写容器级覆盖（`android_container_coverage` 不是逐记录事实，不经包）与 provenance，全程单事务、重复解析先清空派生表（`ThunderForensicArtifactParsers.cpp:1110-1164`）。上文"解析范围/覆盖与来源"描述的可见行为不变——迁移只是把规则挪进了包层（`nativeKind`/`nativeStatus` 保真让下游词表不变，见 `docs/specs/mobile-evidence-package.md` §5.1）。
+
+对使用者有两点新增：其一，CLI 可用 `--mobile-extract` 只出包、`--mobile-package` 只凭包分析（检材移走后结果可重建，`AnalysisOrchestrator.cpp:953-1014, 880-911`）；其二，HTTP 任务会在 android.db 之外额外产出 `<任务目录>/<baseName>_mobile_evidence.mep.db` 并登记 `mobile_evidence_*` 元数据，包构建失败只记 WARNING、不影响任务（`TaskManagerAnalysis.cpp:2073-2138`）。
+
 ## 限制
 
 - 不解析 LogData 逐行内容，不展开 sdcard 载荷，不打开 `<package>` 内的加密数据库。
@@ -88,3 +94,5 @@ python3 tests/integration/test_thunderforensic_real_samples.py \
 ```
 
 检材和解析出的个人数据不进入仓库。
+
+**最后更新**: 2026-11-10（补"取数-分析分离（适配器迁移）"章节；解析范围/覆盖/限制章节按代码复核仍准确）

@@ -3,7 +3,7 @@
 本文档覆盖 TraceLens 的常用工作流：创建分析任务（HTTP / CLI）、查询进度与结果、时间线/文件/统计查询、提取、雕刻、全文搜索、报告、Graphiti 摄取、markitdown 转换，以及分布式 C/S 工作流。
 
 约定：
-- C++ 服务以 `http://localhost:8666` 为例（`./run.sh` 默认；`.env` 的 `HTTP_SERVER_PORT` 或 `make cpp` 默认 8080）；
+- C++ 服务以 `http://localhost:8666` 为例（这是 `.env.example` 模板示例值；`.env` 未设置 `HTTP_SERVER_PORT` 时，run.sh 与代码均回退 8080）；
 - Python httpserver 固定 `http://localhost:8090`，C/S 服务 `http://localhost:8091`；
 - CLI 均指仓库根目录下的 `./build/forensic_analyzer`。
 
@@ -35,7 +35,7 @@ curl -X POST http://localhost:8666/api/tasks \
 | `image_path` | string（必填） | 镜像或数据源路径 |
 | `scenarios` | string[] | 多选：`android` / `windows` / `linux` / `server_cloud` |
 | `filter_profile` | string | `config/filter_profiles/` 下名称，默认 `general_forensics` |
-| `android_source` | string | `tsk`（默认）/ `dir` / `zip` / `miui-backup`；非 tsk 不产出 `_raw.db` |
+| `android_source` | string | 15 个合法值：`tsk`（默认）/ `dir` / `zip` / `tar` / `seven-zip` / `android-backup` / `filesystem-image` / `miui-backup` / `harmony-backup` / `thunder-backup` / `oppo-backup` / `vivo-backup` / `ios-backup` / `mobile-evidence` / `meiya`；非 tsk 不产出 `_raw.db`。全量矩阵见 [android-input-support-matrix.md](../android-input-support-matrix.md) |
 | `llm_analyze` / `llm_mode` | bool / string | AI 分析开关；`full` 或 `smart`（默认） |
 | `file_carving` | bool | 文件雕刻（也接受 `options.file_carving`） |
 | `xfs_mode` | string | `auto`（默认）/ `native` / `pure` |
@@ -63,6 +63,38 @@ curl -X POST http://localhost:8666/api/tasks \
 # 无 AI 环境
 ./build/forensic_analyzer evidence.E01 --no-ai
 ```
+
+### 1.3 任务暂停与恢复（pause / resume）
+
+```bash
+# 协作式暂停：只置 pause_requested 标志，当前阶段跑完后在阶段边界停靠为 PAUSED
+curl -X POST http://localhost:8666/api/tasks/<task_id>/pause
+
+# 从阶段账本续跑（同一任务 id、同一任务目录）
+curl -X POST http://localhost:8666/api/tasks/<task_id>/resume
+```
+
+前提与语义（详见 [ServiceRunbook §4.5](../ops/ServiceRunbook.md)）：
+
+- **pause**：仅 PENDING/RUNNING 任务可暂停（否则 409）；RUNNING 任务不会立即中断，正在跑的阶段结束后才停靠为 PAUSED。计划内维护先 pause 等停靠完成再停服，恢复最省；
+- **resume**：可恢复 FAILED/CANCELLED/INTERRUPTED/PAUSED（服务重启会把 RUNNING 任务停在 INTERRUPTED）。前提不满足即 409 并原样返回 `reason`：任务目录与阶段账本存在、至少跑完过一个阶段、镜像仍在原路径可读、未耗尽剩余阶段；
+- 恢复按阶段账本跳过"已完成且输入指纹未变"的阶段——上游阶段重跑会自动失效下游的 done 记录，所以 resume 不等于零成本重放。
+
+### 1.4 统一取数包：`--mobile-extract` / `--mobile-package`（.mep.db）
+
+"取数—分析分离"两阶段工作流：取数机只产出统一取数包（单文件 SQLite，后缀 `.mep.db`），分析机只读包分析（`android_source=mobile-evidence`）：
+
+```bash
+# 阶段一（取数机）：从逻辑备份提取到统一包；省略 --mobile-package-out 时
+# 默认输出 <来源名>_mobile_evidence.mep.db（只读介质场景必须显式给可写路径）
+./build/forensic_analyzer backup/ --android-analyze --android-source miui-backup \
+    --mobile-extract --mobile-package-out ./case.mep.db
+
+# 阶段二（分析机）：只读包分析，包就是证据交接物（产物 <包名>_files.db）
+./build/forensic_analyzer ./case.mep.db --android-source mobile-evidence --db-dir ./out
+```
+
+适用面、包表结构与注意事项（ios-backup/vivo-backup 暂不产统一包等）见 [MobileBackupForensics 教程](../tutorials/MobileBackupForensics.md) 与 [统一取数格式设计](../specs/mobile-evidence-package.md)。
 
 ---
 
@@ -326,9 +358,10 @@ bash scripts/create_android_image.sh           # Android 测试镜像
 bash scripts/create_multipartition_image.sh    # 多分区
 bash scripts/create_ubuntu_real_image.sh       # 更真实的 Ubuntu 系统镜像（推荐）
 
-# 过滤 profile（config/filter_profiles/*.json）
+# 过滤 profile（config/filter_profiles/*.json，当前共 7 个）
 ls config/filter_profiles/
 # general_forensics.json  telecom_fraud.json  data_breach.json  virus_intrusion.json
+# rat_trace_workstation.json  诈骗平台服务器专项.json  诈骗窝点工作站专项.json
 
 # Volatility3 ISF 符号
 ./scripts/build-vol3-isf.sh <内核版本>           # 如 6.8.0-110-generic
@@ -572,4 +605,4 @@ sqlite3 build/forensics_audit.db "SELECT task_id, COUNT(*) FROM audit_logs
 
 ---
 
-**最后更新**: 2026-08-24（扩充：高级工作流/深挖工具箱/产出导览）
+**最后更新**: 2026-11-10（对齐：端口口径、15 种 android_source、新增 pause/resume 与统一取数包小节、filter profiles 7 个）

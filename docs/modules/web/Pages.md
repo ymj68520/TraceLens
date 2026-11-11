@@ -2,7 +2,8 @@
 
 ## 为什么要有这篇文档
 
-`web/src/routes.jsx` 注册了 23 条路径路由（外加 `/` 的 index 重定向，共 24 个路由项），
+`web/src/routes.jsx` 注册了 30 个路由项（含 `/` 的 index 重定向与 `*` 兜底；`/wechat-forensics`、
+`/qq-forensics`、`/wechat-graph`、`/investigation-graph` 四条旧路由是重定向），
 `web/src/pages/` 下却有更多页面文件——其中两个
 （Logs、LLMDescriptions）**没有任何路由指向它们**，属于死代码。原独立图谱页
 `InvestigationGraph.jsx` 已并入 `/investigation` 的中栏 Graph Tab，路由保留为重定向
@@ -12,7 +13,7 @@ workbench 组件组已随 2026-09 清理删除。只看目录树无法判断
 
 ## 代码位置
 
-- 路由表：`web/src/routes.jsx`（`appRoutes` 数组，31-155 行）
+- 路由表：`web/src/routes.jsx`（`appRoutes` 数组，33-183 行）
 - 页面：`web/src/pages/`（含 `Investigation/`、`IMForensics/` 两个子目录）
 - 侧栏导航：`web/src/components/Layout/Layout.jsx:23-45`
 - 全局任务选择器：`web/src/components/common/TaskSelector.jsx`
@@ -20,7 +21,7 @@ workbench 组件组已随 2026-09 清理删除。只看目录树无法判断
 ## 核心概念
 
 - **任务上下文靠 query 参数传播**：顶部 `TaskSelector` 把当前镜像任务写进 URL
-  （`task_id` 或 `taskId`），`Layout.getLinkUrl()`（`Layout.jsx:50-55`）在 12 个
+  （`task_id` 或 `taskId`），`Layout.getLinkUrl()`（`Layout.jsx:67`）在 12 个
   task-context 页面之间跳转时自动透传该参数。页面自身再用 `useSearchParams` 读回。
 - **两类数据获取模式**：任务/案件页走 Redux thunk（`fetchTasks` 等）；分析页大多
   "页面本地 state + service 直调"，配 `useInvestigationGraph` 等 requestId 防陈旧模式
@@ -118,12 +119,20 @@ const handleSubmit = async (e) => {
 
 2026-09-15 由 微信取证 / QQ 取证 / 微信关系分析 三页合并而来（旧路由
 `/wechat-forensics`、`/qq-forensics`、`/wechat-graph` 经 `IMForensicsRedirect.jsx`
-带参重定向）。页面 = 顶部微信/QQ 平台切换 + 六个 Tab（取证概览 / 会话列表 /
-聊天记录 / 联系人 / 群聊 / 关系分析）；`platform`、`tab`、`import_id`、`task_id`
-全部落在 URL 上。两个平台的导入弹窗与五个数据面板分居
-`IMForensics/WeChatPanels.jsx`、`IMForensics/QQPanels.jsx`，分别走
-`wechatForensicsService` / `qqForensicsService`（pythonApi
-`/api/wechat/forensics/*`、`/api/qq/forensics/*`）。
+带参重定向），此后新增第三平台 WhatsApp。页面 = 顶部**三平台**切换
+（`PLATFORMS` 装配表，IMForensics.jsx:51 起；weixin/qq/whatsapp 各自的
+listImports/deleteImport/overview 与五个 Tab 组件，:86-101 是 WhatsApp 条目）
++ 六个 Tab（取证概览 / 会话列表 / 聊天记录 / 联系人 / 群聊 / 关系分析）；
+`platform`、`tab`、`import_id`、`task_id` 全部落在 URL 上，未知平台回落 wechat（:111）。
+三个平台的导入弹窗与五个数据面板分居 `IMForensics/WeChatPanels.jsx`、
+`IMForensics/QQPanels.jsx`、`IMForensics/WhatsAppPanels.jsx`，分别走
+`wechatForensicsService` / `qqForensicsService` / `whatsappForensicsService`
+（pythonApi `/api/wechat/forensics/*`、`/api/qq/forensics/*`、
+`/api/whatsapp/forensics/*`；WhatsApp 导入目标是 iOS 备份的 ChatStorage.sqlite，
+同目录 ContactsV2/CallHistory 自动并入，见空态提示 :101）。
+每平台 ready 态导入下可挂"通讯时间规律"面板（`components/timeline/TimelineSummaryPanel`，
+:323-324，endpoint 按 `/api/<platform>/forensics/imports/<id>/timeline-summary` 拼）；
+图谱覆写态（`graphTaskOverride`）则改用 associations 端点（:321）。
 关系分析 Tab（`IMForensics/GraphTab.jsx`）把逻辑委托给
 `IMForensics/graph/hooks/useWeChatGraph.js`：数据源按当前平台拼
 `wx_<导入ID>` / `qq_<导入ID>`；URL 带原始扫描任务 `task_id` 时
@@ -184,19 +193,25 @@ const [reportTab, setReportTab] = useState(
 - scope 由 URL 决定：有 `case_id` 用 case scope，否则 `task_id`（`CaseIntelligence.jsx:29-31`）。
 - task 上下文时右上角"返回调查工作台"链到 `/investigation?taskId=…`（`CaseIntelligence.jsx:74-83`）。
 
-### /analysis-center — `pages/AnalysisCenter.jsx`（652 行）
+### /analysis-center — `pages/AnalysisCenter.jsx`（439 行）
 
-"研判中心"：案情描述、LLM 证据卡片、事件簇、Cluster↔File 双向关联抽屉
-（`associationService`）、二次分析弹窗（`reanalyzeFiles`）。
+页面职责已改版为**证据判定（Evidence Review）**（`AnalysisCenter.jsx:16-21` docstring）：
+以文件为核心，逐个判定任务内文件是否进入版本化取证报告（正文证据 / 附件证据 /
+移出报告），判定直接写入 R1 报告证据真源（`/api/reports/evidence`，
+`investigationService.listReportEvidenceFileCandidates`/`seedAnalyzedReportEvidence`，
+:14）；事件/事件簇不参与判定——当前报告链只吃文件证据。案情描述经
+`CaseBackgroundField`（components/tasks/）编辑 + `saveCaseDescription` 保存（:15）；
+判定面板是 `components/investigation/ReportEvidenceJudgment`（:8），分页 50 条
+（`PAGE_SIZE`，:23）。
 
-**已知问题（页面崩溃）**：`AnalysisCenter.jsx:13` 导入的是
+**已知问题（页面崩溃）**：`AnalysisCenter.jsx:10` 导入的是
 `import { useToast } from '../components/common/useToast';`，而该文件读取的 context
 （`components/common/toastContext.js` 的裸 `createContext(null)`）**从未被任何 Provider
 提供**——index.jsx 挂的 `ToastProvider` 提供的是 `ToastContext.jsx` 内部自建的另一个
-context 实例。于是 `AnalysisCenter.jsx:43` 的 `const toast = useToast()` 在渲染期抛
+context 实例。于是 `AnalysisCenter.jsx:53` 的 `const toast = useToast()` 在渲染期抛
 `useToast must be used within ToastProvider`，被 App 层 ErrorBoundary 接住，
 **/analysis-center 整页表现为错误兜底 UI**（其余页面都从 `ToastContext.jsx` 导入，
-不受影响）。
+不受影响）。改版没有顺带修掉这个导入——修复只需换一行 import。
 
 ### /investigation — `pages/Investigation/Investigation.jsx`（129 行）
 
@@ -415,11 +430,13 @@ cd web && npx vitest run src/routes.test.jsx   # 路由表断言（含重定向�
 
 **Cases**：caseSlice.fetchCases 拉列表；每案展开时逐任务读 progress（复用 tasks 数据）；"跨镜像分析"按钮 → pollMultiAnalysis(jobId)（llmService → Python /api/llm/multi-image-analysis + 轮询），期间按钮态由 job status 驱动；删除走 deleteCaseWithTasks（allSettled 并行删任务再删案——Store 文档走读段）。
 
-**Android**：依赖 TaskSelector 写 URL `task_id` → 五组端点（miui-overview/apps/inventory、qqnt、wechat）按 tab 懒拉；无全局轮询，切 tab 即切数据源。
+**Android**：依赖 TaskSelector 写 URL `task_id` → 五组端点（miui-overview/apps/inventory、qqnt、wechat）按 tab 懒拉；无全局轮询，切 tab 即切数据源。页面带 report 模式：URL 有 reportMode 时整体切换为 `AndroidReportImports`（Android.jsx:145 `if (reportMode) return <AndroidReportImports />`）——第三方厂商 Android 报告的导入/检索/任务链接页（270 行，`androidReportService` 走 pythonApi `/api/android-report/*`），见 routes 文档 [AndroidReport](../python/httpserver/routes/AndroidReport.md)。
 
-**Memory**：同 TaskSelector 模式；五端点（summary/processes/network/bash-history/boot-info）独立拉取；bash 关键词是前端过滤（后端支持 keyword 参数，二选一）。
+**Memory**：同 TaskSelector 模式；五端点（summary/processes/network/bash-history/boot-info，`memoryService.js:7-23` → C++ `/api/forensics/memory/*`，见 [MemoryForensicsRoutes](../cpp/network/MemoryForensicsRoutes.md)）独立拉取；bash 关键词是前端过滤（后端支持 keyword 参数，二选一）。
+
+**GraphSourceFile**（`pages/GraphSourceFile.jsx`，路由 `/graph-source-file`）：图谱关系的源文件查看页——从知识图谱关系 Trace 的链接进入（带 `task_id`+`evidence_key`[+`relationship_id`] query），`getGraphSourceFile`（graphitiService → Python `/api/graphiti` 域）拉取源文件路径/证据键/原文预览，顶部"返回知识图谱关系"链回（GraphSourceFile.jsx:4/:29）。
 
 **Statistics**：单端点 /api/forensics/statistics/overview 渲染卡片/图；切任务即重拉。
 
 **Settings**：本地优先——settingsSlice 读写 localStorage（forensics_settings），LLM/Graphiti 状态卡进页拉一次（/api/llm/models、graphiti status）；语言/主题即时生效不落库。
-**最后更新**: 2026-08-24（二轮深化：补代码走读与契约对应）
+**最后更新**: 2026-11-10（修订：三平台 IMForensics（WhatsApp）、analysis-center 改版为证据判定、Android reportMode/GraphSourceFile、路由计数）

@@ -7,7 +7,7 @@
 磁盘镜像分析是典型的长耗时、资源密集、可中断作业。若没有集中的任务管理，会遇到：并发分析互相踩踏、服务器重启后任务状态丢失、卡死的任务永远占着坑、取消请求无法传到流水线深处。TaskManager 用四件事解决这些问题：
 
 1. **受控并发**：固定大小线程池（而非无界 detach 线程）执行任务，防止资源失控；
-2. **崩溃恢复**：任务状态持久化到 `data/tasks.json`，重启时把中断任务标记为 FAILED 而不是假装还在跑；
+2. **崩溃恢复**：任务状态持久化到 `data/tasks.json`，重启时把中断任务按账本分派：有 stage ledger → INTERRUPTED（可续跑，TaskPersistence.cpp:63-77），无账本才 FAILED（:78-82）——不再假装还在跑；
 3. **看门狗**：后台巡检停滞任务，超时判 FAILED；
 4. **协作式取消**：`cancellation_requested` 原子标志 + 流水线各阶段检查点，做到"尽快停但不强杀"。
 
@@ -32,11 +32,16 @@ TaskRoutes (REST) ──创建/查询/取消──▶ TaskManager (单例)
 
 ## 3. 核心数据结构
 
-### 3.1 枚举：状态、优先级、阶段（HTTPServerDataTypes.h:20-31）
+### 3.1 枚举：状态、优先级、阶段（HTTPServerDataTypes.h:20-45）
 
 ```cpp
-// HTTPServerDataTypes.h:20-31
-enum class TaskStatus { PENDING, RUNNING, COMPLETED, FAILED, CANCELLED };
+// HTTPServerDataTypes.h:20-45（节选）
+// INTERRUPTED is the resumable counterpart of FAILED: the process died (or the
+// host rebooted) mid-run and the stage ledger records how far the pipeline got.
+// PAUSED is a user-requested stop at a stage boundary that resumes with the same
+// task id. Both leave the worker thread, but both are resumable via
+// POST /api/tasks/{id}/resume.（:20-25 注释）
+enum class TaskStatus { PENDING, RUNNING, COMPLETED, FAILED, CANCELLED, INTERRUPTED, PAUSED };
 enum class TaskPriority { LOW = 0, NORMAL = 1, HIGH = 2, CRITICAL = 3 };
 enum class TaskPhase {
     INITIALIZING,
@@ -50,7 +55,7 @@ enum class TaskPhase {
 };
 ```
 
-TaskStatus 是五态机：PENDING→RUNNING→{COMPLETED|FAILED|CANCELLED}，没有回边（FAILED 任务不能重启，只能删了重建）。TaskPriority 带显式数值 0-3，`priority_queue` 的比较器依赖它（TaskManager.h:306-308）。TaskPhase 是"进度坐标系"——注意 FILE_CLASSIFICATION 阶段名下实际干的事包括场景探测与文件过滤（TaskManagerAnalysis.cpp:232-298），阶段名与流水线步骤并非一一对应。
+TaskStatus 是**七态机**：PENDING→RUNNING→{COMPLETED|FAILED|CANCELLED|INTERRUPTED|PAUSED}。INTERRUPTED（进程死亡/主机重启的可恢复形态——重启恢复把原 RUNNING 任务标为它，TaskPersistence.cpp:59-80，message 为 "Interrupted by server restart (resumable)"）与 PAUSED（用户请求的阶段边界停车）是两个**可恢复**非终态；FAILED/CANCELLED 只要有 stage ledger 记录同样可 resume（TaskManager.h:330-336：合法集 "FAILED / CANCELLED / INTERRUPTED / PAUSED tasks that recorded at least one ledger entry"）——统一走 `POST /api/tasks/{id}/resume` 回到 RUNNING（见 6.5 节）。TaskPriority 带显式数值 0-3，`priority_queue` 的比较器依赖它（TaskManager.h:306-308）。TaskPhase 是"进度坐标系"——注意 FILE_CLASSIFICATION 阶段名下实际干的事包括场景探测与文件过滤（TaskManagerAnalysis.cpp:232-298），阶段名与流水线步骤并非一一对应。
 
 ### 3.2 TaskProgress：进度与心跳（HTTPServerDataTypes.h:79-86）
 
@@ -131,18 +136,18 @@ struct AnalysisTask {
 
 | 方法（TaskManager.h） | 一行语义 | 主要调用方 | 失败行为 |
 |---|---|---|---|
-| `create_task`（:68-84，17 参数） | 锁内建 UUID、初始化全字段、入 map+优先队列、落盘 | TaskCRUDRoutes/batch | 无失败返回值；非法路径到 start_analysis 才暴露 |
-| `get_task(id)`（:139） | 锁内拷贝返回；找不到返回空 ID 对象 | 几乎所有任务路由 | 调用方判 `task.id.empty()` 转 404 |
-| `get_all_tasks / by_status / by_priority`（:146-160） | 全量/按状态/按优先级拷贝列表 | 列表端点（过滤在路由层） | 无 |
-| `update_status / update_progress`（:93、:102） | 改状态（终态清密码）/ 折算进度+刷心跳 | 流水线、取消、看门狗 | 任务不存在时静默 no-op |
-| `cancel_task(id, reason)`（:169） | 仅 PENDING/RUNNING；置标志+直接改 CANCELLED | DELETE 路由、batch-cancel | 终态/不存在返回 false |
-| `delete_task(id)`（:176） | 移出内存+清 Graphiti+删目录（运行中由线程退出兜底） | DELETE /api/tasks/{id} | 不存在返回 false |
-| `can_start_task(id)`（:217） | required 依赖全 COMPLETED 才 true | 创建后决定是否立即启动 | 不存在 false |
-| `get_task_statistics()`（:201） | 锁内聚合五态/优先级/阶段分布/平均耗时 | statistics 端点、health | 不抛错 |
-| `cleanup_completed_tasks(hours)`（:209） | 删超龄终态任务（仅内存不删磁盘） | cleanup 端点 | 无 |
-| `is_task_cancelled(id)`（:278） | **任务不存在也返回 true**（:526-532） | 流水线检查点、取消回调 | — |
-| `cache_result / get_cached_result`（:233、:240） | results JSON 存取 | results 端点 | 未命中返回空串 |
-| `start_analysis(id)`（:267） | 流水线 lambda 丢进线程池 | TaskCRUDRoutes/batch | 池不存在仅打 CRITICAL（TaskManagerAnalysis.cpp:27-30） |
+| `create_task`（:75-94，20 参数） | 锁内建 UUID、初始化全字段、入 map+优先队列、落盘 | TaskCRUDRoutes/batch | 无失败返回值；非法路径到 start_analysis 才暴露 |
+| `get_task(id)`（:194） | 锁内拷贝返回；找不到返回空 ID 对象 | 几乎所有任务路由 | 调用方判 `task.id.empty()` 转 404 |
+| `get_all_tasks / by_status / by_priority`（:201-217） | 全量/按状态/按优先级拷贝列表 | 列表端点（过滤在路由层） | 无 |
+| `update_status / update_progress`（:106、:157） | 改状态（终态清密码）/ 折算进度+刷心跳 | 流水线、取消、看门狗 | 任务不存在时静默 no-op |
+| `cancel_task(id, reason)`（:224） | 仅 PENDING/RUNNING；置标志+直接改 CANCELLED | DELETE 路由、batch-cancel | 终态/不存在返回 false |
+| `delete_task(id)`（:231） | 移出内存+清 Graphiti+删目录（运行中由线程退出兜底） | DELETE /api/tasks/{id} | 不存在返回 false |
+| `can_start_task(id)`（:272） | required 依赖全 COMPLETED 才 true | 创建后决定是否立即启动 | 不存在 false |
+| `get_task_statistics()`（:256） | 锁内聚合五态/优先级/阶段分布/平均耗时 | statistics 端点、health | 不抛错 |
+| `cleanup_completed_tasks(hours)`（:264） | 删超龄终态任务（仅内存不删磁盘） | cleanup 端点 | 无 |
+| `is_task_cancelled(id)`（:382） | **任务不存在也返回 true**（cpp 实现 :659） | 流水线检查点、取消回调 | — |
+| `cache_result / get_cached_result`（:288、:295） | results JSON 存取 | results 端点 | 未命中返回空串 |
+| `start_analysis(id)`（:322） | 流水线 lambda 丢进线程池 | TaskCRUDRoutes/batch | 池不存在仅打 CRITICAL（TaskManagerAnalysis.cpp:27-30） |
 
 ## 5. 核心概念与设计
 
@@ -152,18 +157,18 @@ struct AnalysisTask {
 
 ### 5.2 任务状态机
 
-`PENDING → RUNNING → COMPLETED | FAILED | CANCELLED`。要点：
+`PENDING → RUNNING → COMPLETED | FAILED | CANCELLED | INTERRUPTED | PAUSED`；后三者中 INTERRUPTED/PAUSED 是可恢复停车态，FAILED/CANCELLED 带 stage ledger 时也可恢复——恢复统一经 `resume_task`（TaskManager.cpp:816-883，见 6.5 节）。要点：
 
 - 取消只允许从 PENDING/RUNNING 发起（TaskManager.cpp:297-299）；取消是**置位 `cancellation_requested` 原子标志 + 状态直接改 CANCELLED**（TaskManager.cpp:302-303），正在跑的工作线程在下一个检查点自行退出。cancel_task 的完整序列（:291-311）：锁内 find → 终态拒绝 → 置标志+改状态+写 message+completed_time → 清双密码 → CANCELLED 审计 → 落盘。**不等待工作线程确认**——前端立刻看到"已取消"，线程此后每个检查点发现标志才真正退出；存在窗口期（线程还在跑最后一段代码），对磁盘只读的分析流水线可接受。
 - 进入终态时自动清除 `decrypt_password`/`backup_password`（TaskManager.cpp:164-168），密码只在运行期存在，绝不落盘（TaskSerialization.cpp:95-96、148、154 同样保证）。
-- `is_task_cancelled` 对"任务不存在"返回 true（TaskManager.cpp:526-532）——这让被删除任务的执行线程自然退出，配合 `start_analysis` 里的 RAII 清理（TaskManagerAnalysis.cpp:34-53）删除磁盘目录。
+- `is_task_cancelled` 对"任务不存在"返回 true（TaskManager.cpp:659）——这让被删除任务的执行线程自然退出，配合 `start_analysis` 里的 RAII 清理（TaskManagerAnalysis.cpp:34-53）删除磁盘目录。
 
 ### 5.3 八阶段进度模型
 
-`calculate_overall_percentage`（TaskManager.cpp:545-566）用固定权重把"阶段内百分比"折算成总进度：INITIALIZING 5 | IMAGE_ANALYSIS 25 | EVENT_EXTRACTION 10 | FILE_CLASSIFICATION 15 | LLM_ANALYSIS 20 | PLATFORM_ANALYSIS 20 | FILE_CARVING 3 | FINALIZING 2（权重反映真实耗时：镜像解析和两大 LLM/平台阶段占了 90%）。
+`calculate_overall_percentage`（TaskManager.cpp:896-917）用固定权重把"阶段内百分比"折算成总进度：INITIALIZING 5 | IMAGE_ANALYSIS 25 | EVENT_EXTRACTION 10 | FILE_CLASSIFICATION 15 | LLM_ANALYSIS 20 | PLATFORM_ANALYSIS 20 | FILE_CARVING 3 | FINALIZING 2（权重反映真实耗时：镜像解析和两大 LLM/平台阶段占了 90%）。
 
 ```cpp
-// TaskManager.cpp:545-566
+// TaskManager.cpp:896-917
 int TaskManager::calculate_overall_percentage(TaskPhase phase, int phase_percentage) {
     std::map<TaskPhase, int> phase_weights = {
         {TaskPhase::INITIALIZING, 5},
@@ -225,6 +230,26 @@ struct TaskCleanup {
 
 为什么用 RAII 而不是在 catch 里清理：流水线有十余个提前 return 的出口（每个取消检查点、每个失败分支），手动补磁盘清理必然遗漏；析构函数保证**唯一**退出路径上必查一次"任务还在不在 map"。而 delete_task（TaskManager.cpp:350-357）只对非运行中任务直接删目录——运行中的留给这个析构兜底，两边拼成完整的删除语义。收尾三连（:586-596）：set_result_db → FINALIZING 100% → COMPLETED，全部在 try 内；外层 catch 把任何异常统一转 FAILED + "Analysis error: ..." + ERROR 审计。**取消检查点遍布每个阶段开头**（`if (is_task_cancelled(task_id)) { update_status(..., CANCELLED, ...); return; }`），这是协作式取消落到实处的位置。
 
+### 6.5 可恢复任务生命周期（resume/pause + stage ledger）
+
+**Stage ledger**（src/network/HTTPServer/TaskStageLedger.h，header-only 零依赖）是恢复机制的记账本：条目长在 `AnalysisTask::metadata` 的 `stage.` 前缀下（kKeyPrefix，TaskStageLedger.h:35-41），搭 tasks.json 持久化的便车——无 schema 变更且在任务 JSON 里天然可追溯。条目在阶段**出口**写、阶段**入口**读，值形如：
+
+```
+metadata["stage.IMAGE_ANALYSIS"]    = "done:<input-fingerprint>"
+metadata["stage.LLM_ANALYSIS"]      = "partial:1234/5000:<fingerprint>"
+metadata["stage.PLATFORM_ANALYSIS"] = "done:windows,linux:<fingerprint>"
+```
+
+（TaskStageLedger.h:11-21）。指纹是值的一部分而非独立键：**阶段可跳过的条件是"账本说 done 且输入指纹仍匹配"**（同文件 :15-18——上游阶段重跑会改写产物哈希，自动作废下游的 done 声明）。稳定阶段名单即流水线词汇表（:44-53）：INITIALIZING / IMAGE_ANALYSIS / FILE_FILTER / EVENT_EXTRACTION / FILE_CLASSIFICATION / LLM_ANALYSIS / PLATFORM_ANALYSIS / FILE_CARVING / FINALIZING。指纹计算 `fingerprintFile` 是 SHA-256（:56 起），读不了文件返回空串——**空指纹永不过账**（"callers must treat empty as fingerprint unknown, which never validates a skip"）。
+
+TaskManager.h 的记账 API（:353-368）：`mark_stage_complete`（阶段出口；fingerprint 可空记 bare done；`next_stage` 非空时另存 `metadata["resume.next_stage"]` 供 UI/审计显示续跑点）、`mark_stage_partial`（LLM_ANALYSIS 长阶段的部分进度，如 "1234/5000"）、`get_stage_entry`。`pipeline_stage_order()`（:409-413）声明阶段顺序，**流水线与 resume_task 共用同一份**——顺序漂移会让跳段判定错位。
+
+`resume_task(id, reason)`（TaskManager.cpp:816-883）的准入四查：① 状态 ∈ {FAILED, CANCELLED, INTERRUPTED, PAUSED}（:828-833）；② 无 `resume.exhausted` 标记（:834-836——"流水线已没有剩余阶段可跑"的裁决不可被 resume 绕过，mark_stage_complete :709-710 特意擦除它以便未来恢复）；③ 证据镜像仍可读（:837-840，失败 reason 原文带路径）；④ **至少有一条非空 stage. 条目**（:841-849——"A ledger entry proves the pipeline started; without one there is no partial work to reuse and the task must be recreated instead"）。通过后：清终态（状态回 PENDING、清取消/暂停标志与错误、completed_time 回拨为 created_time 哨兵——注释 :860-862：过期完成时间会让列表页误算时长）、`resume_count += 1`、入优先级队列、写 TASK_RESUMED 审计（带 resume # 与 next stage）、落盘，然后 `start_analysis` 重新入池（:872-881）。**账本刻意保留**（:851-853 注释："The stage ledger is intentionally preserved — it is what makes this a resume instead of a re-run"）；流水线入口经 `stage_is_reusable`（TaskManager.h:417-424："ledger done + 指纹匹配 + 产物仍存在非空"三条件）决定跳过哪些阶段。
+
+`pause_task(id, reason)`（TaskManager.cpp:788-814）是**协作式停车**：置 `pause_requested` 标志，RUNNING 任务由 worker 在阶段边界检查（与取消同粒度，:805-807 注释）；**PENDING 任务直接立即停车**（"A queued task never entered the pipeline: park it immediately"，:800-804）。停车后 resume 用同一个任务 id、同一个目录。`handle_resume_task` / `handle_pause_task`（TaskCRUDRoutes.cpp:851-911/:913-971）是 REST 面：resume 拒绝时 **409** 且 `reason` 原文返回（:881-896 注释："the reason is surfaced verbatim so the operator learns which condition failed"），成功响应带 `resume_count` 与 `resume_stage`（:898-907）；pause 允许 body 带 `reason`（坏 JSON 不阻塞，:941-948），非 RUNNING/PENDING 拒绝 409（:950-962），成功消息明说语义 "Pause requested; the current stage will finish first"（:969）。
+
+**AnalysisBudget.h**（header-only）是另一处请求钳制：任务级 `llm_max_files` 的解析（TaskManager.md §11 的 :185-206 行为）落在 `analysis_budget::resolve`（AnalysisBudget.h:65-77）——task>0 用 task 值（source=Task），否则继承 `LLM_MAX_FILES`（source=Global），smart 模式下超出候选池时钳制（source=ClampedToPool）；`budget_source_name`（:37-44）把三种来源写进审计，操作员能区分"按请求跑了 300"与"被钳到候选池"。设计动机写在头注释（:3-9）：逐文件描述、KG 摄取（ANALYZED_ONLY）与报告证据 seed 三者必须对"哪些文件是证据"达成一致，所以预算解析只有这一处、所有消费方都调它。
+
 ## 7. 与其他模块的协作
 
 - **TaskRoutes 族**：REST 门面（见 routes/TaskRoutes.md）。
@@ -236,7 +261,7 @@ struct TaskCleanup {
 ## 8. 注意事项与已知问题
 
 - **取消是协作式的**：置位标志后工作线程要走到下一个检查点才停；LLM 单次调用若很慢，取消会延迟。看门狗的 30 分钟阈值就是为这种"合法慢"留的余量。
-- **统计里的阶段缺失**：`get_task_statistics` 的 `running_phases` 只列了 6 个阶段，漏掉 LLM_ANALYSIS 与 FINALIZING（TaskManager.cpp:433-441）——统计页看不到这两阶段中的任务分布。
+- **统计里的阶段缺失**：`get_task_statistics` 的 `running_phases` 列出 7 个阶段（initializing/image_analysis/event_extraction/file_classification/platform_analysis/file_carving/finalizing，TaskManager.cpp:558-566），仅缺 LLM_ANALYSIS——统计页看不到 LLM 阶段中的任务分布。
 - **task_queue_ 未被消费**：优先级队列只有 push 没有 pop 消费者，优先级目前不影响执行顺序（创建即入池排队）。`cv_`、`dependents`、`sceneConfigs` 同属"声明了但没人用"。
 - **锁内做文件 I/O**：save_tasks_internal 在 mtx_ 内写 JSON；任务多时 HTTP 读操作可能被拖慢（作者已知，见 TaskManager.cpp:144-146 注释）。
 - **`PUT /api/tasks/{id}/priority` 是 no-op**：路由层返回成功但不改优先级（TaskMonitoringRoutes.cpp:148-149 注释"only return success"），根因是 TaskManager 没有实现改优先级的方法（priority 无 setter）。
@@ -245,8 +270,8 @@ struct TaskCleanup {
 
 ## 9. 如何验证与扩展
 
-- **验证**：建任务后 `cat data/tasks.json` 看持久化（状态为大写、无密码字段）；杀进程重启，原 RUNNING 任务应变为 FAILED"Interrupted by server restart"；删除运行中任务，确认 `data/tasks/<id>/` 目录稍后被清（TaskCleanup 兜底）。
-- **扩展新分析阶段**：在 TaskManagerAnalysis.cpp 流水线里插入阶段调用 + `update_progress(TaskPhase::X, ...)`，并在 `calculate_overall_percentage` 权重表（TaskManager.cpp:546-555）里配权重；新阶段若要持久化进度，需同时在 TaskSerialization.cpp:24-32 补枚举映射（注意 FILE_CARVING 目前就漏在映射外，见 TaskInfrastructure.md）。
+- **验证**：建任务后 `cat data/tasks.json` 看持久化（状态为大写、无密码字段）；杀进程重启，原 RUNNING 任务应变为 INTERRUPTED（"Interrupted by server restart (resumable)"，TaskPersistence.cpp:71-72），`POST /api/tasks/{id}/resume` 后从账本续跑；PAUSED 停车后续跑 id 与目录不变；删除运行中任务，确认 `data/tasks/<id>/` 目录稍后被清（TaskCleanup 兜底）。
+- **扩展新分析阶段**：在 TaskManagerAnalysis.cpp 流水线里插入阶段调用 + `update_progress(TaskPhase::X, ...)`，并在 `calculate_overall_percentage` 权重表（TaskManager.cpp:897-906）里配权重；新阶段若要持久化进度，需同时在 TaskSerialization.cpp:24-32 补枚举映射（注意 FILE_CARVING 目前就漏在映射外，见 TaskInfrastructure.md）。
 
 ## 10. 方法全清单（二轮补全，含 §4 未列出的方法）
 
@@ -254,19 +279,19 @@ struct TaskCleanup {
 
 | 方法（h 行号） | 语义 | 调用方 | 行为细节 |
 |---|---|---|---|
-| `set_result_db(id, db_path)`（:110） | 记录结果库路径 | TaskManagerAnalysis.cpp:586 收尾 | 锁内写 output_raw_db 等字段 |
-| `set_scenarios(id, scenarios)`（:117） | 覆写场景列表 | SceneDetector 自动探测回填 | **会覆盖请求体里的手选场景**（探测路径时） |
-| `set_llm_analyze_options(id, enable, mode)`（:125） | 改 LLM 开关/模式 | 无路由调用方 | 预留接口 |
-| `set_case_description(id, desc)`（:132） | 改案件描述 | 无路由调用方 | 预留接口 |
-| `cancel_multiple_tasks(ids, reason)`（:185） | 循环 cancel_task | batch-cancel 路由 | 逐个加锁（非批量锁） |
-| `create_batch_tasks(paths, priority)`（:193） | 循环 create_task（仅 2 参） | batch-create 路由 | **不接收 metadata/scenarios/llm 等参数**——批量任务永远是默认配置 |
-| `get_task_progress(id)`（:225） | 只拷贝 progress 子结构 | progress 端点 | 未命中返回零值结构（current_phase=INITIALIZING） |
-| `add_audit_log(id, action, details, user_id="")`（:250） | 写审计 | 全部状态变化点 | user_id 恒空——REST 层无用户概念 |
-| `get_audit_logs(id, limit=0, offset=0)`（:260） | 分页读审计 | audit-log 端点 | limit=0 表示不限 |
-| `save_tasks() / load_tasks()`（:270-271） | 持久化出入口 | 启动 load；各状态变化 save | 详见 TaskInfrastructure.md |
-| `clear_decryption_password(id)`（:287，私有） | 用后清除解密口令 | ImageAnalyzer 移交后 | 锁内 erase |
-| `clear_backup_password(id)`（:290，私有） | 用后清除备份口令 | AndroidAnalyzer 移交后 | 同上 |
-| `runLogicalAndroidAnalysis(task, baseName)`（:295，私有） | dir/zip/miui-backup 短路路径 | start_analysis 分叉 | 返回 bool，失败走统一 FAILED |
+| `set_result_db(id, db_path)`（:165） | 记录结果库路径 | TaskManagerAnalysis.cpp:586 收尾 | 锁内写 output_raw_db 等字段 |
+| `set_scenarios(id, scenarios)`（:172） | 覆写场景列表 | SceneDetector 自动探测回填 | **会覆盖请求体里的手选场景**（探测路径时） |
+| `set_llm_analyze_options(id, enable, mode)`（:180） | 改 LLM 开关/模式 | 无路由调用方 | 预留接口 |
+| `set_case_description(id, desc)`（:187） | 改案件描述 | 无路由调用方 | 预留接口 |
+| `cancel_multiple_tasks(ids, reason)`（:240） | 循环 cancel_task | batch-cancel 路由 | 逐个加锁（非批量锁） |
+| `create_batch_tasks(paths, priority)`（:248） | 循环 create_task（仅 2 参） | batch-create 路由 | **不接收 metadata/scenarios/llm 等参数**——批量任务永远是默认配置 |
+| `get_task_progress(id)`（:280） | 只拷贝 progress 子结构 | progress 端点 | 未命中返回零值结构（current_phase=INITIALIZING） |
+| `add_audit_log(id, action, details, user_id="")`（:305） | 写审计 | 全部状态变化点 | user_id 恒空——REST 层无用户概念 |
+| `get_audit_logs(id, limit=0, offset=0)`（:315） | 分页读审计 | audit-log 端点 | limit=0 表示不限 |
+| `save_tasks() / load_tasks()`（:374-375） | 持久化出入口 | 启动 load；各状态变化 save | 详见 TaskInfrastructure.md |
+| `clear_decryption_password(id)`（:391，私有） | 用后清除解密口令 | ImageAnalyzer 移交后 | 锁内 erase |
+| `clear_backup_password(id)`（:394，私有） | 用后清除备份口令 | AndroidAnalyzer 移交后 | 同上 |
+| `runLogicalAndroidAnalysis(task, baseName)`（:399，私有） | dir/zip/miui-backup 短路路径 | start_analysis 分叉 | 返回 bool，失败走统一 FAILED |
 
 ## 11. 数据契约：POST /api/tasks 请求体 → AnalysisTask 完整映射
 
@@ -342,7 +367,7 @@ if (task_id == "list" || task_id == "statistics" || task_id == "cleanup" ||
 
 ## 14. 统计契约（get_task_statistics 响应字段）
 
-`/api/tasks/statistics` 的响应体即 `get_task_statistics()` 返回的 JSON（TaskManager.cpp:418-443）：`total_tasks`、`by_status.{pending,running,completed,failed,cancelled}`、`by_priority.{low,normal,high,critical}`（未出现的优先级键值为 0，四键恒存在）、`running_phases.{initializing,image_analysis,event_extraction,file_classification,platform_analysis,file_carving,finalizing}`（**缺 llm_analysis 键**，§8 已记）、`average_execution_time_seconds`（int 截断除法，仅 COMPLETED/FAILED 计入，无任务时为 0）。一个实现细节：:391 取了 `steady_clock::now()` 却从未使用（死变量），平均耗时实际用 system_clock 的 completed-started 差值（:412）——若任务跨 NTP 校时，秒数可能为负计入平均。
+`/api/tasks/statistics` 的响应体即 `get_task_statistics()` 返回的 JSON（TaskManager.cpp:503-571）：`total_tasks`、`by_status.{pending,running,completed,failed,cancelled}`、`by_priority.{low,normal,high,critical}`（未出现的优先级键值为 0，四键恒存在）、`running_phases.{initializing,image_analysis,event_extraction,file_classification,platform_analysis,file_carving,finalizing}`（**缺 llm_analysis 键**，§8 已记）、`average_execution_time_seconds`（int 截断除法，仅 COMPLETED/FAILED 计入，无任务时为 0）。一个实现细节：:512 取了 `steady_clock::now()` 却从未使用（死变量），平均耗时实际用 system_clock 的 completed-started 差值（:535）——若任务跨 NTP 校时，秒数可能为负计入平均。
 
 ## 15. 审计事件全表（add_audit_log 的动作串清单）
 
@@ -381,12 +406,15 @@ update_status 的全部语义调用点（转换触发矩阵）：
 | →FAILED | 镜像路径不存在 | :83-86 | 提前失败 |
 | →CANCELLED | cancel_task | TaskManager.cpp:291-311 | cancellation_requested 置位+清密码 |
 | →CANCELLED | 各阶段取消检查点 | TaskManagerAnalysis.cpp 各阶段开头 | "Task cancelled" |
-| RUNNING/PENDING→FAILED | 重启恢复 | TaskPersistence.cpp:54-62 | "Interrupted by server restart" |
+| →INTERRUPTED | 重启恢复（有 stage ledger） | TaskPersistence.cpp:63-77 | interrupted_by_restart=true、message "(resumable)"、重新入 runningTaskIds |
+| RUNNING/PENDING→FAILED | 重启恢复（无 stage ledger） | TaskPersistence.cpp:78-82 | "Interrupted by server restart"，提示删除重建 |
+| →PAUSED | pause_task（协作式停车） | TaskManager.cpp:788-814 | 置 pause_requested；PENDING 立即停车，RUNNING 在阶段边界停车 |
+| FAILED/CANCELLED/INTERRUPTED/PAUSED→PENDING | resume_task（准入四查，须有非空 stage ledger） | TaskManager.cpp:816-883 | 清终态标志、completed_time 回拨哨兵、resume_count+1、重入优先级队列 |
 | PENDING→FAILED | 看门狗 Case A | TaskWatchdog.cpp:53-64 | "Pending timeout" |
 | RUNNING→FAILED | 看门狗 Case B | :70-81 | "Execution timeout" |
 | 终态→(消失) | delete_task/cleanup | TaskManager.cpp:350-357/449-467 | 内存移除 |
 
-**没有**的迁移：FAILED→RUNNING（无重启）、COMPLETED→任何（无重跑）——终态是吸收态，改主意只能删除重建。
+**没有**的迁移：COMPLETED→任何（无重跑，唯一的真吸收态）。FAILED/CANCELLED/INTERRUPTED/PAUSED 不再"只能删除重建"——有 stage ledger 的任务经 resume_task 回 PENDING 重新入池续跑；无账本的 FAILED（无可复用进度）才需删除重建。
 
 ## 17. 常见任务配方
 
@@ -397,7 +425,7 @@ update_status 的全部语义调用点（转换触发矩阵）：
 **步骤**：
 
 1. **结构体加字段**：`src/network/HTTPServer/HTTPServerDataTypes.h:99-165` 的 `AnalysisTask` 里加成员（带默认值，如 `bool my_option = false;`）。注意结构体因 `std::atomic` 成员手写了全部拷贝/移动构造（:168-301）——普通成员加进去无需改这些函数，但若新字段是容器/unique_ptr 则要逐一检查四个特殊成员。
-2. **创建 API 接参**：`TaskCRUDRoutes.cpp:127-262` 的 `handle_create_task` 里仿照 `llm_mode`（:184）用 `body.value("my_option", false)` 读取，并把它作为新实参传给 `create_task`。`create_task` 是 17 参数函数（TaskManager.h:68-84），尾部追加参数时给默认值可少改调用方（batch 路径 `create_batch_tasks` 就只传 2 参）。
+2. **创建 API 接参**：`TaskCRUDRoutes.cpp:127-262` 的 `handle_create_task` 里仿照 `llm_mode`（:184）用 `body.value("my_option", false)` 读取，并把它作为新实参传给 `create_task`。`create_task` 是 20 参数函数（TaskManager.h:75-94），尾部追加参数时给默认值可少改调用方（batch 路径 `create_batch_tasks` 就只传 2 参）。
 3. **序列化双向**：`TaskSerialization.cpp` 的 `to_json`（:66-104）加 `j["my_option"] = t.my_option;`；`from_json`（:106-171）**必须**用 `if (j.contains("my_option")) j.at("my_option").get_to(t.my_option);` 防御式读取——旧 tasks.json 里没有这个键，直接 `j.at()` 会在重启加载时抛异常导致全部任务丢失。
 4. **前端出口**：`routes/TaskHelpers.cpp:11` 的 `task_to_json` 加 `{"my_option", task.my_option}`（这是 GET /api/tasks/{id} 的唯一出口）；创建表单在 `web/src/components/tasks/CreateTaskModal.jsx`（默认值集中在 :42 附近的 form 初始化），提交经 `web/src/services/taskService.js` 的 createTask 直发 POST /api/tasks。
 5. **流水线消费**：在 `TaskManagerAnalysis.cpp` 对应阶段读 `task.my_option` 分叉。
@@ -416,12 +444,12 @@ update_status 的全部语义调用点（转换触发矩阵）：
 
 **步骤**（只调权重：仅第 1 步）：
 
-1. **改权重表**：`TaskManager.cpp:545-566` `calculate_overall_percentage` 内的 `phase_weights` map（现值：INITIALIZING 5 / IMAGE_ANALYSIS 25 / EVENT_EXTRACTION 10 / FILE_CLASSIFICATION 15 / LLM_ANALYSIS 20 / PLATFORM_ANALYSIS 20 / FILE_CARVING 3 / FINALIZING 2）。改完不必动别处——总进度是按"当前阶段之前的权重全计 + 当前阶段按百分比折算"算的。
+1. **改权重表**：`TaskManager.cpp:896-917` `calculate_overall_percentage` 内的 `phase_weights` map（现值：INITIALIZING 5 / IMAGE_ANALYSIS 25 / EVENT_EXTRACTION 10 / FILE_CLASSIFICATION 15 / LLM_ANALYSIS 20 / PLATFORM_ANALYSIS 20 / FILE_CARVING 3 / FINALIZING 2）。改完不必动别处——总进度是按"当前阶段之前的权重全计 + 当前阶段按百分比折算"算的。
 2. **新增阶段（完整链）**：
-   - `HTTPServerDataTypes.h:41-50` 的 `TaskPhase` 枚举里按**流水线真实位置**插入新值——实现用 `p.first < phase` 的枚举序比较（TaskManager.cpp:558-565），枚举声明顺序就是进度坐标系，插错位置进度会回跳；
+   - `HTTPServerDataTypes.h:41-50` 的 `TaskPhase` 枚举里按**流水线真实位置**插入新值——实现用 `p.first < phase` 的枚举序比较（TaskManager.cpp:909-910），枚举声明顺序就是进度坐标系，插错位置进度会回跳；
    - 在 TaskSerialization.cpp:24-32 的 `NLOHMANN_JSON_SERIALIZE_ENUM(TaskPhase, {...})` 补映射（**FILE_CARVING 至今漏在这里**，新阶段不补则 tasks.json 里该阶段会被序列化成第一个枚举值 INITIALIZING）；
    - `TaskHelpers.cpp:128-140` `phase_to_string` 补 case（前端进度条显示名）；
-   - `TaskManager.cpp:433-441` `get_task_statistics` 的 `running_phases` 补计数键（当前也漏了 llm_analysis）；
+   - `TaskManager.cpp:558-566` `get_task_statistics` 的 `running_phases` 补计数键（当前也漏了 llm_analysis）；
    - 在 `TaskManagerAnalysis.cpp` 流水线相应位置调 `update_progress(TaskPhase::NEW_PHASE, pct, "desc")`，阶段开头照抄取消检查点 `if (is_task_cancelled(task_id)) {...return;}`；
    - 回到第 1 步把新阶段加进权重表并调平总和（权重不必严格求和为 100，代码用 `std::min(total,100)` 封顶，但权重和偏离 100 会让进度永远到不了或提前到 100）。
 
@@ -443,7 +471,7 @@ update_status 的全部语义调用点（转换触发矩阵）：
 4. **处置**：`DELETE /api/tasks/{id}`（等价取消+删除）或 batch-cancel；取消是协作式的（cancellation_requested 置位，TaskManager.cpp:302-303），工作线程走到下一个检查点才真正退出——LLM 单次调用慢时取消有延迟，属已知边界（§8）。
 5. **看服务端日志**：`[Watchdog]` 前缀的两行输出（TaskWatchdog.cpp:62、79）分别对应 Case A/Case B 判死记录。
 
-**注意**：不要用"重启服务"处置卡死任务——重启会把所有 RUNNING/PENDING 改成 FAILED"Interrupted by server restart"（TaskPersistence.cpp:54-62），伤及其他正常任务。`is_task_cancelled` 对不存在的任务也返回 true，所以删除后线程会自然退出，无需强杀。
+**注意**：不要用"重启服务"处置卡死任务——重启会把 RUNNING/PENDING 任务按账本分派：有 stage ledger → INTERRUPTED（可 `POST /api/tasks/{id}/resume` 续跑），无账本才 FAILED"Interrupted by server restart"（TaskPersistence.cpp:63-82），伤及其他正常任务。`is_task_cancelled` 对不存在的任务也返回 true，所以删除后线程会自然退出，无需强杀。
 
 **验证**：处置后 `GET /api/tasks/{id}` 状态进入终态（CANCELLED/FAILED），`data/tasks/<id>/` 目录在运行中删除的情形下由 TaskCleanup 析构兜底清理（稍后消失）。
 
@@ -465,24 +493,4 @@ update_status 的全部语义调用点（转换触发矩阵）：
 
 **验证**：同时创建 N+1 个任务，前 N 个变 RUNNING、第 N+1 个停留 PENDING（`GET /api/tasks/statistics` 的 by_status 对比）；观察服务端内存/IO；确认无 `[Watchdog] Failed stale pending task`（那说明 PENDING 排队超过 30 分钟被判死——排队中的任务同样受 pending 超时约束，TaskWatchdog.cpp:53-64，池小时要把 `TASK_WATCHDOG_PENDING_MINUTES` 一并调大）。
 
-
-## 10. 常见任务配方
-
-### 配方 A：给任务新增一个字段并贯通全链
-1. **结构体**：`HTTPServerDataTypes.h` 的 `AnalysisTask` 加字段（含默认值）；同步 `TaskProgress` 若它是进度属性。
-2. **创建入口**：`TaskCRUDRoutes.cpp` 创建 handler 解析 JSON 键（小写字面量）赋值。
-3. **序列化**：`TaskSerialization.cpp` 的 to_json/from_json 成对补键（**别忘了**：FILE_CARVING 曾在 phase 映射里漏掉——同类事故高发区）。
-4. **前端**：`web/src/services/taskService.js` 请求体 + `taskSlice` 如需展示。
-5. **验证**：创建→GET 详情→重启服务（tasks.json 往返）三步都对；跑 `TaskRoutes` 相关前端测试。
-
-### 配方 B：调整阶段权重或新增阶段
-1. 权重：只改 `TaskManager.cpp:545` 的 map（保持总和 100）。
-2. 新阶段：枚举加值（顺序即权重遍历序）→ 序列化映射补行 → `TaskManagerAnalysis.cpp` 插入 `update_progress` 调用点 → 计算函数自动生效。
-3. 验证：跑一个任务观察进度单调不回跳；看门狗不受影响（它只看百分比变化）。
-
-### 配方 C：排查"任务卡住"的标准动作
-1. `GET /api/tasks/<id>/progress` 看阶段+百分比；2. 百分比在变→看该阶段模块文档的"性能与并发"；3. 不变→`build/logs/cpp_server.log` 找该 task_id 最后输出；4. 超 30 分钟看门狗会介入（别手动改 tasks.json——重启恢复语义会把它标 FAILED）。
-
-### 配方 D：调整并发并观察
-`THREAD_POOL_SIZE`（.env）→ 重启 → 同时提交 N 个任务观察 PENDING 积压与 CPU/磁盘。注意该值同时放开 LLM 并发闸（Concurrency §2.2）。
-**最后更新**: 2026-08-24（补：常见任务配方）
+**最后更新**: 2026-11-10（补：resume/pause 生命周期、TaskStageLedger 账本、AnalysisBudget 预算钳制、七态状态机；合并早期重复的"常见任务配方"章节）

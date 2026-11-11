@@ -4,7 +4,7 @@
 
 | 服务 | 进程 | 默认端口 | 认证 | 详细 API 参考 |
 |------|------|---------|------|--------------|
-| C++ 服务 | `forensic_analyzer --http-server` | **8080**（run.sh 未设 `HTTP_SERVER_PORT` 时兜底 8666） | 无 | [CPP_REST_API.md](../api_reference/CPP_REST_API.md) |
+| C++ 服务 | `forensic_analyzer --http-server` | **8080**（缺省兜底值，`scripts/lib/tracelens_env.sh:38` 的 `: "${HTTP_SERVER_PORT:=8080}"`；8666 只是 `.env.example` 示例值） | 无 | [CPP_REST_API.md](../api_reference/CPP_REST_API.md) |
 | Python httpserver | `python -m httpserver.main` | **8090**（`PYTHON_HTTP_PORT`） | 无 | [Python_REST_API.md](../api_reference/Python_REST_API.md) |
 | 分布式 C/S server | `python -m server.main` | **8091**（`PORT`） | JWT Bearer | [Python_REST_API.md §16](../api_reference/Python_REST_API.md) |
 
@@ -14,13 +14,14 @@
 
 ### 1.1 任务管理（TaskRoutes 族）
 
+> 任务 API 只注册 `/api` 前缀路径（`TaskCRUDRoutes.cpp:22-23`）；非 `/api` 前缀的 `/tasks` 是前端 SPA 页面路径，不注册为 API（调用 404）。
+
 | 方法 | 路径 | 关键参数 | 语义 | 典型调用方 | 详细文档 |
 |------|------|---------|------|-----------|---------|
-| GET | `/tasks`、`/api/tasks`、`/api/tasks/list` | `status`、`priority`、`limit=100`、`offset` | 任务列表（过滤+分页） | taskService.js（fetchTasks/listTasks）→ Tasks 页 | [TaskRoutes.md](../modules/cpp/network/routes/TaskRoutes.md) |
-| POST | `/tasks`、`/api/tasks` | `image_path`* 及 20 余个可选字段 | 创建取证分析任务（201） | taskService.createTask → CreateTaskModal | 同上 |
+| GET | `/api/tasks`、`/api/tasks/list` | `status`、`priority`、`limit=100`、`offset` | 任务列表（过滤+分页） | taskService.js（fetchTasks/listTasks）→ Tasks 页 | [TaskRoutes.md](../modules/cpp/network/routes/TaskRoutes.md) |
+| POST | `/api/tasks` | `image_path`* 及 20 余个可选字段 | 创建取证分析任务（201） | taskService.createTask → CreateTaskModal | 同上 |
 | GET/PUT | `/api/tasks/<task_id>` | 路径参数 | 任务详情（PUT 为别名 handler，不更新） | taskService.fetchTaskById | 同上 |
-| GET | `/tasks/<task_id>` | 路径参数 | 任务详情（旧路径） | — | 同上 |
-| GET | `/tasks/<task_id>/results`、`/api/tasks/<task_id>/results` | 路径参数 | 任务结果（未完成 202；含 `llm_results`） | taskService.getTaskResults → AnalysisCenter | 同上 |
+| GET | `/api/tasks/<task_id>/results` | 路径参数 | 任务结果（未完成 202；含 `llm_results`） | taskService.getTaskResults → AnalysisCenter | 同上 |
 | DELETE | `/api/tasks/<task_id>` | body 可带 `reason` | 删除（取消）任务 | taskService.cancelTask/deleteTask | 同上 |
 | POST | `/api/tasks/cleanup` | `max_age_hours=24` | 清理已完成旧任务 | taskService.cleanupOldTasks | 同上 |
 | GET | `/api/tasks/<task_id>/databases` | 路径参数 | 任务产物数据库列表 | Python task_store 类消费方 | 同上 |
@@ -31,7 +32,9 @@
 | GET | `/api/tasks/<task_id>/audit-log` | `limit=50`、`offset` | 任务审计日志 | taskService.getTaskAuditLog | 同上 |
 | GET | `/api/tasks/statistics` | — | 系统级任务统计 | taskSlice → Dashboard | 同上 |
 | PUT | `/api/tasks/<task_id>/priority` | `{"priority": "..."}` | 更新优先级（**只回显不生效**，源码显式 no-op） | taskService.updateTaskPriority | 同上 |
-| OPTIONS | 16 个任务同名路径 | — | CORS 预检（TaskRoutes.cpp 注册） | 浏览器 | 同上 |
+| POST | `/api/tasks/<task_id>/resume` | 路径参数 | 从阶段台账恢复 failed/cancelled/interrupted/paused 任务（409 = 不可恢复，reason 透出） | taskService.resumeTask | 同上 |
+| POST | `/api/tasks/<task_id>/pause` | body 可带 `reason` | 协作式暂停（当前阶段跑完停为 paused） | taskService.pauseTask | 同上 |
+| OPTIONS | 13 个任务同名路径 | — | CORS 预检（TaskRoutes.cpp 注册；resume/pause 的 OPTIONS 并在 TaskCRUDRoutes.cpp methods 内） | 浏览器 | 同上 |
 
 ### 1.2 场景查询（SceneQueryRoutes）
 
@@ -71,16 +74,17 @@
 
 | 方法 | 路径 | 关键参数 | 语义 | 典型调用方 | 详细文档 |
 |------|------|---------|------|-----------|---------|
-| POST | `/api/forensics/timeline/clusters/analyze` | `task_id`*、`time_window`、`event_type`、`parent_directory?` | LLM 分析一个事件簇 | （保留注册；前端走 `/api/llm/analyze-event-cluster`） | [ForensicsRoutes.md](../modules/cpp/network/routes/ForensicsRoutes.md) |
-| POST | `/api/forensics/timeline/clusters/batch-analyze` | `clusters[]`（空数组 400） | 批量分析 | 同上 | 同上 |
-| POST | `/api/forensics/timeline/clusters/reanalyze` | 同 analyze | 重新分析 | 同上 | 同上 |
+| POST | `/api/forensics/timeline/clusters/analyze` | `task_id`*、`time_window`、`event_type`、`parent_directory?` | LLM 分析一个事件簇 | **未注册**（`EventClusterRoutes.cpp` 内 `#if 0`，运行时 404）；前端走 `/api/llm/analyze-event-cluster` | [ForensicsRoutes.md](../modules/cpp/network/routes/ForensicsRoutes.md) |
+| POST | `/api/forensics/timeline/clusters/batch-analyze` | `clusters[]`（空数组 400） | 批量分析 | 同上（未注册，运行时 404） | 同上 |
+| POST | `/api/forensics/timeline/clusters/reanalyze` | 同 analyze | 重新分析 | 同上（未注册，运行时 404） | 同上 |
 | GET | `/api/forensics/timeline/clusters/analyzed` | `task_id`* | 已分析簇列表 | forensicsService.getAnalyzedEventClusters | 同上 |
 
 ### 1.6 文件分析与提取（FileAnalysisRoutes / FileExtractionRoutes）
 
 | 方法 | 路径 | 关键参数 | 语义 | 典型调用方 | 详细文档 |
 |------|------|---------|------|-----------|---------|
-| GET | `/api/forensics/files/largest` | `task_id`*、`limit=50` | 最大文件列表 | forensicsService → Files 页 | [ForensicsRoutes.md](../modules/cpp/network/routes/ForensicsRoutes.md) |
+| GET | `/api/forensics/files/paged` | `task_id`*、`page`、`page_size=100`(1–200)、`view=all\|analyzed\|documents\|media`、`extension`/`exclude_extension`、`min_size/max_size` | 文件列表服务端分页（Files 页主列表） | forensicsService.getFilesPaged → Files 页 | [ForensicsRoutes.md](../modules/cpp/network/routes/ForensicsRoutes.md) |
+| GET | `/api/forensics/files/largest` | `task_id`*、`limit=50` | 最大文件列表 | forensicsService → Files 页 | 同上 |
 | GET | `/api/forensics/files/recent` | `task_id`*、`hours=24` | 最近 N 小时文件 | 同上 | 同上 |
 | GET | `/api/forensics/files/suspicious` | `task_id`* | 可疑文件（按类别分组） | 同上 | 同上 |
 | GET | `/api/forensics/files/duplicates` | `task_id`* | 重复文件（按哈希） | 同上 | 同上 |
@@ -88,6 +92,7 @@
 | POST | `/api/forensics/extract` | `task_id`*、`mode`（all/extension/name/deleted）、`pattern`、`output_dir`（相对路径）、三限额 | 启动后台提取 job（202；就绪不足 409） | extractionService → Files 页/useFileExtraction | 同上 |
 | GET | `/api/forensics/extract/<job_id>` | 路径参数 | 提取任务状态 | extractionService | 同上 |
 | GET | `/api/forensics/extract/status` | `job_id`（查询参数） | 同上（查询参数形式，轮询用） | extractionService.pollExtractionStatus | 同上 |
+| POST | `/api/forensics/files/materialize` | `task_id`*、`path`*（镜像内相对路径，拒绝 `..`） | 单文件按需落地到任务提取目录（raw 记录成员校验；不在镜像 404） | （暂无前端直调） | 同上 |
 
 ### 1.7 DLL/共享库（DLLAnalysisRoutes，读 `_dll.db`）
 
@@ -114,18 +119,19 @@
 
 | 方法 | 路径 | 关键参数 | 语义 | 典型调用方 | 详细文档 |
 |------|------|---------|------|-----------|---------|
-| GET | `/api/forensics/android/communication-summary` | `task_id`* | 通信摘要（短信/通话） | forensicsService → Android 页 | [ForensicsRoutes.md](../modules/cpp/network/routes/ForensicsRoutes.md) |
+| GET | `/api/forensics/android/backup-overview` | `task_id`* | 手机备份总览（统一/MIUI 清单 + 制品计数 + 解密状态分布 + 微信摘要） | （暂无页面直调） | [ForensicsRoutes.md](../modules/cpp/network/routes/ForensicsRoutes.md) |
+| GET | `/api/forensics/android/communication-summary` | `task_id`* | 通信摘要（短信/通话） | forensicsService → Android 页 | 同上 |
 | GET | `/api/forensics/android/app-usage` | `task_id`* | 应用使用统计 | 同上 | 同上 |
 | GET | `/api/forensics/android/device-info` | `task_id`* | 设备信息 | 同上 | 同上 |
 | GET | `/api/forensics/android/media-analysis` | `task_id`* | 媒体文件分析 | 同上 | 同上 |
 | GET | `/api/forensics/android/miui-overview` | `task_id`* | MIUI 备份总览 | 同上 | 同上 |
-| GET | `/api/forensics/android/miui-installed-apps` | `task_id`*、`limit/offset/category/status/query` | 已安装应用 | 同上 | 同上 |
-| GET | `/api/forensics/android/miui-db-inventory` | `task_id`*、`kind=kv`、`reveal_sensitive=0` | 备份数据库清单 | 同上 | 同上 |
+| GET | `/api/forensics/android/miui-installed-apps` | `task_id`* | 已安装应用（其余查询参数被忽略） | 同上 | 同上 |
+| GET | `/api/forensics/android/miui-db-inventory` | `task_id`* | 备份数据库清单（其余查询参数被忽略） | 同上 | 同上 |
 | GET | `/api/forensics/android/miui-qqnt-overview` | `task_id`* | QQNT 概览 | 同上 | 同上 |
 | GET | `/api/forensics/android/miui-qqnt-artifacts` | `task_id`*、分页/过滤 | QQNT 制品 | 同上 | 同上 |
 | GET | `/api/forensics/android/miui-qqnt-records` | `task_id`*、分页/过滤 | QQNT 聊天记录 | 同上 | 同上 |
 | GET | `/api/forensics/android/miui-wechat-overview` | `task_id`* | 微信概览 | 同上 | 同上 |
-| GET | `/api/forensics/android/miui-wechat-artifacts` | `task_id`*、`kind` 等 | 微信制品 | 同上 | 同上 |
+| GET | `/api/forensics/android/miui-wechat-artifacts` | `task_id`*、`category/status/query/limit/offset`（`kind` 仅 records 有） | 微信制品 | 同上 | 同上 |
 | GET | `/api/forensics/android/miui-wechat-records` | `task_id`*、分页/过滤 | 微信聊天记录 | 同上 | 同上 |
 | GET | `/api/forensics/android/llm-summary` | `task_id`* | 各制品表 AI 分析覆盖率 | 同上 | 同上 |
 
@@ -174,8 +180,10 @@
 | GET | `/api/system/health` | — | 系统健康（任务统计+依赖） | systemService → Dashboard | [SystemRoutes.md](../modules/cpp/network/routes/SystemRoutes.md) |
 | GET | `/api/health` | — | 同上（别名） | 运维脚本 | 同上 |
 | GET | `/api/health/live` | — | 存活探针 | run.sh 健康门 | 同上 |
+| GET | `/health/live` | — | 存活探针（根前缀别名；现场认证免鉴权） | 运维 | 同上 |
 | GET | `/api/health/ready` | — | 就绪探针（未就绪 503） | 部署编排 | 同上 |
 | GET | `/api/health/dependencies` | — | 依赖服务状态明细 | 运维 | 同上 |
+| GET | `/api/security/status` | — | 现场安全模式自检（release 指纹 + field_auth/outbound_policy，no-store） | 运维/现场验收 | 同上 |
 | GET | `/api/system/info` | — | 服务/构建信息 | systemService → Settings | 同上 |
 | GET | `/api/system/databases` | `task_id` | 任务数据库文件 | 同上 | 同上 |
 | GET | `/api/system/database-schema/<db_type>` | 路径参数 | 指定库的表结构 | 同上 | 同上 |
@@ -186,6 +194,7 @@
 | GET | `/api/docs/database-schema` | — | 全库模式文档 | 同上 | 同上 |
 | GET | `/api/docs/openapi.json` | — | OpenAPI 规范 | 工具链 | 同上 |
 | GET | `/`、`/<path>` | — | 托管 `web/dist` 前端 SPA | 浏览器 | [HTTPServer.md](../modules/cpp/network/HTTPServer.md) |
+| ANY | `/python/<path>` | — | 同源网关：GET/POST/PUT/DELETE/PATCH 转发 Python 服务（生产前端免跨域） | 前端 pythonApi（经 C++） | [Python_REST_API.md](../api_reference/Python_REST_API.md) |
 
 ---
 
@@ -203,6 +212,7 @@
 | GET | `/api/system/logs` | `lines` | 读取服务日志 | systemService → Terminal | [System.md](../modules/python/httpserver/routes/System.md) |
 | GET | `/api/system/logs/{service}` | 路径参数 | 指定服务日志（找不到 404） | 同上 | 同上 |
 | GET | `/api/system/logs-stream/{service}` | 路径参数 | SSE 日志流 | TerminalOutput | 同上 |
+| GET | `/api/system/features` | — | 前端功能开关（6 个布尔 flag，UI 按后端旗标裁剪导航/LLM 动作） | featuresService → 全局 UI 裁剪 | 同上 |
 
 ### 2.2 Graphiti 知识图谱（/api/graphiti）
 
@@ -225,6 +235,10 @@
 | GET | `/api/graphiti/tasks` | — | 已建图任务列表 | 同上 | 同上 |
 | DELETE | `/api/graphiti/tasks/{task_id}` | 路径参数 | 删除任务图谱数据 | 同上 | 同上 |
 | GET | `/api/graphiti/graph` | `task_id` | 可视化图数据 | graphitiService → KnowledgeGraph 页 | 同上 |
+| POST | `/api/graphiti/people-analysis/runs`（202） | `task_id`*、`mode=discover\|assess`、`max_files=200` 等 | 人员图谱分析 run（+列表/状态/graph/targets/identity-review/cancel 共 7 端点） | peopleGraphService | 同上 |
+| POST | `/api/graphiti/event-analysis/runs`（202） | `task_id`*、`people_run_id?`、`event_ids[]`(≤50)、`max_pairs=100` | 事件图谱分析 run（+列表/状态/graph/detail/cancel 共 6 端点） | eventGraphService | 同上 |
+| GET | `/api/graphiti/event-views`、`/event-views/detail` | `task_id`*、`ViewFilter` 参数 | 事件在线视图 | 同上 | 同上 |
+| GET | `/api/graphiti/source-file`、`/relationships/{id}/trace` | `task_id`*、`evidence_key`/UUID | 源文件与关系溯源 | peopleGraphService/evidence 链 | 同上 |
 
 ### 2.3 LLM 分析（/api/llm + dll）
 
@@ -240,6 +254,10 @@
 | POST | `/api/llm/toggle-cluster-relevance` | 同构 | 切换事件簇相关性标记 | 同上 | 同上 |
 | GET | `/api/llm/status` | — | LLM 服务状态 | llmService.getLLMStatus → Dashboard | 同上 |
 | POST | `/api/llm/analyze/dll` | `file_path`*、`task_id?` | DLL 安全分析（先调 C++ 解析再 LLM） | llmService.analyzeDLL → Files 页 | 同上 |
+| POST | `/api/llm/file-analysis/estimate` | `task_id`* | 文件分析预算干跑（pending = 后续 run 工作量） | （暂无页面直调） | 同上 |
+| POST | `/api/llm/file-analysis/run`（后台 job） | `task_id`*、`file_paths?`、`case_description` | 批量文件描述生成（+`GET run/{job_id}` 轮询） | — | 同上 |
+| GET | `/api/llm/file-analyses` | `task_id`*、`file_path?`、`limit=200` | 追加式分析记录版本链 | — | 同上 |
+| POST | `/api/llm/file-analysis/record` | `task_id/file_path/description`* 等 | C++ 管线单条分析回写（原子三写；库由任务记录解析） | C++ 任务管线（LLMPythonProxy） | 同上 |
 
 ### 2.4 案件分析与情报报告（/api/llm）
 
@@ -287,9 +305,13 @@
 | GET | `/api/reports/{report_id}/categories/{category_id}/pages/{page}` | 路径参数 | 分页读取章节内容 | reportDataSource（HttpReportDataSource） | 同上 |
 | GET | `/api/reports/{report_id}/search` | `q`、分页 | 报告内检索 | 同上 | 同上 |
 | GET/POST/PUT | `/api/reports/evidence` | `task_id/evidence_key/report_status/added_by` 必填 | 证据列表/登记（重复 409）/更新 | investigationService（list/add/updateReportEvidence） | 同上 |
+| GET | `/api/reports/evidence/file-candidates` | `task_id`*、`search/status/analyzed/page` | 证据复核页读模型（files × 判定连接表） | investigationService | 同上 |
+| POST | `/api/reports/evidence/seed-analyzed` | `task_id/added_by`* | 初管全量入报（幂等，已有判定跳过） | — | 同上 |
 | POST | `/api/reports/generate` | `task_id`*、`requested_by`*（无证据 409） | 冻结式报告生成（202；输入全服务端组装） | reportGenerationService → GenerateReportPanel | 同上 |
 | GET | `/api/reports/generations/{generation_id}` | `task_id` 查询参数 | 生成状态（exact id 轮询） | useReportGenerationPolling | 同上 |
 | GET | `/api/reports/narrative/versions/{report_id}` | 路径参数 | 叙事版本记录 | 同上 | 同上 |
+| POST | `/api/reports/pipeline-tail`（202） | `task_id`、`requested_by` | 任务完成尾部自动出报（关闭时 503；skip 落 completed+error_code） | C++ 任务完成门 | 同上 |
+| GET | `/api/reports/pipeline-tail/status` | `task_id`* | 收尾状态（未启动 404） | 同上 | 同上 |
 | DELETE | `/api/reports/tasks/{task_id}` | 路径参数 | 级联删除任务报告足迹（版本行/快照目录/lock/翻译缓存；不可变 generation_inputs 保留；在途返回 409） | C++ `delete_task` → `LLMPythonProxy::deleteTaskReportData` | [DataAndBackup.md §3](../ops/DataAndBackup.md) |
 
 ### 2.7 调查 API（/api/investigation，规范扁平命名空间）
@@ -329,6 +351,7 @@
 | POST | `/evidence/analyze` | 触发证据分析 job | 同上 | 同上 |
 | GET | `/analysis-jobs/{job_id}` | 分析 job 状态 | pollAnalysisJob | 同上 |
 | GET | `/evidence/analysis` | 证据分析结果 | 同上 | 同上 |
+| POST | `/evidence/initial-analysis/translate` | `{evidence_key}`*：依冻结快照渲染中文译写 overlay（不改快照；超 30000 字符 413） | 同上 | 同上 |
 | POST | `/analysis/{analysis_id}/accept`、`/reject` | 采纳/驳回分析 | 同上 | 同上 |
 | POST | `/events/{event_id}/refresh` | 刷新事件 | 同上 | 同上 |
 | GET | `/events/{event_id}/versions` | 版本历史 | 同上 | 同上 |
@@ -339,10 +362,11 @@
 | POST | `/events/{event_id}/versions/{version_id}/claims/{claim_id}/accept` | 采纳声明 | 同上 | 同上 |
 | POST | `.../claims/{claim_id}/reject` | **固定 409** | — | 同上 |
 | GET | `/claims/{claim_id}` | 声明溯源 | 同上 | 同上 |
-| POST | `/notes` | **固定 409**（等规范 schema 决策） | — | 同上 |
-| GET | `/notes` | 笔记只读 | 同上 | 同上 |
+| POST | `/notes` | 保存批注（已实现：body `{target_type: evidence\|event, target_key, content≤20000, author?}`，200 返回 `{success, note}`） | 同上 | 同上 |
+| GET | `/notes` | 笔记只读（`target_type/target_key` 查询参数） | 同上 | 同上 |
 | PUT/GET/POST | `/report-evidence`（+ `/remove`） | 管理报告证据集 | 同上 | 同上 |
 | GET | `/graph/local` | 本地调查图 | 同上 | 同上 |
+| GET | `/file-timeline` | 文件中心时间线（analyzed 文件按最新 MACB 时间为节点，挂关联调查事件） | 同上 | 同上 |
 | GET | `/final-reports` | 终版报告列表 | 同上 | 同上 |
 | GET | `/final-reports/{report_id}`（+`/markdown`、`/html`、`/print`、`/publication`） | 终版报告各渲染形式 | FinalReportViewer | 同上 |
 | POST | `/final-reports/{report_id}/publish` | 发布终版报告 | 同上 | 同上 |
@@ -380,10 +404,86 @@
 | POST | `/api/wechat/graph/invalidate` | `task_id`*（查询参数） | 清除图谱缓存 | 同上 | 同上 |
 | POST | `/api/associations/cluster-files` | `task_id/time_window/event_type`*、`limit=100` | 事件簇 → 关联文件 | associationService → AnalysisCenter 双抽屉 | [Associations.md](../modules/python/httpserver/routes/Associations.md) |
 | POST | `/api/associations/file-clusters` | `task_id/file_path`*、`limit=100` | 文件 → 关联事件簇 | 同上 | 同上 |
+| GET | `/api/associations/file-events` | `task_id`*、`path`*、`limit=200`(1–1000) | 单文件关联事件（MVP 报告页抽屉） | associationService.getFileEvents → case-intelligence FileEventsDrawer | 同上 |
+| GET | `/api/associations/file-timeline` | `task_id`*、`limit=2000`(1–10000) | 过滤范围内文件的四时间戳时间线（MVP 报告页） | （暂无页面直调） | 同上 |
 | POST | `/api/forensics/oss/ai/filter` | `task_id/oss_db_path/case_description`*、`max_objects=200` | LLM 过滤 OSS 对象 | 集成方（前端 ossService 指向 C++ 死路由，见第五节） | [OssAnalysis.md](../modules/python/httpserver/routes/OssAnalysis.md) |
 | POST | `/api/forensics/oss/ai/analyze` | `task_id/object_ids/oss_db_path/download_dir`*、`model_type=text` | LLM 分析已过滤对象 | 同上 | 同上 |
 
 另有 FastAPI 内建交互文档：`GET /docs`（Swagger）、`/redoc`、`/openapi.json`。
+
+### 2.11 IM 即时通讯取证（/api/wechat/forensics、/api/qq、/api/whatsapp）
+
+三平台路由面同构：导入 CRUD + overview/sessions/messages/contacts/chatrooms。
+
+| 方法 | 路径 | 关键参数 | 语义 | 典型调用方 | 详细文档 |
+|------|------|---------|------|-----------|---------|
+| POST | `/api/wechat/forensics/imports` | `db_path`*（EnMicroMsg.db）、`wal_path/password/media_dir/key_material/name/backup_source?` | 微信导入（201） | wechatForensicsService | [Python_REST_API §17](../api_reference/Python_REST_API.md) |
+| GET | `/api/wechat/forensics/imports`、`/{id}` | — | 列表 / 摘要 | 同上 | 同上 |
+| DELETE | `/api/wechat/forensics/imports/{id}` | 路径参数 | 删除导入 | 同上 | 同上 |
+| GET | `/api/wechat/forensics/imports/{id}/overview`、`sessions`、`contacts`、`chatrooms` | 路径参数 | 概览/会话/联系人/群聊 | 同上 | 同上 |
+| GET | `/api/wechat/forensics/imports/{id}/messages` | `talker/msg_type/keyword/start_ts/end_ts/limit=200(1–2000)/offset` | 分页消息 | 同上 | 同上 |
+| GET | `/api/wechat/forensics/imports/{id}/media/{rel_path}` | 路径参数 | 媒体文件流（越界 400 / 404） | 同上 | 同上 |
+| GET | `/api/wechat/forensics/imports/{id}/timeline-summary`（+/records） | `SummaryFilters` | 时间规律摘要 | timelineSummaryService | 同上 |
+| POST | `/api/qq/forensics/imports` | `db_path`*（nt_msg.db）、`password?(32-hex)/key_material{name?/backup_source?}` | QQ 导入（201） | qqForensicsService | 同上 |
+| GET/DELETE | `/api/qq/forensics/imports`、`/{id}` | — | 列表/摘要/删除 | 同上 | 同上 |
+| GET | `/api/qq/forensics/imports/{id}/overview`、`sessions`、`contacts`、`chatrooms`、`messages` | 同微信形态（msg_type 为外层类型如 40011） | 读取面 | 同上 | 同上 |
+| GET | `/api/qq/forensics/imports/{id}/timeline-summary`（+/records） | `SummaryFilters` | 时间规律（**老版 QQ（legacy_qq4）自动切 `qq_legacy` 源**读 graph.db） | timelineSummaryService | 同上 |
+| POST | `/api/whatsapp/forensics/imports` | `db_path`*（ChatStorage.sqlite 或其父目录）、`name/backup_source?` | WhatsApp 导入（201） | whatsappForensicsService | 同上 |
+| GET/DELETE | `/api/whatsapp/forensics/imports`、`/{id}` | — | 列表/摘要/删除 | 同上 | 同上 |
+| GET | `/api/whatsapp/forensics/imports/{id}/overview`、`sessions`、`contacts`、`chatrooms`、`messages` | `talker/msg_type/keyword/start/end/page/page_size=50(1–200)` | 读取面（无 timeline-summary） | 同上 | 同上 |
+
+> 导入数据集复用图谱管线：`GET /api/wechat/graph?task_id=wx_<id>|qq_<id>`；任务级时间规律另挂 `GET /api/associations/timeline-summary`（`task_id` + `source=events|wechat`）。
+
+### 2.12 统一通信图谱（/api/comm）
+
+| 方法 | 路径 | 关键参数 | 语义 | 典型调用方 | 详细文档 |
+|------|------|---------|------|-----------|---------|
+| GET | `/api/comm/graph` | `task_id`*、`wechat_imports[]/qq_imports[]/dataset[]`、时间窗、`min_edge_weight=1`、`max_nodes=500`、`max_edges=2000`、`communities=true` | 统一通信图（Person/Edge/communities/coverage） | commGraphService → CommGraph 页 | [Python_REST_API §18](../api_reference/Python_REST_API.md) |
+| GET | `/api/comm/timeline` | `task_id`*、`kind[]`（call/sms/im_private/im_group/im_artifact）、`limit=200` | 统一通信时间线（含 unavailable_datasets） | 同上 | 同上 |
+| GET | `/api/comm/edge` | `task_id`*、`source`*、`target`*、`relation?` | 边下钻明细 | 同上 | 同上 |
+| GET | `/api/comm/datasets` | `task_id`* | 数据集解析清单 | 同上 | 同上 |
+
+### 2.13 第三方 Android 报告导入（/api/android-report）
+
+| 方法 | 路径 | 关键参数 | 语义 | 典型调用方 | 详细文档 |
+|------|------|---------|------|-----------|---------|
+| GET | `/api/android-report/candidates` | — | 可导入报告候选 | androidReportService | [Python_REST_API §19](../api_reference/Python_REST_API.md) |
+| POST | `/api/android-report/imports`（201） | `{candidate_id}`* | 创建导入 | 同上 | 同上 |
+| GET | `/api/android-report/imports` | `task_id?` | 导入列表 | 同上 | 同上 |
+| POST/DELETE | `/api/android-report/imports/{id}/tasks`（`/{task_id}`） | `{task_id}`* | 挂接/解除任务 | 同上 | 同上 |
+| GET | `/api/android-report/imports/{id}/overview`、`manifest`、`coverage` | 路径参数 | 概览/清单/覆盖率 | 同上 | 同上 |
+| GET | `/api/android-report/imports/{id}/records` | `query/category/page/page_size=50(1–100)` | 记录分页（+`/records/{rid}` 详情） | 同上 | 同上 |
+| GET | `/api/android-report/imports/{id}/attachment?path=`、`/source-page?path=`、`/source-location/{rid}` | `path`/路径参数 | 附件下载 / 原始页文本 / 定位 HTML | 同上 | 同上 |
+
+### 2.14 证据收件与 RAID（/api/evidence-intake）
+
+| 方法 | 路径 | 关键参数 | 语义 | 典型调用方 | 详细文档 |
+|------|------|---------|------|-----------|---------|
+| GET | `/api/evidence-intake/candidates` | — | 证据包候选 | evidenceIntakeService | [Python_REST_API §20](../api_reference/Python_REST_API.md) |
+| POST | `/api/evidence-intake/jobs`（202） | `{candidate_id, full_hash, password, selected_slot(0–31)}` | preflight job（+状态/取消/manifest） | 同上 | 同上 |
+| GET | `/api/evidence-intake/tasks/{task_id}/android-artifacts/{kind}` | 分页 | Android 制品行读取（+search、`/{row_id}` 详情；现场门禁） | 同上 | 同上 |
+| POST | `/api/evidence-intake/tasks/{task_id}/android-artifacts/{kind}/{row_id}/capture` | `{record_hash, source_revision}`* | 选中行冻结为证据快照（行变更 409） | 同上 | 同上 |
+| GET | `/api/evidence-intake/tasks/{task_id}/android-result-sets/{rsid}/{kind}/{row_id}` | 路径参数 | 读冻结制品 | 同上 | 同上 |
+| GET | `/api/evidence-intake/tasks/{task_id}/android-coverage`（+coverage-manifest、normalization-manifest） | 路径参数 | 覆盖率与归一化清单 | 同上 | 同上 |
+| GET | `/api/evidence-intake/raid/candidates` | — | RAID 成员候选 | 同上 | 同上 |
+| POST | `/api/evidence-intake/raid/jobs`（202） | `{member_ids}`*（写角色） | RAID job（+状态/prepare（`allow_partial` 需 admin）/cancel） | 同上 | 同上 |
+| GET | `/api/evidence-intake/tasks/{task_id}/raid-source` | 路径参数 | 任务的 RAID 源核对 | 同上 | 同上 |
+
+### 2.15 音视频内容分析（/api/video-analysis、/api/audio-analysis）
+
+| 方法 | 路径 | 关键参数 | 语义 | 典型调用方 | 详细文档 |
+|------|------|---------|------|-----------|---------|
+| POST | `/api/video-analysis/describe` | `task_id?/workspace_root?`、`file_path`*、`prompt?` | 视频分段抽帧 vision 描述（长视频元数据级回退） | C++ 任务管线 | [Python_REST_API §21](../api_reference/Python_REST_API.md) |
+| POST | `/api/audio-analysis/transcribe` | 同上 | SenseVoice 转写 + 取证描述（转写落 `_files.db` audio_transcripts） | C++ 任务管线 | 同上 |
+
+### 2.16 现场认证（/api/field-auth）
+
+| 方法 | 路径 | 关键参数 | 语义 | 典型调用方 | 详细文档 |
+|------|------|---------|------|-----------|---------|
+| GET | `/api/field-auth/status` | — | 现场安全自检（与 C++ `/api/security/status` 同源字段） | fieldResource.js | [Python_REST_API §22](../api_reference/Python_REST_API.md) |
+| POST | `/api/field-auth/login` | `{username, password}`* | 本地登录（现场模式关闭时 404） | fieldSession.js | 同上 |
+| GET | `/api/field-auth/me` | Bearer | 当前用户 `{id, role}` | 同上 | 同上 |
+| POST | `/api/field-auth/introspect` | 服务令牌 + `{authorization, method, path}` | **内部端点**：C++ FieldAuthMiddleware 回调自省 | C++ → Python | 同上 |
 
 ---
 
@@ -429,8 +529,8 @@
 
 ## 四、跨服务调用关系速记
 
-- 浏览器 → C++ `:8080`：绝大多数 `/api/*` + 前端静态资源；→ Python `:8090`：`/api/llm|graphiti|reports|office|db|wechat|investigation`；→ C/S `:8091`：`/csapi`（dev 代理重写去前缀）。见 [Deployment.md](../architecture/Deployment.md)。
-- C++ → Python：任务收尾 `LLMPythonProxy.async_ingest` 触发 `/api/graphiti/ingest`（fire-and-forget）；文档转换走 `MarkitdownProxy`。
+- 浏览器 → C++ `:8080`：绝大多数 `/api/*` + 前端静态资源；→ Python `:8090`：`/api/llm|graphiti|reports|office|db|wechat|qq|whatsapp|comm|android-report|evidence-intake|investigation|field-auth` 等；→ C/S `:8091`：`/csapi`（dev 代理重写去前缀）。见 [Deployment.md](../architecture/Deployment.md)。
+- C++ → Python：任务收尾 `LLMPythonProxy.async_ingest` 触发 `/api/graphiti/ingest`（fire-and-forget）；文档转换走 `MarkitdownProxy`；文件描述阶段调 `/api/video-analysis/describe`、`/api/audio-analysis/transcribe`、回写 `/api/llm/file-analysis/record`、收尾出报 `/api/reports/pipeline-tail`；现场认证中间件回调 `POST /api/field-auth/introspect`（均经服务令牌互信）。
 - Python → C++：`CppBackendService` 回查任务/时间线/文件（硬依赖，C++ 不可用则 ready=false）。
 - 前端服务层（`web/src/services/`）是页面与后端唯一边界，逐组映射见两篇 API 参考的附录表。
 
@@ -439,9 +539,10 @@
 | 端点 | 状态 | 原因与详细文档 |
 |------|------|--------------|
 | C++ `/api/forensics/oss/analyze`、`/objects`、`/logs`、`/stats/*` 等 OSS 族 | **运行时 404** | `OSSRoutes*.cpp` 等编译但从未被聚合器注册；前端 `/oss` 页因此不可用。见 [OSSRoutes.md](../modules/cpp/network/routes/OSSRoutes.md) 与 [CPP_REST_API.md §7](../api_reference/CPP_REST_API.md)。OSS AI 能力在 Python 侧（§2.10） |
+| C++ `POST /api/forensics/timeline/clusters/analyze`、`/batch-analyze`、`/reanalyze` | **运行时 404** | `EventClusterRoutes.cpp:25-79` 在 `#if 0` 内未注册（前端已切 Python `/api/llm/analyze-event-cluster`）；现行读面是 `GET /clusters/analyzed`。见 [CPP_REST_API.md §2.2](../api_reference/CPP_REST_API.md) 与本文 §1.5 |
 | Python `/api/system/logs/stream` | **运行时 404** | `system_logs.py` 的 router 未在 main.py 注册（死代码）；注册版是 `/api/system/logs-stream/{service}`。见 [Python_REST_API.md §15](../api_reference/Python_REST_API.md) |
 | Python `POST /api/llm/case-analysis` | **固定 410** | 旧 Chain B 案件分析已软退役，现行链路是 R2 报告生成（`/api/reports/generate`）。见 [d3b-legacy-chain-b-soft-retirement.md](../hardening/d3b-legacy-chain-b-soft-retirement.md) |
-| Workbench `review` / 版本 reject / 声明 reject / `POST notes` | **固定 409** | 显式契约边界（拒绝语义不在本地规范内），非故障。见 [Python_REST_API.md §8](../api_reference/Python_REST_API.md) |
+| Workbench `review` / 版本 reject / 声明 reject | **固定 409** | 显式契约边界（拒绝语义不在本地规范内），非故障；`POST notes` 已实现保存，不在其中。见 [Python_REST_API.md §8](../api_reference/Python_REST_API.md) |
 | Python `POST /api/db/query` | **不存在** | 旧文档写过的自定义 SQL 端点在代码中不存在；`/api/db/*` 全部只读。见 [Python_REST_API.md §9](../api_reference/Python_REST_API.md) |
 | C++ `PUT /api/tasks/<id>/priority` | **注册但 no-op** | 只回显不实现（源码注释显式声明）。见 [CPP_REST_API.md §1](../api_reference/CPP_REST_API.md) |
 
@@ -469,10 +570,10 @@
 | 易混项 | 实际情况 |
 |--------|---------|
 | /health vs /api/health vs /api/system/health（C++） | 三口径并存；run.sh 硬检查用 /api/system/health（SystemRoutes 文档） |
-| /tasks vs /api/tasks（C++） | 前者是简化接口（创建/列表/详情/结果四件），后者全功能 |
+| /tasks vs /api/tasks（C++） | 非 `/api` 前缀的 `/tasks` **不是 API**——它是前端 SPA 页面路径，任务 API 只注册 `/api` 前缀（调用 `/tasks` 404） |
 | /api/graphiti/ingest-file | 实为 `/api/graphiti/ingest/file`（斜杠——契约目录勘误） |
 | 状态字面量 | API 小写（pending）/tasks.json 大写（PENDING）；Graphiti job 大写（COMPLETED）——三处三样，见 Glossary 对照 |
 | /api/llm/case-analysis | 410 退役；现行是 /api/llm/cases + /api/reports |
 | /api/markitdown（dev 前端） | 无 vite 专属前缀，dev 下会被 /api 兜底打到 C++——生产无碍（同源走 C++ 转发? 不，生产 markitdown 由 C++ MarkitdownProxy 服务端调用） |
 
-**最后更新**: 2026-08-24（扩充：超时与别名附录）
+**最后更新**: 2026-11-10（并入分支 feature/model-routing 新端点：C++ 任务 pause/resume、files/paged、files/materialize、backup-overview、security/status、/health/live、/python 网关；Python IM 三平台取证、/api/comm、android-report、evidence-intake（含 raid）、video/audio 分析、field-auth、graphiti 人员/事件运行、file-analysis 族、报告 pipeline-tail 与证据补充）

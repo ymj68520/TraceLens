@@ -38,7 +38,7 @@ Python 调 C++ 用 `settings.cpp_backend_url`（`CPP_BACKEND_URL`，httpserver/c
 | 5 | `async_ingest_events` | POST `/api/graphiti/ingest/events` | `{"task_id", "events":[...]}` | 同上 | cpp:124-156；py:`_ingest.py:142+` |
 | 6 | `get_job_status` | GET `/api/graphiti/jobs/{job_id}` | — | `status/progress/current_phase/created_at/started_at/completed_at/error/result`（JobStatus 映射，h:38-52）；404 时 C++ 置 `status="not_found"` | cpp:158-195；py:`_jobs.py:24-70` |
 | 7 | `cancel_job` | DELETE `/api/graphiti/jobs/{job_id}` | — | `{"success":bool}`；404→false | cpp:197-218；py:`_jobs.py:72` |
-| 8 | `wait_for_job_completion` | （轮询 #6） | 轮询 3s、超时 3600s，回调 `(progress, phase)` | COMPLETED→true；FAILED/CANCELLED/not_found→false | cpp:220-253 |
+| 8 | `wait_for_job_completion` | （轮询 #6） | **已被绕开**：TaskManager 分析尾部自带轮询 `wait_for_graphiti_ingestion`（TaskManagerAnalysis.cpp:310-325，注释明确 "Runs its own poll loop (instead of LLMPythonProxy::wait_for_job_completion)"），预算 `GRAPHITI_INGEST_WAIT_TIMEOUT_MIN`（缺省 720 分钟，0=恢复 fire-and-forget）+ `GRAPHITI_INGEST_RETRIES`（缺省 2，总尝试=1+RETRIES），轮询间隔 `GRAPHITI_INGEST_POLL_SECONDS`（缺省 10s，cpp:365）。本方法仍实现（h:220，缺省 3s/3600s）但**无生产调用方** | COMPLETED→true；FAILED/CANCELLED/not_found→false | cpp:334+（dead）；替代实现 TaskManagerAnalysis.cpp:310-325 |
 
 **契约漂移点**：
 - 端点名是 `/api/graphiti/ingest/file`（单数 `file`），**不是** `ingest-file`（cpp:104）。
@@ -73,7 +73,9 @@ Python _ingest.py:27
   │ ① cpp_backend.check_task_exists(task_id)   ← 回调 C++ GET /api/tasks/{id}
   │ ② ingestion_job_manager.queue_ingestion(...) 或降级 graphiti_service
   ▼ 返回 {job_id, status:"PENDING", message}
-C++ 轮询 GET /api/graphiti/jobs/{job_id}（默认 3s 间隔, 3600s 超时）
+C++ wait_for_graphiti_ingestion 自带轮询 GET /api/graphiti/jobs/{job_id}
+  │ （TaskManagerAnalysis.cpp:310-325；间隔 GRAPHITI_INGEST_POLL_SECONDS 缺省 10s，
+  │  总预算 GRAPHITI_INGEST_WAIT_TIMEOUT_MIN 缺省 720 分钟，重试 GRAPHITI_INGEST_RETRIES 缺省 2）
   │ status: PENDING → RUNNING(progress%, current_phase) → COMPLETED | FAILED | CANCELLED
   ▼（异常路径）
 C++ DELETE /api/graphiti/jobs/{job_id}（取消）或 DELETE /api/graphiti/tasks/{task_id}（清图）
@@ -186,11 +188,13 @@ VITE_CPP_API_URL / VITE_CS_API_URL / VITE_CPP_PORT` 只影响前端构建/开发
 
 | 客户端 | baseURL | 超时 | token | 401 行为 | 位置 |
 |---|---|---|---|---|---|
-| `api`（默认导出） | `VITE_API_BASE_URL` 或空（同源/代理 → C++） | 30s | `localStorage.auth_token` → `Authorization: Bearer` | 清 token 并跳 `/login` | :29-35,47-90 |
-| `pythonApi` | `VITE_PYTHON_API_URL` 或 `http://<当前host>:8090`（动态 host，跨机可访） | 60s（LLM 慢） | 无 | 不特殊处理 | :38-44,92-125 |
-| `csApi` | `VITE_CS_API_URL` 或 `http://<当前host>:8091` | 30s | `localStorage.cs_auth_token`（**与本地 token 分离**） | 仅清 `cs_auth_token`，**不跳转** | :131-184 |
+| `api`（默认导出） | `FIELD_AUTH_ENABLED` 时同源空串，否则 `VITE_API_BASE_URL`（代理 → C++） | 30s | **按 `FIELD_AUTH_ENABLED` 分支**（:28）：启用现场认证取 `fieldSession` 的 field token，否则回落 `localStorage.auth_token`；有值即 `Authorization: Bearer` | 清两类凭据（`clearFieldSession()` + `auth_token`/`auth_user`，:38-41）并跳 `/login` | :26-50 |
+| `pythonApi` | `VITE_PYTHON_API_URL` 或 `http://<当前host>:8090`（动态 host，跨机可访） | 60s（LLM 慢） | 仅现场认证时带 field token（:55）；另可带构建注入的 `VITE_FIELD_API_TOKEN`（`x-tracelens-field-token` 头，:58-59） | 现场认证下 401（login 端点除外）→ `clearFieldSession()` 并跳 `/login`（:65-72） | :53-86 |
+| `csApi` | `VITE_CS_API_URL` 或 `http://<当前host>:8091` | 30s | `localStorage.cs_auth_token`（**与本地 token 分离**） | 仅清 `cs_auth_token`，**不跳转** | :89-125 |
 
-token 约定：两类 token 独立存储（`auth_token` vs `cs_auth_token`，:142 注释）；
+token 约定：现场认证（`VITE_FIELD_AUTH=enabled` 构建）由 `/login` 经
+`POST /api/field-auth/login` 换取 JWT 存入 `fieldSession`（浏览器内存），未启用现场
+认证的旧构建仍回落 `localStorage.auth_token`；C/S 域独立用 `cs_auth_token`。
 均以 `Authorization: Bearer <jwt>` 头发送；`currentHost()` 动态推导解决跨机访问时
 `localhost` 指向客户端自身的问题（:12-17）。
 
@@ -303,8 +307,8 @@ token 约定：两类 token 独立存储（`auth_token` vs `cs_auth_token`，:14
 1. `.env`：`HTTP_SERVER_PORT`、`PYTHON_HTTP_PORT`、`CPP_BACKEND_URL` 三处同步
    （否则 Python 回调 C++ 仍打 8080）。
 2. 显式设置 `PYTHON_SERVICE_URL`（OfficeAnalyzer 硬编码回退 8090）。
-3. run.sh 独立回退 `CPP_PORT=${HTTP_SERVER_PORT:-8666}`、`CS_PORT`（run.sh:79-81）。
+3. run.sh 经 `scripts/lib/tracelens_env.sh:38` 与代码一致回退 8080（`CS_PORT` 另行传入）。
 4. 前端：dev 重启 vite（代理表启动时求值）；prod 重新构建（`VITE_*` 构建期内联）。
 5. C/S：`PORT`（server/config.py:39）与 run.sh 传入的 `CS_PORT` 需一致。
 
-**最后更新**: 2026-08-24（新建，参考手册）
+**最后更新**: 2026-11-10（对齐：Graphiti 等待改 TaskManager 自带轮询与 GRAPHITI_INGEST_* 预算、前端 token 按 FIELD_AUTH_ENABLED 分支、run.sh 回退 8080）

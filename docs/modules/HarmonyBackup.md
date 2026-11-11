@@ -2,6 +2,12 @@
 
 本适配器处理 `.info.json`（`BackupFileHeaderInfo`、`BackupFileModuleInfo`）与 `files/BASIC|SYSTEM|APPLICATION` 组成的备份目录。支持同一清单中的已解密 TAR 和独立大文件，优先读取 `manage.jsonx`、`part.N.tarx`、哈希文件名加 `x` 的副本，也接受内容、清单大小校验通过的无 `x` 文件。它不实现备份外层解密、设备提取或手机仿真；外层已解密不代表应用内部数据库或字段全部明文。
 
+## 解析链路与统一取数包
+
+解析规则自 2026-11 起收敛在统一取数适配器 `MobileEvidenceHarmonyAdapter`：它把模块清单、数据库 schema 盘点与业务表行级记录（日历、备忘录、媒体、录音等）翻译成统一取数包（`mobile_evidence::Package`，`adapterName=harmony-backup`）；`HarmonyArtifactParsers.cpp` 只负责把包写进 android.db——直接分析与"先取数再分析"两条链路因此共用同一份规则，不会各自漂移（`HarmonyArtifactParsers.cpp:1-8, 16-27`）。写库前先清空派生表（`mobile_artifacts`/`installed_apps`/`app_db_inventory`/覆盖与溯源），重复解析不累积重复行（`:37-47`）。
+
+CLI 支持 `--mobile-extract` 只出包、`--mobile-package` 只读包分析（检材移走后仍可重建结果）；HTTP 任务链路会在 android.db 之外额外产出 `<任务目录>/<baseName>_mobile_evidence.mep.db`，并在任务元数据登记 `mobile_evidence_package/records/files/adapter`，包写入失败只记 WARNING、不失败任务（`TaskManagerAnalysis.cpp:2073-2138`）。格式细节见 `docs/specs/mobile-evidence-package.md` 与 [MobileEvidencePackage](cpp/analyzers/MobileEvidencePackage.md)。
+
 ## 使用原有任务入口
 
 在原任务创建窗口选择“华为鸿蒙备份”，填写已解密目录。选择“Android 目录”时也会自动识别此布局。后端仍使用 `/api/tasks`，在同一任务中运行逻辑索引、过滤、分类、文件读取、手机解析、时间线、已有智能分析与摄取/报告尾段。没有独立的鸿蒙导入服务或任务系统。
@@ -51,3 +57,5 @@ python3 tests/integration/test_harmony_backup_cli.py \
 ```
 
 检材和解析出的个人数据不进入仓库。Python 的 `test_harmony_artifacts.py` 验证记录冻结、原表/主键追溯及自动报告幂等接入；原 Android、MIUI、归档与文件提取测试同时保留。
+
+**最后更新**: 2026-11-10（补统一取数包链路；限额与 libarchive 章节按代码复核无误）

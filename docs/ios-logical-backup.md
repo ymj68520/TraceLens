@@ -73,7 +73,7 @@ iOS 记录与 Android 记录走同一条冻结路径：
 
 ## 即时通讯（IM）
 
-WhatsApp 已作为与微信、QQ 并列的第三个平台接入即时通讯取证页（`/im-forensics?platform=whatsapp`）。它不走 Task 的 `android.db`，而是独立导入：后端把 iOS 的 Core Data 库归一化成与微信/QQ 相同的 `graph.db` 结构，因此会话、消息、联系人、群聊、关系分析、时间规律六个页签与既有平台共用同一套面板。
+WhatsApp 已作为与微信、QQ 并列的第三个平台接入即时通讯取证页（`/im-forensics?platform=whatsapp`）。它不走 Task 的 `android.db`，而是独立导入：后端把 iOS 的 Core Data 库归一化成与微信/QQ 相同的 `graph.db` 结构，因此取证概览、会话、消息、联系人、群聊五个页签与既有平台共用同一套面板。**「关系分析」与「时间规律」两个 Tab 当前不覆盖 WhatsApp 导入**：图谱服务只解析 `wx_`/`qq_` 前缀的 task_id，`/api/whatsapp` 也未挂载 timeline-summary 路由，选中 WhatsApp 导入后这两处会报"任务不存在/来源不可用"，属当前版本边界。
 
 导入来源是 `ChatStorage.sqlite`（`AppDomainGroup-group.net.whatsapp.WhatsApp.shared` 域），同目录下的 `ContactsV2.sqlite` 与 `CallHistory.sqlite` 自动一并读取。
 

@@ -109,6 +109,13 @@ main.cpp
 
 阅读分类时不要从旧的 `FileClassifierTypes.h` 13 值枚举开始——实际 24 值名称表在 `FileClassifier.cpp`。
 
+### 3.5 report/ 与 export/（报告与文本导出）
+
+| 目录 | 入口 | 责任 |
+|---|---|---|
+| `src/report/` | `ReportGenerator.*` | 从 files.db + events.db 生成**无需 AI** 的 Markdown 报告（`--report --report-path`）；逐表章节写入器，当前覆盖 linux_* 表族 |
+| `src/export/` | `TextDumpExporter.*` + `TextDumpAdapters.*` | `--dump-text` 文本导出管线：FileExtractor 原子提取适配（ITextDumpFileSource）+ markitdown 转换适配；增量提取/转换、体积上限与停机原因（StopReason）结构化返回 |
+
 ## 4. 平台分析器阅读顺序
 
 ### 4.1 Android
@@ -129,11 +136,36 @@ AndroidAnalyzer.h
 
 | 想理解 | 从哪里读 |
 |---|---|
-| 四种数据源 | `IFileExtractor.h`、`LogicalDirExtractor.*`、`ZipArchiveExtractor.*` |
+| 数据源（15 种 CLI 合法值：tsk/dir/zip/tar/seven-zip/android-backup/filesystem-image/miui-backup/harmony-backup/thunder-backup/oppo-backup/vivo-backup/ios-backup/mobile-evidence/meiya，`CommandLineParser.cpp isValidAndroidSource`） | `IFileExtractor.h` 及各 `*Extractor.*`；全量矩阵见 [android-input-support-matrix](../android-input-support-matrix.md) |
 | MIUI | `MiuiBackupManifest.*`、`AndroidBackupHeader.*`、`TarIndex.*` |
 | 微信解密 | `WeChatDecryptor.*`、`SqlCipherDatabase.*` |
-| 应用工件 | `WechatArtifactParsers.*`、`QqntArtifactParsers.*`、`MiuiArtifactParsers.*` |
+| 应用工件 | `WechatArtifactParsers.*`、`QqntArtifactParsers.*`、`MiuiArtifactParsers.*`、`HarmonyArtifactParsers.*`、`ThunderForensic*` |
 | 表与查询 | `AndroidAnalysisDatabase.*`、`SQL/android_analysis_sql*.h` |
+
+### 4.4 MemoryAnalyzer（内存取证，CLI 旁路）
+
+```text
+MemoryAnalyzer.h
+  → Core/MemoryAnalyzerCore.cpp（编排）
+      → Volatility/Volatility3Runner（vol3 子进程 + JSON 输出；VolJson.h 解析）
+      → Parsers/（process / network / bash history / boot time / Windows 插件）
+      → Database/MemoryAnalysisDatabase（落 <stem>_memory.db）
+```
+
+- CLI 专用旁路：`--memory-analyze`（AnalysisOrchestrator 提前 return），volatility3 由 setup.sh 安装；`--vol-symbols-dir` 指定 ISF 符号目录，缺省走 vol3 自身搜索路径。
+- HTTP 侧 `/api/forensics/memory/*` 只读 `<stem>_memory.db`（缺失 404），不触发分析。
+
+### 4.5 IosAnalyzer（iOS 逻辑备份读取）
+
+- `IosBackupExtractor.*`：IFileExtractor 后端——备份目录含 `Manifest.plist`（设备身份/加密标志）与 `Manifest.db`（SQLite 索引：fileID ↔ domain+relativePath），按 `<domain>/<relativePath>` 逻辑路径只读复制分片，永不改备份；
+- `BinaryPlist.*`：二进制 plist 解码；`IosArtifactParsers.*`：备份内工件解析。
+- 入口 `--android-source ios-backup`（自动带 `--android-analyze`）。
+
+### 4.6 VivoAnalyzer（vivo/iQOO PC 助手备份）
+
+- `VivoBackupExtractor.*`：IFileExtractor 后端——`.backup`（JSON 头）+ LevelDB `db/` 索引 + 按 SHA-1 命名的 payload；C++ 不直接读 LevelDB，消费 Python 预检归一的 `index.json`，按 `<category>_<7位序号>_<sha1>` 键定位 payload。两条诚实规则：混淆 payload 复制但报 unreadable（绝不喂 SQLite 解析器）、缺失报 missing；
+- `VivoDeobfuscator.*`：解混淆；`VivoArtifactParsers.*`：工件解析。
+- 入口 `--android-source vivo-backup`。
 
 ### 4.2 Windows
 
@@ -315,4 +347,4 @@ docs/ops/                                # 需要运维旋钮/外部服务（如
 
 ---
 
-**最后更新**: 2026-08-24（新建：源码导览）
+**最后更新**: 2026-11-10（补 MemoryAnalyzer/IosAnalyzer/VivoAnalyzer 导览、report 与 export 条目、15 种数据源口径）

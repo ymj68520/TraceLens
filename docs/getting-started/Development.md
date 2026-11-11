@@ -12,7 +12,8 @@ TraceLens/
 ├── .env.example                       # 全量环境变量（见 Installation.md 第 5 节）
 ├── CMakeLists.txt                     # 主构建（CMake ≥ 3.20，C++20）
 ├── config/filter_profiles/            # 过滤 profile（general_forensics / telecom_fraud /
-│                                      #   data_breach / virus_intrusion，JSON）
+│                                      #   data_breach / virus_intrusion / rat_trace_workstation /
+│                                      #   诈骗平台服务器专项 / 诈骗窝点工作站专项，JSON，共 7 个）
 ├── libs/aliyun-oss-cpp-sdk/           # vendored 阿里云 OSS C++ SDK
 ├── resources/                         # volatility3 插件（BitLocker FVEK）、dwarf2json 等
 ├── scripts/                           # 辅助脚本（见第 6 节）
@@ -21,7 +22,8 @@ TraceLens/
 │   │                                  #   FileFilter / FullTextSearch / ThreadPool / ErrorHandling /
 │   │                                  #   PathManager / AuditLog / EventCorrelationEngine / TOONExporter
 │   ├── analyzers/                     # 平台与专项分析器（Android/Windows/Linux/ImageAnalyzer/
-│   │                                  #   MemoryAnalyzer/FileCarving/DLLAnalyzer 等）
+│   │                                  #   MemoryAnalyzer/IosAnalyzer/VivoAnalyzer/FileCarving/
+│   │                                  #   DLLAnalyzer 等）
 │   ├── network/HTTPServer/            # Crow HTTP 服务：HTTPserver、TaskManager、TaskWatchdog、
 │   │   └── routes/                    #   LLM*AnalysisService + routes/（按域拆分的路由文件）
 │   ├── integration/                   # LLM / MCP / OSS 等外部集成
@@ -239,4 +241,4 @@ make acceptance-matrix           # Markitdown/Office/DLL 交接矩阵
 2. 验收 profile 当回归：smoke（进程边界）→ task（真实解析）→ analyst（调查全链）；
 3. 契约冻结类（evidence_key 语法、报告准入信封）改动必须走"新版本并行+旧版退役"路径（参考 /api/llm/case-analysis 的 410 退役先例）。
 
-**最后更新**: 2026-08-24（扩充：贡献者工作流）
+**最后更新**: 2026-11-10（对齐：filter_profiles 7 个、analyzers 列表补 IosAnalyzer/VivoAnalyzer）

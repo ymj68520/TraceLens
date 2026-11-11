@@ -2,6 +2,23 @@
 
 > 状态：v1 已实现并通过单元测试与 CLI 端到端验证。
 > 代码：`src/analyzers/AndroidAnalyzer/MobileEvidence*.{h,cpp}`
+>
+> **实施状态（2026-11-10 对照代码复核，已实施并在用）**
+>
+> - 格式契约：三主表 + 覆盖表 + 平坦视图的 DDL 见 `MobileEvidenceSchema.h:20-89`；版本常量 `kSchemaVersion = 1` 与 `kFormatName` 见 `MobileEvidencePackage.h:32-33`。
+> - Writer 事务写入：`BEGIN IMMEDIATE` / `COMMIT`（`MobileEvidencePackage.cpp:123,364`）；Reader 以 `PRAGMA query_only=1` 只读打开（`MobileEvidencePackage.cpp:404`）。
+> - 分析消费端：`MobileEvidenceAnalysis.cpp:231-324`（kind 分派 `:259-293`，`mobileArtifact` 投影 `:290-293`，coverage 回写 `:311-321`）。
+> - CLI 两阶段：`--mobile-extract` / `--mobile-package` / `--mobile-package-out`（`CommandLineParser.cpp:131-137,230-237`）；取数-only 由 `setExtractionOnly` 控制（`AndroidAnalyzerDeclarations.h:94`），跳过 android.db 建库的分支在 `AndroidAnalyzerCore.cpp:215-218`。
+> - Web 任务侧四来源写统一包：harmony（`TaskManagerAnalysis.cpp:1406-1440`）、mobile-evidence 仅分析（`:1791-1834`）、meiya 独立分支（`:1839-1923`）、miui/thunder sidecar 包（`:2079-2138`）。
+>
+> **实现与规范的差异**（规范正文保持原样，差异如实记录在此）：
+>
+> 1. §1/§6 把 iOS 与 UFED 列为设计愿景来源；当前 iOS（`ios-backup`）与 vivo（`vivo-backup`）备份**未接统一包**——直接经 AndroidAnalyzer 写 android.db（`AndroidAnalyzerCore.cpp:152-155,252-264`）。包机制现覆盖 MIUI/鸿蒙/雷电/美亚四来源。
+> 2. §3.5 表格与下方文字自相矛盾：`wifi_network` 已有专用落表 `writeWifi`（`MobileEvidenceAnalysis.cpp:274-276`），但同节"尚无专用分析落表"清单里仍列有 `wifi_network`——后者已过时。
+> 3. §5 末句"三个来源都支持 `--mobile-extract` 与 `--mobile-package` 两阶段"与同节四行来源表不一致（写于雷电接入前）；现四来源均支持（CLI 汇编入口 `AnalysisOrchestrator.cpp:279-321,784-840`）。
+> 4. §3.5 的"已预留、当前只计入覆盖度"清单（正文 :108）仍列有 `device_identity`——已过时：该类别已有专用落表 `writeDeviceIdentity`（分派在 `MobileEvidenceAnalysis.cpp:277-279`，实现 `:163-168` 调 `insertDeviceIdentifier` 落 `device_identifiers` 表；常量 `kDeviceIdentity` 见 `MobileEvidencePackage.h:51`），与第 2 条 `wifi_network` 属同一型矛盾。
+> 5. 正文 :169-171 说"四条手机来源都会登记 `mobile_evidence_package/records/files/adapter` 四元数据键"，与实现不符：meiya 分支（`TaskManagerAnalysis.cpp:1892-1908`）只写 `mobile_evidence_package` + `meiya_containers_total/decrypted` + `meiya_records`，不写 records/files/adapter 三键——仅 harmony（`:1427-1433`）与 miui/thunder（`:2113-2118`）写全四键。
+> 6. 正文 :78 的 `row_uid` 公式 `kind|package|app_index|path|table|key` 漏了 `nativeKind` 与行内序号，且行内序号并非"source_key 缺失时才追加"：实际 `makeRowUid`（`MobileEvidencePackage.cpp:68-74`）恒为 `kind|nativeKind|package|appIndex|sourcePath|sourceTable|sourceKey|<行内序号>`。
 
 ## 1. 解决什么问题
 

@@ -1,11 +1,11 @@
 # 常见问题（FAQ）
 
-> 按主题分组的 50 问。每答给出结论与详细文档链接；与 Troubleshooting 的分工：那边按"症状→操作"，这边按"疑问→解释"。已知缺陷的完整索引见 [Troubleshooting §13 的已知问题索引表](getting-started/Troubleshooting.md)。
+> 按主题分组的 70 问。每答给出结论与详细文档链接；与 Troubleshooting 的分工：那边按"症状→操作"，这边按"疑问→解释"。已知缺陷的完整索引见 [Troubleshooting §13 的已知问题索引表](getting-started/Troubleshooting.md)。
 
 ## 安装与启动
 
 **Q1 为什么有时候端口是 8080 有时候是 8666？**
-C++ 代码与 `.env.example` 默认 8080（`HTTP_SERVER_PORT`），但 `run.sh` 在未设置该变量时**回退 8666**。用 run.sh 启动就访问 8666，用 `make cpp` 手动启动是 8080。[详见](reference/Environment.md)
+端口由 `.env` 的 `HTTP_SERVER_PORT` 决定；`.env` 未设置时，C++ 代码与 run.sh（`scripts/lib/tracelens_env.sh`）的兜底**一致为 8080**。看到 8666 通常是因为复制了 `.env.example` 模板（其示例值是 8666）。[详见](reference/Environment.md)
 
 **Q2 前端 dev 端口是多少？为什么不是 Vite 默认的 5173？**
 3000（`web/vite.config.js` 显式指定）。生产模式没有独立前端端口——C++ 服务从 `web/dist` 托管 SPA，浏览器直接访问 C++ 端口。
@@ -105,7 +105,7 @@ LLMClient 内部互斥锁——本地单槽端点的自我保护。多槽端点�
 ## 前端
 
 **Q31 登录页随便输都能进？**
-是——mock 登录（本地栈无认证），token 只影响 401 跳转行为。[详见](modules/web/Overview.md)
+不再是 mock 登录。前端按构建期 `VITE_FIELD_AUTH` 分支：本地开发构建（未启用现场认证）没有路由守卫，直接进工作台；手动到 `/login` 提交会提示"当前部署未启用现场认证"。现场部署（`TRACELENS_FIELD_AUTH=enabled`）走 `POST /api/field-auth/login` 校验账密并签发 JWT（viewer/analyst/reviewer/admin 四角色），任意账密进不去。[详见](architecture/Deployment.md)
 
 **Q32 /analysis-center 打开就报错？**
 已知 bug：该页从孤儿文件导入 useToast（context 无 Provider），渲染即崩被 ErrorBoundary 接住。[详见](modules/web/Pages.md)
@@ -240,4 +240,4 @@ LOG_LEVEL 未接线（FAQ Q5）；当前日志查看走 Monitoring 的三通道�
 
 ---
 
-**最后更新**: 2026-08-24（50 问 + 扩充至 70 问）
+**最后更新**: 2026-11-10（70 问；对齐端口兜底口径与 field-auth 登录现实）

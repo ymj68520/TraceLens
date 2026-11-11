@@ -1,6 +1,15 @@
 # 验收框架指南（AcceptanceHarness）
 
-本文是 `scripts/acceptance/live_services.py`（1081 行）的源码级指南。它是**进程级验收框架**而非替代启动器：启动真实的 C++/Python 服务入口点、等待真实健康端点、跑预设旅程并在失败时收集诊断。现有 `docs/testing/live-integration.md` 记录了 Phase F 的历史执行情况，本文以脚本源码为准。
+本文覆盖两套验收资产：
+
+1. **`scripts/acceptance/live_services.py`（1081 行）**——**进程级隔离验收框架**而非替代启动器：启动真实的 C++/Python 服务入口点、等待真实健康端点、跑预设旅程并在失败时收集诊断。现有 `docs/testing/live-integration.md` 记录了 Phase F 的历史执行情况，本文以脚本源码为准。
+2. **`tests/acceptance_metrics/`（第三方指标验收集，本分支新增）**——面向第三方验收方的黑盒测试套件：对**已部署**服务只发 HTTP 请求判定合同指标，不 import 产品代码。
+
+两者关系一句话：`live_services.py` 验"隔离环境里的旅程语义"（自起服务 + fake LLM + 随机端口），`acceptance_metrics` 验"真实部署上的指标口径"（真实模型、真实吞吐、真实报告）。前者不碰外部 LLM，后者刻意要真实 LLM。
+
+---
+
+# 第一部分：live_services.py 进程级验收框架
 
 ## 一句话模型
 
@@ -243,6 +252,8 @@ python3 scripts/acceptance/live_services.py --profile smoke --with-distributed \
 | 验证调查→报告全旅程 | `make acceptance-analyst` |
 | 验证进程崩溃恢复语义 | `make acceptance-restart` |
 | 验证跨语言提取器交接 | `make acceptance-matrix` |
+| 第三方合同指标验收 | 见下文第二部分（`tests/acceptance_metrics/`） |
+| 演示案件一键建案 | `python3 scripts/create_demo_case.py`（见下文第三部分） |
 | 慢 LLM 行为 | `python3 scripts/acceptance/live_services.py --profile analyst --llm-delay 2` |
 | LLM 全故障降级 | `python3 scripts/acceptance/live_services.py --profile task --llm-failure` |
 | 脏结构化输出容错 | `python3 scripts/acceptance/live_services.py --profile analyst --llm-invalid` |
@@ -252,12 +263,112 @@ python3 scripts/acceptance/live_services.py --profile smoke --with-distributed \
 | 分布式面冒烟 | `python3 scripts/acceptance/live_services.py --profile smoke --with-distributed --distributed-database-url "$PG_URL"` |
 | 慢机器加超时 | `--timeout 60 --task-timeout 600` |
 
-## 已发现的测试层面问题
+---
+
+# 第二部分：第三方指标验收集（`tests/acceptance_metrics/`，本分支新增）
+
+面向第三方验收方的**黑盒**测试套件：只通过已部署服务的 HTTP 端点与任务库判定合同验收指标，**不 import 产品代码**。每个用例首行 docstring 标注对应的验收指标与判定口径；套件自带 `README.md`（指标↔用例↔判定标准↔夹具四列对照表，是本节的一手来源）。
+
+## 组成（实测清点）
+
+| 文件 | 行数 | 用例数 | 覆盖指标 |
+| --- | --- | --- | --- |
+| `conftest.py` | 261 | — | 共享 live harness：对已部署实例发请求；提供环境变量解析与任务等待 |
+| `prepare_fixtures.py` | 915 | — | 夹具生成器：仅 mkfs.ext4 + debugfs（**无需 root**），产出 `fixtures/` + `manifest.json`；`--only` 选择子（如 `--only raw dd timeline logs`），且含 `demo_datasets` 构建器（`:725-726`、`:899-900`，见第三部分） |
+| `test_m1_lightweight.py` | 92 | 4 | 指标 1(2)：吞吐 ≥10MB/s、低价值剔除率 ≥70%、待分析压缩至 12-15%、统计口径一致性 |
+| `test_m1_multisource.py` | 185 | 11 | 指标 1(1)：RAW/DD/E01 镜像、iOS、三类 Android（小米/鸿蒙/vivo 雷电）、服务器日志、阿里云 OSS、Windows |
+| `test_m2_crossmodal.py` | 110 | 5 | 指标 2：文本/图像/视频信息提取、事件转化、重复证据去重 |
+| `test_m3_timeline.py` | 95 | 2 | 指标 3：多模态同一事件聚合、≥100 事件节点 |
+| `test_m4_reasoning.py` | 195 | 3 | 指标 4：推演报告结构完整、角色基本一致、证据溯源定位 |
+| `README.md` | — | — | 指标↔用例↔判定标准↔夹具对照表 + 已知缺口 |
+| `fixtures/` | — | — | 生成夹具（gitignore，仅 `manifest.json` 入库固化夹具组成） |
+
+合计 **25 个用例**。LLM 依赖用例标注 `@pytest.mark.llm`；`/api/llm/models` 无可用模型时自动跳过（不误报失败）。
+
+## 运行方式
+
+```bash
+# 0) 部署 TraceLens（C++ 8666 / Python 8090 默认）
+# 1) 生成夹具
+python3 tests/acceptance_metrics/prepare_fixtures.py
+# 2) 非 LLM 指标（约 1 分钟）
+python_service/.venv/bin/python -m pytest tests/acceptance_metrics -v -m "not llm"
+# 3) 全量（含 LLM 案情推演与多模态聚合）
+python_service/.venv/bin/python -m pytest tests/acceptance_metrics -v
+```
+
+注意：该目录**不在** `python_service/pytest.ini` 的 testpaths 内（那里只收录 `python_service/tests/`），必须显式指路径运行；`llm` 标记也未在 pytest.ini 注册，靠默认（非 strict）配置容忍。
+
+## 环境变量（conftest 实证）
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `TRACELENS_CPP_BASE` | `http://127.0.0.1:8666` | C++ 后端地址 |
+| `TRACELENS_PY_BASE` | `http://127.0.0.1:8090` | Python 服务地址 |
+| `TRACELENS_ACCEPT_USER/_PASSWORD` | 无 | 服务开启 field-auth 时必填 |
+| `TRACELENS_ACCEPT_FIXTURES` | `tests/acceptance_metrics/fixtures` | 夹具目录 |
+| `TRACELENS_DATA_DIR` | `<repo>/data`（兜底 `build/data`） | 任务库/审计库根目录（黑盒直读任务库判定） |
+| `TRACELENS_ACCEPT_TASK_TIMEOUT` | 3600 | 单任务完成超时（秒） |
+| `TRACELENS_E01_IMAGE` | 无 | 真实 E01 镜像路径（开源工具无法凭空生成 E01） |
+| `TRACELENS_ACCEPT_MIN_MB_S` | 10 | 吞吐阈值（合同值 10MB/s） |
+| `TRACELENS_ACCEPT_REPORT_TIMEOUT` | 1800 | 推演报告生成超时（秒） |
+| `TRACELENS_ACCEPT_ASSUME_LLM` | 无 | 置 1 时跳过 LLM 探测直接运行 LLM 用例 |
+
+## 与 live_services.py 的分工
+
+| 维度 | live_services.py | acceptance_metrics |
+| --- | --- | --- |
+| 服务来源 | 框架自起（隔离工作区 + 随机端口） | 外部已部署实例（默认 8666/8090） |
+| LLM | 内嵌 fake provider，零网络 | **真实模型**（无模型则相关用例自跳过） |
+| 断言对象 | 旅程语义（快照不可变、崩溃恢复、引用回溯） | 合同指标口径（吞吐/剔除率/压缩比/节点数/报告结构） |
+| 失败诊断 | 工作区诊断包（日志 + .env + 产物库） | `-v -s` 内联打印关键度量，直接转录验收记录 |
+| 入库门禁 | `make acceptance-*` | 无 Makefile 包装，手工/现场运行 |
+
+README 的"已知缺口"记录了口径边界（值得现场验收前重读）：吞吐 2026-10-17 复测 12.2-12.7MB/s 达标但十万级文件未复测；去重只覆盖过滤保留的小文件；任务态 LLM 分析可能被未知二进制卡死（推演用例因此使用纯文本镜像 raw_llm.img）；E01 用例需外部真实镜像；叙事生成为概率性输出，`citation_invalid` 类失败重跑即可。
+
+---
+
+# 第三部分：演示数据集与实战案件脚本（本分支新增）
+
+## `demo_datasets/`：7 个演示数据集
+
+面向第三方权威测试机构现场验收的**脱敏演示数据集**（git 入库，磁盘占用约 105MB），覆盖合同指标要求的全部来源类型；全部植入统一案情证据链（嫌疑人：张伟-仓库主管、李娜-财务经理、王五-收款账户；涉案标的：￥386,000 设备采购与异常调拨款项）。
+
+| 序号 | 目录 / 文件 | 数据源类型 | 核心工件 | 对应指标 |
+| --- | --- | --- | --- | --- |
+| 01 | `01_windows/windows_evidence.img` | Windows 镜像 | Prefetch（CMD/PowerShell）、EVTX、LNK、注册表 Hive、财务审计文档 | 1(1) 磁盘镜像与操作系统 |
+| 02 | `02_linux/linux_evidence.img` | Linux RAW/DD | 沟通记录/合同/台账、syslog/auth.log、重复文件对、低价值系统文件 | 1(1) + 1(2) 轻量化过滤 + 2(2) 去重 |
+| 03 | `03_aliyun_oss/file_m-demo_aliyun_system.raw.tar.gz` | 阿里云 OSS/ECS 导出包 | Alibaba Cloud Linux、nginx 访问日志、OSS 接口转账调用日志 | 1(1) 服务器日志与云数据源 |
+| 04 | `04_ios/ios_backup_evidence/` **新增** | iOS 逻辑备份（iTunes/Finder 规范） | Manifest.plist/db、涉案 iMessage 短信、通讯录、备忘录、日程 | 1(1) iOS 移动设备 |
+| 05 | `05_android_miui/miui_backup_evidence/` **新增** | 小米 MIUI 备份 | descript.xml、Contacts/Mms `.bak` 库 | 1(1) Android 类别 1（小米） |
+| 06 | `06_android_harmony/harmony_backup_evidence/` **新增** | 华为鸿蒙备份 | `.info.json` 清单、part.0.tarx 分卷、WAL 日志、日历/通讯工件 | 1(1) Android 类别 2（鸿蒙） |
+| 07 | `07_android_vivo/vivo_backup_evidence/` **新增** | vivo/OPPO 雷电快取备份 | `.backup` 头、LevelDB 索引 index.json、转账截图相册、微信应用包 | 1(1) Android 类别 3（vivo/OPPO） |
+
+数据集与验收的两种用法（`demo_datasets/README.md` 原文口径）：
+
+1. **自动化**：`prepare_fixtures.py` 一键生成夹具与演示数据集（`build_all_demo_datasets` 默认写回 `demo_datasets/`），再跑第二部分的 pytest；四个 Android/iOS 夹具与 04-07 数据集内容一致。
+2. **人工图形化**：Web 前端"新建任务"逐个导入（来源类型分别选 `windows/linux` 场景勾选、`aliyun-image`、`ios-backup`、`miui-backup`、`harmony-backup`、`vivo-backup`），完成后在工件卡片、重复证据列表、动态时间线、案情推演报告中查看结构化成果。
+
+## `scripts/create_demo_case.py`（245 行，新增）
+
+**演示案件一键建案脚本**：对 `demo_datasets/` 的 7 个数据源执行完整"取证 + 分析"数据流——逐个 `POST /api/tasks`（默认打 `http://127.0.0.1:8666`）、按来源类型附加预检字段（阿里云源会在 `data/evidence_preflight/<md5>/job.json` 现场播种 `verified` 预检结果）、轮询任务到完成并打印阶段进度。前提：双服务在线、`demo_datasets/` 就位。适合现场演示前一键预热全部 7 个任务。
+
+## `scripts/create_real_case.py`（266 行，新增）
+
+**实战多源案件建案脚本**：基于移动硬盘与 `/data2` 真实检材创建实战案件，接入 7 大真实镜像（Windows、Linux、阿里云 OSS、iOS、三个 Android）。与演示版同构（同样的任务提交/预检播种/轮询骨架），但数据源指向真实检材路径——**不可在无真实介质的机器上运行**。建案后配合 `web/scripts/verify-real-case-reports-and-im.mjs`（见 [browser-e2e.md](browser-e2e.md)）做浏览器级报告与 IM 关系图验收：该脚本内硬编码了本次实战案件 7 个任务的 UUID 与预期图节点数（微信 49 / QQ 47）。
+
+---
+
+# 已发现的测试层面问题
 
 1. **`smoke` 档案会连带打 fake LLM**（`:409-423`）：`--no-smoke` 是唯一关闭途径，无法只验服务不碰 LLM 层；若只想测 C++ 也必须先起 Python（启动顺序硬编码 `:339-354`）。
 2. **`matrix` 的 DLL 环节静默降级**：`tests/samples/pe/test_minimal.exe` 缺失时打印 NOT APPLICABLE 直接 PASS（`:705-707`），仓库漏放样本不会让验收失败。
 3. **`restart` 旅程强依赖 analyst 全程成功**：任何 B 阶段断言失败都会让 F5 崩溃恢复覆盖归零，缺少独立的最小 restart 变体。
 4. **`--with-distributed` 无独立旅程**：只多启动一个服务并加一条 `/health` smoke，没有针对分布式面的任务级验收。
 5. **硬编码等待**：Journey A 完成后固定 `time.sleep(3.0)`（`:467`）等待落盘，慢机器上可能不稳定（框架其余部分均为轮询式）。
+6. **`acceptance_metrics` 的 `llm` 标记未注册**：套件依赖 `@pytest.mark.llm` 走 `-m "not llm"` 选择，但 `python_service/pytest.ini` 未声明该标记（该目录也不在其 testpaths 内）；用根目录或其它 strict-markers 配置跑会直接报错。
+7. **两份案情数据集各占 100-220MB**：`demo_datasets/`（约 105MB，git 入库）与 `tests/acceptance_metrics/fixtures/`（实测约 223MB，gitignore）内容同源（前者可由 `prepare_fixtures.py` 再生），仓库内同时保留两份且无哈希互检，漂移不可感知。
+8. **`create_real_case.py` 绑定本机环境**：检材路径（移动硬盘、`/data2`）与预检播种目录写死在脚本常量里，且会向 `data/`、`build/data/` 写入播种文件——它不是只读验收工具。
+9. **`verify-real-case-reports-and-im.mjs` 的 taskId 硬编码**（见 browser-e2e.md 问题 2）：实战案件验收链的最后一环无法参数化，换案件批次必须改源码。
 
-**最后更新**: 2026-08-24（新建，测试目录）
+**最后更新**: 2026-11-10（feature/model-routing 分支改版：并入第三方指标验收集与演示/实战建案资产；live_services.py 部分经锚点复核未变）

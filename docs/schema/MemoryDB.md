@@ -6,7 +6,7 @@
 
 | 项 | 内容 |
 |----|------|
-| 谁建/谁写 | `MemoryAnalyzer` 的 `MemoryAnalysisDatabase`：单条 `CREATE_ALL_TABLES`（`memory_analysis_sql_tables.h:13-88`）建 6 表 + 6 索引；行写入用 `memory_analysis_sql_crud.h:10-32` 的 INSERT/UPSERT（调用如 `MemoryAnalysisDatabase.cpp:55` 进程、`:90` boot_info） |
+| 谁建/谁写 | `MemoryAnalyzer` 的 `MemoryAnalysisDatabase`：单条 `CREATE_ALL_TABLES`（`memory_analysis_sql_tables.h:13-88`）建 6 表 + 6 索引；行写入用 `memory_analysis_sql_crud.h:10-32` 的 INSERT/UPSERT（调用如 `MemoryAnalysisDatabase.cpp:55` 进程、`:90` boot_info）。镜像类型按文件魔数自动识别（PAGEDU64→Windows，EMiL→Linux LiME，`MemoryAnalyzerCore.cpp:42,171`），Windows 镜像走 `windows.*` 插件组 + `WindowsParsers`（`src/analyzers/MemoryAnalyzer/Parsers/WindowsParsers.cpp`），Linux 走 `linux.*` + 各 Linux 解析器——**两套插件共用同一 schema**（commit 87d9922e 设计决定） |
 | 谁读 | CLI 报告生成、后续分析流程；无 HTTP 任务路由（内存分析仅 CLI 入口） |
 | 文件位置 | 镜像同目录 `<image>_memory.db`（DatabaseSchema.md 产出位置表） |
 | 设计约定 | 头文件注释（`:10-12`）："Columns mirror the real Volatility3 (2.x) JSON output field names so the parsers can map fields 1:1 without renaming"——列名即 vol3 字段名 |
@@ -84,9 +84,11 @@
 | 列 | 类型 | 约束/默认 | 含义 |
 |----|------|-----------|------|
 | id | INTEGER | PRIMARY KEY AUTOINCREMENT | 行号 |
-| key | TEXT | UNIQUE | 信息键（kernel 版本、主机名等） |
+| key | TEXT | UNIQUE | 信息键（Linux：内核版本/主机名/boottime 等；Windows：注册表蜂巢路径，键名 `hive:<n>`，`WindowsParsers.cpp:68-79`） |
 | value | TEXT | — | 值 |
 | inserted_at | INTEGER | DEFAULT (strftime('%s','now')) | 落库时刻 |
+
+Windows 侧 `windows.registry.hivelist` 的每个蜂巢路径存成一行 `hive:<n>` → 完整路径（`WindowsParsers.cpp:73-75` 注释："so it surfaces without a dedicated table"）——hivelist 没有独立表，按 key 前缀查询。
 
 ### cmdline（`:66-73`，写入 `crud.h:27-29`）
 
@@ -111,14 +113,14 @@
 
 ## 表与 Volatility3 插件来源对照（建表 SQL 注释为证）
 
-| 表 | vol3 插件 | 注释要点（`memory_analysis_sql_tables.h`） |
-|----|-----------|------------------------------------------|
-| processes | linux.pslist / pstree | 列名对齐 OFFSET/COMM 等原字段 |
-| network_connections | linux.sockstat | "vol3 2.x has no linux.netstat" |
-| bash_history | linux.bash | command_time 是 "key for Q102/Q103" |
-| boot_info | 内核/系统信息聚合 | 键值 UPSERT |
-| cmdline | linux.psaux | "vol3 2.x has no linux.cmdline" |
-| analysis_meta | 分析器自身 | 记录 vol3 版本等 |
+| 表 | Linux 插件 | Windows 插件 | 注释要点 |
+|----|-----------|-------------|----------|
+| processes | linux.pslist / pstree | windows.pslist | 列名对齐 OFFSET/COMM 等原字段；Windows 无 uid/gid（UID 位置存 SID，`WindowsParsers.cpp:13-22`） |
+| network_connections | linux.sockstat | windows.netstat | "vol3 2.x has no linux.netstat"；Windows 行 family/type 为空、netns=0 |
+| bash_history | linux.bash | —（Windows 无对应） | command_time 是 "key for Q102/Q103" |
+| boot_info | 内核/系统信息聚合 | windows.registry.hivelist（hive:<n> 键） | 键值 UPSERT |
+| cmdline | linux.psaux | windows.cmdline | "vol3 2.x has no linux.cmdline" |
+| analysis_meta | 分析器自身 | 同左 | 键含 image_type（`MemoryAnalyzerCore.cpp:48`）、source_image（`:189`）、`err:<plugin>`/`parse_err:<plugin>` 失败留痕 |
 
 ## 写入语句清单（`memory_analysis_sql_crud.h`）
 
@@ -152,6 +154,8 @@ ORDER BY p.pid;
 - **时间格式两制并存**：`creation_time/command_time` 是 ISO 8601 文本，`inserted_at` 是 unix 秒——排序要分清。
 - **无 LLM 列**：本库不参与 LLM 分析流水线（没有 llm_* 列，也无对应服务）。
 - **无 UPSERT 冲突面**：boot_info/analysis_meta 用 ON CONFLICT(key)，其余表允许重复行（重复跑分析会追加而非去重，`CREATE TABLE IF NOT EXISTS` 不清旧数据）。
+- **Windows 行的占位值**：pslist 无 uid/gid 字段——`uid` 列存 SID、`gid/euid/egid` 全 0、`tid=pid` 占位（`WindowsParsers.cpp:13-19` 注释），跨 OS 做"提权检测（uid≠euid）"类统计前先按 `analysis_meta.image_type` 过滤；netstat 行 family/type 为空串。
+- **bash_history 仅 Linux 有数据**：Windows 插件组没有 bash 对应物；hivelist 数据在 boot_info 的 `hive:<n>` 键下，不在独立表。
 
 ---
 
@@ -162,9 +166,11 @@ ORDER BY p.pid;
 
 | 表 | 写入方 | 时机 | 备注 |
 |----|--------|------|------|
-| processes | Volatility3Runner（linux.pslist/pstree）→ ProcessParser | `--memory-analyze`（**CLI 专用旁路**，HTTP 侧靠命名约定找库） | 列名对齐 vol 原字段 |
-| network_connections | linux.sockstat → NetworkParser | 同上 | |
-| bash_history / boot_info / cmdline / analysis_meta | 各解析器 | 同上 | 失败信息入 analysis_meta |
+| processes | Linux：Volatility3Runner（linux.pslist/pstree）→ ProcessParser；Windows：windows.pslist → WindowsParsers.parseProcessList | `--memory-analyze`（**CLI 专用旁路**，HTTP 侧靠命名约定找库） | 列名对齐 vol 原字段；Windows 行 uid 列存 SID、gid/euid/egid=0、tid=pid 占位 |
+| network_connections | Linux：linux.sockstat → NetworkParser；Windows：windows.netstat → parseNetstat | 同上 | Windows 行 family/type 空串、netns=0 |
+| bash_history | linux.bash → BashParser | 同上 | Windows 无 bash 插件，恒空 |
+| boot_info | Linux：内核信息/boottime；Windows：windows.registry.hivelist → parseHivelist（hive:<n> 键） | 同上 | Windows 无 ISF 需求（vol3 自动拉 PDB） |
+| cmdline / analysis_meta | Linux：linux.psaux；Windows：windows.cmdline / 分析器自身 | 同上 | 失败信息入 analysis_meta（err:/parse_err: 键）；image_type/source_image 开局即写 |
 
 ### 查询手册（列名以本文档字段表为准）
 
@@ -193,7 +199,7 @@ WHERE n.remote_addr IS NOT NULL AND n.remote_addr NOT IN ('0.0.0.0','::');
 **4. 与磁盘时间线交叉（bash 命令时刻对 events）**
 ```sql
 -- memory.db：先取命令时刻
-SELECT command, timestamp FROM bash_history WHERE command LIKE '%curl%' OR command LIKE '%nc %';
+SELECT command, command_time FROM bash_history WHERE command LIKE '%curl%' OR command LIKE '%nc %';
 -- 再到 events.db：SELECT ... FROM events WHERE timestamp BETWEEN :t-5 AND :t+5;
 ```
 
@@ -239,4 +245,4 @@ WHERE pid IN (<第1步 pid 列表>) OR ppid IN (<第1步 pid 列表>);
 - [ ] processes 行数量级正常（几十~两百）
 - [ ] network_connections 的 state 分布（全空=sockstat 未跑）
 - [ ] 时间交叉前确认内存捕获时刻与磁盘镜像时刻的关系
-**最后更新**: 2026-08-24（补：写入时序与查询手册）
+**最后更新**: 2026-11-10（补：Windows 镜像自动识别与 windows.* 插件写入方、boot_info hive: 键、Windows 行占位值边界）

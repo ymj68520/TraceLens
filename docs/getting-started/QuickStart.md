@@ -8,7 +8,7 @@ TraceLens 由三个服务组成，`run.sh` 会一并启动：
 
 | 服务 | 说明 | 默认端口 |
 |------|------|---------|
-| C++ `forensic_analyzer --http-server` | 核心取证分析 + HTTP API + 托管 React 前端（SPA） | `.env` 中 `HTTP_SERVER_PORT`（run.sh 未设置时回退 **8666**） |
+| C++ `forensic_analyzer --http-server` | 核心取证分析 + HTTP API + 托管 React 前端（SPA） | `.env` 中 `HTTP_SERVER_PORT`（未设置时 run.sh 与代码均回退 **8080**；`.env.example` 模板示例值为 8666） |
 | Python `python_service/.venv -m httpserver.main` | FastAPI：LLM 代理、Graphiti 知识图谱、markitdown、报告 | 8090 |
 | Python `-m server.main` | 分布式 C/S 服务端（客户端注册/命令下发/结果回收） | 8091（`PORT`） |
 
@@ -41,17 +41,19 @@ TraceLens 由三个服务组成，`run.sh` 会一并启动：
 sudo bash setup.sh
 ```
 
-`setup.sh` 是幂等的（已安装的依赖会跳过），按步骤完成：
+`setup.sh` 是幂等的（已安装的依赖会跳过），按 **Step 0/10 → Step 10/10** 完成：
 
-1. **NVM + Node.js 22 LTS**（构建 web 前端用）；
-2. **apt 系统包**：编译工具链（build-essential/cmake/pkg-config 等）+ 取证库（libhivex/libevtx/libesedb/libolecf/libbfio/libewf/libfsntfs）+ libxapian（全文搜索）+ libpoppler-cpp（PDF）+ 压缩库（zlib/lzma/bz2/zstd）+ libzip + libcurl + ffmpeg + redis-server + libpq/libmysqlclient + libsqlcipher + GTest 等；
-3. **Java 21 + Neo4j**：官方 apt 仓库安装，用 `NEO4J_PASSWORD` 环境变量（或 `.env` 中的同名值）设置初始密码并 `systemctl enable --now neo4j`；
-4. **The Sleuth Kit 4.14.0**：下载源码编译安装到 `/usr/local`；
-5. **Crow**（C++ HTTP 框架，源码安装）；
-6. **Google Test**（从 `/usr/src/googletest` 编译）；
-7. **阿里云 OSS C++ SDK**：源码编译 `libs/aliyun-oss-cpp-sdk`；
-8. **Python venv**：创建 `python_service/.venv`，安装 `httpserver/requirements.txt` + `requirements.txt`，并逐个核对安装大包（markitdown[all]、PyMuPDF==1.27.1、volatility3、graphiti-core、h5py、scipy 等）和 BitLocker FVEK volatility3 插件（源码在 `resources/volatility3-plugins/windows/bitlocker_fvek_scan.py`）；
-9. **CMake Release 构建** `build/forensic_analyzer`（并按需 `npm run build` 前端）。
+0. **NVM + Node.js 22 LTS**（构建 web 前端用）；
+1. **apt 系统包**：编译工具链（build-essential/cmake/pkg-config 等）+ 取证库（libhivex/libevtx/libesedb/libolecf/libbfio/libewf/libfsntfs）+ libxapian（全文搜索）+ libpoppler-cpp（PDF）+ 压缩库（zlib/lzma/bz2/zstd）+ libzip + libcurl + ffmpeg + redis-server + libpq/libmysqlclient + libsqlcipher + GTest 等；
+2. **Java 21 + Neo4j + PostgreSQL**：Java 21 与 Neo4j 官方 apt 仓库安装（用 `NEO4J_PASSWORD` 环境变量或 `.env` 中的同名值设初始密码并 `systemctl enable --now neo4j`），随后安装/启动 PostgreSQL 并按 `DATABASE_URL` 建角色与库；
+3. **The Sleuth Kit 4.14.0**：下载源码编译安装到 `/usr/local`；
+4. **Crow**（C++ HTTP 框架，源码安装）；
+5. **Google Test**（从 `/usr/src/googletest` 编译）；
+6. **阿里云 OSS C++ SDK**：源码编译 `libs/aliyun-oss-cpp-sdk`；
+7. **Python venv**：创建 `python_service/.venv`，安装 `httpserver/requirements.txt` + `requirements.txt`，并逐个核对安装大包（markitdown[all]、PyMuPDF==1.27.1、volatility3、graphiti-core、h5py、scipy 等）、BitLocker FVEK volatility3 插件（源码在 `resources/volatility3-plugins/windows/bitlocker_fvek_scan.py`）与 setup 期模型下载（Argos 翻译、SenseVoice 音频，`.env` 开关默认开）；
+8. **CMake Release 构建** `build/forensic_analyzer`（OSS SDK 静态库先行）；
+9. **构建 web 前端**（`npm run build`——必需，C++ 服务托管该 SPA）；
+10. **验证安装**（二进制存在性、端口可达性检查）。
 
 网络不稳定时可设 `PIP_PROXY=http://<代理>:<端口>`（环境变量或 `.env`），脚本会导出为 HTTP_PROXY/HTTPS_PROXY。
 
@@ -73,15 +75,18 @@ cp .env.example .env
 最小可用配置只需关心（完整变量表见 [Installation.md](Installation.md)）：
 
 ```env
-# LLM 端点（LM Studio / OpenAI 兼容 API）
-LLM_BASE_URL=http://192.168.31.170:1234
-LLM_TEXT_MODEL=qwen/qwen3.6-35b-a3b
+# LLM 端点（OpenAI 兼容 API；.env.example 现示例为云端占位，本地 LM Studio 兜底为注释行）
+LLM_BASE_URL=https://api.example.com
+LLM_TEXT_MODEL=step-5-preview
+# 本地 LM Studio 兜底（.env.example 中被注释的示例）：
+# LLM_BASE_URL=http://192.168.31.170:1234
+# LLM_TEXT_MODEL=nvidia/nemotron-3-nano-omni
 
 # Neo4j（知识图谱，setup.sh 安装时应设置过 NEO4J_PASSWORD）
 NEO4J_URI=neo4j://127.0.0.1:7687
 NEO4J_PASSWORD=<你设置的密码>
 
-# C++ 服务端口（run.sh 读它；不设置则 run.sh 用 8666）
+# C++ 服务端口（run.sh 读它；.env 不设置则回退 8080。8666 只是模板示例值）
 HTTP_SERVER_PORT=8666
 ```
 
@@ -115,7 +120,7 @@ build/logs/python_service.log    # httpserver :8090
 build/logs/cs_server.log         # C/S :8091
 ```
 
-启动成功后访问地址（以默认 8666 为例）：
+启动成功后访问地址（以 `.env.example` 模板示例值 8666 为例；`.env` 未设置 `HTTP_SERVER_PORT` 时回退 8080）：
 
 ```
 Web 界面      http://localhost:8666/
@@ -130,12 +135,12 @@ C/S API      http://localhost:8091/docs
 ## 4. 在浏览器创建第一个任务
 
 1. 打开 `http://localhost:8666/`（**必须访问 C++ 端口**，React SPA 由 C++ 服务托管）。
-2. `/login` 为 mock 登录：任意用户名 + 密码即可。
+2. 登录页已改为 field-auth 现实：本地开发构建（未设 `VITE_FIELD_AUTH=enabled`）**没有路由守卫**，直接进入工作台；若手动访问 `/login` 提交，会看到"当前部署未启用现场认证"提示。只有现场部署（后端 `TRACELENS_FIELD_AUTH=enabled`）才要求 `POST /api/field-auth/login` 用户名密码登录（viewer/analyst/reviewer/admin 四角色），详见 [Deployment §10](../architecture/Deployment.md)。
 3. 进入任务创建页，填写：
    - **镜像路径**：磁盘镜像（E01/raw/多分区）或 Android 数据源；
-   - **数据源类型**（Android 场景）：`tsk`（镜像，默认）/ `dir`（已解包 data/ 目录）/ `zip`（Image.zip）/ `miui-backup`（小米备份 .bak 目录）；
+   - **数据源类型**（Android 场景）：共 15 个合法值——`tsk`（镜像，默认）/ `dir`（已解包目录）/ `zip` / `tar` / `seven-zip` / `android-backup` / `filesystem-image` / `miui-backup`（小米备份）/ `harmony-backup`（鸿蒙）/ `thunder-backup`（雷电取证）/ `oppo-backup` / `vivo-backup` / `ios-backup`（iOS 逻辑备份）/ `mobile-evidence`（统一取数包 .mep.db）/ `meiya`（美亚 case 导出）；全量矩阵见 [android-input-support-matrix.md](../android-input-support-matrix.md)；
    - **分析场景**（多选）：`android` / `windows` / `linux` / `server_cloud`；
-   - **过滤配置**：`config/filter_profiles/` 下的 profile（general_forensics / telecom_fraud / data_breach / virus_intrusion），默认 general_forensics。
+   - **过滤配置**：`config/filter_profiles/` 下的 profile（当前共 7 个，清单见 [CommonTasks §12](CommonTasks.md)），默认 general_forensics。
 4. 提交后在任务列表/详情页查看进度与结果。
 
 没有真实镜像时可先生成测试镜像（见 [CommonTasks.md](CommonTasks.md)）：
@@ -207,7 +212,7 @@ make rebuild        # clean + build
 make docs           # 打印 API 文档 URL
 ```
 
-> `./run.sh` 与 `make start` 都能起服务，区别：run.sh 会先构建、默认 C++ 端口 8666、日志集中到 `build/logs/`；make start 走 `scripts/start_all_services.sh`，C++ 端口默认 8080。
+> `./run.sh` 与 `make start` 都能起服务，区别：run.sh 会先构建、日志集中到 `build/logs/`；两者的 C++ 端口都读 `.env` 的 `HTTP_SERVER_PORT`，未设置时均回退 8080（run.sh 经 `scripts/lib/tracelens_env.sh`，Makefile 经 make 变量缺省）。
 
 ---
 
@@ -330,4 +335,4 @@ sqlite3 files.db "SELECT path, substr(llm_summary,1,80) FROM files WHERE llm_ana
 
 ---
 
-**最后更新**: 2026-08-24（扩充：高级工作流/深挖工具箱/产出导览）
+**最后更新**: 2026-11-10（对齐：端口回退 8080、field-auth 登录、15 种 Android 数据源、setup.sh Step 0-10、.env.example 现示例）

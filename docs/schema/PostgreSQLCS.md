@@ -9,7 +9,7 @@
 | 谁写 | C/S 服务端（Python/FastAPI 侧，`DATABASE_URL` 指向）；迁移由部署流程执行 001→002→003 |
 | 谁读 | 服务端 API（登录/任务下发/结果聚合）、tracelens_agent 轮询 command_queue |
 | 扩展依赖 | `uuid-ossp`（001:16，`uuid_generate_v4()` 默认值） |
-| 表间关系 | organizations 1..N users/clients/registration_tokens；clients 1..N disk_images/command_queue/analysis_tasks；analysis_tasks 1..N analysis_results/task_history/llm_analysis（001 文件头 erDiagram 注释） |
+| 表间关系 | organizations 1..N users/clients/registration_tokens；clients 1..N disk_images/command_queue/analysis_tasks；analysis_tasks 1..N analysis_results/task_history/llm_analysis（实体关系图见 [DatabaseSchema.md](../architecture/DatabaseSchema.md) 的 erDiagram；001 文件头仅有文字注释） |
 
 ## 表清单总表（10 张）
 
@@ -21,7 +21,7 @@
 | `registration_tokens` | 接入 | 客户端注册令牌（限量/过期） | 8 |
 | `disk_images` | 镜像目录 | 代理上报的磁盘镜像元数据 | 9 |
 | `command_queue` | 任务流转 | 服务端→客户端命令队列 | 13(+1=14) |
-| `analysis_tasks` | 任务流转 | 分析任务 | 13 |
+| `analysis_tasks` | 任务流转 | 分析任务 | 14 |
 | `analysis_results` | 任务产出 | 任务结果工件登记 | 9 |
 | `llm_analysis` | 任务产出 | LLM 分析结果（计费维度） | 10 |
 | `task_history` | 任务产出 | 任务状态流转审计 | 6 |
@@ -276,8 +276,8 @@ FROM command_queue GROUP BY status ORDER BY 2 DESC;
 
 **2. 代理在线状态（60 秒窗口）**
 ```sql
-SELECT hostname, status, last_seen_at FROM clients
-WHERE last_seen_at > now() - interval '90 seconds' ORDER BY last_seen_at DESC;
+SELECT hostname, status, last_seen FROM clients
+WHERE last_seen > now() - interval '90 seconds' ORDER BY last_seen DESC;
 ```
 
 **3. 任务成功率与耗时画像**
@@ -294,9 +294,9 @@ FROM analysis_results GROUP BY task_id ORDER BY mb DESC LIMIT 20;
 
 **5. TTL 将过期命令（过期仅靠 expire 端点触发，先看有多少）**
 ```sql
-SELECT id, command_type, status, expires_at FROM command_queue
-WHERE expires_at < now() + interval '1 hour' AND status NOT IN ('completed','failed','expired')
-ORDER BY expires_at;
+SELECT id, command_type, status, ttl FROM command_queue
+WHERE ttl < now() + interval '1 hour' AND status NOT IN ('completed','failed','expired')
+ORDER BY ttl;
 ```
 
 **6. 迁移版本自检（002/003 是否已手工应用）**
@@ -312,7 +312,7 @@ SELECT email FROM users WHERE role='super_admin';
 ### 案例一：一次"命令下发了没执行"的复盘
 
 **问题**：运营方称向某取证机下发了 analyze_disk，两小时无结果。psql 三步：
-1. `command_queue` 按 id 查该命令状态与 `expires_at`——卡在 assigned 说明 agent 领了没回（agent 侧日志）；
+1. `command_queue` 按 id 查该命令状态与 `ttl`——卡在 assigned 说明 agent 领了没回（agent 侧日志）；
 2. `clients.last_seen` 判断代理是否离线（60 秒窗口外=离线，命令会悬着直到 TTL）；
 3. `analysis_tasks`+`task_history`（按 command_queue.task_id FK 关联）看任务是否创建过——没创建=agent 执行 CLI 前就失败（常见：镜像路径不可达）；创建了但 failed=看 error_message。
 结论模板：命令链四站（下发/领取/执行/回收）哪一站断的，本库全部可追溯。
@@ -327,4 +327,4 @@ registration_tokens 的 used_count/max_clients（表级 CHECK 约束保证不超
 - [ ] command_queue 无长期 pending 积压
 - [ ] clients.last_seen 在窗口内（代理在线）
 - [ ] registration_tokens 未超发（used≤max 由 CHECK 保证，仍要看趋势）
-**最后更新**: 2026-08-24（补：写入时序与查询手册）
+**最后更新**: 2026-11-10（校订 003 迁移行号引用；表结构经 001/002/003 复核无变化）

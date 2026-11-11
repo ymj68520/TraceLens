@@ -26,19 +26,21 @@ cd TraceLens
 sudo bash setup.sh
 ```
 
-`setup.sh`（幂等，可重复运行）依次执行：
+`setup.sh`（幂等，可重复运行）按 **Step 0/10 → Step 10/10** 依次执行：
 
 | 步骤 | 内容 |
 |------|------|
-| 0/8 | NVM 安装 + Node.js 22 LTS 激活 |
-| 1/8 | apt 安装全部系统依赖（见下文明细）并确保 redis-server 运行 |
-| 2/8 | Java 21（openjdk-21-jre-headless + jdk）+ Neo4j 官方 apt 仓库安装；用 `NEO4J_PASSWORD`（环境变量或 `.env`）设置初始密码，`systemctl enable --now neo4j` |
-| 3/8 | The Sleuth Kit **4.14.0** 源码编译安装到 `/usr/local/lib/libtsk.so` |
-| 4/8 | Crow 框架源码安装（`/usr/local/include/crow.h`） |
-| 5/8 | Google Test（优先从 `/usr/src/googletest` 编译） |
-| 6/8 | 阿里云 OSS C++ SDK：`libs/aliyun-oss-cpp-sdk` 下 cmake 构建 |
-| 7/8 | Python venv：`python_service/.venv`，安装 `httpserver/requirements.txt` + `requirements.txt`，逐个核对安装大包（markitdown[all]、PyMuPDF==1.27.1、volatility3、graphiti-core、h5py、scipy、plyvel、pillow-heif、rawpy、pydicom），并把 `resources/volatility3-plugins/windows/bitlocker_fvek_scan.py` 安装进 venv 的 volatility3 插件目录 |
-| 8/8 | OSS SDK 静态库 + CMake Release 构建 `build/forensic_analyzer`（ldd 检查缺失库）+ 可选 `npm run build` 前端 |
+| 0/10 | NVM 安装 + Node.js 22 LTS 激活 |
+| 1/10 | apt 安装全部系统依赖（见下文明细）并确保 redis-server 运行 |
+| 2/10 | Java 21（openjdk-21-jre-headless + jdk）+ Neo4j 官方 apt 仓库安装；用 `NEO4J_PASSWORD`（环境变量或 `.env`）设置初始密码，`systemctl enable --now neo4j`。**随后安装/启动 PostgreSQL**，按 `DATABASE_URL` 创建角色与库（首次从模板创建 `.env` 时生成随机口令并回写 `DATABASE_URL`） |
+| 3/10 | The Sleuth Kit **4.14.0** 源码编译安装到 `/usr/local/lib/libtsk.so` |
+| 4/10 | Crow 框架源码安装（`/usr/local/include/crow.h`） |
+| 5/10 | Google Test（优先从 `/usr/src/googletest` 编译） |
+| 6/10 | 阿里云 OSS C++ SDK：`libs/aliyun-oss-cpp-sdk` 下 cmake 构建 |
+| 7/10 | Python venv：`python_service/.venv`，安装 `httpserver/requirements.txt` + `requirements.txt`，逐个核对安装大包（markitdown[all]、PyMuPDF==1.27.1、volatility3、graphiti-core、h5py、scipy、plyvel、pillow-heif、rawpy、pydicom），把 `resources/volatility3-plugins/windows/bitlocker_fvek_scan.py` 安装进 venv 的 volatility3 插件目录，并按 `.env` 开关下载 setup 期模型（Argos 翻译 / SenseVoice 音频，默认开） |
+| 8/10 | OSS SDK 静态库 + CMake Release 构建 `build/forensic_analyzer`（ldd 检查缺失库） |
+| 9/10 | 构建前端 `npm run build`（**必需**——C++ 服务托管该 SPA，缺失时 Step 10 直接 fail） |
+| 10/10 | 验证安装（二进制存在性、端口/依赖就绪检查；端口回退口径 `HTTP_SERVER_PORT` 缺省 8080） |
 
 apt 安装的取证/分析相关包（摘自 setup.sh）：
 
@@ -196,7 +198,7 @@ redis-cli ping    # PONG 即可
 cp .env.example .env
 ```
 
-以下为 `.env.example` 中的全部真实变量（默认值取自该文件）：
+以下为 `.env.example` 的**节选**（默认值取自该文件；全量变量、代码缺省与"未接线"标注见 [Environment.md](../reference/Environment.md)，现场认证等 getenv 专用变量也在该文第 10 节）：
 
 ### 5.1 路径
 
@@ -209,25 +211,30 @@ cp .env.example .env
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `LLM_BASE_URL` | `http://192.168.31.170:1234` | OpenAI 兼容端点（共享） |
+| `LLM_BASE_URL` | `https://api.example.com` | OpenAI 兼容端点（共享；模板示例为占位，本地 LM Studio 兜底示例为注释行 `http://192.168.31.170:1234`） |
 | `LLM_ENDPOINT` | `/v1/chat/completions` | chat completions 路径 |
 | `LLM_API_KEY` | 空 | 共享 API key（本地端点可为空）；文本/视觉未单独配 key 时回落到这里 |
 | `LLM_TEXT_API_KEY` | 空（回落 `LLM_API_KEY`） | 文本端点自己的 key；图谱未单独配 key 时也回落到它 |
-| `LLM_TEXT_BASE_URL` | `http://192.168.31.170:1234` | 文本模型端点 |
-| `LLM_TEXT_MODEL` | `qwen/qwen3.6-35b-a3b` | 文本模型名 |
-| `LLM_TEXT_MAX_TOKENS` | `4096` | 文本模型 max tokens |
+| `LLM_TEXT_BASE_URL` | `https://api.example.com` | 文本模型端点 |
+| `LLM_TEXT_MODEL` | `step-5-preview` | 文本模型名 |
+| `LLM_TEXT_MAX_TOKENS` | `256000` | 文本模型 max tokens |
 | `LLM_TEXT_TEMPERATURE` | `0.7` | 文本模型温度 |
 | `LLM_VISION_API_KEY` | 空（回落 `LLM_API_KEY`） | 视觉端点自己的 key |
-| `LLM_VISION_BASE_URL` | `http://192.168.31.170:1234` | 视觉模型端点 |
-| `LLM_VISION_MODEL` | `qwen/qwen3.6-35b-a3b` | 视觉模型名 |
-| `LLM_VISION_MAX_TOKENS` | `4096` | 视觉模型 max tokens |
+| `LLM_VISION_BASE_URL` | `https://api.example.com` | 视觉模型端点 |
+| `LLM_VISION_MODEL` | `step-5-preview` | 视觉模型名 |
+| `LLM_VISION_MAX_TOKENS` | `256000` | 视觉模型 max tokens |
 | `LLM_VISION_TEMPERATURE` | `0.5` | 视觉模型温度 |
-| `LLM_TIMEOUT_SECONDS` | `120` | 请求超时 |
+| `LLM_TIMEOUT_SECONDS` | `600` | 请求超时（**代码缺省 120 未变**，模板示例值已是 600） |
 | `LLM_MAX_RETRIES` | `3` | 重试次数 |
-| `LLM_MAX_EVENT_CLUSTERS` | `0` | 事件簇智能分析上限；0 = 不限 |
-| `LLM_CONTEXT_LENGTH` | `163840` | 上下文窗口 tokens |
-| `LLM_RESERVED_TOKENS` | `512` | 预留 tokens |
-| `LLM_CHARS_PER_TOKEN` | `4.0` | 字符/token 估算系数 |
+| `LLM_MAX_CONCURRENCY` | `32` | 在飞 LLM 并发数（代码缺省 1，钳 1..64；每个 worker 独立客户端） |
+| `LLM_THINKING_MODE` | 空 | DeepSeek 式思考开关（`enabled`/`disabled`）；空 = 不发送 thinking 字段 |
+| `LLM_MAX_EVENT_CLUSTERS` | `200` | 事件簇智能分析上限（有界缺省，钳 1..100000；显式设 `0` 才是不限） |
+| `LLM_MAX_FILES` | `50` | 单任务文件 LLM 预算（代码缺省 500；0 = 显式不限） |
+| `LLM_SMART_CANDIDATE_FILES` | `5000` | smart 粗选扫描上限（代码缺省 1000；应 ≥ `LLM_MAX_FILES`） |
+| `LLM_MAX_ARTIFACTS` | `500` | 工件 LLM 分析预算（代码缺省同为 500） |
+| `LLM_CONTEXT_LENGTH` | `1000000` | 上下文窗口 tokens |
+| `LLM_RESERVED_TOKENS` | `512` | 预留 tokens（未接线） |
+| `LLM_CHARS_PER_TOKEN` | `4.0` | 字符/token 估算系数（未接线） |
 
 ### 5.3 MCP / 文件分析 / 数据库
 
@@ -238,7 +245,7 @@ cp .env.example .env
 | `MCP_ALLOWED_PATHS` | 空 | （预留）MCP 文件访问白名单——同上；实际被读取的只有 `MCP_HOST` |
 | `FILE_ANALYSIS_MAX_CONTENT` | `10000` | 送 LLM 的内容长度上限（字符） |
 | `FILE_ANALYSIS_MAX_KEYWORDS` | `10` | 关键词提取上限 |
-| `FILE_ANALYSIS_MAX_CONTENT_LIMIT` | `50000` | 绝对上限（字符） |
+| `FILE_ANALYSIS_MAX_CONTENT_LIMIT` | `12000` | 绝对上限（字符；与 Python 代码缺省一致） |
 | `DB_OUTPUT_DIR` | `./output` | 数据库输出目录 |
 | `DB_NAME` | `forensics.db` | 数据库文件名 |
 
@@ -252,11 +259,13 @@ cp .env.example .env
 | `GRAPHITI_LLM_API_KEY` | 空（回落 `LLM_TEXT_API_KEY`，再回落 `LLM_API_KEY`） | 图谱摄入端点自己的 key |
 | `EMBEDDING_API_KEY` | 空（回落图谱 key，再回落文本 key，再回落 `LLM_API_KEY`） | 嵌入端点自己的 key |
 | `GRAPHITI_USE_LOCAL_LLM` | `true` | true = 用上面 LLM_TEXT_* 配置 |
-| `GRAPHITI_BATCH_SIZE` | `25` | 批大小（防 8096 token 溢出） |
+| `GRAPHITI_BATCH_SIZE` | `50` | 批大小（每批从 SQLite 读的行数，不并行化抽取） |
+| `GRAPHITI_MAX_CONCURRENCY` | `32` | 一批内的在飞 add_episode 数（代码缺省 1，钳 1..64） |
 | `GRAPHITI_MAX_RETRIES` | `3` | 重试 |
 | `GRAPHITI_GROUP_ID` | `forensics_files` | Graphiti group |
 | `GRAPHITI_INCLUDE_FULL_DESC` | `true` | 是否带完整 LLM 描述 |
-| `GRAPHITI_MAX_EPISODE_TOKENS` | `3000` | 每集 token 上限 |
+| `GRAPHITI_MAX_EPISODE_TOKENS` | `256000` | 每次抽取调用的输入预算（代码缺省 3000） |
+| `GRAPHITI_INGEST_WAIT_TIMEOUT_MIN` | `720` | C++ FINALIZING 等待摄取 job 的预算（分钟；0 = 恢复 fire-and-forget 完成） |
 
 ### 5.5 Python httpserver（:8090）
 
@@ -264,7 +273,7 @@ cp .env.example .env
 |------|--------|------|
 | `PYTHON_HTTP_PORT` | `8090` | 端口 |
 | `PYTHON_HTTP_HOST` | `0.0.0.0` | 绑定地址 |
-| `CPP_BACKEND_URL` | `http://localhost:8080` | 回连 C++ 的地址 |
+| `CPP_BACKEND_URL` | `http://localhost:8666` | 回连 C++ 的地址（模板示例值；与 `HTTP_SERVER_PORT` 同步改） |
 | `CPP_STARTUP_REQUEST_TIMEOUT` | `5` | 启动时探测 C++ 超时 |
 | `CPP_RECOVERY_TIMEOUT` | `8` | C++ 恢复探测超时 |
 | `NEO4J_CONNECT_TIMEOUT` | `5` | Neo4j 连接超时 |
@@ -277,7 +286,7 @@ cp .env.example .env
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `HTTP_SERVER_PORT` | `8080` | 端口（`./run.sh` 未设置时用 8666 兜底） |
+| `HTTP_SERVER_PORT` | `8666` | 端口（模板示例值；`.env` 未设置时代码与 `./run.sh` 均回退 8080） |
 | `HTTP_SERVER_HOST` | `0.0.0.0` | 绑定地址 |
 
 ### 5.7 日志 / 性能 / DLL / OSS
@@ -293,7 +302,7 @@ cp .env.example .env
 | `LOG_MAX_DISPLAY_FILES` | `20` | 日志展示文件数 |
 | `DB_JOURNAL_MODE` | `WAL` | SQLite journal 模式 |
 | `DLL_ANALYSIS_ENABLED` | `true` | DLL 分析开关 |
-| `DLL_CPP_BACKEND_URL` | `http://localhost:8080` | （预留）DLL 分析专用后端——当前无代码读取，dll.py 实际用通用 `CPP_BACKEND_URL` |
+| `DLL_CPP_BACKEND_URL` | `http://localhost:8666` | （预留）DLL 分析专用后端——当前无代码读取，dll.py 实际用通用 `CPP_BACKEND_URL` |
 | `DLL_ANALYSIS_TIMEOUT` | `30` | DLL 分析超时（秒） |
 | `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` | 空 | OSS 凭证 |
 | `OSS_ENDPOINT` | 空 | 如 `oss-cn-hangzhou.aliyuncs.com` |
@@ -325,7 +334,7 @@ cd build && ctest --output-on-failure
 
 # 3. 一键启动并做健康检查（C++ 失败会硬报错退出）
 cd .. && ./run.sh
-curl http://localhost:8666/api/system/health   # 端口以 .env HTTP_SERVER_PORT 为准
+curl http://localhost:8666/api/system/health   # 端口以 .env HTTP_SERVER_PORT 为准（未设置回退 8080）
 
 # 4. 生成测试镜像跑一次 CLI 分析
 bash scripts/create_test_image.sh
@@ -344,4 +353,4 @@ bash scripts/create_test_image.sh
 
 ---
 
-**最后更新**: 2026-08-23（以代码为准重写）
+**最后更新**: 2026-11-10（对齐：setup.sh Step 0-10、变量表改节选并补新变量、.env.example 现值、端口回退 8080）

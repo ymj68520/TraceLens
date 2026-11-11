@@ -12,9 +12,9 @@
 - `filter_profile`（如 `telecom_fraud`）决定几十万个文件里哪些值得进入后续分析；
 - `llm_mode`（full/smart）、`backup_password`、`android_source`、`xfs_mode` 等都是给特定阶段的"通行证"。
 
-路由层（`TaskCRUDRoutes.cpp`）校验后交给 `TaskManager::create_task`：任务获得 ID、状态 `pending`（HTTP 层全部小写），被塞进队列，工作线程从 `ThreadPool`（默认 4 线程）里把它取出来的那一刻，状态变 `running`，好戏开场（`TMA:26 start_analysis`）。从这一刻起到任务终结，`TaskPersistence` 会把每次状态变化节流写入 `data/tasks.json`——所以即使进程崩溃重启，任务列表也不会丢（重启时未完成任务被标记为 failed，这是诚实的处理：进度无法恢复，就不假装还在跑）。
+路由层（`TaskCRUDRoutes.cpp`）校验后交给 `TaskManager::create_task`：任务获得 ID、状态 `pending`（HTTP 层全部小写），被塞进队列，工作线程从 `ThreadPool`（默认 4 线程）里把它取出来的那一刻，状态变 `running`，好戏开场（`TMA:426 start_analysis`）。从这一刻起到任务终结，`TaskPersistence` 会把每次状态变化节流写入 `data/tasks.json`——所以即使进程崩溃重启，任务列表也不会丢（重启时未完成任务怎么判，见文末"断点续跑（阶段账本）"：有账本的判 `INTERRUPTED` 可续跑，无账本的仍标 failed——诚实的处理：没有任何可复用的完成事实，就不假装还能接着跑）。
 
-前端看到的进度百分比来自一个简单的加权累计。`TaskManager.cpp:545` 的权重表是唯一权威：
+前端看到的进度百分比来自一个简单的加权累计。`TaskManager.cpp:897` 的权重表是唯一权威：
 
 ```cpp
 int TaskManager::calculate_overall_percentage(TaskPhase phase, int phase_percentage) {
@@ -41,11 +41,11 @@ int TaskManager::calculate_overall_percentage(TaskPhase phase, int phase_percent
 
 ## 第二幕：解析——建立唯一的事实来源
 
-第一阶段 `IMAGE_ANALYSIS`（占整体进度 25%，最重的一环）由 [ImageAnalyzer](../modules/cpp/analyzers/ImageAnalyzer.md) 负责：它打开镜像（E01 或 DD）、枚举分区、对每个可识别的文件系统（NTFS/FAT/EXT2/3/4/XFS）逐文件读出元数据——路径、大小、四个时间戳、是否已删除——全部写入 `raw.db` 的 `files` 和 `partitions` 表（`TMA:203-225`）。
+第一阶段 `IMAGE_ANALYSIS`（占整体进度 25%，最重的一环）由 [ImageAnalyzer](../modules/cpp/analyzers/ImageAnalyzer.md) 负责：它打开镜像（E01 或 DD）、枚举分区、对每个可识别的文件系统（NTFS/FAT/EXT2/3/4/XFS）逐文件读出元数据——路径、大小、四个时间戳、是否已删除——全部写入 `raw.db` 的 `files` 和 `partitions` 表（`TMA:855-963`）。
 
 这一步的哲学是**忠实**：不做任何判断、不过滤、不翻译，文件系统说什么就记什么。raw.db 因此成为整个任务唯一的"事实来源"——后面所有层都是从它派生的观点，任何结论存疑时回到这里对质。
 
-紧接着是一个容易被忽略但顺序讲究的步骤：**场景自动检测**（`TMA:227-259`）。如果创建任务时没选 `scenarios`，`SceneDetector` 会扫一遍 raw.db 里的特征路径（比如 `/data/app` 意味着 Android，`Windows/System32/config` 意味着 Windows）。源码注释解释了为什么它必须跑在过滤**之前**：过滤配置的职责恰恰是丢弃"系统噪音"，而场景特征路径就是系统路径——先过滤再检测，证据就被自己人扔掉了。核心几行：
+紧接着是一个容易被忽略但顺序讲究的步骤：**场景自动检测**（`TMA:965-997`）。如果创建任务时没选 `scenarios`，`SceneDetector` 会扫一遍 raw.db 里的特征路径（比如 `/data/app` 意味着 Android，`Windows/System32/config` 意味着 Windows）。源码注释解释了为什么它必须跑在过滤**之前**：过滤配置的职责恰恰是丢弃"系统噪音"，而场景特征路径就是系统路径——先过滤再检测，证据就被自己人扔掉了。核心几行：
 
 ```cpp
 // 1.4b. Auto-detect platform scenarios when the user did not pick any.
@@ -75,7 +75,7 @@ if (task.scenarios.empty()) {
 
 ## 第三幕：过滤与提炼——从"全部文件"到"值得看的文件"
 
-如果任务指定了 `filter_profile`，`FileFilter`（`TMA:261-298`）按 `config/filter_profiles/` 下的画像（扩展名、路径模式、大小、是否已删除……）从 raw.db **复制**出一个 `<...>_filtered.db`——注意不是修改原库，raw.db 永远保持完整；过滤只是决定"下游用哪个视角"。之后的事件提取和分类都以这个过滤后的库为输入（任务对象上的 `output_raw_db` 字段被更新为过滤库路径，前端展示的也是它）。关键几行：
+如果任务指定了 `filter_profile`，`FileFilter`（`TMA:999-1072`）按 `config/filter_profiles/` 下的画像（扩展名、路径模式、大小、是否已删除……）从 raw.db **复制**出一个 `<...>_filtered.db`——注意不是修改原库，raw.db 永远保持完整；过滤只是决定"下游用哪个视角"。之后的事件提取和分类都以这个过滤后的库为输入（任务对象上的 `output_raw_db` 字段被更新为过滤库路径，前端展示的也是它）。关键几行：
 
 ```cpp
 FileFilter filter;
@@ -104,19 +104,19 @@ if (effectiveRawDb != rawDbPath) {
 
 然后是两步"翻译"：
 
-- **事件提取**（`EVENT_EXTRACTION`，10%）：[EventExtractor](../modules/cpp/core/EventExtractor.md) 读出每个文件的 atime/mtime/ctime/crtime 四个时间戳，翻译成 CREATED/MODIFIED/ACCESSED/CHANGED/DELETED 五类事件，写入 `events.db`（`TMA:300-309`）。从此"文件系统的一堆数字"变成了"某时刻发生了某事"的时间线。
-- **文件分类**（`FILE_CLASSIFICATION`，15%）：[FileClassifier](../modules/cpp/core/FileClassifier.md) 把每个常规文件按扩展名/内容特征归入 24 个类别之一，写入 `files.db` 的主表和对应分类表；同时按场景标注 `scene_priority`——同一个 `hosts` 文件在入侵排查里优先级高、在电信诈骗里不重要，这就是"场景感知分类"（`TMA:311-332`，第一个场景被映射为分类器的 SceneType）。
+- **事件提取**（`EVENT_EXTRACTION`，10%）：[EventExtractor](../modules/cpp/core/EventExtractor.md) 读出每个文件的 atime/mtime/ctime/crtime 四个时间戳，翻译成 CREATED/MODIFIED/ACCESSED/CHANGED/DELETED 五类事件，写入 `events.db`（`TMA:1074-1114`）。从此"文件系统的一堆数字"变成了"某时刻发生了某事"的时间线。
+- **文件分类**（`FILE_CLASSIFICATION`，15%）：[FileClassifier](../modules/cpp/core/FileClassifier.md) 把每个常规文件按扩展名/内容特征归入 24 个类别之一，写入 `files.db` 的主表和对应分类表；同时按场景标注 `scene_priority`——同一个 `hosts` 文件在入侵排查里优先级高、在电信诈骗里不重要，这就是"场景感知分类"（`TMA:1116-1166`，第一个场景被映射为分类器的 SceneType）。
 
 ## 第四幕：智能增强——LLM 什么时候进来
 
 只要 `llm_analyze` 为真（前端固定传 true），`LLM_ANALYSIS` 阶段（20%）开始，注意它其实是**先后两件事**：
 
-1. **文件级描述**（`TMA:334-386`）：[LLMAnalysisService](../modules/cpp/network/LLMAnalysisService.md) 把分类后的文件逐个（必要时先从镜像提取内容）送给 LLM，生成摘要/描述/关键词，写回 files.db 的 `llm_*` 列和 `file_descriptions` 表。full 模式全量分析；smart 模式先让模型粗选一批"值得深挖"的文件再精析——这是成本与覆盖的取舍旋钮。一个例外值得知道：Android 逻辑提取路径（`--android-source` 类任务）的工件级 LLM 在 `analyzeAndroidData()` 内部就完成了（`AndroidLLMAnalysisService`），文件级服务对 android.db 没有 `files` 表可写、实际空转，代码注释（`TMA:164-171`）明确说明了这层分工。
-2. **事件簇分析**（`TMA:396-429`）：时间线事件先按时间邻近聚簇，`EventClusterAnalyzer` 让 LLM 对每个簇回答"这段时间发生了什么"。限额由 `LLM_MAX_EVENT_CLUSTERS` 控制（0 = 不限）。
+1. **文件级描述**（`TMA:1168-1280`）：[LLMAnalysisService](../modules/cpp/network/LLMAnalysisService.md) 把分类后的文件逐个（必要时先从镜像提取内容）送给 LLM，生成摘要/描述/关键词，写回 files.db 的 `llm_*` 列和 `file_descriptions` 表。full 模式全量分析；smart 模式先让模型粗选一批"值得深挖"的文件再精析——这是成本与覆盖的取舍旋钮。分析量还有一个总闸：任务级预算 `llm_max_files` 经 `analysis_budget::resolve` 统一裁决（`TMA:1191-1199`），同一个预算后面还约束图谱摄取范围（ANALYZED_ONLY）与报告证据种子。一个例外值得知道：Android 逻辑提取路径（`--android-source` 类任务）的工件级 LLM 在 `analyzeAndroidData()` 内部就完成了（`AndroidLLMAnalysisService`），文件级服务对 android.db 没有 `files` 表可写、实际空转，代码注释（`TMA:775-777`）明确说明了这层分工。
+2. **事件簇分析**（`TMA:1282-1324`）：时间线事件先按时间邻近聚簇，`EventClusterAnalyzer` 让 LLM 对每个簇回答"这段时间发生了什么"。限额由 `LLM_MAX_EVENT_CLUSTERS` 控制（0 = 不限）。
 
 ## 第五幕：平台语义化——把字节变成"一条聊天记录"
 
-`PLATFORM_ANALYSIS`（20%）是取证价值最密集的一步。按检测出的场景**依次**运行平台分析器（`TMA:440-526`，多场景任务按顺序执行，进度按场景数折算）：
+`PLATFORM_ANALYSIS`（20%）是取证价值最密集的一步。按检测出的场景**依次**运行平台分析器（`TMA:1326-1569`，多场景任务按顺序执行，进度按场景数折算）：
 
 - [AndroidAnalyzer](../modules/cpp/analyzers/AndroidAnalyzer.md)：找到短信/联系人/通话/Chrome 历史/已装应用数据库逐表解析；微信库是 SQLCipher 加密的，用 `--backup-password` 提供的密钥解密；MIUI 备份走 manifest+tar 索引；QQNT 走专用工件解析。产出 `android.db`（33 张表）。
 - [WindowsFilesAnalyzer](../modules/cpp/analyzers/WindowsFilesAnalyzer.md)：注册表（hivex）、事件日志（libevtx）、Prefetch/LNK/JumpList/Amcache/SRUM/MFT/浏览器……产出 `windows.db`（32 张表；Shimcache/UserAssist/RDP/WiFi 解析器已实现但未接线，对应表恒空）。
@@ -124,34 +124,58 @@ if (effectiveRawDb != rawDbPath) {
 
 每个平台分析器内部还会调用自己的 LLM 服务（`Linux/Windows/AndroidLLMAnalysisService`）对工件做语义标注——注意这与第四幕的文件级 LLM 是两回事：那里读"文件"，这里读"已经解析成取证工件的记录"。
 
-如果任务开了雕刻（`file_carving`），`FILE_CARVING`（3%）用 29 种文件签名扫未分配空间，恢复的文件放进任务目录的 `carved_files/`（`TMA:533-550`）。
+### 分支：手机备份源（`--android-source`）的取数-分析分离
 
-## 第六幕：收尾——完成不等于结束
+上面走的是"镜像 → raw.db → 分拣 → 平台分析"的主路。手机备份类任务（`android_source` 为 dir/zip/miui-backup/meiya/mobile-evidence/thunder-backup/tar/seven-zip/android-backup/filesystem-image/android-container/ios-backup/vivo-backup）在流水线早期就**短路**进一条专用路径：`runLogicalAndroidAnalysis`（分派在 `TMA:717-738`，实现在 `TMA:1714-2193`），不建 raw.db/events.db/files.db，直接从备份来源解析、写独立的 `android.db`（harmony-backup 是唯一例外，仍走下方的 ANDROID 场景分支）。这条路径里，"取数"与"分析"已经拆成两个以统一取数包为契约的阶段（规范见 [docs/specs/mobile-evidence-package.md](../specs/mobile-evidence-package.md)）：
 
-`FINALIZING`（2%）做两件事（`TMA:170-196`）：把进度推到 100%、状态置 `completed`；以及**触发知识图谱摄取**——通过 `LLMPythonProxy::async_ingest(task_id, FULL)` 调 Python 的 `/api/graphiti/ingest`，拿到 job id 存在任务对象上（前端知识图谱页可以拿它查进度）。真实代码：
+```
+原始检材 ──[取数适配器]──> <base>_mobile_evidence.mep.db ──[统一分析]──> android.db
+   MIUI / 鸿蒙 / 雷电 / 美亚      （mobile_evidence_meta/_record/_file 三主表）
+```
+
+各来源的走法不同：
+
+- **美亚 FL-901**（`TMA:1839-1923`）是唯一"适配器完全绕开 AndroidAnalyzer"的来源：`MeiyaBackupExtractor` 解码容器（1024 字节周期 XOR，掩码运行时自推导，规范见 [docs/specs/meiya-container-parsing.md](../specs/meiya-container-parsing.md)）→ `MobileEvidenceMeiyaAdapter` 转成统一包 → `Writer` 落到任务目录 → `mobile_evidence::analyzePackage` 写 android.db。进度里程碑 20%（解码）→ 55%（转包）→ 75%（分析库）→ 100%。
+- **`mobile-evidence` 来源**（`TMA:1791-1834`）只做后半段：拿一个已有的 `.mep.db` 直接分析。包就是证据交接物——原始检材可以已经不在原位。
+- **MIUI / 鸿蒙 / 雷电**仍经 AndroidAnalyzer 解析并写 android.db，统一包作为 **sidecar** 并行写出（`TMA:2079-2138`，miui/thunder 在逻辑短路径内；harmony 在 ANDROID 场景分支内写，`TMA:1406-1440`）。包写失败只记 WARNING、不失败任务——android.db 仍可服务既有页面，缺口通过审计日志与任务元数据（`mobile_evidence_package` / `mobile_evidence_records` / `mobile_evidence_files` / `mobile_evidence_adapter`）可见。
+- **iOS / vivo 备份**目前不产统一包：`AndroidAnalyzerCore.cpp:149-155` 按来源分派 `IosBackupExtractor` / `VivoBackupExtractor`（vivo 的 LevelDB 索引先经固定脚本的 Python 桥物化为 JSON，`TMA:1988-2023`），工件解析（`AndroidAnalyzerCore.cpp:252-264`）直接写 android.db。
+
+统一分析消费端只有一份：`MobileEvidenceAnalysis.cpp:231-324` 按 `kind` 把包里的记录写进 android.db 的标准表（contacts/call_logs/sms_messages/app_notes/installed_apps/wifi_networks/device_identifiers/app_db_inventory），带 `mobileArtifact` 标记的记录同时投影进 `mobile_artifacts`，覆盖度声明回写 `android_source_coverage`。新增一家手机/取证软件只需要写一个 `buildPackageFromXxx` 适配器，分析层零改动——这是这条分支存在的理由。
+
+如果任务开了雕刻（`file_carving`），`FILE_CARVING`（3%）用 29 种文件签名扫未分配空间，恢复的文件放进任务目录的 `carved_files/`（`TMA:1571-1611`）。
+
+## 第六幕：收尾——完成是一道门槛，不是一声令下
+
+`FINALIZING`（2%）曾经是"触发图谱摄取然后立刻宣布完成"的 fire-and-forget；现在它是**两道完成门槛**（`TMA:1613-1704`）：任务只有等知识图谱摄取真正完成、且首轮研判报告生成完毕，才置 `completed`。任何一道门槛超时/失败，任务判 `FAILED`——但错误详情会写明"分析产物仍可浏览"，证据不因收尾失败而丢失。
+
+第一道门槛是**图谱摄取**。触发时不再摄取整个 files 表，而是 `IngestionMode::ANALYZED_ONLY`——只摄取有描述的文件（范围正是第四幕那个 `AnalysisBudget` 裁决出的集合）。之后 `wait_for_graphiti_ingestion`（`TMA:313`）在预算内轮询作业状态：预算 `GRAPHITI_INGEST_WAIT_TIMEOUT_MIN`（默认 720 分钟，与 Python 侧作业超时对齐）、重试 `GRAPHITI_INGEST_RETRIES`（默认 2 次）。关键几行：
 
 ```cpp
-// Graphiti ingestion (best-effort, fire-and-forget) — same as the
-// TSK pipeline tail so logical tasks join the knowledge graph too.
-update_progress(task_id, TaskPhase::FINALIZING, 10, "Triggering knowledge graph ingestion...");
-try {
-    auto& proxy = forensics::LLMPythonProxy::instance();
-    std::string graphiti_job_id = proxy.async_ingest(task_id, forensics::IngestionMode::FULL);
-    if (!graphiti_job_id.empty()) {
-        add_audit_log(task_id, "GRAPHITI_INGESTION",
-            "Triggered Graphiti knowledge graph ingestion (job_id: " + graphiti_job_id + ")");
-        {
-            std::lock_guard<std::mutex> lock(mtx_);
-            if (tasks_.count(task_id)) tasks_[task_id].graphiti_job_id = graphiti_job_id;
-        }
-        save_tasks_internal();      // 立即落盘，job id 不因重启丢失
-    }
-} catch (const std::exception& e) {
-    std::cerr << "Warning: Exception triggering Graphiti ingestion: " << e.what() << std::endl;
+// Finalization — gated on ingestion (budget: GRAPHITI_INGEST_WAIT_TIMEOUT_MIN,
+// 0 restores the legacy fire-and-forget completion).
+const bool ingestion_ok = noOptionalIntelligence || ingestionAlreadyDone ||
+                          wait_for_graphiti_ingestion(task_id, graphiti_job_id);
+if (is_task_cancelled(task_id)) { return; }
+
+set_result_db(task_id, fileDbPath);
+if (!ingestion_ok) {
+    const int budget_minutes = forensics::ConfigManager::instance()
+                                   .getInt("GRAPHITI_INGEST_WAIT_TIMEOUT_MIN", 720);
+    update_status(task_id, TaskStatus::FAILED,
+                  "Knowledge graph ingestion did not complete",
+                  "Graphiti ingestion failed or timed out (budget: " +
+                      std::to_string(budget_minutes) +
+                      " minutes). Analysis artifacts remain available for browsing.");
+    add_audit_log(task_id, "ERROR", "Analysis failed at the Graphiti ingestion gate");
+    return;
 }
 ```
 
-逐块读：注释明说这是 best-effort、fire-and-forget——`async_ingest` 只提交作业就返回，不等摄取完成；整段被 try/catch 包住且 catch 只打警告，**Python/Neo4j 不可用时任务照样 `completed`**，图谱只是缺席；job id 会立即写审计日志并同步进 `tasks_` + 落盘（`save_tasks_internal()`），所以重启后前端仍能查到这次摄取作业。这个设计把"分析"和"图谱"的故障域彻底分离——代价是图谱缺席时界面上要靠用户主动发现，好在知识图谱页会显示 job 状态。
+逐块读：门槛有三个"旁路"——`noOptionalIntelligence`（野外模式：`TRACELENS_FIELD_AUTH=enabled` 且出站策略关闭，智能层整体缺席是特性不是故障）、`ingestionAlreadyDone`（账本里已有 `FINALIZING.ingestion` 完成事实，续跑时不再重等数小时的摄取）、以及预算设 0（显式退回旧的 fire-and-forget 语义）。摄取一旦过闸，立即把 `FINALIZING.ingestion` 写进阶段账本——此后哪怕报告门槛失败，resume 也直接从报告重试，不重等图谱。等待期间任务可以 pause：图谱作业在 Python 侧继续跑，完成事实由下一次 resume 的账本检查收下，什么都不丢。
+
+第二道门槛是**首轮材料研判报告**（前置条件：任务开启 `llm_analyze` 且非野外模式，再叠加 `REPORT_AUTO_GENERATE_ENABLED`——默认开，`TMA:1687`）：`wait_for_pipeline_report`（`TMA:377`）触发 Python 侧报告生成并等待，预算 `REPORT_TAIL_WAIT_TIMEOUT_MIN`（默认 60 分钟）、重试 `REPORT_TAIL_RETRIES`（默认 1 次），同样带预算 0 的逃生口。两道门槛都过了，才执行那最后三行：`mark_stage_complete(kFinalizing)` → 进度 100% → `update_status(COMPLETED)`。
+
+所以"分析"与"图谱"的故障域不再是彻底分离的——这是有意收紧的语义（图谱是任务承诺的一部分，缺席不该被伪装成成功）；代价是 Python/Neo4j 长时间不可用时任务会以 FAILED 收尾，此时前端展示的是"产物可浏览的失败任务"，而不是"假装成功的任务"。
 
 ## 任务之后：产出物给谁用
 
@@ -175,7 +199,7 @@ try {
 
 CLI（`./forensic_analyzer 镜像` → `AnalysisOrchestrator`）复用完全相同的分析器，差异只在编排层：同步执行、无进度/取消/看门狗、输出库放镜像旁边（`<镜像>_raw.db`...）、平台工件**并入** `<镜像>_files.db` 而不是独立库。为什么不同？HTTP 模式的任务目录隔离是给并发和多消费者准备的；CLI 面对的是"一个镜像一次跑完"的脚本场景，并入单库更顺手。这也意味着**给 CLI 写的消费工具不能假设平台工件在独立库里**——两个模式的库布局是 documented 行为，不是 bug。
 
-另有独立子命令绕过主流水线直达单点能力：`--carve`（只雕刻）、`--index/--search`（只建索引/搜索）、`--extract-*`（只提取）、`--analyze-dlls`、`--memory-analyze`（Volatility3 子进程 → `<镜像>_memory.db`）、`--report`（Markdown 报告）、`--dump-text`。
+另有独立子命令绕过主流水线直达单点能力：`--carve`（只雕刻）、`--index/--search`（只建索引/搜索）、`--extract-*`（只提取）、`--analyze-dlls`、`--memory-analyze`（Volatility3 子进程 → `<镜像>_memory.db`）、`--report`（Markdown 报告，`src/report/ReportGenerator`）、`--dump-text`（`src/export/` 的 `TextDumpExporter` + `TextDumpAdapters`）、以及手机来源的两阶段取数/分析：`--mobile-extract` / `--mobile-package`（统一取数包，见 [docs/specs/mobile-evidence-package.md](../specs/mobile-evidence-package.md)）。
 
 ## C/S 分布式：镜像不动，命令流动
 
@@ -214,7 +238,7 @@ DELETE /api/tasks/{id} 或 batch-cancel → 置 `cancellation_requested`。流�
 后台线程发现 RUNNING 超 `TASK_WATCHDOG_STALE_MINUTES` 无进度变化（或 PENDING 超时）→ 直接改状态为 FAILED，错误详情写明 inactivity 分钟数。任务线程**并不知道**自己被判死——它会继续跑完当前阶段，然后在下一次 update 时发现状态已变（TaskManager 的状态机以先到者为准）。排障时看到"任务还在写库但状态已 FAILED"不要惊讶，这是该设计的已知表象（TaskInfrastructure §6）。
 
 ### 重启恢复（第四条分支）
-进程崩溃 → 重启时 `TaskPersistence::load_tasks` 检查任务的阶段账本：**有账本**的 RUNNING/PENDING 任务改判 `INTERRUPTED`（可续跑，`runningTaskIds` 收集其 ID 并写审计日志）；**无账本**的仍一律标 FAILED（"宁可信其坏"——没有任何已完成阶段可复用，就不假装还能接着跑）。孤儿任务目录清理**不校验 UUID 形态**（会删 tasks/ 下任何不在字典里的目录——运维别往里放私人物品，TaskPersistence.cpp:85 注释与实现的偏差已记录）。
+进程崩溃 → 重启时 `TaskPersistence::load_tasks` 检查任务的阶段账本：**有账本**的 RUNNING/PENDING 任务改判 `INTERRUPTED`（可续跑，`runningTaskIds` 收集其 ID 并写审计日志）；**无账本**的仍一律标 FAILED（"宁可信其坏"——没有任何已完成阶段可复用，就不假装还能接着跑）。孤儿任务目录清理**不校验 UUID 形态**（会删 tasks/ 下任何不在字典里的目录——运维别往里放私人物品；UUID 形态的注释在 `TaskPersistence.cpp:120`，而 `:121-123` 的删除实现并不校验形态——注释与实现的偏差已记录）。
 
 ### 断点续跑（阶段账本）
 
@@ -242,4 +266,4 @@ DELETE /api/tasks/{id} 或 batch-cancel → 置 `cancellation_requested`。流�
 
 CLI 走同一套账本语义，但载体是产物旁的 sidecar `<base>_stages.json`（CLI 没有任务状态库）。`--overwrite` 现在有真实含义：删除该账本、强制全量重跑（此前它被解析但无消费者）。C/S agent 的 `--overwrite` 因此与续跑联动：`resume_interrupted_commands` 开启时，崩溃后重执行的命令不再传该参数，从而保留账本继续跑。
 
-**最后更新**: 2026-10-24（新增断点续跑：阶段账本、resume/pause API、CLI/agent 续跑）
+**最后更新**: 2026-11-10（新增"手机备份源的取数-分析分离"分支：统一取数包 `.mep.db` 数据流；重写第六幕——收尾从 fire-and-forget 收紧为"图谱摄取 + 首轮报告"两道完成门槛；行号锚点对齐当前代码）

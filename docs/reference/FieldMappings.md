@@ -14,7 +14,7 @@
 | LLM 开关 | `llm_analyze` | `llm_analyze` | `llm_analyze` | 前端当前固定开启 | Android 工件 LLM另有端点门控 |
 | LLM 模式 | `llm_mode` | `llm_mode` | `llm_mode` | full/smart | smart 有粗选预算 |
 | 案情 | `case_description` | `case_description` | `case_description` | CreateTaskModal 必填 | 进入 prompt 上下文 |
-| Android 源 | `android_source` | `android_source` | `android_source` | tsk/dir/zip/miui-backup | 只在 Android 分析链解释 |
+| Android 源 | `android_source` | `android_source` | `android_source` | 15 个 CLI 合法值（tsk 默认/dir/zip/tar/seven-zip/android-backup/filesystem-image/miui-backup/harmony-backup/thunder-backup/oppo-backup/vivo-backup/ios-backup/mobile-evidence/meiya，见 [android-input-support-matrix](../android-input-support-matrix.md)）；HTTP 任务侧另有 android-container/aliyun-image 预检适配器 | 只在 Android 分析链解释 |
 | 备份密码 | `backup_password` | `backup_password` | `backup_password` | stdin/fd 更安全 | 不建议写入 JSON/argv |
 | 解密 | `enable_decryption` | `enable_decryption` | `enable_decryption` | Advanced | 密钥目录另传 |
 | 密钥目录 | `key_file_dir`/兼容 `key_dir` | `key_file_dir` | `key_file_dir` | CreateTaskModal | 兼容键是历史契约 |
@@ -57,8 +57,10 @@
 | 完成 | `completed` | `COMPLETED` | `COMPLETED` | `completed` |
 | 失败 | `failed` | `FAILED` | `FAILED` | `failed` |
 | 取消 | `cancelled` | `CANCELLED` | `CANCELLED` | `cancelled` |
+| 重启中断 | `interrupted` | `INTERRUPTED` | `INTERRUPTED` | `interrupted`（服务重启把 RUNNING 停在此态，可 resume） |
+| 暂停 | `paused` | `PAUSED` | `PAUSED` | `paused`（协作式暂停停靠态，可 resume） |
 
-这不是单纯的大小写风格：REST 序列化路径和任务持久化路径分别调用不同的转换函数。脚本直接读 tasks.json 时必须使用大写；调用 API 时必须使用小写。新增状态时要同时修改枚举、序列化、前端常量、过滤器和统计聚合，否则列表可能显示而统计不计数。
+这不是单纯的大小写风格：REST 序列化路径和任务持久化路径分别调用不同的转换函数（`TaskHelpers.cpp:182-193` vs `TaskSerialization.cpp:14-16`）。脚本直接读 tasks.json 时必须使用大写；调用 API 时必须使用小写。新增状态时要同时修改枚举、序列化、前端常量、过滤器和统计聚合，否则列表可能显示而统计不计数。
 
 ## 3. 任务阶段映射
 
@@ -179,4 +181,4 @@
 - 主键字段：SQLite 自增 `id` 不等于 inode；跨库对齐用 inode+partition_num 或 path；
 - 状态字段：API 小写、落盘大写、Graphiti job 大写；不要做全局 lower/upper 替换；
 - LLM 字段：主表使用 llm_summary/description/keywords/analyzed_at/model_used，Python API 的 response 可能简化成 summary/description/keywords。
-**最后更新**: 2026-08-24（新建：跨层字段映射参考）
+**最后更新**: 2026-11-10（状态表补 interrupted/paused、android_source 更新为 15 值口径）

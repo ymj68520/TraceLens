@@ -3,7 +3,7 @@
 > **目标读者**：需要从 Android 手机证据（MIUI 离线备份或逻辑提取）中恢复微信/QQNT 聊天与联系人关系，并做社会网络分析的取证分析师。
 > **前置条件**：完成 [快速入门](../getting-started/QuickStart.md)；服务运行中（`./run.sh`）；如需微信解密，事先拿到 SQLCipher 密码或设备 UIN。
 > **预计耗时**：45–75 分钟。
-> **端口约定**：curl 用 `http://localhost:8666`（C++，run.sh 默认）与 `http://localhost:8090`（Python httpserver）。
+> **端口约定**：curl 用 `http://localhost:8666`（C++，来自仓库 `.env` 的 `HTTP_SERVER_PORT=8666`；未配置 `.env` 时 `run.sh` 经 `scripts/lib/tracelens_env.sh` 兜底 **8080**，以你的部署为准）与 `http://localhost:8090`（Python httpserver）。
 
 ---
 
@@ -13,9 +13,9 @@
 
 ---
 
-## 1. 理解证据源：四种 android_source
+## 1. 理解证据源：android_source 通道
 
-AndroidAnalyzer 通过 `IFileExtractor` 抽象支持四种证据源（CLI `--android-source`，HTTP `android_source` 字段，取值 `tsk / dir / zip / miui-backup`）：
+AndroidAnalyzer 通过 `IFileExtractor` 抽象支持多种证据源（CLI `--android-source`，HTTP `android_source` 字段）。本教程用到其中四种；全部 15 个合法取值（含 `harmony-backup` / `thunder-backup` / `oppo-backup` / `ios-backup` / `vivo-backup` / `mobile-evidence` / `meiya` 等）见 [手机备份取证](MobileBackupForensics.md) 第 1 节与 [输入能力矩阵](../android-input-support-matrix.md)：
 
 | 源 | 形态 | 说明 |
 |----|------|------|
@@ -245,6 +245,9 @@ echo -n "<IMEI><UIN>" | md5sum | cut -c1-7     # 前 7 位即 SQLCipher 密码
 ## 延伸阅读
 
 - [AndroidAnalyzer 模块文档](../modules/cpp/analyzers/AndroidAnalyzer.md) — 四种证据源、MIUI 索引、SQLCipher 版本矩阵
+- [手机备份取证](MobileBackupForensics.md) — 全部 `--android-source` 通道与统一取数格式（.mep.db）两阶段链路
+- [WhatsApp 取证](WhatsAppForensicsImport.md) — iOS 备份 WhatsApp 库的独立导入通道（`/im-forensics` 第三平台，与微信/QQ 并列）
+- [QQ 取证](QQForensicsImport.md) — NTQQ 与老版 QQ 4.x 两条导入支线
 - [WeChatGraphService](../modules/python/services/WeChatGraphService.md) / [WechatGraph 路由](../modules/python/httpserver/routes/WechatGraph.md) — 图构建与端点契约
 - [微信关系图谱设计](../superpowers/specs/2026-06-04-wechat-relationship-graph-design.md) — 数据表与推导公式的历史设计
 - [MIUI 备份取证设计](../superpowers/specs/2026-07-29-xiaomi-miui-backup-forensics-design.md) — `.bak` 头格式与解密分层

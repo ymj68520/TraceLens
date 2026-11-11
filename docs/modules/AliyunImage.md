@@ -4,6 +4,10 @@
 
 该入口使用 Linux/WSL 后端；Windows 原生构建会明确提示需要 Linux 运行环境。
 
+## 执行链
+
+C++ 侧的 `prepareAliyunImage`（`src/network/HTTPServer/AliyunImagePreparation.cpp:18`）是一个薄壳：校验运行环境后 `posix_spawn` 固定 argv 启动 `python_service/httpserver/services/aliyun_image.py` 完成实际的校验与解包。脚本定位依次取 `TRACELENS_RELEASE_ROOT`、编译期 `TRACELENS_SOURCE_ROOT`；解释器取 `TRACELENS_PYTHON_BIN`（默认 `/usr/bin/python3`），任一不可用返回 `ALIYUN_RUNTIME_NOT_CONFIGURED`（`:27-40`）。Windows 构建直接返回 `ALIYUN_REQUIRES_LINUX_RUNTIME`（`:22-23`）。C++ 侧消费子进程的 JSON 行输出：按 2 秒心跳回报进度（`:69-71`）、可取消、2 小时硬超时（`ALIYUN_TIMEOUT`，`:63-67`）、输出缓冲超过 512 KiB 判定异常终止（`:80`）。解包规则（gzip FEXTRA、PAX/GNU 长名、拒绝清单、2 TiB 上限、稀疏写入、512 MiB 空间余量、`work/aliyun_image/source_manifest.json`）全部在 Python 脚本内实现并在此处校验。
+
 ## 前端操作
 
 1. 在服务端配置证据目录，例如 `TRACELENS_EVIDENCE_INBOX=/mnt/e/取证/testimgs/阿里云服务器镜像`。
@@ -63,3 +67,5 @@
 - `python_service/tests/unit/test_aliyun_image.py`：扩展 gzip 头、完整哈希/CRC、异常成员、空间、取消、内容变化和上限。
 - `tests/integration/test_aliyun_image_http.py`：真实 C++ Task/预检/解包/Linux/时间线/文件提取；模型与图谱为本地桩，验证原报告等待门控。可用 `--source` 和独立 `--work` 测试真实导出包；真实材料模式关闭模型分析。
 - `CreateTaskModal.aliyun.test.jsx` 与预检组件测试：来源绑定、路径改变后失效、Linux 参数及原筛选流程。
+
+**最后更新**: 2026-11-10（补 C++↔Python 执行链与错误码/超时；来源与读取链章节按代码复核无误）

@@ -61,7 +61,19 @@ cluster:v1:<minute>:<encoded-type>
 - `v1` 是冻结版本，不能随意改成新的分隔符；
 - C++ 事件簇的 SQL bucket 与 Python investigation key 是相关但不同的两个层次。
 
-### 2.3 解析失败分类
+### 2.3 Android 工件证据（android_artifact）
+
+```text
+android_artifact:v1:<task_id>:<result_set_id>:<kind>:<row_id>
+```
+
+- 指向 AndroidAnalyzer 派生结果集中的一条**冻结记录**，不是原始数据库行直接证明；
+- `result_set_id` 是冻结时的结果集版本——同一行在不同 result set 中不是同一证据；
+- `kind` 是工件类别（sms/contacts/apps/wifi/mobile/calls/im/im_contacts 等），`row_id` 是该类别内的记录 ID；
+- 与前两类不同，**task_id 显式出现在键里**（file/cluster 键的 task_id 是隐含作用域）；
+- 冻结入口 `POST /api/evidence-intake/tasks/{task_id}/android-artifacts/{kind}/{row_id}/capture`（evidence_intake.py:42 构造该键，请求体须带 `record_hash` + `source_revision`，行已变化返回 409）；采集分支 acquisition.py:227，提示词渲染 prompts.py:389,432。
+
+### 2.4 解析失败分类
 
 | 失败 | 含义 | 处理 |
 |---|---|---|
@@ -239,4 +251,4 @@ Report page
 
 ---
 
-**最后更新**: 2026-08-24（新建：调查与报告契约参考）
+**最后更新**: 2026-11-10（补 android_artifact 证据键语法）

@@ -11,7 +11,7 @@
 3. **引用落地（grounding）**：LLM 声称的每条 claim 只能引用冻结信封里的证据 ID，FACT 无有效引用降级为 HYPOTHESIS；
 4. **事故恢复**：重启/关机/任务被删时，任何终态写入不得复活不存在的存储。
 
-注意本域存在**两代实现**（见第 6 节）：规范栈是 `investigation/` 子包（schema v7，ServiceManager 管理的路由全走它）；legacy 栈是 `investigation_service.py` + `investigation_persistence.py`（schema v3，含 final-report 装配编排，当前无路由入口）。
+注意本域存在**两代实现**（见第 6 节）：规范栈是 `investigation/` 子包（schema v8——v7 历史库只读可迁移，ServiceManager 管理的路由全走它）；legacy 栈是 `investigation_service.py` + `investigation_persistence.py`（schema v3，含 final-report 装配编排，当前无路由入口）。
 
 ## 2. 在系统中的位置
 
@@ -20,15 +20,17 @@
 - **它被谁依赖**：forensic_report 的 R2 准入直接读本域的 report_evidence/evidence_snapshots 表（generation.py:113-281）。
 - **链路**：前端"调查工作台"页 → `/api/investigation/*` → 六个惰性服务 → 每任务 investigation.db；accepted 分析 → report_evidence → R2 报告信封。
 
-## 3. 核心数据结构：schema v7 关键表
+## 3. 核心数据结构：schema v8 关键表
+
+当前受支持的 schema 是 **v8**（`SUPPORTED_SCHEMA_VERSION = 8`，repository.py:109；v7 库只读可迁移——`READABLE_SCHEMA_VERSIONS = frozenset({7, 8})`，:110，写入 v7 历史库会得到 `MIGRATION_REQUIRED`（:861）并触发受控 `_migrate_v7_to_v8`）。v8 的唯一扩展是证据类型新增 `android_artifact`（evidence_snapshots_v8 表，:142-171——由证据预检路由的 capture 冻结写入，见 [../httpserver/routes/EvidenceIntake.md](../httpserver/routes/EvidenceIntake.md)）：
 
 ```python
-# investigation/repository.py:109-133（节选）
-CREATE TABLE IF NOT EXISTS evidence_snapshots (
+# investigation/repository.py:142-171（节选，v8 形态）
+CREATE TABLE evidence_snapshots_v8 (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     task_id TEXT NOT NULL,
     evidence_key TEXT NOT NULL,
-    evidence_type TEXT NOT NULL CHECK(evidence_type IN ('file', 'cluster')),
+    evidence_type TEXT NOT NULL CHECK(evidence_type IN ('file', 'cluster', 'android_artifact')),
     normalized_path TEXT,
     unix_minute INTEGER,
     event_type TEXT,
@@ -45,16 +47,21 @@ CREATE TABLE IF NOT EXISTS evidence_snapshots (
             AND normalized_path IS NULL
             AND unix_minute IS NOT NULL
             AND event_type IS NOT NULL)
+        OR
+        (evidence_type = 'android_artifact'
+            AND normalized_path IS NULL
+            AND unix_minute IS NULL
+            AND event_type IS NULL)
     )
 )
 ```
 
 - `UNIQUE(task_id, evidence_key)`：证据身份的唯一性由 DB 约束兜底（capture_if_absent 的 ON CONFLICT 依赖它）；
 - 判别 CHECK：file 证据必须带 normalized_path、cluster 证据必须带 (unix_minute, event_type)——**类型字段与载荷字段强绑定**，防"半个身份"入库；
-- 不可变性不靠自觉：`trg_evsnap_no_update` 触发器直接 ABORT 任何 UPDATE（:137-143）。
+- 不可变性不靠自觉：`trg_evsnap_no_update` 触发器直接 ABORT 任何 UPDATE（:178）。
 
 ```python
-# investigation/repository.py:154-183（节选）
+# investigation/repository.py:195-233（节选）
 CREATE TABLE IF NOT EXISTS secondary_analyses (
     analysis_id TEXT PRIMARY KEY,
     task_id TEXT NOT NULL,
@@ -82,9 +89,9 @@ CREATE TABLE IF NOT EXISTS secondary_analyses (
 
 - `snapshot_id` 外键 ON DELETE RESTRICT：分析永远钉在一个具体快照上，快照不可删（本身也禁止 UPDATE），redo 是**新 version 行**指向可更新的新快照；
 - `input_hash` + `input_envelope_json`：V2 信封冻结（执行时 hmac 复验）；`UNIQUE(task_id, evidence_key, version)` 保证版本串行；
-- 状态机由两个触发器硬约束（:194-214）：非终态行只许合法迁移（`queued→running|failed`、`running→review_pending|failed`、`review_pending→accepted|rejected|invalid`），终态行禁止任何 UPDATE。
+- 状态机由两个触发器硬约束（:235-259）：非终态行只许合法迁移（`queued→running|failed`、`running→review_pending|failed`、`review_pending→accepted|rejected|invalid`），终态行禁止任何 UPDATE。
 
-其余表族：`analysis_claims` + `claim_evidence_refs`（:239/:253）、`investigation_events` / `_versions` / `_evidence`（:312/:322/:337）、`investigation_event_refreshes`（:420/:448）、`report_evidence`（:600）。
+其余表族：`analysis_claims` + `claim_evidence_refs`（:279/:293）、`investigation_events` / `_versions` / `_evidence`（:352/:362/:377）、`investigation_event_refreshes`（:460/:488）、`report_evidence`（:640）。
 
 ## 4. 核心接口清单（规范栈）
 
@@ -103,10 +110,10 @@ CREATE TABLE IF NOT EXISTS secondary_analyses (
 
 **（a）证据键与解析（evidence/ 子包）。** 冻结格式：`file:<normalized_path>` 与 `cluster:v1:<unix_minute>:<percent-encoded event_type>`（keys.py 模块头）。`parse_evidence_key`（keys.py:53-85）是纯函数：file 键经 `normalize_evidence_path` 规范化；cluster 键严格拒绝畸形 percent-escape 与非 UTF-8（`_decode_event_type`，:26-41，因为 `unquote` 的 U+FFFD 替换会让不同坏键坍缩成同一身份）。`EvidenceResolver`（resolver.py，R1-R8 不变量）只读打开 `get_task` 给出的库，文件走精确 path 匹配、cluster 按 `(minute, event_type)` 重算，任何"找不到"都 fail-closed 抛 `EvidenceNotFoundError`，而库打不开是 `EvidenceStoreError`（exceptions.py 明确区分 404 与 503 语义）。
 
-**（b）capture_if_absent：幂等捕获的精确代码。** 这是"快照"语义的核心（repository.py:1474-1523）：
+**（b）capture_if_absent：幂等捕获的精确代码。** 这是"快照"语义的核心（repository.py:1607 起）：
 
 ```python
-# investigation/repository.py:1481-1521（节选）
+# investigation/repository.py:1607-1654（节选）
 # S1: existing snapshot wins; do not touch the source DB.
 existing = self.get_snapshot(resolved.evidence_key)
 if existing is not None:
@@ -157,18 +164,18 @@ with self._connect() as conn:
 
 ## 6. 注意事项与已知问题
 
-- **双栈并存**：legacy `InvestigationService` 类当前**没有任何路由实例化**（全仓只有 `report_rendering.py:499` 复用其 `extract_json_payload`）；4A-4E/final 装配编排因此处于"机制完整、无线上入口"状态，Workbench 的 final-reports 端点实际读 R2 narrative manifest。两套 schema（v3 与 v7）的 investigation.db 互不兼容，排查时先看 `PRAGMA user_version`。
+- **双栈并存**：legacy `InvestigationService` 类当前**没有任何路由实例化**（全仓只有 `report_rendering.py:499` 复用其 `extract_json_payload`）；4A-4E/final 装配编排因此处于"机制完整、无线上入口"状态，Workbench 的 final-reports 端点实际读 R2 narrative manifest。两套 schema（v3 与 v8）的 investigation.db 互不兼容，排查时先看 `PRAGMA user_version`。
 - **`CancelledError` 后的同步清理**：execution.py:404-432 特意用同步 transition（取消态下任何 await 会重抛 CancelledError），这段是少数允许阻塞事件循环的例外，别"顺手优化"成异步。
 - 执行器初始化在 ServiceManager 里只有 12s 预算；恢复扫描按任务分页（page_size=100），任务很多时启动恢复可能吃满预算——超时属于容忍路径（服务仍启动，恢复不完整）。
-- 事件语义版本与事件"needs_refresh"标记联动：采纳分析会 `_mark_related_events_dirty`（repository.py:1769-1813），忘记这层传播会导致报告读到陈旧语义。
+- 事件语义版本与事件"needs_refresh"标记联动：采纳分析会 `_mark_related_events_dirty`（repository.py:1909），忘记这层传播会导致报告读到陈旧语义。
 - legacy `investigation_service.get_job` 的内存作业字典重启即失（:1023-1032），持久状态以 SQLite 为准（`get_job_async` 兜底，:1034-1053）。
 - 并发语义总结：capture 幂等（ON CONFLICT+回读）；分析认领单赢家（queued→running CAS）；review 单事务替换 accepted；事件刷新 claim_event_refresh 原子认领——同一证据的多版本并发 redo 安全，但"同一 analysis_id 的双重 review"由状态机触发器拒绝。
 
 ## 7. 如何验证（python_service/tests/unit/）
 
-- 规范栈：`investigation/test_investigation_repository.py`（状态机/迁移/v7 校验）、`test_investigation_execution.py`（E1-E11）、`test_investigation_grounding.py`（G 规则）、`test_investigation_secondary.py`、`test_investigation_completion.py`、`test_investigation_refresh_execution.py`、`test_d4b_task_deletion_boundary.py`（活任务边界）、`test_phase_c_*`（六条端到端流）、`test_investigation_paths.py`、`evidence/test_keys.py`、`evidence/test_resolver.py`；路由层 `test_investigation_routes.py`（202+轮询）、`test_investigation_*_routes.py`、`test_report_evidence_routes.py`、`test_service_manager_investigation.py`。
+- 规范栈：`investigation/test_investigation_repository.py`（状态机/迁移/v8 校验）、`test_investigation_execution.py`（E1-E11）、`test_investigation_grounding.py`（G 规则）、`test_investigation_secondary.py`、`test_investigation_completion.py`、`test_investigation_refresh_execution.py`、`test_d4b_task_deletion_boundary.py`（活任务边界）、`test_phase_c_*`（六条端到端流）、`test_investigation_paths.py`、`evidence/test_keys.py`、`evidence/test_resolver.py`；路由层 `test_investigation_routes.py`（202+轮询）、`test_investigation_*_routes.py`、`test_report_evidence_routes.py`、`test_service_manager_investigation.py`。
 - legacy 栈：`test_investigation_persistence.py`、`test_investigation_evidence.py`、`test_claim_provenance_reader.py`、`test_report_dataset.py`、`test_citation_validation.py`。
-- 手工链路：`POST /api/investigation/analyses` → 轮询至 review_pending → `POST .../review {"decision":"accepted"}` → `GET /api/investigation/evidence`；`sqlite3 <task>/investigation.db "PRAGMA user_version"` 应为 7。
+- 手工链路：`POST /api/investigation/analyses` → 轮询至 review_pending → `POST .../review {"decision":"accepted"}` → `GET /api/investigation/evidence`；`sqlite3 <task>/investigation.db "PRAGMA user_version"` 应为 8。
 
 ## 8. 二轮深化 A：分析失败码全清单与 LLM 异常分类链
 
@@ -239,7 +246,7 @@ if Path(current_path) != Path(submitted_db_path):
 | ReportEvidenceService | bind/list/update（R1 三重复核） |
 | SecondaryAnalysisExecutor | submit / shutdown / recover_stale_generations |
 | EventRefreshExecutor | submit（409 在途）/恢复 |
-| InvestigationRepository | capture_if_absent/create_analysis/review_analysis/claim_event_refresh/complete_analysis_for_review/fail_analysis/mark_related_events_dirty 等（v7 全表 DDL 与迁移） |
+| InvestigationRepository | capture_if_absent/create_analysis/review_analysis/claim_event_refresh/complete_analysis_for_review/fail_analysis/mark_related_events_dirty 等（v8 全表 DDL 与 v7→v8 迁移） |
 | InvestigationGraphReader | 唯一 GET 通道（ro+query_only） |
 | EvidenceResolver / keys | resolve（R1-R8）/parse_evidence_key（纯函数） |
 
@@ -253,4 +260,4 @@ if Path(current_path) != Path(submitted_db_path):
 | 簇事件送 LLM 上限 | 50（MAX_CLUSTER_EVENTS_FOR_LLM） | 同上 |
 | 内容字符上限 | 8000（MAX_CONTENT_CHARS） | 同上 |
 
-**最后更新**: 2026-08-24（二轮深化：补全端点清单与模型契约）
+**最后更新**: 2026-11-10（修订：schema v8（android_artifact 证据类型）与 v7 只读迁移语义）

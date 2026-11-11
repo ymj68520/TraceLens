@@ -9,10 +9,12 @@ C++ HTTP 服务（Crow 框架）提供取证分析任务管理、时间线/文�
 | 项目 | 说明 |
 |------|------|
 | 默认端口 | **8080**（`ConfigManager::getHTTPServerPort()`，读配置项 `HTTP_SERVER_PORT`，见 `src/core/ConfigManager/ConfigManager.cpp:140`） |
-| run.sh 启动 | `run.sh` 中 `CPP_PORT="${HTTP_SERVER_PORT:-8666}"`，**未设置该变量时回退 8666** |
+| run.sh 启动 | `run.sh:78` 为 `CPP_PORT="$HTTP_SERVER_PORT"`（无内联兜底）；缺省兜底在 `scripts/lib/tracelens_env.sh:38` 的 `: "${HTTP_SERVER_PORT:=8080}"`，**未设置该变量时回退 8080**（8666 只是 `.env.example` 的 `HTTP_SERVER_PORT` 示例值） |
 | scripts 启动 | `scripts/start_services.sh`、`start_all_services.sh` 均为 `${HTTP_SERVER_PORT:-8080}` |
-| 认证 | 无（本地服务，未实现鉴权） |
-| CORS | 所有路由经 `RouteHelpers::add_cors_headers` 添加跨域头；16 个任务路径另注册同名 OPTIONS 预检路由（`TaskRoutes.cpp`） |
+| 认证 | 默认无（本地服务）。`TRACELENS_FIELD_AUTH=enabled` 时启用现场认证中间件（`FieldApp.cpp::FieldAuthMiddleware`）：Bearer 令牌经 Python 服务 `POST /api/field-auth/introspect` 校验；服务间调用走 `X-TraceLens-Service-Token`（作用域受限，见 FieldApp.cpp::python_service_scope）；失败按 401/403/503 拒绝 |
+| CORS | 所有路由经 `RouteHelpers::add_cors_headers` 添加跨域头（现场认证开启时不再回 `Access-Control-Allow-Origin: *`，见 `HTTPserver.cpp` 全局 CORS 中间件）；13 个任务路径另注册同名 OPTIONS 预检路由（`TaskRoutes.cpp`） |
+| 安全状态 | `GET /api/security/status`——现场安全模式自检（release 指纹与出站策略，见第 6 节） |
+| Python 网关 | `/python/<path>`——把前端同源 `/python` 前缀的 GET/POST/PUT/DELETE/PATCH 请求转发到 Python 服务（`HTTPserver.cpp::proxy_python_request`，生产前端免跨域） |
 | Swagger UI | `GET /api/docs`（注意：是 `/api/docs`，不是旧文档写的 `/api/docs/ui`） |
 | OpenAPI JSON | `GET /api/docs/openapi.json` |
 | 端点清单 | `GET /api/docs/endpoints` |
@@ -25,7 +27,7 @@ C++ HTTP 服务（Crow 框架）提供取证分析任务管理、时间线/文�
 - 仅 `/api/filter/*`（FilterRoutes）使用统一封装 `ApiResponse`：`{success, message, data, timestamp, pagination, error_code}`（定义在 `src/network/HTTPServer/HTTPserver.h:35`）。
 - **其余所有路由直接返回领域 JSON 对象**（如 `{tasks: [...]}`、`{task_id: ...}`），不套 ApiResponse 外壳。
 - 失败时绝大多数路由返回 `{"error": "<原因>"}`（部分附 `task_id`/`message` 字段），HTTP 状态码为 400/404/500。
-- 任务状态与优先级值**均为小写字符串**（`TaskHelpers.cpp`）：状态 `pending / running / completed / failed / cancelled`；优先级 `low / normal / high / critical`；阶段 `initializing / image_analysis / event_extraction / file_classification / llm_analysis / platform_analysis / file_carving / finalizing`。
+- 任务状态与优先级值**均为小写字符串**（`TaskHelpers.cpp`）：状态 `pending / running / completed / failed / cancelled / interrupted / paused`（`interrupted` = 进程重启中断、可 resume；`paused` = 协作式暂停）；优先级 `low / normal / high / critical`；阶段 `initializing / image_analysis / event_extraction / file_classification / llm_analysis / platform_analysis / file_carving / finalizing`。
 
 ---
 
@@ -44,15 +46,14 @@ C++ HTTP 服务（Crow 框架）提供取证分析任务管理、时间线/文�
 ## 1. 任务管理 API
 
 > 源码：`TaskCRUDRoutes.cpp`、`TaskBatchRoutes.cpp`、`TaskMonitoringRoutes.cpp`、`TaskRoutes.cpp`（仅 OPTIONS）
-> `/tasks*` 与 `/api/tasks*` 两组路径多数共用同一 handler。
+> 任务 API 只注册 `/api` 前缀路径（`TaskCRUDRoutes.cpp:22-23` 注释明确此约定）；非 `/api` 前缀的 `/tasks` 是前端 SPA 页面路径，不注册为 API。
 
 | 方法 | 路径 | 用途 |
 |------|------|------|
-| GET | `/tasks`、`/api/tasks`、`/api/tasks/list` | 列出任务（过滤+分页） |
-| POST | `/tasks`、`/api/tasks` | 创建取证分析任务 |
+| GET | `/api/tasks`、`/api/tasks/list` | 列出任务（过滤+分页） |
+| POST | `/api/tasks` | 创建取证分析任务 |
 | GET/PUT | `/api/tasks/<task_id>` | 获取任务详情（PUT 为同一 handler 的别名，不执行更新） |
-| GET | `/tasks/<task_id>` | 获取任务详情（旧路径） |
-| GET | `/tasks/<task_id>/results`、`/api/tasks/<task_id>/results` | 获取任务结果 |
+| GET | `/api/tasks/<task_id>/results` | 获取任务结果 |
 | DELETE | `/api/tasks/<task_id>` | 删除（取消）任务 |
 | POST | `/api/tasks/cleanup` | 清理已完成的旧任务 |
 | GET | `/api/tasks/<task_id>/databases` | 任务产物数据库列表 |
@@ -63,12 +64,14 @@ C++ HTTP 服务（Crow 框架）提供取证分析任务管理、时间线/文�
 | GET | `/api/tasks/<task_id>/audit-log` | 任务审计日志 |
 | GET | `/api/tasks/statistics` | 系统级任务统计 |
 | PUT | `/api/tasks/<task_id>/priority` | 更新优先级（见下方备注） |
+| POST | `/api/tasks/<task_id>/resume` | 从阶段台账恢复 stopped 任务（见下方专节） |
+| POST | `/api/tasks/<task_id>/pause` | 协作式暂停（见下方专节） |
 
-另有 16 个同名路径的 `OPTIONS` CORS 预检路由（`TaskRoutes.cpp`，含 `/api/tasks/<string>/priority`、`/api/tasks/<string>/databases` 等）。
+另有 13 个同名路径的 `OPTIONS` CORS 预检路由（`TaskRoutes.cpp`，含 `/api/tasks/<string>/priority`、`/api/tasks/<string>/databases` 等；resume/pause 的 OPTIONS 并在 `TaskCRUDRoutes.cpp` 的 methods 内，不占这 13 个名额）。
 
 ### POST /api/tasks —— 创建任务
 
-`POST /tasks` 与之完全相同。请求体字段（验证自 `TaskCRUDRoutes.cpp::handle_create_task`）：
+请求体字段（验证自 `TaskCRUDRoutes.cpp::handle_create_task`）：
 
 | 字段 | 类型 | 默认 | 说明 |
 |------|------|------|------|
@@ -80,7 +83,8 @@ C++ HTTP 服务（Crow 框架）提供取证分析任务管理、时间线/文�
 | `android_analyze` | bool | false | 旧版兼容：true 时等价 `scenarios:["android"]` |
 | `xfs_mode` | string | `auto` | `native / pure / auto` |
 | `db_output_dir` | string | 空 | 数据库输出目录 |
-| `llm_analyze` | bool | false | 是否执行 LLM 分析 |
+| `llm_analyze` | bool | **true** | 是否执行 LLM 分析。现场模式（`TRACELENS_FIELD_AUTH=enabled` 且 `FIELD_OUTBOUND_POLICY` 缺省/disabled）下服务端强制置 false，且 `scenarios` 含 `server_cloud` 时返回 400 `cloud scenario is disabled by field outbound policy` |
+| `llm_event_analyze` | bool | false | 任务级事件簇 LLM 分析开关（默认关） |
 | `llm_mode` | string | `smart` | `full / smart` |
 | `llm_max_files` | int | 0 | 任务级分析文件预算。`0`（或缺省/null）= 继承全局 `LLM_MAX_FILES`；`1..100000` = 本任务预算，同时约束逐文件 LLM 分析、知识图谱摄取与报告证据 seed。非整数或越界返回 400 + `INVALID_LLM_MAX_FILES`（不静默回落）；smart 模式下超过 `LLM_SMART_CANDIDATE_FILES` 会被钳到候选池并写入 `LLM_CONFIG` 审计 |
 | `case_description` | string | 空 | 案情描述（LLM 分析上下文） |
@@ -88,9 +92,15 @@ C++ HTTP 服务（Crow 框架）提供取证分析任务管理、时间线/文�
 | `enable_decryption` | bool | false | 启用解密 |
 | `key_file_dir` | string | 空 | 密钥目录（接受旧拼写 `key_dir`） |
 | `decrypt_password` | string | 空 | 解密口令 |
-| `android_source` | string | `tsk` | `tsk / dir / zip / miui-backup`；非 `tsk` 时跳过磁盘管线直达 Android 分析器（不产 `_raw.db`） |
-| `backup_password` | string | 空 | MIUI/Android 备份 AES-256 口令（仅运行期使用，不落盘） |
+| `android_source` | string | `tsk` | 合法值（`TaskCRUDRoutes.cpp::supportedSources`）：`tsk / dir / zip / miui-backup / harmony-backup / thunder-backup / oppo-backup / meiya / mobile-evidence / tar / seven-zip / android-backup / filesystem-image / android-container / aliyun-image / ios-backup / vivo-backup`。非法值 400 `UNSUPPORTED_ANDROID_SOURCE`。路径类型校验：`dir / miui-backup / harmony-backup / ios-backup / vivo-backup` 须为**目录**；`thunder-backup / oppo-backup / meiya` 接受目录或文件；其余须为**常规文件**（不存在或类型不符 400）。`android-container / aliyun-image` 禁止自定义 `db_output_dir`（400 `TASK_WORKDIR_REQUIRED`）；`aliyun-image` 强制 `scenarios:["linux"]`。注意：`android-container / aliyun-image` 仅 HTTP 管线可用，CLI 不支持 |
+| `backup_password` | string | 空 | 备份 AES-256 口令（仅运行期使用，不落盘；服务端用后即清并从回显中抹除）。加密 ADB v5（Android Backup）暂不支持解密，保持 `encrypted_locked` |
+| `platform_analyze` | bool | **true** | 平台制品分析开关；`aliyun-image` 与归档类新源（tar/seven-zip/android-backup/filesystem-image/android-container）置 false 时分别返回 400 `ALIYUN_LINUX_ANALYSIS_REQUIRED` / `ANDROID_ANALYSIS_REQUIRED` |
+| `image_source` | string | `tsk` | 置 `raid` 进入 RAID 标准镜像准入（见下） |
+| `raid_job_id` / `raid_manifest_sha256` / `raid_allow_partial` | string / string / bool | 空 / 空 / false | RAID 准入参数。仅当 `image_source="raid"` 且 `android_source=tsk`、`db_output_dir` 为空、现场认证开启时受理（否则 400 `RAID_TASK_ADMISSION_REQUIRED`）；清单哈希不符 409，部分成员缺失需 `raid_allow_partial=true`。`metadata` 中调用方伪造的 `raid_*` / `source_kind` / `source_label` 键一律被服务端剔除 |
+| `preflight_job_id` / `preflight_source_sha256` / `preflight_detected_kind`（归档类新源必带） | string | 空 | 归档/容器/文件系统镜像与阿里云镜像的证据准入指纹（`tar / seven-zip / android-backup / filesystem-image / android-container / aliyun-image`）。`android-container` 另需 `preflight_plan_sha256 / preflight_selected_slot`。准入失败 400，证据变更 409 `EVIDENCE_CHANGED_AFTER_PREFLIGHT`；通过后 `metadata.source_verification=VERIFIED_PREFLIGHT` |
 | `file_carving` | bool | false | 文件雕刻；同时接受顶层与 `options.file_carving` 两种写法 |
+
+现场认证附加行为：`TRACELENS_FIELD_AUTH=enabled` 时创建任务要求已认证主体（缺失 401 `{"detail":"authentication required"}`），并在 metadata 写入 `requested_by` / `requested_by_source=field_jwt`。
 
 **请求示例**：
 
@@ -119,6 +129,7 @@ curl -X POST http://localhost:8080/api/tasks \
   "priority": "high",
   "scenarios": ["android"],
   "llm_analyze": true,
+  "llm_event_analyze": false,
   "llm_mode": "smart",
   "llm_max_files": 300,
   "file_carving": false,
@@ -154,7 +165,7 @@ curl -X POST http://localhost:8080/api/tasks \
   }'
 ```
 
-响应 `201` 固定为：`{id, status: "created", priority, scenarios[], llm_analyze, llm_mode, llm_max_files, file_carving, filter_profile, android_source, dependencies_count}`（注意：回显体不含 `case_description / metadata` 等输入字段，完整状态需再 GET 任务详情）。
+响应 `201` 固定为：`{id, status: "created", priority, scenarios[], llm_analyze, llm_event_analyze, llm_mode, llm_max_files, file_carving, filter_profile, android_source, dependencies_count}`（注意：回显体不含 `case_description / metadata` 等输入字段，完整状态需再 GET 任务详情）。
 
 ### GET /api/tasks —— 任务列表
 
@@ -162,7 +173,7 @@ curl -X POST http://localhost:8080/api/tasks \
 
 响应：`{tasks: [<task 对象>], pagination: {total, limit, offset, has_more}, filters: {status, priority}}`
 
-`task` 对象字段（`TaskHelpers::task_to_json`）：`id, image_path, status, priority, message, output_files_db, output_raw_db, output_events_db, progress{current_phase, phase_percentage, overall_percentage, phase_description}, timestamps{created, started, completed, execution_time_seconds}(Unix 毫秒), scenarios, scenario_databases, android_analyze, android_source, llm_analyze, llm_mode, llm_max_files, file_carving, filter_profile, case_description, xfs_mode, db_output_dir, extraction_directory, cancellation_requested, dependencies, dependents_count, metadata, error_details`。
+`task` 对象字段（`TaskHelpers::task_to_json`）：`id, image_path, status, priority, message, interrupted_by_restart, output_files_db, output_raw_db, output_events_db, progress{current_phase, phase_percentage, overall_percentage, phase_description}, timestamps{created, started, completed, execution_time_seconds}(Unix 毫秒), scenarios, scenario_databases, output_windows_db, output_linux_db, output_android_db, output_oss_db（扁平场景库路径，供 Python 读取方按名解析）, android_analyze, android_source, llm_analyze, llm_event_analyze, llm_mode, llm_max_files, file_carving, filter_profile, case_description, xfs_mode, db_output_dir, extraction_directory, cancellation_requested, pause_requested, resumable, resume_stage, resume_count, dependencies, dependents_count, metadata, error_details`。
 
 **示例——列出运行中的任务（分页）**：
 
@@ -305,6 +316,36 @@ curl -X PUT http://localhost:8080/api/tasks/task_xxx/priority \
 
 > 该 no-op 行为是源码显式声明的事实，非文档错误。
 
+### POST /api/tasks/{task_id}/resume —— 从阶段台账恢复
+
+`OPTIONS` 预检返回 204。仅 `failed / cancelled / interrupted / paused` 且产物（镜像、库、提取目录）仍完好可指纹校验的任务可恢复（`TaskHelpers::is_resumable`）；已完成阶段输入未变的会被跳过，任务保留原 id、输出目录与配置。
+
+```bash
+curl -X POST http://localhost:8080/api/tasks/task_xxx/resume
+```
+
+响应 `200`：`{success: true, task_id, status, resume_count, resume_stage, message: "Task resumed from its stage ledger"}`。
+
+- `404`：任务不存在（`task_id` 为 `list / statistics / cleanup / batch-*` 等子路由名同样 404）。
+- `409`：`{success: false, task_id, error: "Task cannot be resumed", reason: "<不可恢复的具体原因>", status}`——`reason` 原样透出，便于运维判断哪个前提不满足。
+
+### POST /api/tasks/{task_id}/pause —— 协作式暂停
+
+`OPTIONS` 预检返回 204。请求体可选 `{"reason": "..."}`（body 非法不阻塞暂停，走默认原因）。暂停在**当前阶段跑完后的阶段边界**生效：任务停为 `paused`，之后可用 resume 以同一 id 继续。
+
+```bash
+curl -X POST http://localhost:8080/api/tasks/task_xxx/pause \
+  -H "Content-Type: application/json" \
+  -d '{"reason": "换班前暂停"}'
+```
+
+响应 `200`：`{success: true, task_id, status, message: "Pause requested; the current stage will finish first"}`。
+
+- `404`：任务不存在（同上）。
+- `409`：`{success: false, task_id, error: "Task cannot be paused", reason: "Only running or queued tasks can be paused", status}`。
+
+暂停/恢复状态会体现在任务详情的 `pause_requested / resumable / resume_stage / resume_count` 字段上。
+
 ---
 
 ## 2. 取证分析 API
@@ -438,16 +479,26 @@ curl "http://localhost:8080/api/forensics/timeline/clusters/analyzed?task_id=tas
 
 | 方法 | 路径 | 关键参数 | 用途 |
 |------|------|----------|------|
+| GET | `/api/forensics/files/paged` | `task_id`*、`page=1`、`page_size=100`(1–200)、`view=all\|analyzed\|documents\|media`、`extension`（逗号分隔白名单）、`exclude_extension`（黑名单，隐藏匹配项）、`min_size`、`max_size`（字节） | 文件列表服务端分页（Files 页主列表数据源） |
 | GET | `/api/forensics/files/largest` | `task_id`*、`limit=50` | 最大文件列表 |
 | GET | `/api/forensics/files/recent` | `task_id`*、`hours=24` | 最近 N 小时文件 |
 | GET | `/api/forensics/files/suspicious` | `task_id`* | 可疑文件 |
 | GET | `/api/forensics/files/duplicates` | `task_id`* | 重复文件（按哈希） |
 | GET | `/api/forensics/files/extensions-analysis` | `task_id`* | 扩展名统计 |
 
-**示例——最大文件**：
+**示例——文件分页列表 / 最大文件**：
 
 ```bash
+curl "http://localhost:8080/api/forensics/files/paged?task_id=task_xxx&view=documents&extension=pdf,docx&page=1&page_size=50&exclude_extension=tmp"
 curl "http://localhost:8080/api/forensics/files/largest?task_id=task_xxx&limit=10"
+```
+
+响应要点（`SQLiteHelper::get_files_paged`，读 `_files.db`）：`{files[]（files 表整行，按 size DESC、id ASC 排序）, total, page, page_size, total_pages, view}`。`view` 语义：`all` 不过滤；`analyzed` = 已有 LLM 描述（`llm_description` 非空）；`documents` = `category='Documents'`；`media` = `category IN ('Images','Videos','Audio Files')`。`extension`/`exclude_extension` 令牌只保留字母数字；`page`/`page_size`/`min_size`/`max_size` 非法时静默回落默认值，不报 400。
+
+**最大 / 最近 / 可疑 / 重复 / 扩展名**：
+
+```bash
+curl "http://localhost:8080/api/forensics/files/recent?task_id=task_xxx&hours=48"
 ```
 
 响应要点（`SQLiteHelper::get_largest_files`，读 `_files.db`）：`largest_files[]`（files 表行，含 path/size 等）+ `limit`。
@@ -481,6 +532,27 @@ curl "http://localhost:8080/api/forensics/files/recent?task_id=task_xxx&hours=48
 
 - `GET /api/forensics/extract/<job_id>`：按路径参数查任务状态。
 - `GET /api/forensics/extract/status?job_id=...`：同上（查询参数形式）。
+
+**POST /api/forensics/files/materialize**（含 OPTIONS）：把镜像内单个文件按需落地到任务提取目录。请求体：
+
+```json
+{
+  "task_id": "task_xxx",
+  "path": "Users/admin/Documents/contract.pdf"
+}
+```
+
+- `path` 必须是**镜像内相对路径**（前导 `/` 会被剥掉；含 `..` 或为空返回 400 `path must be an image-relative file path without '..'`）。
+- 只有 `_raw.db` 中有登记的文件记录才能提取（`FileExtractor::extractFileByPath`，同时尝试带/不带前导斜杠两种锚定）；输出固定写入任务提取目录（`PathManager::getTaskExtractDir`）下的同名相对路径，永不越出该目录。
+- 任务或镜像未就绪 `404 {"error": "task not found"}` / `409 {"error": "task extraction inputs are not ready"}`；镜像打不开 500；文件不在镜像或不在 raw 记录中 `404 {"error": "file could not be extracted from the image"}`。
+
+响应 `200`：`{success: true, materialized_path: "<任务提取目录内绝对路径>", bytes: <落盘字节数>}`。
+
+```bash
+curl -X POST http://localhost:8080/api/forensics/files/materialize \
+  -H "Content-Type: application/json" \
+  -d '{"task_id": "task_xxx", "path": "etc/ssh/sshd_config"}'
+```
 
 **示例——按扩展名提取到任务提取目录下的子目录**：
 
@@ -531,19 +603,20 @@ curl "http://localhost:8080/api/forensics/statistics/deleted-files-analysis?task
 
 | 路径（前缀 `/api/forensics/android/`） | 参数 | 用途 |
 |----------|------|------|
+| `backup-overview` | `task_id`* | 手机备份总览（清单 + 制品计数 + 应用库解密状态 + 微信数据摘要） |
 | `communication-summary` | `task_id`* | 通信摘要（短信/通话） |
 | `app-usage` | `task_id`* | 应用使用统计 |
 | `device-info` | `task_id`* | 设备信息 |
 | `media-analysis` | `task_id`* | 媒体文件分析 |
 | `miui-overview` | `task_id`* | MIUI 备份总览 |
-| `miui-installed-apps` | `task_id`*、`limit=100`、`offset=0`、`category`、`status`、`query` | 已安装应用 |
-| `miui-db-inventory` | `task_id`*、`kind=kv`、`limit`、`offset`、`reveal_sensitive=0`、`query` | 备份数据库清单（`reveal_sensitive=1` 才显示敏感值） |
+| `miui-installed-apps` | `task_id`* | 已安装应用（其余查询参数被忽略） |
+| `miui-db-inventory` | `task_id`* | 备份数据库清单（其余查询参数被忽略） |
 | `miui-qqnt-overview` | `task_id`* | QQNT 概览 |
-| `miui-qqnt-artifacts` | `task_id`*、分页/过滤参数同上 | QQNT 制品 |
-| `miui-qqnt-records` | `task_id`*、分页/过滤参数同上 | QQNT 聊天记录 |
+| `miui-qqnt-artifacts` | `task_id`*、`category`、`status`、`query`、`limit=100`、`offset=0` | QQNT 制品 |
+| `miui-qqnt-records` | `task_id`*、`kind=kv`、`query`、`limit=100`、`offset=0`、`reveal_sensitive=0` | QQNT 聊天记录 |
 | `miui-wechat-overview` | `task_id`* | 微信概览 |
-| `miui-wechat-artifacts` | `task_id`*、`kind` 等 | 微信制品 |
-| `miui-wechat-records` | `task_id`*、分页/过滤参数同上 | 微信聊天记录 |
+| `miui-wechat-artifacts` | `task_id`*、`category`、`status`、`query`、`limit=100`、`offset=0` | 微信制品 |
+| `miui-wechat-records` | `task_id`*、`kind=kv`、`query`、`limit=100`、`offset=0`、`reveal_sensitive=0` | 微信聊天记录 |
 | `llm-summary` | `task_id`* | Android 各制品表 AI 分析覆盖率 |
 
 所有端点均读任务的 `_android.db`（`RouteHelpers::get_database_path(task_id, "android")`）。响应字段名验证自 `Queries/AndroidQueries.cpp`。
@@ -569,11 +642,12 @@ curl "http://localhost:8080/api/forensics/android/miui-wechat-records?task_id=ta
 **MIUI 概览与 AI 覆盖率**：
 
 ```bash
+curl "http://localhost:8080/api/forensics/android/backup-overview?task_id=task_xxx"
 curl "http://localhost:8080/api/forensics/android/miui-overview?task_id=task_xxx"
 curl "http://localhost:8080/api/forensics/android/llm-summary?task_id=task_xxx"
 ```
 
-响应要点：`miui-overview` 为备份清单（设备/版本/日期/尺寸）与 app 库解密状态分布；`llm-summary` 为各 Android 制品表"已分析 / 总数"覆盖率聚合。
+响应要点：`backup-overview`（`SQLiteHelper::get_miui_backup_overview`）为 `{manifest, artifact_counts[], decryption_status[], wechat{available, status, messages, contacts, chatrooms, owners}}`——`manifest` 优先读统一备份清单表 `mobile_backup_manifest`（`platform / device / backup_version / backup_date / package_count / manifest_sha256 / adapter_version`），老库回退 `miui_backup_manifest`（`device / miui_version / backup_date / total_size / package_count / source_folder`）；`decryption_status[]` 为 `app_db_inventory.open_status` 分布；`wechat` 汇总同库微信表行数，无数据时 `status` 反映 `com.tencent.mm` 的锁定状态；`miui-overview` 为备份清单（设备/版本/日期/尺寸）与 app 库解密状态分布；`llm-summary` 为各 Android 制品表"已分析 / 总数"覆盖率聚合。
 
 ### 2.7 内存取证（MemoryForensicsRoutes）
 
@@ -832,16 +906,19 @@ curl -X POST http://localhost:8080/api/filter/apply \
 | GET | `/api/system/health` | `{status:"healthy", timestamp(ms), version, task_management{total_tasks,running_tasks,failed_tasks,system_load}, services{...}}` |
 | GET | `/api/health` | 同上的别名 |
 | GET | `/api/health/live` | `{status:"alive", timestamp(ms)}` |
+| GET | `/health/live` | `{status:"alive"}`（根前缀别名，`HTTPserver.cpp` 注册；现场认证下亦免鉴权） |
 | GET | `/api/health/ready` | `{ready: bool, checks{task_manager, database}, timestamp}`；未就绪时 `503` |
 | GET | `/api/health/dependencies` | 依赖服务状态明细 |
+| GET | `/api/security/status` | 现场安全模式自检：`{field_security_version:"6a-v1", release_id, release_layout_version:"6c-v1", source_commit, source_tree_sha256, field_auth: bool, required_auth: bool, outbound_policy}`（响应带 `Cache-Control: no-store`） |
 
 ```bash
 curl http://localhost:8080/api/system/health
 curl http://localhost:8080/api/health/ready
 curl http://localhost:8080/api/health/dependencies
+curl http://localhost:8080/api/security/status
 ```
 
-响应要点：`/api/system/health` 含 `status / timestamp / version / task_management{total_tasks, running_tasks, failed_tasks, system_load} / services{...}`；`ready` 未通过检查时返回 `503`；`dependencies` 列出 C++/Python/Neo4j 等依赖的连通状态明细。
+响应要点：`/api/system/health` 含 `status / timestamp / version / task_management{total_tasks, running_tasks, failed_tasks, system_load} / services{...}`；`ready` 未通过检查时返回 `503`；`dependencies` 列出 C++/Python/Neo4j 等依赖的连通状态明细；`security/status` 的取值来自环境变量 `TRACELENS_FIELD_AUTH`（`field_auth`）、`TRACELENS_REQUIRE_FIELD_AUTH=1`（`required_auth`）与 `FIELD_OUTBOUND_POLICY`（`outbound_policy`，缺省 `disabled`），release 指纹为编译期注入。
 
 ### 系统信息
 
@@ -851,6 +928,7 @@ curl http://localhost:8080/api/health/dependencies
 | GET | `/api/system/databases?task_id=...` | 任务数据库文件 |
 | GET | `/api/system/database-schema/<db_type>` | 指定类型数据库的表结构 |
 | GET | `/api/system/logs?lines=...` | 系统日志（`lines` 可选） |
+| ANY | `/python/<path>` | 同源网关：把带 `/python` 前缀的 GET/POST/PUT/DELETE/PATCH 请求转发到 Python 服务（生产前端所有 Python 调用统一走此网关，免跨域） |
 | POST | `/api/export/<task_id>` | 导出任务数据；请求体 `{format: ...}` 可选 |
 
 ```bash
@@ -905,11 +983,13 @@ curl http://localhost:8080/api/docs/openapi.json | python3 -m json.tool | head
 | `GET /api/tasks/{id}/progress` | taskService.js（getTaskProgress） | taskSlice.fetchTaskProgress → useTaskPolling | TaskManager 进度快照 | 内存（tasks.json 状态） |
 | `DELETE /api/tasks/{id}` | taskService.js（cancelTask/deleteTask） | Tasks / Cases 页 | TaskManager::delete_task（取消+清理） | data/tasks.json + 任务目录 |
 | `POST /api/tasks/batch-*`、audit-log、priority、cleanup、statistics | taskService.js（batchCreateTasks/batchGetTaskStatus/batchCancelTasks/getTaskAuditLog/updateTaskPriority/cleanupOldTasks/getTaskStatistics） | statistics→Dashboard；其余暂无页面 | TaskManager / AuditLog | data/tasks.json、审计日志存储 |
+| `POST /api/tasks/{id}/pause`、`/resume` | taskService.js（pauseTask/resumeTask） | Tasks 页操作菜单（仅 failed/cancelled/interrupted/paused 可 resume） | TaskManager 阶段台账（stage ledger） | data/tasks.json + 任务目录 |
 | timeline（comprehensive/details/distribution/file-activity/suspicious-patterns/user-activity/by-type、clusters/analyzed） | forensicsService.js（getComprehensiveTimeline 等 7 个 + getAnalyzedEventClusters） | Timeline 页、AnalysisCenter | SQLiteHelper::get_comprehensive_timeline / get_timeline_details / get_timeline_distribution / get_file_activity_timeline / get_suspicious_patterns / get_user_activity_analysis | `_events.db`(events 含 llm_* 自愈列)、`_raw.db`(files) |
 | timeline/clusters/analyze（C++ 侧） | 前端已切 Python `/api/llm/analyze-event-cluster`（forensicsService 注释明示） | — | EventClusterRoutes（保留注册） | `_events.db` llm_* 列 |
-| files（largest/recent/suspicious/duplicates/extensions-analysis） | forensicsService.js（5 个 get* 函数） | Files 页 | SQLiteHelper::get_largest_files / get_recent_files / get_suspicious_files / get_duplicate_files / get_extensions_analysis | `_files.db`(files)、`_raw.db`(files) |
+| files（paged/largest/recent/suspicious/duplicates/extensions-analysis） | forensicsService.js（paged + 5 个 get* 函数） | Files 页 | `get_files_paged`（服务端分页）+ SQLiteHelper::get_largest_files / get_recent_files / get_suspicious_files / get_duplicate_files / get_extensions_analysis | `_files.db`(files)、`_raw.db`(files) |
+| `POST /api/forensics/files/materialize` | （暂无前端直调；预留给证据查看深链） | — | FileExtractor::extractFileByPath（raw 记录成员校验） | 镜像（只读）→ 任务提取目录 |
 | statistics（overview/file-distribution/activity-patterns/deleted-files-analysis） | forensicsService.js（4 个） | Statistics 页 | SQLiteHelper::get_overview_statistics / get_file_distribution_analysis / get_activity_patterns / get_deleted_files_analysis | `_raw.db` / `_files.db` / `_events.db` |
-| android（含 miui-*、llm-summary） | forensicsService.js（10 个 getMiui*/getAndroid*） | Android 页 | SQLiteHelper::get_android_* / get_miui_*（AndroidQueries.cpp） | `_android.db`（sms_messages、call_logs、contacts、android_artifacts 等表） |
+| android（含 backup-overview、miui-*、llm-summary） | forensicsService.js（getMiui*/getAndroid*） | Android 页 | SQLiteHelper::get_android_* / get_miui_backup_overview 等（AndroidQueries.cpp） | `_android.db`（sms_messages、call_logs、contacts、android_artifacts 等表） |
 | memory（summary/processes/network/bash-history/boot-info） | memoryService.js（5 个 getMemory*） | Memory 页 | MemoryForensicsRoutes 直查 `_memory.db`（只读） | `<镜像名>_memory.db`（processes、network_connections、bash_history、sockets、boot_info） |
 | system/events、system/summary | （暂无直接页面调用） | — | SQLiteHelper::get_system_events / get_system_event_summary | `_events.db`(events) |
 | dlls（列表/详情/suspicious/statistics/anomalies/analyze/health） | llmService.js（analyzeDLL 走 Python）；C++ 直连调用方为 Python dll 路由 | Files 页（经 Python） | DLLAnalysisDatabase（getAllDLLs/getDLLById） | `_dll.db`（DLL 分析库） |
@@ -937,4 +1017,4 @@ curl http://localhost:8080/api/docs/openapi.json | python3 -m json.tool | head
 
 ---
 
-**最后更新**: 2026-08-24（扩充：全端点示例与映射附录）
+**最后更新**: 2026-11-10（增量核对分支 feature/model-routing：新增任务 pause/resume、files/paged、files/materialize、backup-overview、security/status、/python 网关；创建任务字段与 android_source 取值按现源码重核）

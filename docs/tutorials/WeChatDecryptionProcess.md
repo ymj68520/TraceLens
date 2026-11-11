@@ -27,6 +27,13 @@
 | wxid | `wxid_xl6fbcymzzlp22` | `shared_prefs/com.tencent.mm_preferences.xml` 的 `login_weixin_username` |
 | 账号目录 | `aecac96c78f6c9914678027a86cdccf9` | `MicroMsg/<hash>/`，= `MD5("mm" + UIN)`，交叉验证通过 |
 
+> **服务内自动化**：取证导入（`/api/wechat/forensics/imports`）在未给口令、
+> 也未给 UIN 时，会自动执行上表的收集——`wechat_import_service._harvest_key_material`
+> 从 `EnMicroMsg.db` 周边的提取树就地读取 `shared_prefs/*.xml`（UIN / wxid）与
+> `CompatibleInfo.cfg`（Java 序列化映射，键 258/256，即设备 ID），写进
+> meta.json 的 `key_material` 留痕后进入候选推导。本节的手工提取流程仍是
+> MIUI `.bak` 尚未解包、或库文件已脱离提取树时的兜底。
+
 ## 2. 口令推导公式
 
 - 主库口令 = `MD5(IMEI + UIN)[:7]` = `93f2dd5`
