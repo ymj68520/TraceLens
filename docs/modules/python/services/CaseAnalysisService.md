@@ -96,40 +96,30 @@ if not run_filtering:
 
 report-only 直接跳到报告；`run_filtering=False` 时先查库里有无已筛选文件，没有则**自动开启筛选**（防"空跑"）；正常路径是 filter → extract → 并行 describe+cluster → KG 摄取 → report。文件描述与事件簇分析是 `asyncio.create_task` 并行（:153-167），KG 失败非致命（:194-221）。`run_multi_image_analysis`（:356-502）先做跨镜像筛选并把结果**按库分发持久**，再对每个任务以 `run_filtering=False` 复用主流水线，最后案例级图谱 + 跨镜像报告。`run_smart_case_analysis`（:504-609）建案→扫描关联→增量分析；`run_incremental_analysis`（:611-799）只分析 plan 出的新任务并复用旧描述。
 
-**（c）FileFilter 双模式（file_filter.py）。** 入口 `filter_files_by_case`（:53-107）按 `settings.file_filter_mode` 分发；非 `llm` 一律走 `_filter_files_deterministic`（:109-157）：
+**（c）FileFilter 双模式（file_filter.py）。** 入口 `filter_files_by_case`（:62-118）按 `settings.file_filter_mode` 分发；非 `llm` 一律走 `_filter_files_deterministic`（:121-176）：
 
 ```python
-# case_analysis/file_filter.py:122-148（节选）
+# case_analysis/file_filter.py:139-155（节选）
 records = self._get_file_list_from_db(files_db_path)
-paths = sorted({r.get("path", "") for r in records if r.get("path")})
-total_files = len(paths)
+ranked = rank_records(records)
+total_files = len(ranked)
 
-cap = int(getattr(self.settings, "filter_max_files", 0) or 0)
+cap, cap_reason = resolve_effective_cap(
+    max_files, int(getattr(self.settings, "filter_max_files", 0) or 0)
+)
 if cap > 0:
-    selected = paths[:cap]
+    selected_records = ranked[:cap]
     logger.info(
-        f"[FILE_FILTER] Deterministic cap applied: {len(selected)}/{total_files} "
-        f"(filter_max_files={cap})"
+        f"[FILE_FILTER] Deterministic value-ranked cap applied: "
+        f"{len(selected_records)}/{total_files} (effective cap={cap}, "
+        f"bound by {cap_reason})"
     )
 else:
-    selected = paths
-
-if max_files and max_files > 0:
-    logger.info(
-        f"[FILE_FILTER] max_files={max_files} ignored in deterministic mode; "
-        f"using settings.filter_max_files={cap}"
-    )
-
-# Mirror the LLM path's task_id extraction so callers that omit task_id
-# still persist under the real UUID (avoids a silent data-placement
-# divergence where the deterministic path would write to "_latest").
-if not task_id:
-    task_match = re.search(r'tasks/([a-f0-9-]+)/', files_db_path)
-    task_id = task_match.group(1) if task_match else "_latest"
-self._persist_filtered_files(files_db_path, task_id, selected)
+    selected_records = ranked
+selected = [r["path"] for r in selected_records]
 ```
 
-确定性模式零 LLM、排序去重后按 `FILTER_MAX_FILES` 截断（排序保证可复现），显式忽略调用方 `max_files`（:136-140 的日志），并镜像 LLM 路径的 task_id 提取逻辑持久化（:143-148，避免静默写到 `_latest`）。LLM 模式是流式 TOON 批处理（:177-336）：C++ `get_files_toon_stream` 导出 schema+行，按 batch_size 分批喂 LLM，解析走"LLMResponseParser → FilterResultValidator.validate_and_repair → FileMatcher.match_files"三段增强管线（:359-429），零命中或校验失败回退 legacy 解析器；顶层异常整体回退 `_filter_files_by_case_legacy`（:330-336）。`enable_concurrent_lock` 打开时经 `FilterLockManager.filter_with_lock` 串行化同任务并发筛选（:90-99）。`MultiImageFilter`（multi_image_filter.py）继承 FileFilter：deterministic 路径聚合+跨镜像去重后统一 cap（:110-168）；LLM 路径给路径打 `[IMG{n}]` 标签去重（:80-95），`_distribute_and_persist`（:263-296）把选中 tagged 路径映射回各库分别持久。
+确定性模式零 LLM：读库（`_get_file_list_from_db`，:454-501）后经 `forensic_ranking.rank_records` 按取证价值排序去重，cap 取**请求级 `max_filter_files` 与 `settings.filter_max_files` 的较小正值**（0=不设限，`resolve_effective_cap`），截断保留的是价值 Top-N 而非路径字母序前缀——实测字母序前 400 条几乎全是 `$OrphanFiles` 粉碎残留与 `pagefile.sys`。评分分层（forensic_ranking.py）：C++ `scene_priority`/`scene_relevant`（场景规则 0-100）→ FileClassifier `category` 加成 → 高价值扩展名（数据库/文档/邮件/压缩包）→ 证据富集路径加成（IM 应用目录、用户配置、Web 根等，封顶 +40）→ 非空文件 +5；`$OrphanFiles`、粉碎残留（随机大写 8.3 名）、`pagefile.sys` 等噪声直接钉在 -1000。平局按路径升序保证可复现。task_id 提取持久化逻辑镜像 LLM 路径（:158-165，避免静默写到 `_latest`）。`_get_file_list_from_db`（:454-502）用 `text_factory` 容错解码（:470）——真实镜像含少量非 UTF-8 路径（如 `/etc/firewalld/ipsets/\xd2`），默认严格解码曾使单行抛 `Could not decode to UTF-8` 后整库返回 0 文件；同时按 `PRAGMA table_info` 自适应取列，旧 schema 缺列回退中性默认值。LLM 模式是流式 TOON 批处理（:200-360）：C++ `get_files_toon_stream` 导出 schema+行，按 batch_size 分批喂 LLM，解析走"LLMResponseParser → FilterResultValidator.validate_and_repair → FileMatcher.match_files"三段增强管线（:382-452），零命中或校验失败回退 legacy 解析器；顶层异常整体回退 `_filter_files_by_case_legacy`（:354-360）。`enable_concurrent_lock` 打开时经 `FilterLockManager.filter_with_lock` 串行化同任务并发筛选（:102-111）。`MultiImageFilter`（multi_image_filter.py）继承 FileFilter：deterministic 路径（:115-190）聚合+跨镜像去重后按水位法**每镜像配额**分配 cap（`apportion_quota`，垃圾巨量镜像最多占 1/N，未用满的配额回流给候选多的镜像），合并结果按价值重排；LLM 路径给路径打 `[IMG{n}]` 标签去重（:80-95），`_distribute_and_persist`（:284-313）把选中 tagged 路径映射回各库分别持久。
 
 **（d）持久化：db_utils.py 而非 CasePersistence。** 筛选与报告都写在任务 `_files.db` 的 `case_analysis` 表（上文 DDL）。`persist_filtered_files`（db_utils.py:64-78）先于后续步骤落库，使失败后可恢复；`get_case_db_path`（:375）给跨镜像报告解析案例级库。**`case_persistence.py` 与 `case_file_filter.py` 是两份几乎逐行相同的 `CasePersistence` 类，当前都没有任何 import 方**（见第 6 节）。
 
@@ -141,7 +131,7 @@ self._persist_filtered_files(files_db_path, task_id, selected)
 
 - **两份死代码持久化类**：`case_persistence.py` 与 `case_file_filter.py` 内容近乎相同（含同样的分类表扫描 `get_file_list_from_db`），均无 importer；真实持久化在 `case_analysis/db_utils.py`。改 case_analysis 表结构时别改错文件。
 - **作业状态只在内存**：`_analysis_jobs` 进程重启即失，轮询端点对旧 job_id 返回 not found；筛选清单与报告本身在 DB 里可恢复。
-- deterministic 模式忽略 `max_files` 参数是有意行为（以 `FILTER_MAX_FILES` 为准），调用方传大值不会生效。
+- deterministic 模式的 cap 是请求级 `max_filter_files` 与 `FILTER_MAX_FILES` 的较小正值（0=不设限），截断按取证价值排序而非字母序（forensic_ranking.py）；多镜像场景 cap 按每镜像配额（水位法）分配，单镜像垃圾激增不会挤占其他镜像名额。
 - LLM 筛选解析的最终防线是 legacy 文本匹配，可能把"提及而非选择"的文件也算进来——这是可用性优先的取舍，审计筛选结果请以持久化的 filtered_files 为准。
 - OSSAnalysisService 是 stub：`POST /api/oss/analyze` 会成功返回 job_id 但没有任何实际分析；OSS 筛选的"子串匹配"策略比文件侧更激进。
 - `run_incremental_analysis` 第 4 步聚合描述时构造的是 `[{"task_id":..., "has_analysis": True}] * stats["analyzed_files"]` 占位字典（_pipelines.py:776-778），报告实际内容靠 ReportGenerator 回库聚合，不要误以为这里传了真描述。

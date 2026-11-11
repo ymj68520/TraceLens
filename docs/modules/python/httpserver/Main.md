@@ -224,7 +224,7 @@ uvicorn 开始监听后触发 lifespan：ServiceManager 按依赖顺序初始化
 | 日志 | log_level / log_file / debug_output_mode | LOG_LEVEL / LOG_FILE / DEBUG_OUTPUT_MODE | "INFO"/"forensics.log"/"stdout" | log_level 仅 health.py:262 回显——**不驱动实际级别**（basicConfig 固定 INFO，main.py:29-35） |
 | 性能 | thread_pool_size / max_batch_size | THREAD_POOL_SIZE / MAX_BATCH_SIZE | 4 / 100 | 服务侧并发上限 |
 | CORS | cors_origins_raw | PYTHON_CORS_ORIGINS | '["*"]' | cors_origins property → main.py:117 |
-| 筛选 | file_filter_mode / filter_max_files | FILE_FILTER_MODE / FILTER_MAX_FILES | "deterministic" / 0 | file_filter.py:69,126、multi_image_filter.py:57,139、_pipelines.py:94 |
+| 筛选 | file_filter_mode / filter_max_files | FILE_FILTER_MODE / FILTER_MAX_FILES | "deterministic" / 0 | file_filter.py:81,143、multi_image_filter.py:62,156、_pipelines.py:94；cap=min(请求 max_filter_files, 设置值)，截断按取证价值排序（forensic_ranking.py） |
 | 嵌套 | llm_filter_config | （无 alias） | LLMFilterConfig() | 见下表 |
 
 **子模型 LLMFilterConfig（config.py:41-119）12 个字段的消费现状**（生产代码实测）：

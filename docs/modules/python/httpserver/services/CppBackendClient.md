@@ -224,7 +224,7 @@ C++ 端点使用清单（全部经由本类）：`GET /api/health`、`/api/tasks
 | `extract_files(task_id, file_paths, output_dir=None, overwrite=False) -> dict` | :326 | case_analysis_parts/_windows.py:199（Windows 工件先抽取再分析） |
 | `get_extraction_status(job_id) -> dict` | :358 | case_analysis_parts/_windows.py:219（抽取进度轮询） |
 | `export_toon(task_id, include_llm=True) -> str` | :373 | routes/database.py:344；file_filter.py 经 get_files_toon_stream 间接 |
-| `get_files_toon_stream(task_id, batch_size=100, include_llm=False) -> dict` | :387 | case_analysis/file_filter.py:203（deterministic 筛选数据源） |
+| `get_files_toon_stream(task_id, batch_size=100, include_llm=False) -> dict` | :387 | case_analysis/file_filter.py:226（deterministic 筛选数据源） |
 | `export_json(task_id, database_type, include_llm=True) -> dict` | :429 | routes/database.py:384（唯一调用方；`database_type` 参数当前未拼进请求——端点固定 events 导出） |
 
 构造/生命周期：`__init__(settings)`（:36-47，读 `settings.cpp_backend_url` 存 base_url）、`initialize()`（:49-60，建池化客户端）、`shutdown()`（:62-67）、`client` property（:69-77，None 兜底懒建**无池参数**）。两个二轮新发现：`_request_timeout_override` 字段（:47）定义后**全仓无任何读写**——死字段；`__init__` 对 base_url 不做尾部斜杠归一（对比 dll_analyzer.py:20 有 `rstrip('/')`），若 CPP_BACKEND_URL 配成 `http://localhost:8080/`，httpx 拼接行为将依赖其自身的 base_url 合并规则。
@@ -294,7 +294,7 @@ async def export_toon(
     return response.text
 ```
 
-与 `_request` 的四条规则对照，这条路**全都没有**：无重试（C++ 抖动一次即失败）、无 HTML 检测（错误页会当正文返回——好在 raise_for_status 通常先拦住 4xx/5xx，但 200+HTML 的极端形态会漏过）、无错误 dict（`raise_for_status()` 抛 httpx.HTTPStatusError，`str(e)` 内含 URL）、无 payload 日志。两个消费者：database.py:344 把异常交给路由的兜底 500；file_filter.py:203 的 `get_files_toon_stream` 让异常继续上抛到确定性筛选入口——也就是说 **deterministic 文件筛选在 C++ 宕机时是显式失败（500/作业失败），不是静默空集**，与 get_task_files 系列行为相反。`include_llm=True` 默认值在 `get_files_toon_stream`(:391) 被显式改回 `False`——筛选场景不要 LLM 列，减小传输。
+与 `_request` 的四条规则对照，这条路**全都没有**：无重试（C++ 抖动一次即失败）、无 HTML 检测（错误页会当正文返回——好在 raise_for_status 通常先拦住 4xx/5xx，但 200+HTML 的极端形态会漏过）、无错误 dict（`raise_for_status()` 抛 httpx.HTTPStatusError，`str(e)` 内含 URL）、无 payload 日志。两个消费者：database.py:344 把异常交给路由的兜底 500；file_filter.py:226 的 `get_files_toon_stream` 让异常继续上抛到确定性筛选入口——也就是说 **deterministic 文件筛选在 C++ 宕机时是显式失败（500/作业失败），不是静默空集**，与 get_task_files 系列行为相反。`include_llm=True` 默认值在 `get_files_toon_stream`(:391) 被显式改回 `False`——筛选场景不要 LLM 列，减小传输。
 
 ## 13. 二轮深化 E：配置与传输参数影响表
 

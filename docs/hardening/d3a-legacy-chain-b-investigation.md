@@ -100,12 +100,15 @@ later report, including `report_only` regeneration.
 
 ### B.2 Filter and analysis stages
 
-The effective default is deterministic filtering (`config.py:298-310`):
-`FileFilter` reads the task `files` table, applies its cap, and persists the
-selection. With `FILE_FILTER_MODE=llm`, the legacy path constructs a prompt
+The effective default is deterministic filtering (`config.py:404-422`):
+`FileFilter` reads the task `files` table, applies its cap (min of the
+request-level `max_filter_files` and `FILTER_MAX_FILES`, truncating by
+forensic-value rank rather than alphabetical order — see
+`forensic_ranking.py`), and persists the selection. With
+`FILE_FILTER_MODE=llm`, the legacy path constructs a prompt
 from the case description and file summary (`file_filter_parts/_legacy.py:194-249`),
 then parses JSON/line fallback output (`:254-311`). Streaming filter mode uses
-TOON plus `LLMResponseParser` (`file_filter.py:176-327,358-427`).
+TOON plus `LLMResponseParser` (`file_filter.py:200-360,382-452`).
 
 Per-file analysis uses `CASE_FILE_ANALYSIS_TEMPLATE` and vision templates in
 `prompts.py:157-188`, generic OpenAI-compatible LLM transport in
@@ -198,7 +201,7 @@ read tests:
 - `tests/unit/test_intelligence_report_routes.py:10-33`
 - `tests/unit/forensic_report/test_analysis_adapter.py:8-90`
 - `tests/unit/forensic_report/test_sqlite_task_adapter.py:19-97`
-- deterministic filter persistence tests in `tests/unit/test_deterministic_filter.py:31-122`
+- deterministic filter persistence tests in `tests/unit/test_deterministic_filter.py:244-276`
 
 Tracked `build/data/reports/reports.db` contains R2 report-version/input schema,
 not `case_analysis`; no repository migration converts legacy rows. This means
