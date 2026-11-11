@@ -101,7 +101,7 @@ class CaseAnalysisPipelinesMixin:
             logger.info(f"[CASE_ANALYSIS] files_db_path: {files_db_path}")
             logger.info(f"[CASE_ANALYSIS] case_description length: {len(case_description)}")
             logger.info(f"[CASE_ANALYSIS] max_filter_files: {max_filter_files} "
-                        f"(ignored in deterministic mode; cap=settings.filter_max_files)")
+                        f"(deterministic cap = min(this, settings.filter_max_files); value-ranked)")
 
             filter_result = await self.filter_files_by_case(
                 files_db_path, case_description, max_filter_files, task_id=task_id

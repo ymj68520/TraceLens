@@ -15,6 +15,7 @@ from .file_filter import FileFilter
 from .llm_response_parser import LLMResponseParser
 from .file_matcher import FileMatcher
 from .filter_validator import FilterResultValidator
+from .forensic_ranking import resolve_effective_cap, select_with_per_image_quota
 from ...config import Settings
 
 logger = logging.getLogger(__name__)
@@ -44,7 +45,11 @@ class MultiImageFilter(FileFilter):
 
         Dispatches on settings.file_filter_mode:
         - 'deterministic' (default): aggregate + dedup all paths from each
-          C++-filtered files.db. No LLM, fully reproducible.
+          C++-filtered files.db. No LLM, fully reproducible. When a cap
+          applies (min of request-level max_files and settings.filter_max_files),
+          files are ranked by forensic value and the cap is split across
+          images with a per-image quota, so no single image's noise can
+          crowd out the others.
         - 'llm': legacy streaming LLM filter.
 
         Returns the same structure as FileFilter.filter_files_by_case(), plus:
@@ -113,7 +118,14 @@ class MultiImageFilter(FileFilter):
         task_ids: Optional[List[str]] = None,
         max_files: int = 0,
     ) -> Dict[str, Any]:
-        """Deterministic multi-image selection: aggregate + dedup all paths."""
+        """Deterministic multi-image selection: aggregate + dedup + value-ranked cap.
+
+        The effective cap is the minimum of the request-level ``max_files``
+        and ``settings.filter_max_files`` (0 = unlimited). When capping, the
+        cap is split across images by a water-filling per-image quota and each
+        image contributes its top-ranked files - never an alphabetical prefix,
+        which is dominated by $OrphanFiles / shredder remnants on real images.
+        """
         all_tagged: List[Dict[str, Any]] = []
         source_counts: Dict[str, int] = {}
 
@@ -133,35 +145,41 @@ class MultiImageFilter(FileFilter):
 
         # total_files = unique paths (the selection pool). Aligned with the LLM
         # path's total_files definition so both modes report the same metric.
-        paths = sorted({r.get("path", "") for r in deduped if r.get("path")})
-        total_files = len(paths)
+        total_files = len({r.get("path", "") for r in deduped if r.get("path")})
 
-        cap = int(getattr(self.settings, "filter_max_files", 0) or 0)
+        # Per-image pools in db order (records carry their source_db tag).
+        pool_by_db: Dict[str, List[Dict[str, Any]]] = {}
+        for r in deduped:
+            pool_by_db.setdefault(r["source_db"], []).append(r)
+        pools = [pool_by_db.get(db_path, []) for db_path in files_db_paths]
+
+        cap, cap_reason = resolve_effective_cap(
+            max_files, int(getattr(self.settings, "filter_max_files", 0) or 0)
+        )
+        selected_records, quotas = select_with_per_image_quota(pools, cap)
+        selected = [r["path"] for r in selected_records]
+        truncated = cap > 0 and cap < total_files
         if cap > 0:
-            selected = paths[:cap]
             logger.info(
-                f"[MULTI_FILTER] Deterministic cap applied: {len(selected)}/{total_files} "
-                f"(filter_max_files={cap})"
-            )
-        else:
-            selected = paths
-
-        if max_files and max_files > 0:
-            logger.info(
-                f"[MULTI_FILTER] max_files={max_files} ignored in deterministic mode; "
-                f"using settings.filter_max_files={cap}"
+                f"[MULTI_FILTER] Deterministic value-ranked cap applied: "
+                f"{len(selected)}/{total_files} (effective cap={cap}, bound by "
+                f"{cap_reason}; per-image quotas={quotas})"
             )
 
         self._distribute_and_persist(selected, deduped, files_db_paths, task_ids)
 
         return {
             "filtered_files": selected,
-            "reasoning": f"Deterministic multi-image selection ({total_files} files after dedup)",
+            "reasoning": (
+                f"Deterministic multi-image selection ({total_files} files after "
+                f"dedup, ranked by forensic value"
+                + (f", capped at {cap} via per-image quotas {quotas}" if truncated else "") + ")"
+            ),
             "total_files": total_files,
             "selected_count": len(selected),
-            "truncated": len(selected) < total_files,
+            "truncated": truncated,
             "limit": cap if cap > 0 else None,
-            "limit_reason": "configured_filter_max_files" if len(selected) < total_files else None,
+            "limit_reason": cap_reason if truncated else None,
             "model_used": "deterministic_cpp_filter",
             "streaming_used": False,
             "source_counts": source_counts,

@@ -16,8 +16,17 @@ from .llm_response_parser import LLMResponseParser
 from .file_matcher import FileMatcher
 from .filter_validator import FilterResultValidator
 from .concurrent_filter import FilterLockManager
+from .forensic_ranking import rank_records, resolve_effective_cap
 
 logger = logging.getLogger(__name__)
+
+
+def _to_int(value: Any) -> int:
+    """Coerce a DB value to int, treating NULL/corrupt values as 0."""
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 
@@ -63,7 +72,10 @@ class FileFilter(FileFilterLegacyMixin):
 
         Dispatches on settings.file_filter_mode:
         - 'deterministic' (default): read all paths from the C++-filtered
-          files.db. No LLM, fully reproducible.
+          files.db. No LLM, fully reproducible. When a cap applies (min of
+          the request-level max_files and settings.filter_max_files), the
+          kept files are ranked by forensic value (see forensic_ranking.py)
+          instead of truncated alphabetically.
         - 'llm': legacy LLM selection by case_description.
         """
         mode = getattr(self.settings, "file_filter_mode", "deterministic")
@@ -116,28 +128,31 @@ class FileFilter(FileFilterLegacyMixin):
 
         files.db is already the product of the C++ FileFilter (scenario profile
         applied at task creation). This method performs NO LLM call and NO
-        rule-based filtering - it selects every file the C++ filter kept, so the
-        selection is reproducible across runs.
+        rule-based filtering - it ranks the files the C++ filter kept by
+        forensic value, so the selection is reproducible across runs.
+
+        The effective cap is the minimum of the request-level ``max_files``
+        and ``settings.filter_max_files`` (0 = unlimited). When capping, the
+        top-ranked files are kept - never an alphabetical prefix, which on
+        real images is dominated by $OrphanFiles / shredder remnants.
         """
         records = self._get_file_list_from_db(files_db_path)
-        paths = sorted({r.get("path", "") for r in records if r.get("path")})
-        total_files = len(paths)
+        ranked = rank_records(records)
+        total_files = len(ranked)
 
-        cap = int(getattr(self.settings, "filter_max_files", 0) or 0)
+        cap, cap_reason = resolve_effective_cap(
+            max_files, int(getattr(self.settings, "filter_max_files", 0) or 0)
+        )
         if cap > 0:
-            selected = paths[:cap]
+            selected_records = ranked[:cap]
             logger.info(
-                f"[FILE_FILTER] Deterministic cap applied: {len(selected)}/{total_files} "
-                f"(filter_max_files={cap})"
+                f"[FILE_FILTER] Deterministic value-ranked cap applied: "
+                f"{len(selected_records)}/{total_files} (effective cap={cap}, "
+                f"bound by {cap_reason})"
             )
         else:
-            selected = paths
-
-        if max_files and max_files > 0:
-            logger.info(
-                f"[FILE_FILTER] max_files={max_files} ignored in deterministic mode; "
-                f"using settings.filter_max_files={cap}"
-            )
+            selected_records = ranked
+        selected = [r["path"] for r in selected_records]
 
         # Mirror the LLM path's task_id extraction so callers that omit task_id
         # still persist under the real UUID (avoids a silent data-placement
@@ -147,13 +162,21 @@ class FileFilter(FileFilterLegacyMixin):
             task_id = task_match.group(1) if task_match else "_latest"
         self._persist_filtered_files(files_db_path, task_id, selected)
 
+        truncated = cap > 0 and cap < total_files
         return {
             "filtered_files": selected,
-            "reasoning": f"Deterministic selection from C++-filtered files.db ({total_files} files)",
+            "reasoning": (
+                f"Deterministic selection from C++-filtered files.db "
+                f"({total_files} files, ranked by forensic value"
+                + (f", capped at {cap}" if truncated else "") + ")"
+            ),
             "total_files": total_files,
             "selected_count": len(selected),
             "model_used": "deterministic_cpp_filter",
             "streaming_used": False,
+            "truncated": truncated,
+            "limit": cap if cap > 0 else None,
+            "limit_reason": cap_reason if truncated else None,
         }
 
     async def _do_filter_files_by_case(
@@ -428,25 +451,49 @@ class FileFilter(FileFilterLegacyMixin):
                 response_text, batch_lines, batch_files
             )
 
-    def _get_file_list_from_db(self, db_path: str) -> List[Dict[str, str]]:
-        """Read file list from the _files.db."""
+    def _get_file_list_from_db(self, db_path: str) -> List[Dict[str, Any]]:
+        """Read file list (path + available ranking signals) from the _files.db.
+
+        - text_factory decodes TEXT tolerantly: real images contain a handful
+          of non-UTF-8 paths (e.g. /etc/firewalld/ipsets/\xd2). With the
+          default strict decoder a single such row raised
+          "Could not decode to UTF-8" and zeroed out the entire image.
+        - Schema-adaptive: files.db products vary by producer version; missing
+          columns fall back to neutral defaults so ranking degrades gracefully.
+        """
         import sqlite3
         if not Path(db_path).exists():
             return []
 
         try:
             with sqlite3.connect(db_path, timeout=10) as conn:
+                conn.text_factory = lambda b: b.decode("utf-8", "replace")
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
-                cur.execute(
-                    "SELECT path, type as file_type, size FROM files ORDER BY path"
+                available = {row["name"] for row in cur.execute("PRAGMA table_info(files)")}
+                columns = [
+                    ("path", "path", "''"),
+                    ("type", "file_type", "''"),
+                    ("size", "size", "0"),
+                    ("category", "category", "''"),
+                    ("extension", "extension", "''"),
+                    ("scene_priority", "scene_priority", "0"),
+                    ("scene_relevant", "scene_relevant", "0"),
+                ]
+                exprs = ", ".join(
+                    f"{source} AS {alias}" if source in available else f"{default} AS {alias}"
+                    for source, alias, default in columns
                 )
-                rows = cur.fetchall()
+                rows = cur.execute(f"SELECT {exprs} FROM files ORDER BY path").fetchall()
                 return [
                     {
-                        "path": row["path"],
-                        "file_type": row["file_type"] if "file_type" in row.keys() else "",
-                        "size": row["size"] if "size" in row.keys() else 0,
+                        "path": row["path"] or "",
+                        "file_type": row["file_type"] or "",
+                        "size": _to_int(row["size"]),
+                        "category": str(row["category"] or "").strip(),
+                        "extension": str(row["extension"] or "").strip(),
+                        "scene_priority": _to_int(row["scene_priority"]),
+                        "scene_relevant": _to_int(row["scene_relevant"]),
                     }
                     for row in rows
                 ]
