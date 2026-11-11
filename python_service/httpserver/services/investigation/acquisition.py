@@ -146,13 +146,14 @@ def _acquire_android_artifact(resolved: ResolvedEvidence) -> AndroidArtifactSnap
     normalized_names = {
         "sms": ("address", "body", "date", "type"),
         "contacts": ("display_name", "phone_number", "email", "account_name"),
-        "apps": ("package_name", "version", "installer"),
+        "apps": ("package_name", "version", "version_name", "display_name", "installer"),
         "wifi": ("ssid", "key_mgmt", "last_connected"),
         "mobile": ("kind", "package_name", "app_index", "record_json", "timestamp_raw", "time_unit", "timestamp_seconds"),
         "calls": ("number", "name", "date", "date_seconds", "duration", "type"),
         "im": ("sender", "receiver", "sender_nickname", "chatroom_name", "talker",
                "msg_type", "is_send", "timestamp", "content", "media_type"),
         "im_contacts": ("username", "nickname", "remark", "mobile", "type"),
+        "qqnt": ("source_path", "table_name", "record_key", "artifact_kind", "is_sensitive"),
     }[resolved.artifact_kind]
     source = detail.get("source")
     coverage = manifest.get("coverage") or {}

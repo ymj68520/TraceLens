@@ -112,6 +112,8 @@ async def test_invalid_narrative_payload_returns_none_and_fragment_fallback():
 def test_citation_name_handles_flat_and_nested_paths():
     assert stage_citation_name("file:/话术/7要素.docx") == "7要素.docx"
     assert stage_citation_name("file:README.txt") == "README.txt"
+    assert stage_citation_name(
+        "android_artifact:v1:task:" + "a" * 64 + ":contacts:1") == "联系人#1"
 
 
 # Regression (PC.E01): the prompt forbade material ids but nothing enforced it,
@@ -1434,15 +1436,14 @@ async def test_discovery_reports_each_rejected_batch_separately():
                  text=f"文件{i}的正文片段，包含足够长度用于引用校验。")
         for i in range(1, BATCH_SIZE * 2 + 1))
 
-    calls = {"n": 0}
-
     class LLM:
         async def chat_completion(self, system, user, **kwargs):
-            calls["n"] += 1
-            if calls["n"] == 2:
-                return {"content": "not json", "model": "synthetic"}
             body = json.loads(user)
             first = body["materials"][0]
+            # The second batch stays invalid across the validation retry. Failing
+            # by call count would let the retry succeed and hide the rejection.
+            if first["material_id"] == f"m{BATCH_SIZE + 1:03}":
+                return {"content": "not json", "model": "synthetic"}
             return {"content": json.dumps({"directions": [{
                 "title": f"观察{first['material_id']}",
                 "description": "该材料包含可核查的记录。",
@@ -1456,6 +1457,77 @@ async def test_discovery_reports_each_rejected_batch_separately():
 
     assert len(directions) == 1, "the good batch must still contribute"
     assert len(warnings) == 1 and warnings[0].startswith("DIRECTION_BATCH_REJECTED_")
+
+
+@pytest.mark.asyncio
+async def test_file_batches_still_fail_when_every_answer_is_invalid():
+    """File evidence has no verbatim fallback. An all-rejected discovery still fails."""
+    from httpserver.services.forensic_report.generation_stages import discover_directions
+
+    materials = (material("m001", "file:/case/a.txt", kind="text", status="ready",
+                          text="文件正文片段，包含足够长度用于引用校验。"),)
+
+    class LLM:
+        async def chat_completion(self, system, user, **kwargs):
+            return {"content": "not json", "model": "synthetic"}
+
+    with pytest.raises(ValueError, match="NO_VALIDATED_NEUTRAL_ANALYSIS"):
+        await discover_directions(_envelope(), materials, LLM())
+
+
+@pytest.mark.asyncio
+async def test_android_record_batch_uses_verbatim_span_when_quotes_are_rewritten():
+    """MIUI derived rows are short JSON. A paraphrased quote must not fail the report."""
+    from httpserver.services.forensic_report.generation_stages import discover_directions
+
+    text = '{"display_name":"冶梦杰","phone_number":"15809649804"}'
+    materials = (material(
+        "m001", "android_artifact:v1:task:" + "a" * 64 + ":contacts:1",
+        kind="android_record", status="ready", text=text),)
+
+    class LLM:
+        async def chat_completion(self, system, user, **kwargs):
+            return {"content": json.dumps({"directions": [{
+                "title": "联系人",
+                "description": "备份中有联系人冶梦杰，号码为15809649804。",
+                "finding_kind": "observation",
+                "supporting_refs": [{"material_id": "m001", "quote": "冶梦杰的号码是15809649804"}],
+            }], "confidence": 0.9}, ensure_ascii=False), "model": "synthetic"}
+
+    directions, warnings = await discover_directions(_envelope(), materials, LLM())
+
+    assert len(directions) == 1
+    quote = directions[0].supporting_refs[0].quote
+    assert quote in text
+    assert "未通过来源校验" in "".join(directions[0].missing_information)
+    assert not warnings
+
+
+@pytest.mark.asyncio
+async def test_v4_discovery_keeps_the_aggregate_prompt():
+    from httpserver.services.forensic_report.generation_prompts import STAGE_DISCOVERY_AGGREGATE_V1
+    from httpserver.services.forensic_report.generation_stages import discover_directions
+
+    env = _envelope()
+    env.prompt_version = "final-report:evidence-only:v4"
+    seen = []
+    text = "文件正文片段，包含足够长度用于引用校验。"
+
+    class LLM:
+        async def chat_completion(self, system, user, **kwargs):
+            seen.append(system)
+            body = json.loads(user)
+            first = body["materials"][0]
+            return {"content": json.dumps({"directions": [{
+                "title": "观察",
+                "description": "该材料包含可核查的记录。",
+                "finding_kind": "observation",
+                "supporting_refs": [{"material_id": first["material_id"], "quote": first["text"][:8]}],
+            }]}, ensure_ascii=False), "model": "synthetic"}
+
+    await discover_directions(env, (material(
+        "m001", "file:/case/a.txt", kind="text", status="ready", text=text),), LLM())
+    assert seen == [STAGE_DISCOVERY_AGGREGATE_V1]
 
 
 def test_pack_batches_respects_both_count_and_prompt_budget():

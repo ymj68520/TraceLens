@@ -230,6 +230,7 @@ baseline_directions是先前模型判断，不是独立证据；不得用模型�
 source_group相同表示来源内容重复，复制材料不能计作独立佐证；不同哈希也不自动证明独立形成。
 source_kind=machine_visual是机器视觉观察，audio_transcript是机器转写，
 android_record是派生解析记录，均不能声称原文/实际行为已核验。缺失材料不等于没有相关行为。
+android_record 的 text 是解析记录 JSON。quote 必须从该 JSON 逐字复制（含引号与标点），不能改写成自然语言，也不能引用 path。
 解析器标题、临时文件名、技术哈希和解析失败信息不属于实际业务活动，不据此推断身份、交易或犯罪。
 只返回严格JSON，字段为directions数组，最多4条；没有可支持方向时返回空数组。
 每条字段：title、description、finding_kind(observation或hypothesis)、supporting_refs、
@@ -499,6 +500,7 @@ baseline_directions是先前模型判断，不是独立证据；不得用模型�
 source_group相同表示来源内容重复，复制材料不能计作独立佐证；不同哈希也不自动证明独立形成。
 source_kind=machine_visual是机器视觉观察，audio_transcript是机器转写，
 android_record是派生解析记录，均不能声称原文/实际行为已核验。缺失材料不等于没有相关行为。
+android_record 的 text 是解析记录 JSON。quote 必须从该 JSON 逐字复制（含引号与标点），不能改写成自然语言，也不能引用 path。
 解析器标题、临时文件名、技术哈希和解析失败信息不属于实际业务活动，不据此推断身份、交易或犯罪。
 
 path 字段是材料的完整存放位置，必须使用它来识别对象：

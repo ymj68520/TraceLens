@@ -9,6 +9,8 @@ import re
 
 import logging
 
+from pydantic import ValidationError
+
 from .generation_sources import digest, material
 from .generation_structured import _loads_strict
 from .generation_prompts import (STAGE_DISCOVERY_SYSTEM_V1, STAGE_COMPARE_SYSTEM_V1,
@@ -27,7 +29,7 @@ from .generation_prompts import (STAGE_DISCOVERY_AGGREGATE_V1,
 logger = logging.getLogger(__name__)
 
 from .models import (
-    DirectionBatch, InvestigationDirection, MaterialSpan, ComparisonSuggestion,
+    DirectionSuggestion, InvestigationDirection, MaterialSpan, ComparisonSuggestion,
     DirectionComparison, StageAnalysis, StructuredReportResponse, StructuredReportSection,
     StructuredReportCitation, ClassificationQuestion,
     EvidenceRecallRow, EvidenceRecallTable, EvidenceThreadRow, EvidenceThreadTable,
@@ -201,6 +203,12 @@ def prompt_material(source, text=None):
 
 def stage_citation_key_path(evidence_key: str) -> str:
     """The human-readable location of an evidence key, bounded for prompts."""
+    # An artifact key is an identity, not a path. Sending the hash makes the
+    # model quote the key, which is not in the frozen text and fails the batch.
+    if evidence_key.startswith("android_artifact:"):
+        parts = evidence_key.split(":")
+        if len(parts) == 6:
+            return f"{parts[4]}#{parts[5]}"
     path = evidence_key[5:] if evidence_key.startswith("file:") else evidence_key
     # Long installed paths (AppX packages with version + hash + locale) would
     # otherwise add hundreds of characters for no extra signal: the tail is
@@ -299,38 +307,150 @@ def _verbatim_prefix(quote, sent_text, full_text):
     return None
 
 
+def _direction_json(content: str) -> str:
+    """Drop the fences and preamble a model wraps around an otherwise valid object."""
+    text = (content or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```[a-zA-Z0-9]*\s*", "", text)
+        text = re.sub(r"\s*```$", "", text).strip()
+    if not text.startswith("{"):
+        start, end = text.find("{"), text.rfind("}")
+        if 0 <= start < end:
+            text = text[start:end + 1]
+    return text
+
+
+def _accept_direction(value, sent, full, envelope, allowed_baselines):
+    if not set(value.baseline_direction_ids) <= allowed_baselines:
+        raise ValueError("DIRECTION_BASELINE_OUTSIDE_SCOPE")
+    if value.case_context_quote and value.case_context_quote not in envelope.case_description:
+        raise ValueError("DIRECTION_CASE_CONTEXT_QUOTE_INVALID")
+    supports = validate_refs(value.supporting_refs, sent, full)
+    counters = validate_refs(value.counter_refs, sent, full)
+    if value.finding_kind == "observation" and not supports:
+        raise ValueError("OBSERVATION_WITHOUT_SOURCE")
+    if value.finding_kind == "hypothesis" and not (value.missing_information or value.alternative_explanations):
+        raise ValueError("HYPOTHESIS_REQUIRES_LIMITS")
+    if not supports and not counters:
+        if envelope.analysis_mode != "case_guided" or not value.case_context_quote or value.finding_kind != "hypothesis":
+            raise ValueError("DIRECTION_WITHOUT_SOURCE")
+        origin = "case_only"
+    else:
+        origin = "material" if envelope.analysis_mode == "evidence_only" else (
+            "reinterpreted" if value.baseline_direction_ids else "new_candidate")
+    payload = {**value.model_dump(mode="json"), "supporting_refs": supports, "counter_refs": counters, "origin": origin}
+    supporting_ids = {ref.material_id for ref in supports}
+    groups = [full[key].source_sha256 for key in supporting_ids]
+    if groups and all(groups) and len(set(groups)) < len(groups):
+        payload["missing_information"] = (*value.missing_information[:7],
+            "引用含相同来源内容，不能据此计作独立佐证，仍需核对材料形成关系。")
+    identity = "d_" + digest(value.model_dump(mode="json"))[:24]
+    return InvestigationDirection(direction_id=identity, **payload)
+
+
 def parse_directions(content, sent, full, envelope, allowed_baselines):
     if not isinstance(content, str) or len(content) > 24000:
         raise ValueError("DIRECTION_OUTPUT_BUDGET_EXCEEDED")
-    parsed = DirectionBatch.model_validate(_loads_strict(content))
+    payload = _loads_strict(_direction_json(content))
+    if not isinstance(payload, dict):
+        raise ValueError("DIRECTION_OUTPUT_SHAPE")
+    raw = payload.get("directions", ())
+    if isinstance(raw, dict):
+        raw = [raw]
+    if not isinstance(raw, list):
+        raise ValueError("DIRECTION_OUTPUT_SHAPE")
+    # One over-long answer used to reject the batch before any quote was checked.
+    # Keep the contract cap; drop the overflow instead of discarding the rest.
     results = []
-    for value in parsed.directions:
-        if not set(value.baseline_direction_ids) <= allowed_baselines:
-            raise ValueError("DIRECTION_BASELINE_OUTSIDE_SCOPE")
-        if value.case_context_quote and value.case_context_quote not in envelope.case_description:
-            raise ValueError("DIRECTION_CASE_CONTEXT_QUOTE_INVALID")
-        supports = validate_refs(value.supporting_refs, sent, full)
-        counters = validate_refs(value.counter_refs, sent, full)
-        if value.finding_kind == "observation" and not supports:
-            raise ValueError("OBSERVATION_WITHOUT_SOURCE")
-        if value.finding_kind == "hypothesis" and not (value.missing_information or value.alternative_explanations):
-            raise ValueError("HYPOTHESIS_REQUIRES_LIMITS")
-        if not supports and not counters:
-            if envelope.analysis_mode != "case_guided" or not value.case_context_quote or value.finding_kind != "hypothesis":
-                raise ValueError("DIRECTION_WITHOUT_SOURCE")
-            origin = "case_only"
-        else:
-            origin = "material" if envelope.analysis_mode == "evidence_only" else (
-                "reinterpreted" if value.baseline_direction_ids else "new_candidate")
-        payload = {**value.model_dump(mode="json"), "supporting_refs": supports, "counter_refs": counters, "origin": origin}
-        supporting_ids = {ref.material_id for ref in supports}
-        groups = [full[key].source_sha256 for key in supporting_ids]
-        if groups and all(groups) and len(set(groups)) < len(groups):
-            payload["missing_information"] = (*value.missing_information[:7],
-                "引用含相同来源内容，不能据此计作独立佐证，仍需核对材料形成关系。")
-        identity = "d_" + digest(value.model_dump(mode="json"))[:24]
-        results.append(InvestigationDirection(direction_id=identity, **payload))
+    for item in raw[:8]:
+        try:
+            results.append(_accept_direction(
+                DirectionSuggestion.model_validate(item), sent, full, envelope, allowed_baselines))
+        except (ValueError, ValidationError, KeyError, TypeError):
+            continue
+    if raw and not results:
+        raise ValueError("DIRECTION_SOURCE_QUOTE_INVALID")
     return results
+
+
+def _android_record_batch(rows, full) -> bool:
+    return bool(rows) and all(
+        row.get("material_id") in full and full[row["material_id"]].kind == "android_record"
+        for row in rows)
+
+
+def _verbatim_excerpt(text: str):
+    """A prefix of the frozen text, long enough to be a real citation."""
+    if not text or len(text.strip()) < 8:
+        return None
+    excerpt = text[:120]
+    return excerpt if excerpt in text else None
+
+
+def _derived_record_title(rows) -> str:
+    labels = []
+    for row in rows:
+        path = row.get("path") or ""
+        for token, label in (("contacts", "联系人"), ("calls", "通话"), ("sms", "短信"),
+                             ("apps", "已安装应用"), ("qqnt", "QQ记录"), ("im_contacts", "通讯录"),
+                             ("im", "即时通讯")):
+            if token in path and label not in labels:
+                labels.append(label)
+    if not labels:
+        return "手机备份解析记录"
+    return "、".join(labels[:3]) + "解析记录"
+
+
+def _derived_record_directions(rows, sent, full, envelope, allowed_baselines):
+    """One observation whose quotes are taken from the frozen text itself.
+
+    Used only when the model answer cannot be bound to android_record materials.
+    The quote is a prefix of the sent text, so it cannot fail the source check.
+    File evidence does not get this fallback: a failed file batch stays failed.
+    """
+    if not _android_record_batch(rows, full):
+        return None
+    refs = []
+    for row in rows:
+        identity = row["material_id"]
+        quote = _verbatim_excerpt(sent.get(identity, ""))
+        if quote and quote in full[identity].text:
+            refs.append({"material_id": identity, "quote": quote})
+        if len(refs) == 6:
+            break
+    if not refs:
+        return None
+    payload = {"directions": [{
+        "title": _derived_record_title(rows),
+        "description": "本批为手机备份的派生解析记录，下列片段可回查到冻结文本；不代表原始数据库行或实际行为已核验。",
+        "finding_kind": "observation",
+        "supporting_refs": refs,
+        "counter_refs": [],
+        "missing_information": ["模型方向未通过来源校验，本条改由冻结记录的逐字片段生成。"],
+        "alternative_explanations": [],
+        "baseline_direction_ids": [],
+        "case_context_quote": "",
+    }]}
+    try:
+        return parse_directions(json.dumps(payload, ensure_ascii=False), sent, full, envelope, allowed_baselines)
+    except (ValueError, ValidationError):
+        return None
+
+
+def discovery_system_prompt(version: str) -> str:
+    """Prompt for one discovery call.
+
+    ``:v1`` keeps the recorded per-file contract. ``:v2`` adds the Chinese rule.
+    Aggregation arrived with ``:v3``; later suffixes (currently ``:v4``) only
+    changed how chapters are written and must keep the same discovery contract.
+    Matching only ``endswith(":v3")`` sent every current pipeline report back to
+    the v1 prompt.
+    """
+    if version.endswith(":v2"):
+        return STAGE_DISCOVERY_SYSTEM_V2
+    if version.endswith(":v1"):
+        return STAGE_DISCOVERY_SYSTEM_V1
+    return STAGE_DISCOVERY_AGGREGATE_V1
 
 
 async def discover_directions(envelope, materials, llm, concurrency: int = 1):
@@ -347,6 +467,7 @@ async def discover_directions(envelope, materials, llm, concurrency: int = 1):
         caller merges results after all batches settle.
         """
         sent = {r["material_id"]: r["text"] for r in rows}
+        allowed = {d.direction_id for d in prior}
         request = json.dumps({
             "analysis_mode": envelope.analysis_mode,
             "case_context": envelope.case_description,
@@ -365,16 +486,40 @@ async def discover_directions(envelope, materials, llm, concurrency: int = 1):
         # finding" (532 directions for 767 materials on PC.E01, 258 of them
         # quoting exactly one file). Kept behind its own version string so
         # already-admitted generations keep executing their recorded contract.
-        if envelope.prompt_version.endswith(":v3"):
-            system_prompt = STAGE_DISCOVERY_AGGREGATE_V1
-        elif envelope.prompt_version.endswith(":v2"):
-            system_prompt = STAGE_DISCOVERY_SYSTEM_V2
-        else:
-            system_prompt = STAGE_DISCOVERY_SYSTEM_V1
-        response = await llm.chat_completion(
-            system_prompt, request, max_tokens=4096, temperature=0.0)
-        return parse_directions(response.get("content", ""), sent, full, envelope,
-                                {d.direction_id for d in prior})
+        system_prompt = discovery_system_prompt(envelope.prompt_version)
+        last_error = None
+        for attempt in (1, 2):
+            user = request
+            if last_error is not None:
+                body = json.loads(request)
+                body["previous_validation_error"] = str(last_error)[:300]
+                user = json.dumps(body, ensure_ascii=False)
+                if len(user) > REQUEST_CHAR_LIMIT:
+                    break
+            try:
+                response = await llm.chat_completion(
+                    system_prompt, user, max_tokens=4096, temperature=0.0)
+                parsed = parse_directions(response.get("content", ""), sent, full, envelope, allowed)
+            except ValueError as exc:
+                last_error = exc
+                if str(exc) in ("STAGE_INPUT_BUDGET_EXCEEDED", "DIRECTION_OUTPUT_BUDGET_EXCEEDED"):
+                    break
+                continue
+            if parsed or not _android_record_batch(rows, full):
+                return parsed
+            break
+        # A phone-backup batch is a handful of derived JSON rows. A paraphrased
+        # quote used to reject every batch and fail the whole report, which the
+        # task gate then reported as an analysis failure. Bind a verbatim span
+        # instead of publishing nothing.
+        fallback = _derived_record_directions(rows, sent, full, envelope, allowed)
+        if fallback:
+            logger.warning("Direction batch rejected (%s); using verbatim derived-record spans",
+                           str(last_error or "empty")[:200])
+            return fallback
+        if last_error is not None:
+            raise last_error
+        return ()
 
     def merge(values):
         directions.update((d.direction_id, d) for d in values)
@@ -503,8 +648,19 @@ async def compare_directions(envelope, materials, llm, current_directions=(),
     return tuple(comparisons), tuple(warnings)
 
 
+_ANDROID_KIND_LABELS = {
+    "sms": "短信", "contacts": "联系人", "apps": "已安装应用", "wifi": "Wi-Fi",
+    "mobile": "手机备份记录", "calls": "通话", "im": "即时通讯",
+    "im_contacts": "通讯录联系人", "qqnt": "QQ记录",
+}
+
+
 def stage_citation_name(evidence_key: str) -> str:
     """File name used in narrative text; the reader places citation chips by it."""
+    if evidence_key.startswith("android_artifact:"):
+        parts = evidence_key.split(":")
+        if len(parts) == 6:
+            return f"{_ANDROID_KIND_LABELS.get(parts[4], parts[4])}#{parts[5]}"
     path = evidence_key[5:] if evidence_key.startswith("file:") else evidence_key
     return path.rsplit("/", 1)[-1] if "/" in path else path
 

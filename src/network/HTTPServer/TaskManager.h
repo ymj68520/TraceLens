@@ -145,7 +145,10 @@ public:
      *         timeout, cancellation, or exhausted retries.
      */
     bool wait_for_graphiti_ingestion(const std::string& task_id, const std::string& job_id);
-    bool wait_for_pipeline_report(const std::string& task_id);
+    // error_code, when set, receives the last pipeline-tail failure code.
+    // no_validated_neutral_analysis is not retried: another pass cannot repair
+    // a source-validation rejection.
+    bool wait_for_pipeline_report(const std::string& task_id, std::string* error_code = nullptr);
 
     /**
      * @brief Update task progress

@@ -132,6 +132,39 @@ def test_meiya_task_is_covered_too(tmp_path):
     assert seeded["mobile_seeded"] == 4
 
 
+def test_miui_installed_apps_and_qqnt_are_seeded(tmp_path):
+    """MIUI stores apps and QQNT outside the communication tables the seed used to read."""
+    from httpserver.services.investigation.report_evidence import ReportEvidenceService
+
+    task = _task(tmp_path)
+    with sqlite3.connect(task["output_files_db"]) as con:
+        con.execute(
+            "CREATE TABLE installed_apps(id INTEGER PRIMARY KEY, package_name TEXT, "
+            "display_name TEXT, version_name TEXT, data_size INTEGER)")
+        con.execute("INSERT INTO installed_apps VALUES(1,'com.tencent.mobileqq','QQ','8.9',120)")
+        con.execute(
+            "CREATE TABLE qqnt_sqlite_records(id INTEGER PRIMARY KEY, source_path TEXT, "
+            "table_name TEXT, record_key TEXT, record_json TEXT, artifact_kind TEXT, "
+            "is_sensitive INTEGER)")
+        con.execute(
+            "INSERT INTO qqnt_sqlite_records VALUES(1,'apps/com.tencent.mobileqq/db/a.db',"
+            "'PublicAccountInfo','1','{\"_id\":\"1\"}','account',1)")
+    cpp = AsyncMock()
+    cpp.get_task = AsyncMock(return_value=task)
+    service = ReportEvidenceService(cpp)
+
+    seeded = asyncio.run(service.seed_analyzed_files(task["id"], added_by="pipeline"))
+    items = asyncio.run(service.list(task["id"]))
+    kinds = {item.evidence_key.split(":")[4] for item in items}
+    assert {"calls", "sms", "im", "im_contacts", "apps", "qqnt"} <= kinds
+    assert seeded["mobile_seeded"] == 6
+
+    detail = artifact_detail(task, "apps", 1)
+    assert detail["record"]["package_name"] == "com.tencent.mobileqq"
+    qq = artifact_detail(task, "qqnt", 1)
+    assert qq["record"]["table_name"] == "PublicAccountInfo"
+
+
 def test_unified_package_task_is_covered(tmp_path):
     from httpserver.services.investigation.report_evidence import ReportEvidenceService
 

@@ -26,7 +26,7 @@ _CLUSTER_PREFIX = "cluster:"
 _SUPPORTED_CLUSTER_VERSION = "v1"
 _ANDROID_PREFIX = "android_artifact:"
 _ANDROID_KINDS = frozenset({"sms", "contacts", "apps", "wifi", "mobile",
-                            "calls", "im", "im_contacts"})
+                            "calls", "im", "im_contacts", "qqnt"})
 
 # A '%' not followed by exactly two hex digits (malformed percent-escape).
 _MALFORMED_PERCENT_RE = re.compile(r"%(?![0-9A-Fa-f]{2})")

@@ -27,6 +27,8 @@ KINDS = {
     "calls": ("call_logs", ("number", "name")),
     "im": ("wechat_messages", ("content", "sender", "receiver", "talker")),
     "im_contacts": ("wechat_contacts", ("username", "nickname", "remark", "mobile")),
+    # QQNT rows live in their own table; they are not wechat messages.
+    "qqnt": ("qqnt_sqlite_records", ("source_path", "table_name", "record_json")),
 }
 SOURCE_KINDS = {"apps": "installed_apps"}
 
@@ -88,6 +90,18 @@ def _table(con: sqlite3.Connection, kind: str) -> tuple[str, tuple[str, ...]]:
     if kind not in KINDS:
         raise ArtifactUnavailable("unsupported Android artifact kind")
     table, search = KINDS[kind]
+    # MIUI writes the app manifest to installed_apps. The older package table
+    # stays first so tasks that have both do not change which row an id names.
+    if kind == "apps":
+        for name, columns in (
+            ("installed_packages", ("package_name", "version")),
+            ("installed_apps", ("package_name", "display_name", "version_name")),
+        ):
+            if con.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+            ).fetchone():
+                return name, columns
+        raise ArtifactUnavailable("artifact table is not present in this task")
     if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone() is None:
         raise ArtifactUnavailable("artifact table is not present in this task")
     return table, search

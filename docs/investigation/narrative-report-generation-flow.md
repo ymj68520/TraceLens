@@ -52,7 +52,9 @@
         → admission.admit(analysis_mode="evidence_only")
         → executor.submit(generation_id)
       → 轮询 GET /api/reports/pipeline-tail/status
-    → 只有报告 A 完成，任务才 COMPLETED
+    → 报告 A 完成，任务才 COMPLETED
+    → 逻辑来源（MIUI 等）若方向校验整批失败（no_validated_neutral_analysis），
+      分析产物已落盘，任务仍 COMPLETED，并写明未生成报告
 
 页面手动（两阶段）
   GenerateReportPanel
@@ -264,8 +266,14 @@ builder 得到当前入报范围，然后：
     origin=`case_only`；
   - 同源重复（source_group 相同）会追加“不能计作独立佐证”的缺失信息；
   - 方向 ID 由输出内容确定性哈希生成（`d_<sha256[:24]>`）。
-- 首批全部批次失败 → `NO_VALIDATED_NEUTRAL_ANALYSIS`，整次失败；
+- 单条方向校验失败不再丢弃同批其余方向；协议外字段仍拒绝该条；
+- 派生记录（`android_record`）整批无法绑定引文时，改用冻结文本的逐字前缀
+  生成一条观察，并在缺失信息中标明“模型方向未通过来源校验”；
+  文件材料没有这条回退；
+- 首批全部批次失败且无法回退 → `NO_VALIDATED_NEUTRAL_ANALYSIS`，整次失败；
   部分批次失败 → 记录 `DIRECTION_BATCH_REJECTED_n` 警告，继续；
+- 当前流水线 prompt 为 `:v4`。方向发现与 `:v3` 使用同一聚合提示词
+  （`discovery_system_prompt`）；只有 `:v1`/`:v2` 仍走旧契约；
 - 材料数超过一批时做一次有界跨批复核（`CROSS_REVIEW_BATCH=16`），
   只接收已校验引文，原始方向始终保留。
 
@@ -618,7 +626,8 @@ response, stage = render_stage_report(
 | 输入哈希/契约不符 | `generation_execution.py:466-500` | `input_integrity_error` / `unsupported_input_contract` | 否 |
 | LLM 未初始化 | `generation_execution.py:499` | `llm_unavailable` | 否 |
 | 无可读中立材料 | `generation_execution.py:674` | `neutral_sources_unavailable` | 否 |
-| 方向首批全失败 | `generation_stages.py:370` | `no_validated_neutral_analysis` → `stage_analysis_invalid` | 否 |
+| 方向首批全失败（文件材料，或派生记录也无法逐字回退） | `generation_stages.py` `discover_directions` | `no_validated_neutral_analysis` → `stage_analysis_invalid` | 否。逻辑来源任务不因此标 FAILED，分析产物保留 |
+| 派生记录方向无法绑定 | `generation_stages.py` `_derived_record_directions` | 用冻结文本逐字片段生成观察，报告继续 | 是 |
 | 引用越界/身份不符（v4） | `generation_execution.py:154` | `citation_invalid` | 否 |
 | 发布失败 | `generation_execution.py:581-590` | `publication_error` | 否 |
 | 服务重启/关闭 | executor `initialize/shutdown` | `service_restart` / `service_shutdown`，不自动重放 | 否 |
@@ -659,8 +668,9 @@ response, stage = render_stage_report(
 9. **跨任务隔离**：generation 与 narrative 读取都要求 `task_id` 精确匹配；
    跨任务 id 与不存在不可区分。
 10. **整理可降级、分析不可静默**：分类/比较/主题/单章失败可降级并留痕；
-    但“没有可读材料”“首批方向全部未通过校验”“输入完整性失败”
-    必须整次失败，不能发布空壳报告。
+    派生记录整批无法绑定引文时，可以降级为冻结文本的逐字观察并留痕。
+    “没有可读材料”“文件材料首批方向全部未通过校验且无法回退”“输入完整性失败”
+    必须整次失败，不能发布空壳报告。逻辑来源的方向校验失败不把分析任务标为 FAILED。
 
 ---
 

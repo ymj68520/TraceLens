@@ -558,6 +558,8 @@ class ReportEvidenceService:
              "SELECT id FROM wechat_contacts ORDER BY id LIMIT 200"),
             ("contacts",
              "SELECT id FROM contacts ORDER BY id LIMIT 200"),
+            ("qqnt",
+             "SELECT id FROM qqnt_sqlite_records ORDER BY is_sensitive DESC, id LIMIT 40"),
         )
 
         def candidates() -> list[tuple[str, int]]:
@@ -567,11 +569,23 @@ class ReportEvidenceService:
                 con.text_factory = lambda data: data.decode("utf-8", "replace")
                 tables = {row[0] for row in con.execute(
                     "SELECT name FROM sqlite_master WHERE type='table'")}
-                for kind, query in candidate_queries:
+                queries = list(candidate_queries)
+                # Same preference as the artifact reader: installed_packages wins
+                # when both exist, so an id cannot name a row in the other table.
+                if "installed_packages" in tables:
+                    queries.append(("apps",
+                                    "SELECT id FROM installed_packages ORDER BY id LIMIT 80"))
+                elif "installed_apps" in tables:
+                    queries.append(("apps",
+                                    "SELECT id FROM installed_apps ORDER BY id LIMIT 80"))
+                for kind, query in queries:
                     table = {
                         "mobile": "mobile_artifacts", "calls": "call_logs",
                         "sms": "sms_messages", "im": "wechat_messages",
                         "im_contacts": "wechat_contacts", "contacts": "contacts",
+                        "qqnt": "qqnt_sqlite_records",
+                        "apps": "installed_apps" if "installed_apps" in tables
+                        and "installed_packages" not in tables else "installed_packages",
                     }[kind]
                     if table not in tables:
                         continue

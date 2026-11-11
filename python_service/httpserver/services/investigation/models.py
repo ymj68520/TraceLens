@@ -79,7 +79,7 @@ class AndroidArtifactSnapshotPayload(BaseModel):
     task_id: str
     result_set_id: str = Field(pattern=r"^[0-9a-f]{64}$")
     artifact_kind: Literal["sms", "contacts", "apps", "wifi", "mobile",
-                           "calls", "im", "im_contacts"]
+                           "calls", "im", "im_contacts", "qqnt"]
     record_id: int = Field(gt=0)
     snapshot_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     source_revision: str = Field(pattern=r"^[0-9a-f]{64}$")

@@ -374,7 +374,8 @@ bool TaskManager::wait_for_graphiti_ingestion(const std::string& task_id, const 
 // First-stage 材料自主研判 report gate: mirror the ingestion gate — the task
 // is only COMPLETED once the pipeline-tail report generation has finished;
 // failure after retries fails the task (artifacts stay browsable).
-bool TaskManager::wait_for_pipeline_report(const std::string& task_id) {
+bool TaskManager::wait_for_pipeline_report(const std::string& task_id, std::string* error_code) {
+    if (error_code) error_code->clear();
     auto& config = forensics::ConfigManager::instance();
     const int timeout_minutes = config.getInt("REPORT_TAIL_WAIT_TIMEOUT_MIN", 60);
     if (timeout_minutes <= 0) {
@@ -403,9 +404,14 @@ bool TaskManager::wait_for_pipeline_report(const std::string& task_id) {
                 return true;
             }
             if (status.state == "failed") {
+                if (error_code) *error_code = status.error_code;
                 add_audit_log(task_id, "WARNING",
                               "Report tail failed: " +
                                   (status.error_code.empty() ? "unknown" : status.error_code));
+                // A source-validation rejection does not change on retry. Leave
+                // the code for the caller: logical sources keep the analysis,
+                // disk-image tasks still fail the completion gate.
+                if (status.error_code == "no_validated_neutral_analysis") return false;
                 break;  // leave the poll loop; retry below
             }
             const double elapsed = std::chrono::duration<double>(
@@ -819,6 +825,10 @@ void TaskManager::start_analysis(const std::string& task_id) {
                 // Locked/super-normalized tasks carry no analyzable artifacts;
                 // a report over an empty evidence set would be noise.
                 if (is_task_cancelled(task_id)) { update_status(task_id, TaskStatus::CANCELLED, "任务已取消"); return; }
+                // Direction-validation failure is not a parse failure. android.db
+                // is already complete; failing the task here hid that fact behind
+                // "报告生成失败或超时".
+                bool reportDirectionsRejected = false;
                 if (task.llm_analyze && !superNormalized && !lockedPersisted) {
                     const char* logicalFieldMode = std::getenv("TRACELENS_FIELD_AUTH");
                     const char* logicalOutbound = std::getenv("FIELD_OUTBOUND_POLICY");
@@ -829,24 +839,34 @@ void TaskManager::start_analysis(const std::string& task_id) {
                         forensics::ConfigManager::instance().getBool("REPORT_AUTO_GENERATE_ENABLED", true)) {
                         update_progress(task_id, TaskPhase::FINALIZING, 95,
                                         "生成首次材料自主研判报告…");
-                        if (!wait_for_pipeline_report(task_id)) {
-                            update_status(task_id, TaskStatus::FAILED,
-                                          "首次材料自主研判报告未完成",
-                                          "报告生成失败或超时；分析产物仍可浏览，请查看报告任务状态。");
-                            add_audit_log(task_id, "ERROR", "Analysis failed at the report completion gate");
-                            return;
+                        std::string reportError;
+                        if (!wait_for_pipeline_report(task_id, &reportError)) {
+                            if (reportError == "no_validated_neutral_analysis") {
+                                reportDirectionsRejected = true;
+                                add_audit_log(task_id, "WARNING",
+                                    "Report direction validation rejected every batch; analysis artifacts retained");
+                            } else {
+                                update_status(task_id, TaskStatus::FAILED,
+                                              "首次材料自主研判报告未完成",
+                                              "报告生成失败或超时；分析产物仍可浏览，请查看报告任务状态。");
+                                add_audit_log(task_id, "ERROR", "Analysis failed at the report completion gate");
+                                return;
+                            }
                         }
                     }
                 }
                 const bool locked = task.android_source == "filesystem-image" &&
                     task.metadata.count("preflight_locked") && task.metadata.at("preflight_locked") == "true";
-                const std::string message = superNormalized
+                std::string message = superNormalized
                     ? "SUPER_NORMALIZED_USERDATA_NOT_PRESENT: 系统逻辑分区已规范化；来源中没有 userdata，未分析用户数据。"
                     : locked
                     ? "COMPLETED_WITH_LOCKED_USERDATA: userdata 已识别，但用户加密内容不可读取，Android 工件覆盖不完整。"
                     : incomplete
                     ? "手机来源已处理；部分内容未解析，请核对来源覆盖状态"
                     : "手机来源已处理；已记录来源覆盖情况，请复核";
+                if (reportDirectionsRejected) {
+                    message += " 首次材料自主研判未通过来源校验，未生成报告；分析产物仍可浏览。";
+                }
                 update_progress(task_id, TaskPhase::FINALIZING, 100, message);
                 update_status(task_id, TaskStatus::COMPLETED, message);
                 return;
